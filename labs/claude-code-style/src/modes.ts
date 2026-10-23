@@ -1,8 +1,9 @@
 /**
  * The app's two ways of working. A mode is which main worker a session is
- * with and which right pane it shows. A session's mode is never stored: it is
- * read from the session's main worker (spec D1). Session mode is the only one
- * built; threads mode adds a second entry and a status-board pane.
+ * with and which right pane it shows. The view a person is in sets the mode:
+ * the Sessions view is session mode and the Projects view is threads mode. A
+ * session's mode is never stored: it is read from the session's main worker.
+ * Session mode is the only one built; threads mode adds a status-board pane.
  */
 
 /** A mode the app knows. */
@@ -12,32 +13,32 @@ export type ModeId = "session" | "threads";
 export interface Mode {
   id: ModeId;
   label: string;
+  /** The view that works in this mode, as the left pane's switch names it. */
+  view: string;
   /** The main worker every session of this mode is with. */
   worker: string;
   /** The right pane: the background tasks list, or the threads status board. */
   pane: "tasks" | "board";
-  /** False until the mode is built; *New session* shows it disabled. */
+  /** False until the mode is built; the view switch shows its view disabled. */
   available: boolean;
-  /** One line for *New session*'s menu. */
-  blurb: string;
 }
 
 export const MODES: readonly Mode[] = [
   {
     id: "session",
     label: "Session",
+    view: "Sessions",
     worker: "desk.main",
     pane: "tasks",
     available: true,
-    blurb: "The main session works and starts background tasks.",
   },
   {
     id: "threads",
     label: "Threads",
+    view: "Projects",
     worker: "desk.lead",
     pane: "board",
     available: false,
-    blurb: "The main session hands everything to threads. Coming soon.",
   },
 ];
 

@@ -48,12 +48,17 @@ describe("the session-mode screen", () => {
     expect(within(sessions).getAllByRole("listitem").filter((li) => /^New session/.test(li.textContent ?? ""))).toHaveLength(1);
   });
 
-  it("offers threads mode on New session but keeps it disabled until it is built", async () => {
+  it("sets the mode by view: Sessions is built, Projects is shown but disabled until threads mode is", async () => {
     render(<App adapter={fast()} />);
+    const views = screen.getByRole("tablist", { name: "View" });
+    const sessionsTab = within(views).getByRole("tab", { name: "Sessions" }) as HTMLButtonElement;
+    const projectsTab = within(views).getByRole("tab", { name: "Projects" }) as HTMLButtonElement;
+    expect(sessionsTab.getAttribute("aria-selected")).toBe("true");
+    expect(projectsTab.disabled).toBe(true);
+    // New session opens straight into the view's mode: no mode menu.
     fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
-    const menu = screen.getByRole("menu");
-    expect((within(menu).getByRole("menuitem", { name: /Session/ }) as HTMLButtonElement).disabled).toBe(false);
-    expect((within(menu).getByRole("menuitem", { name: /Threads/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(within(thread()).getByText("Session")).toBeTruthy());
   });
 
   it("shows a background result inside the running turn, then stops the other task when asked", async () => {

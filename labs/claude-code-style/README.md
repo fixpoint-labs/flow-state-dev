@@ -5,8 +5,9 @@ theme, on the workforce package. It is one half of the evidence that the same pa
 familiar apps: an app adds only configuration, React UI and a few small flows, and anything else it
 needs is a gap filed against the package.
 
-- **Left:** your sessions. Each one is a session with the same main worker. *New session* asks for
-  a mode; threads mode is listed and comes later.
+- **Left:** a Sessions / Projects switch, then your sessions. The view sets the mode: Sessions is
+  session mode, and Projects (threads mode) is shown and comes later. Each session in the view is
+  with the same main worker, and *New session* opens one in the view's mode.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. A background result shows as a card
   at the point the main session took it, even while its turn is still running.
@@ -55,9 +56,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 13 | 238 |
-| React UI | 14 | 758 |
+| Configuration | 13 | 239 |
+| React UI | 14 | 769 |
 | Small flows | 0 | 0 |
 | Fixtures (deleted at wiring) | 1 | 283 |
-| Checks (not app code) | 3 | 277 |
+| Checks (not app code) | 3 | 282 |
 <!-- inventory:end -->
