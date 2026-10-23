@@ -3,8 +3,9 @@
  * `block_trace`. A loop that stops twice runs each pass once and keeps a
  * record for every block full capture keeps, with no input, prompt, or
  * resource-load payload. A generator step (recorded as a ref to its message,
- * not inline) is not called again on resume, and `/continue` crash recovery
- * with no durability provider skips the steps that finished before the crash.
+ * not inline) is not called again on resume. `/continue` crash recovery skips
+ * the steps that finished before the crash when a durability provider is
+ * configured, and re-runs them from the top when none is.
  * Every persisted item, block records and a generator's messages alike, gets
  * its own index, in emission order.
  */
@@ -235,7 +236,13 @@ describe("resume replay with trace observability off", () => {
     expect(draftTrace?.output?.kind).toBe("ref");
   });
 
-  it("skips finished steps, keeping the state they wrote, when /continue recovers a crash with no durability provider", async () => {
+  // With a durability provider, `/continue` replays finished steps and
+  // restores the sequencer's state from its checkpoint. Without one there is
+  // no checkpoint to restore, so it runs the request again from the top.
+  it.each([
+    { provider: true, runs: 1 },
+    { provider: false, runs: 2 },
+  ])("recovers a crash through /continue with the right state (durability provider: $provider)", async (c) => {
     let workRuns = 0;
     let crashed = true;
     const stalled = new Promise<never>(() => {});
@@ -246,7 +253,8 @@ describe("resume replay with trace observability off", () => {
       outputSchema: z.object({ n: z.number() }),
       execute: async (_input, ctx) => {
         workRuns += 1;
-        ctx.sequencer!.patchState({ seen: ["work"] });
+        const prior = (ctx.sequencer!.state as { seen: string[] }).seen;
+        ctx.sequencer!.patchState({ seen: [...prior, "work"] });
         return { n: workRuns };
       },
     });
@@ -268,7 +276,8 @@ describe("resume replay with trace observability off", () => {
         },
       },
     })({ id: "replay-traces-off-continue" });
-    const stores = createInMemoryStores();
+    const { stores, provider } = durableStores();
+    const runtimeConfig = c.provider ? { durabilityProvider: provider } : {};
     const registry = createFlowRegistry();
     registry.register(flow as never);
 
@@ -280,7 +289,7 @@ describe("resume replay with trace observability off", () => {
       sessionId: "s1",
       orgId: DEFAULT_ORG_ID,
       stores,
-      runtimeConfig: {},
+      runtimeConfig,
     } as never);
     // Let `work` finish and its items reach the store, as they would before a crash.
     for (let i = 0; i < 100 && workRuns === 0; i += 1) await new Promise((r) => setTimeout(r, 5));
@@ -302,7 +311,7 @@ describe("resume replay with trace observability off", () => {
           requestId: opts.requestId,
           stores,
           flowRegistry: registry,
-          runtimeConfig: {},
+          runtimeConfig,
         });
         finished = handle.finished as Promise<{ output: unknown }>;
         return handle;
@@ -311,14 +320,15 @@ describe("resume replay with trace observability off", () => {
     const response = await handleContinueRequest(
       new Request("http://localhost/continue", { method: "POST" }),
       { kind: "continue_request", flowKind: "replay-traces-off-continue", sessionId: "s1", requestId },
-      { registry, stores, runtimeConfig: {}, host } as never
+      { registry, stores, runtimeConfig, host } as never
     );
     expect(response.status).toBe(202);
     const result = await finished!;
 
-    expect(workRuns).toBe(1);
-    // The skipped step's state write is restored from its checkpoint, not lost.
-    expect(result.output).toEqual({ after: { n: 1 }, state: { seen: ["work"] } });
+    expect(workRuns).toBe(c.runs);
+    // The step's state write is there once: restored with the replayed step,
+    // or written again by the re-run on a fresh state.
+    expect(result.output).toEqual({ after: { n: c.runs }, state: { seen: ["work"] } });
     expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 

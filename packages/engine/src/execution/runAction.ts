@@ -741,6 +741,19 @@ async function finalizeRequestRecord(
 }
 
 /**
+ * The same replay log with no completed block outputs: every block runs again,
+ * while router decisions, resolved gates and the prior items stay readable.
+ */
+function withoutCompletedOutputs(log: ReplayLog): ReplayLog {
+  return {
+    ...log,
+    getCompletedOutput: () => undefined,
+    recordedBlockTraceId: () => undefined,
+    completedRescued: () => false,
+  };
+}
+
+/**
  * Best-effort logical path of the block that was in flight when a crash
  * interrupted a request — the highest-`itemIndex` `block_trace` whose status
  * is still `in_progress` in the prior log. Returns `undefined` when none is
@@ -1934,6 +1947,12 @@ async function runActionAttempt<
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems;
       replayLog = buildReplayLog(priorItems);
+      // Crash recovery with no durability provider restores no sequencer
+      // checkpoint, so it re-runs completed blocks rather than inject their
+      // outputs into a sequencer whose state starts from its defaults.
+      if (resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined) {
+        replayLog = withoutCompletedOutputs(replayLog);
+      }
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
       // the log, and re-runs the in-flight one — there is no gate to resolve, so
@@ -2077,18 +2096,18 @@ async function runActionAttempt<
       // accumulator rather than restarting it empty while block outputs replay
       // from the log. A durable sequencer NESTED inside another is the
       // documented limitation (its non-root checkpoint is not restored here).
-      // The checkpoint is read from the store the item hook writes it to, so
-      // a run with no durability provider restores it too: its completed
-      // blocks replay from the log the same way.
-      const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
-      const checkpoint = await options.stores.checkpoints.latest(
-        requestId,
-        rootInstanceId
-      );
-      if (checkpoint !== null) {
-        (ctx as any)._resumeState = {
-          state: checkpoint.state as Record<string, unknown> | undefined
-        };
+      const provider = options.runtimeConfig.durabilityProvider;
+      if (provider !== undefined) {
+        const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
+        const checkpoint = await options.stores.checkpoints.latest(
+          requestId,
+          rootInstanceId
+        );
+        if (checkpoint !== null) {
+          (ctx as any)._resumeState = {
+            state: checkpoint.state as Record<string, unknown> | undefined
+          };
+        }
       }
     }
   } catch (setupError) {
