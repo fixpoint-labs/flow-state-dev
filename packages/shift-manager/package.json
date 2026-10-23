@@ -74,6 +74,7 @@
   "devDependencies": {
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/design-system": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",

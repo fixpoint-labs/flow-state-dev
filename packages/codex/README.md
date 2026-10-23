@@ -107,6 +107,36 @@ core's model price table and `cost.basis` reads `"estimated"`. It is `null`, nev
 `0`, when no model was named (Codex's output never names the model that ran),
 when the table has no entry for it, or when the turn reported no usage.
 
+## Reading usage left
+
+`readCodexUsage({ env, timeoutMs?, signal? })` asks Codex how much of each
+subscription window is used, with no run, and returns core's
+`HarnessUsageReading`. It starts the Codex CLI the SDK brings as `codex
+app-server`, asks it, and stops it. Pass the `env` your runs get, so both see
+one sign-in:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { readCodexUsage } from "@flow-state-dev/codex";
+
+const reading = await readCodexUsage({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }) });
+// { status: "windows", plan, accountId, windows: [{ id: "codex:primary", minutes: 300, usedPercent, resetsAt, label }] }
+```
+
+It never throws. A ChatGPT sign-in reads `windows`, every window Codex reports.
+An API key reads `api-key`, nobody signed in reads `signed-out`, and a CLI that
+can't be found, stops, or doesn't answer within `timeoutMs` (default 10 000 ms)
+reads `unavailable`. Each of those three carries a plain `reason` and no number.
+An aborted `signal` reads `unavailable`.
+
+`findCodexProgram(env)` returns the program the SDK would start (`{ path,
+pathDirs }`), and throws when the SDK can't be loaded.
+
+**Local only.** OpenAI permits the app-server's ChatGPT sign-in on your own
+machine, not in a hosted service. A host opts in by passing `readCodexUsage` as
+its Codex usage reader, for example to `harnessUsageAction` in
+`@flow-state-dev/harness-manager`.
+
 ## Tests
 
 ```bash

@@ -61,6 +61,7 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
 | **Messages** | Every [message](../workforce/messaging-workers.md) one of your workers sent another, newest first, with a message and its answers kept together. Each line shows when it was sent, who sent it, who got it and its first line of text. The sender and the recipient are links: each opens the conversation that holds the message on that side. A message that wasn't delivered, or whose delivery couldn't be confirmed, says so. Messages aren't tasks, so nothing here shows on Tasks. |
 | **Scheduled work** | Your [schedules](../workforce/delegating-work.md#recurring-work), soonest first. Each line shows when the schedule is next due, the task it files, on whose board and for whom, and its cron and time zone. A schedule that is off says so. The tasks a schedule files show on Tasks like any other. |
+| **Usage** | How much of each coding agent's subscription you have used, one card per agent: each limit window's percent and reset time, the plan, and where the numbers came from and how old they are. Opening Usage asks for a fresh reading, at most once a minute. A window whose reset has passed shows when it reset instead of a percent. An agent with no number (an API key, nobody signed in, a read that failed) says why. |
 | **Settings** | Your own keys for the MCP servers the Lab offers its projects' coding runs. See [Settings](./settings.md). |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
@@ -97,6 +98,7 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 - **An open [inventory](../workforce/inventory.md)**, which TEAMS, Roster and Inbox read to find the Lab's workers. Without it, TEAMS says there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
 - **Optionally, a Shift Coordinator**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The Shift Coordinator](../workforce/shift-coordinator.md).
+- **Optionally, a usage query**: a flow with a `harnessUsage` action built by `harnessUsageAction`, which Usage reads. See [Subscription usage](../orchestration/harness-manager.md#subscription-usage). Without one, Usage shows *No usage to show*.
 
 A document under a `resources/` folder shows in Jump to only when its frontmatter sets `client.content.read: true`.
 

@@ -130,6 +130,39 @@ the run carries on. Call it from one writer per run. If your agent reports items
 by id, upsert entries under `<requestId>/<run>/<item id>` and mark the run
 `incomplete` when a write fails.
 
+## Subscription usage
+
+A coding agent on a subscription plan has limits per time window, and a run
+fails once a window runs out. A *usage reader* asks the agent how much of each
+window is used, without a run. The shapes live in `@flow-state-dev/core`, so a
+page or a worker reads every agent's usage the same way:
+
+```ts
+import type { HarnessUsageReader, HarnessUsageReading, HarnessUsageWindow } from "@flow-state-dev/core/types";
+import { harnessUsageWindowSchema } from "@flow-state-dev/core";
+```
+
+A reader is `(options?: { signal?: AbortSignal }) => Promise<HarnessUsageReading>`.
+A reading is one of four:
+
+| `status` | Carries |
+|---|---|
+| `windows` | `windows`, plus `plan` and `accountId`, each `null` when the agent didn't name one. |
+| `api-key` | `reason`. The agent runs on an API key, which has no subscription limit. |
+| `signed-out` | `reason`. Nobody is signed in. |
+| `unavailable` | `reason`. The read couldn't be made. |
+
+Each window has an `id` unique within the reading, the vendor's `label` for its
+limit, its length in `minutes`, `usedPercent` from 0 to 100, and `resetsAt` in
+epoch ms. `label`, `minutes` and `resetsAt` are `null` when the vendor didn't
+say. The numbers are the vendor's own, unconverted. Only `windows` carries a
+number: show the `reason` for the other three, never 0%.
+
+A reader returns those states rather than throwing. Codex ships one,
+[`readCodexUsage`](./codex.md#reading-usage-left). To keep readings and serve
+them with their age, hand your readers to the
+[harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage).
+
 ## The prompt is the input; everything else is configuration
 
 A harness block takes one thing: the prompt. Where the run works, which

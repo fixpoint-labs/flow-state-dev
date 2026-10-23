@@ -29,6 +29,10 @@
  *   host feeds per-run configuration through.
  * - {@link HarnessFailureKind} / {@link harnessFailureKind} — the neutral
  *   classification a harness puts on the error it fails with.
+ * - {@link HarnessUsageWindow} / {@link harnessUsageWindowSchema},
+ *   {@link HarnessUsageReading} and {@link HarnessUsageReader} — a
+ *   subscription's usage windows as a vendor reports them, and the on-demand
+ *   read a host registers per harness.
  *
  * Nothing in core imports a harness package, and nothing here names a vendor
  * notion. A harness's own extras (an SDK's result enum, the tools it observed)
@@ -336,3 +340,65 @@ export function harnessFailureKind(error: unknown): HarnessFailureKind | null {
   }
   return null;
 }
+
+/**
+ * One window of a harness's subscription limit, as its vendor reported it: how
+ * much of it is used, and when it resets.
+ *
+ * A vendor names a window by its length (Codex: 300 minutes, 10 080 minutes),
+ * by its own word for it (Claude Code: `five_hour`), or both. `minutes` and
+ * `id` carry what was said, and nothing is derived: `usedPercent` is 0 to 100
+ * exactly as sent.
+ */
+export interface HarnessUsageWindow {
+  /** The vendor's id for this window, unique within one reading. */
+  id: string;
+  /** The vendor's name for the limit this window belongs to, or `null` when it gave none. */
+  label: string | null;
+  /** The window's length in minutes, or `null` when the vendor didn't say. */
+  minutes: number | null;
+  /** How much of the window is used, 0 to 100, as the vendor sent it. */
+  usedPercent: number;
+  /** When the window resets, in epoch ms, or `null` when the vendor didn't say. */
+  resetsAt: number | null;
+}
+
+/** Runtime validator for {@link HarnessUsageWindow}. */
+export const harnessUsageWindowSchema = z.object({
+  id: z.string(),
+  label: z.string().nullable().default(null),
+  minutes: z.number().nullable().default(null),
+  usedPercent: z.number(),
+  resetsAt: z.number().nullable().default(null),
+});
+
+/**
+ * What one read of a harness's subscription usage found.
+ *
+ * Only `windows` carries a number. The other three say why there is none, in
+ * words a person can be shown: the harness runs on an API key (no
+ * subscription limit), nobody is signed in, or the read could not be made.
+ * None of them is ever read as zero.
+ */
+export type HarnessUsageReading =
+  | {
+      status: "windows";
+      /** The vendor's account id, when it named one. Never shown; a store keeps a hash of it. */
+      accountId: string | null;
+      /** The subscription plan, as the vendor names it, or `null`. */
+      plan: string | null;
+      windows: HarnessUsageWindow[];
+    }
+  | { status: "api-key"; reason: string }
+  | { status: "signed-out"; reason: string }
+  | { status: "unavailable"; reason: string };
+
+/**
+ * Read one harness's subscription usage on demand, with no run.
+ *
+ * A host hands one per harness to whatever holds the usage record, which
+ * calls it when someone asks for a fresh number. A reader never throws for an
+ * expected no-number state; it returns that state with its reason. `signal`
+ * aborts a read the caller stopped waiting for.
+ */
+export type HarnessUsageReader = (options?: { signal?: AbortSignal }) => Promise<HarnessUsageReading>;

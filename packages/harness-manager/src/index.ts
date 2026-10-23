@@ -34,6 +34,8 @@
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
  *   own shutdown needs the same numbers the manager enforces.
  * - The run record and inbox collections, so a host can build a status surface.
+ * - `harnessUsageAction`, the one query for how much of each harness's
+ *   subscription a person has used, and the collection behind it.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -145,6 +147,27 @@ export {
   readQuestion,
   withdrawQuestion,
 } from "./inbox";
+
+// ── Subscription usage left, per person and harness ─────────────────────────
+//
+// The query is the read path: a host puts `harnessUsageAction({ readers })`
+// on one flow. `recordHarnessUsage` is the collection's one writer, for a
+// harness that reports usage during a run.
+export {
+  HARNESS_USAGE,
+  USAGE_READ_TIMEOUT_MS,
+  USAGE_REFRESH_EVERY_MS,
+  harnessUsageAction,
+  harnessUsageCollection,
+  harnessUsageStateSchema,
+  readHarnessUsage,
+  recordHarnessUsage,
+  type HarnessUsageActionOptions,
+  type HarnessUsageRow,
+  type HarnessUsageState,
+  type HarnessUsageWindowRow,
+  type UsageWrite,
+} from "./harness-usage";
 
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";

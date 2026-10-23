@@ -41,6 +41,10 @@
  *   checkout's code. This team names no tracker, so reports are kept, not
  *   filed; a draft needs a Claude Code account, and waits for one otherwise.
  *
+ * - **Codex usage left.** Usage shows how much of each Codex window this
+ *   machine's Codex sign-in has used, read from the Codex CLI when someone
+ *   looks, at most once a minute. Nothing is read until then.
+ *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
  *   staff hired are read back and serve again at the next start, a fire it
@@ -54,6 +58,8 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCodexUsage } from "@flow-state-dev/codex";
+import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
@@ -158,6 +164,12 @@ const lab = await openLab({
   // The Error Reporter reads this checkout's code with Claude Code and keeps
   // its reports in Inbox: this team names no tracker, so nothing is filed.
   errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT },
+  // Read when someone opens Usage. Local only: OpenAI does not permit
+  // app-server sign-in in a hosted service.
+  usage: {
+    codex: ({ signal } = {}) =>
+      readCodexUsage({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }), ...(signal === undefined ? {} : { signal }) }),
+  },
 });
 
 export default lab.state;
