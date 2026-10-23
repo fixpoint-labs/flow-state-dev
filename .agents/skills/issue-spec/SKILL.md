@@ -412,31 +412,15 @@ How this workflow's research feeds the set:
 
 ### Step 4.5: Analysis — is this the right work?
 
-The draft exists; before anything checks it for flaws, find out whether it's the right
-approach. Dispatch a **fresh `general-purpose` sub-agent (Opus) to run
-[`analysis`](../analysis/SKILL.md) at spec altitude**. It must not be you: you have already
-chosen the direction, and the skill's own warning about the pull toward producing a spec
-applies to judging it too.
+Dispatch a **fresh `general-purpose` sub-agent (Opus)** — not you; you already chose the
+direction — to run [`analysis`](../analysis/SKILL.md) at spec altitude. Give it the drafted
+`SPEC.md` and `DECISIONS.md`, the Linear issue, the returns from Agents C and D, your Step 3.5
+answers (question 7's job list included), and the epic's retained set if the issue has one.
 
-Give it the drafted `SPEC.md` and `DECISIONS.md`, the Linear issue, the returns from Agents C
-and D, your Step 3.5 answers (question 7's job list included), and the epic's retained set if
-the issue has one. It answers the six objectives — reuse, prior art, other shapes, new
-factors since the watermark, necessity, major concerns — and decides itself whether its
-trigger for `adhd` fires.
-
-Dispose of each finding with the one test from
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → the bar: *does acting on it
-change the approach?*
-
-- **Yes → fold.** Re-draft the affected document now (anti-addenda rule), then go on to Step 5,
-  so validation checks the direction you are actually publishing.
-- **No → record** it in `DECISIONS.md` → *Analysis*.
-- **Only the user can decide it → `DECISIONS.md` → Open**, in the six-part shape. It counts
-  against the ceiling of three.
-
-Write `DECISIONS.md` → *Analysis* either way: the date, the watermark, the verdict, one line
-per objective, and each finding's disposition. "Right approach" with six clean lines is a
-normal result and still gets its section. This step costs no review rounds.
+Dispose of each finding as that skill's Altitude 1 says (fold / record / open). A fold is a
+re-draft before Step 5, so validation checks the direction you publish. Write `DECISIONS.md` →
+*Analysis* from the return: the date, the watermark, the verdict, one line per objective, and
+each finding's disposition, including a clean "right approach". This step costs no review rounds.
 
 ### Step 5: Validate the Spec
 

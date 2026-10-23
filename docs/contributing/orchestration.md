@@ -584,25 +584,17 @@ merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for th
 
 ## Analysis and review
 
-Two different jobs, and the process runs both on purpose.
-
-- **Review looks for flaws in the work.** A bug, a gap against the spec, drift from a
-  pattern, surface that shouldn't be there. It is critical and inward, and it runs on a
-  change. [`review`](../../.agents/skills/review/SKILL.md) is its single definition; PR
-  feedback, Codex, and spec-PR review rounds are review too.
-- **Analysis asks whether it is the right work.** Did we already have a mechanism for this?
-  How do other frameworks solve it? What else could it be? What has been filed or landed
-  since we decided? Should it exist at all? It is generative and outward, and it runs where
-  the answer can still change something.
-  [`analysis`](../../.agents/skills/analysis/SKILL.md) is its single definition, and holds
-  the six objectives every analysis answers.
+Two different jobs. [`review`](../../.agents/skills/review/SKILL.md) looks for flaws in the
+work, and PR feedback, Codex, and spec-PR review rounds are review too.
+[`analysis`](../../.agents/skills/analysis/SKILL.md) asks whether it is the right work; that
+skill holds the six objectives and both altitudes.
 
 Analysis runs at two points:
 
 | Point | Dispatched by | What it does with the answer |
 |---|---|---|
 | **A drafted spec, before the direction gate** — issue or epic | `issue-spec` Step 4.5; `epic-agent` on Create | The author folds what changes the approach, records the rest in `DECISIONS.md` → *Analysis*, and puts a fork only the user can decide in *Open*. An epic spec always gets the `adhd` alternatives pass; an issue spec only on trigger |
-| **Epic wrap**, after the lessons worker | `epic-lifecycle` EPIC_WRAP | Was it a good idea, did the build hold, what's new since. A comment on the Linear epic, concerns filed as issues. Never gates the wrap |
+| **Epic wrap**, after the lessons worker | `epic-lifecycle` EPIC_WRAP | A comment on the Linear epic, concerns filed as issues. Never gates the wrap |
 
 **The analyst is never the author.** It is a fresh sub-agent, so it judges a direction it
 has no stake in. The author still disposes of each finding, using the bar below; the

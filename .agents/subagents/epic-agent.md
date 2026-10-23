@@ -77,12 +77,10 @@ Take the single action the dispatch calls for:
 
   **Before you open the PR, get the set analysed.** Dispatch a fresh `general-purpose`
   sub-agent (Opus) to run [`analysis`](../../.agents/skills/analysis/SKILL.md) at spec altitude
-  on the drafted set, with the research you did and the Linear project. At epic altitude it
-  always runs `adhd`. Fold what changes the objective, the division into issues, or a
-  cross-cutting call; record the rest in `DECISIONS.md` → *Analysis*; a fork only the user can
-  decide goes to the sign-off as a live fork. Same disposition test as review
-  ([`orchestration.md`](../../docs/contributing/orchestration.md#analysis-and-review)); it costs
-  no review rounds. Put one line under the PR body's sign-off: the verdict and what it changed.
+  on the drafted set, with the research you did and the Linear project. Dispose as that skill's
+  Altitude 1 says; a fold here is the objective, the division into issues, or a cross-cutting
+  call. One line under the PR sign-off: the verdict and what it changed. It costs no review
+  rounds.
 
   Open the epic PR and link it from
   Linear; do not publish a full-content mirror. Return handles for human sign-off.
