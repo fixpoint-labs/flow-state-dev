@@ -78,7 +78,7 @@ export type ItemQuery = {
   agentName?: string | string[];
   /**
    * Whether a view includes the in-flight request's items: `history()`
-   * appends them after the completed prior turns, and `all()`, `client()`
+   * appends them after the prior turns, and `all()`, `client()`
    * and `selectForContext()` merge them after the prior items. Defaults to
    * `true`, so a retry after a mid-turn failure sees its own tool state. Pass
    * `false` for prior items only, for example to hand a model the earlier

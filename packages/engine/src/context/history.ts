@@ -181,13 +181,13 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
  * `allowedRoles`, when set, drops any produced LLM message whose role is
  * not in the allowlist.
  *
- * Sort-equivalence assumption: this expands and sorts items per request,
- * not globally. That is safe because completed prior requests have
- * non-overlapping `(ts, itemIndex)` ranges — `priorRequests` is sorted by
- * `startedAtMs` and a completed request's items have timestamps strictly
- * within its lifetime. Concatenating expansions of pre-ordered requests
- * therefore preserves the same global ordering the previous flatten-then-
- * sort path produced.
+ * Ordering: this expands and sorts items per request, not globally, and
+ * `priorRequests` is sorted by `startedAtMs`, so history reads turn by turn
+ * in the order the turns started. Prior requests usually have
+ * non-overlapping `(ts, itemIndex)` ranges, and then this equals a global
+ * sort. An interrupted turn whose dead host overlapped a sibling is the
+ * exception: its items stay together, in its start order, rather than
+ * interleaving with the sibling's.
  */
 export function expandRequestToMessages(
   items: readonly RuntimeItem[],
@@ -228,7 +228,7 @@ export type SelectedTurn = { messages: LLMMessage[] };
  * can assemble the final array without re-expanding.
  *
  * Turn-based (bare `number` or `{ turns: N }`): returns the last N
- * completed prior requests. Guards `Array.prototype.slice(-0)` — which
+ * prior turns (completed or interrupted requests). Guards `Array.prototype.slice(-0)` — which
  * returns the whole array — by explicitly returning `[]` for N <= 0.
  *
  * Token-based (`{ tokens: T }`): walks `priorRequests` from the end,
@@ -302,7 +302,8 @@ export async function selectRequestsByLimit(
 }
 
 /**
- * Loads conversation history from prior completed requests in this session,
+ * Loads conversation history from prior settled requests in this session
+ * (completed, or interrupted with only their settled items),
  * converts to LLM-ready messages, and applies turn-aware limiting.
  *
  * `limit` is interpreted as a count of conversational turns, where one
@@ -406,7 +407,7 @@ export function outputItemToSessionItem(item: RuntimeItem): SessionItem {
  * Applies `itemVisibility` / `agentName` filters from a SessionItem query.
  * Returns true if the item passes the filter (or no filter applies).
  */
-export function matchesIdentityFilter(
+function matchesIdentityFilter(
   item: SessionItem,
   query: ItemQuery | undefined,
 ): boolean {
