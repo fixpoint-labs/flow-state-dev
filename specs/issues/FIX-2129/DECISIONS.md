@@ -69,17 +69,15 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   mark, the cancel and the stop; resumed `cancelled`, it throws as a reject does.
 - **The kind is a field on the suspension**, approval, review or input and never a question, with
   the reasons unchanged, so every renderer that knows the two reasons keeps working. A record
-  without it reads its kind from its reason (BP-030): `human_approval` an approval, `human_input` input.
+  without it reads its kind from its reason: `human_approval` an approval, `human_input` input. New
+  code still writes such records: a raw `ctx.suspend` person's stop carries no kind.
 - **The row copies the stop** (its request and id, kind, prompt and deadline) in the write that sets the mark
   and drops the lease (ER-2), from the request's ending. `listTasks` reads no suspension store per
   row (BP-033), and a stop's prompt never changes. Admission and every ending clear it.
 - **`waitingOn: "user"`, not `"person"`** (owner, 2026-10-23), to match `waitForUser` and
-  `userId`. `"person"` already ships (FIX-2077) and is persisted on rows, so this is a persisted
-  field change under BP-030: new rows write `"user"`, a read takes a stored `"person"` as `"user"`
-  through the same retired-value map the field already uses for its queued wait, and no row is
-  rewritten. The exported `TaskWaitingOn` becomes `"user" | "wait" | "filed" | "steer"`. A patch or
-  minor changeset carries a one-line migration note. Goal leg a seeds a legacy `"person"` row and
-  answers it.
+  `userId`. `"person"` ships today (FIX-2077); this is a plain rename, since stores are reset and no
+  row written before it is read (owner, 2026-10-23). The exported `TaskWaitingOn` becomes
+  `"user" | "wait" | "filed" | "steer"`.
 - **`waitingFor`** is the public name on `getTask` and `listTasks`, beside `waitingOn`, which they
   now show. The park's `question` string stays until FIX-2131 removes it.
 - **The cancel is a debt with a due time** (rule 8), written in the cancel's own write: the
@@ -179,6 +177,8 @@ Recorded for the implementer, not folded into the design.
   FIX-2137 blocks approval resumes; the goal check runs with trace observability off.
 - **Cross-spec alignment** — the person-stop host setting also replaces FIX-2133's question-deadline
   constant; FIX-2137 merged (#3749).
-- **Owner, 2026-10-23** — `waitingOn: "person"` renamed `"user"`, the old value dual-read.
+- **Owner, 2026-10-23** — `waitingOn: "person"` renamed `"user"`; the old value is not read.
+- **Owner, 2026-10-23** — no old data: stores are reset, so no persisted-data dual-read (BP-030
+  waived for this epic's persisted shapes).
 
 **Open: none.**
