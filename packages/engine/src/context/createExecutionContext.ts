@@ -155,6 +155,12 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 
+/**
+ * The prior requests a run loads as cross-turn history: finished turns, and
+ * turns the host died in (`interrupted`), whose persisted items already
+ * happened.
+ */
+const HISTORY_STATUSES: readonly RequestRecord["status"][] = ["completed", "interrupted"];
 
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
@@ -672,10 +678,13 @@ export async function createExecutionContext<
   const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
-    // The N most-recently-started completed requests — `status:"completed"`
-    // excludes the current (in-progress) request and any in-flight siblings;
-    // `orderBy:"startedAtMs"` makes the windowed selection robust to
-    // out-of-order metadata writes. `items` reconstruct cross-turn history.
+    // The N most-recently-started completed or interrupted requests. The
+    // status filter excludes the current (in-progress) request and any
+    // in-flight siblings; an `interrupted` request is a turn its host died in,
+    // and what it persisted (the ask, the calls that ran) is part of the
+    // conversation. `orderBy:"startedAtMs"` makes the windowed selection
+    // robust to out-of-order metadata writes. `items` reconstruct cross-turn
+    // history.
     stores.request.list({
       // The same filter as the session's reads; see `sessionRequestScope`.
       ...sessionRequestScope(
@@ -683,25 +692,27 @@ export async function createExecutionContext<
         loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
         options.tenantId
       ),
-      status: "completed",
+      status: HISTORY_STATUSES,
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
       withItems: true
     })
   ]);
 
-  // The windowed list already filters to completed requests at the store;
-  // exclude only the current request (defends a retry that reuses an id),
-  // then sort ascending for stable history ordering. Reused by all()/client()
-  // (via priorItems) and history() (via loadLLMHistory).
-  const completedPriorRequests = priorRequests
+  // The windowed list already filters by status at the store; exclude only
+  // the current request (defends a retry that reuses an id), keep only the
+  // settled items of an interrupted turn (a call the kill cut off has no
+  // result to show), then sort ascending for stable history ordering. Reused
+  // by all()/client() (via priorItems) and history() (via loadLLMHistory).
+  const settledPriorRequests = priorRequests
     .filter((r) => r.id !== requestId)
+    .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
-  // Build prior items from completed request records. This replaces the
+  // Build prior items from the settled prior request records. This replaces the
   // deprecated SessionRecord.items field — items are canonical on request records.
   const priorItems: SessionItem[] = [];
-  for (const req of completedPriorRequests) {
+  for (const req of settledPriorRequests) {
     if (req.items === undefined) {
       continue;
     }
@@ -2725,7 +2736,7 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
-      items: createSessionItemViews(priorItems, completedPriorRequests, {
+      items: createSessionItemViews(priorItems, settledPriorRequests, {
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {

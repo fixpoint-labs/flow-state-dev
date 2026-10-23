@@ -302,7 +302,8 @@ export async function selectRequestsByLimit(
 }
 
 /**
- * Loads conversation history from prior completed requests in this session,
+ * Loads conversation history from prior settled requests in this session
+ * (completed, or interrupted with only their settled items),
  * converts to LLM-ready messages, and applies turn-aware limiting.
  *
  * `limit` is interpreted as a count of conversational turns, where one
