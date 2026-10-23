@@ -5,7 +5,8 @@
 The epic's rules (ER-1 to ER-5) already say what the lab may hold, how it is set up and that its
 front end runs on fixtures until wiring. The brief names three hard spots. Two are product calls
 and come to sign-off here; the third, one conversation forever, is a package gap by the epic's
-own call, recorded under *Decided, not asked*.
+own call, recorded under *Decided, not asked*. An amendment adds two more: where a worker's work
+happens on disk (D3), and which workers run a coding harness (D4).
 
 ## The tree
 
@@ -16,6 +17,11 @@ flowchart TD
   D1 -.->|"rejected"| X2["a separate Messages screen only · away from the conversation"]
   I --> D2["D2 · a message never interrupts your turn · pending, then after"]
   D2 -.->|"rejected"| X3["taken inside the running turn · a model amendment"]
+  I --> D3["D3 · one directory per worker, a project · ask when none is set"]
+  D3 -.->|"rejected"| X4["a scratch directory · work you can't find"]
+  D3 -.->|"rejected"| X5["the server's own checkout · the silent default"]
+  I --> D4["D4 · a harness on a task-taking coder only"]
+  D4 -.->|"rejected"| X6["a harness behind the workers you talk to · D2's turn is ours"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -58,6 +64,42 @@ It comes down to the concept's queue rule: a message to a busy session waits.
 Then a gap carries messages on the epic's ER-6 path (taken before the next model call, once), and
 the pending line becomes a line inside the turn.
 
+<a name="d3"></a>
+## D3 · Each worker has one directory, a project, and with none set the screen asks
+
+*A product call fsd-product-lead raised on #46 ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6375993020)), with this pick as its lean.*
+
+| | |
+|---|---|
+| **Instead of** | A scratch directory when none is set, the server's own checkout (Kitchen Sink's fallback), or a raw path per message |
+| **Because** | A Grok Bot-style worker has one conversation, so it has one place it works: the directory is set on the worker, not per session. It is a project, never a raw path, because the box already turns a project into a checkout (`projectWorkspace()`, with the operator's `checkouts` map) and already refuses a task with none (`no-project`). The screen shows that refusal as a prompt to pick a project, before a coding job is sent. Work lead hands on inherits lead's directory through the task's project (`filingProjectId`), unless the task names another project. What is missing is a project on the worker's default conversation: gap G3 |
+| **Locks in** | Nothing runs until a person has said where. A worker's directory is one of the user's projects, so a repo the person hasn't added as a project can't be picked |
+
+![D3: where a worker's work happens on disk. One directory per worker, a project, and ask when none is set, chosen, beside a scratch directory. Decides it: the box already refuses a task with no project. Locks in: nothing runs until a person says where](figures/d3-worker-directory.svg)
+
+It comes down to the box's own refusal: a task with no project doesn't run.
+
+**What would change my mind:** people using the lab mostly for talk, never for coding. Then asking
+up front is friction, and the prompt moves to the first coding job.
+
+<a name="d4"></a>
+## D4 · Only a task-taking coder runs a harness; the workers you talk to stay on our generator
+
+*A product call fsd-product-lead raised on #46, in the same comment.*
+
+| | |
+|---|---|
+| **Instead of** | Running lead, researcher or writer through Claude Code, so the person talks to a harness directly |
+| **Because** | The workers you talk to are where messages queue and land (D2), and that turn is ours. A fourth worker, coder, takes tasks only, so it can't be messaged (`takes_tasks_only`), and runs each task through Claude Code. lead lists coder as a delegate and hands it work with `createTask`. A task card shows in lead's conversation while it runs; it opens to the run, read only, since coder has no composer. When the run ends its result lands in lead's conversation as a line from coder, and if lead is answering you then, it waits for that turn, the same rule as D2 (BR-27). The harness is named in coder's `WORKER.md`, so a second coder on Codex is one more file: gap G4 |
+| **Locks in** | A person never types to a harness in this lab. Steering a coding job means telling lead, who files the next task |
+
+![D4: which workers run a coding harness. A task-taking coder only, chosen, beside a harness behind the workers you talk to. Decides it: D2's turn, where messages land, is ours. Locks in: you steer a coding job through lead](figures/d4-harness-where.svg)
+
+It comes down to D2: the turn messages land in has to stay ours.
+
+**What would change my mind:** Grok Bot letting a person talk to a coding bot as one of the
+teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2), a separate design.
+
 ## Decided, not asked
 
 - **No session list, no new chat.** Choosing a worker opens its one conversation,
@@ -86,8 +128,16 @@ the pending line becomes a line inside the turn.
 - **Worker status is UI over a public read.** The list reads each worker's conversation through
   `listSessionRequests`; a running request is *working*. Unread counts are per viewer, in browser
   storage.
-- **Three workers in the lab:** lead (plans with you, messages the others), researcher and writer.
-  Any worker may message any other on the roster (FIX-1989); the lab restricts nothing.
+- **Four workers in the lab:** lead (plans with you, messages the others), researcher, writer, and
+  coder, which takes tasks only. Any worker may message any other conversation worker on the roster
+  (FIX-1989); the lab restricts nothing.
+- **A coding run needs no worker messages (FIX-1990).** coder never messages a teammate mid-run;
+  its result reaches lead as the task's ending. FIX-1990 stays out of this lab's path.
+- **Claude Code in the script.** Step 5 runs coder on Claude Code. The harness is a `WORKER.md`
+  setting, so the script doesn't test Codex; a second coder file would.
+- **A harness run shows where its task does.** The task card in lead's conversation and the
+  run behind it are both public reads (the board's rows and the run's items). The lab has no
+  separate task pane.
 - **Names.** The lab and its adapter use FIX-2070's and FIX-2071's names (`sendMessage`, `receive`,
   `inReplyTo`, `respond`). Its docs say "worker", never the retired word.
 - **The layout source.** No designs were provided and no screenshot of Grok Bot was available.
@@ -104,6 +154,9 @@ the pending line becomes a line inside the turn.
 | A session per pair of workers | A new concept for a view; FIX-1989's D1 rejected it |
 | Only a Messages screen, as Shift Manager has | Talk is away from the answer it changed; the brief asks it to be trusted, not hunted for |
 | A lab flow that summarizes old turns | Glue the package should own (ER-4); the next app would rewrite it |
+| A scratch directory when none is set | Work lands somewhere the person can't find, and nothing says so |
+| The server's own checkout when none is set | The silent default Kitchen Sink has; a run edits the lab's repo |
+| Copying DevTeam's `coder` flow into the lab | 238 lines, over the flow cap, and code shared between apps (ER-1, ER-3); gap G4 instead |
 | Group chats of several workers | Out of the brief's scope, and the concept has no group conversation |
 
 ## How it got here
@@ -122,6 +175,12 @@ the pending line becomes a line inside the turn.
 - **Review round 1** — Cursor's review approved the direction. Two of its points are folded in:
   the goal check now asserts the Talk panel (step 2), and G2 says plainly that it blocks no step,
   so the pending line is best effort until it lands. The rest is below.
+
+- **Amendment** — fsd-product-lead relayed two asks on #46 ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6375993020)):
+  a directory per worker with no silent fallback, and a harness on delegated workers only. Added
+  D3, D4, step 5 and its control (the lead measure is now of 5), and gaps G3 and G4. Checked on
+  `main`: `projectWorkspace()`'s order and its `no-project` refusal, where messages land, the
+  `takes_tasks_only` refusal, and DevTeam's `coder` (238 lines, one fixed harness slot).
 
 ## Notes from review
 
