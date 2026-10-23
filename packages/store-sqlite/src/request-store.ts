@@ -56,17 +56,6 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
 }
 
 /**
- * Force `abortRequested` to the value already stored, whatever the incoming
- * record says — the adapter half of `RequestStore.set`'s rule that the flag is
- * off its write surface (FIX-1026).
- *
- * Mirrors the engine's `withStoredAbortRequested`, restated here for the same
- * reason `isTerminalRequestStatus` is: this package keeps a TYPE-ONLY
- * dependency on `@flow-state-dev/engine` (enforced by
- * `scripts/validate-package-boundaries.mjs`), so it cannot import the runtime
- * helper. Keep the two in step.
- */
-/**
  * Whether a deferred write found the connection closed, and so is dropped
  * (FIX-2097). At host shutdown a request the drain cancelled can still emit
  * after the registry closed the database; its write runs in a microtask with
@@ -88,6 +77,17 @@ function droppedAfterClose(
   return true;
 }
 
+/**
+ * Force `abortRequested` to the value already stored, whatever the incoming
+ * record says — the adapter half of `RequestStore.set`'s rule that the flag is
+ * off its write surface (FIX-1026).
+ *
+ * Mirrors the engine's `withStoredAbortRequested`, restated here for the same
+ * reason `isTerminalRequestStatus` is: this package keeps a TYPE-ONLY
+ * dependency on `@flow-state-dev/engine` (enforced by
+ * `scripts/validate-package-boundaries.mjs`), so it cannot import the runtime
+ * helper. Keep the two in step.
+ */
 function withStoredAbortRequested(
   value: RequestRecord,
   stored: boolean | undefined

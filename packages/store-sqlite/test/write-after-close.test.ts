@@ -69,24 +69,38 @@ describe("SQLite request store: a write after close (FIX-2097)", () => {
   it("drops an event write made after close", () => {
     const { db, store } = freshStore();
     const deferred = captureDeferredWrites();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     db.close();
     store.persistEvents("req_after", [makeRequestStreamEvent("req_after", 1)]);
 
     expect(() => deferred.forEach((run) => run())).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_after"));
   });
 
   it("drops an item write queued before close and run after it", () => {
     const { db, store } = freshStore();
     const deferred = captureDeferredWrites();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     store.persistItems("req_items", [messageItem("req_items", "a")]);
     db.close();
 
     expect(deferred).toHaveLength(1);
     expect(() => deferred[0]!()).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_items"));
+  });
+
+  it("drops an item write made after close", () => {
+    const { db, store } = freshStore();
+    const deferred = captureDeferredWrites();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    db.close();
+    store.persistItems("req_items_after", [messageItem("req_items_after", "a")]);
+
+    expect(() => deferred.forEach((run) => run())).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_items_after"));
   });
 
   it("still writes while the connection is open", () => {
