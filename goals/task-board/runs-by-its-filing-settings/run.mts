@@ -67,6 +67,7 @@ import {
   untilIdle,
   type ModulePatch
 } from "../../lib/index.mts";
+import { PATCHES } from "./controls.mts";
 
 const USER = "u_filing_settings";
 const ORG = "org_filing_settings";
@@ -81,22 +82,6 @@ const KILL_PLAN = join(SCRATCH, "kill-plan.json");
 /** How long a filed piece's worker runs: long enough to still be open when its parent ends. */
 const PIECE_MS = 6000;
 
-const PATCHES: Record<string, ModulePatch[]> = {
-  // Both cascades off: no ending records the debt, so nothing pays one, and a
-  // touch doesn't sweep for dependents an ending missed.
-  "no-cascade": [
-    {
-      module: "packages/orchestration/src/tasks/collection/internal.ts",
-      from: String.raw`  if \(recording\?\.owesCascade\?\.\(row as Task, ending\) !== true\) return row;`,
-      to: "  return row;"
-    },
-    {
-      module: "packages/orchestration/src/tasks/collection/cascade.ts",
-      from: String.raw`  await cancelDeadDependents\(writes, now\);`,
-      to: ""
-    }
-  ]
-};
 /** The kill leg's second process dies the moment an ending's own pass would pay its cascade. */
 const KILL_PATCH: ModulePatch = {
   module: "packages/orchestration/src/tasks/collection/cascade.ts",

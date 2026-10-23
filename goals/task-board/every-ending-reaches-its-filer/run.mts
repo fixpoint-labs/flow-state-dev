@@ -78,6 +78,7 @@ import {
   silentLogger,
   type ModulePatch
 } from "../../lib/index.mts";
+import { KILL_AFTER_ENDING, PATCHES } from "./controls.mts";
 
 const USER = "u_every_ending";
 const ORG = "org_every_ending";
@@ -89,24 +90,6 @@ const PROOFS = join(SCRATCH, "proofs.ndjson");
 const INTAKE = join(SCRATCH, "intake.ndjson");
 const KILL_DB = join(SCRATCH, "kill.sqlite");
 const KILL_PLAN = join(SCRATCH, "kill-plan.json");
-
-const PATCHES: Record<string, ModulePatch[]> = {
-  // The sweeper fires no wake: only a fast path or a touch pays a debt.
-  "no-sweeper-payment": [
-    {
-      module: "packages/engine/src/durability/durability-sweeper.ts",
-      from: String.raw`  if \(fireWake === undefined \|\| wakes === undefined\) return;`,
-      to: "  return;"
-    }
-  ]
-};
-/** Leg b's second process dies the moment an ending's delivery would send a notice it owes. */
-const KILL_AFTER_ENDING: ModulePatch = {
-  module: "packages/orchestration/src/tasks/notice/delivery.ts",
-  // The first line of the delivery's send half, after the ending's write.
-  from: String.raw`      const notices = owedNotices\(row, board\.collectionId, rows, filerOf\);`,
-  to: '      if (process.env.GOAL_KILL === "after-ending" && Object.keys(row.metadata ?? {}).some((k) => k.startsWith("noticeOwed:"))) process.exit(0); const notices = owedNotices(row, board.collectionId, rows, filerOf);'
-};
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   console.error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(PATCHES).join(", ")}`);
