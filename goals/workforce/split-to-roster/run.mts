@@ -69,11 +69,15 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["1:report-is-output"],
     patches: [
       {
-        // The woken turn's answer is never noted, so the task completes with
-        // the answer A's first turn gave, before B answered (FIX-2077 D3).
-        module: "packages/workforce/src/conversation-board/task-settled.ts",
-        from: String.raw`\.step\(options\.turn\)\n    \.tap\(noteTaskAnswer\);`,
-        to: ".step(options.turn);"
+        // Only an answer given before the task first waited is noted: a turn
+        // woken by B's ending (admitted while the task waits on `filed`) and a
+        // `getTask` wait's resume (admitted while it waits on `wait`) give
+        // answers that never count. So a task whose turn ended completes with
+        // A's first answer, from before B answered (FIX-2077 D3), and one whose
+        // turn parked on the piece keeps waiting with no answer.
+        module: "packages/orchestration/src/task-board/task-request.ts",
+        from: String.raw`if \(record\.answerCounts\) record\.answer = \{ output \};`,
+        to: "if (record.answerCounts && record.prior === undefined) record.answer = { output };"
       }
     ]
   },
@@ -96,10 +100,21 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["4:desk-hears-tasks-only"],
     patches: [
       {
+        // A task session reaches the desk's board as its own, so A's pieces
+        // are filed on the desk's board...
         module: "packages/workforce/src/conversation-board/board.ts",
         // The resolver's line: the only one at this depth.
         from: String.raw`(?<! ) {4}const partition = await filingSessionIdOf\(ctx\.session\);`,
         to: "    const partition = (ctx.session.state ?? {}).filingSessionId ?? (await filingSessionIdOf(ctx.session));"
+      },
+      {
+        // ...and stamped with the desk as their filer, so their endings are
+        // delivered to the desk. A notice goes to a row's filer, not to the
+        // board's owner (FIX-2078), so the first patch alone leaves the desk
+        // hearing nothing.
+        module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
+        from: String.raw`ownSession: sessionId,`,
+        to: 'ownSession: typeof (ctx.session?.state ?? {}).filingSessionId === "string" ? ctx.session.state.filingSessionId.slice(0, ctx.session.state.filingSessionId.lastIndexOf("~")) : sessionId,'
       }
     ]
   }

@@ -123,8 +123,10 @@ export async function payBoardDebts(
     for (const notice of owedNotices(row, ref.collectionId, rows, options.filerOf)) {
       const times = noticeTimes(row, notice);
       if (times === undefined) continue;
-      if (tooOld(times.due)) {
-        const detail = `it was still owed ${Math.round((now - times.due) / 1000)} s past its due time`;
+      // Its age counts from its due time, or from the last time a busy session
+      // turned it away (FIX-2113), which is no failed delivery.
+      if (tooOld(times.since)) {
+        const detail = `it was still owed ${Math.round((now - times.since) / 1000)} s past its due time`;
         log("a notice past the maximum debt age was settled undeliverable", { taskId: row.id, ending: notice.ending });
         await ref.patchMetadata(row.id, { ...clearNotice(notice), ...undeliverableRecord(notice, detail, now) });
         await options.onUndeliverable?.(ctx, row, notice, detail);

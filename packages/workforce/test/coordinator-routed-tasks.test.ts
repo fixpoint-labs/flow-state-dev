@@ -289,6 +289,93 @@ describe("the judgment turn's filing on a turn routing a message", () => {
   });
 });
 
+describe("a routed task that fails out", () => {
+  it("filed by the judgment turn, is said once under its delegate's name and wakes that turn to act on it (FIX-2115)", async () => {
+    // The turn files the message for eng.em, whose turn fails; the turn the
+    // failure wakes is the script's third answer, and her next message the fourth.
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "d1", toolName: "createTask", args: { goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }] },
+        { text: "Handed on." },
+        { text: "The draft failed; I'll find someone else." },
+        { text: "Nothing else." }
+      ]
+    });
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "Draft it [fail:eng.em], and refile it if it fails");
+    await host.settled();
+
+    const [task] = await aliceTasks(host, id);
+    expect(task).toMatchObject({ status: "errored", resultTo: "conversation", attempts: 1 });
+    // One line under the delegate's name, naming the task and its error.
+    const failed = (await lines(host, id)).filter((m: any) => m.agentName === "eng.em");
+    expect(failed).toEqual([{ agentName: "eng.em", text: expect.stringContaining(`(${task.id}) failed for good with eng.em: eng.em could not answer`) }]);
+    // The coordinator's turn ran again, on the failure, so it can file the work elsewhere.
+    expect(JSON.stringify(judgment.calls.at(-1)!.input)).toContain(`(${task.id}) failed for good`);
+    expect((await lines(host, id)).map((m: any) => m.text)).toContain("The draft failed; I'll find someone else.");
+    // Heard once, however often the board is touched after.
+    await post(host, id, "anything else?");
+    expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.em")).toHaveLength(1);
+  });
+
+  it("filed by a best-fit coordinator's own turn, on a message it couldn't place, is said and wakes that turn too (FIX-2115)", async () => {
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "d1", toolName: "createTask", args: { goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }] },
+        { text: "Handed on." },
+        { text: "The draft failed; I'll find someone else." }
+      ]
+    });
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { routing: "best-fit", delegates: ["eng.em"] } }) });
+    const id = await host.conversation("alice", "chief");
+    // No mark: the fit check fails, and with no fallback the coordinator's own turn takes the message.
+    await post(host, id, "Draft it [fail:eng.em]");
+    await host.settled();
+    const [task] = await aliceTasks(host, id);
+    expect(task).toMatchObject({ status: "errored", resultTo: "conversation" });
+    expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.em")).toEqual([
+      { agentName: "eng.em", text: expect.stringContaining(`(${task.id}) failed for good with eng.em`) }
+    ]);
+    expect((await lines(host, id)).map((m: any) => m.text)).toContain("The draft failed; I'll find someone else.");
+  });
+
+  it("filed by the judgment turn and cancelled by Alice, says nothing and wakes no turn: whoever cancelled it knows (FIX-2083's cancel rule)", async () => {
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "d1", toolName: "createTask", args: { goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }] },
+        { text: "Handed on." }
+      ]
+    });
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "chief");
+    expect((await host.act("alice", id, "respond", { message: "Draft it [slow:eng.em]" })).error).toBeUndefined();
+    let row: any;
+    await until(async () => {
+      row = (await host.routedRows("alice")).find((r) => r.assignee === "eng.em");
+      return row?.status === "in_progress" && host.heard.some((h) => h.worker === "eng.em");
+    }, "eng.em is working its task");
+    const calls = judgment.calls.length;
+    const cancelled = await host.act("alice", id, "updateTask_tasks", { id: row.id, status: "cancelled" });
+    expect(cancelled.output).toEqual({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, SLOW_MS + 200));
+    await host.settled();
+    expect((await host.routedRows("alice")).find((r) => r.id === row.id)?.status).toBe("cancelled");
+    expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.em")).toEqual([]);
+    expect(judgment.calls).toHaveLength(calls);
+  }, 20_000);
+
+  it("routed by a policy, ends only that delegate's part of the round: no line, no turn (FIX-2083's rule)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "first [route:eng.coder] [fail:eng.coder]");
+    await host.settled();
+    const [task] = await aliceTasks(host, id);
+    expect(task).toMatchObject({ status: "errored", assignee: "eng.coder" });
+    expect(await lines(host, id)).toEqual([]);
+  });
+});
+
 describe("a post row stored before the upgrade", () => {
   it("is worked once, as a routed task, and its answer lands once", async () => {
     const host = bootHost();

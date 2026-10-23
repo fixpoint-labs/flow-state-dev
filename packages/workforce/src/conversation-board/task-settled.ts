@@ -14,12 +14,18 @@
  *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
  *   starts the attempt or resumes the turn.
  * - **A task whose result goes to the conversation** (`resultTo:
- *   "conversation"`, a routed task among them, FIX-2083) wakes no turn: its
- *   answer lands as a line under the delegate's name. A conversation that
- *   routes messages hands its completion, failure or cancel to its own
- *   handling instead ({@link TaskSettledOptions.onRouted}: the line, and the
- *   rounds it feeds), and acknowledges the notice only once that has run, so a
- *   failure there leaves the answer owed.
+ *   "conversation"`, a routed task among them, FIX-2083): its answer wakes no
+ *   turn, and lands as a line under the delegate's name. A conversation that
+ *   routes messages hands its completion to its own handling instead
+ *   ({@link TaskSettledOptions.onRouted}: the line, and the rounds it feeds),
+ *   and a routed round's failure or cancel too, and acknowledges the notice
+ *   only once that has run, so a failure there leaves the answer owed. A
+ *   failure or cancel of one with no routed brief (a routed task's follow-up,
+ *   FIX-2122) is in no round: it is heard as any task's the conversation
+ *   filed, by the one decision above. A routed failure whose brief names
+ *   the judgment turn's filing call ({@link filedByTurn}) is said after the
+ *   routing's handling too, under the same decision (FIX-2115): the routing
+ *   itself only ends that delegate's part.
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -49,7 +55,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { routedBriefOf, routedBriefSchema } from "../coordinator/routed-brief";
+import { filedByTurn, routedBriefOf, routedBriefSchema } from "../coordinator/routed-brief";
 import { triggerPass, wakeIfStartable } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
@@ -57,6 +63,7 @@ import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import { sendTaskReport } from "./report-owed";
 import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask } from "./task-admission";
+import { anotherTurnWaitsOnItsPlan } from "./plan";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -88,12 +95,12 @@ export const conversationBoardStateShape = {
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE];
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line", "routed"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line"]),
   text: z.string().optional(),
   worker: z.string().optional(),
   /** On a routed ending: what the conversation's routing is handed. */
   routed: z.unknown().optional(),
-  /** On a routed ending: the notice, acknowledged once the routing's handling has run. */
+  /** On a routed ending: the notice, acknowledged once the routing's handling has run. `act` is what is said after that. */
   notice: taskNoticeSchema.optional()
 });
 
@@ -106,9 +113,14 @@ export interface TaskSettledOptions {
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
   /**
-   * A conversation-result task's completion, failure or cancel, acted on once
-   * like any notice, and handed here instead of a line ({@link RoutedEnding}):
-   * a coordinator's routing lands the answer and feeds its rounds (FIX-2083).
+   * A conversation-result task's completion, and a routed round's failure or
+   * cancel, acted on once like any notice, and handed here instead of a line
+   * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
+   * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
+   * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
+   * here: it is heard as any task's the conversation filed. A failure of a
+   * task the coordinator's own turn filed ({@link filedByTurn}) is handed here
+   * too, and then also lands as a line and wakes that turn (FIX-2115).
    */
   readonly onRouted?: BlockDefinition<any, any>;
 }
@@ -251,10 +263,16 @@ function resultLine(notice: TaskNotice, row: { goal: string; title?: string; ass
  */
 export function taskSettledEntry(options: TaskSettledOptions) {
   /**
-   * A conversation-result task's ending (FIX-2083): no turn wakes for it. With
-   * a routing layer, a completion, failure or cancel goes to it, and is
-   * acknowledged after; anything else, and any ending without one, lands as a
-   * line now.
+   * A conversation-result task's ending (FIX-2083). With a routing layer, a
+   * completion goes to it, and a routed round's failure or cancel too, and the
+   * notice is acknowledged after; `act` is what is said then. A failure of a
+   * task the coordinator's own turn filed ({@link filedByTurn}) is said, and
+   * wakes that turn under the conversation's policy, as any task the turn
+   * filed does, so it can file the work again (FIX-2115). A cancel of one is
+   * not: whoever cancelled it knows, as FIX-2083's cancel rule has it. A
+   * policy's round says nothing after its routing: its failure only ends that
+   * delegate's part. Anything else, and any ending with no routing layer,
+   * lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -264,8 +282,14 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       return { act: "none" };
     }
-    if (options.onRouted !== undefined && (notice.ending === "completed" || notice.ending === "errored" || notice.ending === "cancelled")) {
-      const brief = routedBriefOf(row);
+    const brief = routedBriefOf(row);
+    // A row with no routed brief (a routed task's follow-up, FIX-2122) is in
+    // no round: its answer goes to the routing, which lands it, and its failure
+    // or cancel is heard as any task's the conversation filed is: a line, and
+    // the coordinator's turn when its routing runs one (`decideNotice`).
+    const unrouted = brief === undefined && (notice.ending === "errored" || notice.ending === "cancelled");
+    const routes = notice.ending === "completed" || (brief !== undefined && (notice.ending === "errored" || notice.ending === "cancelled"));
+    if (options.onRouted !== undefined && routes) {
       const routed: RoutedEnding = {
         taskId: row.id,
         ending: notice.ending,
@@ -273,12 +297,18 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
         ...(brief !== undefined ? { brief } : {})
       };
-      return { act: "routed", routed, notice: notice as Settled["notice"] };
+      if (notice.ending === "errored" && filedByTurn(brief)) {
+        const act = decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+        return { act, routed, notice: notice as Settled["notice"], text: noticeText(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+      }
+      // `none` still carries `notice`: the routing runs, and nothing is said after it.
+      return { act: "none", routed, notice: notice as Settled["notice"] };
     }
     const first = await noteSeen(ctx, key);
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
-    return { act: "line", text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+    return { act, text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({
@@ -338,22 +368,29 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     // this notice wakes, with that turn's answer. First, before any await.
     .tap(admitOwnTask("conversation-task-settled-admission", true))
     .step(settle)
+    .tapIf((settled: Settled) => settled.act === "run-board", runPass);
+  if (options.onRouted !== undefined) {
+    const routedEnding = (settled: Settled) => settled.notice !== undefined;
+    handling = handling
+      .tapIf(routedEnding, (settled: Settled) => settled.routed as RoutedEnding, options.onRouted)
+      .tapIf(routedEnding, acknowledge);
+  }
+  // Said after a routed acknowledgement, as a filed task's ending is said after
+  // its own: a stop between them loses the line, never says it twice.
+  handling = handling
     .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
     .tapIf(
       (settled: Settled) => settled.act === "wake-turn",
       (settled: Settled) => ({ message: settled.text ?? "" }),
       wokenTurnOf(options)
-    )
-    .tapIf((settled: Settled) => settled.act === "run-board", runPass);
-  if (options.onRouted !== undefined) {
-    handling = handling
-      .tapIf(
-        (settled: Settled) => settled.act === "routed",
-        (settled: Settled) => settled.routed as RoutedEnding,
-        options.onRouted
-      )
-      .tapIf((settled: Settled) => settled.act === "routed", acknowledge);
-  }
+    );
 
-  return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
+  return orchestrationTaskSettledEntry({
+    block: handling,
+    concurrency: AFTER_REPLY_CONCURRENCY,
+    // One turn of a task at a time in its session (FIX-2113): while another
+    // request here waits on a step of its own plan, the notice stays owed,
+    // and that request sends it once it answers.
+    defer: (ctx) => anotherTurnWaitsOnItsPlan(ctx)
+  });
 }

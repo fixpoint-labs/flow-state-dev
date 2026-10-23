@@ -78,6 +78,29 @@ describe("a board's pass", () => {
     for (let i = 1; i < gaps.length; i += 1) expect(gaps[i]!).toBeGreaterThan(gaps[i - 1]!);
   });
 
+  it("doesn't end a notice a busy session turned away lately, however old its due time (FIX-2113)", async () => {
+    // Due a day and a minute ago, past the 24 h maximum debt age; turned away a minute ago.
+    const day = 86_400_000;
+    const clock = { t: day + 120_000 };
+    const turnedAway = ended(0);
+    const marker = (turnedAway.metadata as Record<string, Record<string, unknown>>)["noticeOwed:1:completed"]!;
+    const ref = board(
+      [{ ...turnedAway, metadata: { "noticeOwed:1:completed": marker, "noticeDeferred:1:completed": { at: clock.t - 60_000 } } } as Task],
+      clock
+    );
+    const sent: unknown[] = [];
+    await payBoardDebts(session(sent) as never, ref as never);
+    // Still owed and sent again, never settled undeliverable.
+    const metadata = ref.get("t1")!.metadata as Record<string, unknown>;
+    expect(metadata["noticeUndeliverable:1:completed"]).toBeUndefined();
+    expect(metadata["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
+    expect(sent).toHaveLength(1);
+    // The same notice never turned away is past the age, and ends.
+    const old = board([ended(0)], clock);
+    await payBoardDebts(session([]) as never, old as never);
+    expect((old.get("t1")!.metadata as Record<string, unknown>)["noticeUndeliverable:1:completed"]).toBeDefined();
+  });
+
   it("says when its next resend falls due, so the wake waits for it", async () => {
     const clock = { t: 10_000 };
     const ref = board([ended(0)], clock);

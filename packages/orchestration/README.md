@@ -496,7 +496,7 @@ export default defineFlow({
 ```
 
 **Hearing how a task ended.** The session that filed a row hears each of its endings once, as
-a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency? })`
+a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency?, defer? })`
 builds that entry; `defineFlow` refuses a flow that holds a board that dispatches without one,
 whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSettledInput`:
 `{ boardId, taskId, attempt, ending, output?, error?, question?, cancelled? }`, where `ending` is
@@ -506,6 +506,16 @@ the same session filed (they send no notice of their own). A retry sends nothing
 the filer waited on (`getTask` with `wait`), nor a cancel the filer's own model made with its
 task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
 sent again. The entry queues on the session unless `concurrency` says otherwise.
+
+**Holding a notice back.** Give `taskSettledEntry` a `defer(ctx, notice)` when the session can be
+busy with something a notice must not run beside, such as a turn that is still under way. When it
+answers `true`, the entry runs nothing and acknowledges nothing: the notice stays owed, and the
+session's pass (below) sends it again. Each resend waits longer than the last (2 s, doubling, at most
+5 minutes): that wait is the notice's *resend backoff*. A notice held back is not a failed delivery:
+its age, which ends it as undeliverable past `maxDebtAgeMs`, counts from the last time it was held
+back. Once the session is free, apply `resendNowPatch(row)` to each row that still owes a notice,
+with `ref.patchMetadata(row.id, resendNowPatch(row))`, and run the pass: the patch drops the resend
+backoff, so the pass sends the notice at once rather than at its next resend.
 
 A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
 about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
@@ -1096,11 +1106,15 @@ finished task it answers `task_finished` and writes nothing. The collection side
 is a new task, with the same worker, that runs in that task's session. Its
 row carries that task's `session`, `target` and `targetSessionId`, so a
 follow-up of a task filed with `session: "ongoing"`, or filed for a
-workstream, runs in that same session. If that session no
+workstream, runs in that same session. If the session it runs in no
 longer exists, the follow-up runs nowhere else: its hand-over fails it with
-`session-not-found`, and its filer hears the failure. A follow-up takes no
-`session` or `target` of its own (`follow_up_takes_no_session`,
-`follow_up_takes_no_target`). It keeps that worker: `updateTask` won't move it
+`session-not-found`, and its filer hears the failure. It also carries that
+task's `resultTo` (where the task's result is delivered), so its result goes
+to the same place. When that is `"conversation"` (a Workforce conversation),
+the follow-up gets one attempt, as every task whose result goes there does.
+A follow-up takes no
+`session`, `target` or `resultTo` of its own (`follow_up_takes_no_session`,
+`follow_up_takes_no_target`, `follow_up_takes_no_result_to`). It keeps that worker: `updateTask` won't move it
 (`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
 (`follow_up_takes_no_assignee`) and a task that never ran with a worker
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running

@@ -134,7 +134,9 @@ export type SteerTurnEntryOptions = {
  * `turn` or `block`.
  *
  * A `turn` is handed the steers as its message; a `block` is handed the task
- * as the board packs it, with the claim. A start that finds nothing to do
+ * as the board packs it, with the claim. The steers it takes are shown in
+ * the session as lines from their senders, so a later turn there reads them
+ * too (FIX-2113). A start that finds nothing to do
  * runs nothing. The wake is cleared once the task no longer waits on a steer.
  * `concurrency` defaults to the session's notices, so this runs once the
  * request working the task has ended.
@@ -150,7 +152,10 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       // Admitted, the claim is stamped and names the row; otherwise there is nothing to run.
       const running = await runningTaskOf(sessionLedger, ctx as never);
       if (running === undefined) return SKIP;
-      const steers = await takeRunningSteers(running, `turn:${ctx.request.identity.id}`);
+      // Shown in the session as it takes them, as a model call's take shows
+      // them (FIX-2113): the turn's own message isn't kept, so a later turn
+      // here (the notice of the work the task filed) reads them only there.
+      const steers = await takeRunningSteers(running, `turn:${ctx.request.identity.id}`, ctx);
       if (steers.length === 0) return SKIP;
       return { steers, taskId: running.row.id };
     }
@@ -204,7 +209,12 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
   return {
     inputSchema: z.object({}).passthrough(),
     block: sequencer({ name, inputSchema: z.unknown() })
-      .tap(admitOwnTask(`${name}-admission`, true))
+      // One turn of a task at a time in its session (FIX-2113): while another
+      // request here waits on a step of its own plan, the admission admits
+      // nothing, so the take finds no task and this runs nothing, leaving the
+      // wake. That request's end checks the task, and owes this turn again for
+      // a steer it didn't take.
+      .tap(admitOwnTask(`${name}-admission`, true, { unlessAnotherTurnWaits: true }))
       .step(take as BlockDefinition<any, any>)
       .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
