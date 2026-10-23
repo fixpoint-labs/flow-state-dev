@@ -76,7 +76,8 @@ the pending line becomes a line inside the turn.
   (FIX-2159) is a task result reaching a running turn. They are separate paths, not rival designs.
 - **The pending line is UI over two public reads.** A log row addressed to the open worker that
   has no line in its conversation yet is pending. That join needs the received line to carry its
-  message id (gap G2, an ask of FIX-2070).
+  message id (gap G2, an ask of FIX-2070). Until G2 lands the pending line is best effort and
+  nothing gates on it.
 - **Worker status is UI over a public read.** The list reads each worker's conversation through
   `listSessionRequests`; a running request is *working*. Unread counts are per viewer, in browser
   storage.
@@ -109,3 +110,14 @@ the pending line becomes a line inside the turn.
   agreed with D2 and kept it apart from the epic's D2. G1 moved to core's `historyWindow` (opt-in,
   on core's `summarizer`), is tracked under FIX-1613, and a passing probe no longer reads as memory
   replacing it. D2 no longer names session-addressed delivery, which is FIX-2160's.
+- **Review round 1** — Cursor's review approved the direction. Two of its points are folded in:
+  the goal check now asserts the Talk panel (step 2), and G2 says plainly that it blocks no step,
+  so the pending line is best effort until it lands. The rest is below.
+
+## Notes from review
+
+- *Three workers when the script uses two* ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3787#discussion_r4364377391)). Kept: a list of workers that holds two rows doesn't read as Grok Bot's sidebar, and writer costs one `WORKER.md`.
+- *`listTalk` and `workerActivity` are UI joins, not adapter seams* ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3787#discussion_r4364377377)). Kept: each stands for one package read (the message log, `listSessionRequests`); the grouping and joins over them are React. Implementer may fold them if the adapter reads cleaner.
+- *A card opening to its full text is unchecked polish* ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3787#discussion_r4364377386)). Implementer's call; the one-line card is what D1 signs.
+- *Trade-off figures repeat the mermaid; the SPEC restates the epic's rules.* The figures are the template's (one per signed decision); the ER table is cited, not restated.
+- *Poll each worker's `listSessionRequests` through one cached hook, without items; long threads may need incremental render.* For the implementer.
