@@ -40,4 +40,5 @@ answers, through `continueRequest`, as the resume route does.
   state the later steps append to still doubles. A manager-side guard has to cover every
   non-idempotent step, not just the run.
 
-This is why [D2](../../DECISIONS.md#d2) puts the fix in the engine and blocks FIX-2132 on it.
+This tested the suspension shape the spec first drew. The spec has since moved the question onto a
+hold with no suspension, so the finding (FIX-2137) no longer blocks FIX-2132 ([D1](../../DECISIONS.md#d1)).
