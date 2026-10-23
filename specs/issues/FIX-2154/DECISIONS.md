@@ -63,10 +63,14 @@ the pending line becomes a line inside the turn.
 - **No session list, no new chat.** Choosing a worker opens its one conversation,
   `ensureWorkerSession({ worker })` with no criteria. The epic's sessions gap (ER-7) is not used.
 - **One conversation forever is a package gap, not lab code** (the epic's *Decided before review*).
-  The lab composes `@flow-state-dev/memory` through `defineAgentWorkerFlow({ uses })`, which is
-  configuration. A summary of turns past the 50-turn window, an opt-in option on core's
+  The lab composes `@flow-state-dev/memory` into `defineAgentWorkerFlow`, reading through `uses`
+  and recording each turn through `afterAnswer: mem.captureFromItems` (without the second, memory
+  records nothing and the probe would fail for the wrong reason). That is configuration. A summary of turns past the 50-turn window, an opt-in option on core's
   `historyWindow` built on core's `summarizer` and off by default, and the mark the divider reads,
   is gap G1, tracked under FIX-1613 rather than a new entry. The lab never summarizes on its own, not even in a small flow.
+- **The divider says what happened.** It marks where the turns read word for word begin, and
+  reads *earlier turns summarized* only when G1's summary is on; otherwise *earlier turns out of
+  view*. It never calls a plain window boundary a summary.
 - **A probe at wiring says whether the script needs G1's summary.** Step 4 is run with memory
   alone. A pass means only that this script didn't need it (a conversation's history and memory
   never stand in for each other, FIX-1612); the mark is still owed. A fail makes G1 block this
@@ -110,6 +114,8 @@ the pending line becomes a line inside the turn.
   agreed with D2 and kept it apart from the epic's D2. G1 moved to core's `historyWindow` (opt-in,
   on core's `summarizer`), is tracked under FIX-1613, and a passing probe no longer reads as memory
   replacing it. D2 no longer names session-addressed delivery, which is FIX-2160's.
+- **Review round 1, Codex** — memory is now recorded as well as read (`afterAnswer`), so the
+  probe tests what it claims, and the divider is labelled *summarized* only when it is.
 - **Review round 1** — Cursor's review approved the direction. Two of its points are folded in:
   the goal check now asserts the Talk panel (step 2), and G2 says plainly that it blocks no step,
   so the pending line is best effort until it lands. The rest is below.

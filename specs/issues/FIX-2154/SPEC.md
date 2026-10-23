@@ -9,7 +9,7 @@
 | **evaluates Flow State and has used Grok Bot** | Meets Workforce through Shift Manager, a new way of working | Opens a list of workers, picks one, and talks to it in its one conversation, as in Grok Bot. Reads the lab's inventory to see how little the lab adds |
 | **asks worker A to check something with worker B** | Sees B's answer only on Shift Manager's Messages screen, away from the conversation | Sees a one-line card in A's conversation where A messaged B, and B's reply land in the same conversation under B's name |
 | **is mid-turn with A when B's reply arrives** | Nothing on screen says it came | Sees a pending line at once: "researcher replied · lead reads it after this turn". The reply lands as its own line right after A answers ([D2](DECISIONS.md#d2)) |
-| **keeps one conversation going for weeks** | Turns past the history window (50) fall out with no trace | Sees where earlier turns were summarized, and A still knows what was said before it ([gap G1](#package-gaps)) |
+| **keeps one conversation going for weeks** | Turns past the history window (50) fall out with no trace | Sees where the turns A reads word for word begin, and A still knows what was said before it ([gap G1](#package-gaps)) |
 | **hardens the workforce package** | Has no second app on the same pieces | Gets a gap list from a way of working already known to be right |
 
 ## The goal, and how we'll know it's met
@@ -42,7 +42,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/teammates-lab/a-worker-talks-to-another-while-you-talk/` · real model · run at wiring, re-run by the closure (FIX-2156) |
-| **Signal** | 1: you ask lead *"Ask researcher for our launch date, and help me outline the post"*; lead's answer is in its conversation. 2: a card *to researcher* shows in lead's conversation, a line *from lead* in researcher's, and lead's Talk panel lists the exchange under *with researcher*. 3: you send lead a second line before researcher answers; researcher's reply shows in lead's conversation under researcher's name, after lead's answer to you, and lead's next line uses the date. 4: the script sends 60 more turns (past the 50-turn window), then asks lead for a fact you gave on turn 1 and for the launch date; both answers are right, and the divider shows where turns were summarized |
+| **Signal** | 1: you ask lead *"Ask researcher for our launch date, and help me outline the post"*; lead's answer is in its conversation. 2: a card *to researcher* shows in lead's conversation, a line *from lead* in researcher's, and lead's Talk panel lists the exchange under *with researcher*. 3: you send lead a second line before researcher answers; researcher's reply shows in lead's conversation under researcher's name, after lead's answer to you, and lead's next line uses the date. 4: the script sends 60 more turns (past the 50-turn window), then asks lead for a fact you gave on turn 1 and for the launch date; both answers are right, and the divider marks where the turns lead reads word for word begin, labelled *summarized* only when G1's summary is on |
 | **Anti-game** | Assert on what a person sees in the browser and on message rows read through the public log. Never on the lab's own state |
 | **Control that must fail** | `GOAL_CONTROL=no-reply-tool`: researcher's `sendMessage` dropped from its tools; step 3 must FAIL. `GOAL_CONTROL=no-memory`: memory removed from lead's flow and no summary kept; step 4 must FAIL |
 
@@ -61,7 +61,7 @@ A new private lab, `labs/teammates`, launched with `fsdev dev --app` and themed 
 
 | Kind (ER-1) | What |
 |---|---|
-| Configuration | `fsdev.config.mts`, the host file, three `WORKER.md` (lead, researcher, writer), memory composed into each worker's flow through `defineAgentWorkerFlow({ uses })` |
+| Configuration | `fsdev.config.mts`, the host file, three `WORKER.md` (lead, researcher, writer), memory composed into each worker's flow through `defineAgentWorkerFlow`: the capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn |
 | React UI | The worker list, the conversation with its talk cards and pending line, the Talk panel, the composer, registry components |
 | Small flows | None planned |
 | The adapter (ER-5) | One module; each function names the package call it stands for. See below |
@@ -108,7 +108,7 @@ worked around in the lab.
 | The message log, user-scoped and client-readable (`messages/message-log.ts`) | **Builds on.** The Talk panel and the cards read it |
 | `createWorkforceClient`: `roster`, `ensureWorkerSession` | **Builds on.** The worker list and the one conversation |
 | Shift Manager's Messages screen, a flat list of exchanges | **Leaves alone.** The lab draws talk beside the conversation instead, and copies no code |
-| `@flow-state-dev/memory`, composed through `uses` | **Builds on**, as configuration |
+| `@flow-state-dev/memory`, composed through `uses` and `afterAnswer` | **Builds on**, as configuration |
 
 | The debt | |
 |---|---|
