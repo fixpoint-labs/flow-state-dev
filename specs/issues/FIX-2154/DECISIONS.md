@@ -64,11 +64,16 @@ the pending line becomes a line inside the turn.
   `ensureWorkerSession({ worker })` with no criteria. The epic's sessions gap (ER-7) is not used.
 - **One conversation forever is a package gap, not lab code** (the epic's *Decided before review*).
   The lab composes `@flow-state-dev/memory` through `defineAgentWorkerFlow({ uses })`, which is
-  configuration. A summary of turns past the 50-turn window, and the mark the divider reads, is
-  gap G1. The lab never summarizes on its own, not even in a small flow.
-- **G1 is settled by a probe, first thing at wiring.** Step 4 is run with memory alone. If it
-  passes, G1 shrinks to the mark and blocks nothing; if it fails, G1 is a child of the epic and
-  blocks this lab's wiring ([epic D1](../../epics/FIX-2152/DECISIONS.md#d1)).
+  configuration. History handling past the 50-turn window, turned on per flow or worker and off
+  in the stock agent flow, and the mark the divider reads, is gap G1, which goes to FIX-1613
+  rather than a new entry. The lab never summarizes on its own, not even in a small flow.
+- **A probe at wiring says whether the script needs G1's summary.** Step 4 is run with memory
+  alone. A pass means only that this script didn't need it (a conversation's history and memory
+  never stand in for each other, FIX-1612); the mark is still owed. A fail makes G1 block this
+  lab's wiring and the closure ([epic D1](../../epics/FIX-2152/DECISIONS.md#d1)).
+- **Worker messages queue; task results take the ending path.** D2 is the queue rule for a
+  message (a queued message is plain conversation, answered after the turn). The epic's D2
+  (FIX-2159) is a task result reaching a running turn. They are separate paths, not rival designs.
 - **The pending line is UI over two public reads.** A log row addressed to the open worker that
   has no line in its conversation yet is pending. That join needs the received line to carry its
   message id (gap G2, an ask of FIX-2070).
@@ -100,3 +105,6 @@ the pending line becomes a line inside the turn.
 - **Draft** — written against the epic spec (#3783) and fsd-architect's answers on #46. One gap
   first drafted (a busy read for the worker list) was dropped on reading the client:
   `listSessionRequests` already gives it.
+- **Architect** — fsd-architect's coherence check ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3787#issuecomment-6375046124))
+  agreed with D2 and kept it apart from the epic's D2. G1 now points at FIX-1613 instead of a new
+  entry, is opt-in per flow or worker, and a passing probe no longer reads as memory replacing it.

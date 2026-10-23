@@ -86,7 +86,7 @@ worked around in the lab.
 
 | # | Gap | Against | Blocks a step? |
 |---|---|---|---|
-| G1 | **A long conversation keeps what fell out of its history window.** The agent flow keeps the last 50 turns and drops the rest unsummarized (`workforce/src/agent-worker-flow.ts`, the `history` comment). Memory composed through `uses` keeps facts, not the thread. Needs a summary of dropped turns carried into the next model call, and a mark a screen reads to draw the divider | workforce (the agent flow), core only if fsd-architect puts the window there | **Step 4, likely.** A child of the epic. If a probe at wiring passes step 4 on memory alone, the summary half drops and only the mark remains, which blocks nothing |
+| G1 | **A long conversation keeps working past its history window, opt-in per flow or worker.** The agent flow keeps the last 50 turns and drops the rest unsummarized (`workforce/src/agent-worker-flow.ts`, the `history` comment). Memory composed through `uses` keeps facts, not the thread, and neither stands in for the other (FIX-1612). Needs history handling a flow or worker turns on (how much is kept word for word, when to summarize), which the lab turns on for its workers and the stock agent flow leaves off, plus a mark a screen reads to draw the divider. **Not a new entry:** it points at [FIX-1613](https://linear.app/fixpoint-labs/issue/FIX-1613), the known gap (a block can't read items older than the window), extended or succeeded there | workforce (the agent flow, configured per flow or worker); core only if `historyWindow` itself must change | **Step 4, likely.** If a probe at wiring passes step 4 on memory alone, the lab's script didn't need the summary; that is not evidence memory replaces it, and only the mark is still owed |
 | G2 | **A received message is its own item in the recipient's conversation**, carrying `from`, the message id and `inReplyTo`. Today it is a plain message line, `From researcher: …` (`messages/worker-message-entry.ts`). The talk cards and the pending line join the log to the stream by message id | an ask of FIX-2070, which redefines `receive`; filed only if FIX-2070 ships without it | Step 3's pending line, not the step |
 | — | Whether a worker is working. Not a gap: a screen lists the requests of each worker's conversation (`listSessionRequests`) and reads the running one, which also catches a worker another worker woke | client | Not filed. Only if a queued `receive` is missing from that list |
 | — | Paging the log by pair. A pair filter is UI code over the user's log (fsd-architect, [#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)) | workforce | Not filed. Only if the log outgrows one read |
@@ -132,7 +132,7 @@ If wrong: a lab that hides glue the package should own.
 2. **[D1](DECISIONS.md#d1) · Worker talk shows in both conversations as one-line cards, and in a
    Talk panel, not as its own session.** If wrong: talk is easy to miss, or too loud.
 
-**Open:** whether G1's summary half is needed, settled by a probe at wiring (see the gap).
+**Open:** whether the lab's script needs G1's summary, settled by a probe at wiring (see the gap).
 
 Feature · labs + workforce gaps · medium · second lab of epic FIX-2152 · blocked by FIX-2070 and
 FIX-2056 (wiring only)
