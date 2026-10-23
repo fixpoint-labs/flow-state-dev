@@ -23,29 +23,25 @@ The whole cycle lives on one request with one continuous item log: the work befo
 
 The resumed step runs on the flow instance recorded as the request's owner, so the approval card never has to know which copy of a flow the work belongs to. See [durable execution](/docs/advanced/durable-execution#resuming-a-suspended-request).
 
-## Prerequisites: a durability provider
+## Prerequisites: durable execution
 
-Suspend/resume needs somewhere to persist the pause. Wire a `DurabilityProvider` into your runtime; without one, `ctx.suspend()` is unavailable.
+Suspend/resume needs somewhere to keep the paused request. That's durable execution, and it's on by default wherever your stores persist: SQLite, Postgres or the filesystem store need no setting. On a host without it, `ctx.suspend()` throws and the request fails.
+
+In-memory stores are the exception. A pause held there would be lost when the process ends, so durable execution is off for them unless you ask for it with `durable: true`:
 
 ```ts title="src/flowstate.ts"
-import {
-  createFlowState,
-  inMemoryStores,
-  createCheckpointDurabilityProvider,
-} from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { contentReview } from "./flows/content-review/flow";
-
-const stores = inMemoryStores();
 
 export const flowstate = createFlowState({
   flows: { contentReview },
   models: { default: "openai/gpt-6-luna" },
-  stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  stores: { default: { primary: inMemoryStores() } },
+  durable: true, // needed with in-memory stores; on by default over persisting stores
 });
 ```
 
-`inMemoryStores()` loses state on restart, which is fine for development. For production, back the provider with SQLite or Postgres so a flow parked on a human gate survives a deploy. See [durable execution](/docs/advanced/durable-execution#store-adapters) for the adapter options.
+`inMemoryStores()` loses state on restart, which is fine for development. For production, use SQLite or Postgres so a flow parked on a human gate survives a deploy, and drop `durable: true`. See [durable execution](/docs/advanced/durable-execution#store-adapters) for the adapter options.
 
 ## Server: define the approval gate
 

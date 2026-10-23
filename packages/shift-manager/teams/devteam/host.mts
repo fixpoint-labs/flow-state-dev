@@ -562,10 +562,10 @@ export interface OpenLabOptions {
    * Raise the EM worker's ask on open: one pending approval, in the EM worker's
    * own session, naming this feature (`ask.mts`).
    *
-   * **Absent means absent**: no request and no store write for it (durable
-   * execution stays on when a worker holds a tool that asks first). Present turns durable execution on, because the answer arrives later
-   * through the engine's resume route, and open fails, naming the step, if the
-   * ask could not be raised.
+   * **Absent means absent**: no request and no store write for it. Present,
+   * the answer arrives later through the engine's resume route (a Lab is
+   * always durable), and open fails, naming the step, if the ask could not be
+   * raised.
    */
   ask?: AskFeature;
   /**
@@ -621,7 +621,7 @@ export interface OpenLabOptions {
   log?: (line: string) => void;
   /**
    * The Error Reporter (FIX-1983). Absent leaves its worker off the roster.
-   * Present turns durable execution on, since a report waits for an answer.
+   * A report waits for an answer, which a Lab holds: it is always durable.
    */
   errorReporter?: LabErrorReporter;
 
@@ -1027,14 +1027,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // coordinator names the writes to its own project. Hire and fire
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
-  // for a user's Approve in Inbox, which needs durable execution: on by
-  // default wherever the Lab's stores persist (FIX-2063), and asked for below
-  // whenever a worker holds a tool that asks first.
+  // for a user's Approve in Inbox, which needs durable execution (asked for
+  // below).
   const rosterTools = chiefOfStaffRosterTools(installation);
-  const asksFirst = new Set(["fire", ...(options.withoutProjectTools === true ? [] : ["createProject", "setRepository"])]);
-  const asksBeforeChanging = workers.some((worker) =>
-    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => asksFirst.has(tool)),
-  );
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the chief of staff runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -1181,11 +1176,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     models: { default: LAB_DEFAULT_MODEL },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // When something can wait for a user: the EM's ask, a worker holding a
-    // tool that asks first, or the Error Reporter. Durable execution is on by
-    // default over persisting stores; this also holds those waits on the
-    // in-memory stores a Lab may be opened with (FIX-2063 D2's opt-in).
-    ...(options.ask === undefined && !asksBeforeChanging && reporter === undefined ? {} : { durable: true }),
+    // Always durable, so a wait for a user (the EM's ask, an ask-first tool on
+    // any worker, a hired one included, or the Error Reporter) is held on the
+    // in-memory stores a Lab may be opened with too. Over persisting stores it
+    // is the default anyway (FIX-2063 D2's opt-in).
+    durable: true,
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
