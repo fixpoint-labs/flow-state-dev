@@ -119,6 +119,15 @@ const OWED_PREFIX = "noticeOwed:";
  */
 const RESENT_PREFIX = "noticeResent:";
 
+/**
+ * Where a busy session records that it turned an owed notice away (FIX-2113:
+ * `taskSettledEntry`'s `defer`), and when. That is no failed delivery, so the
+ * notice's age, which ends it at the maximum debt age, counts from then. Kept
+ * beside the marker, never in it, as a resend record is, so the write can't
+ * bring back a marker its entry cleared meanwhile.
+ */
+const DEFERRED_PREFIX = "noticeDeferred:";
+
 /** The longest a pass waits between two resends of one notice: 5 minutes. */
 const NOTICE_RESEND_CAP_MS = 300_000;
 
@@ -135,13 +144,6 @@ interface OwedMarker {
    * fast path and no pass until it is released. Absent on every other marker.
    */
   readonly held?: true;
-  /**
-   * When a session last turned it away because it was busy (FIX-2113:
-   * `taskSettledEntry`'s `defer`). That is no failed delivery, so the
-   * notice's age, which ends it at the maximum debt age, counts from here.
-   * Absent on a marker never turned away.
-   */
-  readonly deferredAt?: number;
 }
 
 function markerKey(attempt: number, ending: NoticeEnding): string {
@@ -377,19 +379,19 @@ export function noticeTimes(
   const value = (row.metadata ?? {})[key];
   if (!isSendable(key, value)) return undefined;
   const due = value.due ?? 0;
-  return { due, next: nextSendAt(row, value), since: Math.max(due, value.deferredAt ?? 0) };
+  const deferred = (row.metadata ?? {})[`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`] as { at?: unknown } | null | undefined;
+  const deferredAt = deferred != null && typeof deferred.at === "number" ? deferred.at : 0;
+  return { due, next: nextSendAt(row, value), since: Math.max(due, deferredAt) };
 }
 
 /**
  * The metadata patch that records a busy session turning `notice` away at
- * `now` (FIX-2113): the marker, as it is, with `deferredAt`. `{}` when `row`
- * no longer owes it.
+ * `now` (FIX-2113): a record beside its marker, which it leaves as it is.
+ * `{}` when `row` no longer owes it.
  */
-export function deferredNoticePatch(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, OwedMarker> {
-  const key = markerKey(notice.attempt, notice.ending);
-  const value = (row.metadata ?? {})[key];
-  if (!isSendable(key, value)) return {};
-  return { [key]: { ...value, deferredAt: now } };
+export function deferredNoticePatch(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, { at: number }> {
+  if (!isSendable(markerKey(notice.attempt, notice.ending), (row.metadata ?? {})[markerKey(notice.attempt, notice.ending)])) return {};
+  return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now } };
 }
 
 /** The metadata patch that records one more resend of `notice` at `now`. */
@@ -531,7 +533,11 @@ export function withoutNoticeMarkers(
   if (metadata === undefined) return undefined;
   return Object.fromEntries(
     Object.entries(metadata).filter(
-      ([key]) => !key.startsWith(OWED_PREFIX) && !key.startsWith(UNDELIVERABLE_PREFIX) && !key.startsWith(RESENT_PREFIX)
+      ([key]) =>
+        !key.startsWith(OWED_PREFIX) &&
+        !key.startsWith(UNDELIVERABLE_PREFIX) &&
+        !key.startsWith(RESENT_PREFIX) &&
+        !key.startsWith(DEFERRED_PREFIX)
     )
   );
 }

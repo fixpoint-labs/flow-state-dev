@@ -43,6 +43,7 @@
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { messageHopStateShape } from "../messages/hop";
@@ -97,7 +98,10 @@ export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   ...CONVERSATION_BOARD_SERVER_OWNED,
   ...WORKER_MESSAGE_SERVER_OWNED,
   // The `work` entry writes it when it starts a routed task in a session the routing conversation doesn't own (FIX-2083).
-  ROUTED_FROM_STATE_KEY
+  ROUTED_FROM_STATE_KEY,
+  // A plan writes it while it waits on a step in a session of its own (FIX-2113). A seeded key
+  // naming a request that never ends here would hold the session's notices with no live wait.
+  PLAN_WAITING_STATE
 ];
 
 /** What a session board is built from. */

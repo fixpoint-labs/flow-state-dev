@@ -134,7 +134,7 @@ export function isAnsweringTurn(ctx: BlockContext): boolean {
  * its key, which then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether
  * it ended), and the next plan in the session clears it.
  */
-const PLAN_WAITING_STATE = "planWaitingRequests";
+export const PLAN_WAITING_STATE = "planWaitingRequests";
 
 /** The session state a plan writes. */
 const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.record(z.string(), z.literal(true)).optional() });
@@ -164,6 +164,31 @@ export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<bool
   // A request that died holds nothing.
   const answers = await ended(others);
   return others.some((requestId) => answers[requestId] !== true);
+}
+
+/**
+ * Mark the session as waiting on the running request's plan (FIX-2113),
+ * under its own key; first, drop the keys of requests that have ended. A key
+ * of a request that is interrupted and not yet driven again reads as ended
+ * and is dropped too: if the sweeper drives it into its step's wait later, it
+ * waits unmarked. That needs a crash between this mark and the drain's park,
+ * with a second plan in the window between, and is accepted.
+ */
+export async function markPlanWaiting(ctx: BlockContext): Promise<void> {
+  const own = ctx.request.identity.id;
+  const others = markedRequests(ctx).filter((requestId) => requestId !== own);
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended !== undefined && others.length > 0) {
+    const answers = await ended(others);
+    for (const requestId of others) if (answers[requestId] === true) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, requestId);
+  }
+  await ctx.session.setStateRecord(PLAN_WAITING_STATE, own, true);
+}
+
+/** Clear the running request's own mark (FIX-2113): it answered. Another request's is left. */
+export async function clearPlanWaiting(ctx: BlockContext): Promise<void> {
+  const own = ctx.request.identity.id;
+  if (markedRequests(ctx).includes(own)) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, own);
 }
 
 /** Whether the running request is in a step's turn. */
@@ -319,16 +344,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       const workable = (own?.list() ?? []).filter(isWorkable);
       await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0 } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
-      if (workable.some((row) => row.session === "new")) {
-        // Keys left by requests that died first: they hold nothing.
-        const ended = ctx.requestHost?.waits?.ended;
-        const others = markedRequests(ctx as never).filter((requestId) => requestId !== ctx.request.identity.id);
-        if (ended !== undefined && others.length > 0) {
-          const answers = await ended(others);
-          for (const requestId of others) if (answers[requestId] === true) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, requestId);
-        }
-        await ctx.session.setStateRecord(PLAN_WAITING_STATE, ctx.request.identity.id, true);
-      }
+      if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx as never);
     }
   });
 
@@ -338,9 +354,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     inputSchema: z.unknown(),
     sessionStateSchema: planWaitingSessionState,
     execute: async (_input, ctx) => {
-      if (markedRequests(ctx as never).includes(ctx.request.identity.id)) {
-        await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, ctx.request.identity.id);
-      }
+      await clearPlanWaiting(ctx as never);
     }
   });
 

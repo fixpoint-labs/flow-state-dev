@@ -1,7 +1,8 @@
 /**
  * `taskSettledEntry`'s `defer` (FIX-2113), on the real engine: a notice its
  * session turns away runs nothing and stays owed, stamped with when it was
- * turned away, so its age (which ends it as undeliverable) counts from then.
+ * turned away (beside its marker), so its age (which ends it as undeliverable)
+ * counts from then.
  * One it doesn't turn away runs and is acknowledged.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -92,9 +93,9 @@ describe("a notice its session turns away (defer)", () => {
       const before = Date.now();
       await h.act("onTaskSettled", notice, true);
       expect(h.heard).toEqual([]);
-      const metadata = (await h.act("read", { id: "t1" })) as Record<string, { deferredAt?: number } | null>;
+      const metadata = (await h.act("read", { id: "t1" })) as Record<string, { at?: number } | null>;
       expect(metadata["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
-      expect(metadata["noticeOwed:1:completed"]!.deferredAt).toBeGreaterThanOrEqual(before);
+      expect(metadata["noticeDeferred:1:completed"]!.at).toBeGreaterThanOrEqual(before);
     } finally {
       await h.dispose();
     }

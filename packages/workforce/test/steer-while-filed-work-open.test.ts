@@ -13,7 +13,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf } from "./conversation-board-harness";
 import type { WorkerManifest } from "../src/manifest";
-import { anotherTurnWaitsOnItsPlan } from "../src/conversation-board/plan";
+import { anotherTurnWaitsOnItsPlan, clearPlanWaiting, markPlanWaiting } from "../src/conversation-board/plan";
 
 const workers = (): WorkerManifest[] => [
   ...boardWorkers({ otto: { delegates: ["eng.tasker"] } }),
@@ -211,5 +211,57 @@ describe("whether another turn of the session waits on its plan", () => {
     expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-other"], { "req-other": true }))).toBe(false);
     // Two marks: one dead, one live.
     expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-dead", "req-live"], { "req-dead": true }))).toBe(true);
+  });
+
+  it("keeps each request's mark its own: one's end leaves another's, and the gate stays shut until both end", async () => {
+    // One session's state, written as the engine's ops write it.
+    const state: Record<string, unknown> = {};
+    const done = new Set<string>();
+    const session = {
+      state,
+      async setStateRecord(field: string, key: string, value: unknown) {
+        state[field] = { ...((state[field] as object | undefined) ?? {}), [key]: value };
+        return true;
+      },
+      async deleteStateRecord(field: string, key: string) {
+        const { [key]: _gone, ...rest } = (state[field] as Record<string, unknown> | undefined) ?? {};
+        state[field] = rest;
+        return true;
+      },
+      async patchState(updates: Record<string, unknown>) {
+        Object.assign(state, updates);
+        return true;
+      }
+    };
+    const requestHost = { waits: { ended: async (ids: readonly string[]) => Object.fromEntries(ids.map((id) => [id, done.has(id)])) } };
+    const as = (id: string) => ({ session, request: { identity: { id } }, requestHost }) as never;
+
+    await markPlanWaiting(as("req-a"));
+    await markPlanWaiting(as("req-b"));
+    expect(await anotherTurnWaitsOnItsPlan(as("req-notice"))).toBe(true);
+    // A answers first: B's mark stays, and the gate stays shut.
+    await clearPlanWaiting(as("req-a"));
+    done.add("req-a");
+    expect(Object.keys(state.planWaitingRequests as object)).toEqual(["req-b"]);
+    expect(await anotherTurnWaitsOnItsPlan(as("req-notice"))).toBe(true);
+    await clearPlanWaiting(as("req-b"));
+    done.add("req-b");
+    expect(await anotherTurnWaitsOnItsPlan(as("req-notice"))).toBe(false);
+
+    // The later writer answers first: the earlier one's mark stays, and the gate stays shut.
+    await markPlanWaiting(as("req-e"));
+    await markPlanWaiting(as("req-f"));
+    await clearPlanWaiting(as("req-f"));
+    done.add("req-f");
+    expect(Object.keys(state.planWaitingRequests as object)).toEqual(["req-e"]);
+    expect(await anotherTurnWaitsOnItsPlan(as("req-notice"))).toBe(true);
+    await clearPlanWaiting(as("req-e"));
+    done.add("req-e");
+
+    // A request that died left its key; the next plan drops it and keeps its own.
+    await markPlanWaiting(as("req-c"));
+    done.add("req-c");
+    await markPlanWaiting(as("req-d"));
+    expect(Object.keys(state.planWaitingRequests as object)).toEqual(["req-d"]);
   });
 });
