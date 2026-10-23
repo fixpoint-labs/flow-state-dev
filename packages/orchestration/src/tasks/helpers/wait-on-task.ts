@@ -139,7 +139,14 @@ export type TaskWaitResult =
    * had already taken the ending's notice, which is the filer's one hearing of
    * it, so the caller answers {@link arrivesAsNoticeAnswer} instead.
    */
-  | { readonly ok: true; readonly task: Task; readonly ended: boolean; readonly arrivesAsNotice?: true }
+  | {
+      readonly ok: true;
+      readonly task: Task;
+      readonly ended: boolean;
+      readonly arrivesAsNotice?: true;
+      /** This answer is the filer's one hearing of the ending, in place of its notice (FIX-2138). */
+      readonly delivered?: true;
+    }
   | { readonly ok: false; readonly error: TaskWaitRefusal; readonly message: string }
   /**
    * The request is over: a person stopped it while it waited, or its own task
@@ -391,7 +398,7 @@ async function waitChecked(
       // The replay after a resume reaches here once the row has ended: the
       // request's own task may have ended first (a cancel that cascaded to it).
       if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
-      return ended(ctx, collection, taskId);
+      return ended(ctx, collection, taskId, planned.gateId);
     }
 
     const outcome: WaitOutcome = await parkOnWait(ctx, park);
@@ -399,11 +406,11 @@ async function waitChecked(
     if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
     // The ending, an error naming one, or (on a gate parked before FIX-2082,
     // replayed) the old timeout: read the row, whichever it was.
-    if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId);
+    if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId, planned.gateId);
 
     // The deadline. The slot lapses, unless the ending already won.
     const lapsed = await collection.lapseWait!(taskId, planned.gateId, requestId);
-    if (lapsed.outcome === "declined") return ended(ctx, collection, taskId);
+    if (lapsed.outcome === "declined") return ended(ctx, collection, taskId, planned.gateId);
     // Released at the request's end, waiting again or not: a drain that fails
     // before its next mark leaves no lapsed slot, nor its `drain` mark, behind.
     // One it marks again is live by then, and the release passes it by.
@@ -492,13 +499,35 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
  * ending that came before the wait owes its filer a notice; when the filer is
  * the one waiting, this answer delivers it, so it is dropped (FIX-2112). One
  * the filer's `onTaskSettled` already took is its delivery instead (FIX-2123).
+ * `delivered` says this answer is the filer's one hearing of the ending
+ * (FIX-2138): the ending resumed this wait, which owes no notice, or this
+ * wait dropped the notice, or it read an ending held for it.
+ *
+ * @param gateId This round's gate, the same on the replay after the resume.
  */
-async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
+async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string, gateId: string): Promise<TaskWaitResult> {
+  const before = collection.get(taskId);
+  // Ended onto this wait's own live slot: the ending resumed it, and owes no
+  // notice. A later wait on the row finds the slot still there (a terminal
+  // row keeps it) under another gate, and delivers nothing.
+  const resumedHere =
+    before !== undefined &&
+    isTerminalStatus(before.status) &&
+    before.wait != null &&
+    before.wait.lapsed !== true &&
+    before.wait.gateId === gateId;
   await clearMarker(collection, taskId);
   const task = collection.get(taskId)!;
-  await deliverHeldEnding(ctx, collection, task);
-  const arrivesAsNotice = await deliverEndedBeforeWait(ctx, collection, collection.get(taskId) ?? task);
-  return { ok: true, task: collection.get(taskId) ?? task, ended: true, ...(arrivesAsNotice ? { arrivesAsNotice: true as const } : {}) };
+  const heldHere = await deliverHeldEnding(ctx, collection, task);
+  const read = await deliverEndedBeforeWait(ctx, collection, collection.get(taskId) ?? task);
+  const delivered = !read.arrivesAsNotice && (resumedHere || heldHere || read.dropped);
+  return {
+    ok: true,
+    task: collection.get(taskId) ?? task,
+    ended: true,
+    ...(read.arrivesAsNotice ? { arrivesAsNotice: true as const } : {}),
+    ...(delivered ? { delivered: true as const } : {})
+  };
 }
 
 /**
@@ -506,15 +535,22 @@ async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: s
  * (FIX-2112). Never fails the call: a drop that fails leaves the notice owed,
  * and the filer hears the ending a second time.
  *
- * @returns Whether the filer's `onTaskSettled` took the notice first
- *   (FIX-2123), read off the row as stored after the drop: that notice is the
- *   delivery, whether it is under way or done, and the wait says so.
+ * @returns `arrivesAsNotice`: whether the filer's `onTaskSettled` took the
+ *   notice first (FIX-2123), read off the row as stored after the drop: that
+ *   notice is the delivery, whether it is under way or done, and the wait says
+ *   so. `dropped`: this wait dropped the notice, so its answer is the delivery
+ *   (FIX-2138).
  */
-async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
+async function deliverEndedBeforeWait(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  task: Task
+): Promise<{ arrivesAsNotice: boolean; dropped: boolean }> {
   const filer = collection.filerOf?.(task) ?? task.filer?.sessionId;
-  if (filer === undefined || filer !== ctx.session.identity.id) return false;
+  if (filer === undefined || filer !== ctx.session.identity.id) return { arrivesAsNotice: false, dropped: false };
   let row = task;
-  if (Object.keys(deliveredByWait(task)).length > 0) {
+  const owed = Object.keys(deliveredByWait(task)).length > 0;
+  if (owed) {
     try {
       await collection.dropNoticeReadByWait?.(task.id);
       // A drop declined by a take another request committed first.
@@ -522,10 +558,12 @@ async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollect
       row = collection.get(task.id) ?? task;
     } catch (error) {
       console.warn(`[orchestration] wait "${task.id}": its ending's notice stays owed: ${(error as Error).message}`);
-      return false;
+      return { arrivesAsNotice: false, dropped: false };
     }
   }
-  return deliveredAsNotice(row, ctx.request.identity.id);
+  const arrivesAsNotice = deliveredAsNotice(row, ctx.request.identity.id);
+  // Dropped: the notice this ending owed is gone, and no other request took it.
+  return { arrivesAsNotice, dropped: owed && !arrivesAsNotice && Object.keys(deliveredByWait(row)).length === 0 };
 }
 
 /**
@@ -739,14 +777,20 @@ export async function releaseEndedWaits(
  * ended while the request still ran, and this read is that request's. The held
  * notice is dropped and the slot released, so the filer's `onTaskSettled` is
  * never told. A no-op for any other read.
+ *
+ * @returns Whether this read delivered an ending: the task ended, and its
+ *   ending was held for this request (FIX-2138).
  */
-export async function deliverHeldEnding(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<void> {
+export async function deliverHeldEnding(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
   rearmLapsed(ctx);
   const requestId = ctx.request?.identity?.id;
-  if (requestId === undefined || task.wait?.lapsed !== true || task.wait.requestId !== requestId) return;
-  if (!isTerminalStatus(task.status) && !holdsAnEnding(task)) return;
-  await collection.releaseWait?.(task.id, { requestId, read: true });
+  if (requestId === undefined || task.wait?.lapsed !== true || task.wait.requestId !== requestId) return false;
+  if (!isTerminalStatus(task.status) && !holdsAnEnding(task)) return false;
+  const released = await collection.releaseWait?.(task.id, { requestId, read: true });
   forgetLapsed(requestId, task.id);
+  // Delivered only by this write: a slot released by someone else meanwhile
+  // turned the held ending into an owed notice, which delivers it instead.
+  return released?.outcome === "recorded" && isTerminalStatus(task.status) && holdsAnEnding(task);
 }
 
 /**

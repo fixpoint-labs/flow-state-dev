@@ -1405,7 +1405,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "checkpoint. Its error when it failed, the question it waits on when it is " +
       "parked. current is the latest follow-up in its chain that completed, with its output: " +
       "the version that stands now; output stays the task's own. steers are the messages sent " +
-      "into it, oldest first, each marked taken once its work read it. Use it to answer from what " +
+      "into it, oldest first, each marked taken once its work read it. When this read is how you " +
+      "hear the task failed or was cancelled, cancelled lists the tasks you filed that depended " +
+      "on it, which that ending cancelled. Use it to answer from what " +
       "a task found, rather than from a line about it. " +
       "Don't poll a task you filed to see it end: end your turn, and its ending wakes you." +
       (wait ? getTaskWaitDescription : ""),
@@ -1487,6 +1489,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             )
             .optional(),
         }),
+        /**
+         * When this answer is how you hear the task failed or was cancelled: the
+         * tasks you filed that depended on it, which that ending cancelled (FIX-2138).
+         */
+        cancelled: z.array(z.string()).optional(),
       }),
       /** A wait whose task's ending arrives as a notice, which the conversation hears on its own (FIX-2123). */
       z.object({ ok: z.literal(true), taskId: z.string(), arrivesAsNotice: z.literal(true), message: z.string() }),
@@ -1519,6 +1526,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       await collection.refresh?.(input.id);
       let t: Task | undefined = collection.get(input.id);
       if (t === undefined) return taskNotFoundError(input.id);
+      /** Whether this answer delivers the task's ending to its filer (FIX-2138). */
+      let delivered = false;
       if (input.wait === true) {
         const call = toolCallOf(ctx);
         let waited: Awaited<ReturnType<typeof waitOnTask>> | undefined;
@@ -1547,10 +1556,24 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // The filer's onTaskSettled took its ending first: that notice is the one hearing of it.
         if (waited.arrivesAsNotice === true) return arrivesAsNoticeAnswer(waited.task);
         t = waited.task;
+        delivered = waited.delivered === true;
       } else {
         // The ending held for this request, when its wait on the task lapsed:
         // this read delivers it (FIX-2082).
-        await deliverHeldEnding(ctx, collection, t);
+        delivered = await deliverHeldEnding(ctx, collection, t);
+      }
+      // This answer is the filer's hearing of a failure or a cancel, in place of
+      // its notice, so it names the dependents that ending cancelled, as the
+      // notice would have (FIX-2138). A touch first cancels any the ending's
+      // own cascade never read (FIX-2136); its names are read either way.
+      let cancelled: string[] = [];
+      if (delivered && (t.status === "errored" || t.status === "cancelled")) {
+        try {
+          await collection.payOwedCascades?.();
+        } catch {
+          // What it cancelled before failing is named below; the rest waits for the next touch.
+        }
+        cancelled = cancelledDependents(t, collection.list(), collection.filerOf?.bind(collection));
       }
       const taskInput = t.input === undefined ? undefined : readable(t.input);
       const output = t.output === undefined ? undefined : readable(t.output);
@@ -1607,6 +1630,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
               }
             : {}),
         },
+        ...(cancelled.length > 0 ? { cancelled } : {}),
       };
     },
   });
