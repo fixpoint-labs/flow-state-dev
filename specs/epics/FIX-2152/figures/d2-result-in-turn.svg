@@ -78,8 +78,8 @@
     <text class="t-lbl" x="32" y="280">NEW PACKAGE</text>
     <text class="t-lbl" x="32" y="293">CODE</text>
     <text class="mark minus" x="226" y="286">−</text>
-    <text class="t-b" x="244" y="285">A public take and an answer-again hook</text>
-    <text class="t-s" x="244" y="303">the loop stays in the lab flow</text>
+    <text class="t-b" x="244" y="285">A public take; the answer-again step is shared</text>
+    <text class="t-s" x="244" y="303">the lab passes only a source block</text>
     <text class="mark plus" x="586" y="286">+</text>
     <text class="t-b" x="604" y="285">None</text>
     <text class="t-s" x="604" y="303">the deferred notice turn as is</text>
@@ -89,7 +89,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="357">LOCKS IN</text>
-    <text class="t-b" x="32" y="377">The lab flow loops back; FIX-2159 adds a public take</text>
+    <text class="t-b" x="32" y="377">The shared step loops back; FIX-2159 adds a public take</text>
     <text class="t-s" x="32" y="395">on the one ending path; rule 7 gains a destination</text>
   </g>
 
