@@ -744,16 +744,18 @@ function cursorUsable(row) {
 
 /**
  * Merge readiness, with the clause the reporter cannot be trusted to fold in itself: an automated
- * review has returned on the PR's CURRENT head (orchestration.md → Gates, "A merge-ready head has
- * been reviewed"). Approved + green + mergeable is the reporter's judgment; this compares two shas.
- * A missing sha on either side is "not reviewed", never the reverse (BP-030), so an old-shape report
- * withholds the gate instead of offering a head no reviewer saw. Logged, so a withheld gate says why.
+ * review has returned on the PR (orchestration.md → Gates, "A merge-ready PR has been reviewed").
+ * Any reviewed head counts: Codex usage is limited, so a later push rides on the first review unless
+ * the reporter asked for a follow-up, and then it reports not ready until that review returns.
+ * Approved + green + mergeable is the reporter's judgment; this checks both shas are known. A missing
+ * sha on either side is "not reviewed", never the reverse (BP-030), so an old-shape report withholds
+ * the gate instead of offering a PR no reviewer saw. Logged, so a withheld gate says why.
  */
 function reviewedAtHead(ready, headSha, reviewedHeadSha, what) {
   if (!ready) return false
-  if (headSha && reviewedHeadSha === headSha) return true
+  if (headSha && reviewedHeadSha) return true
   log(
-    `${what}: reported ready to merge, but no automated review has returned on its current head ` +
+    `${what}: reported ready to merge, but no automated review has returned on it ` +
       `(head ${headSha || 'unknown'}, reviewed ${reviewedHeadSha || 'none'}) — no merge gate until one does.`,
   )
   return false
@@ -2022,8 +2024,8 @@ const PR_STATE_SCHEMA = {
   // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
   // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
   // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
-  // `implHeadSha` / `implReviewedHeadSha` are required because `readyToMerge` counts only when they
-  // match (→ `reviewedAtHead`). Optional, a scout that never looked for the automated review would
+  // `implHeadSha` / `implReviewedHeadSha` are required because `readyToMerge` counts only when both
+  // are known (→ `reviewedAtHead`). Optional, a scout that never looked for the automated review would
   // withhold every merge gate with nothing to say why; required, it has to answer, `null` included.
   required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'implHeadSha', 'implReviewedHeadSha'],
   properties: {
@@ -2072,7 +2074,7 @@ const PR_STATE_SCHEMA = {
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
     merged: { type: 'boolean' },
-    readyToMerge: { type: 'boolean', description: 'The implementation PR is approved, green and mergeable now. Counts only when implHeadSha is non-null and implReviewedHeadSha equals it, so null/null never passes.' },
+    readyToMerge: { type: 'boolean', description: 'The implementation PR is approved, green and mergeable now, with any follow-up review you requested returned. Counts only when implHeadSha and implReviewedHeadSha are both non-null, so null/null never passes.' },
     implHeadSha: { type: ['string', 'null'], description: 'Current head of the row-level implementation PR — not headSha, which is the spec head whenever a spec exists. null when there is no implementation PR; a null head never passes the merge gate.' },
     implReviewedHeadSha: {
       type: ['string', 'null'],
@@ -2097,7 +2099,7 @@ const PR_STATE_SCHEMA = {
           reviewedHeadSha: {
             type: ['string', 'null'],
             description:
-              "headSha itself if ANY completed automated review of THIS sub-PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this equals a non-null headSha.",
+              "headSha itself if ANY completed automated review of THIS sub-PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this and headSha are both non-null.",
           },
           ciFailed: { type: 'boolean' },
           /** This slice's PR was closed WITHOUT merging — durably `open` otherwise, which nothing advances. */
@@ -2280,7 +2282,7 @@ const WORKER_SCHEMA = {
     implReviewedHeadSha: {
       type: ['string', 'null'],
       description:
-        "implHeadSha itself if ANY completed automated review ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this equals a non-null implHeadSha; a head you just pushed has not been reviewed. Omitting the pair holds the gate back until the next refresh scan.",
+        "implHeadSha itself if ANY completed automated review ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this and implHeadSha are both non-null; a later push rides on an earlier review unless you requested a follow-up. Omitting the pair holds the gate back until the next refresh scan.",
     },
     status: { type: 'string', description: 'One compact status line' },
   },
@@ -2529,9 +2531,9 @@ const [gate, linear, prScan] = await parallel([
               `ALSO report humanChangesRequested:true when any human's latest review requests changes on the open spec. It outranks every approval channel, including an owner label. Bots never count.\n` +
               // orchestration.md → Gates, "Green means CI ran on this head and passed".
               `CI: read check runs on each PR's current head, never the combined commit status. Green means a successful \`Typecheck & Test\` check run; with no such run CI never ran, so the head is untested, not green, and readyToMerge is false (that alone is not ciFailed). ciFailed is true when any check on the current head failed: per check name only its LATEST completed run counts, so a failed or cancelled run superseded by a later success of the same check does not. readyToMerge is false whenever ciFailed is true.\n` +
-              // orchestration.md → Gates, "A merge-ready head has been reviewed". Two shas rather than a
-              // boolean, so the wake does the comparison (→ `reviewedAtHead`).
-              `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold the comparison into readyToMerge: the wake runs it (reviewedAtHead).`,
+              // orchestration.md → Gates, "A merge-ready PR has been reviewed". Two shas rather than a
+              // boolean, so the wake does the check (→ `reviewedAtHead`).
+              `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold that check into readyToMerge: the wake runs it (reviewedAtHead).`,
             { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
           ),
       ]
@@ -2935,7 +2937,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     phase: scoutPhaseFor({ ...row, specMerged }, fresh.phase, scanApproved, route),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
-    // And only for a head the automated review has returned on (→ `reviewedAtHead`), here and on the
+    // And only for a PR the automated review has returned on (→ `reviewedAtHead`), here and on the
     // two per-handle readiness fields below.
     // And never while a check run on that head is failing: a scout can report readyToMerge AND ciFailed
     // (`Typecheck & Test` passed, another check failed), and the wake would dispatch pr-feedback for the

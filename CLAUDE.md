@@ -242,7 +242,7 @@ the project-spec exception above is unchanged.
 
 ## Automated PR review is Codex
 
-Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR's current head; if it hasn't and Grok hasn't asked, comment `@codex review` yourself and name the areas you're unsure of so it pays special attention to them. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
+Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR once, on its first ready head; if it hasn't and Grok hasn't asked, comment `@codex review` yourself and name the areas you're unsure of so it pays special attention to them. **Don't re-request after every push** — Codex usage is limited. Ask again only when a later push adds logic complex enough that you have a real concern, and name it. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
 
 ## Asking for sign-off
 
