@@ -646,6 +646,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         dispatch: {
+          // The sender's facts first, so every key the seam writes below wins
+          // over one of the same name: a provenance never moves the address,
+          // the reply route, or the approved recipient. `waitedBy` is dropped
+          // outright — the seam writes it only on a waited dispatch, so on any
+          // other an order alone would let a caller's one through.
+          ...withoutWaitedBy(spec.provenance),
           type: spec.type,
           action: spec.action,
           // The instance the entry was resolved on, stamped only when the
@@ -667,8 +673,6 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
             : {}),
-          // Never a `waitedBy` of the caller's: that key is the seam's own, below.
-          ...withoutWaitedBy(spec.provenance),
           // A sender that waits on this dispatch (FIX-2082): who it is and
           // the row it works, from this request's own server-derived facts.
           ...(spec.waits === true && inputs.waits !== undefined
