@@ -317,7 +317,7 @@ const flows = hireWorkforce(installation, { schedules: { index: scheduleIndex } 
 
 Without one, your scheduler POSTs each schedule's endpoint itself.
 
-A fire files each time, even while last week's task is still open. A fire whose filing is refused files nothing, and isn't retried: a `filer` that isn't on the user's roster, an `assignee` that is the filer itself or isn't among its delegates, or a filer whose flow keeps no board. The fire's request on the roster flow fails, naming why. A schedule can't skip or reshape a week's work; to change it, save the schedule again.
+A fire files each time, even while last week's task is still open. A fire whose filing is refused files nothing, and isn't retried: a `filer` that isn't on the user's roster, an `assignee` that is the filer itself or isn't among its delegates, no `assignee` when the filer has more than one delegate, or a filer whose flow keeps no board. The fire's request on the roster flow fails, naming why. A schedule can't skip or reshape a week's work; to change it, save the schedule again.
 
 ## After upgrading
 

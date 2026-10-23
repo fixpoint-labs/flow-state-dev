@@ -155,7 +155,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { startOwedSteerTurn } from "./steer-turn-start";
-import { routedSessionResources, sessionsHeldElsewhere } from "./routed-session";
+import { holdRoutedSession, routedSessionResources, sessionsHeldElsewhere } from "./routed-session";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { pieceOwnerOf } from "./held-task";
@@ -422,11 +422,12 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
 }
 
 /**
- * The sessions by id another board's routed task holds now, by board, as its
- * pass last read them (`./routed-session`): a routed task for one of them
- * waits on its board, as rule 5 has it. Kept for the checks a pass makes
- * without a read of its own (its drain's exit, on another instance of the
- * same ledger), and dropped once a board's read finds none held.
+ * The sessions by id another board's routed task holds now, by board, as this
+ * process last read them (`./routed-session`). A hint only, for the checks
+ * that decide whether a pass is owed without a read of their own (a release,
+ * a touch, the drain's exit): what starts a routed task is the claim's own
+ * hold, written in one compare-and-swap on the session's record, never this.
+ * Dropped once a board's read finds none held.
  */
 const heldElsewhere = new Map<string, ReadonlySet<string>>();
 
@@ -444,17 +445,43 @@ function heldByAnotherBoard(task: Task, held: ReadonlySet<string> | undefined): 
 }
 
 /**
+ * Take each session by id a startable row here would start in (FIX-2083
+ * rule 5 across boards): for each, the one row of this board that may start
+ * there now, or none while another board's routed task holds it. The rows
+ * for one session are taken earliest filed first; this board's own rule 5
+ * starts one of them at a time anyway.
+ */
+async function takeTargetSessions(ctx: BlockContext, collection: TaskCollectionRef): Promise<ReadonlyMap<string, string | undefined>> {
+  const now = collection.now();
+  const lookup = (taskId: string): Task | undefined => collection.get(taskId);
+  const rows = collection.list();
+  const first = new Map<string, Task>();
+  for (const task of rows) {
+    const target = task.targetSessionId;
+    if (target === undefined || (task.status !== "pending" && task.status !== "in_progress")) continue;
+    if (!isStartable(task, rows) || !isClaimable(task, lookup, now)) continue;
+    const seen = first.get(target);
+    if (seen === undefined || task.createdAt < seen.createdAt) first.set(target, task);
+  }
+  const taken = new Map<string, string | undefined>();
+  for (const [target, task] of first) taken.set(target, await holdRoutedSession(ctx, collection, target, task.id));
+  return taken;
+}
+
+/**
  * Claims only rows that may start: an unassigned row, or one whose session is
- * busy, on this board or (a session by id) on another, waits on the board.
+ * busy, on this board or (a session by id) on another, waits on the board. A
+ * row for a session by id is claimed only once this board holds that session
+ * for it.
  */
 const startableOnly: TaskDispatcher = {
   claim: async (collection, workerId, ctx) => {
-    // Read again at each claim; where the claim's block can't read the
-    // records, as the pass last read them.
-    const read = await sessionsHeldElsewhere(ctx, collection);
-    if (read !== undefined) noteHeldElsewhere(collection, read);
-    const held = read ?? heldElsewhere.get(heldKeyOf(collection));
-    return collection.claim(workerId, { eligibility: (task, rows) => isStartable(task, rows) && !heldByAnotherBoard(task, held) });
+    const taken = await takeTargetSessions(ctx, collection);
+    noteHeldElsewhere(collection, new Set([...taken].filter(([, id]) => id === undefined).map(([target]) => target)));
+    return collection.claim(workerId, {
+      eligibility: (task, rows) =>
+        isStartable(task, rows) && (task.targetSessionId === undefined || taken.get(task.targetSessionId) === task.id)
+    });
   }
 };
 

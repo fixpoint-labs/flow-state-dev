@@ -4,22 +4,25 @@
  *
  * Rule 5 (one open task per session) is each board's own check, and a
  * workstream's session is no one board's: two conversations route to it from
- * two boards. So the `work` entry records, in the user's scope, the routed
- * task it starts there and the board that task is on; a board reads that
- * record before it starts a routed task for the same session, and leaves its
- * own waiting while that task is open. The record is server-written, and a
- * caller reads only its own user's.
+ * two boards. So the session has one record, in the user's scope, naming the
+ * routed task that holds it and the board that task is on. A board takes the
+ * record before it claims a routed task for the session, in one
+ * compare-and-swap write: the record names its task, or another board's task
+ * that is still open there, and only the board it names claims. A task that
+ * has ended, or was held, holds nothing, so the next claim takes the record
+ * over. The record is server-written, and a caller reads only its own user's.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { isTerminalStatus, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, readCommittedTask, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { conversationLedgerAt } from "./ledger";
 
 /** The resource key the records are declared under. */
 const ROUTED_SESSIONS_RESOURCE = "workforceRoutedSessions";
 
-/** One session's record: the routed task it last started, and the board it is on. */
+/** One session's record: the routed task that holds it, and the board it is on. */
 const routedSessionSchema = z.object({ partition: z.string().min(1), taskId: z.string().min(1) });
 
 export type RoutedSessionHolder = z.infer<typeof routedSessionSchema>;
@@ -42,17 +45,7 @@ function recordsOf(ctx: BlockContext): ResourceCollectionRef<RoutedSessionHolder
     | undefined;
 }
 
-/** A session id as one key segment: it may hold any character. */
-const keyOf = (sessionId: string): string => encodeURIComponent(sessionId);
-
-/**
- * Record that `sessionId` now works `holder`, the routed task its `work`
- * entry just let in. The last start wins: a board starts no second routed
- * task here while the recorded one is open.
- *
- * @throws when the running flow doesn't declare the records.
- */
-export async function noteRoutedSession(ctx: BlockContext, sessionId: string, holder: RoutedSessionHolder): Promise<void> {
+function requireRecords(ctx: BlockContext): ResourceCollectionRef<RoutedSessionHolder> {
   const records = recordsOf(ctx);
   if (records === undefined) {
     throw new Error(
@@ -60,13 +53,67 @@ export async function noteRoutedSession(ctx: BlockContext, sessionId: string, ho
         "can't hold its session. Spread the session kit's `resources` into the flow."
     );
   }
-  const ref = await records.getOrCreate(keyOf(sessionId), holder);
-  if (ref.state.partition !== holder.partition || ref.state.taskId !== holder.taskId) await ref.patchState(holder);
+  return records;
+}
+
+/** A session id as one key segment: it may hold any character. */
+const keyOf = (sessionId: string): string => encodeURIComponent(sessionId);
+
+/**
+ * Whether `holder` holds `sessionId` now: its row, as stored now (another
+ * request may have ended it), is open there and not held.
+ */
+async function holds(ctx: BlockContext, holder: RoutedSessionHolder, sessionId: string): Promise<boolean> {
+  const ledger = await conversationLedgerAt(ctx, holder.partition);
+  const row = ledger === undefined ? undefined : await readCommittedTask(ledger, holder.taskId);
+  return row !== undefined && row.targetSessionId === sessionId && !isTerminalStatus(row.status) && row.status !== "held";
+}
+
+/**
+ * Take `sessionId` for `taskId`, a routed task on `board` that would start
+ * there, in one compare-and-swap write of the session's record.
+ *
+ * @returns the task on `board` that may start there: `taskId`, or the board's
+ *   own task already holding the session; `undefined` while another board's
+ *   task holds it.
+ * @throws when the running flow doesn't declare the records.
+ */
+export async function holdRoutedSession(
+  ctx: BlockContext,
+  board: TaskCollectionRef,
+  sessionId: string,
+  taskId: string
+): Promise<string | undefined> {
+  const partition = board.partition;
+  if (partition === undefined) return taskId;
+  const mine: RoutedSessionHolder = { partition, taskId };
+  const ref = await requireRecords(ctx).getOrCreate(keyOf(sessionId), mine);
+  // Re-run against the stored record on every lost race: two boards taking
+  // one session at once can't both see it free.
+  return updateStateWith<RoutedSessionHolder, string | undefined>(ref, async (holder) => {
+    if (holder.partition === partition && holder.taskId === taskId) return { state: holder, result: taskId };
+    if (await holds(ctx, holder, sessionId)) {
+      return { state: holder, result: holder.partition === partition ? holder.taskId : undefined };
+    }
+    return { state: mine, result: taskId };
+  });
+}
+
+/**
+ * Record, from the `work` entry, the routed task it just let into
+ * `sessionId`, when no record names one yet: a task a board claimed before
+ * the records existed. A record already there is left alone; the claim that
+ * started this task took it.
+ *
+ * @throws when the running flow doesn't declare the records.
+ */
+export async function noteRoutedSession(ctx: BlockContext, sessionId: string, holder: RoutedSessionHolder): Promise<void> {
+  await requireRecords(ctx).getOrCreate(keyOf(sessionId), holder);
 }
 
 /**
  * The sessions by id that a routed task on `board` would start in, and that
- * another board's routed task holds now: started there and not finished.
+ * another board's routed task holds now. A read: it takes nothing.
  * `undefined` where the running block can't read the records.
  */
 export async function sessionsHeldElsewhere(ctx: BlockContext, board: TaskCollectionRef): Promise<ReadonlySet<string> | undefined> {
@@ -80,11 +127,9 @@ export async function sessionsHeldElsewhere(ctx: BlockContext, board: TaskCollec
       .map((row) => row.targetSessionId!)
   );
   for (const sessionId of targets) {
-    const record = await records.getOptional(keyOf(sessionId));
-    const holder = record?.state;
+    const holder = (await records.getOptional(keyOf(sessionId)))?.state;
     if (holder === undefined || holder.partition === board.partition) continue;
-    const row: Task | undefined = (await conversationLedgerAt(ctx, holder.partition))?.get(holder.taskId);
-    if (row !== undefined && !isTerminalStatus(row.status) && row.targetSessionId === sessionId) held.add(sessionId);
+    if (await holds(ctx, holder, sessionId)) held.add(sessionId);
   }
   return held;
 }

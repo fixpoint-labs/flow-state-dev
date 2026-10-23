@@ -231,7 +231,10 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
-        [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
+        [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) => {
+          const { available } = await delegates.taskDelegates(ctx);
+          return available.size === 1 ? [...available.keys()][0] : undefined;
+        })
       };
     }
   };

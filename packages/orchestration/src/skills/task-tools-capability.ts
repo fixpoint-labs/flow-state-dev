@@ -1021,13 +1021,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const task = await collection.addTask(init);
       return { ok: true as const, taskId: task.id };
     }
-    const id = await ctx.runOnce(
-      `fsd.dispatch.plan:${call.logicalId}`,
+    // Whether this run recorded the call's id, or a replay read it back.
+    let recordedNow = false;
+    const id = await ctx.runOnce(`fsd.dispatch.plan:${call.logicalId}`, async () => {
+      recordedNow = true;
       // The board's own id shape: twenty hex characters, unique across processes.
-      async () => init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
-    );
-    // Minted for this call alone: a row with it is this call's own.
-    if (collection.get(id) !== undefined) return { ok: true as const, taskId: id };
+      return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+    });
+    // A replay finds the row its first run filed. On a first run the row is
+    // never taken as this call's: a follow-up's id is picked from the board,
+    // so another call can have filed it, and the add refuses it as taken.
+    if (!recordedNow && collection.get(id) !== undefined) return { ok: true as const, taskId: id };
     const task = await collection.addTask({ ...init, id });
     return { ok: true as const, taskId: task.id };
   }
