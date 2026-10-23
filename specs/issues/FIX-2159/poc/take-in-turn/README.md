@@ -23,7 +23,7 @@ loses it?
 The real engine, a durable host, a resource-backed board. A `respond` action stands in for the
 person's turn: it reads the board, waits on a gate (a model call), then does what the context
 entry would do before its next model call: a committed read, `takeNotice({ by: its request })`,
-the handling, the clear. The ending is written by another request while the turn waits. Then the
+the clear, and only then the line (the queued handling's order, D1). The ending is written by another request while the turn waits. Then the
 queued `onTaskSettled` copy runs, as it does after the turn.
 
 ## What it showed · 2026-10-23, on `main` at `3d131544`
@@ -31,9 +31,10 @@ queued `onTaskSettled` copy runs, as it does after the turn.
 ```
 ✓ 1+2 · sees the ending by a committed read, takes it, and the queued copy finds nothing owed
 ✓ 3   · when the queued copy took it first, the turn's take is refused: heard once, by the copy
-✓ 4   · a turn that took it and failed before clearing it: the copy takes it over once the turn ended
+✓ 4   · a turn that took it and failed before its acknowledgement: the copy takes it over, heard once
+✓ 4b  · a turn that failed after its acknowledgement, before its line: dropped, never twice (at most once)
 ✓ 5   · a turn that only reads the finished row: the queued copy says it again, heard twice
-Tests  4 passed (4)
+Tests  5 passed (5)
 ```
 
 - The turn's own snapshot of the board does **not** show the ending (`sawInSnapshot: false`); a
@@ -52,8 +53,7 @@ on this.
 
 Case 5 is the evidence that a lab can't do this on public entries alone
 ([D3](../../DECISIONS.md#d3)): a turn that reads a finished row without taking it leaves the
-notice owed, and the queued copy hears it again. It was added in review, and was 5 green on the
-same base.
+notice owed, and the queued copy hears it again. Cases 4b and 5 were added in review; all five are green on the same base.
 
 Not covered here, and left to the implementation's tests: the Workforce handling (Error Reporter,
 dedupe, freeing the session, the line) and the answer-again hook.

@@ -85,7 +85,8 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 - **A failure the Error Reporter didn't take** stops the take before the acknowledgement. The take
   stays with the turn, the result isn't handed back, and the queued copy hears it after the turn.
 - **The take reads committed rows**: a turn's snapshot of the board never shows an ending written
-  after it started (POC, case 1). Only open rows this conversation filed are read.
+  after it started (POC, case 1). It reads rows this conversation filed that still owe an
+  eligible notice, finished rows included, never only open ones.
 - **The bound is the package's.** At most three answers again per request, so a hook that always
   returns a message can't loop a turn forever.
 - **Where the hook sits.** On the person's door (`agent-user-turn`), after `run`, so after the
@@ -109,7 +110,8 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 
 Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `main` at `3d131544`.
 
-- **The take record carries a take in the turn, exactly once** — **CONFIRMED**: cases 1 to 4, and
+- **The take record carries a take in the turn, at most once and never lost before the
+  acknowledgement** — **CONFIRMED**: cases 1 to 4b, with the line said after the acknowledgement;
   case 1 red with the turn's clear removed.
 - **A lab can do the end-of-turn loop on public entries alone** — **REFUTED**: case 5, a turn that
   only reads the finished row, is heard twice. The public surface has no take and no

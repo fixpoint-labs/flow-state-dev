@@ -13,9 +13,11 @@
  *      heard once, in the turn;
  *   3. when the queued copy took it first, the turn's take is refused and the
  *      turn shows nothing: heard once, by the queued copy;
- *   4. when the turn took it and then failed before clearing it, the queued
- *      copy takes it over once the turn has ended: never lost (heard again
- *      after a crash, which is today's entry's own guarantee);
+ *   4. when the turn took it and failed before acknowledging it (it says the
+ *      line only after the acknowledgement, the queued handling's order), the
+ *      queued copy takes it over once the turn has ended: heard once; and a
+ *      turn that failed after the acknowledgement drops it: at most once, as
+ *      today;
  *   5. a turn that only READS the finished row (all a lab can do on public
  *      entries) leaves the notice owed, and the queued copy says it again:
  *      heard twice.
@@ -56,7 +58,7 @@ interface TurnLog {
   take?: string;
 }
 
-function host(options: { turnFailsAfterTake?: boolean; entryGate?: Promise<void>; readOnly?: boolean } = {}) {
+function host(options: { turnFailsAt?: "before-ack" | "after-ack"; entryGate?: Promise<void>; readOnly?: boolean } = {}) {
   const heardInTurn: string[] = [];
   const heardByEntry: TaskSettledInput[] = [];
   const log: TurnLog = {};
@@ -114,9 +116,11 @@ function host(options: { turnFailsAfterTake?: boolean; entryGate?: Promise<void>
       const took = await ref.takeNotice!("t1", NOTICE, { by: ctx.request.identity.id });
       log.take = took.outcome;
       if (took.outcome !== "recorded") return {};
-      heardInTurn.push(String(NOTICE.output));
-      if (options.turnFailsAfterTake === true) throw new Error("the turn failed after its take");
+      // The queued handling's order: acknowledge, then say the line (D1).
+      if (options.turnFailsAt === "before-ack") throw new Error("the turn failed after its take, before its acknowledgement");
       await ref.patchMetadata("t1", clearNotice(NOTICE));
+      if (options.turnFailsAt === "after-ack") throw new Error("the turn failed after its acknowledgement, before its line");
+      heardInTurn.push(String(NOTICE.output));
       return {};
     }
   });
@@ -211,8 +215,8 @@ describe("a running conversation request takes a settled notice (FIX-2159 POC)",
     }
   });
 
-  it("4 · a turn that took it and failed before clearing it: the copy takes it over once the turn ended", async () => {
-    const h = host({ turnFailsAfterTake: true });
+  it("4 · a turn that took it and failed before its acknowledgement: the copy takes it over, heard once", async () => {
+    const h = host({ turnFailsAt: "before-ack" });
     try {
       await h.act("seed");
       const turn = h.act("respond").catch((error: Error) => error);
@@ -222,10 +226,27 @@ describe("a running conversation request takes a settled notice (FIX-2159 POC)",
       expect(await turn).toBeInstanceOf(Error);
       expect(h.log.take).toBe("recorded");
       await h.act("onTaskSettled", NOTICE, true);
-      expect(h.heardInTurn).toEqual(["the first result"]);
+      expect(h.heardInTurn).toEqual([]);
       expect(h.heardByEntry).toHaveLength(1);
       const metadata = (await h.act("read")) as Record<string, unknown>;
       expect(metadata["noticeOwed:1:completed"] ?? null).toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("4b · a turn that failed after its acknowledgement, before its line: dropped, never twice (at most once)", async () => {
+    const h = host({ turnFailsAt: "after-ack" });
+    try {
+      await h.act("seed");
+      const turn = h.act("respond").catch((error: Error) => error);
+      await h.started;
+      await h.act("end");
+      h.release();
+      expect(await turn).toBeInstanceOf(Error);
+      expect(await h.act("onTaskSettled", NOTICE, true)).toEqual({ owed: false });
+      expect(h.heardInTurn).toEqual([]);
+      expect(h.heardByEntry).toEqual([]);
     } finally {
       await h.dispose();
     }
