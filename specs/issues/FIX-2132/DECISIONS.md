@@ -30,13 +30,13 @@ keeps an edge in the epic's graph.*
 | **Because** | The built-in path holds and never suspends: under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question holds its task, and every ask the manager makes is a question (the run's marker, the judge's *ask*, a saved-work mismatch). But the public `HarnessSlot` takes any `HarnessBlock` (`manager.ts`, `HarnessSlot`), and the harness step's `onSettled` already handles a child that exits suspended. A host's own harness that calls `ctx.suspend` resumes through the engine's durable resume, which is FIX-2137's path. Refusing it would be a new limit on a public slot, to save an edge that costs nothing: #3749 is ready to merge |
 | **Locks in** | FIX-2137 blocks FIX-2132, with FIX-2133 and FIX-2056. The manager itself suspends no request; the sweep checks `waitForUser` has no references in `harness-manager`. The goal check runs with traces off |
 
-![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix that is ready to merge. Locks in: FIX-2137 blocks FIX-2132. Flips if: no host-provided block in the manager chain can suspend](figures/d1-keep-fix-2137.svg)
+![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix that is ready to merge. Locks in: FIX-2137 blocks FIX-2132. Flips if: no host-supplied block or callback in the manager chain can suspend](figures/d1-keep-fix-2137.svg)
 
 It comes down to the public slot: a host's harness block can still suspend, and that path needs FIX-2137.
 
-**What would change my mind:** no block a host hands the manager can suspend: the `HarnessSlot`
-block, `ManagerOptions.judge.block`, and the phase prompt and completion hooks that receive a
-`BlockContext`. Only then does nothing in the coding flow resume, and the edge drops.
+**What would change my mind:** no host-supplied block or callback that receives a `BlockContext`
+inside the manager chain can suspend, such as the `HarnessSlot` block, `judge.block`, the phase
+hooks or `ledgers`. Only then does nothing in the coding flow resume, and the edge drops.
 
 ## Decided, not asked
 
@@ -135,6 +135,8 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
 - **Second look, checks (FIX-2129 head):** "Since `FIX-2129` is still at review head (`6188b938`), say what happens to this spec if `waitForUser`'s shape moves before it merges." Build on `waitForUser` as FIX-2129 merges it; a change to its call shape is a rename here, a change to what an unanswered question does is a change to ER-1 and so to D1.
 - **Cursor, reuse:** "prefer **extending the existing steer connector** (`again: true` + `loopBack` to the harness step) so answers and steers share one cap and one loop predicate — avoid a parallel 'ask loop' beside `stepForSteer`." *Superseded by the re-spec on #3748: the manager has no cap of its own on answers; the only bound is ER-8's write (FIX-2133), where each open question reserves room for its answer under `MAX_STEERS` (FIX-2131, "The steer cap keeps room for answers"). Don't build a shared manager cap.*
 - **Cursor, two stores:** "`run.answers` on the run record vs steer text on the task row means two mid-attempt human-text stores. If implementer can fold Q&A into the same persistence/ordering path steer already uses (without breaking 'same try' semantics), that would reduce replay/prompt bugs."
+
+- **Codex, delete/recreate (required, #3743 at `05a197b4`):** "When a durable task is deleted and recreated under the same ID, its attempt count and question history reset while its checkout remains keyed by principal/epic/issue/phase (`packages/harness-manager/src/manager.ts:1903-1936`). The supported delete/requeue lifecycle mints a new `incarnationId`, but this guard checks only attempt-local question history, so the replacement's first attempt can read the old checkout's surviving `.fsdev/ask/1.md` and recreate a stale question. Consume the legacy marker after its ask is durably recorded, or bind fallback eligibility to the task incarnation, and cover delete/recreate in the transition test." *Required: scope the fallback to the task's `incarnationId`, or consume the marker once its ask is durably recorded, and cover delete/recreate in the transition test.*
 
 ## How it got here
 
