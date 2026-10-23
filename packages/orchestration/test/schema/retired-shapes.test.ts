@@ -145,4 +145,14 @@ describe("the retired-shape map", () => {
     expect(parsed.waitingOn).toBe("filed");
     expect(taskSchema.parse(parsed).waitingOn).toBe("filed");
   });
+
+  it("queued: only the retired-shape read drops the lease, so it must come before a parse", () => {
+    const stored = { ...row, status: "in_progress", waitingOn: "queued", leaseUntil: 5 };
+    // A bare parse reads the wait as filed but keeps the stored lease.
+    expect(taskSchema.parse(stored)).toMatchObject({ waitingOn: "filed", leaseUntil: 5 });
+    // The read boundary's order: the retired-shape read, then the parse. No lease.
+    const parsed = taskSchema.parse(withRetiredShapes(stored));
+    expect(parsed.waitingOn).toBe("filed");
+    expect(parsed.leaseUntil).toBeUndefined();
+  });
 });

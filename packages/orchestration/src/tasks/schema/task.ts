@@ -503,6 +503,8 @@ export const taskSchema = z.object({
    * carries, reads as `"filed"`: its request had answered (the retired-shape
    * map's `queued` entry).
    */
+  // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
+  // it, and every src read of a stored row goes through `withRetiredShapes` first.
   waitingOn: z
     .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["person", "wait", "filed", "steer"]).nullable())
     .optional(),

@@ -83,6 +83,7 @@ const OWED_MARKER = /^(noticeOwed|reportOwed):/;
 
 /** The session a row's debt is paid in and the entry that pays it, or `undefined` when it owes nothing. */
 function payerOf(row: StoredRow, partition: string): { session: string; entry: string } | undefined {
+  // Known gap: a "queued" row with no `run.sessionId` names no session, so it gets no check.
   const checked = row.status === "parked" || (row.status === "in_progress" && row.waitingOn === "queued");
   if (checked) return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
   // A paid marker is kept as `null`.
