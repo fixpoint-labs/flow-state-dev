@@ -78,7 +78,7 @@ It comes down to a person being away: the wait default fails their work within m
 ![Who owns what: eight rules by six issues and the closure FIX-2134, each rule with one owner](figures/ownership.svg)
 
 A *uses* cell is a place a child must not re-decide. FIX-2137 owns no rule and is Done (#3749).
-It blocks FIX-2063's default flip and every FIX-2129 resume, and stays on FIX-2132: the manager's
+It blocks FIX-2063's default flip and FIX-2129's approval resumes, and stays on FIX-2132: the manager's
 own question holds, but a host's own harness block, judge or hook can still `ctx.suspend`
 ([FIX-2132 D1](../../issues/FIX-2132/DECISIONS.md#d1)).
 
@@ -162,8 +162,8 @@ After the merge (owner, 2026-10-23):
   on `pending` and `in_progress` rows alike, and a status for the pre-start case would make it
   two. Its midway case is the owner's, and joins it.
 - **FIX-2137 joins the set** as a direct-route bug, no spec: a durable resume with trace
-  observability off runs completed steps again. It blocks FIX-2063's default flip and every
-  FIX-2129 resume, and FIX-2132's spec keeps its edge ([who owns what](#who-owns-what)).
+  observability off runs completed steps again. It blocks FIX-2063's default flip and
+  FIX-2129's approval resumes, and FIX-2132's spec keeps its edge ([who owns what](#who-owns-what)).
 - **No old data** (owner, 2026-10-23): "I don't care about old data. For now we will be resetting
   everything." Stores are reset, and nothing persisted before this work is read: no retired-shape
   map entries for parks, no migrated questions, and BP-030's dual-read waived for this epic's
