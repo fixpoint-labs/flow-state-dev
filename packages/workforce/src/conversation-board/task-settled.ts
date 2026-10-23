@@ -16,10 +16,13 @@
  * - **A task whose result goes to the conversation** (`resultTo:
  *   "conversation"`, a routed task among them, FIX-2083) wakes no turn: its
  *   answer lands as a line under the delegate's name. A conversation that
- *   routes messages hands its completion, failure or cancel to its own
- *   handling instead ({@link TaskSettledOptions.onRouted}: the line, and the
- *   rounds it feeds), and acknowledges the notice only once that has run, so a
- *   failure there leaves the answer owed.
+ *   routes messages hands its completion to its own handling instead
+ *   ({@link TaskSettledOptions.onRouted}: the line, and the rounds it feeds),
+ *   and a routed round's failure or cancel too, and acknowledges the notice
+ *   only once that has run, so a failure there leaves the answer owed. A
+ *   failure or cancel of one with no routed brief (a routed task's follow-up,
+ *   FIX-2122) is in no round: it is heard as any task's the conversation
+ *   filed, by the one decision above.
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -267,7 +270,9 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     const brief = routedBriefOf(row);
     // A row with no routed brief (a routed task's follow-up, FIX-2122) is in
     // no round: its answer goes to the routing, which lands it, and its failure
-    // or cancel lands as a line, as any task's the conversation filed does.
+    // or cancel is heard as any task's the conversation filed is: a line, and
+    // the coordinator's turn when its routing runs one (`decideNotice`).
+    const unrouted = brief === undefined && (notice.ending === "errored" || notice.ending === "cancelled");
     const routes = notice.ending === "completed" || (brief !== undefined && (notice.ending === "errored" || notice.ending === "cancelled"));
     if (options.onRouted !== undefined && routes) {
       const routed: RoutedEnding = {
@@ -282,7 +287,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     const first = await noteSeen(ctx, key);
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
-    return { act: "line", text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+    return { act, text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({

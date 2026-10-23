@@ -211,7 +211,8 @@ export function assertFollowUpHasRun(
  * `targetSessionId` and `resultTo` are copied onto it, server-side. Every
  * reader of the row (the start test, the dispatch, the hold on a workstream's
  * session, the ending's delivery) then treats it as its root. A follow-up whose
- * result goes to the conversation has one attempt, as every such task does.
+ * result goes to the conversation has one attempt, as every such task does: a
+ * `maxAttempts` given with it becomes 1.
  * A root filed with none leaves the follow-up with none.
  *
  * @param lookup The board's committed row by id.
