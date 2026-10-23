@@ -263,12 +263,14 @@ export interface CreateFlowStateOptions<
   maxChildSessionListLimit?: number;
 
   /**
-   * Enable durable execution. When `true`, `createFlowState` builds the
-   * default `createCheckpointDurabilityProvider` from its own resolved stores
-   * and installs it on the runtime, so actions marked `durable: true` get
-   * checkpoint-based crash recovery and `ctx.suspend()` HITL suspend/resume.
-   * Requires a persistent store profile for recovery to survive a restart
-   * (in-memory works for a single process). Default: false.
+   * Durable execution for this host (FIX-2063). On by default when the
+   * resolved stores persist (filesystem, SQLite, Postgres): `createFlowState`
+   * builds the default `createCheckpointDurabilityProvider` from its own
+   * resolved stores, so sequencers checkpoint, a crashed request resumes, and
+   * `ctx.suspend()` holds a request until it is answered. Off by default over
+   * in-memory stores, where a suspension would be lost with the process.
+   * `false` opts out; `true` forces it on over in-memory stores too (tests).
+   * The rule is `resolveDurabilityProvider`.
    *
    * Power users needing a custom `DurabilityProvider` should use the
    * lower-level `createFlowApiRouter` (which accepts one via `runtimeConfig`).

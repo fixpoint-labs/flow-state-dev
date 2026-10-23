@@ -122,7 +122,7 @@ Each key in `actions` is a public name. Clients call it with `sendAction("chat",
 | `description` | `string` | — | Required when the action is MCP-exposed. DevTool uses it for tooltips either way. |
 | `userMessage` | `(input) => string` | — | User-visible message recorded for the turn. |
 | `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | What happens if another request on the same key is in flight. See [Concurrency policies](/docs/advanced/concurrency-policies). |
-| `durable` | `boolean` | `false` | Checkpoint at step boundaries and allow `ctx.suspend()`. Needs a host with durable execution, on by default wherever stores persist. |
+| `durable` | `boolean` | `false` | Marks the action durable, so its suspension records and lease are cleared when it completes. Suspending and crash recovery don't need it: they need a host with durable execution (on by default wherever stores persist), and sequencers checkpoint unless they set `durable: false`. |
 | `tokenBudget` | `{ maxTotalTokens, warnAt?, onExceeded? }` | — | Cap tokens for the action. `onExceeded` is `"error"`, `"stop"`, or `"warn"`. |
 | `onCompleted` / `onErrored` | `BlockDefinition` | — | Action-level hooks after the root block finishes or throws. |
 | `mcp` | `ActionMcpConfig` | exposed when the flow enables MCP | Per-action MCP overrides. |

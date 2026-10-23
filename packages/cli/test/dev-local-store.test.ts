@@ -17,7 +17,7 @@ import { executeRunCommand } from "../src/commands/run";
 
 vi.mock("@flow-state-dev/devtool", () => ({ getAssetPath: () => tmpdir() }));
 
-const fixtureDir = resolve(import.meta.dirname, "fixtures-durable");
+const fixtureDir = resolve(import.meta.dirname, "fixtures", "durable");
 
 let workDir: string;
 let originalCwd: string;

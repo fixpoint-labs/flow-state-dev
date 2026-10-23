@@ -1028,8 +1028,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
   // for a user's Approve in Inbox, which needs durable execution: on by
-  // default wherever the Lab's stores persist (FIX-2063).
+  // default wherever the Lab's stores persist (FIX-2063), and asked for below
+  // whenever a worker holds a tool that asks first.
   const rosterTools = chiefOfStaffRosterTools(installation);
+  const asksFirst = new Set(["fire", ...(options.withoutProjectTools === true ? [] : ["createProject", "setRepository"])]);
+  const asksBeforeChanging = workers.some((worker) =>
+    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => asksFirst.has(tool)),
+  );
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the chief of staff runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -1176,6 +1181,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     models: { default: LAB_DEFAULT_MODEL },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
+    // When something can wait for a user: the EM's ask, a worker holding a
+    // tool that asks first, or the Error Reporter. Durable execution is on by
+    // default over persisting stores; this also holds those waits on the
+    // in-memory stores a Lab may be opened with (FIX-2063 D2's opt-in).
+    ...(options.ask === undefined && !asksBeforeChanging && reporter === undefined ? {} : { durable: true }),
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),

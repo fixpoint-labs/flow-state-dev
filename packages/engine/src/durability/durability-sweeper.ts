@@ -476,7 +476,10 @@ async function enforceSuspensionExpiry(
       // resolved it after the list above is never overwritten; a lease held
       // elsewhere leaves it for the next tick. Step 2b continues the turn of an
       // approval expired here (FIX-1846).
-      await expireUnderLease(provider, record, "durability-sweeper");
+      // A lease held elsewhere leaves the gate pending; it stays on the
+      // schedule, so the next tick retries it shortly rather than an
+      // interval later.
+      if ((await expireUnderLease(provider, record, "durability-sweeper")) === "busy") stillPending.push(record);
     }
     if (waitGatesSkipped > 0) {
       logRuntimeEvent(

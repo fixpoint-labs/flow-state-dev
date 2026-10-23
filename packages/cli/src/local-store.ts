@@ -19,9 +19,9 @@ import { EXIT_INVALID_ARGS } from "./exit-codes";
 export type LocalStoreKind = "sqlite" | "filesystem";
 
 /** Where the local stores live, relative to the working directory. */
-export const LOCAL_DATA_DIR = ".fsdev/data";
+const LOCAL_DATA_DIR = ".fsdev/data";
 /** The SQLite file `fsdev dev`, `fsdev run` and `fsdev chat` share. */
-export const LOCAL_DB_FILE = `${LOCAL_DATA_DIR}/fsdev.db`;
+const LOCAL_DB_FILE = `${LOCAL_DATA_DIR}/fsdev.db`;
 
 /** Help text for the `--store` flag, the same on every command that takes it. */
 export const STORE_FLAG_HELP =

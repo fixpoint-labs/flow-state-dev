@@ -67,26 +67,26 @@ A run that ends waiting for a person ends with a `suspended` event instead of `f
 | `suspended` | The action stopped for a person and is waiting for an answer. The exit code is 0 |
 | `error` | The action failed |
 
-**When a run waits for a person:**
+#### When a run waits for a person
 
-A flow that stops for a person (`ctx.suspend()`, an approval, a question) doesn't fail the run. The request is held in the store, and `fsdev run` exits 0 and prints a waiting report on stderr:
+A flow that pauses for a person (`ctx.suspend()`, an approval, a question) doesn't fail the run. The paused request is held in the store, and `fsdev run` exits 0 and prints a waiting report on stderr:
 
 ```text
 [fsdev] waiting for a person: Publish "Q3 notes"?
-[fsdev]   stop susp_... · request req_... · session sess_...
+[fsdev]   suspension susp_... · request req_... · session sess_...
 [fsdev]   Answer it in fsdev dev, which reads this store: .fsdev/data/fsdev.db (SQLite).
 [fsdev]   Its deadline fires only while a server runs on this store.
 ```
 
-The same stop is in `--capture` as `result.suspended`. Answer it from the DevTool's Suspensions tab in `fsdev dev`, started in the same folder, or through the resume route. `fsdev run` itself runs no sweeper, so a stop's deadline passes unnoticed until a server runs on the same store. A server that starts after a deadline has passed expires that stop as soon as it is up.
+The same suspension is in `--capture` as `result.suspended`. Answer it from the DevTool's Suspensions tab in `fsdev dev`, started in the same folder, or through the resume route. `fsdev run` itself runs no sweeper, so a suspension's deadline passes unnoticed until a server runs on the same store. A server that starts after a deadline has passed expires that suspension as soon as it is up.
 
-With an app config, the stop is held in the app's stores and is answered by a server on them, such as `fsdev dev` with the same config.
+With an app config, the suspension is held in the app's stores and is answered by a server on them, such as `fsdev dev` with the same config.
 
-**Where a run keeps its data:**
+#### Where a run keeps its data
 
-Without a config, `fsdev run` writes to `.fsdev/data/fsdev.db` in the working directory, the SQLite file `fsdev dev` and `fsdev chat` use, as the user the DevTool lists sessions for. A stop a run leaves is listed by the `fsdev dev` you start in the same folder. SQLite lets a run write while `fsdev dev` is running; under heavy load, a run can briefly wait on the dev server's writes. Read a run's state through `fsdev dev`'s routes or from the SQLite file. `--capture` holds the command, its events and its result, not session or resource state.
+Without a config, `fsdev run` writes to `.fsdev/data/fsdev.db` in the working directory, the SQLite file `fsdev dev` and `fsdev chat` use, as the user the DevTool lists sessions for. A request a run left paused is listed by the `fsdev dev` you start in the same folder. SQLite lets a run write while `fsdev dev` is running; under heavy load, a run can briefly wait on the dev server's writes. Read a run's state through `fsdev dev`'s routes or from the SQLite file. `--capture` holds the command, its events and its result, not session or resource state.
 
-`--store filesystem` keeps the run's state as JSON files under `.fsdev/data` instead. That store is single-process: don't run `fsdev run` and `fsdev dev` on it at the same time. A stop held there is answered by a `fsdev dev --store filesystem` started after the run exits. Sessions written to it are not visible to the SQLite default, and the other way round.
+`--store filesystem` keeps the run's state as JSON files under `.fsdev/data` instead. That store is single-process: don't run `fsdev run` and `fsdev dev` on it at the same time. A suspension held there is answered by a `fsdev dev --store filesystem` started after the run exits. Sessions written to it are not visible to the SQLite default, and the other way round.
 
 **Session reuse:**
 
@@ -126,7 +126,7 @@ fsdev dev
 
 **Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets). With `--app` it's optional.
 
-Without a config, the server discovers flows, registers them in an in-memory flow registry, opens the SQLite store at `.fsdev/data/fsdev.db` (the one `fsdev run` writes to), and starts listening. It has durable execution, so a stop is held and answered from the DevTool, and its sweeper fires stop deadlines. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
+Without a config, the server discovers flows, registers them in an in-memory flow registry, opens the SQLite store at `.fsdev/data/fsdev.db` (the one `fsdev run` writes to), and starts listening. It has durable execution, so a paused request is held and answered from the DevTool, and its sweeper fires suspension deadlines. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
 
 A non-loopback `--host` needs a config, so its flows' authentication can be checked. On such a host the debug surface the DevTool's Resources panel reads stays closed.
 

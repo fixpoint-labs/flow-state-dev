@@ -649,7 +649,7 @@ function describeHeldStop(stop: RunSuspension): string {
   const what = stop.message ?? stop.title ?? stop.reason;
   return (
     `[fsdev] waiting for a person: ${what}\n` +
-    `[fsdev]   stop ${stop.suspensionId} · request ${stop.requestId} · session ${stop.sessionId}\n` +
+    `[fsdev]   suspension ${stop.suspensionId} · request ${stop.requestId} · session ${stop.sessionId}\n` +
     `[fsdev]   ${stop.answer}\n` +
     `[fsdev]   Its deadline fires only while a server runs on this store.\n`
   );

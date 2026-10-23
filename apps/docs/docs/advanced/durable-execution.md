@@ -8,7 +8,7 @@ Long-running flows have two failure modes worth planning for. The first is crash
 
 Durable execution addresses both. The runtime checkpoints sequencer state at every step boundary and stores suspension records when a block explicitly pauses for external input. A resume endpoint re-invokes the original action, restores state from the checkpoint, skips already-completed steps, and runs the suspended step again — this time returning the resume data instead of suspending.
 
-Durable execution is on by default wherever your stores persist: filesystem, SQLite and Postgres. It isn't free. Every sequencer writes a checkpoint at each step, a request that crashed resumes instead of rerunning, and a sweeper reads the store on a schedule even when nothing waits. For short-lived sequencers without approval gates, opt out per sequencer with `durable: false`, or for the whole app with `durable: false` on `createFlowState`.
+Durable execution is on by default wherever your stores persist: filesystem, SQLite and Postgres. It isn't free: every sequencer writes a checkpoint at each step, and a sweeper reads the store on a schedule even when nothing waits. For short-lived sequencers without approval gates, opt out per sequencer with `durable: false`, or for the whole app with `durable: false` on `createFlowState`.
 
 ## Enabling durability
 
@@ -25,7 +25,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-`createFlowState` builds the checkpoint provider from the active profile's stores (`checkpoints`, `suspensions`, `leases`), so sequencers checkpoint and `ctx.suspend()` holds a stop until someone answers it, across a restart. `fsdev dev` and `fsdev run` with no config get the same default over their local SQLite file. See [the CLI reference](/docs/api/cli#fsdev-run).
+`createFlowState` builds the checkpoint provider from the active profile's stores (`checkpoints`, `suspensions`, `leases`), so sequencers checkpoint and a request paused by `ctx.suspend()` is held until someone answers it, across a restart. `fsdev dev` and `fsdev run` with no config get the same default over their local SQLite file. See [the CLI reference](/docs/api/cli#when-a-run-waits-for-a-person).
 
 The `durable` option on `createFlowState` is the host setting:
 
@@ -35,15 +35,15 @@ The `durable` option on `createFlowState` is the host setting:
 | `false` | off | off |
 | `true` | on | on |
 
-In-memory stores are off by default because a stop held there is lost, without a word, when the process ends. Tests that want stops held in memory set `durable: true`.
+In-memory stores are off by default because a suspension held there is lost, without a word, when the process ends. Tests that want suspensions held in memory set `durable: true`.
 
-This is the host's setting, not an action's or a sequencer's. `durable` on an action or a sequencer says whether that piece takes part, and it means nothing on a host without durable execution. Turning the host on doesn't make an action durable that sets `durable: false`.
+`durable` on `createFlowState` is the host's setting. `durable` on a sequencer decides whether that sequencer checkpoints, and has no effect on a host without durable execution. An action doesn't need `durable: true` to suspend: on a durable host, any block can call `ctx.suspend()`.
 
-A host without durable execution refuses a stop at the stop: `ctx.suspend()` throws an error that names the rule and the setting to change, and the request fails. Nothing is held.
+On a host without durable execution, `ctx.suspend()` throws an error that names the setting to change, and the request fails. Nothing is held.
 
 ### Which hosts sweep
 
-The sweeper (see [Retention and cleanup](#retention-and-cleanup)) runs in a process that serves the routes: `fsdev dev`, `fsdev serve`, a self-hosted server, `createFlowApiRouter`. That is what fires a stop's deadline. A one-shot command such as `fsdev run` sweeps nothing. It holds the stop, exits, and leaves the deadline to whichever server runs on the same store next.
+The sweeper (see [Retention and cleanup](#retention-and-cleanup)) runs in a process that serves the routes: `fsdev dev`, `fsdev serve`, a self-hosted server, `createFlowApiRouter`. That is what fires a suspension's deadline. A one-shot command such as `fsdev run` sweeps nothing. It leaves the paused request in the store, exits, and leaves the deadline to whichever server runs on the same store next.
 
 ### A router you build yourself
 
@@ -328,7 +328,7 @@ A run started in the background, dispatched to a separate process with no browse
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a stop's deadline falls due. It reads the deadlines in the store when it starts, so a stop `fsdev run` left behind expires on time once a server runs. A stop another process writes while the server runs is seen at the next tick.
+Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a suspension's deadline falls due. It reads the deadlines in the store when it starts, so a suspension `fsdev run` left behind expires on time once a server runs. A suspension another process writes while the server runs is seen at the next tick.
 
 ```ts
 export const flowstate = createFlowState({

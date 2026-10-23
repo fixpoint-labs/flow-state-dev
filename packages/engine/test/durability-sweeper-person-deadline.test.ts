@@ -66,6 +66,26 @@ describe("durability sweeper: a person's deadline", () => {
     expect(status).toBe("expired");
   });
 
+  it("retries an overdue approval shortly when another holder had its lease, not an interval later", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider(stores);
+    await provider.suspend(approval("c", Date.now() - 100));
+    // Held past the first retry tick (5 s), released well before the interval.
+    await provider.acquireLease("req_c", { holder: "someone-else", durationMs: 6_500 });
+
+    const sweeper = createDurabilitySweeper({
+      provider,
+      stores,
+      retention: { sweepIntervalMs: 600_000 },
+      prune: false,
+      continueRequest: (async () => ({ finished: Promise.resolve() })) as never
+    });
+    disposers.push(() => sweeper.dispose());
+
+    const status = await statusWithin(async () => (await provider.loadSuspension("req_c", "c"))?.status, 14_000);
+    expect(status).toBe("expired");
+  }, 20_000);
+
   it("OFF STATE: an approval with no deadline stays pending", async () => {
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider(stores);

@@ -68,7 +68,7 @@ const intake = defineErrorReporterIntakeFlow({ reporter });
 
 const flowState = createFlowState({
   flows: { /* your flows, the hired copies, and the intake */ },
-  durable: true, // the preview waits for an answer; on by default once your stores persist
+  durable: true, // needed with in-memory stores; on by default over persisting stores
   errorCapture: reporter.capture,
 });
 

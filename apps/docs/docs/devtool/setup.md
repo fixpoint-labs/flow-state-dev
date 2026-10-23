@@ -123,7 +123,7 @@ OPENAI_API_KEY=sk-...
 
 ## Data persistence
 
-By default, session data persists to a SQLite file, `.fsdev/data/fsdev.db`, relative to your working directory. `fsdev run` and `fsdev chat` without a config write to the same file as the same default user, so a stop a terminal run leaves shows up here to answer. Delete the directory to start fresh. It is created automatically on first use.
+By default, session data persists to a SQLite file, `.fsdev/data/fsdev.db`, relative to your working directory. `fsdev run` and `fsdev chat` without a config write to the same file as the same default user, so a run from `fsdev run` that paused for approval shows up here to answer. Delete the directory to start fresh. It is created automatically on first use.
 
 Pass `--store filesystem` to keep the data as JSON files under `.fsdev/data` instead. That store is single-process, so don't run `fsdev run` on it while `fsdev dev` is up.
 

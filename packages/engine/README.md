@@ -1072,9 +1072,11 @@ By default the final checkpoint is retained after terminal completion (success /
 
 `DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume.
 
-**On by default wherever stores persist.** `createFlowState` installs the checkpoint provider over its active profile's stores unless `durable: false`. Over in-memory stores it installs none unless `durable: true`, because a stop held there is lost when the process ends: the in-memory checkpoint and suspension stores say `persists: false`, and a custom store that leaves `persists` unset is treated as persisting. `resolveDurabilityProvider({ stores, durable })` is that rule, for a host that builds its own `createFlowApiRouter` or calls `runAction`; those take a provider only through `RuntimeConfig.durabilityProvider`. Without one, `ctx.suspend()` throws, naming the rule and the setting, and the request fails.
+**On by default wherever stores persist.** `createFlowState` installs the checkpoint provider over its active profile's stores unless `durable: false`. Over in-memory stores it installs none unless `durable: true`, because a suspension held there is lost when the process ends. `resolveDurabilityProvider({ stores, durable })` is that rule, for a host that builds its own `createFlowApiRouter` or calls `runAction`; those take a provider only through `RuntimeConfig.durabilityProvider`. Without one, `ctx.suspend()` throws an error that names the setting to change, and the request fails.
 
-The sweeper runs only where a router is built. It arms for the earliest deadline among pending stops and waits, and reads the store's deadlines once at start, so a stop a one-shot process left is expired at its deadline once a server runs on the store.
+For store authors: `CheckpointStore` and `SuspensionStore` take an optional `persists` field. Set it to `false` on a store that keeps nothing past the process, as the in-memory stores do. Leave it unset on a store that persists.
+
+The sweeper runs in a server process (`fsdev dev`, `fsdev serve`, your own router). A suspension a one-shot process left behind expires at its deadline once a server runs on the same store.
 
 ```ts
 import { createCheckpointDurabilityProvider } from "@flow-state-dev/engine";

@@ -116,7 +116,7 @@ Event types:
 
 #### When a run waits for a person
 
-A flow that stops for a person is held, not failed. Without a config, the run writes to `.fsdev/data/fsdev.db` as `devuser`, the same file and user `fsdev dev` uses, so the stop is listed and answered in the DevTool after the run exits. `fsdev run` exits 0 with a `suspended` event on stdout, `result.suspended` in `--capture`, and a waiting report on stderr naming the stop's id and where to answer it. `fsdev run` runs no sweeper: the stop's deadline fires only while a server runs on the same store.
+A request that pauses for a person is held, not failed. Without a config, the run writes to `.fsdev/data/fsdev.db` as `devuser`, the same file and user `fsdev dev` uses, so the suspension is listed and answered in the DevTool after the run exits. `fsdev run` exits 0 with a `suspended` event on stdout, `result.suspended` in `--capture`, and a waiting report on stderr naming the suspension's id and where to answer it. `fsdev run` runs no sweeper: the suspension's deadline fires only while a server runs on the same store.
 
 #### Session reuse
 

@@ -19,7 +19,7 @@ import { executeRunCommand } from "../src/commands/run";
 import { CliError } from "../src/resolve-block";
 import { EXIT_INVALID_ARGS } from "../src/exit-codes";
 
-const fixtureDir = resolve(import.meta.dirname, "fixtures-durable");
+const fixtureDir = resolve(import.meta.dirname, "fixtures", "durable");
 const configDir = resolve(import.meta.dirname, "fixtures-config", "app");
 
 let workDir: string;

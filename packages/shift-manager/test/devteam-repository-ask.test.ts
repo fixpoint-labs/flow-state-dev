@@ -17,7 +17,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FlowInstance, GeneratorModel, ModelResolver, SuspensionRecord } from "@flow-state-dev/core/types";
-import { filesystemStores, runAction } from "@flow-state-dev/engine";
+import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -69,8 +69,7 @@ async function open(): Promise<Lab> {
   const harness = selectHarness();
   opened = await openLab({
     modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
-    // Persisting stores, so the Lab is durable by default and its asks are held (FIX-2063).
-    stores: filesystemStores({ rootDir: mkdtempSync(join(tmpdir(), "sm-repo-ask-")), developmentOnly: true }),
+    stores: inMemoryStores(),
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-repository-ask-")), remotes: { allow: ["file"] } },
