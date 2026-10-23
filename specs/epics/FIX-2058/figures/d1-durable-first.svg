@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what stops for a person on a host without durable execution. Chosen: durable execution by default comes first, and no park is kept. Instead of: keeping the parks as a fallback on hosts without durability. It comes down to the first row: a fallback keeps two forms of one job, the thing this epic removes, while the chosen option leaves one. The price is the second row: a host without durable execution, such as serverless, can't ask for an approval or a review and refuses loudly, where the fallback still asks there; a question still holds its task on any host. The third row: dev, local and self-hosted hosts stop for a person either way, the chosen option through FIX-2063's default. Locks in: FIX-2063 blocks every child, and the kill line. Flips if: FIX-2063 can't make durability the default on those hosts; then we stop before the review park is retired."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what stops for a person on a host without durable execution. Chosen: durable execution by default comes first, and no park is kept. Instead of: keeping the parks as a fallback on hosts without durability. It comes down to the first row: a fallback keeps two forms of one job, the thing this epic removes, while the chosen option leaves one. The price is the second row: a host without durable execution, such as serverless, can't ask for an approval or a review and refuses loudly, where the fallback still asks there; a question still holds its task on any host. The third row: dev, local and self-hosted hosts stop for a person either way, the chosen option through FIX-2063's default. Locks in: FIX-2063 blocks every child that suspends, and the kill line. Flips if: FIX-2063 can't make durability the default on those hosts; then we stop before the review park is retired."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -89,7 +89,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">FIX-2063 blocks every child</text>
+    <text class="t-b" x="32" y="371">FIX-2063 blocks every child that suspends</text>
     <text class="t-s" x="32" y="389">and the kill line: no default, the review park stays</text>
   </g>
 

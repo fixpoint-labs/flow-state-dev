@@ -93,8 +93,8 @@ The reviewed snapshot; live state is in Linear. FIX-2056 blocks every child too.
 | [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a stop loudly. Stays in Developer Tools | FIX-2137, for the default flip |
 | [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a stop holds its task and resumes once | `waitForUser`, kinds approval, review and input; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063; FIX-2137, for approval resumes |
 | [FIX-2131](https://linear.app/fixpoint-labs/issue/FIX-2131) · questions and reviews | A review suspends; a midway question holds its task ([ER-8](DECISIONS.md#who-owns-what)); retires both parks, `answerTask`, `unparkAndDrain`; a steer answers a question; the Inbox lists both | FIX-2063, FIX-2129, FIX-2133 |
-| [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The question holds its task; the answer, a steer, starts the next run in the same coding session; the harness inbox goes; LAB-162's park is superseded | FIX-2129, FIX-2133, FIX-2137 |
-| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | The hold, one row predicate before start and midway: the claim gate refuses the row, it can't settle, one item, the last answer or the deadline releases it | FIX-2063, FIX-2129 |
+| [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The question holds its task; the answer, a steer, starts the next run in the same coding session; the harness inbox goes; LAB-162's park is superseded | FIX-2133, FIX-2137 |
+| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | The hold, one row predicate before start and midway: the claim gate refuses the row, it can't settle, one item, the last answer or the deadline releases it | — |
 | [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137) · a durable resume runs completed steps again · bug | A durable resume with trace observability off no longer runs its completed steps again. Direct route: no spec, a fix PR | — |
 | [FIX-2134](https://linear.app/fixpoint-labs/issue/FIX-2134) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
@@ -113,7 +113,7 @@ flowchart LR
   K -->|"a resume that runs once"| E
   A["FIX-2063 · durable by default"] -->|"durable stops and the sweeper"| B["FIX-2129 · a stop holds its task and resumes once"]
   B -->|"the person mark, the answer route"| D["FIX-2131 · questions and reviews"]
-  B -->|"the answer route"| G["FIX-2133 · held on questions"]
+  I -.-> G["FIX-2133 · held on questions"]
   G -->|"the hold"| D
   G -->|"the hold"| E["FIX-2132 · a coding run's question"]
   A --> P["FIX-2134 · closure · required"]
@@ -124,9 +124,9 @@ flowchart LR
   G --> P
 ```
 
-An edge is what one issue hands the next; the dashed input is consumed, not owned. FIX-2063 and
-FIX-2056 block every child, drawn once through FIX-2129; after it, FIX-2133's hold comes before the
-two that ask a question midway.
+An edge is what one issue hands the next; the dashed input is consumed, not owned. FIX-2056 blocks
+every child, drawn into the two that start first. FIX-2063 blocks the two that suspend; FIX-2133's
+hold needs neither it nor FIX-2129, and comes before the two that ask a question midway.
 
 ## What stays as it is
 
