@@ -248,6 +248,7 @@ export const RECORDERS = {
  * Collection wrappers: functions that build a task collection over another one and hand its
  * `complete` or `fail` on (a bound method, or a method picked by name). Not recorders: the
  * wrapper is itself a collection, so every call of its `complete` or `fail` is read in its place.
+ * Only the forwarding shapes are exempt; a direct `complete()`/`fail()` call inside one is a finding.
  * Keyed like {@link RECORDERS}.
  */
 export const FORWARDERS = {

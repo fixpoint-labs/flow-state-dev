@@ -37,15 +37,17 @@ function plantsOf(root) {
   const anchor = "  const createTask = defineTool({";
   if (!capability.includes(anchor) || !capability.includes("const defineTool = ")) throw new Error(`the control can't plant: ${CAPABILITY} has no \`${anchor.trim()}\``);
   // A copy of the capability with its local alias renamed, a sixth tool built with it, one with a
-  // template name, and two tools imported from sibling files: one through a renamed import of
-  // `handler`, one through a namespace import.
+  // template name, two built as a sequencer and a generator under renamed imports, and two tools
+  // imported from sibling files: one through a renamed import of `handler`, one through a
+  // namespace import.
   const copy =
     'import { nudge } from "./__planted_side_tool__";\nimport { prod } from "./__planted_namespace_tool__";\n' +
+    'import { sequencer as seq2, generator as gen2 } from "@flow-state-dev/core";\nexport const seqTask = seq2({ name: "seqTask" } as any);\nexport const genTask = gen2({ name: "genTask" } as any);\n' +
     capability
       .replace(anchor, '  const poke = defineTool({ name: named("pokeTask"), description: "Poke a task." } as any);\n  const twice = defineTool({ name: `poke${"Twice"}` } as any);\n' + anchor)
       .replaceAll("defineTool", "makeTool");
   return [
-    { rule: "tools", path: "packages/orchestration/src/skills/__planted_capability__.ts", text: copy, expect: 2 },
+    { rule: "tools", path: "packages/orchestration/src/skills/__planted_capability__.ts", text: copy, expect: 4 },
     {
       rule: "tools",
       path: "packages/orchestration/src/skills/__planted_side_tool__.ts",
@@ -96,6 +98,17 @@ function plantsOf(root) {
       path: "packages/workforce/src/__planted_call__.ts",
       text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, id: string) {\n  await rows.complete.call(rows, id, 1);\n}\n",
     },
+    forwarderPlant(root),
+    {
+      rule: "endings",
+      path: "packages/orchestration/src/__planted_bound_helper__.ts",
+      text: 'import * as writes from "./tasks/collection/advisory-write-back";\nconst { advisoryFail: f } = writes;\nexport async function flop2(ref: any, id: string) {\n  await f(ref, id, "no");\n}\n',
+    },
+    {
+      rule: "endings",
+      path: "packages/orchestration/src/__planted_passed_helper__.ts",
+      text: 'import { advisoryComplete } from "./tasks/collection/advisory-write-back";\nexport async function later(run: (...a: any[]) => Promise<unknown>, ref: any, id: string) {\n  await run(ref, id, "ok");\n}\nexport const go = (ref: any, id: string) => later(advisoryComplete, ref, id);\n',
+    },
     {
       // A second function named like a recorder: its write would be read as the recorder's.
       rule: "endings",
@@ -110,6 +123,15 @@ function plantsOf(root) {
  * The floor's control: the real capability with `createTask` built by something other than
  * `handler`. The tools rule then can't read an allowed name, and must say it can't tell.
  */
+/** A direct write planted inside a collection wrapper: only its forwarding is exempt, so this is reported. */
+const BOARD = "packages/workforce/src/conversation-board/board.ts";
+function forwarderPlant(root) {
+  const board = readFileSync(join(root, BOARD), "utf8");
+  const anchor = "    const ending =\n      (write:";
+  if (!board.includes(anchor)) throw new Error(`the control can't plant: ${BOARD} has no \`const ending =\` in guarded`);
+  return { rule: "endings", path: BOARD, text: board.replace(anchor, '    void ref.fail("planted", "a direct write in a forwarder");\n' + anchor) };
+}
+
 function floorPlant(root) {
   const capability = readFileSync(join(root, CAPABILITY), "utf8");
   const anchor = "const createTask = defineTool({";

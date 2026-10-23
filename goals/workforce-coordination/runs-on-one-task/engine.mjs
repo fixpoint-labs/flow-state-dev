@@ -123,20 +123,23 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   const lineText = (sf, node) => sf.text.split("\n")[lineOf(sf, node) - 1] ?? "";
 
   // ---- tools · every task tool the capability declares --------------------------------------
-  // A tool is a call of core's `handler`, read by symbol, not by spelling: an import under any
+  // A tool is a call of one of core's block builders (`handler`, `generator`, `sequencer`,
+  // `router`, `evaluator`), read by symbol, not by spelling: an import under any
   // name, a namespace member, a local alias (the capability's own `defineTool`) and a
   // `.withDefaults(...)` result all resolve to it. The calls read are those in the file that
   // defines `createTaskToolsCapability` and in every file it imports, transitively, from its own
-  // directory, so a tool built in a sibling file and imported is read too. (A tool imported from
-  // another directory of the package is not read: the task board's own handler blocks live there
-  // and aren't tools.) Every allowed name must be read, or the rule stopped reading and the sweep
+  // directory (not its subdirectories), so a tool built in a sibling file and imported is read
+  // too. (A tool imported from another directory of the package is not read: the task board's
+  // own handler blocks live there and aren't tools.) Every allowed name must be read, or the rule stopped reading and the sweep
   // can't tell (`cantTell`).
   const cantTell = [];
   const resolveAlias = (sym) => (sym && sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym);
   const symbolOf = (expr) => resolveAlias(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
-  const CORE_HANDLER = /\/packages\/core\/(src|dist)\/blocks\/handler\.(d\.)?ts$/;
+  // Any of core's five block builders: a generator's tool is any block (`GeneratorTool`).
+  const CORE_BUILDER = /\/packages\/core\/(src|dist)\/blocks\/(handler|generator|sequencer|router|evaluator)\.(d\.)?ts$/;
+  const BUILDERS = ["handler", "generator", "sequencer", "router", "evaluator"];
   const isCoreHandler = (sym) =>
-    (sym?.declarations ?? []).some((d) => CORE_HANDLER.test(d.getSourceFile().fileName) && (ts.isFunctionDeclaration(d) || ts.isModuleDeclaration(d)) && d.name?.text === "handler");
+    (sym?.declarations ?? []).some((d) => CORE_BUILDER.test(d.getSourceFile().fileName) && (ts.isFunctionDeclaration(d) || ts.isModuleDeclaration(d)) && BUILDERS.includes(d.name?.text));
   /** Whether `expr` is core's `handler`, through aliases, local variables, conditionals and `.withDefaults`. */
   const buildsTool = (expr, depth = 0) => {
     if (expr === undefined || depth > 8) return false;
@@ -298,8 +301,29 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
         const via = passThroughOf(d.initializer, depth + 1);
         if (via !== undefined) return via;
       }
+      // `const { advisoryFail: f } = writes`: the property the binding reads.
+      if (ts.isBindingElement(d)) {
+        const prop = d.propertyName ?? d.name;
+        if (ts.isIdentifier(prop)) {
+          const via = (resolveAlias(checker.getSymbolAtLocation(prop))?.declarations ?? []).find(
+            (x) => ts.isFunctionDeclaration(x) && x.name && PASS_THROUGHS.includes(x.name.text) && packageOf(rel(x.getSourceFile())) === "orchestration",
+          );
+          if (via !== undefined) return via.name.text;
+        }
+      }
     }
     return undefined;
+  };
+  /** Whether `node` names a pass-through as a value (handed on, not called): not a callee, a declaration, an import or a type. */
+  const passedOn = (node) => {
+    const p = node.parent;
+    if (ts.isIdentifier(node) && ts.isPropertyAccessExpression(p) && p.name === node) return false;
+    if (ts.isCallExpression(p) && p.expression === node) return false;
+    if (ts.isPropertyAccessExpression(p) && p.expression === node && ["call", "apply", "bind"].includes(p.name.text)) return false;
+    if (ts.isVariableDeclaration(p) && (p.initializer === node || p.name === node)) return false;
+    if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isBindingElement(p) || ts.isTypeQueryNode(p)) return false;
+    if ((ts.isFunctionDeclaration(p) || ts.isParameter(p)) && p.name === node) return false;
+    return true;
   };
   const ENDS = ["complete", "fail"];
   const onCollection = (receiver, name) => isCollection(checker.getTypeAtLocation(receiver)) || (name !== undefined && declaredOnCollection(name));
@@ -308,13 +332,20 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     const path = rel(sf);
     const visit = (node) => {
       let ending;
+      // The shapes that hand a collection's write on rather than make it: a `.bind`/`.call`/`.apply`
+      // receiver, an element access by a non-literal key, a property access not called directly.
+      let forwards = false;
       // A collection's complete or fail, read in any shape: called, `.call`/`.bind`, passed on,
       // by element access, or destructured.
       if (ts.isPropertyAccessExpression(node) && ENDS.includes(node.name.text) && onCollection(node.expression, node.name)) {
         ending = `${node.getText(sf)}`;
+        forwards = !(ts.isCallExpression(node.parent) && node.parent.expression === node);
       } else if (ts.isElementAccessExpression(node) && isCollection(checker.getTypeAtLocation(node.expression))) {
         const arg = node.argumentExpression;
         if (!ts.isStringLiteralLike(arg) || ENDS.includes(arg.text)) ending = `${node.getText(sf)} (element access)`;
+        forwards = !ts.isStringLiteralLike(arg);
+      } else if ((ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) && passedOn(node) && passThroughOf(node) !== undefined) {
+        ending = `${node.getText(sf)} (${passThroughOf(node)}, handed on as a value)`;
       } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
         const prop = (node.propertyName ?? node.name).getText(sf);
         if (ENDS.includes(prop) && isCollection(checker.getTypeAtLocation(node.parent))) ending = `${prop} destructured from a task collection`;
@@ -345,8 +376,9 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
         scanned.endings++;
         if (key.startsWith("orchestration:") && PASS_THROUGHS.includes(fn)) {
           // The helper's own write: its callers are read in its place.
-        } else if (key in FORWARDERS) {
-          // A collection wrapper handing its own complete or fail on: its callers are read in its place.
+        } else if (key in FORWARDERS && forwards) {
+          // A collection wrapper handing its own complete or fail on: its callers are read in its
+          // place. A direct write inside it is still a finding.
         } else if (key in RECORDERS) {
           recorders[key] = (recorders[key] ?? 0) + 1;
         } else if (!isMarked(lineText(sf, node))) {

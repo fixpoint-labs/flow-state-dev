@@ -30,7 +30,7 @@
 
 - `GOAL_CONTROL=no-sweeper-payment` (FIX-2078's, imported from its goal's `controls.mts`) must FAIL **`b:hears-in-due-time`**.
 - `GOAL_CONTROL=no-cascade` (FIX-2080's, imported from its goal's `controls.mts`) must FAIL **`c:dependent-cancelled`**.
-- `node sweep.mjs --control` plants tools built through a renamed local alias, a template name, a renamed `handler` import and a namespace import in sibling files; a removed name; endings through a renamed variable, a claim-passing cancel, a renamed and a namespace pass-through, destructuring, element access and `.call`; and a second function named like a recorder. It must report exactly those, and say it can't tell when the real capability's `createTask` isn't built with `handler`. `node sweep.mjs --at <commit>` sweeps another commit's tree: today's `main` before the epic must FAIL.
+- `node sweep.mjs --control` plants tools built through a renamed local alias, a template name, a sequencer and a generator under renamed imports, and a renamed `handler` import and a namespace import in sibling files; a removed name; endings through a renamed variable, a claim-passing cancel, a renamed, a namespace, a destructured and a passed-on pass-through, destructuring, element access and `.call`, and a direct write inside a collection wrapper; and a second function named like a recorder. It must report exactly those, and say it can't tell when the real capability's `createTask` isn't built with `handler`. `node sweep.mjs --at <commit>` sweeps another commit's tree: today's `main` before the epic must FAIL.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
