@@ -57,9 +57,11 @@ coding runs of its own.
 ## Decided, not asked
 
 - **The hook is the session hook's twin, in core.** `HarnessUsageHook` takes a report (the
-  harness's name, one `HarnessUsageWindow`, and when it was observed) and the run's context. It
-  names no vendor and no Workforce idea. The report names its harness, so the manager's feed
-  writes under `claude-code` without knowing which harness sits in its slot.
+  harness's name, one `HarnessUsageWindow`, when it was observed, and the account id the run is
+  signed in as, or `null`) and the run's context. It names no vendor and no Workforce idea. The
+  report names its harness, so the manager's feed writes under `claude-code` without knowing which
+  harness sits in its slot. `claudeCodeAgent` asks its own running query for `accountInfo()` once,
+  at the first event (no extra process), so a run's windows are bound to the account that sent them.
 - **Only the run owner's row.** The feed writes through the run's own context, so the
   `user`-scoped row is the principal that drained the task (or, on the session door, the person
   talking). It never lists or writes another person's row, as FIX-2141 D1 requires; another
@@ -78,14 +80,21 @@ coding runs of its own.
   that build it (the manager and the door, which stubs `onSession` today); the Lab's own
   `HarnessFeeds` is a superset of it. `onUsage` stays out of `claudeCodeAgent`'s in-session-only
   guard: it owns no continuity, so it races nothing.
-- **A read keeps what runs wrote, while the account is unchanged.** A full reading replaces its
-  own windows and keeps `run` windows it doesn't name. "Unchanged" includes a stored account that
-  was never read (`null`) and a reading with no account id: both adopt and keep. Only a different
-  non-null hash, or a no-number status, clears them, as FIX-2141's leg h requires. Codex has no
-  `run` windows, so nothing changes for it.
+- **Windows belong to one account at a time.** A run write or a full reading whose account hash
+  differs from the stored non-null one replaces the record's account and clears every window the
+  new account didn't send; so a sign-in change shows no old account's percent, whether a run or a
+  look notices it first. A stored account that was never read (`null`) adopts the incoming one and
+  keeps its windows. A reading with no account keeps the stored one. A full reading replaces its
+  own windows and keeps `run` windows it doesn't name while the account matches; a no-number status
+  clears them all, as FIX-2141's leg h requires. Codex has no `run` windows, so nothing changes for
+  it.
+- **A token-only sign-in has no account id.** `probeClaudeAccount` can answer with a token source
+  and no email; the run's `accountInfo()` gives the same. Then the account is `null`, and a move
+  between two token-only accounts isn't seen as a change: their windows age and roll over instead.
+  A named limit, not a guess at an identity.
 - **Claude's account comes from the existing probe.** `readClaudeUsage` (in `claude-code`) maps
   `probeClaudeAccount`: a key source is `api-key`; a sign-in or an OAuth token source is `windows`
-  with the email as the account id (hashed by the writer, never stored) and the plan, and no
+  with the email, when there is one, as the account id (hashed by the writer, never stored) and the plan, and no
   windows; `none` is `signed-out`; `sdk-missing` is `unavailable`. FIX-2141's throttle and
   timeout apply.
 - **What maps, and the units.** `rateLimitType` is the window id; `five_hour` is 300 minutes and
@@ -129,6 +138,11 @@ coding runs of its own.
   and pinned five things now in *Decided, not asked*: the collection installed on the manager and
   the door, the one-window form inside the one writer, the run write leaving the record clock
   alone, a `null` account adopting rather than clearing, and the newer window winning a shared id.
+
+- **Review round 1** — Codex showed that a run's windows had no account, so a sign-in change
+  before the next look left one account's percent beside another's; the hook now carries the
+  run's account from its own `accountInfo()`, and the token-only case is a named limit. It also
+  added the session door's talk to the goal check's ownership leg. Cursor's notes are below.
 
 ## Notes from review
 
