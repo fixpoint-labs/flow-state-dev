@@ -364,3 +364,63 @@ describe("a task session's turn that waits on a task it filed (FIX-2082)", { tim
     }
   });
 });
+
+describe("a wait beside the notice turn of the task it waits on (FIX-2123)", { timeout: 30_000 }, () => {
+  it("answers that the task's ending arrives as a notice, and the conversation hears the ending once, from that notice", async () => {
+    // `respond` holds the conversation's line and never waits, so a second
+    // reply starts beside the notice turn that is already reading the ending.
+    let noticeTurns = 0;
+    let openNotice!: () => void;
+    const noticeHeld = new Promise<void>((resolve) => (openNotice = resolve));
+    let filed: string | undefined;
+    let secondAnswer: string | undefined;
+    const judgment: GeneratorModel = {
+      modelId: "beside-the-notice",
+      async generate() {
+        throw new Error("driven step by step");
+      },
+      async generateStep(options) {
+        const messages = (options.messages ?? []) as Array<{ role: string; content: unknown }>;
+        const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+        const asked = JSON.stringify(messages[lastUser]?.content ?? "");
+        const since = toolResults(messages.slice(lastUser + 1));
+        if (asked.includes("completed by eng.tasker")) {
+          noticeTurns += 1;
+          await noticeHeld;
+          return { text: "Nine laptops, I hear.", finishReason: "stop" };
+        }
+        if (asked.includes("check again")) {
+          if (since === "") return { toolCalls: [{ toolCallId: "w1", toolName: "getTask", args: { id: filed, wait: true } }], finishReason: "tool-calls" };
+          secondAnswer = since;
+          return { text: "Noted.", finishReason: "stop" };
+        }
+        if (since === "") {
+          return { toolCalls: [{ toolCallId: "f1", toolName: "createTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }], finishReason: "tool-calls" };
+        }
+        filed = filedId(since);
+        return { text: "Filed.", finishReason: "stop" };
+      }
+    };
+    const host = await waitingHost(judgment);
+    try {
+      const conv = await host.conversation("alice", "lead");
+      const first = await host.post("alice", conv, "respond", { message: "count laptops" });
+      expect(await until(async () => (await statusOf(host, first)) === "completed")).toBe(true);
+      // The task ends, and its notice turn runs once the filing reply has ended: held open here.
+      expect(await until(() => noticeTurns === 1, 10_000)).toBe(true);
+
+      const second = await host.post("alice", conv, "respond", { message: "check again" });
+      expect(await until(async () => (await statusOf(host, second)) === "completed", 10_000)).toBe(true);
+      expect(secondAnswer).toContain(filed!);
+      expect(secondAnswer).toContain("arriving as a notice");
+      expect(secondAnswer).not.toContain("eng.tasker did");
+
+      openNotice();
+      await host.settled();
+      expect(noticeTurns).toBe(1);
+    } finally {
+      openNotice();
+      await host.dispose();
+    }
+  });
+});

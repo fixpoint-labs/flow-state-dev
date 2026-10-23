@@ -1,0 +1,175 @@
+/**
+ * A task's ending reaches the session that filed it once (FIX-2123): through
+ * the filer's wait, or through `onTaskSettled`, never both.
+ *
+ * - The turn that filed the task is still running: its notice waits for it to
+ *   end, so a wait in that turn reads the ending first and drops the notice.
+ *   On a flow's defaults, where the turn holds no line.
+ * - A turn that never waits hears it from `onTaskSettled`, sent as the turn ends.
+ * - A notice already running (taken) when another turn waits on the task: the
+ *   wait answers that the ending arrives as a notice, and the notice is the one
+ *   delivery.
+ *
+ * Each runs on the in-memory stores and on SQLite.
+ */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import type { FlowInstance, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
+import { inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import type { TaskSettledInput } from "../../src";
+import {
+  fileCall,
+  finalAnswer,
+  rows,
+  runtimeFor,
+  SESSION,
+  stepModel,
+  toolResults,
+  until,
+  USER,
+  waitAgain,
+  waitCall,
+  waitFlow,
+  waitedTaskId
+} from "./wait-fixture";
+
+const dirs: string[] = [];
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+});
+
+const STORES: ReadonlyArray<readonly [string, () => Promise<StoreAdapter>]> = [
+  ["in-memory", async () => inMemoryStores()],
+  [
+    "sqlite",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "fsd-notice-claim-"));
+      dirs.push(dir);
+      return sqliteStores({ filename: join(dir, "store.db") });
+    }
+  ]
+];
+
+/** The notice markers a row still owes (a cleared marker is `null`). */
+function owedMarkers(row: { metadata?: Record<string, unknown> }): string[] {
+  return Object.entries(row.metadata ?? {})
+    .filter(([key, value]) => key.startsWith("noticeOwed:") && value !== null)
+    .map(([key]) => key);
+}
+
+/** Start a turn through the host's dispatch, which applies the action's concurrency. */
+async function startTurn(state: ReturnType<typeof runtimeFor>): Promise<string> {
+  const router = await state.getRouter();
+  const path = ["wait-board", SESSION, "actions", "run"];
+  const sent = await router.POST(
+    new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: USER, input: {} })
+    }),
+    { params: { path } }
+  );
+  expect(sent.status).toBe(202);
+  return ((await sent.json()) as { request: { id: string } }).request.id;
+}
+
+async function eventually(check: () => boolean, withinMs: number): Promise<void> {
+  const deadline = Date.now() + withinMs;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`not within ${withinMs}ms`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {
+  it("on the defaults, the filing turn's wait is the delivery: no onTaskSettled block runs beside it", async () => {
+    // The turn action holds no line and the notice entry queues: the notice is
+    // sent the moment the task ends, while the turn that filed it still runs.
+    const notices: TaskSettledInput[] = [];
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices });
+    const state = runtimeFor(flow, await stores());
+    try {
+      const turn = await startTurn(state);
+      await until(state, turn, "completed", 10_000);
+      expect(toolResults(seen[1]!.messages)).toContain("already done");
+      // Past the notice's due time: the copy sent at the ending, the one sent
+      // as the turn ended and the pass's resend have all had their chance.
+      await settle(2_500);
+      expect(notices).toEqual([]);
+      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("a turn that files a task and never waits on it hears its ending once, from onTaskSettled, as the turn ends", async () => {
+    const notices: TaskSettledInput[] = [];
+    const { model } = stepModel([fileCall("f1"), finalAnswer]);
+    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices });
+    const state = runtimeFor(flow, await stores());
+    try {
+      const turn = await startTurn(state);
+      await until(state, turn, "completed", 10_000);
+      // Sent as the turn ends, not a resend's backoff later.
+      await eventually(() => notices.length > 0, 1_500);
+      expect(notices).toEqual([expect.objectContaining({ ending: "completed", output: "already done" })]);
+      await settle(2_500);
+      expect(notices).toHaveLength(1);
+      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("a wait that finds the notice already running answers that the ending arrives as a notice, and the notice is heard once", async () => {
+    // As in a Workforce session: the turn holds the line and the notice defers
+    // on it, so the notice runs once the filing turn ends. A second turn
+    // (`hold` never waits) starts beside that running notice and waits on the task.
+    const notices: TaskSettledInput[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const seen: GeneratorModelCallOptions[] = [];
+    let taskId = "";
+    const { model } = stepModel(
+      [
+        fileCall("f1"),
+        (opts) => {
+          taskId = waitedTaskId([opts], 0);
+          return finalAnswer(opts);
+        },
+        waitAgain("w1", () => taskId),
+        finalAnswer
+      ],
+      seen
+    );
+    const flow: FlowInstance = waitFlow(model, { endsOnFiling: "already done", heard: notices, noticeAfterTurn: true, heardGate: () => gate });
+    const state = runtimeFor(flow, await stores());
+    try {
+      const filing = await startTurn(state);
+      await until(state, filing, "completed", 10_000);
+      // The notice's block is running, held open.
+      await eventually(() => notices.length === 1, 5_000);
+
+      const second = await startTurn(state);
+      await until(state, second, "completed", 10_000);
+      const answer = toolResults(seen[3]!.messages);
+      expect(answer).toContain(taskId);
+      expect(answer).toContain("arriving as a notice");
+      expect(answer).not.toContain("already done");
+
+      release();
+      await settle(2_500);
+      expect(notices).toHaveLength(1);
+      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+    } finally {
+      release();
+      await state.dispose();
+    }
+  });
+});

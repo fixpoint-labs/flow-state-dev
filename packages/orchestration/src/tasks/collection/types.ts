@@ -13,6 +13,7 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
+import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**
  * How a cancel was made (FIX-2081), as `Task.cancelledVia` records it:
@@ -1044,13 +1045,30 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * The filer's wait found the row already ended and returned it (FIX-2112):
    * drop the notice the ending owes the filer, which that answer delivered.
-   * `unchanged` when the row owes none for its ending. Server-owned, as the
+   * `unchanged` when the row owes none for its ending, or its notice is taken
+   * ({@link takeNotice}): that notice is the delivery. Server-owned, as the
    * other wait writes are: a caller's `patchMetadata` can't clear a notice.
    *
    * Optional: both built-in backings implement it. On a ref without it the
    * filer hears the ending again, as `onTaskSettled`.
    */
   dropNoticeReadByWait?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * Take a notice the row owes, for the `onTaskSettled` request `take.by`
+   * that is about to deliver it (FIX-2123), in one conditional write: a wait's
+   * drop ({@link dropNoticeReadByWait}) and a take never both go through.
+   * `unchanged` when the row no longer owes it, or another request holds it,
+   * other than `take.replacing` (a taker the caller found has ended). The
+   * request that took it clears the marker once its block has run.
+   *
+   * Optional: both built-in backings implement it. On a ref without it a
+   * notice is admitted with no take, as before.
+   */
+  takeNotice?(
+    id: string,
+    notice: { readonly attempt: number; readonly ending: TaskNoticeEnding },
+    take: { readonly by: string; readonly replacing?: string }
+  ): Promise<TaskWriteOutcome>;
   /**
    * A touch of the board: pay every cascade owed past its due time
    * (`Task.cascadeOwed`, FIX-2080 D2), so one a crash left owed is paid.

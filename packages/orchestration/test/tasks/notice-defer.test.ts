@@ -22,8 +22,9 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: BOARD, collection });
 }
 
-function host(defer: () => boolean) {
+function host(defer: () => boolean, failFirst = false) {
   const heard: TaskSettledInput[] = [];
+  let failed = false;
   const seed = handler({
     name: "seed",
     inputSchema: z.object({ id: z.string() }),
@@ -54,6 +55,10 @@ function host(defer: () => boolean) {
             inputSchema: z.any(),
             outputSchema: z.any(),
             execute: (notice: TaskSettledInput) => {
+              if (failFirst && !failed) {
+                failed = true;
+                throw new Error("the handling failed");
+              }
               heard.push(notice);
               return {};
             }
@@ -109,6 +114,35 @@ describe("a notice its session turns away (defer)", () => {
       expect(h.heard).toEqual([expect.objectContaining({ taskId: "t1", ending: "completed" })]);
       const metadata = (await h.act("read", { id: "t1" })) as Record<string, unknown>;
       expect(metadata["noticeOwed:1:completed"] ?? null).toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a notice whose block fails (FIX-2123)", () => {
+  it("stays owed, taken by the request that failed, and the next copy takes it over and is heard once", async () => {
+    const h = host(() => false, true);
+    try {
+      // The request that filed the task sends its notice as it ends; that copy's block fails.
+      await h.act("seed", { id: "t1" });
+      const takenBy = async () =>
+        ((await h.act("read", { id: "t1" })) as Record<string, { by?: string } | null>)["noticeTaken:1:completed"]?.by;
+      for (let i = 0; i < 200 && (await takenBy()) === undefined; i += 1) await new Promise((r) => setTimeout(r, 10));
+      expect(await takenBy()).toEqual(expect.any(String));
+      expect(h.heard).toEqual([]);
+
+      // The filer's pass sends it again: once the request that took it has ended, a copy takes it over.
+      for (let i = 0; i < 200 && h.heard.length === 0; i += 1) {
+        await h.act("onTaskSettled", notice, true);
+        if (h.heard.length === 0) await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(h.heard).toEqual([expect.objectContaining({ taskId: "t1", ending: "completed" })]);
+      const metadata = (await h.act("read", { id: "t1" })) as Record<string, unknown>;
+      expect(metadata["noticeOwed:1:completed"] ?? null).toBeNull();
+      // A later copy finds it delivered.
+      await h.act("onTaskSettled", notice, true);
+      expect(h.heard).toHaveLength(1);
     } finally {
       await h.dispose();
     }

@@ -20,7 +20,7 @@ import {
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
-import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices } from "../notice/task-notice";
+import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, type TaskNotice } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
@@ -120,7 +120,7 @@ export function buildInitialTask<TInput, TOutput>(
     ...(status === "cancelled" && init.causedBy !== undefined ? { causedBy: init.causedBy } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     // Server-written by the backing (FIX-2078), never from `init`.
-    ...(filer !== undefined ? { filer: { sessionId: filer.sessionId } } : {}),
+    ...(filer !== undefined ? { filer: { sessionId: filer.sessionId, ...(filer.requestId !== undefined ? { requestId: filer.requestId } : {}) } } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -284,12 +284,32 @@ export function releaseWaitWrite(
  * (`TaskCollectionRef.dropNoticeReadByWait`, FIX-2112): the wait's answer
  * delivered the ending, so the notice the ending owes the filer is dropped.
  *
+ * A notice already taken is left: its notice is the delivery (FIX-2123).
+ *
  * @returns The patch to write, or `undefined` when the row owes no notice for its ending.
  */
 export function noticeReadByWaitWrite(task: Task): { patch: Partial<Task> } | undefined {
   const dropped = deliveredByWait(task);
   if (Object.keys(dropped).length === 0) return undefined;
   return { patch: { metadata: { ...(task.metadata ?? {}), ...dropped } } };
+}
+
+/**
+ * The one rule for taking a notice to deliver it
+ * (`TaskCollectionRef.takeNotice`, FIX-2123): decided on the row as stored, so
+ * a wait's drop and a take can't both go through.
+ *
+ * @returns The patch to write, or `undefined` when the row doesn't owe the
+ *   notice, or another request holds it.
+ */
+export function noticeTakeWrite(
+  task: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">,
+  take: { readonly by: string; readonly at: number; readonly replacing?: string }
+): { patch: Partial<Task> } | undefined {
+  const taken = takenNoticePatch(task, notice, take);
+  if (Object.keys(taken).length === 0) return undefined;
+  return { patch: { metadata: { ...(task.metadata ?? {}), ...taken } } };
 }
 
 /**

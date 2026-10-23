@@ -22,7 +22,7 @@
  * undeliverable, recorded on the row, and handed to the board's
  * `onUndeliverable`. Nothing here fails the write that already committed.
  */
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, onRequestEnded } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
@@ -104,6 +104,14 @@ export interface DeliveryHooks {
     rows: readonly Task[],
     patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
   ): Promise<void>;
+  /**
+   * Run `send` once the running request has ended (FIX-2123), on the
+   * engine's request-end seam: not when it parks, which isn't its end. A
+   * failure is logged, never thrown; what `send` didn't send stays owed for
+   * the filer's pass. Nothing runs on a context with no seam. Optional, so
+   * hooks built by hand keep compiling: without it, the pass sends instead.
+   */
+  whenRequestEnds?(send: () => Promise<void>): void;
 }
 
 /** The refusal that says the filer's session is gone: it can never be told. */
@@ -159,8 +167,23 @@ export function createDelivery(
     filerOf,
     beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
     owePassAt,
-    afterEnding
+    afterEnding,
+    whenRequestEnds
   };
+
+  function whenRequestEnds(send: () => Promise<void>): void {
+    onRequestEnded(ctx, async (ending) => {
+      if (ending.status === "suspended") return;
+      try {
+        await send();
+      } catch (error) {
+        console.warn("[orchestration] a notice held for the request that filed its task wasn't sent as it ended: the filer's pass sends it", {
+          boardId: board.collectionId,
+          error: (error as Error).message
+        });
+      }
+    });
+  }
 
   async function owePassAt(row: Task, dueAt: number): Promise<void> {
     if (owesNothing(row)) return;

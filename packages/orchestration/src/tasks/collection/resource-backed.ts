@@ -136,6 +136,7 @@ import {
   markWaitWrite,
   releaseWaitWrite,
   noticeReadByWaitWrite,
+  noticeTakeWrite,
   settingsWrite,
   settingsChangeKind,
   type TaskSettingsPatch,
@@ -147,7 +148,7 @@ import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
 import type { DeliveryHooks } from "../notice/delivery";
-import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
+import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS, owesUntakenNotice, resendNowPatch } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
@@ -273,7 +274,12 @@ export interface ResourceBackedOptions {
    * the hooks run around every write that may end a row. Omitted on a ledger
    * no board hands rows out from.
    */
-  delivery?: { ownSession: string; hooks: DeliveryHooks };
+  delivery?: {
+    ownSession: string;
+    /** The running request, by its engine identity (FIX-2123): stamped as the filing request of each row it files in its own session. */
+    ownRequest?: string;
+    hooks: DeliveryHooks;
+  };
 }
 
 /**
@@ -709,13 +715,42 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   /**
    * The filer a new row is stamped with (FIX-2078): the session filing it, or,
-   * for a follow-up, its root's filer, whoever typed it.
+   * for a follow-up, its root's filer, whoever typed it. With the request
+   * filing it when that is the filer's session (FIX-2123): the row's notice
+   * waits for that request to end.
    */
   function filerFor(init: { followUpOf?: string }): Task["filer"] {
     if (delivery === undefined) return undefined;
     const root = init.followUpOf === undefined ? undefined : lookupRow(init.followUpOf);
-    const rootFiler = root === undefined ? undefined : delivery.hooks.filerOf(root);
-    return { sessionId: rootFiler ?? delivery.ownSession };
+    const sessionId = (root === undefined ? undefined : delivery.hooks.filerOf(root)) ?? delivery.ownSession;
+    const filing = sessionId === delivery.ownSession ? delivery.ownRequest : undefined;
+    return { sessionId, ...(filing !== undefined ? { requestId: filing } : {}) };
+  }
+
+  /** The rows this request filed whose notice waits for it to end (FIX-2123). */
+  const filedHere = new Set<string>();
+
+  /**
+   * Note a row this request filed with itself as the filing request
+   * (FIX-2123), and, on the first, ask to be called as the request ends: a
+   * notice it turned away while it ran is sent then, past any backoff, rather
+   * than at the pass's next resend. Not at a park: the request hasn't ended.
+   */
+  function noteFiled(row: Task): void {
+    if (delivery === undefined || row.filer?.requestId === undefined || row.filer.requestId !== delivery.ownRequest) return;
+    const first = filedHere.size === 0;
+    filedHere.add(row.id);
+    if (!first) return;
+    delivery.hooks.whenRequestEnds?.(async () => {
+      for (const id of filedHere) {
+        await ref.refresh?.(id);
+        const row = lookupRow(id);
+        if (row === undefined || !owesUntakenNotice(row)) continue;
+        const sooner = resendNowPatch(row);
+        if (Object.keys(sooner).length > 0) await ref.patchMetadata(id, sooner);
+        await deliverAfter(lookupRow(id) ?? row);
+      }
+    });
   }
 
   /**
@@ -839,6 +874,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
       mirror.set(task.id, created);
       emit("added", task);
+      noteFiled(task as Task);
       if (await cancelIfDepEnded(task.id)) return lookupRow(task.id) as Task<TInput, TOutput>;
       return task;
     },
@@ -860,6 +896,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         mirror.set(task.id, createdRef);
         created.push(task);
         emit("added", task);
+        noteFiled(task as Task);
       }
       // A dependency that ended meanwhile cancels its dependents, and a row
       // that cancels can end another of the batch's, so the pass repeats
@@ -1399,6 +1436,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async dropNoticeReadByWait(id) {
       return patchRef(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async takeNotice(id, notice, take) {
+      const at = now();
+      return patchRef(id, "metadata_changed", (task) => noticeTakeWrite(task as Task, notice, { ...take, at })?.patch as Partial<Task<TInput, TOutput>> | undefined);
     },
 
     async refresh(id) {

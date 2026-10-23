@@ -17,7 +17,9 @@
  *    that waits again at its deadline counts again before each new park,
  *    except a drain on a row it handed over, whose wait already exists.
  *    A task already ended is returned at once, and the notice its ending
- *    owes the filer is dropped: this answer delivered it (FIX-2112).
+ *    owes the filer is dropped: this answer delivered it (FIX-2112). Unless
+ *    `onTaskSettled` has already taken that notice (FIX-2123): then the notice
+ *    is the delivery, and the answer says the ending arrives as one.
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
  * 3. **Park** on the one wait gate (`parkOnWait`), whose deadline the engine
@@ -67,7 +69,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
+import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS, noticeDelivery } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
@@ -132,9 +134,12 @@ export type TaskWaitRefusal =
 export type TaskWaitResult =
   /**
    * The task once it ended (`ended: true`), or as it stands at the deadline
-   * (`ended: false`, still running). The caller returns it as `getTask` would.
+   * (`ended: false`, still running). The caller returns it as `getTask` would,
+   * except with `arrivesAsNotice` (FIX-2123): the filer's `onTaskSettled`
+   * had already taken the ending's notice, which is the filer's one hearing of
+   * it, so the caller answers {@link arrivesAsNoticeAnswer} instead.
    */
-  | { readonly ok: true; readonly task: Task; readonly ended: boolean }
+  | { readonly ok: true; readonly task: Task; readonly ended: boolean; readonly arrivesAsNotice?: true }
   | { readonly ok: false; readonly error: TaskWaitRefusal; readonly message: string }
   /**
    * The request is over: a person stopped it while it waited, or its own task
@@ -485,30 +490,68 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
 /**
  * The waited-on row ended: clear what it owes the resume, and return it. An
  * ending that came before the wait owes its filer a notice; when the filer is
- * the one waiting, this answer delivers it, so it is dropped (FIX-2112).
+ * the one waiting, this answer delivers it, so it is dropped (FIX-2112). One
+ * the filer's `onTaskSettled` already took is its delivery instead (FIX-2123).
  */
 async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
   await clearMarker(collection, taskId);
   const task = collection.get(taskId)!;
   await deliverHeldEnding(ctx, collection, task);
-  await deliverEndedBeforeWait(ctx, collection, collection.get(taskId) ?? task);
-  return { ok: true, task: collection.get(taskId) ?? task, ended: true };
+  const arrivesAsNotice = await deliverEndedBeforeWait(ctx, collection, collection.get(taskId) ?? task);
+  return { ok: true, task: collection.get(taskId) ?? task, ended: true, ...(arrivesAsNotice ? { arrivesAsNotice: true as const } : {}) };
 }
 
 /**
  * Drop the notice an ending owes its filer, when the filer's own wait read it
  * (FIX-2112). Never fails the call: a drop that fails leaves the notice owed,
  * and the filer hears the ending a second time.
+ *
+ * @returns Whether the filer's `onTaskSettled` took the notice first
+ *   (FIX-2123), read off the row as stored after the drop: the notice is the
+ *   delivery while it is owed or the request that took it still runs, and the
+ *   wait says so.
  */
-async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<void> {
+async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
   const filer = collection.filerOf?.(task) ?? task.filer?.sessionId;
-  if (filer === undefined || filer !== ctx.session.identity.id) return;
-  if (Object.keys(deliveredByWait(task)).length === 0) return;
-  try {
-    await collection.dropNoticeReadByWait?.(task.id);
-  } catch (error) {
-    console.warn(`[orchestration] wait "${task.id}": its ending's notice stays owed: ${(error as Error).message}`);
+  if (filer === undefined || filer !== ctx.session.identity.id) return false;
+  let row = task;
+  if (Object.keys(deliveredByWait(task)).length > 0) {
+    try {
+      await collection.dropNoticeReadByWait?.(task.id);
+      // A drop declined by a take another request committed first.
+      await collection.refresh?.(task.id);
+      row = collection.get(task.id) ?? task;
+    } catch (error) {
+      console.warn(`[orchestration] wait "${task.id}": its ending's notice stays owed: ${(error as Error).message}`);
+      return false;
+    }
   }
+  const delivery = noticeDelivery(row, ctx.request.identity.id);
+  if (delivery === undefined) return false;
+  if (delivery.owed) return true;
+  const ended = ctx.requestHost?.waits?.ended;
+  return ended !== undefined && (await ended([delivery.by]))[delivery.by] !== true;
+}
+
+/**
+ * What a wait answers when the task's ending arrives as a notice (FIX-2123):
+ * the task, by name, and that its ending reaches the conversation as a notice
+ * in its own right, so a model doesn't read it as "no result" and wait again.
+ */
+export function arrivesAsNoticeAnswer(task: Pick<Task, "id" | "goal" | "title">): {
+  ok: true;
+  taskId: string;
+  arrivesAsNotice: true;
+  message: string;
+} {
+  return {
+    ok: true,
+    taskId: task.id,
+    arrivesAsNotice: true,
+    message:
+      `Task "${task.title ?? task.goal}" (${task.id}) has ended. Its ending is arriving as a notice, ` +
+      `which you'll read on its own; don't wait on this task again.`
+  };
 }
 
 /**
