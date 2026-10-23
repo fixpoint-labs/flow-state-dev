@@ -235,16 +235,18 @@ describe("resume replay with trace observability off", () => {
     expect(draftTrace?.output?.kind).toBe("ref");
   });
 
-  it("skips finished steps when /continue recovers a crashed request with no durability provider", async () => {
+  it("skips finished steps, keeping the state they wrote, when /continue recovers a crash with no durability provider", async () => {
     let workRuns = 0;
     let crashed = true;
     const stalled = new Promise<never>(() => {});
+    const stateSchema = z.object({ seen: z.array(z.string()).default([]) });
     const work = handler({
       name: "work",
       inputSchema: z.any(),
       outputSchema: z.object({ n: z.number() }),
-      execute: async () => {
+      execute: async (_input, ctx) => {
         workRuns += 1;
+        ctx.sequencer!.patchState({ seen: ["work"] });
         return { n: workRuns };
       },
     });
@@ -254,11 +256,17 @@ describe("resume replay with trace observability off", () => {
       name: "slow",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: async (input: unknown) => (crashed ? stalled : { after: input }),
+      execute: async (input: unknown, ctx) =>
+        crashed ? stalled : { after: input, state: ctx.sequencer!.state },
     });
     const flow = defineFlow({
       kind: "replay-traces-off-continue",
-      actions: { run: { inputSchema: z.any(), block: sequencer({ name: "seq" }).step(work).step(slow) } },
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "seq", durable: true, stateSchema }).step(work).step(slow),
+        },
+      },
     })({ id: "replay-traces-off-continue" });
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
@@ -309,7 +317,8 @@ describe("resume replay with trace observability off", () => {
     const result = await finished!;
 
     expect(workRuns).toBe(1);
-    expect(result.output).toEqual({ after: { n: 1 } });
+    // The skipped step's state write is restored from its checkpoint, not lost.
+    expect(result.output).toEqual({ after: { n: 1 }, state: { seen: ["work"] } });
     expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 
@@ -359,6 +368,70 @@ describe("resume replay with trace observability off", () => {
       const indexes = items.map((i) => i.itemIndex);
       expect(new Set(indexes).size).toBe(indexes.length);
       expect(indexes).toEqual([...indexes].sort((a, b) => a - b));
+    }
+  );
+
+  it.each(["false", "true"])(
+    "keeps ctx.wasRescued() true for a replayed rescued step after resume (observability %s)",
+    async (observability) => {
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const failing = handler({
+        name: "flaky",
+        inputSchema: z.any(),
+        outputSchema: z.object({ value: z.number() }),
+        execute: () => {
+          throw new Error("boom");
+        },
+      });
+      const fallback = handler({
+        name: "fallback",
+        inputSchema: z.any(),
+        outputSchema: z.object({ value: z.number() }),
+        execute: () => ({ value: -1 }),
+      });
+      const safe = failing.rescue([{ block: fallback }]);
+      const seen: boolean[] = [];
+      const gate = handler({
+        name: "gate",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (_input, ctx) => {
+          seen.push(ctx.wasRescued(safe));
+          await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+          return { rescued: ctx.wasRescued(safe) };
+        },
+      });
+      const flow = defineFlow({
+        kind: "replay-traces-off-rescued",
+        actions: { run: { inputSchema: z.any(), block: sequencer({ name: "seq", durable: true }).step(safe).step(gate) } },
+      })({ id: "replay-traces-off-rescued" });
+      const { stores, provider } = durableStores();
+      const registry = createFlowRegistry();
+      registry.register(flow as never);
+      const started = await runAction({
+        flow,
+        actionName: "run",
+        input: {},
+        userId: "u1",
+        orgId: DEFAULT_ORG_ID,
+        stores,
+        runtimeConfig: { durabilityProvider: provider },
+      } as never);
+      const requestId = (started as { requestId: string }).requestId;
+      const [suspension] = await provider.listSuspended({ status: "pending" });
+      await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now() });
+      const { finished } = await continueRequest({
+        requestId,
+        stores,
+        flowRegistry: registry,
+        resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", resumedBy: "alice" },
+        runtimeConfig: { durabilityProvider: provider },
+      });
+      const result = await finished;
+
+      // The gate reads the same answer before the stop and after the resume.
+      expect(seen).toEqual([true, true]);
+      expect(result.output).toEqual({ rescued: true });
     }
   );
 });

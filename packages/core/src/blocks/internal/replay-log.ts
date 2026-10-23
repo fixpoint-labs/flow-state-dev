@@ -103,6 +103,12 @@ export interface ReplayLog {
    */
   recordedBlockTraceId(blockLogicalId: string): string | undefined;
   /**
+   * Whether the canonical completed trace for a logical path records that a
+   * `.rescue()` handler produced the output, so a replayed block keeps the
+   * `ctx.wasRescued()` answer it had when it ran. `false` when none exists.
+   */
+  completedRescued(blockLogicalId: string): boolean;
+  /**
    * The raw prior item log this ReplayLog was built from. Used by generator
    * resume (FIX-814) to reconstruct the conversation from the durable
    * `generator_step` / `tool_output` items — a read the accessor-based summary
@@ -163,7 +169,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
 
   const completed = new Map<
     string,
-    { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string }
+    { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string; rescued: boolean }
   >();
   /** Latest recorded `router_decision` per router logical path (FIX-814). */
   const routerDecisions = new Map<string, { itemIndex: number; selectedRoute: string }>();
@@ -188,7 +194,12 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       // refuses it rather than inject `undefined`.
       const omitted = trace.output === undefined ? undefined : findOmitted(trace.output, lookup);
       if (omitted !== undefined) {
-        completed.set(logicalId, { itemIndex: trace.itemIndex, output: omitted, traceId: trace.id });
+        completed.set(logicalId, {
+          itemIndex: trace.itemIndex,
+          output: omitted,
+          traceId: trace.id,
+          rescued: trace.rescued === true,
+        });
         continue;
       }
       const resolved =
@@ -199,6 +210,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
         itemIndex: trace.itemIndex,
         output: { kind: "inline", value: resolved },
         traceId: trace.id,
+        rescued: trace.rescued === true,
       });
     } else if (item.type === "router_decision") {
       // The router's identity is carried on the decision item's provenance
@@ -282,6 +294,7 @@ export function buildReplayLog(items: readonly RuntimeItem[]): ReplayLog {
       return decision === undefined ? undefined : { selectedRoute: decision.selectedRoute };
     },
     recordedBlockTraceId: (blockLogicalId) => completed.get(blockLogicalId)?.traceId,
+    completedRescued: (blockLogicalId) => completed.get(blockLogicalId)?.rescued === true,
     items: () => items,
   };
 }

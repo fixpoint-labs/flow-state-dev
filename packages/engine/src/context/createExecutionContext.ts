@@ -3183,9 +3183,9 @@ export async function createExecutionContext<
     // `output` phase additionally emits item.done.
     //
     // With observability off the second branch runs instead: one lean record
-    // (identity + output) per completed block, written at its `output` phase,
-    // because resume reads it to skip the block; without it, finished steps
-    // run again. It is a separate branch, not an early return in the first,
+    // (identity, output, the rescued mark) per completed block, written at
+    // its `output` phase, because resume reads it to skip the block; without
+    // it, finished steps run again. It is a separate branch, not an early return in the first,
     // because the first opens its row at `added` with the block's input. Here
     // the index is taken at completion (after the items the block emitted),
     // and failed, suspended and transient blocks get no record at all, not
@@ -3290,6 +3290,7 @@ export async function createExecutionContext<
             output: payload.data.output,
             completedAt,
             duration: payload.data.duration,
+            rescued: payload.data.rescued,
           };
           void emissionResponse
             .emitItemAdded(item)
@@ -3746,11 +3747,11 @@ export async function createExecutionContext<
       // `getBlockOutput`/`getBlockResult` read only `parent` + `result.output`,
       // and `getTarget` (which would dereference the container) is never used to
       // reach a replayed leaf.
-      _registerReplayedChild: (parent: ExecutionParent, output: unknown): void => {
+      _registerReplayedChild: (parent: ExecutionParent, output: unknown, rescued?: boolean): void => {
         childSiblingRegistry.push({
           parent,
           parentStateContainer: undefined,
-          result: { status: "completed", output }
+          result: { status: "completed", output, rescued: rescued === true }
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
@@ -4032,6 +4033,7 @@ export async function createExecutionContext<
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
+                  rescued: siblingEntry.result.rescued === true ? true : undefined,
                 },
               },
               childContext

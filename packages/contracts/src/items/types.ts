@@ -294,6 +294,12 @@ export type BlockTraceItem = OutputItemBase & {
   startedAt?: number;
   completedAt?: number;
   duration?: number;
+  /**
+   * `true` when the block threw and a `.rescue()` handler produced its output.
+   * Recorded whatever the trace-observability setting, so a resume that
+   * replays the block keeps `ctx.wasRescued()` unchanged. Absent otherwise.
+   */
+  rescued?: true;
   error?: {
     message: string;
     code?: string;

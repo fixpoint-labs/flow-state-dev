@@ -326,6 +326,16 @@ describe("buildReplayLog", () => {
     });
   });
 
+  describe("completedRescued", () => {
+    it("reads the rescued mark from the canonical completed trace", () => {
+      const rescued = { ...blockTrace("root/step[0]", "completed", 0, 1), rescued: true } as RuntimeItem;
+      const log = buildReplayLog([rescued, blockTrace("root/step[1]", "completed", 1, 2)]);
+      expect(log.completedRescued(`${REQ}:root/step[0]`)).toBe(true);
+      expect(log.completedRescued(`${REQ}:root/step[1]`)).toBe(false);
+      expect(log.completedRescued(`${REQ}:root/step[9]`)).toBe(false);
+    });
+  });
+
   describe("recordedBlockTraceId (FIX-814)", () => {
     it("returns the canonical completed trace id for a logical path", () => {
       const trace = blockTrace("root/branch[a]", "completed", 2, "out");

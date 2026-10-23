@@ -85,6 +85,8 @@ export type BlockTraceCapturePayload = {
     startedAt?: number;
     completedAt?: number;
     duration?: number;
+    /** `output` phase: the block's output came from a `.rescue()` handler. */
+    rescued?: true;
     error?: { message: string; code?: string };
   };
 };
@@ -663,10 +665,11 @@ export interface BlockContext<
    * core `executeBlock` replay short-circuit calls this before returning the
    * cached output so a later sibling's `ctx.getBlockOutput(replayedBlock)`
    * resolves. Trace-free and scope-free: it neither runs the body nor emits a
-   * trace (the prior run's trace is canonical). No-op in unit contexts that
-   * don't provide it.
+   * trace (the prior run's trace is canonical). `rescued` carries the recorded
+   * `.rescue()` outcome so `ctx.wasRescued()` reads the same after a resume.
+   * No-op in unit contexts that don't provide it.
    */
-  _registerReplayedChild?(parent: ExecutionParent, output: unknown): void;
+  _registerReplayedChild?(parent: ExecutionParent, output: unknown, rescued?: boolean): void;
 
   /**
    * @internal Reserve the next synchronous `itemIndex` for a runtime-emitted
