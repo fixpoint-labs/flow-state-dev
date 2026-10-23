@@ -139,8 +139,9 @@ const shortLease: TaskDispatcher = {
 };
 
 /**
- * The filing agent's turn: one `getTask({ id: "fact-check", wait: true })`,
- * then an answer. `seen` holds what each step was sent.
+ * The filing agent's turn, each time it runs: one
+ * `getTask({ id: "fact-check", wait: true })`, then an answer once the tool
+ * has returned. `seen` holds what each step was sent.
  */
 function filerModel(): { model: GeneratorModel; seen: GeneratorModelCallOptions[] } {
   const seen: GeneratorModelCallOptions[] = [];
@@ -151,9 +152,10 @@ function filerModel(): { model: GeneratorModel; seen: GeneratorModelCallOptions[
     },
     async generateStep(options) {
       seen.push(options);
-      if (seen.length > 1) return { text: "done", finishReason: "stop" };
+      const last = (options.messages as Array<Record<string, unknown>>).at(-1);
+      if (last?.role === "tool") return { text: "done", finishReason: "stop" };
       return {
-        toolCalls: [{ toolCallId: "g1", toolName: "getTask", args: { id: "fact-check", wait: true } }],
+        toolCalls: [{ toolCallId: `g${seen.length}`, toolName: "getTask", args: { id: "fact-check", wait: true } }],
         finishReason: "tool-calls"
       };
     }
@@ -161,10 +163,11 @@ function filerModel(): { model: GeneratorModel; seen: GeneratorModelCallOptions[
   return { model, seen };
 }
 
-/** What the tools returned to the filer's model: the tool results its second step was sent. */
+/** What the tool returned to the filer's model last: the tool result its latest step was sent. */
 function toolResultsOf(seen: GeneratorModelCallOptions[]): string {
   const out: string[] = [];
-  for (const m of (seen[1]?.messages ?? []) as Array<Record<string, unknown>>) {
+  const last = (seen.at(-1)?.messages ?? []).at(-1) as Record<string, unknown> | undefined;
+  for (const m of last === undefined ? [] : [last]) {
     if (m.role !== "tool" || !Array.isArray(m.content)) continue;
     for (const part of m.content as Array<Record<string, unknown>>) {
       if (part.type === "tool-result") out.push(JSON.stringify(part.output));
@@ -229,7 +232,7 @@ function planFlow(filer?: GeneratorModel): FlowInstance {
         })
       )
         .list()
-        .map((row) => ({ id: row.id, status: row.status }))
+        .map((row) => ({ id: row.id, status: row.status, wait: row.wait }))
   });
   return defineFlow({
     kind: "plan-hand-over-fails",
@@ -276,7 +279,7 @@ function planFlow(filer?: GeneratorModel): FlowInstance {
   } as never)({ id: "plan-hand-over-fails" });
 }
 
-type Row = { id: string; status: string };
+type Row = { id: string; status: string; wait?: { requestId?: string; lapsed?: true; drain?: true } };
 
 describe("a plan drain that fails after handing a row over", () => {
   let state: ReturnType<typeof createFlowState> | undefined;
@@ -462,6 +465,15 @@ describe("a plan drain that fails after handing a row over", () => {
         ["fact-check", "completed"],
         ["publish", "completed"]
       ]);
+      // The step has ended, its slot still marked as the drain's: a wait now
+      // returns its ending at once, never a refusal pointing at a plan that's over.
+      const again = await booted.act("waitOnStep");
+      expect({ status: (await booted.recordOf(again.requestId!))?.status }).toEqual({ status: "completed" });
+      const ending = toolResultsOf(seen);
+      expect(ending).not.toContain("wait_on_plan_step");
+      expect(ending).toContain('"ok":true');
+      expect(ending).toContain('"id":"fact-check"');
+      expect(ending).toContain('"status":"completed"');
     }
 
     it("is refused while the drain holds the step's wait slot, and the plan completes", async () => {
@@ -492,6 +504,37 @@ describe("a plan drain that fails after handing a row over", () => {
       await lapsed;
       const waitOnStep = await booted.act("waitOnStep").finally(release);
       await expectRefusedAndThePlanCompletes(booted, run.requestId!, waitOnStep, filer.seen);
+    }, 20_000);
+
+    it("gets through once a plan that failed after its lapse has released the step's slot", async () => {
+      holdTheStep();
+      const filer = filerModel();
+      const booted = await boot({ filer: filer.model });
+      // The drain lapses the slot at its deadline, and its re-mark throws: the plan fails.
+      fault.holdAfterLapse = {
+        lapsed: () => {
+          fault.markThrows = true;
+        },
+        release: Promise.resolve()
+      };
+      const run = await booted.act("run");
+      await expectAVisiblePlanFailure(booted, run.requestId!, /the ledger store is unavailable/);
+      // The failed drain's request released the slot at its end, and its mark
+      // with it: at once, not at the filer's next pass, which comes later (and
+      // at least `LAPSED_SLOT_CHECK_MS` later outside this test).
+      const released = await booted.until(
+        async () => (await booted.rowsNow()).find((row) => row.id === "fact-check")?.wait === undefined,
+        300
+      );
+      expect({ wait: (await booted.rowsNow()).find((row) => row.id === "fact-check")?.wait }).toEqual({ wait: undefined });
+      expect(released).toBe(true);
+      // So the filer's wait takes the slot and parks on the step, which still runs.
+      const waitOnStep = await booted.act("waitOnStep");
+      expect({ status: (await booted.recordOf(waitOnStep.requestId!))?.status }).toEqual({ status: "suspended" });
+      expect((await booted.rowsNow()).find((row) => row.id === "fact-check")?.wait).toMatchObject({
+        requestId: waitOnStep.requestId
+      });
+      expect(toolResultsOf(filer.seen)).not.toContain("wait_on_plan_step");
     }, 20_000);
   });
 });

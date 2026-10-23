@@ -398,8 +398,11 @@ async function waitChecked(
     // The deadline. The slot lapses, unless the ending already won.
     const lapsed = await collection.lapseWait!(taskId, planned.gateId, requestId);
     if (lapsed.outcome === "declined") return ended(ctx, collection, taskId);
-    if (options.waitAgain === true) continue;
+    // Released at the request's end, waiting again or not: a drain that fails
+    // before its next mark leaves no lapsed slot, nor its `drain` mark, behind.
+    // One it marks again is live by then, and the release passes it by.
     releaseAtRequestEnd(ctx, collection, taskId);
+    if (options.waitAgain === true) continue;
     return { ok: true, task: collection.get(taskId) ?? row, ended: false };
   }
 }
