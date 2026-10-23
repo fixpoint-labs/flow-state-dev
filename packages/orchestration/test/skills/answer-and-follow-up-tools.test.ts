@@ -272,6 +272,100 @@ describe("createTask's followUpOf (S4)", () => {
     expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
   });
 
+  it("on a board that starts work, two calls whose follow-ups take one id: the second is refused, never told the other's task is its own", async () => {
+    const ref = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      onChange: createCapturedChanges().onChange
+    });
+    await ranAndCompleted(ref, "root");
+    const tools = taskToolsForTurn(async () => ref, undefined, { dispatches: true })({});
+    const tool = tools.find((t) => (t as { name?: string }).name === "createTask")!;
+    // Two model tool calls in one request, each with its own call id; the
+    // request's `runOnce` memo is shared, as the request store's is. The
+    // interleaving is pinned: both calls pick the follow-up's id, then c1
+    // files it, then c2 records its own call.
+    const memo = new Map<string, unknown>();
+    let c2Picked!: () => void;
+    const c2HasPicked = new Promise<void>((r) => (c2Picked = r));
+    let c1Filed!: () => void;
+    const c1HasFiled = new Promise<void>((r) => (c1Filed = r));
+    type Gate = { before?: Promise<void>; arrived?: () => void };
+    const callCtx = (callId: string, gate?: Gate) =>
+      ({
+        _blockIdentity: { blockName: "createTask", blockInstanceId: `req_1:root/step[0]/tool[createTask][0%3A${callId}]:0` },
+        session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
+        request: { identity: { type: "request", id: "req_1" } },
+        runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+          // The gate holds the record of the call's id, after its checks.
+          if (key.startsWith("fsd.dispatch.plan:")) {
+            gate?.arrived?.();
+            await gate?.before;
+          }
+          if (memo.has(key)) return memo.get(key) as T;
+          const value = await fn();
+          memo.set(key, value);
+          return value;
+        }
+      }) as never;
+    const file = (goal: string, callId: string, gate?: Gate) =>
+      runForTest(tool as never, { goal, followUpOf: "root" } as never, callCtx(callId, gate)) as Promise<any>;
+    const [one, two] = await Promise.all([
+      file("first", "c1", { before: c2HasPicked }).finally(() => c1Filed()),
+      file("second", "c2", { arrived: () => c2Picked(), before: c1HasFiled })
+    ]);
+    const accepted = [one, two].filter((r) => r.ok === true);
+    const refused = [one, two].filter((r) => r.ok === false);
+    expect(accepted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0].error).toMatch(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`));
+    const followUps = ref.list().filter((t) => t.followUpOf === "root");
+    expect(followUps).toHaveLength(1);
+    // The accepted call's goal is the one on the row.
+    expect(followUps[0]!.goal).toBe(accepted[0] === one ? "first" : "second");
+    // A replay of the accepted call finds its own row and files nothing more.
+    const acceptedCall = accepted[0] === one ? ["first", "c1"] : ["second", "c2"];
+    expect(await file(acceptedCall[0]!, acceptedCall[1]!)).toMatchObject({ ok: true, taskId: accepted[0].taskId });
+    // A replay of the refused call finds the id it recorded taken by the other
+    // call's row, and is refused again: never told that row is its own.
+    const refusedCall = accepted[0] === one ? ["second", "c2"] : ["first", "c1"];
+    expect(await file(refusedCall[0]!, refusedCall[1]!)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`))
+    });
+    expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
+    // The row names the call that filed it, and a caller can't write that.
+    expect(ref.get(accepted[0].taskId)!.metadata?.filedByCall).toEqual(expect.stringContaining(`0%3A${acceptedCall[1]}`));
+  });
+
+  it("keeps the call a follow-up names out of updateTask's reach: a metadata patch naming another call leaves it as it was", async () => {
+    const ref = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      onChange: createCapturedChanges().onChange
+    });
+    await ranAndCompleted(ref, "root");
+    const tools = taskToolsForTurn(async () => ref, undefined, { dispatches: true })({});
+    const tool = (name: string) => tools.find((t) => (t as { name?: string }).name === name)!;
+    const memo = new Map<string, unknown>();
+    const ctx = {
+      _blockIdentity: { blockName: "createTask", blockInstanceId: "req_1:root/step[0]/tool[createTask][0%3Ac1]:0" },
+      session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
+      request: { identity: { type: "request", id: "req_1" } },
+      runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+        if (!memo.has(key)) memo.set(key, await fn());
+        return memo.get(key) as T;
+      }
+    } as never;
+    const filed = (await runForTest(tool("createTask") as never, { goal: "next", followUpOf: "root" } as never, ctx)) as { ok: boolean; taskId: string };
+    expect(filed).toMatchObject({ ok: true });
+    const marker = ref.get(filed.taskId)!.metadata?.filedByCall;
+    expect(marker).toEqual(expect.stringContaining("0%3Ac1"));
+    const patched = (await runForTest(tool("updateTask") as never, { id: filed.taskId, metadata: { filedByCall: "x", note: "kept" } } as never, ctx)) as { ok: boolean };
+    expect(patched).toMatchObject({ ok: true });
+    expect(ref.get(filed.taskId)!.metadata).toMatchObject({ filedByCall: marker, note: "kept" });
+  });
+
   it("files a follow-up while the session has an unfinished task: it waits, never refused (FIX-2080)", async () => {
     const b = await board([
       row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),

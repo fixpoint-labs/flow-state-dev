@@ -140,6 +140,33 @@ describe("a schedule that files a task", () => {
     // The board's own filing refused it, in Alice's conversation with lead.
     expect(await failures(h)).toEqual([expect.stringMatching(/^fileScheduledTask: The scheduled task wasn't filed: .*eng\.writer/)]);
   });
+
+  it("files nothing, every fire, when it names no assignee and the filer has several delegates: no unassigned rows pile up", async () => {
+    const h = boot();
+    // pm has two delegates that take tasks, so no one of them is the default.
+    await roster(h, "saveSchedule", { ...weekly, input: { filer: "pm", goal: weekly.input.goal } });
+    await fire(h, weekly.key, { nominalFireTime: MONDAY });
+    await h.settled();
+    await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY });
+    await h.settled();
+    const conversation = await conversationWith("pm");
+    const session = await (await h.state.getRuntime()).stores.session.get(conversation);
+    const rows = session === undefined ? [] : ((await h.act(ALICE, conversation, "listTasks_tasks", {})).output as { tasks?: unknown[] }).tasks ?? [];
+    expect(rows).toEqual([]);
+    expect(h.runs).toHaveLength(0);
+    expect(await failures(h)).toEqual([
+      expect.stringMatching(/^fileScheduledTask: The scheduled task wasn't filed: it names no assignee/),
+      expect.stringMatching(/^fileScheduledTask: The scheduled task wasn't filed: it names no assignee/)
+    ]);
+  });
+
+  it("gives a fire that names no assignee to the filer's only delegate", async () => {
+    const h = boot();
+    await roster(h, "saveSchedule", { ...weekly, input: { filer: "lead", goal: weekly.input.goal } });
+    expect((await fire(h, weekly.key, { nominalFireTime: MONDAY })).status).toBe(202);
+    await h.settled();
+    expect(await aliceTasks(h)).toEqual([expect.objectContaining({ goal: weekly.input.goal, assignee: "eng.tasker", status: "completed" })]);
+  });
 });
 
 describe("the user's list of schedules", () => {
