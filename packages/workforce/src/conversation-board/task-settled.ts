@@ -14,8 +14,8 @@
  *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
  *   starts the attempt or resumes the turn.
  * - **A task whose result goes to the conversation** (`resultTo:
- *   "conversation"`, a routed task among them, FIX-2083) wakes no turn: its
- *   answer lands as a line under the delegate's name. A conversation that
+ *   "conversation"`, a routed task among them, FIX-2083): its answer wakes no
+ *   turn, and lands as a line under the delegate's name. A conversation that
  *   routes messages hands its completion to its own handling instead
  *   ({@link TaskSettledOptions.onRouted}: the line, and the rounds it feeds),
  *   and a routed round's failure or cancel too, and acknowledges the notice
@@ -109,9 +109,12 @@ export interface TaskSettledOptions {
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
   /**
-   * A conversation-result task's completion, failure or cancel, acted on once
-   * like any notice, and handed here instead of a line ({@link RoutedEnding}):
-   * a coordinator's routing lands the answer and feeds its rounds (FIX-2083).
+   * A conversation-result task's completion, and a routed round's failure or
+   * cancel, acted on once like any notice, and handed here instead of a line
+   * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
+   * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
+   * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
+   * here: it is heard as any task's the conversation filed.
    */
   readonly onRouted?: BlockDefinition<any, any>;
 }
