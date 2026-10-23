@@ -82,11 +82,8 @@
  * A host that keeps no wakes keeps an in-process timer instead.
  */
 import {
-  choice,
   defineFlow,
   dispatcher,
-  evaluator,
-  generator,
   handler,
   logicalBlockIdOf,
   router,
@@ -96,9 +93,8 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { defineFitCheck, failedFitSchema } from "../fit-check";
 import {
-  bestFitEvaluationFailed,
-  failedEvaluationSchema,
   needsBestFitCall,
   placeBestFit,
   type BestFitCase,
@@ -167,7 +163,6 @@ import {
   COORDINATOR_JUDGMENT,
   COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
-  COORDINATOR_ROUTE_ASK,
   HOLD_STATE,
   LANDED_STATE,
   ROUND_DEADLINE_ACTION,
@@ -212,7 +207,7 @@ export interface CoordinatorFlowOptions {
   /** The worker installation the coordinator's workers, and their delegates, belong to. */
   installation: WorkerInstallation;
   /**
-   * The model best fit's one evaluator call runs on: a model string the app's
+   * The model best fit's one fit check (`../fit-check.ts`) runs on: a model string the app's
    * resolver turns into an evaluation model, or an evaluation model. Required;
    * the package names no default, and an evaluator takes no intent.
    */
@@ -1056,52 +1051,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   });
 
-  /**
-   * Best fit's one call: which delegate answers the post, read with the
-   * conversation's recent lines before it. Its state is `{ recent, post }`,
-   * each line and the post as `{ from, text }`; a scripted evaluation reads
-   * that shape.
-   */
-  const routeEvaluator = evaluator({
-    name: COORDINATOR_ROUTE,
-    model: options.routeModel,
-    inputSchema: bestFitCaseSchema,
-    state: (bestFit: BestFitCaseValue) => ({ recent: bestFit.recent, post: bestFit.post }),
-    questions: (bestFit: BestFitCaseValue) => ({ worker: choice(ROUTE_QUESTION, bestFit.ladder.options) })
-  });
-
-  /** A gateway serves most model ids as language models only, so a failed evaluator call on a string asks again here. */
-  const routeModelId = typeof options.routeModel === "string" ? options.routeModel : undefined;
-  const routeAsked = (model: string) =>
-    generator({
-      name: COORDINATOR_ROUTE_ASK,
-      model,
-      inputSchema: bestFitCaseSchema,
-      outputSchema: z.object({ worker: z.string() }),
-      itemVisibility: { client: false, history: false },
-      // Only `routeModel` picks: no coercion pass on another model.
-      repair: { coerce: false },
-      prompt: (bestFit: BestFitCaseValue) =>
-        [
-          ROUTE_QUESTION,
-          "Answer with the key of exactly one option below, as `worker`.",
-          "",
-          "Options:",
-          ...Object.entries(bestFit.ladder.options).map(([key, pickBy]) => `- ${key}: ${pickBy}`)
-        ].join("\n"),
-      user: (bestFit: BestFitCaseValue) =>
-        [
-          ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
-          `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
-        ].join("\n")
-    })
-      .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
-      .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
-
   /** Keep the evaluator's error on the post before asking again, so the record says the call failed. */
   const noteEvaluationFailed = handler({
     name: "coordinator-route-note-failed",
-    inputSchema: failedEvaluationSchema,
+    inputSchema: failedFitSchema,
     outputSchema: z.object({}),
     requestStateSchema,
     execute: async (evaluated, ctx) => {
@@ -1113,19 +1066,26 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   });
 
-  const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
-    routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
-  );
-  const isFailedEvaluation = (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success;
-  const askRoute =
-    routeModelId === undefined
-      ? evaluateRoute
-      : evaluateRoute
-          .tapIf(isFailedEvaluation, noteEvaluationFailed)
-          .stepIf(
-            isFailedEvaluation,
-            routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
-          );
+  /**
+   * Best fit's one call, the one fit check: which delegate answers the post,
+   * read with the conversation's recent lines before it. Its state is
+   * `{ recent, post }`, each line and the post as `{ from, text }`; a
+   * scripted evaluation reads that shape.
+   */
+  const askRoute = defineFitCheck({
+    name: COORDINATOR_ROUTE,
+    model: options.routeModel,
+    inputSchema: bestFitCaseSchema,
+    question: ROUTE_QUESTION,
+    candidates: (bestFit: BestFitCaseValue) => bestFit.ladder.options,
+    state: (bestFit: BestFitCaseValue) => ({ recent: bestFit.recent, post: bestFit.post }),
+    work: (bestFit: BestFitCaseValue) =>
+      [
+        ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
+        `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
+      ].join("\n"),
+    onEvaluationFailed: noteEvaluationFailed
+  });
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([

@@ -84,20 +84,26 @@ function scripted(): ModelResolver {
       return { text: "On it.", finishReason: "stop" };
     },
   };
-  const fit: GeneratorModel = {
+  /** The one fit check, asked about the chosen lead: it picks the lead, or answers none fits. */
+  const fit = {
+    specificationVersion: "v4",
+    provider: "test",
     modelId: "test/fit",
-    async generate(options: unknown) {
-      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
-    },
-    async generateStep(options: unknown) {
-      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+    supportedQuestionTypes: ["choice"],
+    async doEvaluate(call: { questions: { worker: { criteria: Record<string, string> } } }) {
+      const lead = Object.keys(call.questions.worker.criteria).find((key) => !key.startsWith("~"))!;
+      const choice = leadFits(JSON.stringify(call)) ? lead : "~none-fits";
+      return { answers: { worker: { type: "choice", choice } }, usage: { inputTokens: 1, outputTokens: 1 }, warnings: [] };
     },
   };
   return Object.assign(
-    (_id: string, block?: string) =>
-      block?.startsWith("coordinator-judgment") ? judgment : block === "workstream-lead-fit" ? fit : agent,
+    (_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : agent),
     {
       resolveId: (id: string) => id,
+      resolveEvaluationModel: (_id: string, block?: string) => {
+        if (block !== "workstream-lead-fit") throw new Error(`no evaluation model for ${block}`);
+        return fit;
+      },
     },
   ) as unknown as ModelResolver;
 }

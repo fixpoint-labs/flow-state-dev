@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
-import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
+import { mockEvaluationModel, mockGenerator, type MockEvaluationModel, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createWorkforceClient } from "../src/browser";
 import {
@@ -85,7 +85,15 @@ const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown>
 type Heard = { worker: string; message: string; sessionId: string };
 
 async function boot(
-  options: { judgment?: MockGeneratorInstance; counted?: boolean; leadFit?: MockGeneratorInstance; coordinatorDelegates?: "all" } = {}
+  options: {
+    judgment?: MockGeneratorInstance;
+    counted?: boolean;
+    /** The one fit check's scripted evaluation, asked about the chosen lead. */
+    leadFit?: MockEvaluationModel;
+    /** When set, the fit check's evaluation is refused as a language model's, and this answers the same question. */
+    leadFitAsLanguage?: MockGeneratorInstance;
+    coordinatorDelegates?: "all";
+  } = {}
 ) {
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
@@ -140,13 +148,25 @@ async function boot(
         [COORDINATOR_FLOW]: defineCoordinatorFlow({
           installation,
           routeModel: "typesafe-ai/jev",
-          agent: { catalog: openingTools(installation, options.leadFit !== undefined) }
+          agent: { catalog: openingTools(installation, options.leadFit !== undefined || options.leadFitAsLanguage !== undefined) }
         })
       }),
       models: {
+        evaluators: {
+          ...(options.leadFitAsLanguage !== undefined
+            ? {
+                // The gateway's refusal of a language model, whatever `leadFit.model` names.
+                "workstream-lead-fit": mockEvaluationModel({
+                  error: new Error("Model is a language model, not a decision model. Use the language generation API instead.")
+                })
+              }
+            : options.leadFit === undefined
+              ? {}
+              : { "workstream-lead-fit": options.leadFit })
+        },
         generators: {
           "coordinator-judgment": options.judgment ?? mockGenerator({ script: [] }),
-          ...(options.leadFit === undefined ? {} : { "workstream-lead-fit": options.leadFit })
+          ...(options.leadFitAsLanguage === undefined ? {} : { "workstream-lead-fit-ask": options.leadFitAsLanguage })
         }
       }
     },
@@ -654,8 +674,19 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
   });
 
   describe("checking its pick of lead against the work", () => {
-    /** The fit check's one call, answering `fits` for work that says (by default) what sort it is. */
-    const fit = (fits: boolean, says = true) => mockGenerator({ script: [{ structuredOutput: { says, fits } }] });
+    /**
+     * The one fit check's call, asked about the chosen lead: it answers the
+     * lead (the pick), `~none-fits`, or `~sort-unsaid` (the work doesn't say
+     * its sort), each in turn when given several.
+     */
+    const fit = (...choices: string[]) => {
+      let call = 0;
+      return mockEvaluationModel({
+        answers: () => ({ worker: { type: "choice", choice: choices[Math.min(call++, choices.length - 1)]!, confidence: 0.9 } })
+      });
+    };
+    const NONE_FITS = "~none-fits";
+    const SORT_UNSAID = "~sort-unsaid";
     const research = { id: "research", title: "Research: what to build next", lead: "alice-lead", objectives: ["Rank three ideas"] };
     /** What the open tool answered in a conversation's turns. */
     const opens = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) =>
@@ -668,9 +699,9 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       ((await h.ok("alice", "lab", await h.lab("alice"), "readProject", { project: apollo })) as { workstreams: Array<{ id: string }> })
         .workstreams.map((workstream) => workstream.id);
 
-    it("refuses a lead whose own description says it does other work, and writes nothing", async () => {
+    it("refuses the lead when the one fit check answers none fits, and writes nothing", async () => {
       // The one lead she has can lead, so only its description says it is the wrong one for research.
-      const leadFit = fit(false);
+      const leadFit = fit(NONE_FITS);
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
@@ -681,15 +712,18 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await workstreams(h)).toEqual([]);
       expect(await h.delegates("alice", id)).toEqual([]);
       expect(h.heard).toEqual([]);
-      // The check read the lead's own description and the work, not the model's word for either.
+      // One call, asked the lead by its own description and the work, with the two choices beside the pick.
+      expect(leadFit.calls).toHaveLength(1);
       const [call] = leadFit.calls;
-      expect(JSON.stringify(call)).toContain("alice's alice-lead");
-      expect(JSON.stringify(call)).toContain("Research: what to build next");
-      expect(JSON.stringify(call)).toContain("Rank three ideas");
+      const criteria = (call!.questions as { worker: { criteria: Record<string, string> } }).worker.criteria;
+      expect(Object.keys(criteria)).toEqual(["alice-lead", NONE_FITS, SORT_UNSAID]);
+      expect(criteria["alice-lead"]).toContain("alice's alice-lead");
+      expect(JSON.stringify(call!.state)).toContain("Research: what to build next");
+      expect(JSON.stringify(call!.state)).toContain("Rank three ideas");
     });
 
-    it("opens it when the lead's description fits the work", async () => {
-      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: fit(true) });
+    it("opens it when the one fit check picks the lead", async () => {
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: fit("alice-lead") });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
@@ -698,20 +732,25 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
     });
 
-    it("opens it when the work doesn't say what sort it is, whatever the judge makes of the lead: that is no clear misfit", async () => {
+    it("opens a bare-name workstream when the check answers the work doesn't say its sort: that is no clear misfit", async () => {
       // The work names no sort, so no lead can be the wrong sort for it.
       const unsaid = { id: "garnet", title: "garnet delta 6965", lead: "alice-lead", objectives: [] };
-      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(false, false) });
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(SORT_UNSAID) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream for garnet delta 6965." });
       await h.settled();
       expect(await opens(h, id)).not.toContain("lead-doesnt-fit");
       expect(await workstreams(h)).toEqual(["garnet"]);
+      expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
     });
 
     it("opens it when the check can't answer, so a failed model call never stops an open, and says why", async () => {
-      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
+      // The evaluator fails, and so does the check's one ask again as a language model (unscripted here).
+      const h = await boot({
+        judgment: scripted([{ toolName: "openWorkstream", args: research }]),
+        leadFit: mockEvaluationModel({ error: new Error("the provider is down") })
+      });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
@@ -721,8 +760,38 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await opens(h, id)).toContain('"leadFit":{"checked":false,"why":"unanswered: ');
     });
 
+    it("lets the open through when the check answers something that is no choice, and says what it answered", async () => {
+      // An evaluator can only answer a choice, so it is the language-model ask that can answer off the list.
+      const leadFitAsLanguage = mockGenerator({ script: [{ structuredOutput: { worker: "someone-else" } }] });
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      expect(await workstreams(h)).toEqual(["research"]);
+      const answered = await opens(h, id);
+      expect(answered).toContain('"leadFit":{"checked":false,"why":"unanswered: answered ');
+      expect(answered).toMatch(/someone-else[^}]*which is not a choice/);
+    });
+
+    it("asks the same question as a language model when the model is one, as best fit does, and refuses on its none fits", async () => {
+      const leadFitAsLanguage = mockGenerator({ script: [{ structuredOutput: { worker: NONE_FITS } }] });
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.settled();
+      expect(leadFitAsLanguage.calls).toHaveLength(1);
+      const asked = JSON.stringify(leadFitAsLanguage.calls[0]!.input);
+      expect(asked).toContain("alice's alice-lead");
+      expect(asked).toContain(NONE_FITS);
+      expect(asked).toContain("Research: what to build next");
+      expect(await opens(h, id)).toContain("lead-doesnt-fit");
+      expect(await workstreams(h)).toEqual([]);
+    });
+
     it("refuses on the open's own terms before asking the model: a bad id is refused as one, with no call", async () => {
-      const leadFit = fit(false);
+      const leadFit = fit(NONE_FITS);
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: { ...research, id: "two/segments" } }]), leadFit });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
@@ -735,8 +804,8 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     });
 
     it("doesn't check a workstream opened again: it was accepted once, and a second verdict can't refuse it", async () => {
-      // The first open is judged a fit; asked again, the judge would say no, but it is never asked.
-      const leadFit = mockGenerator({ script: [{ structuredOutput: { says: true, fits: true } }, { structuredOutput: { says: true, fits: false } }] });
+      // The first open is judged a fit; asked again, the check would say none fits, but it is never asked.
+      const leadFit = fit("alice-lead", NONE_FITS);
       const h = await boot({
         judgment: scripted([
           { toolName: "openWorkstream", args: research },
@@ -757,7 +826,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     });
 
     it("doesn't check a user's own open from the app: their pick is theirs", async () => {
-      const leadFit = fit(false);
+      const leadFit = fit(NONE_FITS);
       const h = await boot({ leadFit });
       expect(await h.open("alice", "research", "alice-lead")).toMatchObject({ opened: true });
       expect(leadFit.calls).toEqual([]);
