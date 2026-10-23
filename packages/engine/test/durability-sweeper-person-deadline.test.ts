@@ -1,15 +1,7 @@
 /**
- * A person's stop whose deadline passes while a server runs is expired at its
- * deadline, not an interval later (FIX-2063 D3).
- *
- * Why it matters: with durable execution on by default, the router's sweeper
- * is what fires a person's deadline, including one a separate `fsdev run`
- * left in the store before the server started. Its interval is ten minutes by
- * default, so a sweeper that only ticked on the interval would leave an
- * expired approval answerable that long. The schedule reads the suspension's
- * `expiresAt`, the way it already does for a wait's deadline: no second loop.
- * A gate parked in this process after the sweeper started tells it, so its
- * deadline is not left for the interval either.
+ * A person's stop expires at its deadline while a server runs, not on the
+ * ten-minute interval (FIX-2063 D3): one left in the store before the sweeper
+ * started, and one parked after.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
