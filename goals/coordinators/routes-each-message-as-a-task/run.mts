@@ -13,7 +13,8 @@
  * Controls: GOAL_CONTROL=round-timer   (must FAIL b:restart)
  *           GOAL_CONTROL=post-map-off  (must FAIL e:legacy)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- *           (`main` before FIX-2083 must FAIL c:after and the sweep)
+ *           (`main` before FIX-2083 must FAIL c:after and the sweep; `main`
+ *           before its one fit check must FAIL d:lead-refused and d:one-check)
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -269,6 +270,41 @@ function grade(o: any, restart: { kill: any; restart: any }): { failures: string
   if (judgedHeard.length !== 1 || !judgedHeard[0]!.message.includes(`[judge] ${w.twice} hand this on.`)) {
     fail("d:word", `wanted ${first} handed Alice's message as she wrote it, held-out word and all, beside the judgment turn's own goal; it heard ${show(judgedHeard.map((h) => h.message))}`);
   } else notes.push(`the judgment delegate heard "${judgedHeard[0]!.message.replace(/\n/g, " ").slice(0, 120)}"`);
+
+  // ---- d: one fit check, for best fit and the lead vet -----------------------------
+  const d = o.d;
+  type FitCall = { about: unknown; questions: string[]; choices: string[] };
+  const fitCalls = d.fitCalls as FitCall[];
+  /** The one fit check's calls about `word`: one `worker` choice each, on the one evaluation. */
+  const checked = (word: string) => fitCalls.filter((c) => JSON.stringify(c.about).includes(word) && c.questions.join(",") === "worker");
+  const fitRoute = (postId: string) => routesFor(o.read.fit.records, postId)[0] as (Route & { fit?: { reason?: string } }) | undefined;
+  const pickRoute = fitRoute(d.fit.pick.requestId);
+  const pickHeard = heard.filter((h) => h.message.includes(w.pick)).map((h) => h.worker);
+  const pickCalls = checked(w.pick);
+  if (pickCalls.length !== 1 || !pickCalls[0]!.choices.includes(second) || !pickCalls[0]!.choices.includes(third) || pickRoute?.by !== "evaluated" || pickHeard.join(",") !== second) {
+    fail("d:fit-pick", `wanted best fit's message marked for ${second} judged by one fit check call offering ${second} and ${third}, placed by its pick, and heard by ${second} alone; calls ${show(pickCalls)}, record ${show(pickRoute)}, heard by ${show(pickHeard)}`);
+  } else notes.push(`best fit's pick: one fit check call over ${pickCalls[0]!.choices.length} choices, placed by its pick, heard by ${second} alone`);
+  const fallbackRoute = fitRoute(d.fit.fallback.requestId);
+  const fallbackHeard = heard.filter((h) => h.message.includes(w.fallback)).map((h) => h.worker);
+  if (checked(w.fallback).length !== 1 || fallbackRoute?.by !== "fallback" || fallbackRoute.fit?.reason !== "failed" || fallbackHeard.join(",") !== third) {
+    fail("d:fit-fallback", `wanted best fit's unmarked message judged by one fit check call, which fails, and taken by the fallback ${third}; calls ${show(checked(w.fallback))}, record ${show(fallbackRoute)}, heard by ${show(fallbackHeard)}`);
+  } else notes.push(`best fit's fallback: the fit check's call failed, and the fallback ${third} took the message`);
+  const vetTools = o.read.vet.tools as Array<{ name: string | null; output: any; error?: unknown }>;
+  // What each open answered: its output, or the refusal it threw.
+  const opens = vetTools.filter((t) => t.name === "openWorkstream").map((t) => JSON.stringify({ output: t.output ?? null, error: t.error ?? null }));
+  const misfitCalls = checked(w.misfit);
+  const misfitOpen = opens.find((out) => out.includes(`misfit-${w.misfit}`) || out.includes("lead-doesnt-fit"));
+  if (d.vet.created?.status !== "completed") fail("d:lead-refused", `setup: Alice's project was not created: ${show(d.vet.created)}`);
+  else if (misfitCalls.length !== 1 || misfitCalls[0]!.choices.length !== 3 || !misfitCalls[0]!.choices.includes(d.lead) || misfitOpen === undefined || !misfitOpen.includes("lead-doesnt-fit") || d.vet.opened.includes(`misfit-${w.misfit}`)) {
+    fail("d:lead-refused", `wanted the open of research under ${d.lead} judged by one fit check call, asked about the lead with two more choices, refused lead-doesnt-fit on its none fits, and nothing opened; calls ${show(misfitCalls)}, the open answered ${show(misfitOpen)}, opened ${show(d.vet.opened)}`);
+  } else notes.push(`a misfit lead: one fit check call over ${show(misfitCalls[0]!.choices)}, and the open refused lead-doesnt-fit`);
+  const bareOpen = opens.find((out) => out.includes(`bare-${w.bare}`));
+  if (checked(w.bare).length !== 1 || bareOpen === undefined || !bareOpen.includes('"leadFit":{"checked":true}') || !d.vet.opened.includes(`bare-${w.bare}`)) {
+    fail("d:lead-bare", `wanted the open of a bare name under ${d.lead} judged by one fit check call and opened, checked; calls ${show(checked(w.bare))}, the open answered ${show(bareOpen)}, opened ${show(d.vet.opened)}`);
+  } else notes.push(`a bare-name workstream: one fit check call, and it opened, checked`);
+  // No second fit call: the only language model asked on the fit model is the check's own ask again, after a failed evaluation.
+  const secondCalls = (d.askedModels as Array<{ block: string | null; id: string }>).filter((m) => m.id === "scripted/fit" && !(m.block ?? "").endsWith("-ask"));
+  if (secondCalls.length > 0) fail("d:one-check", `a language model was asked to judge fit outside the one check: ${show(secondCalls)}`);
 
   // ---- e: a post row stored before the upgrade -----------------------------------
   const e = o.e;

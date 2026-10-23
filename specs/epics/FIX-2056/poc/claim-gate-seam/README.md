@@ -51,6 +51,10 @@ recorders (`record-result.ts`), `completeTask`/`failTask` (`task-tools-capabilit
 | S5 the drain's own deadline passes | **a deadline ends the row, then it ends twice** | clean | clean |
 | S6 a person's stop, a queued message, then the end | settles with a message queued | **drain moves past a running row** | clean |
 
+S6's queued message is retained as run. Since FIX-2103 a message queued to an open task's session
+holds nothing: the task settles when its turn ends, and the message is conversation, not part of it,
+so "settles with a message queued" is no longer a violation. The person's stop in S6 still is.
+
 "Two answers" applies FIX-2077's predicate at the gate but lets the plan board's drain take "the
 child's request returned" as done. Where rule 6 already holds at return (S3, S5), the two answers
 agree and nothing breaks; wherever it does not, the drain moves on early.

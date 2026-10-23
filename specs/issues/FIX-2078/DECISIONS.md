@@ -124,7 +124,7 @@ that caused it. Then each cancel gets its notice, and turns are batched instead.
   | A cascade owed (FIX-2080), task-session half: a task's open filed tasks. Paid by that session's pass, under a wake written there before the ending | the write + 2 s | d |
   | A task whose filed tasks have all ended, owed its settle. Paid by today's split settle until FIX-2077, by its rule-6 check after | the write + 2 s | b |
   | A lapsed wait's ending (FIX-2082), owed to `onTaskSettled` if the waiting request ends without reading it. Its wake is fenced by that request's lease | that request's end + 2 s | FIX-2082's |
-  | A message queued for a running task (FIX-2077's `waitingOn`), owed its request. The send writes the wake with the log row; the pass re-dispatches the message entry, idempotent by message id; an undeliverable message is settled and rule 6 re-runs | the write + 2 s | — |
+  | A message queued for a running task, owed its request. The send writes the wake with the log row; the pass re-dispatches the message entry, idempotent by message id. Since FIX-2103 it holds no task, so an undeliverable message is settled and no task is re-checked | the write + 2 s | — |
   | A cancel owed: a stopped wait whose cancel failed (`Task.cancelOwed`). Paid in the pass's repairs | the write + 2 s | — |
   | A steer owed a turn (FIX-2086) | the write + 2 s | FIX-2086's |
 

@@ -36,10 +36,10 @@
  * project is refused another before anything is written (BR-21b).
  *
  * **A worker's open is checked for fit.** With `leadFit` set, the
- * `openWorkstreamTool` a worker calls asks one small model call, after every
- * other refusal and before anything is written, whether the lead's description
- * says it does the work, and refuses `lead-doesnt-fit` when it doesn't
- * (`lead-fit.ts`). Opening a workstream again is not checked: it was accepted
+ * `openWorkstreamTool` a worker calls asks the one fit check best fit also
+ * routes by, after every other refusal and before anything is written, about
+ * the chosen lead, and refuses `lead-doesnt-fit` only when it answers that
+ * none fits (`lead-fit.ts`). Opening a workstream again is not checked: it was accepted
  * once. A user's `openWorkstream` action is their own pick and is not checked.
  * A check that can't answer lets the open through, and the tool's answer says
  * why in `leadFit`.
@@ -121,7 +121,8 @@ export interface WorkstreamBlocksOptions {
   leadFlows: readonly { readonly kind: string }[];
   /**
    * Check a worker's pick of lead against the work before its
-   * `openWorkstreamTool` opens it, with one call to this model. Left out, the
+   * `openWorkstreamTool` opens it, with the one fit check on this model (asked
+   * again as a language model when the model serves no evaluations). Left out, the
    * tool opens with any lead that can lead.
    */
   leadFit?: { model: string };
@@ -259,9 +260,9 @@ export type WorkstreamBlocks = {
    */
   listLeadsTool: BlockDefinition<z.ZodObject<{}, "strict">, typeof listLeadsOutputSchema, Record<string, never>, ListLeadsOutput>;
   /**
-   * `openWorkstream` for a worker to call: with `leadFit` set, it first checks
-   * the lead's description says it does the work, and refuses `lead-doesnt-fit`
-   * when it doesn't. Work that doesn't say what sort it is is never refused.
+   * `openWorkstream` for a worker to call: with `leadFit` set, it first asks
+   * the one fit check about the lead, and refuses `lead-doesnt-fit` only when
+   * it answers that none fits. Work that doesn't say what sort it is is never refused.
    * Without `leadFit`, it is `openWorkstream`.
    */
   openWorkstreamTool: BlockDefinition<

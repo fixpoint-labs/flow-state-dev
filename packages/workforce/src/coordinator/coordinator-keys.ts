@@ -13,16 +13,14 @@ export const COORDINATOR_FLOW = "coordinator";
 
 /**
  * The component every routing decision is recorded under, and the name of
- * best fit's evaluator block. **Pinned**: a client tells a record from a
- * line by it, and a scripted model resolves the evaluator by it.
+ * best fit's fit check (`../fit-check.ts`). **Pinned**: a client tells a
+ * record from a line by it, and a scripted model resolves the check's
+ * evaluator by it, and its language-model ask by `coordinator-route-ask`.
  */
 export const COORDINATOR_ROUTE = "coordinator-route";
 
 /** The judgment turn's generator block, which a scripted model resolves by name. */
 export const COORDINATOR_JUDGMENT = "coordinator-judgment";
-
-/** Best fit's generator when the evaluator call on a model id fails. A scripted model resolves it by name. */
-export const COORDINATOR_ROUTE_ASK = "coordinator-route-ask";
 
 /**
  * The internal entry a round's deadline wakes its conversation on (D2): the

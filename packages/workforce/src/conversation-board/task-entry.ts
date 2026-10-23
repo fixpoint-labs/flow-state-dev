@@ -38,7 +38,7 @@
  *   session's own board leaves its task running when it ends, with no lease
  *   (`waitingOn: "filed"`); the turn each piece's ending wakes runs for the
  *   task (`./task-admission`), and the request after which no piece holds it
- *   and no message is queued settles it, through the gate's one check. The
+ *   settles it, through the gate's one check. The
  *   entry holds the session's reply line while it runs, so a piece's notice
  *   waits for the turn to end.
  */

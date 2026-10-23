@@ -1544,16 +1544,17 @@ a workstream drops its delegate in that turn, so a later dispatch in the turn ne
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
-leadFlows, leadFit: { model: "openai/gpt-6-luna" } })`: `openWorkstreamTool` then makes one call
-to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
-the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
-is written. The same call asks whether the title and objectives say what sort of work it is at all, and work
-they don't, such as a bare name, passes the check. A refusal's message tells the worker to pick another lead
+leadFlows, leadFit: { model: "openai/gpt-6-luna" } })`: `openWorkstreamTool` then runs the one fit check
+best fit routes by, on that model, about the chosen lead: its choices are the lead, by its description (as
+`listLeads` shows it), *none fits*, and *the work doesn't say its sort*, for the workstream's title and
+objectives. Only *none fits* refuses the open, with `lead-doesnt-fit`, and nothing is written; work that doesn't
+say its sort, such as a bare name, passes. The check asks as an evaluator first and, on a model string, once more
+as a language model when that fails, as best fit does. A refusal's message tells the worker to pick another lead
 from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
-A failed call, or a lead with no description,
+A failed check, an answer that isn't one of its choices, or a lead with no description,
 lets the open through. The check runs after every other refusal, and an open of a workstream that is
 already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,
-or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <error>`.
+or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <why>`.
 Without `leadFit`, `openWorkstreamTool` is `openWorkstream`. Opens
 through the `openWorkstream` action, such as a user's own open from the app, are never checked.
 
@@ -1902,7 +1903,9 @@ heard within seconds, without anyone opening the conversation, through the sessi
 **After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
 whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. Call `backfillBoardWakes(stores, { userCell })` once at host
+version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+task an earlier version held open for a message queued to its session: its work had answered, and
+it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
 orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
 now, in each session holding such a debt, and returns how many. It is safe to run again, and
@@ -1943,8 +1946,9 @@ ending wakes a turn in the task session, which decides what it means: a failed p
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
 throws fails the attempt. Read a piece's result from its own row (`listTasks({ filedByTask })`,
-`getTask`). A message to the worker in its task session while the task runs holds it open too,
-and its answer is never the task's output. Run a workforce that splits on a host with durable
+`getTask`). A message to the worker in its task session doesn't hold the task and isn't part of it:
+while the task's turn is running, it is answered after that turn, and an error in that answer
+doesn't fail the task. To change open work, steer it with `updateTask`'s `message`. Run a workforce that splits on a host with durable
 execution: if the server stops between a piece's ending and its notice reaching the task session,
 a durable host delivers the notice when it starts again; without durable execution the task stays
 `in_progress` with nothing to wake it. Splitting goes up to
@@ -2149,7 +2153,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
-| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the work says what sort it is and the lead's description doesn't say it does that work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it asks best fit's one fit check about the lead and refuses with `lead-doesnt-fit` only when the check answers that none fits. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |

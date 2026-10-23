@@ -116,8 +116,9 @@ this step failing". Then the wait exempts its failures and the docs say so.
   background-work pool across drains, nothing new on the stored request, and the seam reads them
   once, after the last drain, not at each one. No other drain site, and no flow-author
   hook, decides it.
-- **Every request admitted for the task counts:** `work`, `onTaskSettled`, a queued message's
-  request, and a resume of any of them (FIX-2077's admission list). One attempt holds them all.
+- **Every request admitted for the task counts:** `work`, `onTaskSettled`, and a resume of either
+  (FIX-2077's admission list). One attempt holds them all. A queued message's request is not
+  admitted (FIX-2103), so its step that throws fails only that request.
 - **The recorded error** is the first background failure, named by its step, through the same
   failure write a throw takes. If the request also threw, the request's own error wins.
 - **A cancel is not an error, and the engine decides what a cancel is.** A request whose cancel
@@ -164,6 +165,9 @@ this step failing". Then the wait exempts its failures and the docs say so.
   message is a one-attempt task whose result goes to the conversation, so D1 would drop a delegate's
   right answer over a failed capture. The owner approved a carve-out for such tasks
   ([D1's amendment](#d1-amendment)); leg k added.
+- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message to its session is conversation, not part of it, holding no claim. Its request isn't admitted for the task, so its
+  background error no longer fails the attempt: leg g inverts, and the admission list drops it. No
+  change to D1-D3.
 
 ## Notes from review
 
