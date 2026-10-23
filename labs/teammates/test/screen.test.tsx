@@ -172,4 +172,13 @@ describe("the teammates screen", () => {
     const run = await within(conversation()).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
     await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
   });
+
+  it("files the refused job again when you pick lead's project from the header instead of the card", async () => {
+    render(<App adapter={fast()} />);
+    await tell("lead", "Have coder fix the typo in the README's first line.");
+    await within(conversation()).findByRole("group", { name: "Pick a project" });
+    await act(async () => fireEvent.change(screen.getByLabelText("Project for lead"), { target: { value: "relay" } }));
+    expect(await within(conversation()).findByText("Work in relay.")).toBeTruthy();
+    await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
+  });
 });

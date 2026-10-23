@@ -39,6 +39,8 @@ export function Conversation({
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const workProject = useWatch(adapter.watchWorkProject, worker.id);
+  // A job refused for want of a project waits on the pick, from its card or the header.
+  const waiting = !workProject && tasks.some((t) => t.status === "needs-project");
   // The pick is stored on the worker, then said to it as your line, so it files the job again.
   const pick = async (project: string) => {
     await adapter.setWorkProject(worker.id, project);
@@ -66,7 +68,7 @@ export function Conversation({
         <select
           aria-label={`Project for ${worker.name}`}
           value={workProject ?? ""}
-          onChange={(e) => void adapter.setWorkProject(worker.id, e.target.value)}
+          onChange={(e) => void (waiting ? pick(e.target.value) : adapter.setWorkProject(worker.id, e.target.value))}
           className="border border-border bg-card px-1 py-0.5 font-mono text-[10px] tracking-widest uppercase"
         >
           <option value="" disabled>
