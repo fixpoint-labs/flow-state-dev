@@ -29,7 +29,7 @@ worker's session, or **the engine**, starting a request for a task. It produces 
 session runs one request at a time; the rest wait in its **queue**. A request **ends** when its
 **background work** ends too; until then its session is **busy**. A request **waits** until a task,
 a call or a **condition** (an external signal, such as a webhook or a CI result) ends, or it **stops
-for a person**. Either way it is **suspended**: stored, and **resumed** from the same step; its
+for a person** with `waitForUser`. Either way it is **suspended**: stored, and **resumed** from the same step; its
 session is **waiting**. That needs **durable execution**, a host that stores a waiting request and
 carries it on later.
 
