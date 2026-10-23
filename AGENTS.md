@@ -71,7 +71,7 @@ Specs settle direction, not a build plan, so implementation is judgment work: th
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), project-spec authoring (`project-agent`), **implementing an approved spec** (`spec-implementer`, including its own build plan, PR-feedback fixes, and tests), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), project-spec authoring (`project-agent`), **implementing an approved spec** (`spec-implementer`, including its own build plan, PR-feedback fixes, and tests), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **reuse** (`reuse-review`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
 | Decided checks | **Sonnet** | the **completeness** + **correctness** review lenses, settling one already-framed factual claim with a throwaway POC (`poc-agent`), filing discovered work (`issue-manager`) |
 | Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (coordinator & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
