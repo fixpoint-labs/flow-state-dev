@@ -875,6 +875,11 @@ the ending. Only if your request ends without reading it do you
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
+When `getTask` is how you hear that a task failed or was cancelled, its answer carries
+`cancelled` beside `task`: the ids of the dependents you filed that this ending
+[cancelled](#when-a-dependency-fails). No notice goes out for that ending, so this is the only
+place they're named. Any other `getTask` answer leaves them to the notice.
+
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
 A turn that is itself working a task can wait too, so waits nest: a task's turn waits on a task
