@@ -114,7 +114,9 @@ in `checkouts` is a repository on this machine; each run works in a worktree of 
 workspace host (`local-host.ts`), as Claude Code's own threads do, never in the checkout itself.
 A thread inherits it: the hand-over copies the
 session's project to the task session (`filingProjectId`), and `projectWorkspace()` reads it
-there. A task may name another project the person is a member of. With none picked, it asks: the run's
+there. A task always works in its session's project: the board writes the session's project over one a
+task names (`ownProjectIn`, `conversation-board/board.ts`), and `projectWorkspace()` refuses
+`other-project`, so nothing offers a project per thread. With none picked, it asks: the run's
 `no-project` refusal shows as *Choose a project*. There is no
 scratch directory and no fallback to the lab's own repository, so the lab doesn't copy Kitchen
 Sink's `KITCHEN_SINK_HARNESS_WORKSPACE` default. If the lead has file or shell tools, their

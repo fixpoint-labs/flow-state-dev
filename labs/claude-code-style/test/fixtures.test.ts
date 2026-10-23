@@ -48,3 +48,35 @@ describe("the fixture's projects", () => {
     await expect(lab.openSession("session", "project-billing-service")).rejects.toThrow(/not-a-member/);
   });
 });
+
+describe("the fixture's threads", () => {
+  async function threads() {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Research three vendors for a status page, one thread each.");
+    const row = (title: string) => rows.find((t) => t.title === title);
+    return { lab, id, row };
+  }
+
+  it("leaves a thread's state alone when you talk in it without a question open, or resolve it before review", async () => {
+    const { lab, id, row } = await threads();
+    await vi.advanceTimersByTimeAsync(2000); // three threads filed, none waiting yet
+    const a = row("Vendor A · pricing and uptime")!;
+    await lab.sayInThread(id, a.id, "Check their status page too.");
+    await lab.resolve(id, a.id);
+    expect(row("Vendor A · pricing and uptime")?.status).toBe("in_progress");
+    expect(row("Vendor A · pricing and uptime")?.waitingOn).toBeUndefined();
+  });
+
+  it("files threads with ordinary task assignees, and a code change with the coder's harness", async () => {
+    const { lab, id, row } = await threads();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(row("Vendor B · regions")?.assignee).toBe("desk.thread");
+    expect(row("Vendor B · regions")?.harness).toBeUndefined();
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(800);
+    expect(row("Add a CHANGELOG line for the vendor pick")).toMatchObject({ assignee: "desk.coder", harness: "claude-code" });
+  });
+});

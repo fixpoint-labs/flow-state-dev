@@ -16,6 +16,11 @@
  * | `watchThread`   | the session's items, live                                                  |
  * | `watchTasks`    | the conversation board's `listTasks` rows                                  |
  * | `watchTaskWork` | the items of a task's run session, read only                               |
+ * | `sayInThread`   | `updateTask_tasks` with your line as a steer, naming the open question  |
+ * | `resolve`       | answering the thread's review wait: accepted                              |
+ * | `requestChanges`| answering the thread's review wait: revise, with your words              |
+ * | `watchPins`     | the lab's `pins` flow: your pinned task ids                               |
+ * | `pin`, `unpin`  | the `pins` flow's actions                                                  |
  */
 import { createFixtureLab } from "./fixtures";
 import type { ModeId } from "./modes";
@@ -45,7 +50,14 @@ export interface ProjectRow {
 
 /** One entry in a thread, in the order it happened. */
 export type ThreadEntry =
-  | { kind: "user"; id: string; text: string; queued?: boolean }
+  | {
+      kind: "user";
+      id: string;
+      text: string;
+      queued?: boolean;
+      /** Threads mode: the lead's turn filed threads for this line. */
+      sentToThread?: boolean;
+    }
   | { kind: "assistant"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; summary: string }
   | {
@@ -58,7 +70,9 @@ export type ThreadEntry =
       /** The main session took it while a turn was running (step 4). */
       duringTurn: boolean;
     }
-  | { kind: "interrupted"; id: string };
+  | { kind: "interrupted"; id: string }
+  /** Threads mode: a thread the lead filed, where its `createTask` call is. The card reads the task row. */
+  | { kind: "thread"; id: string; taskId: string };
 
 /** What a thread shows now. */
 export interface ThreadView {
@@ -80,6 +94,14 @@ export interface TaskRow {
   assignee?: string;
   /** The worker's last one-line progress note. */
   statusNote?: string;
+  /** What the task waits on you for, while it is held or parked: a question, or its review. */
+  waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
+  /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
+  harness?: string;
+  /** Steps done of total, when known. */
+  steps?: { done: number; total: number };
+  /** When the task last changed, in ms. */
+  updatedAt?: number;
 }
 
 /** The read-only work of one task. */
@@ -97,6 +119,16 @@ export interface LabAdapter {
   watchThread(sessionId: string, onChange: (view: ThreadView) => void): Unsubscribe;
   watchTasks(sessionId: string, onChange: (rows: TaskRow[]) => void): Unsubscribe;
   watchTaskWork(sessionId: string, taskId: string, onChange: (work: TaskWork) => void): Unsubscribe;
+  /** Talk inside a thread: a steer on its task, which answers its open question if it has one. */
+  sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
+  /** Accept a thread's work: answers its review wait. */
+  resolve(sessionId: string, taskId: string): Promise<void>;
+  /** Send a thread back to work: answers its review wait with your words. */
+  requestChanges(sessionId: string, taskId: string, words: string): Promise<void>;
+  /** Your pinned task ids. */
+  watchPins(onChange: (taskIds: string[]) => void): Unsubscribe;
+  pin(taskId: string): Promise<void>;
+  unpin(taskId: string): Promise<void>;
 }
 
 /** The adapter the app runs on. */
