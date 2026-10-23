@@ -646,12 +646,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         dispatch: {
-          // The sender's facts first, so every key the seam writes below wins
-          // over one of the same name: a provenance never moves the address,
-          // the reply route, or the approved recipient. `waitedBy` is dropped
-          // outright — the seam writes it only on a waited dispatch, so on any
-          // other an order alone would let a caller's one through.
-          ...withoutWaitedBy(spec.provenance),
+          // The sender's facts, without any key the seam owns: a provenance
+          // never moves the address, the reply route, the approved recipient
+          // or the waiter. Stripped rather than only out-ordered, because the
+          // seam writes several of them only on some dispatches, and on the
+          // rest a provenance one would read as server truth.
+          ...withoutSeamKeys(spec.provenance),
           type: spec.type,
           action: spec.action,
           // The instance the entry was resolved on, stamped only when the
@@ -972,9 +972,20 @@ async function isDescendantSession(
   return false;
 }
 
-/** `provenance` without a `waitedBy` key, which only the seam writes (FIX-2082). */
-function withoutWaitedBy(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+/** Every key of `metadata.dispatch` the seam writes itself, some only on some dispatches. */
+const SEAM_KEYS: ReadonlySet<string> = new Set([
+  "type",
+  "action",
+  "flowKind",
+  "flowId",
+  "from",
+  "key",
+  "recipientLineageId",
+  "waitedBy"
+]);
+
+/** `provenance` without any key the seam owns ({@link SEAM_KEYS}). */
+function withoutSeamKeys(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
   if (provenance === undefined) return {};
-  const { waitedBy: _dropped, ...rest } = provenance;
-  return rest;
+  return Object.fromEntries(Object.entries(provenance).filter(([key]) => !SEAM_KEYS.has(key)));
 }

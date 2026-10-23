@@ -181,6 +181,27 @@ describe("the provenance a dispatch stamps on the request record", () => {
     });
   });
 
+  it("stamps none of the seam's conditional keys from a provenance when the seam writes none", async () => {
+    // A `key` child is no existing-session delivery and this dispatch crosses
+    // no instance, so the seam writes no `recipientLineageId`, `flowKind` or
+    // `flowId`. A provenance one would read as server truth: an incarnation
+    // guard on a session nobody approved, or a cross-instance arrival that
+    // never crossed.
+    const metadata = await metadataFor({
+      provenance: { taskId: "task_7f3", recipientLineageId: "lin_forged", flowKind: "elsewhere", flowId: "elsewhere" }
+    });
+
+    expect(metadata).toEqual({
+      dispatch: {
+        type: "internal",
+        action: "work",
+        from: { block: "board-drain", sessionId: "s_parent", lineageId: "lin_parent" },
+        key: "review",
+        taskId: "task_7f3"
+      }
+    });
+  });
+
   it("keeps the approved recipient lineage when a provenance carries one", async () => {
     // The incarnation guard compares the run against this lineage; a stray one
     // would either run a delivery on a replaced recipient or drop a sound one.
