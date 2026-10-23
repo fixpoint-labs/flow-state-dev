@@ -412,10 +412,46 @@ jobs:
           KITCHEN_SINK_TEST_MODE: "1"
           NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1"
 
-      - name: Install Playwright browsers
-        run: pnpm --filter @flow-state-dev/kitchen-sink exec playwright install --with-deps chromium
+      # The browser install is the step that blew the job's time limit: it
+      # normally takes ~20s, but `--with-deps` ran `apt-get update` and
+      # downloaded the browsers on every run, and when a mirror or the
+      # browser CDN was slow it sat there for 5-9 minutes. So the browser
+      # comes from a cache keyed on the Playwright version, and apt only runs
+      # when the runner is actually missing a library. Both network steps
+      # carry their own limit, so a slow one fails by name, not as a
+      # cancelled job.
+      - name: Resolve Playwright version
+        id: playwright
+        working-directory: apps/kitchen-sink
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Playwright browser cache
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # Headless shell only: the suite runs headless, so the full Chrome
+      # build is never launched. ffmpeg (for videos) comes with it.
+      - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 4
+        run: pnpm --filter @flow-state-dev/kitchen-sink exec playwright install --only-shell chromium
+
+      - name: Install browser system dependencies (if missing)
+        timeout-minutes: 3
+        working-directory: apps/kitchen-sink
+        run: |
+          shell_bin=$(ls ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell | head -n 1)
+          if ldd "$shell_bin" | grep -q "not found"; then
+            pnpm exec playwright install-deps chromium
+          else
+            echo "All shared libraries for $shell_bin are present; skipping apt."
+          fi
 
       - name: Run Playwright tests
+        timeout-minutes: 6
         run: pnpm --filter @flow-state-dev/kitchen-sink test:e2e
 
       - name: Upload Playwright report

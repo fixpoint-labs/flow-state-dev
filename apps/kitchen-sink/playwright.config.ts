@@ -41,6 +41,10 @@ const harness = harnessRepository();
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  // The whole run takes ~1.5 minutes. In CI, stop at 5 so a hung run ends
+  // with Playwright's report of the tests still running, well inside the
+  // job's 10-minute limit, instead of the job being cancelled with no report.
+  globalTimeout: process.env.CI ? 5 * 60_000 : undefined,
   expect: { timeout: 10_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
