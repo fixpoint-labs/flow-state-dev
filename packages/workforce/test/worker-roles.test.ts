@@ -35,9 +35,9 @@ const turn = handler({ name: "roles-turn", inputSchema: message, outputSchema: z
 const respond = { inputSchema: message, block: turn, userMessage: (i: { message: string }) => i.message };
 
 /** A worker flow on `installation`: the door, plus whatever `over` adds. */
-function flowOn(installation: WorkerInstallation | undefined, kind: string, over: Record<string, unknown> = {}) {
+function flowOn(installation: WorkerInstallation | undefined, flowName: string, over: Record<string, unknown> = {}) {
   return defineFlow({
-    kind,
+    kind: flowName,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     ...(installation === undefined ? {} : { session: installation.session(), resources: { ...installation.resources } }),
@@ -47,10 +47,10 @@ function flowOn(installation: WorkerInstallation | undefined, kind: string, over
 }
 
 /** A flow carrying the manager kit, built with the kit's own session and resources. */
-function managerFlow(installation: WorkerInstallation, kind: string, pick: (entries: Record<string, unknown>) => Record<string, unknown>, actions = true) {
-  const board = defineSessionBoard({ installation, flowKind: kind });
+function managerFlow(installation: WorkerInstallation, flowName: string, pick: (entries: Record<string, unknown>) => Record<string, unknown>, actions = true) {
+  const board = defineSessionBoard({ installation, flowKind: flowName });
   return defineFlow({
-    kind,
+    kind: flowName,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },

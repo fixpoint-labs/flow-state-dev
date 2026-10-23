@@ -60,12 +60,12 @@ const deskFlow = defineFlow({
 });
 
 /** A worker flow whose one user-message action is named something other than `respond`. */
-const askFlow = defineFlow({
-  kind: "asker",
+const chatFlow = defineFlow({
+  kind: "chatter",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    ask: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+    chat: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
   },
 });
 
@@ -101,9 +101,9 @@ describe("a worker's door (BR-1, BR-2)", () => {
   // An app sends a user's line to `respond` on any worker without reading
   // anything first, so a door under another name is one it can't reach.
   it("refuses a worker flow whose user-message action has another name, naming the action to rename", () => {
-    const message = refusalOf(() => mintWorkers([record("eng.ask", "asker")], { workerFlows: { asker: askFlow } }));
-    expect(message).toContain('worker flow "asker"');
-    expect(message).toContain('rename "ask" to "respond"');
+    const message = refusalOf(() => mintWorkers([record("eng.chat", "chatter")], { workerFlows: { chatter: chatFlow } }));
+    expect(message).toContain('worker flow "chatter"');
+    expect(message).toContain('rename "chat" to "respond"');
     expect(message).toContain("nothing was hired");
   });
 

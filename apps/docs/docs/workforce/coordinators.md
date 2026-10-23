@@ -102,14 +102,14 @@ const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 const session = await workforce.ensureWorkerSession({ worker: "support.help" });
 
 const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
-await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
+await help.sendAction("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
 `ensureWorkerSession` returns your conversation with the coordinator, or starts it if you have none. Other workers' [messages](./messaging-workers.md) to the coordinator land in that same conversation.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this message` line the coordinator writes when no one takes a message carries no `agentName`.
 
-A delegate's answer arrives in a request of its own once the delegate's turn ends, so the `run` request's stream never carries it. To wait for it, follow the whole session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), which delivers each finished item from any request in the session. Read the session's state for a start time, open the stream from it, then send the post, so nothing is missed. In place of the `sendAction` call above:
+A delegate's answer arrives in a request of its own once the delegate's turn ends, so the `respond` request's stream never carries it. To wait for it, follow the whole session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), which delivers each finished item from any request in the session. Read the session's state for a start time, open the stream from it, then send the post, so nothing is missed. In place of the `sendAction` call above:
 
 ```ts
 import { createSessionClient, createSessionSSEClient } from "@flow-state-dev/client";
@@ -145,7 +145,7 @@ const answer = new Promise<{ from: string; text: string }>((resolve, reject) => 
   }, 5 * 60_000);
 });
 
-await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
+await help.sendAction("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
 const { from, text } = await answer; // from: "support.devices"
 ```
 
@@ -533,13 +533,13 @@ Typing in the task's own session does the same. For a worker on the built-in `ag
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
 const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
-await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
+await licenses.sendAction("respond", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
 // output: { steered: <the task's id> }
 ```
 
 ### After a task finishes
 
-A finished task's session stays open, and the task stays as it ended. A line in that session is an ordinary turn: the worker answers from everything the session holds, and the task, its output and its retries don't change. A worker flow you build yourself handles the line however its `run` action does.
+A finished task's session stays open, and the task stays as it ended. A line in that session is an ordinary turn: the worker answers from everything the session holds, and the task, its output and its retries don't change. A worker flow you build yourself handles the line however its `respond` action does.
 
 A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, file a follow-up task that names it:
 
@@ -600,10 +600,12 @@ const researchFlow = defineFlow({
   session: installation.session(),
   resources: { ...installation.resources },
   request: { onStarted: loadWorker },
-  actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
+  actions: { respond: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
   task: { actions: { work: workerTaskEntry({ name: "research-task", turn: researchAnswer }) } },
 });
 ```
+
+Register it as a `contributor`, the role that takes tasks: `workerFlows: { research: { flow: researchFlow, roles: ["contributor"] } }`.
 
 A routed task's turn is handed `{ message }`, where the message reads `<from>, through <coordinator>: <message>`: who wrote it (the user's id, or the delegates whose answers it passes on), the coordinator's worker id, and the message as written. When the coordinator's own turn filed it with a goal of its own, `Your task: <goal>` follows on a line of its own. Whatever the turn returns, a string or `{ text }`, is the answer. An answer that is empty lands nothing. The built-in `agent` flow also shows its model the conversation's [recent lines](#follow-ups-and-recent-lines) on that turn. A flow built this way is handed the message only; to show its model the lines too, give its generator `history: routedTaskHistory` (from `@flow-state-dev/workforce`).
 
@@ -611,7 +613,7 @@ A routed task's turn is handed `{ message }`, where the message reads `<from>, t
 
 ### Taking a conversation's tasks
 
-A worker on the built-in `agent` flow takes a coordinator's tasks with no extra setup. A worker flow of your own takes them once its `work` task entry is built with `workerTaskEntry`:
+A worker on the built-in `agent` flow takes a coordinator's tasks with no extra setup. A worker flow of your own takes them once it declares the `contributor` role and its `work` task entry is built with `workerTaskEntry`:
 
 ```ts
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -631,10 +633,17 @@ const reviewerFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema, block: turn, userMessage: (input) => input.message } },
+  actions: { respond: { inputSchema, block: turn, userMessage: (input) => input.message } },
   task: { actions: { work: workerTaskEntry({ name: "reviewer-task", turn }) } },
 });
+
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ reviewer: { flow: reviewerFlow, roles: ["contributor"] } }),
+});
 ```
+
+The hire checks the two together: a `contributor` without a `work` built by `workerTaskEntry` is refused, and so is a `workerTaskEntry` on a flow that doesn't declare `contributor`. Each refusal names the flow, the role and the entry.
 
 | Option | What it is |
 | --- | --- |
@@ -646,7 +655,7 @@ With `turn`, each task runs as one turn, in a task session of its own. The task 
 
 A coding worker built on the [harness manager](../orchestration/harness-manager.md) uses `block`: the manager takes the task, works it in its own checkout, and returns the answer. The conversation hears it the same way. The `claim` comes from the board, never from the task, so a task can't point its run at another board.
 
-A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, routing skips them, and `createTask` refuses them.
+A `work` entry whose tasks come only from a board in your own flow isn't `workerTaskEntry`'s, so register that flow without `contributor`: `listDelegates` reports its workers as taking `nothing`, routing skips them, and `createTask` refuses them.
 
 ## What it won't do
 

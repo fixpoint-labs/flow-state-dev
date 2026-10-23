@@ -766,7 +766,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       expect(await workstreams(h)).toEqual(["research"]);
       const answered = await opens(h, id);
@@ -779,7 +779,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       expect(leadFitAsLanguage.calls).toHaveLength(1);
       const asked = JSON.stringify(leadFitAsLanguage.calls[0]!.input);

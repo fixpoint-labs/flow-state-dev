@@ -683,16 +683,16 @@ try {
 
   // Leg d. Best fit's pick and its fallback, and the lead vet on a misfit and on a bare name, each judged by the one fit check.
   const fitDesk = await conversation("desk.fit");
-  const pickPost = await fitDesk.act("run", { message: `[fit:${second}] ${words.pick} who takes this?` });
+  const pickPost = await fitDesk.act("respond", { message: `[fit:${second}] ${words.pick} who takes this?` });
   await quiet();
-  const fallbackPost = await fitDesk.act("run", { message: `${words.fallback} who takes this?` });
+  const fallbackPost = await fitDesk.act("respond", { message: `${words.fallback} who takes this?` });
   await quiet();
   const projectLab = await labSession();
   const created = await projectLab.act("createProject", { id: PROJECT.id, title: "Goal project" });
   const vet = await conversation("desk.vet");
-  const misfitPost = await vet.act("run", { message: `[vet-misfit] ${words.misfit}` });
+  const misfitPost = await vet.act("respond", { message: `[vet-misfit] ${words.misfit}` });
   await quiet();
-  const barePost = await vet.act("run", { message: `[vet-bare] ${words.bare}` });
+  const barePost = await vet.act("respond", { message: `[vet-bare] ${words.bare}` });
   await quiet();
   const project = await projectLab.act("readProject", { project: PROJECT });
   const opened = ((project.output?.workstreams ?? []) as Array<{ id: string }>).map((workstream) => workstream.id);

@@ -53,7 +53,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
-| Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message` | `respond` | FIX-2084 |
+| Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message`, and any outside the repo under another name | `respond`; a worker flow whose message action has another name is refused at hire, naming the action to rename | FIX-2084 |
 | A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
 | A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
@@ -75,4 +75,6 @@ Behaviour lines live here, not in the table above.
 | A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |
 | A scheduled fire for a time already fired, or earlier than one that has | Answered `200` with status `duplicate`, and nothing runs: a late retry of a missed time, or one delivered after the next time fired, never runs ([FIX-2085 D2](../../issues/FIX-2085/DECISIONS.md#d2)) | FIX-2085 |
 | A board that hands rows out (a `dispatcher` assignee, or a delegation board) on a flow with no `onTaskSettled` internal action | Refused when the flow is built, naming the entry: declare `internal: { actions: { onTaskSettled: taskSettledEntry({ block }) } }`, so every ending reaches the session that filed it | FIX-2078 |
+| A request an earlier host left unfinished under a worker's `run` or `message`, and a request or wake under `runTaskBoard` | Rewritten to `respond` and `dispatch` by `upgradeWorkerEntryNames(stores, flows)` at host start, on registered worker flows only; Shift Manager calls it | FIX-2084 |
+| A worker flow missing an entry its declared roles need, or carrying a role factory's piece without the role | Refused at every hire path (boot, reload, runtime hire), naming the flow, the role, the entry and the fix | FIX-2084 |
 | An `onTaskSettled` handler, and a Workforce conversation, on a cancel | Receive `cancelled` endings: a cancel the filer didn't make itself through its own task tool is heard once, and a failure or cancel notice names the dependents it cancelled | FIX-2078 |

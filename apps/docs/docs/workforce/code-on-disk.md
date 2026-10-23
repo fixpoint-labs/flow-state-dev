@@ -52,7 +52,7 @@ export default workerFlow((installation) =>
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema, block: triage(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: triage(installation), userMessage: (input) => input.message } },
   }),
 );
 ```

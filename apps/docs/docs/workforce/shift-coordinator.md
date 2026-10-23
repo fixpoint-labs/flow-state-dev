@@ -104,8 +104,8 @@ const askFire = handler({
 const installation = createWorkerInstallation({
   standardWorkers: roster.workers,
   workerFlows: () => ({
-    em: { flow: emFlow, standardOnly: true },
-    coder: coderFlow,
+    em: { flow: emFlow, standardOnly: true, roles: ["contributor", "manager"] },
+    coder: { flow: coderFlow, roles: ["contributor"] },
     agent,
     coordinator: { flow: coordinator, standardOnly: true },
   }),
@@ -153,7 +153,7 @@ const coordinator = defineCoordinatorFlow({
 export const flows = hireWorkforce(installation);
 ```
 
-`emFlow` and `coderFlow` are worker flows of your own. Build each one's `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks), as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so `eng.em` and `eng.coder` take the messages the Shift Coordinator routes to them and the tasks it files. A worker on a flow that takes no task can't be one of its delegates. `routeModel` is one value for the coordinator flow, shared by every coordinator on it. It is required even when the Shift Coordinator routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
+`emFlow` and `coderFlow` are worker flows of your own. Build each one's `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks), as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, and register each as a `contributor`, so `eng.em` and `eng.coder` take the messages the Shift Coordinator routes to them and the tasks it files. `emFlow` files the coder's tasks as well, so it is a `manager` too. A worker on a flow that takes no task can't be one of its delegates. `routeModel` is one value for the coordinator flow, shared by every coordinator on it. It is required even when the Shift Coordinator routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
 
 The capabilities each add one part:
 

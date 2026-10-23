@@ -63,7 +63,8 @@ worker file's text as instructions.
 | Message | A log of the user's messages, and both sessions | One per send or call |
 | Inbox item | The suspended request's record, or the held task's row | One per open stop |
 | Routing state, delegates | The session's state | One per session |
-| Roles, and whether a coordinator may change its own delegates | The worker's configuration | One set per worker |
+| Roles | The worker flow's registration ([FIX-2084 D1](../../../specs/issues/FIX-2084/DECISIONS.md#d1)) | One set per worker flow |
+| Whether a coordinator may change its own delegates | The worker's configuration | One per worker |
 
 ## Tasks
 
