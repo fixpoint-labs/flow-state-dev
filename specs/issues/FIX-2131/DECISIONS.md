@@ -64,10 +64,12 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
   no entry and reads a coding row's session back from its run record (ER-5).
 - **The model's tools are `askQuestion({ question })` and `waitForUser({ kind, prompt })`,** kind
   approval, review or input (ER-1), in `parkOnQuestion`'s slot (`controlTools`). **Which applies
-  when:** on a task row, a question is `askQuestion` and an approval or review is `waitForUser`;
-  with no task row there is nothing to hold, so a question is `waitForUser` input. On a task turn,
-  a waited-on task's included, `waitForUser` refuses `input` by name and points at `askQuestion`,
-  so a model never has two ways to ask one; a turn with no task row doesn't get `askQuestion`.
+  when** is ER-1's test, who consumes the answer: `askQuestion` when the work can continue from its
+  brief once answered (it holds the task and ends the turn); `waitForUser` input when the model
+  needs the value as this call's result (it suspends, and its result, or no-answer at the
+  deadline, comes back to the call), on a task turn or not. The tool descriptions say which to
+  use. The two ways to ask are deliberate and map onto ER-1's two halves. An approval or review is
+  always `waitForUser`; a turn with no task row has nothing to hold, so it doesn't get `askQuestion`.
   `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends the turn
   unsettled. What the request did before asking stands, and the next turn starts from the brief,
   the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133). `waitForUser`,
@@ -116,6 +118,7 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
 |---|---|
 | Keep `answerTask` as a thin call onto the steer (simpler for callers) | A second way to answer, which ER-4 forbids |
 | One model tool, `waitForUser` with a `question` kind that holds instead of suspending | ER-1 keeps `question` out of `waitForUser`, and the two behave differently to the model: a suspension's result is the answer, a hold ends the turn |
+| Refuse `input` on a task turn, so a task's model asks only by `askQuestion` (this spec's round-3 rule) | ER-1's test is who consumes the answer, not whether a task row exists: a model that needs the value as this call's result is code reading the answer next (Codex, round 4) |
 | Merge before FIX-2132, leaving the shared park for the coding run; or land the new surface first and delete the shared park in a third PR | `main` carries both forms between the merges, and whichever PR lands last must remember the deletion. FIX-2132 builds in parallel, so the serial merge costs only the wait |
 | A line in the task's session answers as a message to the session | The session is waiting, so the line queues behind it (rule 10) and contradicts the owner's call that a steer is the only way to change open work |
 | Keep the `parked` status for app-written parks | The second form of stopping the epic's D1 removes |
@@ -166,7 +169,8 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   steer. D2 flipped from running a parked row again to holding it, since ER-5 maps every parked
   question onto the hold. Round 2: the steer cap reserves an answer's place at the ask, replacing
   the round-1 exception, which was unbounded.
-- **Round 3** (Codex at 36853b4f) — `waitForUser` keeps `input`, for a turn with no task row;
+- **Round 3** (Codex at 36853b4f) — `waitForUser` keeps `input` (round 4, Codex at 5504374d:
+  on a task turn too, whenever the model needs the value as the call's result);
   a feedback-less park gets a fixed prompt; a migrated question may sit one place above the cap,
   once; a question park overlapping `parkedForTurn` is held until answered, then the turn wins.
 
