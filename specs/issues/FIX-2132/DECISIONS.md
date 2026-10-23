@@ -79,16 +79,13 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
   the inbox collection and its ten exports, `announce` (refused by name, BP-030),
   `parkOnBoardQuestion` and harness-manager's `awaitReview` calls (the epic moves every question
   onto the hold, [FIX-2058, who owns what](../../epics/FIX-2058/DECISIONS.md#who-owns-what)),
-  and `HarnessRunParked`, which only the parks used. A stored inbox row is left unread, an answered
-  one not yet taken included: only the conductor lab wrote them, and its row asks again as held.
-  That costs a lab user one question answered twice, against a dual-read of a removed store the
-  epic rules out (ER-5).
+  and `HarnessRunParked`, which only the parks used.
 - **The conductor lab** answers through `updateTask` as the Inbox does, and its `status` reads held
   tasks from the board. Its `answer` action goes. LAB-154's goal check moves to the same action and
   keeps its generated-fact proof.
-- **No harness entry in the retired-shape map.** FIX-2131 maps every parked question onto the hold,
-  harness rows included, because the rows share one shape (ER-5). What a coding row needs beyond
-  that, its session, FIX-2132 reads from the run record, so the answer's turn spends no try.
+- **No harness entry in the retired-shape map**, and no map entries at all: stores are reset
+  (owner, 2026-10-23), so no row parked before this work is read. The only coding rows that hold
+  are the ones this ask step writes.
 - **Merge order:** this merges before FIX-2131, which removes the board park this issue moves off
   ([FIX-2131, decided, not asked](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md#decided-not-asked)).
 
