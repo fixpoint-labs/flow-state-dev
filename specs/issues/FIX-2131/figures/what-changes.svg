@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments, today and after. A worker asks: today parkOnQuestion parks the task and the answer is a new turn; after, askQuestion holds the task on its row and the answer takes one more turn on the same attempt. A flow asks for review: today awaitReview parks the task, the app mounts unparkAndDrain, and the Inbox never shows it; after, ctx.waitForUser with kind review is listed in the Inbox as a review. The filer answers: today with answerTask, a fifth tool; after, with a steer that names the question, and the first answer wins. The user answers: today the Inbox lists approvals and input and parked questions sit in a separate list; after, the Inbox lists held questions and reviews too, and a line typed in the task's session answers the open question. A row parked before the upgrade: after, it holds on its question, which shows in the Inbox as it was."
+<svg viewBox="0 0 784 300" role="img" aria-label="A grid of four moments, today and after. A worker asks: today parkOnQuestion parks the task and the answer is a new turn; after, askQuestion holds the task on its row and the answer takes one more turn on the same attempt. A flow asks for review: today awaitReview parks the task, the app mounts unparkAndDrain, and the Inbox never shows it; after, ctx.waitForUser with kind review is listed in the Inbox as a review. The filer answers: today with answerTask, a fifth tool; after, with a steer that names the question, and the first answer wins. The user answers: today the Inbox lists approvals and input and parked questions sit in a separate list; after, the Inbox lists held questions and reviews too, and a line typed in the task's session answers the open question."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -19,18 +19,17 @@
     .t-na  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
     .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <rect class="bg" x="0" y="0" width="784" height="300"/>
 
   <g id="headers">
     <text class="t-lbl" x="144" y="30">A WORKER ASKS</text>
     <text class="t-lbl" x="300" y="30">A FLOW ASKS FOR REVIEW</text>
     <text class="t-lbl" x="456" y="30">THE FILER ANSWERS</text>
     <text class="t-lbl" x="612" y="30">THE USER ANSWERS</text>
-    <text class="t-lbl" x="768" y="30">PARKED BEFORE UPGRADE</text>
   </g>
 
   <g id="today">
-    <rect class="lane" x="16" y="42" width="908" height="116" rx="6"/>
+    <rect class="lane" x="16" y="42" width="752" height="116" rx="6"/>
     <text class="t-row" x="28" y="104">TODAY</text>
     <rect class="cell" x="140" y="50" width="150" height="100" rx="4"/>
     <text class="t-bad" x="150" y="72">The task parks</text>
@@ -52,15 +51,10 @@
     <text class="t-s" x="618" y="92">Inbox: approvals and</text>
     <text class="t-s" x="618" y="108">input; parked questions</text>
     <text class="t-s" x="618" y="124">in a separate list</text>
-    <rect class="cell" x="764" y="50" width="150" height="100" rx="4"/>
-    <text class="t-na" x="774" y="72">n/a</text>
-    <text class="t-s" x="774" y="92">the row waits for</text>
-    <text class="t-s" x="774" y="108">answerTask or</text>
-    <text class="t-s" x="774" y="124">an unpark</text>
   </g>
 
   <g id="after">
-    <rect class="lane" x="16" y="170" width="908" height="116" rx="6"/>
+    <rect class="lane" x="16" y="170" width="752" height="116" rx="6"/>
     <text class="t-row" x="28" y="232">AFTER</text>
     <rect class="good" x="140" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="150" y="200">The task holds</text>
@@ -82,10 +76,5 @@
     <text class="t-s" x="618" y="220">held questions, reviews</text>
     <text class="t-s" x="618" y="236">too; a line typed in the</text>
     <text class="t-s" x="618" y="252">session answers it</text>
-    <rect class="good" x="764" y="178" width="150" height="100" rx="4"/>
-    <text class="t-ok" x="774" y="200">Holds on its question</text>
-    <text class="t-s" x="774" y="220">as it was asked;</text>
-    <text class="t-s" x="774" y="236">the answer carries</text>
-    <text class="t-s" x="774" y="252">on the same attempt</text>
   </g>
 </svg>

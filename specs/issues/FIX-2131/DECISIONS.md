@@ -38,7 +38,6 @@ It comes down to a typed line read as a verdict: "looks good" would approve work
 **What would change my mind:** users who review in the task's session and never open the Inbox.
 Then a review takes a typed line, and an approval still doesn't.
 
-<a name="d2"></a>
 ## D2 · Retired: no row parked before the upgrade is read
 
 Moot by the [owner's reset](#owner-decisions): stores are reset, so no parked row is read and

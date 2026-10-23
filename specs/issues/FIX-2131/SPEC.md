@@ -51,7 +51,7 @@ way a person or a filer does, never through the store.
 
 ## What changes
 
-![A grid of five moments, today and after: a worker asks, a flow asks for review, the filer answers, the user answers, a row parked before the upgrade](figures/what-changes.svg)
+![A grid of four moments, today and after: a worker asks, a flow asks for review, the filer answers, the user answers](figures/what-changes.svg)
 
 Read down each column: every red cell today is a second path or a stop the Inbox can't show.
 
