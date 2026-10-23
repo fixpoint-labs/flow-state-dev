@@ -29,7 +29,7 @@ Changed, by rule:
 - Rule 19: a goal-seek loop needs a plan board.
 - Rule 20: four filer task tools, also public actions; one `updateTask` rule per field; fixed output.
 - Rule 22: the worker reports progress with `reportProgress({ statusNote, output })`, claim-bound.
-- Rule 21: a message reaches any task of its user's and never steers.
+- Rule 21: a message reaches any task of its user's, or one of its user's own conversations by `{ session }`, and never steers.
 - No rule: recurring work is a schedule (Tasks); every coordinator can be messaged (Routing).
 
 Counted per mechanism, the model takes 109 to 56: the

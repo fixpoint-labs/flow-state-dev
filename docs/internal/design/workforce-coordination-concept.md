@@ -176,8 +176,8 @@ on a later touch.
 **A message is talk with any worker on your roster,** delegate or not. Help bigger than the
 recipient's one request is a task.
 
-`sendMessage({ to, text, wait?, deadline?, inReplyTo? })` addresses a worker (`to: "writer"`) or a
-task (`to: { task: id }`). It **sends**, returning nothing, or **calls** (`wait: true`), waiting for
+`sendMessage({ to, text, wait?, deadline?, inReplyTo? })` addresses a worker (`to: "writer"`), a
+task (`to: { task: id }`) or one of its user's own conversations (`to: { session: id }`). It **sends**, returning nothing, or **calls** (`wait: true`), waiting for
 the result until its deadline, the host's default unless `deadline` is passed. A late result is kept
 under its **call id** for a caller that waits again or repeats the call.
 
