@@ -289,6 +289,47 @@ describe("the judgment turn's filing on a turn routing a message", () => {
   });
 });
 
+describe("a routed task that fails out", () => {
+  it("filed by the judgment turn, is said once under its delegate's name and wakes that turn to act on it (FIX-2115)", async () => {
+    // The turn files the message for eng.em, whose turn fails; the turn the
+    // failure wakes is the script's third answer, and her next message the fourth.
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "d1", toolName: "createTask", args: { goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }] },
+        { text: "Handed on." },
+        { text: "The draft failed; I'll find someone else." },
+        { text: "Nothing else." }
+      ]
+    });
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "Draft it [fail:eng.em], and refile it if it fails");
+    await host.settled();
+
+    const [task] = await aliceTasks(host, id);
+    expect(task).toMatchObject({ status: "errored", resultTo: "conversation", attempts: 1 });
+    // One line under the delegate's name, naming the task and its error.
+    const failed = (await lines(host, id)).filter((m: any) => m.agentName === "eng.em");
+    expect(failed).toEqual([{ agentName: "eng.em", text: expect.stringContaining(`(${task.id}) failed for good with eng.em: eng.em could not answer`) }]);
+    // The coordinator's turn ran again, on the failure, so it can file the work elsewhere.
+    expect(JSON.stringify(judgment.calls.at(-1)!.input)).toContain(`(${task.id}) failed for good`);
+    expect((await lines(host, id)).map((m: any) => m.text)).toContain("The draft failed; I'll find someone else.");
+    // Heard once, however often the board is touched after.
+    await post(host, id, "anything else?");
+    expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.em")).toHaveLength(1);
+  });
+
+  it("routed by a policy, ends only that delegate's part of the round: no line, no turn (FIX-2083's rule)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "first [route:eng.coder] [fail:eng.coder]");
+    await host.settled();
+    const [task] = await aliceTasks(host, id);
+    expect(task).toMatchObject({ status: "errored", assignee: "eng.coder" });
+    expect(await lines(host, id)).toEqual([]);
+  });
+});
+
 describe("a post row stored before the upgrade", () => {
   it("is worked once, as a routed task, and its answer lands once", async () => {
     const host = bootHost();

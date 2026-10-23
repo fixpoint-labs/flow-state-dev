@@ -19,7 +19,9 @@
  *   routes messages hands its completion, failure or cancel to its own
  *   handling instead ({@link TaskSettledOptions.onRouted}: the line, and the
  *   rounds it feeds), and acknowledges the notice only once that has run, so a
- *   failure there leaves the answer owed.
+ *   failure there leaves the answer owed. A failure of one the coordinator's own turn
+ *   filed is the filer's to hear too (FIX-2115): after that handling, it lands
+ *   as a line and wakes the turn, as any task the turn filed does.
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -94,7 +96,12 @@ const settledSchema = z.object({
   /** On a routed ending: what the conversation's routing is handed. */
   routed: z.unknown().optional(),
   /** On a routed ending: the notice, acknowledged once the routing's handling has run. */
-  notice: taskNoticeSchema.optional()
+  notice: taskNoticeSchema.optional(),
+  /**
+   * On a routed ending the conversation is told of too, after the routing's
+   * handling (FIX-2115): as a line, or as a line that wakes the turn.
+   */
+  told: z.enum(["line", "wake-turn"]).optional()
 });
 
 type Settled = z.infer<typeof settledSchema>;
@@ -254,7 +261,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    * A conversation-result task's ending (FIX-2083): no turn wakes for it. With
    * a routing layer, a completion goes to it, and a routed round's failure or
    * cancel too, and is acknowledged after; anything else, and any ending
-   * without one, lands as a line now.
+   * without one, lands as a line now. A failure of a task the coordinator's
+   * own turn filed (its brief names the call) is the filer's to hear as well
+   * (FIX-2115): once the routing's handling has run, it lands as a line and
+   * wakes that turn under the conversation's policy, as any task the turn
+   * filed does, so the coordinator can file the work again. A policy's round
+   * stays as it is: its failure only ends that delegate's part (FIX-2083).
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -277,6 +289,11 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
         ...(brief !== undefined ? { brief } : {})
       };
+      if (notice.ending === "errored" && brief?.call !== undefined) {
+        const told = decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+        const text = noticeText(notice, row);
+        return { act: "routed", routed, notice: notice as Settled["notice"], told, text, ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+      }
       return { act: "routed", routed, notice: notice as Settled["notice"] };
     }
     const first = await noteSeen(ctx, key);
@@ -356,7 +373,15 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         (settled: Settled) => settled.routed as RoutedEnding,
         options.onRouted
       )
-      .tapIf((settled: Settled) => settled.act === "routed", acknowledge);
+      .tapIf((settled: Settled) => settled.act === "routed", acknowledge)
+      // Told after the acknowledgement, as a filed task's ending is: a stop
+      // between them loses the line, never says it twice.
+      .tapIf((settled: Settled) => settled.act === "routed" && settled.told !== undefined, line)
+      .tapIf(
+        (settled: Settled) => settled.act === "routed" && settled.told === "wake-turn",
+        (settled: Settled) => ({ message: settled.text ?? "" }),
+        wokenTurnOf(options)
+      );
   }
 
   return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
