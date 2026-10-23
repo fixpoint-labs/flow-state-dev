@@ -11,7 +11,7 @@
 | **is mid-turn when a background task finishes** | The result waits until the main session's reply ends | Sees the result as a card in the main thread while the turn is still running, and the rest of the turn uses it |
 | **is idle when a background task finishes** | The main session takes a new turn to report it | The same: a new turn shows the result card and what the main session makes of it |
 | **wants a background task stopped or steered** | n/a | Asks the main session, which stops or steers its own task. The pane is read only; a row opens to show the task's work ([D2](DECISIONS.md#d2)) |
-| **starts another session** | Gets one conversation per worker | Clicks *New session* and gets a fresh session with the same main worker, listed beside the others. Each session keeps the mode it started in ([D1](DECISIONS.md#d1)) |
+| **starts another session** | Gets one conversation per worker | Clicks *New session* and gets a fresh session with the same main worker, listed beside the others. The mode comes from the view: *Sessions* is session mode, *Projects* is threads mode ([D1](DECISIONS.md#d1)) |
 
 The scope is the brief's: core messaging and session management. No file diffs, no
 permission prompts, no harness picker.
@@ -27,7 +27,7 @@ React UI and small flows.**
 |---|---|
 | **The real need** | Proof that the workforce pieces reproduce a way of working people already trust, and a list of where they don't ([FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152), leg a of its goal) |
 | **Smaller, and rejected** | "The front end matches Claude Code." It ships on fixtures in this issue's first PR, and it proves nothing about the package. It is a step, not the goal |
-| **Bigger, and not this issue's** | Threads mode, where the main session delegates everything to a status board. [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) adds it behind this app's mode switch |
+| **Bigger, and not this issue's** | Threads mode, where the main session delegates everything to a status board. [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) adds it as this app's *Projects* view |
 | **Not done if** | A step passes only on fixtures · the result card shows only after the turn · the stop works from a pane button and not by asking · the lab's inventory has an *other* row · a gap is worked around in the lab |
 
 ```mermaid
@@ -48,7 +48,7 @@ never the lab's own state. With the mid-turn notice off, step 4 must fail.
 | **Signal** | 1 your line shows · 2 the main session's own text shows before any task row · 3 two task rows show, both filed by this session · 4 a result card shows while the turn's working indicator is on, and text after it in the same turn names the result; the card, the indicator and that text all carry the request id of your first `respond`, so a second request started by the settled notice does not count · 5 after you ask to stop the other task, its row reads `cancelled` through `listTasks` |
 | **Input** | "Compare two vendors and write a summary": one quick research task and one long one. The skill tells the main session to keep working after it files them, so the turn outlasts the quick task. A different ask with one quick and one long task must pass too; a run where the turn ends before the quick task does is a bad input, not a FAIL |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't cancel through the public `updateTask` action from the test |
-| **Control that must fail** | The lab without FIX-2159's mid-turn delivery: today's `main`, or the lab's config not turning the delivery on if FIX-2159 makes it opt-in. FAIL on signal 4. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with its main flow's loop-back turned off in the lab's config. FAIL on signal 4: the result then arrives in a second request after the turn. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -95,17 +95,22 @@ flowchart LR
   M -->|"createTask"| B["delegation board"]
   B --> R["researcher's task session"]
   R -->|"settles"| N["settled notice"]
-  N -->|"before the next model call · gap"| M
+  N -.->|"on the board"| B
+  M -->|"turn ends · lab flow checks the board"| L{"settled during the turn?"}
+  L -->|"yes · loop back to the generator"| M
   M -->|"items"| V["main thread · result card"]
   B -->|"listTasks"| P["tasks pane"]
 ```
 
-The notice enters the request that is already running, the way a steer does. The lab only
-draws the item it emits.
+The main session's flow is the lab's own, and small. When the generator finishes, the flow
+checks for tasks this session filed that settled while the turn ran. If there are any, it runs
+the generator again in the same request with those results, so the turn picks them up; if
+not, the turn ends. The check runs after the last model call, so a task that settles during
+that call is still caught. The lab draws the result card from the item the loop-back emits.
 
 ## What stays as it is
 
-- **The worker model.** The main worker is a `manager` on the agent flow. No new role, no coordinator.
+- **The worker model.** The main worker is a `manager`, on the lab's small flow built from the agent worker flow's pieces and named by its `WORKER.md`'s `flow:`. No new role, no coordinator.
 - **Skills don't start workers.** A skill tells the model to `createTask` for a delegate.
 - **Shift Manager**, its shell and its app contract. This lab copies the setup; it changes neither.
 - **Core and engine.** Nothing here goes below workforce and orchestration.
@@ -118,7 +123,7 @@ draws the item it emits.
 | The agent flow's planned turn, delegation board, and `resultTo: "filer"` | **Builds on.** The main session works and delegates |
 | `listTasks` rows with `statusNote` and `run.sessionId`; `updateTask` cancel and steer (FIX-2081, FIX-2086) | **Builds on.** The pane, a task's work, and step 5 |
 | `useSession` items, streaming and `abortRequest` | **Builds on.** The main thread and its Stop button |
-| The steer path, taken before each model call (`orchestration/src/skills/steer-context.ts`) | **Builds on**, through the mid-turn gap. Its notice takes the same path |
+| A worker running on a flow you wrote (`flow:` in `WORKER.md`, `workerFlows`, `defineSessionBoard`) | **Builds on.** The main worker's flow adds only the loop-back ([epic D2](../../epics/FIX-2152/DECISIONS.md#d2)) |
 | `@flow-state-dev/design-system`, the `packages/ui` registry, `fsdev dev --app` | **Builds on.** The only theme, the copied components, the launch |
 | FIX-2152 ER-1 to ER-7, D2 and D4 | **Kept.** This issue owns ER-1 to ER-5, so it builds the inventory check FIX-2154 copies |
 | FIX-1883 workstream sessions as "several sessions of one worker" | **Not used.** fsd-architect showed a workstream needs a project and caps a user at 25 ([#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)) |
@@ -128,7 +133,7 @@ draws the item it emits.
 | Gap | Blocks |
 |---|---|
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · **the workforce client lists a person's sessions of one worker.** A new session is an ordinary session on the worker's flow; the derived session stays the default conversation, where messages and routed tasks land ([epic D3, ER-7](../../epics/FIX-2152/DECISIONS.md#d3)). No new criteria key | The sessions list · steps 1 to 5 |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken before the filer's next model call**, as a delivery mode on FIX-2078's one path, and the take shows as an item in the running request. A notice that lands during the turn's last model call still gets a further model step in that same request, so the turn cannot end with the notice untaken | Step 4 |
+| Only if the loop-back can't be a small flow: [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken inside the filer's running request**. The wiring PR says why the flow wasn't enough. Whichever carries it, a task that settles during the turn's last model call still gets a further model step in that same request | Step 4, as a fallback |
 | Checked at wiring: **the person can read a task's run session** | Opening a row; a gap only if refused |
 | **`listTasks` rows carry when a task started and ended** | Nothing; without it the pane shows no elapsed time. Filed in the project, not as a child |
 
@@ -148,9 +153,9 @@ browser, and no *other* row. If wrong: a lab that looks right on fixtures and pr
 **[The debt](#whats-already-here-and-the-debt), net up:** one private lab; the epic files the gaps.
 If wrong: a lab nobody maintains.
 
-1. **[D1](DECISIONS.md#d1) · A session's mode is picked when it starts and stays with it.**
-   Nothing stores it: the mode is which main worker the session is with. If wrong: switching
-   modes needs a new session, and FIX-2157 builds on that.
+1. **[D1](DECISIONS.md#d1) · The mode comes from the view you're in: *Sessions* or *Projects*.**
+   Nothing stores it on a session; each view lists its own worker's sessions. If wrong: trying
+   the other mode means a new session in the other view, and FIX-2157 builds on that.
 2. **[D2](DECISIONS.md#d2) · You stop or steer a task by asking the main session; the pane is
    read only.** If wrong: a stop costs a turn, and the pane later gets buttons.
 

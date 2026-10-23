@@ -10,7 +10,7 @@ bind this lab and are not decided again here.
 
 ```mermaid
 flowchart TD
-  I["FIX-2153"] --> D1["D1 · a session's mode is picked at its start"]
+  I["FIX-2153"] --> D1["D1 · the mode comes from the view you're in"]
   D1 -.->|"rejected: two workers in one history"| X1["one switch for the open session"]
   I --> D2["D2 · stop and steer by asking the main session"]
   D2 -.->|"rejected: skips the main session"| X2["a Stop button on each task row"]
@@ -19,15 +19,15 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A session's mode is picked when it starts and stays with it
+## D1 · The mode comes from the view you're in
 
 | | |
 |---|---|
 | **Instead of** | One switch in the header that changes the mode of the open session |
 | **Because** | The two modes have different main workers: a `manager` on the agent flow here, a `coordinator` in threads mode ([FIX-2152 What stays](../../epics/FIX-2152/SPEC.md#what-stays-as-it-is)). A session is a conversation with one worker. Switching it mid-history puts two workers' turns in one thread, and neither original app does that |
-| **Locks in** | *New session* asks for a mode; the header and each row in the sessions list show it. Nothing stores the mode: it is which main worker the session is with, and the list is each mode's worker's sessions, tagged. To try the other mode on the same work, you start a new session. FIX-2157 adds threads mode as a second entry in the same list, not as a toggle |
+| **Locks in** | The app has two views, switched at the top of the left pane: *Sessions* (session mode) and *Projects* (threads mode). A view sets the main worker, and *New session* in it always opens a session with that worker. Each view lists only its own worker's sessions, so a session never shows in the other view, and each view keeps its own open session when you switch away and back. Nothing stores the mode on a session. To try the other mode on the same work, you open the other view and start there. FIX-2157 builds the *Projects* view; until then it shows, disabled |
 
-![D1: picked per session at its start, chosen, beside one switch for the open session. Decides it: who answers in one thread. Price: trying the other mode needs a new session](figures/d1-mode-per-session.svg)
+![D1: from the view you're in, chosen, beside one switch for the open session. Decides it: who answers in one thread. Price: trying the other mode means opening the other view and starting there](figures/d1-mode-per-session.svg)
 
 It comes down to who answers in one thread: a switch puts two main workers in one history.
 
@@ -59,15 +59,17 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   right (a row per task: title, status, last progress note, worker; a row opens the task's
   work read only). Flow State theme, square corners; `attention` only where a person must act.
 - **A result is a card in the thread at the point the main session took it**, labelled with
-  the task's title and ending. It is drawn from the item the gap emits, never from the pane.
-- **The mode switch is planned in, not built.** A mode is `{ main worker, right pane }` in one
-  config object; session mode is its only entry. A session's mode is read from its worker,
-  never stored. FIX-2157 adds threads mode as a second entry
-  and a status-board pane that reads the same `listTasks` rows. *New session* shows threads
-  mode disabled until then.
-- **Session mode needs no flow of its own.** The main worker and `researcher` are worker files
-  on the agent flow; the skill is a `SKILL.md`. The inventory may show zero flows, and that is
-  the strongest result.
+  the task's title and ending. It is drawn from the item the loop-back emits, never from the pane.
+- **The *Projects* view is planned in, not built.** A mode is `{ main worker, right pane }` in one
+  config object, keyed by view; session mode is its only built entry. A session's mode is
+  the view that lists it, never stored. FIX-2157 adds threads mode as the *Projects* entry
+  and a status-board pane that reads the same `listTasks` rows. The *Projects* view shows
+  disabled until then.
+- **Session mode has one small flow: the main worker's loop-back.** At the end of a turn it
+  checks for tasks that settled while the turn ran and, if any, loops back to the generator in
+  the same request (epic D2, the product owner's call). It is built at wiring and must stay
+  under 200 lines. `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
+  The front end needs no change for it: the result card reads the item the loop-back emits.
 - **The inventory check is owned here** (ER-1). It classifies every tracked file under the lab
   as config, UI or flow by path, counts lines, writes the README table, and fails on any file
   it can't classify and on a flow over 200 lines. Its negative control plants `src/glue.ts`
@@ -100,6 +102,10 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
 - **Review:** sessions follow the corrected epic D3, ordinary sessions on the worker's flow
   listed through FIX-2158, instead of a new criteria key; the gaps cite FIX-2158 and FIX-2159.
   The control became the absence of FIX-2159's delivery, so no package carries a test switch.
+  Signal 4 now names the first request, and a late settle must still get a model step.
+- **Product owner's answers:** the mode comes from the view you're in (*Sessions* or
+  *Projects*), not from a choice at *New session*. A result reaches the running turn through
+  the lab's own flow looping back at turn end, with FIX-2159 only as the fallback.
 
 ## Notes from review
 

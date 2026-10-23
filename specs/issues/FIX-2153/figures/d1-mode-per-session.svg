@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a person picks session mode or threads mode. Chosen: the mode is picked when a session starts and stays with it. Instead of: one switch in the header that changes the open session. It comes down to the first row: a session that switches mid-history has two different main workers answering in one thread, while a fixed mode keeps one worker per thread. The price is the second row: to try the other mode on the same work, you start a new session. The third row is a tie: both show the mode in the header. Locks in: a session's mode is part of the session, so the list mixes both kinds. Flips if: one worker can run both behaviours as a setting."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a person gets session mode or threads mode. Chosen: the mode comes from the view you are in, Sessions for session mode and Projects for threads mode. Instead of: one switch in the header that changes the open session. It comes down to the first row: a session that switches mid-history has two different main workers answering in one thread, while a view keeps one worker per session. The price is the second row: to try the other mode on the same work, you open the other view and start there. The third row is a tie: both show the mode in one place. Locks in: each view lists only its own sessions. Flips if: one worker can run both behaviours as a setting."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,12 +35,12 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does a person choose between session mode and threads mode?</text>
+    <text class="t-q" x="32" y="52">How does a person get session mode or threads mode?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Picked per session, at its start</text>
+    <text class="t-h c-code" x="228" y="112">From the view you're in</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">One switch for the open session</text>
@@ -61,7 +61,7 @@
   <g>
     <text class="t-lbl" x="32" y="222">TRY THE OTHER MODE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Start a new session</text>
+    <text class="t-b" x="248" y="223">Open the other view, start there</text>
     <text class="t-s" x="248" y="241">the work so far stays in the old one</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One click, same session</text>
@@ -71,18 +71,18 @@
   <g>
     <text class="t-lbl" x="32" y="280">WHERE IT SHOWS</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">A mode tag in the header</text>
-    <text class="t-s" x="248" y="299">and on each row of the list</text>
+    <text class="t-b" x="248" y="281">The Sessions / Projects switch</text>
+    <text class="t-s" x="248" y="299">at the top of the left pane</text>
     <text class="mark tie" x="592" y="282">=</text>
     <text class="t-b" x="612" y="281">A switch in the header</text>
-    <text class="t-s" x="612" y="299">the same place</text>
+    <text class="t-s" x="612" y="299">also one place, always in view</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A session's mode is fixed for its life</text>
-    <text class="t-s" x="32" y="389">the sessions list mixes both kinds, tagged</text>
+    <text class="t-b" x="32" y="371">Each view lists only its own sessions</text>
+    <text class="t-s" x="32" y="389">a session never moves to the other view</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
