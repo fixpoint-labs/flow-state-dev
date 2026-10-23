@@ -197,7 +197,9 @@ function accountStep(stored: HarnessUsageState, incoming: string | null, observe
 /** A full reading over the stored record. Pure. */
 export function applyReading(stored: HarnessUsageState, reading: HarnessUsageReading, checkedAt: number): Merged {
   if (stored.checkedAt !== null && checkedAt < stored.checkedAt) return { state: {}, result: "refused-older" };
-  if (reading.status === "unavailable" && stored.checkedAt !== null && stored.status !== "unavailable") {
+  // A failed look keeps what is stored, a run's windows included before any look has landed.
+  const holdsSomething = stored.checkedAt !== null || stored.windows.length > 0;
+  if (reading.status === "unavailable" && holdsSomething && stored.status !== "unavailable") {
     return { state: { refreshError: reading.reason }, result: "kept-stored" };
   }
   if (reading.status !== "windows") {

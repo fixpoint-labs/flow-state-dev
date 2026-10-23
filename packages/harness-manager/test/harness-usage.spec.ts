@@ -342,6 +342,15 @@ describe("applyReading over run windows", () => {
     expect(applyReading(stored, { status: "api-key", reason: "key" }, NOW - 1).result).toBe("refused-older");
   });
 
+  it("keeps a run's window when the first look fails, with the failure beside it", () => {
+    // No look has landed yet, so the record has no clock: the run's window is still what is known.
+    const merged = applyReading(stored, { status: "unavailable", reason: "Claude Code did not answer" }, NOW + 1);
+    expect(merged.result).toBe("kept-stored");
+    const kept = after(stored, merged);
+    expect(kept.windows.map((w) => [w.usedPercent, w.origin])).toEqual([[91, "run"]]);
+    expect(kept.refreshError).toBe("Claude Code did not answer");
+  });
+
   it("clears every window on a move to an API key or another account", () => {
     expect(after(stored, applyReading(stored, { status: "api-key", reason: "key" }, NOW + 1)).windows).toEqual([]);
     const b = after(stored, applyReading(stored, { status: "windows", accountId: "b@example.com", plan: "pro", windows: [] }, NOW + 1));
