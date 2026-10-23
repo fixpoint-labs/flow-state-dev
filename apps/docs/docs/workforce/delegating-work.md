@@ -216,9 +216,9 @@ A worker given a task can split it into pieces for its own delegates. A piece fo
 
 The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
-Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session while the task runs also holds the task open until the message's turn has run.
+Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session doesn't hold the task and isn't part of it. While the task's turn is running, the worker answers it after that turn; while the task waits on its pieces, it may answer it before the task is done. Either way the answer can't write to the task, and a failure in it doesn't fail the task.
 
-The task completes once no piece is open, the worker has had a turn on every piece's ending, and no message is waiting. Its output follows the same rule as any task's: the latest checkpoint the worker reported with `reportProgress`, or, with none, the answer from the last turn a piece's ending woke. A message's answer is never the output.
+The task completes once no piece is open and the worker has had a turn on every piece's ending. Its output follows the same rule as any task's: the latest checkpoint the worker reported with `reportProgress`, or, with none, the answer from the last turn a piece's ending woke. A message's answer is never the output.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions

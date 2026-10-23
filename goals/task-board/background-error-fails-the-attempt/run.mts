@@ -26,7 +26,8 @@
  *      throwing anyway: cancelled, not failed, not re-pended
  *   f  a dropped connection (the resume's caller goes away), then the step
  *      throws: as a
- *   g  a queued message's request, its step throws on attempt 1: as a
+ *   g  a queued message's request, its step throws: the message runs after
+ *      the task settles, outside it, and the task is done on attempt 1
  *   h  an `onTaskSettled` turn, its step always throws, one attempt: as b
  *   i  the step fails, the request suspends, the resume reruns it: a rerun
  *      that throws fails as b; one that succeeds is done on attempt 1
@@ -38,9 +39,9 @@
  *
  * Controls (a scratch patch as the code loads; `goals/lib/module-patch.mts`):
  *   GOAL_CONTROL=drop-background-failures  the gate is told of no background
- *     failures. Must FAIL a, f, g on `done-on-attempt-2`, b, c, h, j and i's
- *     throwing rerun on `failed-after-1-attempt`, and k's filer half; d and i's
- *     clean rerun must pass.
+ *     failures. Must FAIL a, f on `done-on-attempt-2`, b, c, h, j and i's
+ *     throwing rerun on `failed-after-1-attempt`, and k's filer half; d, g and
+ *     i's clean rerun must pass.
  *   GOAL_CONTROL=no-conversation-carve-out  the after-answer step's failure is
  *     never kept from a conversation-result task. Must FAIL k's conversation half.
  *
@@ -57,6 +58,7 @@ import { abortRequest, continueRequest, createFlowState } from "@flow-state-dev/
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
   createWorkerInstallation,
@@ -149,6 +151,9 @@ type Proof = {
   answer?: unknown;
   /** On a turn: the row's output when the turn began. */
   priorOutput?: unknown;
+  /** On a message: whether its turn held a task's claim, and the task's status as it began. */
+  claimed?: boolean;
+  taskStatus?: string;
   /** On a step: its name, and what it did. */
   step?: string;
   did?: "threw" | "stopped" | "ran";
@@ -320,6 +325,16 @@ function buildHost(filename: string) {
         ...(row !== undefined ? { taskId: row.id, attempt: row.attempts } : {})
       };
       const message = input.message;
+      if (message.startsWith("Message ")) {
+        // A message is conversation in the task's session: it may run after the task settled.
+        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+        const task = typeof taskId === "string" ? (await filingConversationBoard(ctx))?.tasks.get(taskId) : undefined;
+        plans.set(base.requestId, { after: message.includes("[msg-bg]") });
+        return answered("message", { ...base, ...(task !== undefined ? { taskId: task.id, attempt: task.attempts } : {}) }, `the message's answer ${base.requestId}`, {
+          claimed: currentWorkerClaim(ctx) !== undefined,
+          ...(task !== undefined ? { taskStatus: task.status } : {})
+        });
+      }
       if (row === undefined) {
         // A plain request: no task. Its background step throws all the same.
         plans.set(base.requestId, { after: message.includes("[bg:always]") });
@@ -328,10 +343,6 @@ function buildHost(filename: string) {
       if (message.startsWith('Task "')) {
         plans.set(base.requestId, { after: row.goal.includes("[woken-bg]") });
         return answered("woken", base, `woken answer ${base.requestId}`);
-      }
-      if (message.startsWith("Message ")) {
-        plans.set(base.requestId, { after: message.includes("[msg-bg]") && row.attempts === 1 });
-        return answered("message", base, `the message's answer ${base.requestId}`);
       }
       const slow = /\[slow:(\d+)\]/.exec(message);
       if (slow !== null) {
@@ -695,14 +706,32 @@ async function legF(run: Run): Promise<void> {
   run.notes.push(`f: the caller dropped mid-resume; the step's failure still failed attempt 1`);
 }
 
-/** g. A queued message's request: its step throws on attempt 1. */
+/**
+ * g. A queued message's request, whose step throws: the message is
+ * conversation, not part of the task, so its failure is its own.
+ */
 async function legG(run: Run): Promise<void> {
   const taskId = await file(run, word("[message-first] a message arrives while you work"));
   await settle(run);
   const messages = run.tell.over("g · the message turns", proofsOf(taskId, "message"));
-  if (!messages.some((m) => m.attempt === 1)) run.failures.push(`g:message-ran — no message ran on attempt 1: ${show(messages)}`);
-  await gradeRetried(run, "g", taskId);
-  run.notes.push(`g: the message's step failed attempt 1; done on attempt 2`);
+  const threw = readProofs().filter((p) => p.kind === "step" && p.did === "threw" && messages.some((m) => m.requestId === p.requestId));
+  if (messages.length === 0 || threw.length === 0) {
+    run.failures.push(`g:message-ran — wanted a message's turn on the task's session whose step threw; turns ${show(messages)}, threw ${show(threw)}`);
+  }
+  const inside = messages.filter((m) => m.claimed !== false || m.taskStatus !== "completed");
+  if (inside.length > 0) {
+    run.failures.push(`g:outside-the-task — wanted every message turn to run after the task completed, holding no claim; ${show(inside)}`);
+  }
+  const row = await run.h.byId(taskId);
+  const turn = proofsOf(taskId, "turn").find((t) => t.attempt === 1);
+  if (row?.status !== "completed" || row.attempts !== 1 || row.output !== turn?.answer || row.error != null || row.feedback != null) {
+    run.failures.push(
+      `g:done-on-attempt-1 — wanted it completed on attempt 1 with that attempt's answer, no error, no feedback; it is ${row?.status} on attempt ${row?.attempts}, output ${show(row?.output)}, error ${show(row?.error)}, feedback ${show(row?.feedback)}`
+    );
+  }
+  const told = await heard(run, taskId);
+  if (told.length !== 1) run.failures.push(`g:heard-once — wanted one ending heard; heard ${show(told)}`);
+  run.notes.push(`g: the message ran after the task completed on attempt 1, outside it; its step's failure was its own`);
 }
 
 /** h. An onTaskSettled turn whose step always throws, one attempt. */

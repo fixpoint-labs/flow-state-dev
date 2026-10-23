@@ -17,9 +17,9 @@
  *      the last woken turn's answer, no running row left. Variant: the last
  *      piece ends during the task's own request, whose check leaves it running;
  *      it settles after the turn the piece's notice wakes, with that answer
- *   c  a message queued mid-task: its request ends before the settle; the
- *      output is the work's answer, or the checkpoint the message's request
- *      reported, never the message's answer
+ *   c  a message queued mid-task: the task settles with its work's answer
+ *      when the work ends, and the message runs after, outside the task (no
+ *      claim, so no checkpoint), never delaying the settle
  *   d  a wait and a person's stop: each still running on attempt 1, no lease,
  *      after a pass past the lease the claim committed to; done after the
  *      resume, still attempt 1
@@ -27,7 +27,7 @@
  * Control: GOAL_CONTROL=settle-at-return checks the task where its entry
  * returns instead of after the request's last drain (a scratch patch to
  * orchestration as it loads; `goals/lib/module-patch.mts`). Must FAIL leg a on
- * `a:after-the-side-chains` and leg c on `c:message-ends-first`.
+ * `a:after-the-side-chains`.
  *
  * Run: pnpm tsx goals/task-board/settles-when-its-work-is-over/run.mts
  * Legs: GOAL_LEGS=a,b,c,d (default: all; d waits out a two-minute lease)
@@ -42,6 +42,7 @@ import { continueRequest, createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import {
   createWorkerInstallation,
   defineSessionBoard,
@@ -90,7 +91,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     }
   ]
 };
-const CONTROL_LEGS: Record<string, string[]> = { "settle-at-return": ["a", "c"] };
+const CONTROL_LEGS: Record<string, string[]> = { "settle-at-return": ["a"] };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
   console.error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(PATCHES).join(", ")}`);
@@ -121,6 +122,10 @@ type Proof = {
   sessionId: string;
   taskId?: string;
   answer?: unknown;
+  /** On a message: whether its turn held a task's claim, the task's status as it began, and a checkpoint it reported. */
+  claimed?: boolean;
+  taskStatus?: string;
+  reported?: string;
   at: number;
 };
 
@@ -214,17 +219,30 @@ function buildHost(filename: string) {
   // On a notice ("Task ...") it answers; on a message it answers, and may report a checkpoint.
   type Base = { requestId: string; sessionId: string; taskId?: string };
   /** Answer, and prove what this request answered. */
-  const answered = (kind: Proof["kind"], base: Base, answer: string) => {
-    prove({ kind, ...base, answer, at: Date.now() });
+  const answered = (kind: Proof["kind"], base: Base, answer: string, extra: Partial<Proof> = {}) => {
+    prove({ kind, ...base, answer, ...extra, at: Date.now() });
     return answer;
   };
-  /** A message's turn: a checkpoint first, when it asks for one. */
-  const onMessage = async (ctx: BlockContext, base: Base, message: string, row: Task | undefined) => {
-    if (message.includes("[checkpoint]") && row !== undefined) {
-      const above = await filingConversationBoard(ctx);
-      await above!.tasks.reportProgress!(row.id, { output: `checkpoint ${base.requestId}` }, { claim: currentWorkerClaim(ctx)! });
+  /**
+   * A message's turn, conversation in the task's session: it reads the task
+   * the session works, and asks for a checkpoint when the message says so,
+   * which only a request holding the task's claim can write.
+   */
+  const onMessage = async (ctx: BlockContext, base: Base, message: string) => {
+    const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+    const above = await filingConversationBoard(ctx);
+    const task = typeof taskId === "string" ? above?.tasks.get(taskId) : undefined;
+    const claim = currentWorkerClaim(ctx);
+    let reported: string | undefined;
+    if (message.includes("[checkpoint]") && task !== undefined && claim !== undefined) {
+      reported = (await above!.tasks.reportProgress!(task.id, { output: `checkpoint ${base.requestId}` }, { claim })).outcome;
     }
-    return answered("message", base, `the message's answer ${base.requestId}`);
+    const at = { ...base, ...(task !== undefined ? { taskId: task.id } : {}) };
+    return answered("message", at, "", {
+      claimed: claim !== undefined,
+      ...(task !== undefined ? { taskStatus: task.status } : {}),
+      ...(reported !== undefined ? { reported } : {})
+    });
   };
   /** A piece's turn, on eng.helper. */
   const onPiece = async (base: Base, ms: number) => {
@@ -258,7 +276,8 @@ function buildHost(filename: string) {
   //   [after:MS]     take MS after filing
   //   [message] / [message-checkpoint]  a message arrives for this session mid-task
   //   [stop:REASON]  stop and wait (ctx.suspend)
-  // On a notice ("Task ...") it answers; on a message it answers, and may report a checkpoint.
+  // On a notice ("Task ...") it answers; on a message it asks for a checkpoint
+  // when told to, and ends with no text, so nothing is relayed back.
   const doerTurn = handler({
     name: "settles-doer-turn",
     inputSchema: doorInput,
@@ -269,7 +288,7 @@ function buildHost(filename: string) {
       const base: Base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(row !== undefined ? { taskId: row.id } : {}) };
       const message = input.message;
       if (message.startsWith('Task "')) return answered("woken", base, `woken answer ${base.requestId}`);
-      if (message.startsWith("Message ")) return onMessage(ctx, base, message, row);
+      if (message.startsWith("Message ")) return onMessage(ctx, base, message);
       const slow = /\[slow:(\d+)\]/.exec(message);
       if (slow !== null) return onPiece(base, Number(slow[1]));
       return onTask(ctx, base, message, row);
@@ -509,31 +528,36 @@ async function legB(run: Run): Promise<void> {
   run.notes.push(`b: ${woken} woken turns, output from the last; variant output ${show(variant)}`);
 }
 
-/** c, one message: its request ends before the settle, and its answer is never the output. */
-async function legCOne(run: Run, mark: string, wantCheckpoint: boolean): Promise<void> {
+/**
+ * c, one message: the task settles when its work ends, and the message runs
+ * after, outside the task. The `[message-checkpoint]` message asks for a
+ * checkpoint, which its turn can't write: it holds no claim.
+ */
+async function legCOne(run: Run, mark: string): Promise<number> {
   const taskId = await file(run, word(`${mark} a message arrives while you work`));
   await run.h.idle();
   const row = await run.h.byId(taskId);
   const own = proofsOf(taskId, "turn")[0];
-  const said = proofsOf(taskId, "message")[0];
-  const request = await requestIn(run, taskId, said?.requestId);
-  const ended = request?.updatedAt ?? request?.completedAtMs;
-  const endedFirst = request?.status === "completed" && ended !== undefined && row?.completedAt !== undefined && ended <= row.completedAt;
-  if (said === undefined || !endedFirst) {
-    run.failures.push(`c:message-ends-first — wanted the message's request (${mark}) to end before the task settled; it ${request?.status} at ${ended}, the task ${row?.status} at ${row?.completedAt}`);
+  const said = run.tell.over(`c · ${mark}'s message turn`, proofsOf(taskId, "message"))[0];
+  const settledFirst = said !== undefined && row?.completedAt !== undefined && row.completedAt <= said.at;
+  if (!settledFirst) {
+    run.failures.push(`c:settles-first — wanted ${mark}'s task completed when its work ended, before its message's turn began; the task ${row?.status} at ${row?.completedAt}, the message's turn at ${said?.at}`);
   }
-  const want = wantCheckpoint ? `checkpoint ${said?.requestId}` : own?.answer;
-  if (row?.status !== "completed" || row.output !== want || row.output === said?.answer) {
-    run.failures.push(`c:output — wanted ${mark}'s task completed with ${wantCheckpoint ? "the message's checkpoint" : "the work's answer"}, never the message's answer; it is ${row?.status}, output ${show(row?.output)}`);
+  if (said === undefined || said.claimed !== false || said.taskStatus !== "completed" || said.reported !== undefined) {
+    run.failures.push(`c:outside-the-task — wanted ${mark}'s message turn to hold no claim, see the task completed, and report nothing; it ${show(said)}`);
+  }
+  if (row?.status !== "completed" || row.output !== own?.answer || row.attempts !== 1 || row.checkpointed === true) {
+    run.failures.push(`c:output — wanted ${mark}'s task completed on attempt 1 with the work's answer, no checkpoint; it is ${row?.status} on attempt ${row?.attempts}, output ${show(row?.output)}`);
   }
   const told = await heard(run, taskId);
   if (told.length !== 1) run.failures.push(`c:once — ${mark}'s task heard ${show(told)}`);
+  return said === undefined || row?.completedAt === undefined ? Number.NaN : said.at - row.completedAt;
 }
 
 async function legC(run: Run): Promise<void> {
-  await legCOne(run, "[message]", false);
-  await legCOne(run, "[message-checkpoint]", true);
-  run.notes.push(`c: both settled after their messages' requests`);
+  const plain = await legCOne(run, "[message]");
+  const checkpoint = await legCOne(run, "[message-checkpoint]");
+  run.notes.push(`c: both settled with the work's answer; their messages' turns began ${plain} ms and ${checkpoint} ms after, holding no claim`);
 }
 
 const STOPS = [

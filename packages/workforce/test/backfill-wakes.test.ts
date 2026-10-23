@@ -157,6 +157,57 @@ describe("a split parked before FIX-2077, every piece's notice already acted on"
   }, 30_000);
 });
 
+describe("a task stored while a queued message held it open", () => {
+  // Its work had answered, and it waited only for a message to run. No
+  // message holds a task now, so nothing would check it: it would sit, or
+  // its lease would lapse and the work it already answered would run again.
+  it("settles once with the answer it kept, after the backfill, and its work never runs again", async () => {
+    const h = bootSplitHost({ durable: true });
+    open = h;
+    await h.state.getRouter();
+    h.controls.plans.planner = [{ goal: "Write the memo", assignee: "s1" }];
+    const planner = await h.open("alice", "planner");
+    await h.turn("alice", planner);
+    expect(await h.until(async () => (await h.rowsNamed("alice", "Write the memo"))[0]?.status === "completed", 10_000)).toBe(true);
+    await h.settled();
+
+    // Store it as an old host left it mid-hold: running on attempt 1, its
+    // answer kept, waiting on the queued message, a lease that has lapsed.
+    const [done] = await h.rowsNamed("alice", "Write the memo");
+    const { partition: _p, filer: _f, completedAt: _c, ...rest } = done as Task & { partition?: string; filer?: unknown };
+    await h.writeRow("alice", decodeURIComponent(done!.partition!), {
+      ...rest,
+      status: "in_progress",
+      waitingOn: "queued",
+      leaseUntil: Date.now() - 1_000,
+      output: "the kept answer"
+    } as unknown as Task);
+    const runtime = await h.state.getRuntime();
+    for (const session of [planner, done!.run!.sessionId]) {
+      for (const entry of [RUN_BOARD_ENTRY, CHECK_TASK_ENTRY]) {
+        const kept = await runtime.stores.wakes!.get({ sessionId: session, entry });
+        if (kept !== null) await runtime.stores.wakes!.clear(kept, kept.version);
+      }
+    }
+    /** The turns of s1's own work (not a notice's). */
+    const workTurns = () => h.controls.turns.filter((turn) => turn.worker === "s1" && !turn.message.startsWith("Task ")).length;
+    const worked = workTurns();
+
+    expect(await backfillBoardWakes(runtime.stores, { userCell })).toBeGreaterThanOrEqual(1);
+    // A pass of the board that filed it, as a reclaim would take a lapsed lease.
+    h.controls.plans.planner = [];
+    await h.turn("alice", planner);
+
+    expect(await h.until(async () => (await h.rowsNamed("alice", "Write the memo"))[0]?.status === "completed", 5_000)).toBe(true);
+    await h.settled();
+    const [after] = await h.rowsNamed("alice", "Write the memo");
+    expect(after).toMatchObject({ status: "completed", attempts: done!.attempts, output: "the kept answer" });
+    expect(after!.waitingOn ?? undefined).toBeUndefined();
+    // Its work, which had answered, never ran again.
+    expect(workTurns()).toBe(worked);
+  }, 30_000);
+});
+
 describe("the backfill's other two old debts", () => {
   /** Stores holding one conversation row, and the sessions it names. */
   function stores(row: Record<string, unknown>) {

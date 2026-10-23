@@ -59,8 +59,27 @@
  * still held, so a wait it can't make fails the row with nothing started. The
  * hand-over is recorded with the request (`runOnce`), so the replay after the
  * park hands nothing over again and waits on the same row.
+ *
+ * ## Past a plan's hand-over, a failure is the plan's
+ *
+ * Once the claim has left this request the row is the child's: the board has
+ * no claim to fail it against, so `recordError` has nothing to write, and
+ * under `skip` it would swallow the error while the drain waits on a row it no
+ * longer waits on. So every throw past that point (a wait slot another
+ * request took, a ledger write that failed, a row gone, a gate resumed with no
+ * wait outcome, a seam that threw once the claim was released) leaves as a
+ * {@link HandedOverRowError}, which every recorder rethrows whatever `onError`
+ * says: the drain's request fails, naming the row, and no later row runs. A
+ * park is not a failure and passes through. On the replay after a park the
+ * whole call is past the hand-over, its checks included, which is why they run
+ * inside the recorded hand-over on the first run and inside the wait after it.
+ *
+ * Without `wait` (a delegation board) a seam that threw past the release is
+ * not wrapped, and that is sound: the drain waits on no row, so it ends, and
+ * the row keeps its lapsing lease until a later drain claims it again (see
+ * "Threw" above).
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, SuspensionError } from "@flow-state-dev/core";
 import {
   bindTaskDispatcher,
   DispatchRefusedError,
@@ -80,10 +99,11 @@ import type {
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskCollectionRef, TaskWorker, TaskWorkerInput } from "../../tasks";
-import { checkWait, waitOnTask, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
+import { checkWait, waitOnTask, type CheckedWait, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
+import { HandedOverRowError } from "./recorder-failure";
 
 export interface RowDispatchOptions {
   /** Block-name prefix, so a refusal names the board it came from. */
@@ -199,7 +219,9 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
     const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
 
-    // Release BEFORE the point of no return — see the file header.
+    // Release BEFORE the point of no return — see the file header. Every
+    // throw above keeps the claim, and a refusal below hands it back:
+    // `handOverAndWait` reads "no claim on the state" as "handed over".
     await ctx.sequencer!.patchState({ currentClaim: undefined });
 
     const outcome = await dispatchThroughSeam(ctx, {
@@ -274,7 +296,8 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
 
   /**
    * A plan board's hand-over (see the file header): the wait's checks with
-   * the claim held, the hand-over once, then the wait until the row ends.
+   * the claim held, the hand-over once, then the wait until the row ends. Any
+   * failure past the hand-over is the plan's.
    */
   const handOverAndWait = async (payload: TaskWorkerInput, ctx: BlockContext) => {
     const collection = await wait!.collection(ctx);
@@ -286,34 +309,50 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
       ownBoard: true,
       message: `Waiting on the step "${payload.title ?? payload.goal}" it handed to its own session`,
     };
-    const checked = await checkWait(ctx, collection, taskId, waitOptions);
-    if ("ok" in checked) {
-      // The claim is still held: the row fails through the board's error path.
-      throw new Error(
-        `[task-board] "${boardId}" can't hand task "${taskId}" to a session of its own and wait on it: ` +
-          `${checked.error}: ${checked.message}`
-      );
-    }
     if (ctx.runOnce === undefined) {
       throw new Error(`[task-board] "${boardId}" can't wait on task "${taskId}": this request keeps no record to replay.`);
     }
-    let handedNow = false;
-    const handed = await ctx.runOnce(key, async () => {
-      handedNow = true;
-      return handOver(payload, ctx);
-    });
-    if (!handedNow) {
-      // The replay after a park: the row is the child's. The drain's tap
-      // claimed it again on the way here (a fenced write that declined), so
-      // drop that claim and its lease renewal, as the hand-over did.
-      await ctx.sequencer!.patchState({ currentClaim: undefined });
-      currentLeaseRenewal()?.stop();
+    // Set once an earlier run of this request handed the row over: its replay.
+    let replayed = false;
+    try {
+      let checked: CheckedWait | undefined;
+      const handed = await ctx.runOnce(key, async () => {
+        const passed = await checkWait(ctx, collection, taskId, waitOptions);
+        if ("ok" in passed) {
+          // The claim is still held: the row fails through the board's error path.
+          throw new Error(
+            `[task-board] "${boardId}" can't hand task "${taskId}" to a session of its own and wait on it: ` +
+              `${passed.error}: ${passed.message}`
+          );
+        }
+        checked = passed;
+        return handOver(payload, ctx);
+      });
+      if (checked === undefined) {
+        // The replay after a park: the row is the child's. The drain's tap
+        // claimed it again on the way here (a fenced write that declined), so
+        // drop that claim and its lease renewal, as the hand-over did.
+        replayed = true;
+        await ctx.sequencer!.patchState({ currentClaim: undefined });
+        currentLeaseRenewal()?.stop();
+      }
+      // On the replay the checks run here, past the hand-over.
+      const waited = await waitOnTask(ctx, collection, taskId, waitOptions, checked);
+      if (!waited.ok && waited.error !== "wait_ended_the_request") {
+        throw new Error(`can't wait on it: ${waited.error}: ${waited.message}`);
+      }
+      return handed;
+    } catch (error) {
+      if (error instanceof SuspensionError) throw error;
+      // Past the hand-over once the claim has left this request: on the first
+      // run the hand-over released it, on the replay an earlier run did. This
+      // reads the first run's answer off the state, so it holds only while
+      // `handOver` keeps the claim on every throw before its release and
+      // hands it back on a refusal: change either and fix this with it.
+      const released = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim === undefined;
+      if (!replayed && !released) throw error;
+      throw new HandedOverRowError(boardId, taskId, error);
     }
-    const waited = await waitOnTask(ctx, collection, taskId, waitOptions, checked);
-    if (!waited.ok && waited.error !== "wait_ended_the_request") {
-      throw new Error(`[task-board] "${boardId}" handed task "${taskId}" over but can't wait on it: ${waited.error}: ${waited.message}`);
-    }
-    return handed;
   };
 
   // A fresh address object: the binding is keyed by it, so the assignee's own

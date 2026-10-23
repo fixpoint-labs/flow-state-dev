@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Two timelines of one task. Today: the work request returns and the gate settles the task at once, while its background work and a queued message are still to run; a request that waits loses its lease after two minutes and the task runs again. After: the gate checks rule 6 at the end of each request for the task. While a filed piece is open or a message is queued, the task stays running; a wait keeps the claim with no lease. The task settles once, after the last request for it ends."
+<svg viewBox="0 0 940 400" role="img" aria-label="Two timelines of one task. Today: the work request returns and the gate settles the task at once, while its background work is still to run; a request that waits loses its lease after two minutes and the task runs again. After: the gate checks rule 6 at the end of each request for the task. While a filed piece is open, the task stays running; a wait keeps the claim with no lease. The task settles once, after its background work; a message queued to its session runs after that, outside the task."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -30,8 +30,6 @@
     <text class="t-s" x="150" y="73">work request</text>
     <rect class="bgw" x="300" y="90" width="170" height="22" rx="4"/>
     <text class="t-s" x="310" y="105">background work</text>
-    <rect class="req" x="480" y="120" width="150" height="22" rx="4"/>
-    <text class="t-s" x="490" y="135">queued message</text>
     <line class="bad" x1="340" y1="50" x2="340" y2="150"/>
     <text class="t-bad" x="348" y="160">settled here, too early</text>
     <rect class="req" x="660" y="56" width="70" height="26" rx="4"/>
@@ -48,12 +46,10 @@
     <text class="t-s" x="150" y="257">work request</text>
     <rect class="bgw" x="300" y="274" width="170" height="22" rx="4"/>
     <text class="t-s" x="310" y="289">background work</text>
-    <line x1="470" y1="236" x2="470" y2="300" stroke="var(--ink-3)" stroke-width="1"/>
-    <text class="t-s" x="464" y="318" text-anchor="end">check · a message queued</text>
-    <rect class="req" x="480" y="304" width="150" height="22" rx="4"/>
-    <text class="t-s" x="490" y="319">queued message</text>
-    <line class="good" x1="630" y1="234" x2="630" y2="340"/>
-    <text class="t-ok" x="638" y="352">settled once, here</text>
+    <line class="good" x1="470" y1="234" x2="470" y2="340"/>
+    <text class="t-ok" x="478" y="352">settled once, here</text>
+    <rect class="req" x="480" y="304" width="190" height="22" rx="4"/>
+    <text class="t-s" x="490" y="319">a message, after, outside it</text>
     <rect class="req" x="700" y="240" width="70" height="26" rx="4"/>
     <text class="t-s" x="708" y="257">waits</text>
     <rect class="wait" x="770" y="240" width="140" height="26" rx="4"/>

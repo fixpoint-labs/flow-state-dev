@@ -22,7 +22,7 @@ never hears "done" for it.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | *"A task whose background work broke is not reported as done"* (the issue), and the concept's rule: an attempt fails when one of its requests errors, *"its background work included"* ([Tasks, failed attempts](../../../docs/internal/design/workforce-coordination-concept.md)) |
-| **Smaller, and rejected** | "Only the `work` request's own background work counts." A failed step in a queued message, an `onTaskSettled` turn, a resume, or work the flow's `onFinished` starts would still end as done |
+| **Smaller, and rejected** | "Only the `work` request's own background work counts." A failed step in an `onTaskSettled` turn, a resume, or work the flow's `onFinished` starts would still end as done (a queued message is not part of the task since FIX-2103) |
 | **Bigger, and not this issue's** | What a message's waiting caller hears when its request's background work fails (FIX-2070). Notices reaching the filer when nothing touches the board (FIX-2078) |
 | **Not done if** | The check passes only for work started in `work` · a failure before a suspension is lost when its rerun fails too · a retry records attempt 1's returned result (a checkpoint it reported carries over, per FIX-2081 D3) · a cancel reads as a failure · an error after a dropped connection is hidden · a conversation turn's behaviour changes · a failed capture drops a conversation-result task's answer · the failure only reaches a log |
 
@@ -34,7 +34,7 @@ flowchart LR
   A --> L4["leg d · the same flow as a plain request"]
   A --> L5["leg e · a cancel · one step stops on it · one throws anyway"]
   A --> L6["leg f · a dropped connection · then the step throws"]
-  A --> L7["leg g · a queued message's request · its step throws once"]
+  A --> L7["leg g · a queued message's request · its step throws once · the task's ending stands"]
   A --> L8["leg h · an onTaskSettled turn · its step always throws"]
   A --> L9["leg i · the step fails · the request suspends · the resume reruns it"]
   A --> L10["leg j · a plain .waitForSideChain() drains the failure"]

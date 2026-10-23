@@ -889,7 +889,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * - `waitingOn` set: the row keeps its claim and drops its lease
    *   (`leaseUntil`), so no reclaim takes it back, unless `options.leaseUntil`
-   *   is given (the gate gives one for `"queued"`). `options.answer` is that
+   *   is given. `options.answer` is that
    *   request's result, kept as the output (unless this attempt reported a
    *   checkpoint, which stays the output), for the settle that follows.
    * - `null`: the field clears and the row holds a lease again, to
