@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="Four hosts, today and after. Today: fsdev dev with no config refuses a stop for a person; fsdev run with no config refuses it and writes to its own files; an app config or a self-hosted server holds it only if it sets durable true; a host with durability off fails with a generic error. After: fsdev dev holds the stop, its router's sweeper fires deadlines, and the DevTool answers it; fsdev run holds it in the same SQLite file and says to answer it in fsdev dev; an app or self-hosted server holds it with nothing to write; durable false refuses at the stop, naming the setting."
+<svg viewBox="0 0 940 380" role="img" aria-label="Four hosts, today and after. Today: fsdev dev with no config refuses a stop for a person; fsdev run with no config refuses it and writes to its own files; an app config or a self-hosted server holds it only if it sets durable true; a host with durability off fails with a generic error. After: fsdev dev holds the stop, its router's sweeper fires deadlines, and the DevTool answers it; fsdev run holds it in the same SQLite file under the same local user and says to answer it in fsdev dev; an app or self-hosted server on persisting stores holds it with nothing to write; durable false or in-memory stores refuse at the stop, naming the rule and the setting."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,7 +46,7 @@
     <text class="t-b gone" x="238" y="148">Refused · its own files</text>
     <text class="t-s" x="238" y="166">a separate store fsdev dev never reads</text>
     <rect class="after" x="576" y="126" width="348" height="56" rx="5"/>
-    <text class="t-b ok" x="590" y="148">Held in .fsdev/data/fsdev.db · D1</text>
+    <text class="t-b ok" x="590" y="148">Held in .fsdev/data/fsdev.db, same user · D1</text>
     <text class="t-s" x="590" y="166">ends saying: answer it in fsdev dev</text>
   </g>
 
@@ -58,21 +58,21 @@
     <text class="t-s" x="238" y="236">refused when the app says nothing</text>
     <rect class="after" x="576" y="196" width="348" height="56" rx="5"/>
     <text class="t-b ok" x="590" y="218">Held · nothing to write · D2</text>
-    <text class="t-s" x="590" y="236">the router sweeps · run and chat leave it to it · D3</text>
+    <text class="t-s" x="590" y="236">the router sweeps · fsdev run leaves it to it · D3</text>
   </g>
 
   <g id="off">
     <text class="t-host" x="32" y="288">durable: false</text>
-    <text class="t-s" x="32" y="305">or a router with no provider</text>
+    <text class="t-s" x="32" y="305">in-memory stores · no provider</text>
     <rect class="today" x="224" y="266" width="340" height="56" rx="5"/>
     <text class="t-b gone" x="238" y="288">A generic error</text>
     <text class="t-s" x="238" y="306">"configure one in your server options"</text>
     <rect class="after" x="576" y="266" width="348" height="56" rx="5"/>
     <text class="t-b ok" x="590" y="288">Refused at the stop</text>
-    <text class="t-s" x="590" y="306">the error names the host and the setting</text>
+    <text class="t-s" x="590" y="306">the error names the rule and the setting</text>
   </g>
 
   <g id="foot">
-    <text class="t-s" x="32" y="356">Not a target: serverless hosts. Held there too, swept only when an invocation runs.</text>
+    <text class="t-s" x="32" y="356">In-memory stores refuse a stop unless durable: true is set, which is how tests opt in.</text>
   </g>
 </svg>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a no-config fsdev run keeps its data. Chosen: the database fsdev dev and fsdev chat use. Instead of: fsdev run's own files. It comes down to the first row: a stop made by fsdev run is answered by fsdev dev only on a shared store; on its own files nothing local ever answers it or fires its deadline. The price is the second row: a run's state is no longer JSON files, where the files option keeps them. The third row is a tie: a run with an app config uses the app's stores either way. Locks in: local runs live in .fsdev/data/fsdev.db, and older file sessions are not read. Flips if: agents need a run's JSON files in a way --capture can't serve."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a no-config fsdev run keeps its data. Chosen: the database and the local user fsdev dev uses. Instead of: fsdev run's own files. It comes down to the first row: a stop made by fsdev run is answered by fsdev dev only on a shared store; on its own files nothing local ever answers it or fires its deadline. The price is the second row: a run's state is no longer JSON files, where the files option keeps them. The third row is a tie: a run with an app config uses the app's stores either way. Locks in: local runs live in .fsdev/data/fsdev.db, and older file sessions are not read. Flips if: agents need a run's JSON files in a way the SQLite file can't serve."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,7 +66,7 @@
     <text class="t-lbl" x="32" y="222">A RUN'S STATE</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Not JSON files any more</text>
-    <text class="t-s" x="248" y="241">read it in the DevTool or --capture</text>
+    <text class="t-s" x="248" y="241">read the SQLite file · --capture has no state</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">JSON files on disk</text>
     <text class="t-s" x="612" y="241">an agent can cat them</text>
@@ -87,14 +87,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Local runs live in .fsdev/data/fsdev.db</text>
+    <text class="t-b" x="32" y="371">Local runs live in .fsdev/data/fsdev.db, one user</text>
     <text class="t-s" x="32" y="389">sessions older runs wrote to files are not read</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Agents need a run's files beyond --capture</text>
+    <text class="t-b" x="494" y="371">Agents need a run's files beyond SQLite</text>
     <text class="t-s" x="494" y="389">then a --store filesystem override ships with it</text>
   </g>
 </svg>

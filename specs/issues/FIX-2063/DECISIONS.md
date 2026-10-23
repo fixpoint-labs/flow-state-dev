@@ -8,10 +8,10 @@ D1 and D2 are the sign-off surface; D3 is an engineering call the epic's review 
 
 ```mermaid
 flowchart TD
-  I["FIX-2063"] --> D1["D1 · no-config fsdev run uses fsdev dev's database"]
+  I["FIX-2063"] --> D1["D1 · no-config fsdev run uses fsdev dev's database and user"]
   D1 -.->|"rejected · its stop is answered by nothing local"| X1["keep fsdev run on its own files"]
-  I --> D2["D2 · durable by default on every host · durable false opts out"]
-  D2 -.->|"rejected · a marker on every adapter, tests unlike production"| X2["on only where the stores declare they persist"]
+  I --> D2["D2 · durable by default wherever stores persist · durable false opts out"]
+  D2 -.->|"rejected · a stop held in memory is lost silently, against ER-6"| X2["on everywhere, in-memory stores included"]
   I --> D3["D3 · the sweeper stays the router's · one-shot commands leave the stop to it"]
   D3 -.->|"rejected · fires others' work inside a CLI run"| X3["every runtime sweeps, getRuntime included"]
 ```
@@ -19,37 +19,37 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A no-config `fsdev run` uses the database `fsdev dev` and `fsdev chat` use
+## D1 · A no-config `fsdev run` uses the database and the user `fsdev dev` uses
 
 | | |
 |---|---|
 | **Instead of** | Keeping `fsdev run`'s own filesystem store under `.fsdev/data` |
-| **Because** | A stop made by `fsdev run` is answered after the command exits, and the one local host that answers is `fsdev dev`. On separate stores it never sees the stop, and no sweeper reaches its deadline. `fsdev chat` already shares the file; SQLite's WAL mode and busy timeout make a run beside a dev server safe |
-| **Locks in** | A no-config run lives in `.fsdev/data/fsdev.db`, no longer JSON files an agent can read directly; the DevTool, the file and `--capture` replace them. Sessions earlier runs wrote to files are not read: local data, no migration, as the epic set for states in flight. A run with an app config is unchanged |
+| **Because** | A stop made by `fsdev run` is answered after the command exits, and the one local host that answers is `fsdev dev`. On separate stores it never sees the stop, and no sweeper reaches its deadline. Nor does it under a different user: the run defaults to `cli-user`, the DevTool to `devuser`, and the session listing is scoped by user, so both commands take one local default. `fsdev chat` already shares the file; SQLite's WAL mode and busy timeout make a run beside a dev server safe |
+| **Locks in** | A no-config run lives in `.fsdev/data/fsdev.db` under the shared local user. Its state is no longer JSON files an agent reads directly: it is read from the SQLite file or through `fsdev dev`'s routes. `--capture` is not a replacement (it carries the command, events and result, never session or resource state), so this is accepted as a loss. Sessions earlier runs wrote to files are not read: local data, no migration, as the epic set for states in flight. A run with an app config is unchanged |
 
 ![D1: one local database, chosen, beside fsdev run on its own files. Decides it: a stop made by fsdev run is answered by fsdev dev only on a shared store. Price: a run's state is no longer JSON files. Tie: a run with an app config is unchanged](figures/d1-one-local-store.svg)
 
 It comes down to who answers a run's stop: on its own files, nothing local ever does.
 
-**What would change my mind:** agents depending on a no-config run's JSON files in a way
-`--capture` can't serve. Then the headless proposal's `--store filesystem` override ships with
+**What would change my mind:** agents depending on a no-config run's JSON files in a way the
+SQLite file can't serve. Then the headless proposal's `--store filesystem` override ships with
 this, as the opt-back.
 
 <a name="d2"></a>
-## D2 · Durable execution is on by default for every `createFlowState` host; `durable: false` turns it off
+## D2 · Durable execution is on by default wherever stores persist; `durable: false` turns it off
 
 | | |
 |---|---|
-| **Instead of** | Turning it on only where the active store adapter declares that it persists |
-| **Because** | One rule an app can predict, with nothing an adapter must declare or can forget. In-memory durability lasts the process, so tests behave like production. The provider costs nothing for an action that never stops or checkpoints (tenet 2: refine the default, don't add a second way) |
-| **Locks in** | The default of `durable` flips at upgrade: an app that never set it holds stops it refused, and writes checkpoints for actions that ask. `durable: false` is the opt-out. A serverless app is held too, swept only when an invocation runs. In-memory stores are documented as for tests only |
+| **Instead of** | Turning it on for every host, in-memory stores included |
+| **Because** | The epic's rule ([ER-6](../../epics/FIX-2058/DECISIONS.md#who-owns-what)): durable where stores persist, and a host without it refuses a stop loudly. A stop held in memory is lost silently when the process ends. One fact decides it, carried by the one adapter the engine ships that doesn't persist: the in-memory one says so. Every other adapter, third-party ones included, declares nothing and gets the default |
+| **Locks in** | The default of `durable` flips at upgrade for apps on persisting stores, and the cost is real: every sequencer (already `durable: true` by default, FIX-401) writes a checkpoint at each step, a crashed request resumes instead of rerunning, a raw `ctx.suspend()` is held, and the router's sweeper ticks on the store (a lease and a scan) even when nothing waits. A changeset says so, with the migration note. `durable: false` is the opt-out. On in-memory stores a stop refuses loudly unless `durable: true` is set, which is how tests opt in |
 
-![D2: on everywhere with an opt-out, chosen, beside on only where stores declare they persist. Decides it: one rule an app can predict. Price: an upgrade changes behaviour for apps that never set it. Tie: a file-backed self-hosted app is durable either way](figures/d2-on-everywhere.svg)
+![D2: on wherever stores persist, chosen, beside on everywhere including in-memory stores. Decides it: the epic's rule, where a stop held in memory is lost silently. Price: an upgrade checkpoints sequencers and resumes crashed requests for apps that never set durable. Tie: a file-backed self-hosted app is durable either way](figures/d2-where-stores-persist.svg)
 
-It comes down to one rule: a declared marker is a second fact every adapter must get right.
+It comes down to the epic's rule: a stop is held only where it survives the process.
 
-**What would change my mind:** a supported host where holding a stop costs more than refusing
-it. Then that host's adapter sets the default, and D2 narrows.
+**What would change my mind:** a supported host on persisting stores where holding a stop costs
+more than refusing it. Then that host's adapter sets the default, and D2 narrows.
 
 <a name="d3"></a>
 ## D3 · The sweeper stays where a router runs; a one-shot command leaves the stop to it
@@ -60,7 +60,8 @@ it. Then that host's adapter sets the default, and D2 narrows.
 |---|---|
 | **Instead of** | Making every runtime sweep, `getRuntime()` hosts included |
 | **Because** | `fsdev run` is one-shot. A sweeper there would fire other requests' due deadlines and wakes inside an unrelated command, then cut them off when it exits. The sweeper already takes a lease per tick, so one server on a shared store sweeps for every command that writes to it |
-| **Locks in** | Every host that answers a person sweeps: `fsdev dev` with or without a config, `fsdev serve`, a self-hosted router. `fsdev run` and `fsdev chat` hold the stop and say where it is answered. A deadline that passes while no server runs fires within one sweep of the next start |
+| **An exception, recorded** | Waits on a task are offered only where a sweeper runs in the process (FIX-1816 BR-5, FIX-2082 D1), so `fsdev run` refuses them. A person's stop is held there anyway: it is answered only through a server's route, and that server sweeps it. A wait has no such answerer, so its rule stays |
+| **Locks in** | Every host that answers a person sweeps: `fsdev dev` with or without a config, `fsdev serve`, a self-hosted router. `fsdev run` holds the stop, exits 0 with the stop's id in `--capture`, and says it is answered in `fsdev dev` and that its deadline fires only while a server runs on this store |
 
 ## Decided, not asked
 
@@ -68,16 +69,19 @@ it. Then that host's adapter sets the default, and D2 narrows.
   (`ctx.suspend()`, which FIX-2129's `waitForUser` builds on). Every host without durability
   reaches it, so the refusal is written there once, naming the setting. Hosts no longer guard
   on durability themselves; their refusals go.
-- **The CLI's no-config dev router gets the standard checkpoint provider** over its SQLite
-  stores. The low-level `createFlowApiRouter` keeps taking a provider only when given one.
-- **`fsdev run` reports a stop on exit**: the stop's id, its prompt, and where to answer it.
-  The exit code and wording are the implementer's.
+- **One engine rule owns the default.** `createFlowState`, the no-config `fsdev dev` router and
+  no-config `fsdev run` all get their provider from one engine function over the stores and the
+  `durable` option, so a later change to the default is made once. The low-level
+  `createFlowApiRouter` and `runAction` keep taking a provider only when given one.
+- **`fsdev run` reports a stop on exit**: exit 0, the stop's id (in `--capture` too), its prompt,
+  and where to answer it. The wording is the implementer's.
 - **Retention stays opt-in.** On by default means held and swept, not pruned.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
+| On only where every store adapter declares it persists | A second fact every adapter, third-party ones included, must get right; one that forgets it is off. Marking the one that doesn't persist carries the same rule |
 | A `fsdev resume` command | A second place to answer a stop, against the epic's one answer route ([ER-7](../../epics/FIX-2058/DECISIONS.md#who-owns-what)) |
 | `fsdev dev` reading `fsdev run`'s files | The filesystem store can't hold the dev server's load; that is why `fsdev dev` left it |
 | A queue (BullMQ) as the durable layer | A dispatch queue is not a suspension store; the epic's review kept this on checkpoint durability |
@@ -88,6 +92,10 @@ it. Then that host's adapter sets the default, and D2 narrows.
   with no configuration; a default flip on `durable`, one local store for both CLI commands, and
   the router's sweeper as the one that fires deadlines; builds on FIX-2077's person stop and the
   existing checkpoint provider.
+- **Round 1** — D2 narrowed from every host to wherever stores persist, because a stop held in
+  memory is lost silently and the epic's ER-6 refuses it there. D1 gained the shared local user,
+  because the DevTool lists sessions by user and would not have seen the run's stop. D2 priced
+  the default's checkpoints, crash-resume and sweeper ticks instead of calling it free.
 
 ## Notes from review
 
@@ -98,5 +106,25 @@ From the epic review (#3732), routed here on Linear:
   — cursor, round 2
 - "The spec must name sweeper-on-CLI, or a loud refusal." — cursor, round 2. Answered by [D3](#d3)
 - "Stay on engine checkpoint durability … not BullMQ." — round 1. Kept
+
+From this spec's review (#3734), round 1:
+
+- "The refusal names its rule as well as the setting." — architect. Folded into the refusal's
+  contract; the wording is yours
+- "Give the two messages parallel wording so a person who hits either learns the host setting
+  to change." (no provider, and FIX-1816's no sweeper) — second-look
+- "Implementation docs should spell that distinction so D2 isn't read as 'every action now
+  checkpoints.'" (host `durable` vs an action's or sequencer's `durable`) — cursor
+- "`better-sqlite3` means no-config `fsdev run` may block under contention with a running `dev`
+  server; WAL/busy timeout is enough to mention in CLI docs." — cursor
+- "Build the no-config dev host with `createFlowState` over its SQLite stores … or keep the
+  direct router but import one shared 'durability from stores' helper." — second-look; either
+  satisfies the one-rule call above
+- "While a request waits on a person, it holds back its filed tasks' notices, which ER-2 doesn't
+  allow. The default flip turns that on everywhere." (#3733) — architect. FIX-2129 owns the
+  waiting row; flag it there if #3733 hasn't landed
+- "Keep leg c on an approval, since FIX-2129 changes a question's deadline." — architect. Kept
+- "Fixing the docs' nonexistent `durabilityProvider` option can be a separate one-line docs
+  fix." — epic coordinator. Either is fine
 
 **Open: none.**
