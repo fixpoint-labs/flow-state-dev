@@ -67,9 +67,9 @@ A new private lab, `labs/teammates`, launched with `fsdev dev --app` and themed 
 
 | Kind (ER-1) | What |
 |---|---|
-| Configuration | `fsdev.config.mts`, the host file, four `WORKER.md` (lead, researcher, writer, and coder, which takes tasks only and names its harness), lead's `delegates: [teammates.coder]`, memory composed into each worker's flow through `defineAgentWorkerFlow`: the capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn |
+| Configuration | `fsdev.config.mts`, the host file, four `WORKER.md` (lead, researcher, writer, and coder, which takes tasks only and names its flow, `flow: coder-claude-code`), lead's `delegates: [teammates.coder]`, memory composed into each worker's flow through `defineAgentWorkerFlow`: the capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn |
 | React UI | The worker list, the conversation with its talk cards and pending line, the Talk panel, the composer, registry components |
-| Small flows | None planned |
+| Small flows | One: `coder-claude-code`, which wraps `harnessManager({ harness, workspace })` with `localWorkspaceHost({ source: projectWorkspace() })`, under 200 lines and copied, never imported, per ER-3 ([D4](DECISIONS.md#d4), the epic's ER-9) |
 | The adapter (ER-5) | One module; each function names the package call it stands for. See below |
 
 | Adapter function | Stands for (post-refactor names) | Until wiring |
@@ -81,7 +81,7 @@ A new private lab, `labs/teammates`, launched with `fsdev dev --app` and themed 
 | `listTalk(worker)` | the message log (`workerMessagesCollection`) as FIX-2070 ships its row: `sendMessage`, `receive`, `inReplyTo`, call ids | fixture |
 | `workerActivity(worker)` | `listSessionRequests` on the worker's conversation | fixture |
 | `summarizedUpTo(sessionId)` | gap G1 | fixture carrying G1's id |
-| `directory(worker)`, `setDirectory(worker, project)` | gap G3: the project a worker's default conversation works in; the projects to pick from are the user's projects | fixture carrying G3's id |
+| `directory(worker)`, `setDirectory(worker, project)` | FIX-2161, widened: the project a worker's default conversation works in; the projects to pick from are the user's projects | fixture carrying FIX-2161's id |
 | `listTasks(sessionId)` | the conversation board's rows for the tasks lead filed: the task cards | fixture |
 | `watchRun(taskId)` | the harness run's items, read only: coder has no composer | fixture |
 
@@ -97,8 +97,8 @@ worked around in the lab.
 |---|---|---|---|
 | G1 | **A long conversation keeps working past its history window, opt-in per flow.** Turns past the window (`historyWindow`, 50 by default) drop with no summary (`workforce/src/agent-worker-flow.ts`, the `history` comment). Memory composed through `uses` keeps facts, not the thread, and neither stands in for the other (FIX-1612). Needs an opt-in option on core's `historyWindow` that summarizes dropped turns with core's existing `summarizer` block, off by default (Jake's FIX-1775 direction), and a mark core emits that a screen reads to draw the divider. The agent flow turns it on for the lab's workers. No second summary path in workforce. **Not a new entry:** tracked under [FIX-1613](https://linear.app/fixpoint-labs/issue/FIX-1613), the known gap (a block can't read items older than the window), extended there | core (`historyWindow` in `core/src/types/flow.ts`), turned on by the workforce agent flow | **Step 4, always.** Step 4 asserts the divider, and only G1's mark places it, so G1 blocks this lab's wiring and the closure. A probe at wiring, on memory alone, decides only whether the summary half is needed too; a pass is not evidence memory replaces it |
 | G2 | **A received message is its own item in the recipient's conversation**, carrying `from`, the message id and `inReplyTo`. Today it is a plain message line, `From researcher: …` (`messages/worker-message-entry.ts`). The talk cards and the pending line join the log to the stream by message id | an ask of FIX-2070, which redefines `receive`; filed as a linked gap, not a child, only if FIX-2070 ships without it | **No.** It blocks no step and not the wiring. Until it lands the pending line is best effort: without a message id the lab shows the reply when it lands, with no pending line first, and the script does not assert the pending line |
-| G3 | **A worker's default conversation works in a project set for that worker.** Today a conversation carries a project only when it is opened on one (`ensureWorkerSession({ worker, projectId })`), which is a different session from the worker's default one, and messages land at the default one (`messages/send-message.ts`). The tasks a conversation files take its project (`filingProjectId`, `conversation-board/filing-session.ts`), and `projectWorkspace()` turns that into a checkout or refuses `no-project`. Needs the project set per worker and per user, read by the default conversation, so its tasks inherit it, with no change to where messages land | workforce (`workers/derive-session-id.ts`, `conversation-board/filing-session.ts`) | **Step 5.** Without it lead's tasks name no project and the run is refused |
-| G4 | **A coding worker an app hires by configuration, with its harness named per worker.** The one coding worker flow today is DevTeam's `coder` (`shift-manager/teams/devteam/workforce/flows/workers/coder.mts`): 238 lines, over the 200-line flow cap (ER-1), inside an app, so no other app may import it (ER-2), and its harness is a slot fixed when the flow is built, one copy for every coder worker. Needs that flow from a package entry, with `harness: claude-code` or `harness: codex` in `WORKER.md` choosing the slot per worker. Overlaps FIX-1652 (which harness a worker runs), where it is filed | harness-manager, hired through workforce | **Step 5.** Without it the lab would copy 238 lines of DevTeam |
+| FIX-2161 | **A worker's default conversation works in a project set for that worker.** Filed by the epic as FIX-2161 (an ordinary session of any worker opens on a project) and widened there to cover this, so it is not a separate gap here. Today a conversation carries a project only when it is opened on one (`ensureWorkerSession({ worker, projectId })`), which is a different session from the worker's default one, and messages land at the default one (`messages/send-message.ts`). The tasks a conversation files take its project (`filingProjectId`, `conversation-board/filing-session.ts`), and `projectWorkspace()` turns that into a checkout or refuses `no-project`. Needs the project set per worker and per user, read by the default conversation, so its tasks inherit it, with no change to where messages land | workforce (`workers/derive-session-id.ts`, `conversation-board/filing-session.ts`), under FIX-2161 | **Step 5.** Without it lead's tasks name no project and the run is refused |
+| G4 | **Conditional: a public coding worker flow, filed only if a lab can't write its own under 200 lines.** The lab's `coder-claude-code` wraps `harnessManager` with `projectWorkspace()`, as the epic's ER-9 sets. FIX-2153's build writes the first such flow; if it can't stay under the flow cap (ER-1), a coding worker flow from a package entry is filed, rather than either lab copying Shift Manager's. DevTeam's `coder.mts` is not the yardstick: it also carries two managers, a door and a judge | harness-manager | **Only if filed.** Then step 5 waits on it |
 | — | Whether a worker is working. Not a gap: a screen lists the requests of each worker's conversation (`listSessionRequests`) and reads the running one, which also catches a worker another worker woke | client | Not filed. Only if a queued `receive` is missing from that list |
 | — | Paging the log by pair. A pair filter is UI code over the user's log (fsd-architect, [#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)) | workforce | Not filed. Only if the log outgrows one read |
 
@@ -113,7 +113,7 @@ worked around in the lab.
   harness ([D4](DECISIONS.md#d4)).
 - **The local sandbox's directory.** The conversation workers carry no bash or file tools, so the
   sandbox's default directory (`tools/src/bash/resolve-sandbox.ts`, the server's) is never reached.
-  A worker that gains those tools takes G3's project for it.
+  A worker that gains those tools takes its project (FIX-2161) for it.
 - **Shift Manager.** Its Messages screen and its code are untouched; the lab copies, never
   imports, any UI it wants (ER-3).
 
@@ -128,12 +128,12 @@ worked around in the lab.
 | `@flow-state-dev/memory`, composed through `uses` and `afterAnswer` | **Builds on**, as configuration |
 | `projectWorkspace()` and the operator's `checkouts` map (`projects/project-workspace.ts`) | **Builds on.** A task's directory comes from its project; the lab adds no path of its own |
 | Delegates and the session board: a worker that lists a delegate taking tasks files through `createTask`, and the ending lands as a line under the delegate's name | **Builds on.** lead lists coder |
-| `harnessManager({ harness, workspace })` and DevTeam's `coder` | **Builds on** the first through G4; copies nothing from the second |
+| `harnessManager({ harness, workspace })` and DevTeam's `coder` | **Builds on** the first, in one small lab flow; copies nothing from the second |
 | Kitchen Sink's harness modes, which fall back to the server's checkout | **Leaves alone**, and does not copy the fallback |
 
 | The debt | |
 |---|---|
-| **Adds** | One private lab. Up to four package entries, one per gap filed |
+| **Adds** | One private lab, with one small flow. Up to three package entries: G1, G2 and, only if filed, G4. FIX-2161 is the epic's |
 | **Removes** | Nothing |
 
 **Net: up, by one lab and the gaps it proves.** The lab is the evidence the epic exists to
@@ -144,7 +144,7 @@ produce; each gap is a piece the next app gets for nothing.
 **[The goal](#the-goal-and-how-well-know-its-met):** five steps, a real model, an inventory with no
 *other* row. If wrong: a lab that looks right on fixtures and proves nothing.
 
-**[The debt](#whats-already-here-and-the-debt):** up, by one lab and up to four package entries.
+**[The debt](#whats-already-here-and-the-debt):** up, by one lab and up to three package entries.
 If wrong: a lab that hides glue the package should own.
 
 1. **[D2](DECISIONS.md#d2) · A message from another worker never interrupts your turn; it shows
@@ -161,4 +161,4 @@ If wrong: a lab that hides glue the package should own.
 **Open:** whether the lab's script needs G1's summary, settled by a probe at wiring (see the gap).
 
 Feature · labs + core and workforce gaps · medium · second lab of epic FIX-2152 · blocked by FIX-2070 and
-FIX-2056 (wiring only); step 5 by G3 and G4
+FIX-2056 (wiring only); step 5 by FIX-2161

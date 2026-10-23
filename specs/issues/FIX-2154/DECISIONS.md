@@ -72,7 +72,7 @@ the pending line becomes a line inside the turn.
 | | |
 |---|---|
 | **Instead of** | A scratch directory when none is set, the server's own checkout (Kitchen Sink's fallback), or a raw path per message |
-| **Because** | A Grok Bot-style worker has one conversation, so it has one place it works: the directory is set on the worker, not per session. It is a project, never a raw path, because the box already turns a project into a checkout (`projectWorkspace()`, with the operator's `checkouts` map) and already refuses a task with none (`no-project`). The screen shows that refusal as a prompt to pick a project, before a coding job is sent. Work lead hands on inherits lead's directory through the task's project (`filingProjectId`), unless the task names another project. What is missing is a project on the worker's default conversation: gap G3 |
+| **Because** | A Grok Bot-style worker has one conversation, so it has one place it works: the directory is set on the worker, not per session. It is a project, never a raw path, because the box already turns a project into a checkout (`projectWorkspace()`, with the operator's `checkouts` map) and already refuses a task with none (`no-project`). The screen shows that refusal as a prompt to pick a project, before a coding job is sent. Work lead hands on inherits lead's directory through the task's project (`filingProjectId`), unless the task names another project. What is missing is a project on the worker's default conversation, which FIX-2161 is widened to carry |
 | **Locks in** | Nothing runs until a person has said where. A worker's directory is one of the user's projects, so a repo the person hasn't added as a project can't be picked |
 
 ![D3: where a worker's work happens on disk. One directory per worker, a project, and ask when none is set, chosen, beside a scratch directory. Decides it: the box already refuses a task with no project. Locks in: nothing runs until a person says where](figures/d3-worker-directory.svg)
@@ -90,7 +90,7 @@ up front is friction, and the prompt moves to the first coding job.
 | | |
 |---|---|
 | **Instead of** | Running lead, researcher or writer through Claude Code, so the person talks to a harness directly |
-| **Because** | The workers you talk to are where messages queue and land (D2), and that turn is ours. A fourth worker, coder, takes tasks only, so it can't be messaged (`takes_tasks_only`), and runs each task through Claude Code. lead lists coder as a delegate and hands it work with `createTask`. A task card shows in lead's conversation while it runs; it opens to the run, read only, since coder has no composer. When the run ends its result lands in lead's conversation as a line from coder, and if lead is answering you then, it waits for that turn, the same rule as D2 (BR-27). The harness is named in coder's `WORKER.md`, so a second coder on Codex is one more file: gap G4 |
+| **Because** | The workers you talk to are where messages queue and land (D2), and that turn is ours. A fourth worker, coder, takes tasks only, so it can't be messaged (`takes_tasks_only`), and runs each task through Claude Code. lead lists coder as a delegate and hands it work with `createTask`. A task card shows in lead's conversation while it runs; it opens to the run, read only, since coder has no composer. When the run ends its result lands in lead's conversation as a line from coder, and if lead is answering you then, it waits for that turn, the same rule as D2 (BR-27). coder runs on the lab's one small flow, `coder-claude-code`, which wraps `harnessManager` with `projectWorkspace()`; its `flow:` line picks the harness, by config alone (the epic's ER-9). A Codex coder would be a second small flow. Its run shows as an ordinary task row, tagged with its harness |
 | **Locks in** | A person never types to a harness in this lab. Steering a coding job means telling lead, who files the next task |
 
 ![D4: which workers run a coding harness. A task-taking coder only, chosen, beside a harness behind the workers you talk to. Decides it: D2's turn, where messages land, is ours. Locks in: you steer a coding job through lead](figures/d4-harness-where.svg)
@@ -133,8 +133,8 @@ teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2),
   (FIX-1989); the lab restricts nothing.
 - **A coding run needs no worker messages (FIX-1990).** coder never messages a teammate mid-run;
   its result reaches lead as the task's ending. FIX-1990 stays out of this lab's path.
-- **Claude Code in the script.** Step 5 runs coder on Claude Code. The harness is a `WORKER.md`
-  setting, so the script doesn't test Codex; a second coder file would.
+- **Claude Code in the script.** Step 5 runs coder on Claude Code, so the lab has one coding flow.
+  A per-worker harness setting in `WORKER.md` is FIX-1652's, not this lab's.
 - **A harness run shows where its task does.** The task card in lead's conversation and the
   run behind it are both public reads (the board's rows and the run's items). The lab has no
   separate task pane.
@@ -156,7 +156,8 @@ teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2),
 | A lab flow that summarizes old turns | Glue the package should own (ER-4); the next app would rewrite it |
 | A scratch directory when none is set | Work lands somewhere the person can't find, and nothing says so |
 | The server's own checkout when none is set | The silent default Kitchen Sink has; a run edits the lab's repo |
-| Copying DevTeam's `coder` flow into the lab | 238 lines, over the flow cap, and code shared between apps (ER-1, ER-3); gap G4 instead |
+| Copying DevTeam's `coder` flow into the lab | 238 lines, over the flow cap, and it carries two managers, a door and a judge the lab doesn't need; one small flow over `harnessManager` instead |
+| A `harness:` key in `WORKER.md` | A new config key; a hire's `flow:` line already picks the harness (the epic's ER-9) |
 | Group chats of several workers | Out of the brief's scope, and the concept has no group conversation |
 
 ## How it got here
@@ -181,6 +182,9 @@ teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2),
   D3, D4, step 5 and its control (the lead measure is now of 5), and gaps G3 and G4. Checked on
   `main`: `projectWorkspace()`'s order and its `no-project` refusal, where messages land, the
   `takes_tasks_only` refusal, and DevTeam's `coder` (238 lines, one fixed harness slot).
+- **Amendment, epic check** — the epic thread aligned it with ER-9 (#3803) and FIX-2153's spec
+  (#3788): coder runs one small lab flow, picked by its `flow:` line, and G4 is filed only if that
+  flow can't stay under 200 lines. G3 is FIX-2161, widened to a worker's default conversation.
 
 ## Notes from review
 

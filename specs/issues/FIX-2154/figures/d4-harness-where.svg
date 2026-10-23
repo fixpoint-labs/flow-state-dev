@@ -72,12 +72,12 @@
   <g id="row-3">
     <text class="t-lbl" x="32" y="280">NEW PACKAGE</text>
     <text class="t-lbl" x="32" y="293">CODE</text>
-    <text class="mark tie" x="226" y="286">=</text>
-    <text class="t-b" x="244" y="285">One coding worker</text>
-    <text class="t-s" x="244" y="303">from a package, harness per worker (G4)</text>
+    <text class="mark plus" x="226" y="286">+</text>
+    <text class="t-b" x="244" y="285">None</text>
+    <text class="t-s" x="244" y="303">one lab flow over harnessManager (ER-9)</text>
     <text class="mark minus" x="586" y="286">−</text>
-    <text class="t-b" x="604" y="285">The same, and more</text>
-    <text class="t-s" x="604" y="303">a harness that takes messages</text>
+    <text class="t-b" x="604" y="285">A harness that takes messages</text>
+    <text class="t-s" x="604" y="303">and owns the turn</text>
     <line class="row" x1="16" y1="318" x2="924" y2="318"/>
   </g>
   <g id="locks-in">
