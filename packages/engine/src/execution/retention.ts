@@ -87,7 +87,8 @@ export function resolveRetentionPolicy(
  * gate owed a re-drive: `parkedInterruptedIds`), which `provider` reads (none
  * is parked without one: nothing can suspend). An interrupted record nothing
  * else protects is read whole to find its last gate. A failed read rejects,
- * and nothing is deleted.
+ * and nothing is deleted. A record is deleted only while it is still in the
+ * status it was judged in (`RequestStore.deleteIfStatus`).
  */
 export async function applyRetentionPolicy(
   stores: StoreRegistry,
@@ -179,22 +180,28 @@ export async function applyRetentionPolicy(
 
   let remaining = sorted;
 
+  // Each record was judged by the status it was listed in, and is deleted
+  // only while it still has it. The durability sweep can re-drive an
+  // interrupted turn in between (`interrupted` → `in_progress`); that record
+  // is a running request again and is left alone.
+  const evict = async (req: RequestRecord): Promise<void> => {
+    const { applied } = await stores.request.deleteIfStatus(req.id, [req.status]);
+    if (applied) deletedRequestIds.push(req.id);
+  };
+
   // Phase 1: maxAge — delete turns that ended before the cutoff
   if (policy.maxAgeMs !== undefined) {
     const cutoff = now - policy.maxAgeMs;
-    const expired: string[] = [];
+    const expired: RequestRecord[] = [];
     const kept: typeof sorted = [];
     for (const req of remaining) {
       if (endedAt(req) < cutoff) {
-        expired.push(req.id);
+        expired.push(req);
       } else {
         kept.push(req);
       }
     }
-    for (const id of expired) {
-      await stores.request.delete(id);
-      deletedRequestIds.push(id);
-    }
+    for (const req of expired) await evict(req);
     remaining = kept;
   }
 
@@ -236,10 +243,7 @@ export async function applyRetentionPolicy(
 
     // Delete requests that didn't fit
     for (const req of remaining) {
-      if (!keep.has(req.id)) {
-        await stores.request.delete(req.id);
-        deletedRequestIds.push(req.id);
-      }
+      if (!keep.has(req.id)) await evict(req);
     }
   }
 

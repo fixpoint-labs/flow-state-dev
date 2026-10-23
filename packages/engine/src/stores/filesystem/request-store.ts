@@ -421,6 +421,31 @@ export class FilesystemRequestStore implements RequestStore {
     this.lastEventError.delete(id);
   }
 
+  async deleteIfStatus(
+    id: string,
+    allowedStatuses: readonly RequestStatus[]
+  ): Promise<ConditionalWriteResult> {
+    // Wait out event writes already queued, without dropping the unwritten
+    // batch first as `delete` does: if the predicate fails, they belong to a
+    // run that is still going.
+    await this.eventWriteQueues.get(id)?.drain();
+    let found: RequestStatus | undefined;
+    // The status check, the sidecar sweep and the record removal share the
+    // per-id lock, so no conditional write lands between check and delete.
+    const deleted = await this.store.delete(
+      id,
+      () => this.deleteSidecars(id),
+      (current) => {
+        found = current?.status;
+        return found !== undefined && allowedStatuses.includes(found);
+      }
+    );
+    if (!deleted) return { applied: false, status: found };
+    this.pendingNewEvents.delete(id);
+    this.lastEventError.delete(id);
+    return { applied: true, status: found };
+  }
+
   /**
    * Remove the sidecar files the request store writes alongside the primary
    * record: the NDJSON event log, the abort marker and every per-key runOnce
