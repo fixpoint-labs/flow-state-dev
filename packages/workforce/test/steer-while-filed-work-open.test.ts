@@ -24,8 +24,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Everything one model call was sent, as one string. */
 const sentText = (input: unknown) => JSON.stringify(input).replaceAll("\\n", "\n").replaceAll('\\"', '"');
 
-async function until(check: () => Promise<boolean>, what: string) {
-  for (const deadline = Date.now() + 5_000; Date.now() < deadline; await sleep(10)) if (await check()) return;
+async function until(check: () => Promise<boolean>, what: string, ms = 5_000) {
+  for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(10)) if (await check()) return;
   throw new Error(`timed out waiting for ${what}`);
 }
 
@@ -80,4 +80,105 @@ describe("a steer while the task waits on the work it filed", () => {
       await h.dispose();
     }
   }, 20_000);
+
+  it("runs one turn of the task at a time: the research's turn waits while the steer's turn waits on its own step", async () => {
+    let release!: () => void;
+    const holds = new Map([["research", new Promise<void>((resolve) => (release = resolve))]]);
+    /** The last user message one model call was sent: what that turn is answering. */
+    const lastUser = (input: unknown) => {
+      const s = sentText(input);
+      return s.slice(s.lastIndexOf('"role":"user"'));
+    };
+    const once = (flag: { done: boolean }, test: (i: unknown) => boolean) => (i: unknown) => {
+      if (flag.done || !test(i)) return false;
+      flag.done = true;
+      return true;
+    };
+    const filedResearch = { done: false };
+    const steerStep = { done: false };
+    const noticeStep = { done: false };
+    const ANSWERING = "The steps you filed for yourself have ended";
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (i) => lastUser(i).includes(ANSWERING), then: { text: "The post, after the check." } },
+        { when: (i) => lastUser(i).includes("You are working a step you filed for yourself"), then: { text: "checked" } },
+        { when: (i) => lastUser(i).includes("[step]"), then: { text: "checked in its own session" } },
+        // The steer's turn files a step in a session of its own: its request waits on it.
+        {
+          when: once(steerStep, (i) => lastUser(i).includes("You were sent the messages below")),
+          then: { toolCalls: [{ toolCallId: "s1", toolName: "createTask", args: { goal: "[step] Check the draft", assignee: "otto", session: "new" } }] }
+        },
+        { when: (i) => lastUser(i).includes("You were sent the messages below"), then: { text: "Waiting on the check." } },
+        // The research's turn files one too.
+        {
+          when: once(noticeStep, (i) => lastUser(i).includes("completed by eng.tasker")),
+          then: { toolCalls: [{ toolCallId: "s2", toolName: "createTask", args: { goal: "[step] Check the fact", assignee: "otto", session: "new" } }] }
+        },
+        { when: (i) => lastUser(i).includes("completed by eng.tasker"), then: { text: "Waiting on the fact check." } },
+        {
+          when: once(filedResearch, (i) => lastUser(i).includes("Write the post")),
+          then: { toolCalls: [{ toolCallId: "c1", toolName: "createTask", args: { goal: "[hold:research] Find the fact", assignee: "eng.tasker" } }] }
+        },
+        { when: (i) => lastUser(i).includes("Write the post"), then: { text: "Waiting on research." } }
+      ]
+    });
+    // When each model call was sent, and what it answers. The steer's step
+    // takes 9 s, long enough that the turned-away notice's next resend backs
+    // off past the moment the steer's turn answers.
+    const sentAt: Array<{ at: number; asked: string }> = [];
+    let holdStep = false;
+    const h = bootBoardHost({
+      standard: workers(),
+      agentAnswer,
+      holds,
+      observeTools: (_block, _names, input) => {
+        const asked = lastUser(input);
+        sentAt.push({ at: Date.now(), asked });
+        if (asked.includes("[step] Check the draft") && !asked.includes(ANSWERING)) holdStep = true;
+      },
+      afterModelCall: async () => {
+        if (!holdStep) return;
+        holdStep = false;
+        await sleep(9_000);
+      },
+      durable: true,
+      judgment: mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] })
+    });
+    try {
+      const conv = await h.conversation("alice", "chief");
+      const filing = await h.filingOf("alice", conv);
+      const filed = await h.act("alice", conv, "createTask_tasks", { goal: "Write the post", assignee: "otto" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const taskId = (filed.output as { taskId: string }).taskId;
+      const row = async () => (await h.row("alice", filing, taskId)) as Task | undefined;
+      await until(async () => (await row())?.waitingOn === "filed", "the task to wait on its research");
+      expect((await h.act("alice", conv, "updateTask_tasks", { id: taskId, message: "Also use the word ember." })).output).toEqual({ ok: true });
+      await until(async () => steerStep.done, "the steer's turn to file its step");
+      // The research ends while the steer's turn waits on its step.
+      release();
+      // Done well before a lease (120 s) could free a stalled task.
+      await until(async () => (await row())?.status === "completed", "the task to complete", 20_000);
+      await h.settled();
+
+      const asked = agentAnswer.calls.map((c) => lastUser(c.input));
+      const at = (words: string, from = 0) => asked.findIndex((text, i) => i >= from && text.includes(words));
+      const steerTurn = at("You were sent the messages below");
+      const steerAnswer = at(ANSWERING, steerTurn);
+      const researchTurn = at("completed by eng.tasker");
+      // The research's turn ran only once the steer's turn had answered after its step.
+      expect(steerAnswer, JSON.stringify(asked)).toBeGreaterThan(steerTurn);
+      expect(researchTurn, JSON.stringify(asked)).toBeGreaterThan(steerAnswer);
+      // At once: the steer's turn sends it on as it answers, not at the notice's next resend.
+      const answered = sentAt.find((call) => call.asked.includes(ANSWERING))!.at;
+      const heard = sentAt.find((call) => call.asked.includes("completed by eng.tasker"))!.at;
+      expect(heard - answered).toBeLessThan(2_500);
+      // And it read the steer, from the session.
+      expect(sentText(agentAnswer.calls[researchTurn]!.input)).toContain("Also use the word ember.");
+      // Its own step was worked, and its answer is the task's result.
+      expect(at(ANSWERING, researchTurn)).toBeGreaterThan(researchTurn);
+      expect((await row())).toMatchObject({ status: "completed", attempts: 1, output: "The post, after the check." });
+    } finally {
+      await h.dispose();
+    }
+  }, 40_000);
 });

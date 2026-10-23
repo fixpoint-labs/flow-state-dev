@@ -62,6 +62,13 @@ export interface TaskSettledEntryOptions {
    * one notice run one after the other and the second finds it acknowledged.
    */
   readonly concurrency?: ConcurrencyConfig;
+  /**
+   * Whether this notice must wait: `true` runs nothing and acknowledges
+   * nothing, so the notice stays owed and the filer's pass sends it again
+   * (with its backoff). For a session that is busy with something the notice
+   * must not run beside. Default: never.
+   */
+  readonly defer?: (ctx: BlockContext, notice: TaskSettledInput) => Promise<boolean>;
 }
 
 /** The running session's board a notice names, at this session's partition. */
@@ -103,6 +110,8 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       const row = board?.ref.get(notice.taskId);
       // A notice its row doesn't owe was delivered already, or never owed.
       if (row === undefined || !isNoticeOwed(row, notice)) return { owed: false };
+      // Not now: left owed, for the pass to send again.
+      if (options.defer !== undefined && (await options.defer(ctx, notice))) return { owed: false };
       return { owed: true, notice };
     }
   });

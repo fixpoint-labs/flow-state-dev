@@ -496,8 +496,10 @@ export default defineFlow({
 ```
 
 **Hearing how a task ended.** The session that filed a row hears each of its endings once, as
-a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency? })`
-builds that entry; `defineFlow` refuses a flow that holds a board that dispatches without one,
+a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency?, defer? })`
+builds that entry (`defer(ctx, notice)` answering `true` runs nothing and leaves the notice owed, so
+the filer's pass sends it again; `resendNowPatch(row)` drops a row's resend backoff for when the
+session is free again); `defineFlow` refuses a flow that holds a board that dispatches without one,
 whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSettledInput`:
 `{ boardId, taskId, attempt, ending, output?, error?, question?, cancelled? }`, where `ending` is
 `"completed"`, `"errored"` (failed for good), `"parked"` (on its worker's question) or

@@ -233,6 +233,23 @@ export function releasedHeldNotices(row: Task, dueAt: number): Record<string, Ow
   return patch;
 }
 
+/**
+ * The metadata patch that drops the resend records of every notice `row`
+ * still owes, so the filer's next pass sends each at once, past its backoff.
+ * For a session that turned its notices away while one of its turns was busy
+ * (`taskSettledEntry`'s `defer`) and is free now. An owed marker is left as
+ * it is.
+ */
+export function resendNowPatch(row: Task): Record<string, null> {
+  const patch: Record<string, null> = {};
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (!isSendable(key, value)) continue;
+    const resent = `${RESENT_PREFIX}${value.attempt}:${value.ending}`;
+    if ((row.metadata ?? {})[resent] != null) patch[resent] = null;
+  }
+  return patch;
+}
+
 /** Whether `row` holds an ending for the request whose wait on it lapsed (FIX-2082). */
 export function holdsAnEnding(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {

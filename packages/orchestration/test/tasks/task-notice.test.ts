@@ -24,6 +24,8 @@ import {
   noticeText,
   owedNotices,
   recordEnding,
+  resendNowPatch,
+  resentRecord,
   withoutNoticeMarkers,
   type TaskNotice
 } from "../../src/tasks/notice/task-notice";
@@ -105,6 +107,21 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     expect(noticeDueAt(row())).toBeUndefined();
     // A marker stored before FIX-2078 carries no due time: it is due at once.
     expect(noticeDueAt(row({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } } }))).toBe(0);
+  });
+
+  it("drops an owed notice's resend backoff, so the next pass sends it at once (FIX-2113)", () => {
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    const notice = { attempt: 1, ending: "completed" } as const;
+    // Sent again three times: the next send backs off well past its due time.
+    const backedOff = { ...written, metadata: { ...written.metadata, ...resentRecord({ ...written, metadata: { ...written.metadata, "noticeResent:1:completed": { at: 20_000, n: 2 } } }, notice, 30_000) } };
+    expect(noticeDueAt(backedOff)).toBeGreaterThan(30_000);
+    const patch = resendNowPatch(backedOff);
+    expect(patch).toEqual({ "noticeResent:1:completed": null });
+    const now = { ...backedOff, metadata: { ...backedOff.metadata, ...patch } };
+    expect(noticeDueAt(now)).toBe(10_000 + NOTICE_DUE_MS);
+    // The owed marker itself stays; a row with no resend record needs nothing.
+    expect(isNoticeOwed(now, notice)).toBe(true);
+    expect(resendNowPatch(written)).toEqual({});
   });
 
   it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {

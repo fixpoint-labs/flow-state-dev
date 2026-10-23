@@ -126,6 +126,34 @@ export function isAnsweringTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_ANSWERING_STATE] === true;
 }
 
+/**
+ * Session state: the request whose plan has a step in a session of its own to
+ * wait on (FIX-2113), from its turn's end until it answers. Written by that
+ * request; cleared once it answers. A request that dies leaves it, and it
+ * then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether it ended).
+ */
+const PLAN_WAITING_STATE = "planWaitingRequest";
+
+/** The session state a plan writes. */
+const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.string().nullable().optional() });
+
+/**
+ * Whether another request in this session is working a plan with a step in a
+ * session of its own, and hasn't answered (FIX-2113). That request's turn is
+ * not over while it waits on the step, and one turn of a task runs at a time
+ * in its session, so a notice's turn or a steer's turn waits until it ends.
+ * Read off the session's state, never the plan ledger: a request reads a
+ * ledger as the snapshot it first took, and its own plan reads it later.
+ */
+export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<boolean> {
+  const waiting = (ctx.session?.state as Record<string, unknown> | undefined)?.[PLAN_WAITING_STATE];
+  if (typeof waiting !== "string" || waiting === ctx.request?.identity?.id) return false;
+  // A request that died holds nothing.
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended === undefined) return true;
+  return (await ended([waiting]))[waiting] !== true;
+}
+
 /** Whether the running request is in a step's turn. */
 export function isSteppingTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
@@ -194,6 +222,12 @@ export interface PlanningOptions {
    * every step runs inline.
    */
   readonly newSession?: BlockDefinition<any, any>;
+  /**
+   * Run as the last step of a request that worked its plan, once its turn
+   * answered: a `.tap()`. The conversation board's sends the notices that
+   * waited for this turn (FIX-2113).
+   */
+  readonly afterPlan?: BlockDefinition<any, any>;
 }
 
 /** Build one flow's planning. */
@@ -267,9 +301,25 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     name: "plan-decide",
     inputSchema: z.unknown(),
     resources: { ...planLedgerResources },
+    sessionStateSchema: planWaitingSessionState,
     execute: async (_input, ctx) => {
       const own = await ownPlanLedger(ctx as never);
-      await ctx.request.patchState({ [PLAN_OWED_STATE]: (own?.list() ?? []).some(isWorkable) } as never);
+      const workable = (own?.list() ?? []).filter(isWorkable);
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0 } as never);
+      // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
+      if (workable.some((row) => row.session === "new")) await ctx.session.patchState({ [PLAN_WAITING_STATE]: ctx.request.identity.id });
+    }
+  });
+
+  /** The request answered after its plan: its turn is over (FIX-2113). */
+  const endPlanWaiting = handler({
+    name: "plan-end-waiting",
+    inputSchema: z.unknown(),
+    sessionStateSchema: planWaitingSessionState,
+    execute: async (_input, ctx) => {
+      if ((ctx.session.state as Record<string, unknown>)[PLAN_WAITING_STATE] === ctx.request.identity.id) {
+        await ctx.session.patchState({ [PLAN_WAITING_STATE]: null });
+      }
     }
   });
 
@@ -304,12 +354,14 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       // In order: each step sees the one before it end.
       concurrency: 1
     });
-    const answer = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
+    let answer = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
       .tap(notePlanStart)
       .tap(board.drain)
       .step(briefAnswer)
       .step(turn)
-      .tap(endAnswer);
+      .tap(endAnswer)
+      .tap(endPlanWaiting);
+    if (options.afterPlan !== undefined) answer = answer.tap(options.afterPlan);
     const block = sequencer({ name: `${turn.name}-planned`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
       .tap(decidePlan)

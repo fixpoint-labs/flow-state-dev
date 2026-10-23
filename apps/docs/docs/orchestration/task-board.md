@@ -91,14 +91,14 @@ Every rule is checked inside the write, so a task that starts between your read 
 
 - **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
 - **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
-- **Waiting on tasks it filed.** A turn starts now, with the message, while those tasks keep running.
+- **Waiting on tasks it filed.** A turn starts now, with the message, while those tasks keep running. On a Workforce conversation's board, a task runs one turn at a time in its session: if another of its turns is waiting on a step it filed for itself in a session of its own, the message's turn, and the turn a finished task wakes, wait until that turn answers.
 - **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
 
 The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
 
 The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
 
-`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). A message the work reads after the task starts, mid-run or in the turn it starts, also shows in the task's session as a line from its sender, so a later turn there reads it too.
+`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). In every case but the first, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
 
