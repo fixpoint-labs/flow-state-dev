@@ -6,6 +6,7 @@
  * for a touch of the board.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { onRequestEnded } from "@flow-state-dev/core/types";
 import type {
   BlockContext,
   FlowInstance,
@@ -136,10 +137,24 @@ export function waitFlow(
     heardGate?: () => Promise<void>;
     /** The board's scope: `session` (the default), or `user`, which every session of the user reaches. */
     scope?: "session" | "user";
+    /**
+     * How long the waiting request takes to park, in ms: a request-end hook the
+     * wait registers runs that long at the park, before the request is recorded
+     * parked, as a slow hook on a real host does.
+     */
+    parkTakesMs?: number;
   } = {}
 ): FlowInstance {
   let cancelFailed = false;
   let clearFailed = false;
+  /** With `parkTakesMs`, a request-end hook that makes this request's park take that long. */
+  const slowPark = (ctx: BlockContext): void => {
+    const parkTakesMs = options.parkTakesMs;
+    if (parkTakesMs === undefined) return;
+    onRequestEnded(ctx, async (ending) => {
+      if (ending.status === "suspended") await new Promise((r) => setTimeout(r, parkTakesMs));
+    });
+  };
   const waitBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
     const settle = async (id: string, output: unknown) => {
@@ -198,6 +213,7 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await waitBoard(ctx);
       const call = toolCallOf(ctx)!;
+      slowPark(ctx);
       // Filed once per call, as `createTask` files on a board that starts work.
       const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => {
         const task = await board.addTask({
@@ -233,6 +249,7 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await boardOf(ctx);
       const call = toolCallOf(ctx)!;
+      slowPark(ctx);
       const waited = await waitOnTask(ctx, board, input.id, {
         key: call.logicalId,
         step: call.stepKey,
