@@ -44,7 +44,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         onSelect={(id) => select(view, id)}
         onNew={() => openNew(view)}
       />
-      {selected ? <Thread adapter={adapter} session={selected} /> : <main aria-label="Main thread" />}
+      {selected ? <Thread key={selected.id} adapter={adapter} session={selected} /> : <main aria-label="Main thread" />}
       {selected && pane === "tasks" ? <TasksPane adapter={adapter} sessionId={selected.id} /> : <aside className="bg-inspector" />}
     </div>
   );

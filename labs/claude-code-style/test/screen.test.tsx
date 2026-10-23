@@ -61,8 +61,19 @@ describe("the session-mode screen", () => {
     await waitFor(() => expect(within(thread()).getByText("Session")).toBeTruthy());
   });
 
-  it("shows a background result inside the running turn, then stops the other task when asked", async () => {
+  it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {
     render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message the main session")) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "a draft for the new session" } });
+    const sessions = screen.getByRole("navigation", { name: "Sessions" });
+    fireEvent.click(within(sessions).getByRole("button", { name: /Draft the launch note/ }));
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("shows a background result inside the running turn, then stops the other task when asked", async () => {
+    // A twentieth of real time: the card has about 100ms inside the turn, room for a loaded runner to see it.
+    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
     await ask("Compare Acme and Globex for us.");
 
     // Steps 2 and 3: the main session writes, then two task rows appear.
