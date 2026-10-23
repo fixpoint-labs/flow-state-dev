@@ -84,6 +84,7 @@ import { resumeWaitGate } from "./resume-wait-gate";
 import { registerWaitSweeper } from "./wait-deadlines";
 import { outcomeOfRequest } from "./wait-chain";
 import { onWakeOwed } from "./request-wakes";
+import { onSuspensionDeadline } from "./suspension-deadlines";
 import { owesRedrive, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
@@ -335,6 +336,10 @@ export function createDurabilitySweeper(
   // A wake owed in this process brings the armed tick forward to its due time.
   const stopHearingWakes =
     wakes === undefined ? () => {} : onWakeOwed(wakes, (dueAt) => arm(dueAt - Date.now()));
+  // So does a suspension's deadline parked in this process, which only a
+  // sweeper that can continue a request acts on (as `nextDelay` reads them).
+  const stopHearingDeadlines =
+    continueRequest === undefined ? () => {} : onSuspensionDeadline(provider, (expiresAt) => arm(expiresAt - Date.now()));
 
   return {
     timesOutWaits: () => !disposed && continueRequest !== undefined && stores.wakes !== undefined,
@@ -343,6 +348,7 @@ export function createDurabilitySweeper(
       disposed = true;
       stopListening();
       stopHearingWakes();
+      stopHearingDeadlines();
       if (timer !== undefined) clearTimeout(timer);
     }
   };

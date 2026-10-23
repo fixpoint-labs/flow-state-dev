@@ -8,12 +8,17 @@
  * default, so a sweeper that only ticked on the interval would leave an
  * expired approval answerable that long. The schedule reads the suspension's
  * `expiresAt`, the way it already does for a wait's deadline: no second loop.
+ * A gate parked in this process after the sweeper started tells it, so its
+ * deadline is not left for the interval either.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper } from "../src/durability/durability-sweeper";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+import { runAction } from "../src";
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
@@ -63,6 +68,46 @@ describe("durability sweeper: a person's deadline", () => {
     disposers.push(() => sweeper.dispose());
 
     const status = await statusWithin(async () => (await provider.loadSuspension("req_a", "a"))?.status, 3_000);
+    expect(status).toBe("expired");
+  });
+
+  it("expires an approval this process parks after the server started, at its deadline", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider(stores);
+    // Started with nothing pending, so the timer is armed for the interval.
+    const sweeper = createDurabilitySweeper({
+      provider,
+      stores,
+      retention: { sweepIntervalMs: 600_000 },
+      prune: false,
+      continueRequest: (async () => ({ finished: Promise.resolve() })) as never
+    });
+    disposers.push(() => sweeper.dispose());
+    await new Promise((r) => setTimeout(r, 100));
+
+    const gated = handler({
+      name: "gated",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Publish?", timeoutMs: 500 })
+    });
+    const flow = defineFlow({ kind: "review", actions: { submit: { block: sequencer({ name: "seq" }).step(gated) } } })({
+      id: "review"
+    });
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "submit",
+      input: {},
+      userId: "devuser",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    } as never);
+    const [gate] = await provider.listSuspended({ status: "pending" });
+    expect(gate?.requestId).toBe(result.requestId);
+
+    const status = await statusWithin(async () => (await provider.loadSuspension(gate!.requestId, gate!.suspensionId))?.status, 3_000);
     expect(status).toBe("expired");
   });
 
