@@ -151,18 +151,23 @@ export function hopMarkOf(value: unknown): HopMark | undefined {
  * one) leaves the turn to start one at its first send.
  *
  * @param also More request state to write in the same patch.
- * @param alsoSession More session state to write in the session's patch, which it always makes then.
+ * @param alsoSession More session state for the session's write, worked out
+ *   from the session's state as that write reads it (again on a retry), so a
+ *   count kept there loses no step to a write that landed first. Written only
+ *   when the session's count or chain moves, in the same atomic write.
  */
 export async function startTurnAtHop(
   ctx: BlockContext,
   hop: number,
   chain: string | null,
   also: Record<string, unknown> = {},
-  alsoSession: Record<string, unknown> = {}
+  alsoSession?: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>
 ): Promise<void> {
-  const moved = sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain;
-  if (moved || Object.keys(alsoSession).length > 0) {
-    await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain, ...alsoSession } as never);
+  if (sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain) {
+    const fields = { [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain };
+    await (alsoSession === undefined
+      ? ctx.session.patchState(fields as never)
+      : ctx.session.atomicState(((state: Readonly<Record<string, unknown>>) => ({ ...fields, ...alsoSession(state) })) as never));
   }
   await ctx.request.patchState({
     ...also,
