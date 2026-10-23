@@ -49,7 +49,7 @@ no life's end.*
 |---|---|
 | **Instead of** | Fixing the project once it is set, as Claude Code fixes a session's directory |
 | **Because** | A Grok Bot-style worker has one conversation for weeks and no *new session*, so a fixed project would pin it to one repo for good. A change is safe where it lands: a task's project is stamped on its row when it is filed, the hand-over copies that stamp (`filingProjectId`, readonly on the task session), and a run reads it when it starts, so nothing filed moves, even a task still waiting for a delegate. The Claude Code-style lab simply doesn't offer the change |
-| **Locks in** | `setWorkProject` sets or replaces. It doesn't clear: a conversation that had a project keeps one. The board stamps the filer's project on each row at filing, and the hand-over and a held row's run read that stamp, not the conversation's project now |
+| **Locks in** | `setWorkProject` sets or replaces. It doesn't clear: a conversation that had a project keeps one. The board stamps the filer's project on each row at filing (in a delegate's ongoing session, the held task's stamp), and the hand-over and a held row's run read that stamp, not the conversation's project now |
 
 **What would change my mind:** people losing track of which repo a long conversation is in. Then
 the conversation records each change as a line the person sees.
@@ -114,6 +114,9 @@ every run. No POC: the goal check runs the real path.
   a change would take the new one, and that a task routed to a delegate's ongoing session carries no
   project at all. Both close with one stamp on the row at filing, read by the hand-over and by
   `runProjectOf`'s held-row step; `waiting` and `ongoing` joined the goal check.
+- **Review, nested filing** — Codex found that a piece an ongoing delegate files while holding a
+  routed task would get no stamp, since that session has no project field. The stamp at filing now
+  falls back to the held row's stamp, so the project travels every hop; `ongoing` checks one hop down.
 
 ## Notes from review
 

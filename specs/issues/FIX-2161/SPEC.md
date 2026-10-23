@@ -45,7 +45,7 @@ The check reads the call's answer and the run's project answer, never a stored k
 | How we verify | |
 |---|---|
 | **Goal check** | Model-free, so no `goals/` script: a `packages/workforce` CI test on the real engine and HTTP router, nothing mocked. Verdict in the implementation PR |
-| **Signal** | `default`: Alice ensures `lead`'s conversation, talks once, then sets it to `shared/apollo` through the client; a task it files reaches the delegate's task session with `filingProjectId` apollo, and `runProjectOf` there answers apollo with owner Alice. `new-session`: a session of `main` created at a random id and set the same way answers the same. `change`: lead is set to `shared/beta`; the earlier task still answers apollo, a new one beta. `waiting`: a task filed under apollo with no assignee, assigned only after the change to beta, still answers apollo. `ongoing`: a task routed to a delegate whose session is ongoing (no task session) answers apollo from the row it holds, not `no-project`. `not-a-member`: Carol, who reads apollo, is refused and stores nothing; Bob's private project is not found. `not-seeded`: a create that seeds the field is refused 400. `not-these`: setting it on the project coordinator's session, a task session or a workstream lead's session is refused. `messages`: a message to `lead` still lands in its default conversation |
+| **Signal** | `default`: Alice ensures `lead`'s conversation, talks once, then sets it to `shared/apollo` through the client; a task it files reaches the delegate's task session with `filingProjectId` apollo, and `runProjectOf` there answers apollo with owner Alice. `new-session`: a session of `main` created at a random id and set the same way answers the same. `change`: lead is set to `shared/beta`; the earlier task still answers apollo, a new one beta. `waiting`: a task filed under apollo with no assignee, assigned only after the change to beta, still answers apollo. `ongoing`: a task routed to a delegate whose session is ongoing (no task session) answers apollo from the row it holds, not `no-project`; a coding piece that delegate files while holding it answers apollo too, one hop further down. `not-a-member`: Carol, who reads apollo, is refused and stores nothing; Bob's private project is not found. `not-seeded`: a create that seeds the field is refused 400. `not-these`: setting it on the project coordinator's session, a task session or a workstream lead's session is refused. `messages`: a message to `lead` still lands in its default conversation |
 | **Input** | Shared apollo and beta with Alice a member and Carol not, Bob's private project, a workstream of Alice's |
 | **Anti-game** | Assert on the client's answer and `runProjectOf`'s answer, never on state written by hand |
 | **Control that must fail** | The field stored but not read by `filingProjectOf` fails `default` (`no-project`). The hand-over reading the conversation's current project instead of the row's stamp fails `waiting` (beta). The membership check removed fails `not-a-member`. The PR shows each FAIL before the PASS |
@@ -102,8 +102,9 @@ flowchart LR
 
 `filingProjectOf` already gives a session's project to its board and its runs (`projectId`, else
 `filingProjectId`); it reads the new field between the two. Two smaller changes make a filed task
-keep its project. The board stamps `filingProjectOf` on the row when the task is filed, a
-server-written marker beside `filedAtHop` that `callerMetadata` strips from a caller's metadata, and
+keep its project. The board stamps the filer's project on the row when the task is filed (`filingProjectOf`, or,
+in a delegate's ongoing session, the stamp on the task it holds, so a piece filed there carries it
+on), a server-written marker beside `filedAtHop` that `callerMetadata` strips from a caller's metadata, and
 the hand-over copies `filingProjectId` from that stamp rather than from the conversation as it is
 at hand-over. A task can wait on the board, unassigned or held, past a change. And `runProjectOf`'s
 third step, the held row, reads the stamp before `input.project`, so a task routed to a delegate's
