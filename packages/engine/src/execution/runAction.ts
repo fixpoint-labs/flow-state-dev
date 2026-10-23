@@ -2291,6 +2291,8 @@ async function runActionAttempt<
         // field with the leaf id would break checkpoint restore.
         const suspendingBlockInstanceId =
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
+        // The deadline of the wait this request parks on, if it parks on one.
+        let parkedWaitDeadline: number | undefined;
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -2340,6 +2342,7 @@ async function runActionAttempt<
             if (own !== undefined) record.data = { ...record.data, own };
           }
           const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;
+          parkedWaitDeadline = waitDeadline;
           if (waitDeadline !== undefined) {
             const wakes = ctx.requestHost?.wakes;
             if (wakes === undefined) {
@@ -2412,6 +2415,20 @@ async function runActionAttempt<
           items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
+        // A wait's deadline that passed while the request parked found it
+        // still `in_progress`, and the sweep put it off as busy for a retry
+        // interval (FIX-2150). Owed again now that it is parked, so the sweep
+        // delivers it at its next tick. A failure leaves it to that retry.
+        if (parkedWaitDeadline !== undefined && parkedWaitDeadline <= Date.now()) {
+          try {
+            await ctx.requestHost?.wakes?.owe({ entry: WAIT_DEADLINE_ENTRY, dueAt: Date.now() });
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a wait's deadline that passed during its park wasn't owed again: the sweep retries it later", {
+              requestId,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        }
         await response.emitRequestStatus("suspended");
         await options.stores.request.flushEvents(requestId);
 

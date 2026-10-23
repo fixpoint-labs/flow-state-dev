@@ -6,6 +6,7 @@
  * for a touch of the board.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { onRequestEnded } from "@flow-state-dev/core/types";
 import type {
   BlockContext,
   FlowInstance,
@@ -136,6 +137,12 @@ export function waitFlow(
     heardGate?: () => Promise<void>;
     /** The board's scope: `session` (the default), or `user`, which every session of the user reaches. */
     scope?: "session" | "user";
+    /**
+     * How long the waiting request takes to park, in ms: a request-end hook the
+     * wait registers runs that long at the park, before the request is recorded
+     * parked, as a slow hook on a real host does.
+     */
+    parkTakesMs?: number;
   } = {}
 ): FlowInstance {
   let cancelFailed = false;
@@ -198,6 +205,12 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await waitBoard(ctx);
       const call = toolCallOf(ctx)!;
+      const parkTakesMs = options.parkTakesMs;
+      if (parkTakesMs !== undefined) {
+        onRequestEnded(ctx, async (ending) => {
+          if (ending.status === "suspended") await new Promise((r) => setTimeout(r, parkTakesMs));
+        });
+      }
       // Filed once per call, as `createTask` files on a board that starts work.
       const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => {
         const task = await board.addTask({
