@@ -59,7 +59,7 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
 |---|---|
 | **Instead of** | A default directory when none is picked: the lab's own checkout, as Kitchen Sink's harness modes do, or a scratch directory |
 | **Because** | A coding run that silently works in the lab's own repository changes the wrong code, and a scratch directory throws the work away. A project already names a repository and its files, and `projectWorkspace()` already refuses `no-project` when it finds none. The lab shows that refusal as the question |
-| **Locks in** | *New session* lists the projects the person can read and asks for one before the composer opens; the header shows it. The session carries it as its `projectId` (the gap row in the spec), and every task it files inherits it through `filingProjectId`, so delegates work where the session does. A task may name another project only as `projectWorkspace()` already allows. Threads mode (FIX-2157) uses the same rule. A raw path outside any project is not offered |
+| **Locks in** | *New session* lists the projects the person may work in (a member of a shared project, or the owner of a private one, the same rule `projectWorkspace()` applies to a run) and asks for one before the composer opens; the header shows it. The session carries it as its `projectId` (FIX-2161), and every task it files inherits it through `filingProjectId`, so delegates work where the session does. A task may name another project only as `projectWorkspace()` already allows. Threads mode (FIX-2157) uses the same rule. A raw path outside any project is not offered |
 
 ![D3: a project picked at New session, chosen, beside a default directory. Decides it: where a coding run writes. Price: one more choice per session](figures/d3-project-per-session.svg)
 
@@ -101,12 +101,13 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   `fixture:` marker, not an issue id (BP-006); the README lists which gap each one stands for, and
   the closure greps for the marker. This is how ER-5's "carries the gap's issue id" is met.
 - **A coding harness runs only on delegated workers.** The main session stays on our generator,
-  because the loop-back owns its turn. `desk.coder` runs on one of two lab flows,
-  `coder-claude-code` or `coder-codex`, each `harnessManager({ harness, workspace, ledgers })` with
-  `localWorkspaceHost({ source: projectWorkspace() })`. One flow per harness means the worker's
-  `flow:` line picks the harness with no new config key. A per-worker harness setting is
-  FIX-1652's, not this lab's. If a coding flow can't stay under 200 lines, a public harness worker
-  flow is filed as a gap, rather than copying Shift Manager's.
+  because the loop-back owns its turn. `desk.coder` runs on the lab's one `coder` flow (epic
+  ER-9). It builds one `harnessManager({ harness, workspace, ledgers })` per harness, each with
+  `localWorkspaceHost({ source: projectWorkspace() })`, and runs each task through the one the
+  worker's own `harness:` setting names. The hire passes that line to the flow as a setting
+  (`settingsOf`, `workforce/src/hire.ts`), so a second coding worker on Codex is one more
+  `WORKER.md`, not another flow. If the flow can't stay under 200 lines, this spec raises the cap
+  for it once and says why, rather than copying Shift Manager's.
 - **A coding run shows like any task.** Its row carries the status and progress note the run
   writes, and opening it shows its run session's items read only, the harness's steps included.
   The thread board is FIX-2157's.
