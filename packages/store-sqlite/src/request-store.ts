@@ -55,14 +55,7 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
   );
 }
 
-/**
- * Whether a deferred write found the connection closed, and so is dropped
- * (FIX-2097). At host shutdown a request the drain cancelled can still emit
- * after the registry closed the database; its write runs in a microtask with
- * no caller to reach, so a throw there would be an uncaught exception that
- * takes the host down. Nothing is left to persist to, so the write is logged
- * and dropped instead.
- */
+/** A throw in this microtask has no caller, so a closed connection is logged and dropped. */
 function droppedAfterClose(
   db: Database.Database,
   kind: "items" | "events",

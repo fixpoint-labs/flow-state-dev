@@ -1,16 +1,6 @@
 /**
- * A write that lands after the connection closed (FIX-2097).
- *
- * The request store defers its item and event writes to a microtask. At host
- * shutdown a request the drain cancelled can still emit after the registry
- * closed the connection, and that deferred write then runs against a closed
- * database. A throw there has no caller to reach: it surfaces as an uncaught
- * exception and takes the host process down. A late write must be dropped
- * instead, because there is nothing left to persist it to.
- *
- * The deferred callbacks are captured and run by hand so the test asserts on
- * the throw itself, rather than relying on the runner to notice an uncaught
- * error after the test has already passed.
+ * Deferred callbacks are run by hand, so a throw after close is the assertion
+ * rather than an uncaught error the runner misses.
  */
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,15 +9,15 @@ import { makeRequestStreamEvent } from "@flow-state-dev/engine/testing";
 import { createSQLiteRequestStore } from "../src/request-store";
 import { initializeSchema } from "../src/schema";
 
-function freshStore(): { db: Database.Database; store: ReturnType<typeof createSQLiteRequestStore> } {
+function freshStore() {
   const db = new Database(":memory:");
   initializeSchema(db);
   return { db, store: createSQLiteRequestStore(db) };
 }
 
-function messageItem(requestId: string, id: string): OutputItem {
+function messageItem(requestId: string): OutputItem {
   return {
-    id,
+    id: "a",
     type: "message",
     status: "done",
     requestId,
@@ -39,7 +29,6 @@ function messageItem(requestId: string, id: string): OutputItem {
   } as unknown as OutputItem;
 }
 
-/** Hold every callback the store defers, so the test decides when it runs. */
 function captureDeferredWrites(): Array<() => void> {
   const deferred: Array<() => void> = [];
   vi.spyOn(globalThis, "queueMicrotask").mockImplementation((callback) => {
@@ -53,58 +42,32 @@ describe("SQLite request store: a write after close (FIX-2097)", () => {
     vi.restoreAllMocks();
   });
 
-  it("drops an event write queued before close and run after it", () => {
+  it.each([
+    ["event", "queued before close", "req_late"],
+    ["event", "made after close", "req_after"],
+    ["item", "queued before close", "req_items"],
+    ["item", "made after close", "req_items_after"]
+  ] as const)("drops an %s write %s", (kind, when, requestId) => {
     const { db, store } = freshStore();
     const deferred = captureDeferredWrites();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const write = () =>
+      kind === "event"
+        ? store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)])
+        : store.persistItems(requestId, [messageItem(requestId)]);
 
-    store.persistEvents("req_late", [makeRequestStreamEvent("req_late", 1)]);
-    db.close();
-
-    expect(deferred).toHaveLength(1);
-    expect(() => deferred[0]!()).not.toThrow();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_late"));
-  });
-
-  it("drops an event write made after close", () => {
-    const { db, store } = freshStore();
-    const deferred = captureDeferredWrites();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    db.close();
-    store.persistEvents("req_after", [makeRequestStreamEvent("req_after", 1)]);
+    if (when === "made after close") db.close();
+    write();
+    if (when === "queued before close") {
+      db.close();
+      expect(deferred).toHaveLength(1);
+    }
 
     expect(() => deferred.forEach((run) => run())).not.toThrow();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_after"));
-  });
-
-  it("drops an item write queued before close and run after it", () => {
-    const { db, store } = freshStore();
-    const deferred = captureDeferredWrites();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    store.persistItems("req_items", [messageItem("req_items", "a")]);
-    db.close();
-
-    expect(deferred).toHaveLength(1);
-    expect(() => deferred[0]!()).not.toThrow();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_items"));
-  });
-
-  it("drops an item write made after close", () => {
-    const { db, store } = freshStore();
-    const deferred = captureDeferredWrites();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    db.close();
-    store.persistItems("req_items_after", [messageItem("req_items_after", "a")]);
-
-    expect(() => deferred.forEach((run) => run())).not.toThrow();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("req_items_after"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(requestId));
   });
 
   it("still writes while the connection is open", () => {
-    // The guard is for a closed connection only: an open one keeps every write.
     const { db, store } = freshStore();
     const deferred = captureDeferredWrites();
 
