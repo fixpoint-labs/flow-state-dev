@@ -157,6 +157,12 @@ const lines = (store: string, sessionId: string) => items(store, sessionId, "mes
 const linesBy = (store: string, sessionId: string, agent: string) => lines(store, sessionId).filter((m) => m.agentName === agent);
 const filedBy = (store: string, taskId: string) => allTaskRows(store).filter((r) => (r as { filedByTask?: string }).filedByTask === taskId);
 const settledRequests = (store: string, sessionId: string | undefined) => requests(store).filter((r) => r.sessionId === sessionId && r.actionName === "onTaskSettled");
+/**
+ * The `onTaskSettled` requests that admitted a notice (`owed: true`), so ran the filer's turn or
+ * line. A notice delivered twice starts a second request, which finds it already taken (FIX-2123's
+ * claim) and runs nothing, output `{ owed: false }`: that is no second hearing.
+ */
+const admittedRequests = (store: string, sessionId: string | undefined) => settledRequests(store, sessionId).filter((r) => (r.output as { owed?: unknown } | undefined)?.owed === true);
 const outputText = (output: unknown) => (typeof output === "string" ? output : JSON.stringify(output ?? ""));
 const taskOf = (acted: { output?: any } | undefined) => acted?.output?.task ?? acted?.output;
 
@@ -180,9 +186,11 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
   if (research.length > 0 && !(work !== undefined && work.status === "completed" && (R.completedAt ?? Infinity) > Math.max(work.updatedAt, lastEnd))) {
     f.push(`a:ends-running — wanted writer's task to stay running past its first request and its research: work ${show(work)}, research ended ${lastEnd}, task ${R.status} at ${R.completedAt}`);
   }
+  // One notice per research ending starts writer again: exactly one admitted request per ending.
   const settled = settledRequests(store, writerSession);
-  if (research.length > 0 && settled.length !== research.length) {
-    f.push(`a:one-settled — ${settled.length} onTaskSettled request(s) in writer's task session for ${research.length} research ending(s)`);
+  const admitted = admittedRequests(store, writerSession);
+  if (research.length > 0 && admitted.length !== research.length) {
+    f.push(`a:one-settled — ${admitted.length} onTaskSettled request(s) admitted a notice in writer's task session for ${research.length} research ending(s) (${settled.length} in all, outputs ${show(settled.map((r) => r.output), 200)})`);
   }
   const steps = planRows(store).filter((r) => r.partition.startsWith(`${writerSession}~`) && (r as { session?: string }).session === "new");
   const step = steps[0];
@@ -272,7 +280,7 @@ function gradeJ2(store: string, j: Awaited<ReturnType<typeof journeyCoordinator>
   if (!outputText(j.steered?.output).includes(cast.steerWord)) f.push(`j2:steer-shows — the steered draft lacks "${cast.steerWord}": ${show(j.steered?.output, 200)}`);
   if (j.cancel === undefined || j.cancel.output?.ok !== true || j.cancelledRow?.status !== "cancelled") f.push(`j2:cancelled — Alice's cancel: ${show(j.cancel?.output)}, the row ${j.cancelledRow?.status}`);
   // The coordinator hears the cancel once (its round closes on it); a routed task's cancel lands no line (coordinators.md).
-  const heard = settledRequests(store, j.cancelConv);
+  const heard = admittedRequests(store, j.cancelConv);
   const said = linesBy(store, j.cancelConv, CAST.writer);
   if (j.cancelledRow?.status === "cancelled" && (heard.length !== 1 || said.length !== 0)) f.push(`j2:cancel-heard-once — ${heard.length} onTaskSettled in launch's conversation for the cancel, ${said.length} line(s) from writer: ${show(said.map(textOf))}`);
   return f;
@@ -354,7 +362,7 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
         return [`b:killed — wanted researcher's ending written with its notice owed when the server died: ${show({ R: R?.status, research: research.map((r) => [r.status, Object.keys(r.metadata ?? {})]) })}`];
       }
       const writerSession = R.run?.sessionId;
-      const before = settledRequests(store, writerSession).length;
+      const before = admittedRequests(store, writerSession).length;
       const patches = control?.leg === "b" ? control.patches : [];
       const second = await serve(`b-${attempt}-restarted`, store, tree, patches);
       const back = Date.now();
@@ -362,7 +370,7 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
         // No action on any board: only a wake can pay what is owed.
         await new Promise((r) => setTimeout(r, NOTICE_DUE_MS + 10_000));
         if (patches.length > 0) assertPatched(patches, REPO_ROOT, second.mark);
-        const heard = settledRequests(store, writerSession);
+        const heard = admittedRequests(store, writerSession);
         const due = Math.max(back, (ended.completedAt ?? back) + NOTICE_DUE_MS);
         const at = heard[0]?.createdAt;
         if (heard.length === 0 || at === undefined || at - due > 2_000) f.push(`b:hears-in-due-time — ${heard.length} onTaskSettled in writer's session after the restart; the first ${at === undefined ? "never" : `${at - due} ms past its due time`}`);
