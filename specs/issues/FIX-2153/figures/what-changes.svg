@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 600" role="img" aria-label="The session-mode screen. Left: a Sessions and Projects switch at the top, with Sessions chosen, then the sessions list, with a New session button, each row a conversation with the one main worker, its title, its age, and a dot when its turn is running. Center: the main thread. Your message, then the main session's own work, then two lines where it started background tasks, then a result card from the first task that arrived while the turn is still running, then more of the turn's text that uses the result, and the composer with a Stop button while the turn runs. Right: the background tasks pane, read only, one row per task with its status, its last progress note and the worker doing it; one row is done, one is running. You talk only to the main session. The view sets the mode: Sessions is session mode, and the Projects view, threads mode, comes later with a status board in the right pane."
+<svg viewBox="0 0 940 600" role="img" aria-label="The session-mode screen. Left: a Sessions and Projects switch at the top, with Sessions chosen, then the sessions list, with a New session button, each row a conversation with the one main worker, its title, its age, and a dot when its turn is running. Center: the main thread, with the session's project named in its header. Your message, then the main session's own work, then two lines where it started background tasks, then a result card from the first task that arrived while the turn is still running, then more of the turn's text that uses the result, and the composer with a Stop button while the turn runs. Right: the background tasks pane, read only, one row per task with its status, its last progress note and the worker doing it; one row is done, one is running. You talk only to the main session. The view sets the mode: Sessions is session mode, and the Projects view, threads mode, comes later with a status board in the right pane."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -45,6 +45,7 @@
 
   <g id="thread">
     <text class="t-b" x="220" y="26">Compare two vendors</text>
+    <text class="t-s" x="372" y="26">in project: vendor-notes</text>
     <text class="t-lbl" x="590" y="26">SESSION MODE</text>
     <line class="rule" x1="200" y1="42" x2="690" y2="42"/>
     <rect class="box" x="400" y="56" width="276" height="44"/>
