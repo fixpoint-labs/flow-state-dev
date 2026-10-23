@@ -25,10 +25,12 @@ import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } fr
  *   up on its next heartbeat.
  * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` and
  *   parked by `parkedInterruptedIds`: a pending gate, or a logged gate owed a
- *   re-drive) and the stop resolved its gate (FIX-1816). It ends
+ *   re-drive) and the stop resolved its gate (FIX-1816), overriding a
+ *   person's resolution the turn never ran past (FIX-2108). It ends
  *   `aborted`; a turn parked on a wait first cancels the task it waits on.
  * - `already-resolved`: the request was parked, but its gate was resolved
- *   first (an answer won the race), so it runs again. Nothing was written.
+ *   first (an answer won the race, or a resume or re-drive holds its lease),
+ *   so it runs again. Nothing was written.
  */
 export type RequestStopResult =
   | { kind: "gone" }

@@ -295,6 +295,8 @@ export function createSQLiteRequestStore(
   const updateStatusDataStmt = db.prepare(
     "UPDATE requests SET status = ?, data = ?, updated_at = ? WHERE id = ?"
   );
+  const selectStatusStmt = db.prepare("SELECT status FROM requests WHERE id = ?");
+  const deleteRequestStmt = db.prepare("DELETE FROM requests WHERE id = ?");
 
   /**
    * The stored abort flag, or `undefined` when the request or the key is
@@ -562,6 +564,35 @@ export function createSQLiteRequestStore(
       deleteEventsStmt.run(id);
       deleteRunOnceStmt.run(id);
       await base.delete(id);
+    },
+
+    async deleteIfStatus(
+      id: string,
+      allowedStatuses: readonly RequestStatus[]
+    ): Promise<ConditionalWriteResult> {
+      // One IMMEDIATE transaction, for the reason `setFieldsIfStatus` gives:
+      // the status the predicate reads is the status of the row deleted.
+      // Children and record go together, so a failure rolls back all of them.
+      const result = db.transaction((): ConditionalWriteResult => {
+        const row = selectStatusStmt.get(id) as { status: RequestStatus } | undefined;
+        if (row === undefined) return { applied: false, status: undefined };
+        if (!allowedStatuses.includes(row.status)) {
+          return { applied: false, status: row.status };
+        }
+        deleteItemsStmt.run(id);
+        deleteEventsStmt.run(id);
+        deleteRunOnceStmt.run(id);
+        deleteRequestStmt.run(id);
+        return { applied: true, status: row.status };
+      }).immediate();
+      // Synchronous with the transaction, so a `persistItems` or
+      // `persistEvents` microtask queued earlier finds nothing to write, as
+      // in `delete`. A request that failed the predicate keeps its writes.
+      if (result.applied) {
+        clearItemMaps(id);
+        pendingNewEvents.delete(id);
+      }
+      return result;
     },
 
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {

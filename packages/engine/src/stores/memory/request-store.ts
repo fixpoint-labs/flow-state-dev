@@ -148,6 +148,21 @@ export class InMemoryRequestStore implements RequestStore {
     for (const close of closers ?? []) close();
   }
 
+  async deleteIfStatus(
+    id: string,
+    allowedStatuses: readonly RequestStatus[]
+  ): Promise<ConditionalWriteResult> {
+    const current = this.records.get(id);
+    if (current === undefined) return { applied: false, status: undefined };
+    if (!allowedStatuses.includes(current.status)) {
+      return { applied: false, status: current.status };
+    }
+    // Atomic by construction: `delete` does not yield before it removes the
+    // record, so the status checked is the status of the record removed.
+    await this.delete(id);
+    return { applied: true, status: current.status };
+  }
+
   /**
    * Merge a running request's items onto its record by id (the FIX-811
    * contract), so a read while it runs sees them (FIX-1735). The record is

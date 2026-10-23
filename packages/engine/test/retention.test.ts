@@ -721,6 +721,39 @@ describe("applyRetentionPolicy", () => {
       expect(await stores.request.get("req_parked")).toBeDefined();
     });
 
+    // The durability sweep can re-drive an interrupted turn after this pass
+    // judged it evictable and before it deletes it. The record is then a
+    // running request again, and deleting it would pull a live run's record
+    // out from under it: the delete holds only while the status it was judged
+    // in still holds.
+    it("keeps one a re-drive started running between the read and the delete", async () => {
+      const stores = await setupStores([
+        interrupted("req_redriven", 100, 200),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
+      ]);
+      const get = stores.request.get.bind(stores.request);
+      stores.request.get = async (id) => {
+        const record = await get(id);
+        if (id === "req_redriven") {
+          // The re-drive lands right after retention's read.
+          await stores.request.setFieldsIfStatus(
+            id,
+            { status: "in_progress", result: undefined },
+            ["interrupted"],
+            9_000_150
+          );
+        }
+        return record;
+      };
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, createCheckpointDurabilityProvider(stores)
+      );
+
+      expect(result.deletedRequestIds).toEqual([]);
+      expect((await stores.request.get("req_redriven"))?.status).toBe("in_progress");
+    });
+
     // A record without `interruptedAt` (BP-030) ages from when it started.
     it("ages one with no interruptedAt from its start", async () => {
       const stores = await setupStores([

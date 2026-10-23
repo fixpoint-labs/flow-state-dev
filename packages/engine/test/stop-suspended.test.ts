@@ -452,6 +452,124 @@ describe("stop a parked turn", () => {
     expect(seen).toEqual([]);
   });
 
+  // A person approved, and the turn died before it ran again: it owes a
+  // re-drive. They then stop it. The stop wins: the approved step never runs.
+  it("a turn interrupted after its approval, still owed a re-drive, is stopped and the approved step never runs", async () => {
+    const seen: string[] = [];
+    const finishedWith: string[] = [];
+    const flow = parkingFlow(seen, { onFinished: (info) => finishedWith.push(info.status) });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(finishedWith).toEqual(["aborted"]);
+    expect(seen).toEqual([]);
+    // Recorded as a stop, so a later sweep owes it nothing more.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+    const continued = h.finished.length;
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(continued);
+    expect(seen).toEqual([]);
+  });
+
+  /** A turn parked on an approval a person approved, then interrupted before it ran again. */
+  async function approvedThenInterrupted(seen: string[]) {
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
+    return { h, requestId, gate };
+  }
+
+  it("a second stop of that turn, while the first holds its lease, is answered as stopped too", async () => {
+    const seen: string[] = [];
+    const { h, requestId, gate } = await approvedThenInterrupted(seen);
+    // The first stop has the lease and has recorded the gate stopped; its run
+    // has not moved the turn on yet.
+    await h.provider.acquireLease(requestId, { holder: "stop", durationMs: 60_000 });
+    await h.provider.suspend({ ...gate, status: "stopped", resolvedAt: Date.now(), resolvedBy: "stop" });
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    expect(h.finished).toHaveLength(0);
+  });
+
+  it("a stop that loses the lease to the sweep's re-drive of the approval reports it resumed, and changes nothing", async () => {
+    const seen: string[] = [];
+    const { h, requestId, gate } = await approvedThenInterrupted(seen);
+    // The re-drive took the lease first: the turn is running the approval again.
+    await h.provider.acquireLease(requestId, { holder: "redrive", durationMs: 60_000 });
+
+    const res = await stop(h, requestId);
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain("stop it again");
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
+    expect(h.finished).toHaveLength(0);
+  });
+
+  it("a stop that reads the approval, then waits while the sweep's re-drive runs past it to a newer gate, changes nothing", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate: first } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...first, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
+
+    // The stop has read the approval as owed. Before it takes the lease, the
+    // sweep re-drives the approval: the turn runs past it and parks on the
+    // second gate.
+    const acquireLease = h.provider.acquireLease.bind(h.provider);
+    let raced = false;
+    vi.spyOn(h.provider, "acquireLease").mockImplementation(async (id, options) => {
+      if (!raced && options.holder.startsWith("stop")) {
+        raced = true;
+        await runTick(tickArgs(h));
+        await drain(h);
+      }
+      return acquireLease(id, options);
+    });
+
+    const res = await stop(h, requestId);
+    expect(raced).toBe(true);
+    expect(res.status).toBe(409);
+    expect(seen).toEqual(["first:approved"]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect((await h.provider.loadSuspension(requestId, first.suspensionId))).toMatchObject({ status: "approved", resolvedBy: USER });
+    const pending = (await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.suspensionId).not.toBe(first.suspensionId);
+  });
+
+  it("a stop of that turn whose run fails before it starts stays a stop, and the sweep finishes it aborted", async () => {
+    const seen: string[] = [];
+    const { h, requestId, gate } = await approvedThenInterrupted(seen);
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await expect(h.finished[0]).rejects.toThrow("checkpoint boom");
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(seen).toEqual([]);
+  });
+
+  it("a stop of that turn that fails to continue it puts the person's approval back, not a pending gate", async () => {
+    const seen: string[] = [];
+    const { h, requestId, gate } = await approvedThenInterrupted(seen);
+    vi.spyOn(h.parked, "continueRequest").mockRejectedValueOnce(new Error("host down"));
+
+    await expect(stop(h, requestId)).rejects.toThrow("host down");
+    const after = await h.provider.loadSuspension(requestId, gate.suspensionId);
+    expect(after).toMatchObject({ status: "approved", resolvedBy: USER });
+    expect(await h.stores.leases.get(requestId)).toBeNull();
+  });
+
   it("a turn interrupted with a pending gate its log does not name yet is stopped", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -982,6 +1100,9 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     await runTick(tickArgs(h));
     await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    // The recorded stop wins over the approval: the approved step never runs.
+    expect(seen).toEqual([]);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
     const continued = h.finished.length;
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(continued);
