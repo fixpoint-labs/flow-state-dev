@@ -154,13 +154,7 @@ import {
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
-
-/**
- * The prior requests a run loads as cross-turn history: finished turns, and
- * turns the host died in (`interrupted`), whose persisted items already
- * happened.
- */
-const HISTORY_STATUSES: readonly RequestRecord["status"][] = ["completed", "interrupted"];
+import { PAST_TURN_STATUSES, parkedInterruptedIds, retriedIds } from "../execution/past-turns";
 
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
@@ -678,7 +672,7 @@ export async function createExecutionContext<
   const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
     userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
-    // The N most-recently-started completed or interrupted requests. The
+    // The N most-recently-started past turns (`PAST_TURN_STATUSES`). The
     // status filter excludes the current (in-progress) request and any
     // in-flight siblings; an `interrupted` request is a turn its host died in,
     // and what it persisted (the message that started it, the calls that ran) is part of the
@@ -692,20 +686,25 @@ export async function createExecutionContext<
         loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
         options.tenantId
       ),
-      status: HISTORY_STATUSES,
+      status: PAST_TURN_STATUSES,
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
       withItems: true
     })
   ]);
 
-  // The windowed list already filters by status at the store; exclude only
-  // the current request (defends a retry that reuses an id), keep only the
-  // settled items of an interrupted turn (a call the kill cut off has no
-  // result to show), then sort ascending for stable history ordering. Reused
-  // by all()/client() (via priorItems) and history() (via loadLLMHistory).
+  // The windowed list already filters by status at the store; exclude the
+  // current request (defends a retry that reuses an id), an interrupted turn
+  // that is parked on a pending gate or that a retry re-ran (`past-turns.ts`),
+  // keep only the settled items of an interrupted turn (a call the kill cut
+  // off has no result to show), then sort ascending for stable history
+  // ordering. Reused by all()/client() (via priorItems) and history() (via
+  // loadLLMHistory).
+  const retried = retriedIds(priorRequests, options.metadata);
+  const parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
   const settledPriorRequests = priorRequests
     .filter((r) => r.id !== requestId)
+    .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 

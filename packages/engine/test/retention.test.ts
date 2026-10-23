@@ -7,6 +7,7 @@ import {
   resolveRetentionPolicy,
   type ResolvedRetentionPolicy,
 } from "../src/execution/retention";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 /**
  * Helper: create a completed request record with predictable timestamps and item counts.
@@ -371,7 +372,7 @@ describe("applyRetentionPolicy", () => {
         makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 500, completedAtMs: 600, itemCount: 2 }),
       ]);
 
-      // The list query filters by status: "completed", so req_failed won't appear.
+      // The list query reads past turns only (completed or interrupted), so req_failed won't appear.
       const policy: ResolvedRetentionPolicy = { maxItems: 5 };
       const result = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 700);
 
@@ -570,6 +571,50 @@ describe("applyRetentionPolicy", () => {
         stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 5_000 + 60_000
       );
       expect(after.deletedRequestIds).toEqual(["req_finalized"]);
+    });
+  });
+
+  // History shows an interrupted turn, so retention bounds it the same way: a
+  // turn past the window stops reaching prompts. One still parked on a pending
+  // gate is a run a resume will drive again, and is never deleted.
+  describe("interrupted requests", () => {
+    // The stale sweep writes `interrupted` over a run that died: no
+    // `completedAtMs`, `finalizedAtMs` still null, and `interruptedAt` set.
+    const interrupted = (id: string, startedAtMs: number, interruptedAt: number): RequestRecord => ({
+      ...makeRequest(id, SESSION_ID, { startedAtMs, completedAtMs: startedAtMs, itemCount: 2, status: "interrupted", finalizedAtMs: null }),
+      completedAtMs: undefined,
+      interruptedAt
+    });
+
+    it("evicts one past maxAge, and keeps one that still holds a pending gate", async () => {
+      const stores = await setupStores([
+        interrupted("req_dead", 100, 200),
+        interrupted("req_parked", 300, 400),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
+      ]);
+      await stores.suspensions.set({
+        suspensionId: "susp_1",
+        requestId: "req_parked",
+        flowKind: "test-flow",
+        actionName: "run",
+        sessionId: SESSION_ID,
+        userId: "user1",
+        reason: "human_approval",
+        message: "Approve?",
+        status: "pending",
+        blockInstanceId: "inst",
+        stepIndex: 0,
+        createdAt: 350
+      });
+
+      const policy = resolveRetentionPolicy({ maxAge: 1_000 })!;
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, createCheckpointDurabilityProvider(stores)
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_dead"]);
+      expect(await stores.request.get("req_dead")).toBeUndefined();
+      expect(await stores.request.get("req_parked")).toBeDefined();
     });
   });
 });

@@ -13,7 +13,8 @@ import type { MessageItem, OutputItem, ToolOutputItem } from "@flow-state-dev/co
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createCheckpointDurabilityProvider, createExecutionContext, createInMemoryStores } from "../src";
+import type { RuntimeConfig } from "../src/runtime-config";
 import type { RequestRecord } from "../src/stores/types";
 
 const SESSION = "sess_killed";
@@ -45,8 +46,9 @@ function toolCall(requestId: string, o: { callId: string; name: string; output: 
   } as ToolOutputItem;
 }
 
-function turn(id: string, status: RequestRecord["status"], startedAtMs: number, items: OutputItem[]): RequestRecord {
+function turn(id: string, status: RequestRecord["status"], startedAtMs: number, items: OutputItem[], metadata?: Record<string, unknown>): RequestRecord {
   return {
+    ...(metadata !== undefined ? { metadata } : {}),
     id,
     flowKind: "chat",
     flowId: "chat",
@@ -94,5 +96,78 @@ describe("history across a turn the host died in", () => {
     // The call the kill cut off has no result: replaying it would hand the
     // model a call with an empty answer.
     expect(history).not.toContain("call_late");
+  });
+
+  /** A turn that drew `ticket` for the same message, as `/retry` re-runs it under a new id. */
+  const drew = (id: string, status: RequestRecord["status"], startedAtMs: number, ticket: string, metadata?: Record<string, unknown>) =>
+    turn(id, status, startedAtMs, [
+      userMessage(id, "Draw a ticket.", startedAtMs) as unknown as OutputItem,
+      toolCall(id, { callId: `call_${id}`, name: "drawTicket", output: { ticket }, status: "completed", ts: startedAtMs + 1, itemIndex: 1 }) as unknown as OutputItem
+    ], metadata);
+
+  const historyOf = async (stores: ReturnType<typeof createInMemoryStores>, extra: { metadata?: Record<string, unknown>; effectiveRuntimeConfig?: RuntimeConfig } = {}) => {
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow: chatFlow(),
+      actionName: "run",
+      requestId: "req_now",
+      sessionId: SESSION,
+      userId: "alice",
+      stores,
+      ...extra
+    });
+    return JSON.stringify(await ctx.session.items.history());
+  };
+  const count = (text: string, part: string) => text.split(part).length - 1;
+
+  // `/retry` runs the turn again under a new id and leaves the original
+  // `interrupted`. The retry is the turn; the original is not shown beside it.
+  it("leaves out an interrupted turn a retry in the window re-ran", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_a", drew("req_a", "interrupted", 1000, "TCK-AAA"), "any");
+    await stores.request.set("req_b", drew("req_b", "completed", 2000, "TCK-BBB", { retryOf: "req_a" }), "any");
+
+    const history = await historyOf(stores);
+    expect(history).toContain("TCK-BBB");
+    expect(history).not.toContain("TCK-AAA");
+    expect(count(history, "Draw a ticket.")).toBe(1);
+  });
+
+  it("leaves out the interrupted turn the running request is the retry of", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_a", drew("req_a", "interrupted", 1000, "TCK-AAA"), "any");
+
+    const history = await historyOf(stores, { metadata: { retryOf: "req_a" } });
+    expect(history).not.toContain("TCK-AAA");
+    expect(history).not.toContain("Draw a ticket.");
+  });
+
+  // An interrupted request still holding a pending gate is parked, not dead: a
+  // resume drives the same id again. Like a `suspended` one, it is left out
+  // until it finishes, so a restart does not change what other turns see.
+  it("leaves out an interrupted turn that still holds a pending gate", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_parked", drew("req_parked", "interrupted", 1000, "TCK-PARKED"), "any");
+    await stores.request.set("req_dead", drew("req_dead", "interrupted", 2000, "TCK-DEAD"), "any");
+    await stores.suspensions.set({
+      suspensionId: "susp_1",
+      requestId: "req_parked",
+      flowKind: "chat",
+      actionName: "run",
+      sessionId: SESSION,
+      userId: "alice",
+      reason: "human_approval",
+      message: "Approve?",
+      status: "pending",
+      blockInstanceId: "gen_1",
+      stepIndex: 0,
+      createdAt: 1001
+    });
+
+    const history = await historyOf(stores, {
+      effectiveRuntimeConfig: { durabilityProvider: createCheckpointDurabilityProvider(stores) } as unknown as RuntimeConfig
+    });
+    expect(history).not.toContain("TCK-PARKED");
+    expect(history).toContain("TCK-DEAD");
   });
 });
