@@ -84,7 +84,9 @@ function WorkerItem({
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
   const waiting = waitingOn(worker.id, talk);
-  const status = activity?.running
+  const status = worker.takesTasks
+    ? `${activity?.running ? "running" : "tasks"} · ${worker.harness}`
+    : activity?.running
     ? "working"
     : waiting.length > 0
       ? `waiting on ${waiting.map(nameOf).join(", ")}`

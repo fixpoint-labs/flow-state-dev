@@ -16,6 +16,11 @@
  * | `watchTalk`         | the user's message log, as `sendMessage` and `receive` write its rows   |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                      |
  * | `watchWindow`       | the mark the history window leaves where the turns read word for word begin |
+ * | `listProjects`      | the user's projects, as the workforce client lists them                 |
+ * | `watchWorkProject`  | the worker's `workProjectId`, on its default conversation (FIX-2161)    |
+ * | `setWorkProject`    | FIX-2161's `setWorkProject(worker, project)`                            |
+ * | `watchTasks`        | the conversation board's rows (`listTasks_tasks`)                       |
+ * | `watchRun`          | the task row's `run` link, followed (`followRequest`, `useSession`)     |
  */
 import { createFixtureLab } from "./fixtures";
 
@@ -30,6 +35,38 @@ export interface WorkerRow {
   name: string;
   /** Its `WORKER.md` description: the ongoing role. */
   role: string;
+  /** It takes tasks only: it has no conversation, and work reaches it as a task. */
+  takesTasks?: boolean;
+  /** The coding harness its tasks run through, from its `WORKER.md` `harness` setting. */
+  harness?: string;
+}
+
+/** One of the user's projects: where a worker's runs get their files. */
+export interface ProjectRow {
+  id: string;
+  name: string;
+}
+
+/**
+ * A task a conversation filed for a worker that takes tasks, from the board's
+ * row. `needs-project` is a run refused `no-project` before any file existed.
+ */
+export interface TaskCard {
+  id: string;
+  /** The worker it was filed for. */
+  to: string;
+  title: string;
+  status: "needs-project" | "running" | "done";
+  /** The project its run works in; none when it was refused. */
+  project?: string;
+  /** What the run reported when it ended. */
+  result?: string;
+}
+
+/** One step of a task's run, as the harness reported it. */
+export interface RunStep {
+  id: string;
+  text: string;
 }
 
 /** One entry of a worker's conversation, in the order it happened. */
@@ -39,7 +76,11 @@ export type ConversationEntry =
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
-  | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string };
+  | { kind: "received"; id: string; messageId: string; from: string; text: string; inReplyTo?: string }
+  /** The worker filed a task; the card reads the board's row by its id. */
+  | { kind: "task"; id: string; taskId: string }
+  /** A task it filed ended, as a line under the name of the worker that ran it. */
+  | { kind: "result"; id: string; taskId: string; from: string; text: string };
 
 /** What a conversation shows now. */
 export interface ConversationView {
@@ -88,6 +129,14 @@ export interface LabAdapter {
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
   /** `undefined` while the whole conversation is inside the window. */
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
+  listProjects(): Promise<ProjectRow[]>;
+  /** The project `worker`'s runs work in; `undefined` until one is picked. */
+  watchWorkProject(worker: string, onChange: (project: string | undefined) => void): Unsubscribe;
+  setWorkProject(worker: string, project: string): Promise<void>;
+  /** The tasks a conversation filed, oldest first. */
+  watchTasks(sessionId: string, onChange: (tasks: TaskCard[]) => void): Unsubscribe;
+  /** A task's run, read only: the worker that runs it takes no messages. */
+  watchRun(taskId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
 }
 
 /** The adapter the app runs on. */

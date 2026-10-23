@@ -5,8 +5,8 @@ import { cn } from "../lib/utils";
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
  * answers on the left. A message the worker sent another worker is a one-line
- * card that opens to its full text; a message it received lands under the
- * sender's name.
+ * card that opens to its full text; a message it received, or a task it
+ * filed coming back, lands under the sender's name.
  */
 export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry; workerName: string; nameOf: (id: string) => string }) {
   switch (entry.kind) {
@@ -40,7 +40,16 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
           </div>
           <p className="mt-0.5 text-sm whitespace-pre-wrap">{entry.text}</p>
         </section>
+      );    case "result":
+      return (
+        <section aria-label={`From ${nameOf(entry.from)}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
+          <div className="font-mono text-[10px] tracking-widest text-success uppercase">← {nameOf(entry.from)} · task done</div>
+          <p className="mt-0.5 text-sm whitespace-pre-wrap">{entry.text}</p>
+        </section>
       );
+    case "task":
+      // Drawn by the conversation, from the board's row.
+      return null;
   }
 }
 

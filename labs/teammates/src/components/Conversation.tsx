@@ -1,20 +1,24 @@
 import { Fragment, useEffect, useRef } from "react";
-import type { LabAdapter, WorkerRow } from "../adapter";
+import type { LabAdapter, ProjectRow, WorkerRow } from "../adapter";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
+import { TaskCard } from "./TaskCard";
 
 /**
  * The center: the worker's one conversation. A divider marks where the turns
  * the worker reads word for word begin. A message another worker sent that
- * waits for the current answer shows as a pending line until it lands.
+ * waits for the current answer shows as a pending line until it lands. The
+ * header carries the worker's project: none is needed to talk, and the first
+ * job that needs files asks for one on its task card.
  */
 export function Conversation({
   adapter,
   worker,
   sessionId,
+  projects,
   nameOf,
   talkOpen,
   onToggleTalk,
@@ -22,6 +26,7 @@ export function Conversation({
   adapter: LabAdapter;
   worker: WorkerRow;
   sessionId: string;
+  projects: ProjectRow[];
   nameOf: (id: string) => string;
   talkOpen: boolean;
   onToggleTalk: () => void;
@@ -32,11 +37,25 @@ export function Conversation({
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries);
+  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const workProject = useWatch(adapter.watchWorkProject, worker.id);
+  // The pick is stored on the worker, then said to it as your line, so it files the job again.
+  const pick = async (project: string) => {
+    await adapter.setWorkProject(worker.id, project);
+    await adapter.send(sessionId, `Work in ${projects.find((p) => p.id === project)?.name ?? project}.`);
+  };
 
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end" });
   }, [entries.length, running, pending.length, sessionId]);
+
+  // A card shows once the board's row has arrived.
+  const taskTile = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return null;
+    return <TaskCard adapter={adapter} task={task} filer={worker.name} workProject={workProject} projects={projects} nameOf={nameOf} onPick={(p) => void pick(p)} />;
+  };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
   return (
@@ -44,6 +63,21 @@ export function Conversation({
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
         <h1 className="text-sm font-semibold">{worker.name}</h1>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
+        <select
+          aria-label={`Project for ${worker.name}`}
+          value={workProject ?? ""}
+          onChange={(e) => void adapter.setWorkProject(worker.id, e.target.value)}
+          className="border border-border bg-card px-1 py-0.5 font-mono text-[10px] tracking-widest uppercase"
+        >
+          <option value="" disabled>
+            no project
+          </option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              in · {p.name}
+            </option>
+          ))}
+        </select>
         {running ? (
           <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
@@ -75,7 +109,11 @@ export function Conversation({
                 </div>
               ) : null}
               <div className={cn(i < markAt && "opacity-60")} data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}>
-                <Entry entry={entry} workerName={worker.name} nameOf={nameOf} />
+                {entry.kind === "task" ? (
+                  taskTile(entry.taskId)
+                ) : (
+                  <Entry entry={entry} workerName={worker.name} nameOf={nameOf} />
+                )}
               </div>
             </Fragment>
           ))}

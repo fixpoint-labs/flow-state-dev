@@ -5,8 +5,8 @@ the workforce package. It is one half of the evidence that the same package piec
 apps: an app adds only configuration, React UI and a few small flows, and anything else it needs is
 a gap filed against the package.
 
-- **Left:** the workers, lead, researcher and writer. Each row is a worker with an ongoing role,
-  never a list of sessions. A row shows what the worker is doing and how many new entries its
+- **Left:** the workers, lead, researcher, writer and coder. Each row is a worker with an ongoing
+  role, never a list of sessions. A row shows what the worker is doing and how many new entries its
   conversation has since you last looked.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
@@ -18,6 +18,13 @@ Workers message each other where you can see it. When lead messages researcher, 
 shows in lead's conversation and the message lands in researcher's. The reply lands in lead's
 conversation under researcher's name. A message never interrupts the turn you are in: while lead is
 answering you, researcher's reply shows as a pending line, and lead reads it right after.
+
+coder is different: it takes tasks only, so it has no conversation and you can't message it. Ask
+lead for a code change and lead files a task for coder, which runs it through Claude Code in lead's
+project. A card in lead's conversation shows the task and opens to its run, and the result lands
+as a line from coder. Talking to a worker never needs a project. The first time a job needs files,
+the card asks you to pick one for lead; nothing runs until you do, and the pick sticks to lead.
+Picking one from the header works too.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
 no session list. The design and the decisions behind it are in the
@@ -36,6 +43,10 @@ lead answers and messages researcher. Before researcher replies, send lead a sec
 shows as pending, then lands after lead's answer. lead's conversation already runs past the 50-turn
 history window, so the divider is in view.
 
+Then ask lead *"Have coder fix the typo in the README's first line."* The task card asks for a
+project. Pick `relay`: lead files the task again, coder's run shows its steps, and the result lands
+in lead's conversation.
+
 After wiring, the lab runs against a real model and a durable store:
 
 ```bash
@@ -43,7 +54,9 @@ fsdev dev --app @flow-state-dev/teammates
 ```
 
 Wiring adds the host file, which composes `@flow-state-dev/memory` into each worker's flow: the
-capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn.
+capability in `uses` to read it, and `afterAnswer: mem.captureFromItems` to record each turn. It
+also adds the lab's one small flow: coder's worker flow, one `harnessManager` per harness over
+`projectWorkspace()`, routing each task by the worker's `harness` setting.
 
 ## Fixtures
 
@@ -57,6 +70,9 @@ names the package call it stands for, and until wiring they run on `src/fixtures
 | The pending line, joined to the conversation by message id | G2: a received message as its own item, carrying its id (an ask of FIX-2070) |
 | Workers messaging each other, the Talk panel | `sendMessage`, `receive` and the message log, as FIX-2070 ships them |
 | The worker list, sending, the conversation, busy status | `roster()`, `ensureWorkerSession`, `respond`, session items, `listSessionRequests` |
+| A worker's project, and picking it | FIX-2161's `setWorkProject` and the `workProjectId` it writes on the worker's default conversation |
+| Task cards, the refusal for want of a project | the conversation board's rows (`listTasks_tasks`), and `projectWorkspace()`'s `no-project` refusal |
+| coder's runs | the task row's `run` link, followed with `followRequest` and `useSession`, on a harness picked by coder's `harness` setting |
 
 ## What this app adds
 
@@ -66,9 +82,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 13 | 253 |
-| React UI | 14 | 822 |
+| Configuration | 14 | 279 |
+| React UI | 16 | 1105 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 267 |
-| Checks (not app code) | 3 | 275 |
+| Fixtures (deleted at wiring) | 1 | 353 |
+| Checks (not app code) | 3 | 330 |
 <!-- inventory:end -->
