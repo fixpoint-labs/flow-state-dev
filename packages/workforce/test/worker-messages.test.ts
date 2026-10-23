@@ -530,7 +530,7 @@ describe("the hop count through a delegation", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing" }) }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const tasks = await h.rows("alice");
       expect(tasks.map((row) => [row.assignee, row.session, row.status])).toEqual([["helper-b", "ongoing", "completed"]]);
@@ -550,7 +550,7 @@ describe("the hop count through a delegation", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask(setting) }), hire: { messages: { hopLimit: 1 } } });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       expect((await h.rows("alice")).map((row) => [row.assignee, row.status])).toEqual([["helper-b", "completed"]]);
       expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>helper-a@1"]);
@@ -567,7 +567,7 @@ describe("the hop count through a delegation", () => {
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
@@ -593,7 +593,7 @@ describe("the hop count through a delegation", () => {
     try {
       // front routes every line to otto, its one delegate, in otto's ongoing session for the conversation.
       const front = await h.conversation("alice", "front");
-      await h.post("alice", front, "run", { message: "Ask helper-a about the colour" });
+      await h.post("alice", front, "respond", { message: "Ask helper-a about the colour" });
       await h.settled();
       expect((await h.rows("alice")).map((row) => [row.assignee, row.id.startsWith("routed:"), row.status])).toEqual([["otto", true, "completed"]]);
       const rows = await logRows(h, "alice");
@@ -622,14 +622,14 @@ describe("the hop count through a delegation", () => {
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
       expect(held!.status).toBe("held");
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
 
       const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
-      await h.post("alice", helperA.id, "run", { message: "Go ahead whenever you like." }, "agent");
+      await h.post("alice", helperA.id, "respond", { message: "Go ahead whenever you like." }, "agent");
       await h.settled();
       const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
       expect(released.error, messageOf(released.error)).toBeUndefined();
@@ -666,14 +666,14 @@ describe("the hop count through a delegation", () => {
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
       expect(held!.status).toBe("held");
       const filedIn = (held!.metadata?.[FILED_HOP] as { chain: string }).chain;
 
       // A new line to otto starts chain W there; otto's message moves helper-a's session to W.
-      await h.post("alice", otto.id, "run", { message: "Please ping helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ping helper-a" }, "agent");
       await h.settled();
       const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
       expect((await h.session(helperA.id)).state.workforceMessageChain, "helper-a's session is in chain W now").not.toBe(filedIn);
@@ -694,7 +694,7 @@ describe("the hop count through a delegation", () => {
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       // The held row, as one stored before rows recorded their filing's count.
       const [held] = await h.rows("alice");
