@@ -32,7 +32,8 @@ queued `onTaskSettled` copy runs, as it does after the turn.
 ✓ 1+2 · sees the ending by a committed read, takes it, and the queued copy finds nothing owed
 ✓ 3   · when the queued copy took it first, the turn's take is refused: heard once, by the copy
 ✓ 4   · a turn that took it and failed before clearing it: the copy takes it over once the turn ended
-Tests  3 passed (3)
+✓ 5   · a turn that only reads the finished row: the queued copy says it again, heard twice
+Tests  4 passed (4)
 ```
 
 - The turn's own snapshot of the board does **not** show the ending (`sawInSnapshot: false`); a
@@ -49,9 +50,10 @@ Tests  3 passed (3)
 transfers a notice between requests in one conditional write. [D1](../../DECISIONS.md#d1) rests
 on this.
 
-The same run is also the evidence that a lab can't do this on public entries alone
-([D3](../../DECISIONS.md#d3)): a hook that reads a finished row without taking it is the control
-case, and the queued copy hears the notice again.
+Case 5 is the evidence that a lab can't do this on public entries alone
+([D3](../../DECISIONS.md#d3)): a turn that reads a finished row without taking it leaves the
+notice owed, and the queued copy hears it again. It was added in review, and was 5 green on the
+same base.
 
 Not covered here, and left to the implementation's tests: the Workforce handling (Error Reporter,
 dedupe, freeing the session, the line) and the answer-again hook.

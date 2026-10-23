@@ -107,14 +107,14 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 
 ## Settled
 
-- **The existing take record is crash-safe enough to carry a take in the turn** — **CONFIRMED** by
-  [`poc/take-in-turn/`](poc/take-in-turn/README.md) on `main` at `3d131544`: three cases green,
-  and red with the turn's clear removed.
-- **A lab can do the end-of-turn loop on public entries alone** — **REFUTED**. The public surface
-  has no take and no answer-again step (`AgentWorkerFlowOptions` on `main` offers `afterAnswer`,
-  a side step). Reading without taking is heard twice: the POC's control shows the queued copy
-  delivering a notice the turn didn't clear, and the agent flow's default notice policy
-  (`judgment`) wakes a second turn on it.
+Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `main` at `3d131544`.
+
+- **The take record carries a take in the turn, exactly once** — **CONFIRMED**: cases 1 to 4, and
+  case 1 red with the turn's clear removed.
+- **A lab can do the end-of-turn loop on public entries alone** — **REFUTED**: case 5, a turn that
+  only reads the finished row, is heard twice. The public surface has no take and no
+  answer-again step (`afterAnswer` is a side step).
+- **D2 is not POC evidence.** It rests on the epic's D2 and on reading `isUserTurn`.
 
 ## How it got here
 
@@ -134,6 +134,16 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
   share, say why." — second-look review ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#pullrequestreview-5634917017))
 - "The implementer's tests should own the interaction with `planned` explicitly, with the
   Error Reporter stop-before-ack and the answer-again bound." — same review
+
+- "Parameterize `task-settled.ts` (a delivery mode) rather than a second copy of
+  report/dedupe/free/line order, or FIX-2115, routed and Error Reporter paths drift." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#discussion_r4364611470))
+- "Finding owed rows: reuse the `owesAnyNotice` prefilter, avoid a full scan plus a committed
+  read per candidate on every hook call, cap work when many tasks finish together." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#discussion_r4364611475))
+- "Consider exporting a default `answerAgain` helper (take, format the lines) that an app can use
+  or override, so each app doesn't copy the same body; the loop stays visible in the flow." —
+  cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#discussion_r4364611466))
 
 These are inputs, not instructions. Adopt, adapt, or discard.
 

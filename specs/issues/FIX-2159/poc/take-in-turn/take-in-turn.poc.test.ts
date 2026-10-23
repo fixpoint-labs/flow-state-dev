@@ -15,7 +15,10 @@
  *      turn shows nothing: heard once, by the queued copy;
  *   4. when the turn took it and then failed before clearing it, the queued
  *      copy takes it over once the turn has ended: never lost (heard again
- *      after a crash, which is today's entry's own guarantee).
+ *      after a crash, which is today's entry's own guarantee);
+ *   5. a turn that only READS the finished row (all a lab can do on public
+ *      entries) leaves the notice owed, and the queued copy says it again:
+ *      heard twice.
  *
  * The "turn" is a handler held open on a gate, standing in for a generator
  * between two model calls; the take is what its context entry would run.
@@ -53,7 +56,7 @@ interface TurnLog {
   take?: string;
 }
 
-function host(options: { turnFailsAfterTake?: boolean; entryGate?: Promise<void> } = {}) {
+function host(options: { turnFailsAfterTake?: boolean; entryGate?: Promise<void>; readOnly?: boolean } = {}) {
   const heardInTurn: string[] = [];
   const heardByEntry: TaskSettledInput[] = [];
   const log: TurnLog = {};
@@ -103,6 +106,11 @@ function host(options: { turnFailsAfterTake?: boolean; entryGate?: Promise<void>
       const stored = await readCommittedTask(ref, "t1");
       log.sawCommitted = stored !== undefined && isNoticeOwed(stored, NOTICE);
       if (!log.sawCommitted) return {};
+      // A lab on public entries alone can only read the finished row, not take it.
+      if (options.readOnly === true) {
+        heardInTurn.push(String(NOTICE.output));
+        return {};
+      }
       const took = await ref.takeNotice!("t1", NOTICE, { by: ctx.request.identity.id });
       log.take = took.outcome;
       if (took.outcome !== "recorded") return {};
@@ -218,6 +226,23 @@ describe("a running conversation request takes a settled notice (FIX-2159 POC)",
       expect(h.heardByEntry).toHaveLength(1);
       const metadata = (await h.act("read")) as Record<string, unknown>;
       expect(metadata["noticeOwed:1:completed"] ?? null).toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("5 · a turn that only reads the finished row: the queued copy says it again, heard twice", async () => {
+    const h = host({ readOnly: true });
+    try {
+      await h.act("seed");
+      const turn = h.act("respond");
+      await h.started;
+      await h.act("end");
+      h.release();
+      await turn;
+      await h.act("onTaskSettled", NOTICE, true);
+      expect(h.heardInTurn).toEqual(["the first result"]);
+      expect(h.heardByEntry).toHaveLength(1);
     } finally {
       await h.dispose();
     }
