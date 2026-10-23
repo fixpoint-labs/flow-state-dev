@@ -153,16 +153,10 @@ function routedDelegates(items: readonly StoredItem[], postId: string): string[]
 }
 
 /**
- * The answer one of `delegates` gave post `postId` in `sessionId`: the first
- * assistant message after the post's own that names one of them as its
- * `agentName` (a delegate's first message is the one graded), read once
- * nothing runs in the session and its items stopped changing.
- *
- * At the `timeoutMs` cap it returns the answer it found even if the session
- * never settled, and `undefined` when none landed. With `act`'s own 240 s
- * wait before it, a routed turn can take up to about twice that. "Quiet" is
- * not "the board is done": a board pass due later can still write items
- * after this returns, which m2's exception for her board's own passes covers.
+ * The delegate's first assistant message after the post. At the cap, return
+ * it even if the session never settled (`undefined` if none landed); `act`
+ * already waited 240s, so a routed turn can take about twice that. A board
+ * pass due later is m2's exception, not this wait.
  */
 async function delegateAnswer(who: Connected, sessionId: string, postId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
   let answer: StoredItem | undefined;
@@ -216,9 +210,6 @@ export async function talk(record: RunRecord, step: string, who: Connected, sess
       .filter((i) => i.type === "tool_output")
       .map((i) => ({ itemId: i.id, name: String(i.toolCall?.name ?? ""), args: String(i.toolCall?.arguments ?? "").slice(0, 300), output: JSON.stringify(i.output ?? i.error ?? null).slice(0, 300) }));
     let reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
-    // A coordinator that routed the post answers through its delegate, in a
-    // request of its own once the delegate's turn ends (the coordinator
-    // contract): the turn is graded on that answer, read once the session is quiet.
     const delegates = routedDelegates(mine, acted.requestId);
     if (reply === undefined && delegates.length > 0) {
       reply = await delegateAnswer(who, session.id, acted.requestId, delegates, 240_000);

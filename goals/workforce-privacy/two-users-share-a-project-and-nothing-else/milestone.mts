@@ -213,9 +213,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     }
     await sleep(1500);
     const after = await alice.routes.items(aliceSession.id, "");
-    // A coordinator that routed her word runs its board's passes on their own
-    // schedule (the `dispatch` entry, never a public action), and each writes
-    // a few items. Any other new item is one a post could have made.
+    // A board pass is a request whose action is set and not public. No action name stays a stray.
     const publicActions = actionsOf(aliceSession.flowKind);
     const passes = new Set((await alice.routes.requests(aliceSession.id)).filter((q) => typeof q.actionName === "string" && !publicActions.includes(q.actionName)).map((q) => String(q.id)));
     const added = after.filter((i) => !before.has(i.id));

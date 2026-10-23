@@ -1,20 +1,10 @@
 /**
- * Model-free check of `talk` (people.mts): a turn on a coordinator that
- * routes the person's post is graded on the delegate's answer, which lands
- * in the session in a request of its own after the `respond` request has
- * completed. `pnpm tsx goals/workforce-privacy/two-users-share-a-project-and-nothing-else/check-talk.mts`.
+ * Model-free check of `talk`: a routed post is graded on the delegate's
+ * answer and returned once the session is quiet; a worker's own answer is
+ * read off its request. Scripted session, no server, no model.
+ * Coordinator contract: apps/docs/docs/workforce/coordinators.md.
  *
- * The milestone forks a standard worker picked at run time. One of them,
- * `eng.triage`, is a coordinator with `routing: everyone`: its `respond`
- * request completes once the post is delivered to `eng.em`, and `eng.em`'s
- * answer reaches the session a few seconds later, through the routed task's
- * notice (the coordinator contract, apps/docs/docs/workforce/coordinators.md).
- * Read off the `respond` request alone, the turn had no answer (m3), and the
- * answer that landed afterwards grew Alice's session while Bob posted (m2).
- *
- * Each case runs `talk` against a scripted session (a fake action client and
- * fake routes, no server, no model) and grades what it returned and whether
- * the session was quiet when it did.
+ * `pnpm tsx goals/workforce-privacy/two-users-share-a-project-and-nothing-else/check-talk.mts`
  */
 import { RunRecord, type Turn } from "./record.mts";
 import { talk, type Connected } from "./people.mts";
@@ -54,7 +44,6 @@ const routedTo = (worker: string): Item => ({
   data: { postId: POST, round: 0, policy: "everyone", by: "everyone", delegates: [{ worker, outcome: "delivered" }] },
 });
 
-/** A person connected to `session`, through fakes of the two surfaces `talk` reads. */
 function connectedTo(session: ScriptedSession): Connected {
   const flow = {
     sendAction: async () => {
@@ -94,7 +83,6 @@ const routed = new ScriptedSession((s, tick) => {
   }
 });
 
-/** A worker that answers in its own turn. */
 const direct = new ScriptedSession((s, tick) => {
   if (tick === 0) {
     s.items.push(user(POST), said(POST, "noted"));
