@@ -145,7 +145,7 @@ one step comes. If wrong: a host loses a status read it built on the inbox.
 
 1. **[D1](DECISIONS.md#d1) · FIX-2137 stays a blocker.** The manager's own path never suspends,
    but a host's harness block may, and its resume needs FIX-2137. Engineering, decided; it would
-   flip only if the harness slot refused a suspending block. If wrong: FIX-2132 waits on a fix
+   flip only if no block a host hands the manager could suspend. If wrong: FIX-2132 waits on a fix
    that is ready to merge.
 
 **Open: none of its own.** At the deadline it follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open),

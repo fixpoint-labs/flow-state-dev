@@ -30,12 +30,13 @@ keeps an edge in the epic's graph.*
 | **Because** | The built-in path holds and never suspends: under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question holds its task, and every ask the manager makes is a question (the run's marker, the judge's *ask*, a saved-work mismatch). But the public `HarnessSlot` takes any `HarnessBlock` (`manager.ts`, `HarnessSlot`), and the harness step's `onSettled` already handles a child that exits suspended. A host's own harness that calls `ctx.suspend` resumes through the engine's durable resume, which is FIX-2137's path. Refusing it would be a new limit on a public slot, to save an edge that costs nothing: #3749 is ready to merge |
 | **Locks in** | FIX-2137 blocks FIX-2132, with FIX-2133 and FIX-2056. The manager itself suspends no request; the sweep checks `waitForUser` has no references in `harness-manager`. The goal check runs with traces off |
 
-![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix that is ready to merge. Locks in: FIX-2137 blocks FIX-2132. Flips if: the harness slot refuses a block that suspends](figures/d1-keep-fix-2137.svg)
+![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix that is ready to merge. Locks in: FIX-2137 blocks FIX-2132. Flips if: no host-provided block in the manager chain can suspend](figures/d1-keep-fix-2137.svg)
 
 It comes down to the public slot: a host's harness block can still suspend, and that path needs FIX-2137.
 
-**What would change my mind:** a decision to refuse suspension in `HarnessSlot`, so no harness
-block can suspend. Then nothing in the coding flow resumes, and the edge drops.
+**What would change my mind:** no block a host hands the manager can suspend: the `HarnessSlot`
+block, `ManagerOptions.judge.block`, and the phase prompt and completion hooks that receive a
+`BlockContext`. Only then does nothing in the coding flow resume, and the edge drops.
 
 ## Decided, not asked
 
@@ -63,11 +64,14 @@ block can suspend. Then nothing in the coding flow resumes, and the edge drops.
   upgrade usually already put its question on the row when its run parked, and FIX-2131's map
   reads that row as held. But today the manager reads the marker and parks later in the same
   step, so a crash or an upgrade between the two leaves only the file. So: when the row holds no
-  question asked by this attempt, open or answered, and `<attempt>.md` exists, the ask step
-  records it once through ER-8's ask. After that the row holds a question for this attempt, so the
-  guard never reads that path again and an answered question can't come back. A transition test
-  covers the crash-between-read-and-park state: the file and no question on the row give one
-  question, asked once, and the run after its answer doesn't ask it again.
+  question this attempt has ever asked, whatever its end (open, answered, deadline or cancelled),
+  and `<attempt>.md` exists, the ask step records it once through ER-8's ask. After that the row
+  always holds a question from this attempt, so the guard never reads that path again, and the
+  marker can't bring back an answered or expired question. A transition test covers the
+  crash-between-read-and-park state. Given the file and no question on the row, recovery is
+  injected right after the fallback's ask write, while the question is still open, and the row and
+  the Inbox still hold exactly one question. Then, after an answer, and separately after the
+  deadline, the next run doesn't ask it again.
 - **A line while the task holds** names no question, so it answers nothing (ER-8). It is kept on
   the task, and the run the answer starts takes it. The claim gate refuses a held row, so no run
   starts beside the hold.

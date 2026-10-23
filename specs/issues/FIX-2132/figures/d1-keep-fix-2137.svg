@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, whether FIX-2132 still waits on FIX-2137, the fix for a durable resume that runs completed steps again, now that its own question holds the task. Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. It comes down to the first row, the public harness slot: a host's own harness block may still suspend, and its resume runs through FIX-2137's path; refusing that would be a new limit on a public slot. The price is the second row: FIX-2132 waits on a fix that is ready to merge, where dropping ships on FIX-2133 alone. The third row: keeping it adds nothing to the manager, where refusing adds a check on every harness block. Locks in: FIX-2137 blocks FIX-2132. Flips if: the harness slot refuses a block that suspends."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, whether FIX-2132 still waits on FIX-2137, the fix for a durable resume that runs completed steps again, now that its own question holds the task. Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. It comes down to the first row, the public harness slot: a host's own harness block may still suspend, and its resume runs through FIX-2137's path; refusing that would be a new limit on a public slot. The price is the second row: FIX-2132 waits on a fix that is ready to merge, where dropping ships on FIX-2133 alone. The third row: keeping it adds nothing to the manager, where refusing adds a check on every harness block. Locks in: FIX-2137 blocks FIX-2132. Flips if: no host-provided block in the manager chain can suspend: the harness block, the judge block, and the phase prompt and completion hooks."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -95,7 +95,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The harness slot refuses a suspending block</text>
-    <text class="t-s" x="494" y="389">then nothing resumes, and the edge drops</text>
+    <text class="t-b" x="494" y="371">No host-provided block can suspend</text>
+    <text class="t-s" x="494" y="389">harness, judge, prompt and completion hooks</text>
   </g>
 </svg>
