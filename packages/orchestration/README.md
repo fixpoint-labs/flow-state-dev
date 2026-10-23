@@ -688,28 +688,27 @@ that a `dispatcher()` block throws.
 
 The child settles its own row once, when the task's work is over: its request has ended,
 along with the background work that request started and any the flow's `onFinished`
-started; every task it filed has ended and its ending has reached the child's session;
-and nothing is queued for it. Until then the row stays `in_progress`, and `waitingOn`
-says why:
+started; and every task it filed has ended and its ending has reached the child's
+session. Until then the row stays `in_progress`, and `waitingOn` says why:
 
 | `waitingOn` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
-| `"queued"` | work queued for it that hasn't run | kept |
 | `"person"` | a `ctx.suspend()` for `human_approval` or `human_input` | none |
 | `"wait"` | any other suspension | none |
 
-A row with no lease is never reclaimed, so a waiting task isn't run twice. A `"queued"`
-row keeps its lease: if the queued work never runs, the lapse takes the task back. A
-resume continues the same attempt. Each later request for the task in that session
+A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
+continues the same attempt. Each later request for the task in that session
 checks it again; a package admits one with `taskRequestAdmission({ name, find,
 answerCounts, endRules? })` first in its sequencer, where `find(ctx)` returns
 `Promise<{ ref: TaskCollectionRef; row: Task } | undefined>` (the waiting row whose run is
 this session, read from server-set state). A later request's answer becomes the output
 only with `answerCounts: true` and a `noteTaskAnswer` tap after the step that produced it, and `afterTaskCheck(ctx, fn)` runs `fn` after that check,
-such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds?, workQueued? }`
+such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds? }`
 (type `TaskEndRules`, also on `taskLedgers`) replaces what holds a task: by default its
-filed tasks, and nothing queued. The output is the latest `reportProgress` checkpoint,
+filed tasks. Anything else that runs in the child's session, such as a message to it, is
+not admitted for the task: it doesn't hold the task and isn't part of it (while the task's
+turn is running, it runs after that turn), and its answer and its errors are its own. The output is the latest `reportProgress` checkpoint,
 else the last answer that counts. A request that fails, aborts or is interrupted fails
 the attempt, and the board's `onError` reaches it: `"skip"` settles the row and lets the
 child's request complete, `"fail"` also fails that request. A result the board can't

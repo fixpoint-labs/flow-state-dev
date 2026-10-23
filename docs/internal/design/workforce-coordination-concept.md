@@ -158,8 +158,8 @@ as current, the original as history.
 **The worker reports progress with `reportProgress({ statusNote?, output? })`,** its own tool, not
 the filer's `updateTask`. It's offered only on a task turn, acts on the task the request holds
 through its claim (so it takes no `id`), and is refused once the task finishes. Any request holding
-the claim may set `statusNote`, a queued `receive` included, but only a `work` or `onTaskSettled`
-request checkpoints `output`, so a message never changes the task's output. It is not a public action: screens don't
+the claim may set `statusNote`, but only a `work` or `onTaskSettled` request checkpoints `output`;
+a message holds no claim, so it never changes the task's output. It is not a public action: screens don't
 checkpoint. `statusNote` is a one-line note for task views; it never changes the task's status, done
 stays rule 6, and a worker never settles its own row (rule 18). `output` is a checkpoint of the
 result so far, by rule 22. A `percent` may come later. Found work still goes to the filer as a
@@ -191,10 +191,10 @@ ended.
 
 **Where it lands:** the recipient's conversation with this user, except that a message to the worker
 that filed your task lands in the session that filed it, and one to a task in that task's session.
-It never changes the brief or stops the request working the task. To an open task, it runs as a
-`receive` request for the task after any request working it, in the same attempt, before the task
-settles, without changing the task's output; one that errors fails the attempt, its waiting caller gets the error at once, and the retry
-doesn't run it again. To a finished task,
+It never changes the brief or stops the request working the task. To an open task, it's
+conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
+is running, it's answered after that turn. It holds no claim, doesn't delay the settle, and an
+error in it is its own, never the attempt's. To a finished task,
 `receive` handles it with the session's full history. The user typing in a task's session answers
 its question, if its request waits on one; otherwise it steers it while open, as `updateTask({
 message })` does. Once finished, `respond` takes it as talk there.
@@ -203,8 +203,7 @@ message })` does. Once finished, `respond` takes it as talk there.
 call waits no longer than its deadline. Each
 message a user types funds a **budget** of 6 messages, shared by every request descending from it
 through messages, calls and filed tasks; no one request sends more than 3. A request with nothing
-behind it, such as a held task once it's released, gets a fresh 6. A message is paid when sent. The
-budget also caps how many queued messages can hold an open task from settling.
+behind it, such as a held task once it's released, gets a fresh 6. A message is paid when sent.
 
 ## Inbox items
 
@@ -370,10 +369,9 @@ follow-up runs in writer's finished task's session.
 A behavior none of these rules explains is a bug in the model.
 
 1. Every request acts as one user, with a server-set sender.
-2. Only a request the claim gate admits for a task holds its claim: `work`, or `onTaskSettled` or a
-   queued `receive` working the session's task. A queued `receive` keeps its own sender; the gate,
-   not the sender, gives it the claim. The claim gate settles a dispatched task; the drain,
-   an inline plan row. Any `receive` into an open task's session works its task, queued or not.
+2. Only a request the claim gate admits for a task holds its claim: `work`, or `onTaskSettled`
+   working the session's task. A `receive` never does. The claim gate settles a dispatched task;
+   the drain, an inline plan row.
 3. A request files tasks only for work its job needs: its task, the user's message it answers, or a
    sibling for work reported by the assignee of a task it filed. Anything else is a message to the
    filer above, or, with no task, said to the user. Nothing leaves the roster: Alice's workers never reach Bob's researcher.
@@ -383,7 +381,7 @@ A behavior none of these rules explains is a bug in the model.
 5. A session holds at most one open task from the delegation board above it; another stays pending.
    Plan rows don't count.
 6. A task is done when its request ends, background work included, with a result, not suspended,
-   with no filed task open and no message queued. Only `waitForUser` makes it waiting on a person.
+   with no filed task open. Only `waitForUser` makes it waiting on a person.
    A steer is no ending. A failed attempt retries in the task's session while attempts are left.
    Cancelling, retrying or failing a task cancels its open tasks; failing or cancelling it, its
    dependents.
@@ -466,7 +464,7 @@ rest.
 | Pending, running, waiting on a person | Not yet started; worked, its request on a wait, or with filed tasks open; its request suspended by `waitForUser` |
 | Ending: done, failed, cancelled | Rule 6 met; out of attempts; cancelled |
 | Finished, open, settle | Ended; not ended; record a row's ending |
-| Attempt | One try at a task: every request working it in that try, queued messages and resumes included; `maxAttempts` caps them |
+| Attempt | One try at a task: every request working it in that try, resumes included; `maxAttempts` caps them |
 | Background work | Work a request started, such as saving to memory, that runs on after it returns its result |
 | Progress, status note, checkpoint | What a task's worker reports with `reportProgress` while it runs: a one-line note (never the task's status), and the output so far |
 | Steer | `updateTask({ message })` into an unfinished task, or the user typing in its session; the `updateTask` table says what it does. A `sendMessage` never steers |
@@ -527,8 +525,6 @@ waits (rule 9); and twenty-three newly decided:
 Open:
 
 - [x] **A released held task's budget is fresh** → Messages, Limits.
-- [x] **A queued message that errors** fails the attempt; its caller gets the error at once, and the
-  retry doesn't run it again → Messages.
 - [x] **An error in background work fails the attempt** → Tasks, failed attempts.
 - [x] **A cancelled block may clean up and send messages;** its writes to the task are refused and
   anything it creates is cancelled with it → Inbox items, Cancelled.
