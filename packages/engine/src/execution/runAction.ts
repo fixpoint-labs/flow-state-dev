@@ -2077,18 +2077,18 @@ async function runActionAttempt<
       // accumulator rather than restarting it empty while block outputs replay
       // from the log. A durable sequencer NESTED inside another is the
       // documented limitation (its non-root checkpoint is not restored here).
-      const provider = options.runtimeConfig.durabilityProvider;
-      if (provider !== undefined) {
-        const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
-        const checkpoint = await options.stores.checkpoints.latest(
-          requestId,
-          rootInstanceId
-        );
-        if (checkpoint !== null) {
-          (ctx as any)._resumeState = {
-            state: checkpoint.state as Record<string, unknown> | undefined
-          };
-        }
+      // The checkpoint is read from the store the item hook writes it to, so
+      // a run with no durability provider restores it too: its completed
+      // blocks replay from the log the same way.
+      const rootInstanceId = buildBlockInstanceId(requestId, ROOT_BLOCK_PATH, 0);
+      const checkpoint = await options.stores.checkpoints.latest(
+        requestId,
+        rootInstanceId
+      );
+      if (checkpoint !== null) {
+        (ctx as any)._resumeState = {
+          state: checkpoint.state as Record<string, unknown> | undefined
+        };
       }
     }
   } catch (setupError) {
