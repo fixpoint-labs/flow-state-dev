@@ -286,7 +286,9 @@ async function check(
     return refused(
       "wait_unavailable",
       "waiting on a task needs durable execution, a store that keeps wakes, a durability sweeper that resumes waits " +
-        "at their deadline, and a board that keeps the wait. Nothing was written."
+        "at their deadline, and a board that keeps the wait. Durable execution is on by default wherever stores " +
+        "persist (`durable: false` turns it off), and the sweeper runs only in a process that serves a router " +
+        "(`fsdev dev`, `fsdev serve`, a self-hosted server), not in `fsdev run`. Nothing was written."
     );
   }
   const { minMs, maxMs, defaultMs } = waits.deadlines;

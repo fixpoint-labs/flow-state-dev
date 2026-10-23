@@ -223,13 +223,11 @@ export type ActionCore<
     onExceeded?: "error" | "stop" | "warn";
   };
   /**
-   * When true, this action's execution is durable: checkpoints are
-   * written at step boundaries, ctx.suspend() is available, and crash
-   * recovery resumes from the last checkpoint instead of re-executing
-   * from scratch.
-   *
-   * Requires a DurabilityProvider on the runtime. Default: false
-   * (transient — crashes lose request state).
+   * When true, this action is treated as durable at completion: its
+   * suspension records and lease are cleared when it completes. Suspending
+   * and crash recovery don't depend on it: they need a host with durable
+   * execution (on by default wherever stores persist), and sequencers
+   * checkpoint unless they set `durable: false`. Default: false.
    */
   durable?: boolean;
   /**

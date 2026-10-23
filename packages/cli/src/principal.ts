@@ -8,7 +8,7 @@
  * the ask; `--user` alone keeps the app's organization and replaces its user.
  * A refusal stops the command before anything is written.
  */
-import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import {
   isOrgAttributed,
   pinRejectsCaller,
@@ -20,8 +20,12 @@ import {
 import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR, EXIT_INVALID_ARGS } from "./exit-codes";
 
-/** The user a terminal names when `--user` is not given. */
-const DEFAULT_CLI_USER = "cli-user";
+/**
+ * The user a terminal names when `--user` is not given: the DevTool's own
+ * local user, so a stop a run makes is listed where `fsdev dev` answers it
+ * (FIX-2063 D1).
+ */
+const DEFAULT_CLI_USER = DEFAULT_LOCAL_USER_ID;
 
 /**
  * Where a terminal run's **organization** came from, as `--capture` records it:

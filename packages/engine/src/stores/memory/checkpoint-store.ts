@@ -9,6 +9,9 @@ import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 import type { CheckpointStore } from "../types";
 
 export class InMemoryCheckpointStore implements CheckpointStore {
+  /** Kept in this process only (FIX-2063 D2). */
+  readonly persists = false;
+
   private readonly data = new Map<string, SequencerCheckpoint>();
 
   private key(requestId: string, blockInstanceId: string): string {

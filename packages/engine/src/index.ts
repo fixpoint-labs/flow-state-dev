@@ -216,6 +216,7 @@ export {
 } from "./voice";
 
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
+export { resolveDurabilityProvider } from "./durability/default-durability";
 export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
 export {
   createDurabilitySweeper

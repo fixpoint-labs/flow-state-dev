@@ -414,13 +414,10 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (row !== undefined && (autoFile.includes(row.errorClass) || autoFile.includes(row.source))) {
         return { decision: "file", ...draft };
       }
-      if (ctx.suspend === undefined) {
-        throw new Error("An error report waits for the operator's answer, and this Lab runs without durable execution.");
-      }
       const seen = row?.count ?? 1;
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
-        const answer = await ctx.suspend({
+        const answer = await ctx.suspend!({
           reason: "human_input",
           // The question's heading in Inbox; `data.title` is the issue title it files under.
           title: `Error report: ${draft.title}`,
