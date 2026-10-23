@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 600" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The lab's one screen, three columns. Left: the list of workers, lead, researcher and writer, each a row with a status and an unread count, and no session list and no new-chat button. Centre: the selected worker's one conversation: a divider where the turns read word for word begin, your lines on the right, the worker's answers on the left, a one-line card where lead messaged researcher, and a pending line saying researcher replied and lead reads it after this turn; the composer at the bottom. Right: the Talk panel, the exchanges lead had with other workers, grouped by the other worker, read from the message log.">
+<svg viewBox="0 0 940 632" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The lab's one screen, three columns. Left: the list of workers, lead, researcher, writer, and coder, which takes tasks and runs Claude Code, each a row with a status and an unread count, and no session list and no new-chat button. Centre: the selected worker's one conversation: a divider where the turns read word for word begin, your lines on the right, the worker's answers on the left, a one-line card where lead messaged researcher, and a pending line saying researcher replied and lead reads it after this turn; a task card for the job lead filed for coder, which opens to the run; the composer at the bottom. In the header, lead's directory, a project, asked for the first time a job needs files. Right: the Talk panel, the exchanges lead had with other workers, grouped by the other worker, read from the message log.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -32,7 +32,7 @@
     .num   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; }
     .numc  { fill:var(--surface); stroke:var(--ink); stroke-width:1.2; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="600"/>
+  <rect class="bg" x="0" y="0" width="940" height="632"/>
   <rect class="frame" x="16" y="16" width="908" height="500" rx="6"/>
 
   <g id="workers">
@@ -51,6 +51,10 @@
     <circle class="dot-i" cx="40" cy="179" r="11"/><text class="t-w" x="36" y="182">W</text>
     <text class="t-h" x="58" y="175">writer</text>
     <text class="t-s" x="58" y="192">idle · 2h</text>
+    <circle class="dot-i" cx="40" cy="229" r="11"/><text class="t-w" x="36" y="232">C</text>
+    <text class="t-h" x="58" y="225">coder</text>
+    <circle class="dot-w" cx="200" cy="221" r="3.5"/>
+    <text class="t-s" x="58" y="242">takes tasks · Claude Code</text>
     <line class="rule" x1="17" y1="470" x2="217" y2="470"/>
     <text class="t-mono" x="32" y="496">theme · day</text>
   </g>
@@ -58,6 +62,8 @@
   <g id="conversation">
     <text class="t-h" x="236" y="40">lead</text>
     <text class="t-s" x="272" y="40">plans the launch with you</text>
+    <rect class="talk" x="470" y="27" width="104" height="18" rx="4"/>
+    <text class="t-c" x="478" y="40">in · relay   ▾</text>
     <circle class="dot-w" cx="680" cy="36" r="3.5"/><text class="t-mono" x="626" y="40">working</text>
     <line class="rule" x1="217" y1="54" x2="696" y2="54"/>
 
@@ -86,6 +92,9 @@
     <rect class="pend" x="236" y="326" width="380" height="24" rx="4"/>
     <text class="t-a" x="246" y="342">← researcher replied · lead reads it after this turn</text>
 
+    <rect class="talk" x="236" y="362" width="380" height="24" rx="4"/>
+    <text class="t-c" x="246" y="378">⚙ task for coder · Fix the README typo · running in relay   ▸</text>
+
     <rect class="comp" x="236" y="460" width="440" height="40" rx="6"/>
     <text class="t-s" x="250" y="484">Message lead…</text>
   </g>
@@ -112,6 +121,8 @@
     <circle class="numc" cx="548" cy="224" r="8"/><text class="num" x="545" y="228">3</text>
     <circle class="numc" cx="628" cy="338" r="8"/><text class="num" x="625" y="342">4</text>
     <circle class="numc" cx="912" cy="30" r="8"/><text class="num" x="909" y="34">5</text>
+    <circle class="numc" cx="586" cy="36" r="8"/><text class="num" x="583" y="40">6</text>
+    <circle class="numc" cx="628" cy="374" r="8"/><text class="num" x="625" y="378">7</text>
   </g>
 
   <g id="legend">
@@ -119,5 +130,7 @@
     <text class="t-mono" x="16" y="556">2 · where the turns read word for word begin; reads “summarized” only with G1’s summary on · 3 · lead's message to researcher, one line, opens to full text</text>
     <text class="t-mono" x="16" y="572">4 · a reply waiting behind your turn (D2): it lands as its own line after lead answers you</text>
     <text class="t-mono" x="16" y="588">5 · Talk: this worker's exchanges with the others, grouped by worker, from the message log (D1) · closes to give the centre the width</text>
+    <text class="t-mono" x="16" y="604">6 · lead's one directory, a project (D3): asked the first time a job needs files; talking needs none</text>
+    <text class="t-mono" x="16" y="620">7 · a task lead filed for coder, which runs it through Claude Code in lead's directory (D4); opens to the run, read only</text>
   </g>
 </svg>
