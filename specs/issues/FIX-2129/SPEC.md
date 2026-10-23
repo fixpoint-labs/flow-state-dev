@@ -9,7 +9,7 @@
 | **answers a worker's question in the Inbox** | Sees "can't be answered from Shift Manager" for any stop in a run a task started | Answers it there; the same try carries on, still holding its claim |
 | **reads a task, as its filer or on a screen** | Sees *in progress*, with no sign it waits on a person or on what | Sees it waiting on a person, with the stop's kind, prompt and deadline, in `getTask` and `listTasks` |
 | **writes a block that asks a person** | Calls `ctx.suspend` with a reason. An approval past its expiry reads as a rejection; a question past it stays parked for good | Calls `ctx.waitForUser({ kind, prompt, deadline? })`, 7 days by default. At the deadline an approval is a no, and a question or review fails the try unless the block catches it |
-| **cancels a task waiting on a person** | The row cancels, but its run stays parked and its Inbox item stays open | The block resumes `cancelled` and runs to its end. Nothing it writes or returns lands; the item closes |
+| **cancels a task waiting on a person** | The row cancels, but its run stays parked and its Inbox item stays open | The block resumes `cancelled` and runs to its end. Nothing it writes to the task or returns is kept; what it does elsewhere lands, as any block's does. The item closes |
 | **stops a run waiting on them** | The try fails and the task runs again, asking again | The run ends, its item closes, and the task is cancelled |
 | **answers and cancels at the same moment** | n/a | One wins; the other is told the stop is already resolved |
 
@@ -45,8 +45,8 @@ never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/holds-a-task-waiting-on-a-person/` · model-free (`n/a`) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1. b: an unhandled question fails try 1, a caught one completes it, an approval reads as a no. c: the block runs on once, its progress write is refused, a task it files never starts, the row stays `cancelled` with no output. d: `cancelled` on try 1. Every leg: the item leaves the pending list. An answer and a cancel together resume once |
-| **Input** | A question, "Which region?", and an approval. Another prompt or kind must pass too |
+| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1; a task the request filed before it stopped ends during the stop, and its `onTaskSettled` runs then, not after the answer. b: an unhandled question fails try 1, a caught one completes it, an approval reads as a no. c: the block runs on once, its progress write is refused, the row stays `cancelled` with no output. d: `cancelled` on try 1. Every leg: the item leaves the pending list. An answer and a cancel together resume once |
+| **Input** | A question, "Which region?", an approval, and a review |
 | **Anti-game** | Don't assert on the store's writes or the suspension record; read through `getTask` and the Inbox's pending read. The work counter is a real row, not item counts |
 | **Control that must fail** | `GOAL_CONTROL=stop-fails-attempt` fails leg d on *cancelled on try 1*; `GOAL_CONTROL=public-resume` fails leg a on *answered through the route*. Today's `main` fails legs a to c: it has no `waitForUser` |
 
@@ -64,7 +64,7 @@ runs the work twice.
 + const asked = await ctx.waitForUser({ kind: "question", prompt: "Which region?", deadline: 2 * DAY });
 + if (asked.cancelled) return { skipped: true };   // the task was cancelled: nothing here is recorded
 + const region = asked.answer;
-+ // At the deadline this throws; catch isPersonDeadline(error) to go ahead, end, or ask again (D1).
++ // At the deadline a question throws SuspensionTimeoutError; catch it to go ahead, end, or ask again (D1).
 ```
 
 **What a reader of the task sees:**
@@ -78,7 +78,11 @@ runs the work twice.
 **Docs:** update the `core`, `engine`, `client` and `orchestration` READMEs;
 `apps/docs/docs/configuration/runtime.md` (the deadline setting), `apps/docs/docs/api/client.md`
 (the answer call) and `apps/docs/docs/orchestration/task-board.md` (a task waiting on a person: its
-reads, cancel and stop). No new page; the one-way-to-stop story is FIX-2131's (the epic's docs line).
+reads, cancel and stop). Amend the concept's "defaulting to the host's" (`workforce-coordination-concept.md`,
+*Inbox items*) to name the person-stop default ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). A
+changeset with a migration note: a raw `ctx.suspend` person's stop now gets the mark, the cancel and
+the stop, a question's expiry now resumes its block, and `contracts` gains a `cancelled` status. No
+new page; the one-way-to-stop story is FIX-2131's (the epic's docs line).
 
 ## How a stop reaches the row, and how it ends
 
@@ -114,13 +118,14 @@ The resumed run is admitted on its claim as today.
 | FIX-2077's rule that a stopped request fails its try (`task-request.ts` header) | **Amended** for a stop of a person's stop: the task is cancelled instead (rule 12) |
 | [FIX-1816](../FIX-1816/BUSINESS-RULES.md) BR-16a and BR-16b: a stop of a person's gate ends the turn; whichever resolves the gate first wins | **Kept and extended:** the fence also takes the cancel and the deadline, and the stop also cancels the task |
 | FIX-1846: an expired approval continues as a rejection marked expired | **Builds on:** an approval's deadline reads as a no. A question's and a review's now resume too |
+| `SuspensionTimeoutError` in `core`: exported, documented as thrown on a timed-out resume, recognized by the generator and the tool executor, and thrown by nothing. `SuspendOptions.timeoutMs`, which sets the stop's `expiresAt` | **Reused:** it is the deadline error ([D1](DECISIONS.md#d1)). `waitForUser`'s `deadline` is written to the same `expiresAt`, so a stop has one clock |
 | Three copies of "is it a person's stop": the gate's `stopOf`, `PERSON_REASONS` and the Lab send's `stopOf` | **Replaces** the gate's with one predicate in `contracts` ([ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what)); FIX-2131 moves the other two |
 | The Inbox's `REOPENED_SOURCES` check: a person's stop in a task's run is unanswerable | **Removes** it for a person's stop: every listed item answers through the answer route ([ER-7](../../epics/FIX-2058/DECISIONS.md#who-owns-what)) |
 
 | The debt | |
 |---|---|
-| **Removes** | The gate's own person check; the Inbox's unanswerable task stops; a stop that runs a person's work twice; a cancelled task's run left parked |
-| **Adds** | `ctx.waitForUser`, the answer route and client call, a person-deadline host setting ([D3](../../epics/FIX-2058/DECISIONS.md#d3)), a `cancelled` suspension status, the row's record of its stop, the cancel's debt. All permanent by design. `ctx.suspend` with a person's reason stays the lower-level form of the same stop, as it is under the wait gate |
+| **Removes** | The gate's own person check; a declared error nothing throws; the Inbox's unanswerable task stops; a stop that runs a person's work twice; a cancelled task's run left parked |
+| **Adds** | `ctx.waitForUser`, the answer route and client call, a person-deadline host setting ([D3](../../epics/FIX-2058/DECISIONS.md#d3)), a `cancelled` suspension status, the row's record of its stop, the cancel's debt. All permanent by design. `ctx.suspend` with a person's reason stays the lower-level form of the same stop, as it is under the wait gate; new code asks with `waitForUser` |
 | **Leaves** | `PERSON_REASONS` and the send's `stopOf` until FIX-2131; the parks until FIX-2131 and FIX-2132; the error reporter's own `ctx.suspend` question, which works as before |
 
 **Net: flat here, down across the epic.** One call is added and one check replaced; the three
@@ -135,8 +140,8 @@ twice or leave an item open.
 **[The debt](#whats-already-here-and-the-debt), flat:** one call and one route added, one check
 replaced. If wrong: `ctx.suspend` and `waitForUser` drift into two ways to ask.
 
-1. **[D1](DECISIONS.md#d1) · At its deadline, a question or review throws an error the block may
-   catch; an approval reads as a no.** If wrong: every asking flow wraps a catch it didn't need.
+1. **[D1](DECISIONS.md#d1) · At its deadline, a question or review throws `SuspensionTimeoutError`,
+   which the block may catch; an approval reads as a no.** If wrong: every asking flow wraps a catch it didn't need.
 2. **[D2](DECISIONS.md#d2) · A screen answers a person's stop through a route that takes only the
    stop's id and the answer.** Engineering, decided. If wrong: two answer paths to keep in step.
 

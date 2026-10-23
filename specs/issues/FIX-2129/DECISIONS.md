@@ -9,7 +9,7 @@ ER-7 and D3. Two calls are left, both about the surface the later children write
 
 ```mermaid
 flowchart TD
-  I["FIX-2129"] --> D1["D1 · at the deadline a question or review throws, an approval is a no"]
+  I["FIX-2129"] --> D1["D1 · at the deadline a question or review throws SuspensionTimeoutError, an approval is a no"]
   D1 -.->|"rejected · a flow that never checks carries on with no answer"| X1["always return a no-answer outcome"]
   I --> D2["D2 · an answer route that takes only the stop's id and the answer"]
   D2 -.->|"rejected · caller gate data re-enters a task's handler"| X2["open the resume route to task runs behind a check"]
@@ -18,13 +18,13 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · At its deadline, a question or review throws an error the block may catch; an approval reads as a no
+## D1 · At its deadline, a question or review throws `SuspensionTimeoutError`, which the block may catch; an approval reads as a no
 
 | | |
 |---|---|
 | **Instead of** | Always returning a "no answer by the deadline" outcome, as a wait on a task does, for the block to branch on |
-| **Because** | The concept says an unhandled deadline fails a question's or review's try, using an attempt. With a returned outcome nothing can tell a block that handled it from one that forgot, so the forgetful one carries on with an empty answer and nobody sees it. A thrown error is unhandled exactly when nobody catches it. An approval needs neither: a no is a safe default, so it returns `answer: false` with a deadline flag |
-| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and throws a deadline error a block tells apart with one exported check. FIX-2131 to FIX-2133 and every app that asks a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's question must not |
+| **Because** | The concept says an unhandled deadline fails a question's or review's try, using an attempt. With a returned outcome nothing can tell a block that handled it from one that forgot, so the forgetful one carries on with an empty answer and nobody sees it. A thrown error is unhandled exactly when nobody catches it. An approval keeps what FIX-1846 shipped, a no marked as the deadline's: that is a choice, not the same rule. A no leaves undone the one thing that waited for a yes, and a question's empty answer has no value that is safe to carry on with |
+| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and at a question's or review's deadline throws `SuspensionTimeoutError`, which `core` already exports and nothing throws today: one timeout error for one suspension mechanism. The throw is a block's contract; FIX-2131's model tool returns a deadline result instead, since a model can't catch. ER-1's "share answered and deadline" means the same words, not the same shape: a wait returns `{ answered: false, deadline: true }`. FIX-2131 to FIX-2133 and every app that asks a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's question must not |
 
 ![D1: a question throws and an approval is a no, chosen, beside always returning a no-answer outcome. Decides it: a flow that never checks. Price: a catch around the call](figures/d1-deadline-throws.svg)
 
@@ -69,14 +69,24 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   cancelling side pays it at once through the request host, and a board touch or the sweeper
   resends it. It never goes over HTTP.
 - **A cancelled block's writes to the task are refused** by the claim fence already there, and
-  nothing it returns is recorded. A task it files after the cancel never starts; whether it is
-  refused or filed cancelled is the implementer's.
+  nothing it returns is recorded. What it does outside the task (a call, another scope's resource)
+  lands, as any block's does. A stop it asks after the cancel resolves `cancelled` at once and opens
+  no item.
 - **A user's stop of a person's stop cancels the task.** The request's ending tells the gate the
   stop was a person's, and the gate cancels where it would have failed the try. A stop of a running
   request, or of a wait, is unchanged.
-- **The deadline** rides the stop's existing expiry, which FIX-2063's sweeper fires. The host
-  setting has its own bounds beside `waitDeadlines`; its name is the implementer's. A question's and
-  a review's expiry now resume the block, as an approval's already does (FIX-1846).
+- **The deadline** is the call's `deadline`, else the host's person-stop default, written to the
+  stop's existing `expiresAt` (the field `timeoutMs` sets), which FIX-2063's sweeper fires: one
+  clock. The host setting has its own bounds beside `waitDeadlines`; its name is the implementer's.
+  The default applies to `waitForUser` only: a raw `ctx.suspend` keeps its own `timeoutMs`, none
+  meaning no deadline, so an approval that waits today doesn't start expiring. A question's and a
+  review's expiry now resume the block, as an approval's already does (FIX-1846). A question that
+  fails its try at the deadline is asked again on the next try, so it can stay open a deadline per
+  try.
+- **A person's stop never holds back a notice.** A task the stopped request filed ends during the
+  stop, and its `onTaskSettled` runs then (ER-2). A filing request parked on a person's stop counts
+  as ended for holding notices back; a wait after the resume that finds the notice taken says it is
+  arriving as a notice, the mechanism #3733 adds.
 - **The model's `waitForUser` tool is FIX-2131's**, which swaps it for `parkOnQuestion` in one
   change, so a model never has two ways to ask.
 - **Messages:** a send or call to a session waiting on a person queues (rule 10, epic D2). A test
@@ -87,6 +97,8 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 | Alternative | Why not |
 |---|---|
 | Always return the deadline outcome (simpler: one result shape) | D1: a forgotten check carries on with no answer |
+| Return a typed result with a `deadline` variant the block must narrow | No runtime signal: a block can still read past it (`asked.answer ?? ""`), and plain JavaScript has no narrowing. An unhandled deadline must fail the try, which only a throw does |
+| A new deadline error with its own check | `SuspensionTimeoutError` already exists for this and nothing throws it: two timeout errors for one mechanism |
 | Read the stop's text from the suspension store at `getTask` time | A store read per row in `listTasks`, and a second read path for the same fact |
 | Cancel the run's stop synchronously in `updateTask`, with no debt | A crash between the row's cancel and the resume leaves the run parked for good, which is today's bug |
 | Keep failing the try on a user's stop | Rule 12, and it asks the person the same question again |
@@ -97,6 +109,20 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 - **No POC.** The kept claim and the same-try resume are shipped and tested (FIX-2077,
   `settles-when-its-work-is-over.test.ts`), and the fence is FIX-1816's. The new parts are wiring
   on those. No counted fact carries the approach, so there is no checker either.
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- **Cursor (PR #3735, review):** "Cancel debt + sweeper resend … reusing existing `cancelOwed` / `payOwedResumes` shape (if semantically identical) would avoid a second debt sweep path at implementation time." And: "If cancel debt uses filtered `list({ … })` like `payOwedResumes`, say so in implementer notes to avoid full-board scan amplification."
+- **Cursor:** "All four writers through `resumeUnderLease` / `expireUnderLease` only — no second resolve path in shift-manager." "Predicate only in `contracts`; gate switches off inline `stopOf` list." "Cancel debt paid via a **host seam** like `resumeWait`, not orchestration importing engine routes (package boundary)."
+- **Cursor:** "Residuals are sweeper O(pending) and more post-expiry continuations once questions gain deadlines … Optional: cap/limit on `waitingFor.prompt` size in list payloads (BP-042-adjacent)."
+- **Cursor:** "Six-people table + `what-changes.svg` largely duplicate"; "'Decided, not asked' re-states several FIX-2058 ER bullets"; "Two mermaid 'four endings → fence' diagrams (SPEC + DECISIONS) could be one with a link."
+- **Second look:** "Moving `PERSON_REASONS` is a three-line import swap, and leaving it creates a window where `contracts` and `shift-manager` can disagree on a custom reason. Suggest moving all three in this PR, or adding a test that fails if they diverge. Also note `SuspensionReason` has an open `string & {}` arm, so the predicate must say what a custom reason is." (The epic gives the move to FIX-2131; a divergence test is the implementer's call.)
+- **Second look:** "The `REOPENED_SOURCES` removal (`reads.ts:240`, used at `:837`) is only for a person's stop. Please confirm the implementer deletes the set and not only that branch, so it isn't left as dead config."
+- **Second look:** "What happens if the suspension is superseded (replayed block, re-driven turn) while the row still points at the old id? … A crash-recovery path is worth one line."
+- **Second look:** "The goal check relies on a 'wait past three lease periods'. Please give the check a way to fake time. Without it the check is slow and flaky."
+- **Second look:** on approval: "make the deadline flag part of the type so the narrowed `answer` can't be read without it."
 
 ## How it got here
 
