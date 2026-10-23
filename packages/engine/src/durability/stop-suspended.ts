@@ -222,8 +222,8 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
  * the durability sweep gives it (step 2b). An interrupted request with no such
  * gate died while it ran, and nothing drives it again: its work is over.
  *
- * A wait's `ended` (`wait-chain.ts`) reads it; {@link parkedInterruptedIds}
- * builds the parked rule on it. `record.items` must hold the request's log.
+ * A wait's `ended` (`wait-chain.ts`) reads it alone, so it does not see an
+ * unlogged pending gate; {@link parkedInterruptedIds} builds the parked rule on it. `record.items` must hold the request's log.
  */
 export async function drivenAgain(
   provider: Pick<DurabilityProvider, "loadSuspension">,

@@ -434,6 +434,40 @@ describe("stop a parked turn", () => {
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
   });
 
+  // Parked is one rule (`parkedInterruptedIds`): a logged gate that drives the
+  // turn again, or a pending gate stored for it. Both stop paths below read it.
+  it("a turn interrupted behind an approval that expired is stopped, through its own lifecycle", async () => {
+    const seen: string[] = [];
+    const finishedWith: string[] = [];
+    const flow = parkingFlow(seen, { onFinished: (info) => finishedWith.push(info.status) });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "expired", resolvedAt: Date.now() });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(finishedWith).toEqual(["aborted"]);
+    expect(seen).toEqual([]);
+  });
+
+  it("a turn interrupted with a pending gate its log does not name yet is stopped", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "approve");
+    // The gate was written, and the process died before the log append.
+    const record = (await h.stores.request.get(requestId))!;
+    await h.stores.request.set(
+      requestId,
+      { ...record, status: "interrupted", result: undefined, items: (record.items ?? []).filter((i) => (i as { type?: string }).type !== "suspension") },
+      "any"
+    );
+
+    expect((await stop(h, requestId)).status).toBe(204);
+  });
+
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
