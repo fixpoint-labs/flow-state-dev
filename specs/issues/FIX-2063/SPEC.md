@@ -10,7 +10,7 @@
 | **runs `fsdev run` with no config** | The same failure | The run exits 0 saying it waits, and to answer it in `fsdev dev`, which reads the same local database as the same local user ([D1](DECISIONS.md#d1)) |
 | **self-hosts on SQLite or Postgres and never set `durable`** | Stops are refused until they find `durable: true` | Stops work; sequencers now checkpoint and a crashed request resumes; `durable: false` turns it off ([D2](DECISIONS.md#d2)) |
 | **turned durability off, runs on in-memory stores, or built a router with no provider** | A generic error: *"Configure one in your server options"* | Refused at the stop, by an error naming the rule and the setting to change |
-| **reads a no-config `fsdev run`'s state as JSON under `.fsdev/data`** | Works | Reads it from the SQLite file or through `fsdev dev`'s routes; `--capture` keeps events and result, not state. The price of D1 |
+| **reads a no-config `fsdev run`'s state as JSON under `.fsdev/data`** | Works | Reads it from the SQLite file or through `fsdev dev`'s routes, or passes `--store filesystem` to keep the JSON files, single-process ([D1](DECISIONS.md#d1)) |
 | **maintains the framework** | Hosts turn durability on case by case (Shift Manager's lab host, kitchen-sink, the goal hosts) | One default; those opt-ins go |
 
 Suspension becomes the only way work stops for a person
@@ -75,8 +75,8 @@ No-config `fsdev dev` and `fsdev run` change with nothing to write.
 
 **Docs:** update *Advanced → Durable execution → Enabling durability* (on by default where
 stores persist, the opt-out, what it costs, which hosts sweep, in-memory stores opting in for
-tests), the `durable` row in *Configuration → Runtime*, *API → CLI* for `fsdev run`'s store and
-its waiting report (its `.fsdev/data` lines too), the data lines in *DevTool → Setup* and
+tests), the `durable` row in *Configuration → Runtime*, *API → CLI* for `fsdev run`'s store, the
+`--store filesystem` flag and its single-process limit, and the waiting report (its `.fsdev/data` lines too), the data lines in *DevTool → Setup* and
 *DevTool → Overview*, and the engine README. A changeset carries the migration note: sequencers
 checkpoint, a crashed request resumes, a raw `ctx.suspend()` is held, `durable: false` restores
 today. No new page. FIX-2131 owns the stop's story.
@@ -106,10 +106,9 @@ today. No new page. FIX-2131 owns the stop's story.
 | The debt | |
 |---|---|
 | **Removes** | The per-host `durable: true` opt-ins, Shift Manager's conditional one included · host refusals that guard on it, such as the Error Reporter's · the docs' nonexistent `durabilityProvider` option |
-| **Adds** | One fact on the in-memory store adapter: it does not persist. No shim |
-| **Leaves** | The headless proposal's `--store` override (`docs/internal/fsdev-headless-verification-capabilities-design.md`), unfiled: the way back to a run's JSON files, accepted as lost until someone needs it ([D1](DECISIONS.md#d1)) |
+| **Adds** | One fact on the in-memory store adapter: it does not persist. A `--store filesystem` flag on `fsdev run` and `fsdev dev`, the headless proposal's override (`docs/internal/fsdev-headless-verification-capabilities-design.md`), as D1's opt-back. No shim |
 
-**Net: down.** A default replaces a dozen opt-ins and two refusals; one fact on one adapter is added beside it.
+**Net: down.** A default replaces a dozen opt-ins and two refusals; one fact on one adapter and one opt-back flag are added beside it.
 
 ## Sign off
 
@@ -120,17 +119,17 @@ FIX-2133 retire the parks onto a default that drops stops locally.
 **[The debt](#whats-already-here-and-the-debt), net down:** the opt-ins go; nothing kept for
 old callers. If wrong: a host somewhere relied on durability being off.
 
-1. **[D1](DECISIONS.md#d1) · A no-config `fsdev run` uses the database and the user `fsdev dev`
-   uses.** If wrong: agents lose the JSON files they read a run's state from, with nothing
-   shipped in their place.
-2. **[D2](DECISIONS.md#d2) · Durable by default wherever stores persist; in-memory stores and
+1. **[D2](DECISIONS.md#d2) · Durable by default wherever stores persist; in-memory stores and
    `durable: false` refuse at the stop.** If wrong: an app that upgrades checkpoints every
    sequencer step and resumes crashed requests it used to rerun.
-3. **[D3](DECISIONS.md#d3) · The sweeper stays where a router runs; one-shot commands leave the
+2. **[D3](DECISIONS.md#d3) · The sweeper stays where a router runs; one-shot commands leave the
    stop to it.** Engineering, decided. If wrong: a deadline waits for the next server start.
 
-**Open: none.** Number 1 is the one to weigh: it changes where a developer's local runs live.
+**Decided by the owner (2026-10-23):** [D1](DECISIONS.md#d1), a no-config `fsdev run` uses
+`fsdev dev`'s database and user, with `--store filesystem` as the opt-back.
 
-**Ordering:** the implementation that flips the default waits on [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137). Where FIX-2137 sits in the epic is the owner's call.
+**Open: none.** Number 1 is the one to weigh: an upgrade turns durability on for apps that never set it.
+
+**Ordering:** the implementation that flips the default waits on [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137), a direct-route bug now in epic FIX-2058 and parented under it. It stays a hard blocker of the flip.
 
 Improvement · `engine` + `fsdev` + docs · small · epic [FIX-2058](../../epics/FIX-2058/SPEC.md)

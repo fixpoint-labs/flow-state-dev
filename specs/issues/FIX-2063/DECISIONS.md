@@ -2,13 +2,13 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-D1 and D2 are the sign-off surface; D3 is an engineering call the epic's review asked for by name.
+D2 is the sign-off surface. D1 is decided by the owner (2026-10-23), with a `--store filesystem` opt-back. D3 is an engineering call the epic's review asked for by name.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2063"] --> D1["D1 · no-config fsdev run uses fsdev dev's database and user"]
+  I["FIX-2063"] --> D1["D1 · no-config fsdev run uses fsdev dev's database and user · --store filesystem opts back · owner-decided"]
   D1 -.->|"rejected · its stop is answered by nothing local"| X1["keep fsdev run on its own files"]
   I --> D2["D2 · durable by default wherever stores persist · durable false opts out"]
   D2 -.->|"rejected · a stop held in memory is lost silently, against ER-6"| X2["on everywhere, in-memory stores included"]
@@ -19,21 +19,24 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A no-config `fsdev run` uses the database and the user `fsdev dev` uses
+## D1 · A no-config `fsdev run` uses the database and the user `fsdev dev` uses; `--store filesystem` opts back
+
+*Decided by the owner (Jake, 2026-10-23, on #3734). Not open.*
 
 | | |
 |---|---|
 | **Instead of** | Keeping `fsdev run`'s own filesystem store under `.fsdev/data` |
 | **Because** | A stop made by `fsdev run` is answered after the command exits, and the one local host that answers is `fsdev dev`. On separate stores it never sees the stop, and no sweeper reaches its deadline. Nor does it under a different user: the run defaults to `cli-user`, the DevTool to `devuser`, and the session listing is scoped by user, so both commands take one local default. `fsdev chat` already shares the file; SQLite's WAL mode and busy timeout make a run beside a dev server safe |
-| **Locks in** | A no-config run lives in `.fsdev/data/fsdev.db` under the shared local user. Its state is no longer JSON files an agent reads directly: it is read from the SQLite file or through `fsdev dev`'s routes. `--capture` is not a replacement (it carries the command, events and result, never session or resource state), so this is accepted as a loss. Sessions earlier runs wrote to files are not read: local data, no migration, as the epic set for states in flight. A run with an app config is unchanged |
+| **Locks in** | A no-config run lives in `.fsdev/data/fsdev.db` under the shared local user. Its state is no longer JSON files an agent reads directly: it is read from the SQLite file or through `fsdev dev`'s routes. `--capture` is not a replacement (it carries the command, events and result, never session or resource state). |
+| **The opt-back** | `--store filesystem` on `fsdev run` and `fsdev dev` keeps the filesystem store for anyone who wants a run's state as JSON files. Its limit is documented with the flag: the store is single-process, so `fsdev run` and `fsdev dev` can't share it at the same time, and its lease takeover is not atomic. A stop held there is answered only by a `fsdev dev` started on the same store after the run exits. SQLite stays the default |
+| **Also** | Sessions earlier runs wrote to files are not read by the SQLite default: local data, no migration, as the epic set for states in flight; `--store filesystem` still reads them. A run with an app config is unchanged |
 
 ![D1: one local database, chosen, beside fsdev run on its own files. Decides it: a stop made by fsdev run is answered by fsdev dev only on a shared store. Price: a run's state is no longer JSON files. Tie: a run with an app config is unchanged](figures/d1-one-local-store.svg)
 
 It comes down to who answers a run's stop: on its own files, nothing local ever does.
 
-**What would change my mind:** agents depending on a no-config run's JSON files in a way the
-SQLite file can't serve. Then the headless proposal's `--store filesystem` override ships with
-this, as the opt-back.
+The owner chose to ship the opt-back with this rather than accept the JSON files as lost, so
+nobody who reads a run's state from files is left without a way back.
 
 <a name="d2"></a>
 ## D2 · Durable execution is on by default wherever stores persist; `durable: false` turns it off
@@ -99,6 +102,10 @@ more than refusing it. Then that host's adapter sets the default, and D2 narrows
 - **Round 2** — FIX-2132's POC showed a resume reruns finished steps when traces are off, as
   in production (FIX-2137). D2 now ships after FIX-2137, and the goal check runs with traces off
   too, counting the step before the stop.
+- **Owner decisions** (Jake, 2026-10-23, #3734) — D1 ships `--store filesystem` as the opt-back,
+  with its single-process limit documented; SQLite stays the default. FIX-2137 joins epic
+  FIX-2058 as a direct-route bug, parented under it, and stays a hard blocker of D2's default
+  flip.
 
 ## Notes from review
 
@@ -137,4 +144,4 @@ Round 2:
 - "Make it a hard ordering, not a footnote … The spec can land now; the impl PR that flips the
   default must not merge before FIX-2137." — architect. Folded into D2's Locks in and the debt
 
-**Open: none.**
+**Open: none.** D1 and FIX-2137's placement were decided by the owner on 2026-10-23.
