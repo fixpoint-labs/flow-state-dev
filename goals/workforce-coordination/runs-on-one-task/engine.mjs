@@ -19,6 +19,7 @@ import {
   BEHAVIOUR_ROWS,
   CODE,
   EXCLUDE,
+  FORWARDERS,
   KEEP,
   MIGRATION_TABLE,
   PASS_THROUGHS,
@@ -34,12 +35,12 @@ import {
  * Sweep the checkout at `repo`: its tracked files, or `tracked` when given (a tree extracted
  * from another commit, which has no index), reading the migration table at `table` when given.
  * @param {{ repo: string, plants?: Array<{ path: string, text: string }>, tracked?: string[], table?: string }} options
- * @returns {{ findings: Array<{ rule: string, where: string, what: string }>, scanned: Record<string, number>, rows: Array<{ row: string, by: string }>, tools: string[], recorders: Record<string, number>, files: { tracked: number, swept: number, excluded: Map<string, number>, program: number } }}
+ * @returns {{ findings: Array<{ rule: string, where: string, what: string }>, cantTell: string[], scanned: Record<string, number>, rows: Array<{ row: string, by: string }>, tools: string[], recorders: Record<string, number>, files: { tracked: number, swept: number, excluded: Map<string, number>, program: number } }}
  */
 export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tablePath }) {
   const planted = new Map(plants.map((p) => [p.path, p.text]));
   const tracked = given ?? execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: repo, encoding: "utf8" }).split("\n").filter(Boolean);
-  const all = [...tracked, ...planted.keys()];
+  const all = [...new Set([...tracked, ...planted.keys()])];
   const read = (path) => planted.get(path) ?? readFileSync(join(repo, path), "utf8");
   const findings = [];
   const scanned = { tools: 0, removedText: 0, removedTyped: 0, endings: 0, marked: 0, kept: 0 };
@@ -122,38 +123,76 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   const lineText = (sf, node) => sf.text.split("\n")[lineOf(sf, node) - 1] ?? "";
 
   // ---- tools · every task tool the capability declares --------------------------------------
-  // The capability's file is found by what it declares, not by its path: every tool built with
-  // `defineTool` or `handler` in the file that defines `createTaskToolsCapability`, and every
-  // `defineTool` anywhere in the product code.
+  // A tool is a call of core's `handler`, read by symbol, not by spelling: an import under any
+  // name, a namespace member, a local alias (the capability's own `defineTool`) and a
+  // `.withDefaults(...)` result all resolve to it. The calls read are those in the file that
+  // defines `createTaskToolsCapability` and in every file it imports, transitively, from its own
+  // directory, so a tool built in a sibling file and imported is read too. (A tool imported from
+  // another directory of the package is not read: the task board's own handler blocks live there
+  // and aren't tools.) Every allowed name must be read, or the rule stopped reading and the sweep
+  // can't tell (`cantTell`).
+  const cantTell = [];
+  const resolveAlias = (sym) => (sym && sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym);
+  const symbolOf = (expr) => resolveAlias(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
+  const CORE_HANDLER = /\/packages\/core\/(src|dist)\/blocks\/handler\.(d\.)?ts$/;
+  const isCoreHandler = (sym) =>
+    (sym?.declarations ?? []).some((d) => CORE_HANDLER.test(d.getSourceFile().fileName) && (ts.isFunctionDeclaration(d) || ts.isModuleDeclaration(d)) && d.name?.text === "handler");
+  /** Whether `expr` is core's `handler`, through aliases, local variables, conditionals and `.withDefaults`. */
+  const buildsTool = (expr, depth = 0) => {
+    if (expr === undefined || depth > 8) return false;
+    if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isNonNullExpression(expr) || ts.isSatisfiesExpression?.(expr)) return buildsTool(expr.expression, depth + 1);
+    if (ts.isConditionalExpression(expr)) return buildsTool(expr.whenTrue, depth + 1) || buildsTool(expr.whenFalse, depth + 1);
+    if (ts.isBinaryExpression(expr)) return buildsTool(expr.left, depth + 1) || buildsTool(expr.right, depth + 1);
+    if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression) && expr.expression.name.text === "withDefaults") return buildsTool(expr.expression.expression, depth + 1);
+    if (!ts.isIdentifier(expr) && !ts.isPropertyAccessExpression(expr)) return false;
+    const sym = symbolOf(expr);
+    if (isCoreHandler(sym)) return true;
+    return (sym?.declarations ?? []).some((d) => ts.isVariableDeclaration(d) && d.initializer !== undefined && buildsTool(d.initializer, depth + 1));
+  };
   const nameOfTool = (obj) => {
     const prop = obj.properties.find((p) => ts.isPropertyAssignment(p) && p.name.getText() === "name");
-    if (!prop) return undefined;
+    if (!prop) return "(no name read)";
     const init = prop.initializer;
     if (ts.isStringLiteralLike(init)) return init.text;
     if (ts.isCallExpression(init) && init.expression.getText() === "named" && init.arguments[0] && ts.isStringLiteralLike(init.arguments[0])) return init.arguments[0].text;
     return `(computed: ${init.getText()})`;
   };
+  const byFile = new Map(ownFiles.map((sf) => [sf.fileName, sf]));
+  const capabilityFiles = ownFiles.filter((sf) => sf.statements.some((s) => ts.isFunctionDeclaration(s) && s.name?.text === "createTaskToolsCapability"));
+  const toolScope = new Set();
+  const dirOf = (f) => f.slice(0, f.lastIndexOf("/") + 1);
+  const pending = capabilityFiles.map((sf) => [sf, dirOf(sf.fileName)]);
+  while (pending.length > 0) {
+    const [sf, dir] = pending.pop();
+    if (toolScope.has(sf)) continue;
+    toolScope.add(sf);
+    for (const s of sf.statements) {
+      if (!(ts.isImportDeclaration(s) || ts.isExportDeclaration(s)) || !s.moduleSpecifier || !ts.isStringLiteral(s.moduleSpecifier)) continue;
+      const to = ts.resolveModuleName(s.moduleSpecifier.text, sf.fileName, options, host).resolvedModule?.resolvedFileName;
+      const next = to === undefined ? undefined : byFile.get(to);
+      if (next !== undefined && dirOf(next.fileName) === dir) pending.push([next, dir]);
+    }
+  }
   const tools = [];
-  for (const sf of ownFiles) {
-    const isCapabilityFile = /function\s+createTaskToolsCapability\b/.test(sf.text);
+  for (const sf of toolScope) {
     const visit = (node) => {
-      if (ts.isCallExpression(node) && node.arguments[0] && ts.isObjectLiteralExpression(node.arguments[0])) {
-        const callee = node.expression.getText(sf);
-        if (callee === "defineTool" || (isCapabilityFile && callee === "handler")) {
-          const name = nameOfTool(node.arguments[0]);
-          if (name !== undefined) {
-            scanned.tools++;
-            tools.push(name);
-            if (!(name in TOOLS_ALLOWED) && !isMarked(lineText(sf, node.arguments[0]))) {
-              findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, answerTask or parkOnQuestion` });
-            }
-          }
+      if (ts.isCallExpression(node) && buildsTool(node.expression)) {
+        let config = node.arguments[0];
+        while (config !== undefined && (ts.isAsExpression(config) || ts.isParenthesizedExpression(config) || ts.isSatisfiesExpression?.(config))) config = config.expression;
+        const name = config !== undefined && ts.isObjectLiteralExpression(config) ? nameOfTool(config) : `(config not read: ${config?.getText(sf).slice(0, 60) ?? "none"})`;
+        scanned.tools++;
+        tools.push(name);
+        if (!(name in TOOLS_ALLOWED) && !isMarked(lineText(sf, node))) {
+          findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, answerTask or parkOnQuestion` });
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
   }
+  if (capabilityFiles.length === 0) cantTell.push("tools: no file defines createTaskToolsCapability");
+  const unread = Object.keys(TOOLS_ALLOWED).filter((n) => !tools.includes(n));
+  if (unread.length > 0) cantTell.push(`tools: the allowed tools ${unread.join(", ")} were not read, so the rule stopped reading the capability`);
 
   // ---- removed · typed matchers (declared props, members called, union members, doors) -----
   const typeDecls = (name, module) =>
@@ -213,47 +252,105 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     const ct = checker.getTypeOfSymbolAtLocation(claim, arg);
     return !(ct.flags & ts.TypeFlags.Undefined) && !(ct.flags & ts.TypeFlags.Never);
   };
-  /** The nearest enclosing named function (declaration, method, or a variable holding one); anonymous ones are looked through. */
+  /** The name a function is known by: a declaration, a method, or a variable holding one (or, at module scope, a call's result). */
+  const nameOfFunction = (n) => {
+    if ((ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n)) && n.name) return n.name.getText();
+    if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n)) && ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) return n.parent.name.text;
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && ts.isCallExpression(n.initializer) && n.parent.parent && ts.isVariableStatement(n.parent.parent) && n.parent.parent.parent === n.getSourceFile()) return n.name.text;
+    return undefined;
+  };
+  /** The nearest enclosing named function; anonymous ones are looked through. */
   const recorderOf = (node) => {
     for (let n = node.parent; n; n = n.parent) {
-      if ((ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n)) && n.name) return n.name.getText();
-      if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n)) && ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) return n.parent.name.text;
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && ts.isCallExpression(n.initializer) && n.parent.parent && ts.isVariableStatement(n.parent.parent) && n.parent.parent.parent === n.getSourceFile()) return n.name.text;
+      const name = nameOfFunction(n);
+      if (name !== undefined) return name;
     }
     return "(module scope)";
   };
+  // A recorder, and a pass-through, is keyed by name, so each key must name exactly one function:
+  // a second function of that name in the package would be read as the recorder.
+  const declared = new Map();
+  const keyed = new Set([...Object.keys(RECORDERS), ...Object.keys(FORWARDERS), ...PASS_THROUGHS.map((p) => `orchestration:${p}`)]);
+  for (const sf of ownFiles) {
+    const visit = (node) => {
+      const name = nameOfFunction(node);
+      const key = name === undefined ? undefined : `${packageOf(rel(sf))}:${name}`;
+      if (key !== undefined && keyed.has(key)) declared.set(key, [...(declared.get(key) ?? []), `${rel(sf)}:${lineOf(sf, node)}`]);
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  for (const key of keyed) {
+    const at = declared.get(key) ?? [];
+    if (at.length === 1) continue;
+    const what = `CAN'T TELL: ${key} names ${at.length} functions, so its writes can't be told from another's`;
+    cantTell.push(`endings: ${what}`);
+    findings.push({ rule: "endings", where: at.join(" and ") || MIGRATION_TABLE, what });
+  }
+  /** The pass-through helper `expr` resolves to by symbol (a renamed import, a re-export, a namespace member, a local alias), if any. */
+  const passThroughOf = (expr, depth = 0) => {
+    if (expr === undefined || depth > 8) return undefined;
+    if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isNonNullExpression(expr)) return passThroughOf(expr.expression, depth + 1);
+    if (!ts.isIdentifier(expr) && !ts.isPropertyAccessExpression(expr)) return undefined;
+    for (const d of symbolOf(expr)?.declarations ?? []) {
+      if (ts.isFunctionDeclaration(d) && d.name && PASS_THROUGHS.includes(d.name.text) && packageOf(rel(d.getSourceFile())) === "orchestration") return d.name.text;
+      if (ts.isVariableDeclaration(d) && d.initializer) {
+        const via = passThroughOf(d.initializer, depth + 1);
+        if (via !== undefined) return via;
+      }
+    }
+    return undefined;
+  };
+  const ENDS = ["complete", "fail"];
+  const onCollection = (receiver, name) => isCollection(checker.getTypeAtLocation(receiver)) || (name !== undefined && declaredOnCollection(name));
   const recorders = {};
   for (const sf of ownFiles) {
     const path = rel(sf);
     const visit = (node) => {
+      let ending;
+      // A collection's complete or fail, read in any shape: called, `.call`/`.bind`, passed on,
+      // by element access, or destructured.
+      if (ts.isPropertyAccessExpression(node) && ENDS.includes(node.name.text) && onCollection(node.expression, node.name)) {
+        ending = `${node.getText(sf)}`;
+      } else if (ts.isElementAccessExpression(node) && isCollection(checker.getTypeAtLocation(node.expression))) {
+        const arg = node.argumentExpression;
+        if (!ts.isStringLiteralLike(arg) || ENDS.includes(arg.text)) ending = `${node.getText(sf)} (element access)`;
+      } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const prop = (node.propertyName ?? node.name).getText(sf);
+        if (ENDS.includes(prop) && isCollection(checker.getTypeAtLocation(node.parent))) ending = `${prop} destructured from a task collection`;
+      }
       if (ts.isCallExpression(node)) {
-        let ending;
         if (ts.isPropertyAccessExpression(node.expression)) {
           const method = node.expression.name.text;
-          if (["complete", "fail", "cancel", ...memberRules.flatMap((m) => m.props)].includes(method) && (isCollection(checker.getTypeAtLocation(node.expression.expression)) || declaredOnCollection(node.expression.name))) {
+          if (["cancel", ...memberRules.flatMap((m) => m.props)].includes(method) && onCollection(node.expression.expression, node.expression.name)) {
             for (const m of memberRules) {
               if (m.props.includes(method) && !isMarked(lineText(sf, node))) {
                 findings.push({ rule: "removed", where: `${path}:${lineOf(sf, node)}`, what: `${m.row} (${m.owner}) live: a task collection's ${method}() is called` });
               }
             }
-            if (method === "complete" || method === "fail") ending = `${node.expression.getText(sf)}()`;
             if (method === "cancel" && passesClaim(node.arguments[2])) ending = `${node.expression.getText(sf)}() under the caller's own claim`;
           }
-        } else if (ts.isIdentifier(node.expression) && PASS_THROUGHS.includes(node.expression.text)) {
-          const fn = node.expression.text;
-          if (fn !== "advisoryCancel" || passesClaim(node.arguments[3])) ending = `${fn}()`;
         }
-        if (ending !== undefined) {
-          const fn = recorderOf(node);
-          const key = `${packageOf(path)}:${fn}`;
-          scanned.endings++;
-          if (PASS_THROUGHS.includes(fn)) {
-            // The helper's own write: its callers are read in its place.
-          } else if (key in RECORDERS) {
-            recorders[key] = (recorders[key] ?? 0) + 1;
-          } else if (!isMarked(lineText(sf, node))) {
-            findings.push({ rule: "endings", where: `${path}:${lineOf(sf, node)}`, what: `${ending} in ${key}, which is not a recorder` });
-          }
+        const helper = passThroughOf(node.expression);
+        if (helper !== undefined) {
+          if (helper !== "advisoryCancel" || passesClaim(node.arguments[3])) ending = `${node.expression.getText(sf)}() (${helper})`;
+        } else if (ts.isPropertyAccessExpression(node.expression) && ["call", "apply", "bind"].includes(node.expression.name.text)) {
+          const via = passThroughOf(node.expression.expression);
+          if (via !== undefined) ending = `${node.expression.getText(sf)}() (${via})`;
+        }
+      }
+      if (ending !== undefined) {
+        const fn = recorderOf(node);
+        const key = `${packageOf(path)}:${fn}`;
+        scanned.endings++;
+        if (key.startsWith("orchestration:") && PASS_THROUGHS.includes(fn)) {
+          // The helper's own write: its callers are read in its place.
+        } else if (key in FORWARDERS) {
+          // A collection wrapper handing its own complete or fail on: its callers are read in its place.
+        } else if (key in RECORDERS) {
+          recorders[key] = (recorders[key] ?? 0) + 1;
+        } else if (!isMarked(lineText(sf, node))) {
+          findings.push({ rule: "endings", where: `${path}:${lineOf(sf, node)}`, what: `${ending} in ${key}, which is not a recorder` });
         }
       }
       // A worker flow's door: a `defineFlow` whose config builds a worker's config schema.
@@ -278,6 +375,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
 
   return {
     findings,
+    cantTell,
     scanned,
     rows,
     tools,

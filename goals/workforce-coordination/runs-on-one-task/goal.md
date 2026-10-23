@@ -12,11 +12,11 @@
 **Signal:** each failure is tagged `<leg>:<assertion>`, and each assertion is **structural** or **judgment** (`TAGS` in `run.mts`, printed with every failure; D1).
 
 - **a**, the concept's walk less the call and the Inbox: `a:routed-listed` launch's routed task for writer is in Alice's list; `a:files-research` writer files researcher's task; `a:ends-running` writer's task stays running past its first request and its research; `a:one-settled` one `onTaskSettled` per research ending starts writer again; `a:step-dispatched` writer files its fact-check as a step in a session of its own; `a:drain-waits` the task ends after that step; `a:answers-after-steps` writer gets a turn after the step ends; `a:lands-once` the draft lands once, under writer's name; `a:draft-content` with the held-out word and researcher's fact; `a:follow-up` Alice's follow-up from the finished task runs in its session and returns a new version; `a:original-unchanged` the original reads byte-identical; `a:once` every ending reaches its filer once.
-- **j1** (a team that hands out work): `j1:files`, `j1:waits-in-request` editor reads the research's ending with `getTask` in the same request, `j1:read-once` and so no notice turn runs for it, `j1:answer`, `j1:tools` no task turn is offered a task tool beyond the allow list, `j1:once`.
+- **j1** (a team that hands out work): `j1:routed` (structural) launch routed Alice's message to editor, `j1:files` (judgment) editor filed for researcher, `j1:waits-in-request` editor reads the research's ending with `getTask` in the same request, `j1:read-once` and so no notice turn runs for it, `j1:answer`, `j1:tools` no task turn is offered a task tool beyond the allow list, `j1:once`.
 - **j2** (a team that runs a coordinator): `j2:steered` Alice's steer of an open routed task is taken, `j2:steer-shows` the draft carries the steer word, `j2:cancelled` her cancel of another ends it, `j2:cancel-heard-once` launch's session hears it once and no line lands.
-- **b**: `b:killed` the server dies after researcher's ending is written and before it is sent (FIX-2078's kill point, reused); `b:hears-in-due-time` after a restart with no touch, writer hears it within the due time plus 2 s; `b:once`.
-- **c**: researcher's model refuses every call. `c:files-dependent`, `c:fails-out`, `c:dependent-cancelled`, `c:one-failure-notice` writer hears one failure notice naming the dependent it cancelled, and none for the dependent; `c:once`.
-- **sweep** (`sweep.mjs`, the engine CI runs): 0 live lines, and `--control` reports exactly its plants.
+- **b**: `b:routed` (structural), `b:files-research` (judgment) writer filed research before the kill; `b:killed` the server dies after researcher's ending is written and before it is sent (FIX-2078's kill point, reused); `b:hears-in-due-time` after a restart with no touch, writer hears it within the due time plus 2 s; `b:once`.
+- **c**: researcher's model refuses every call. `c:routed` (structural), `c:files-dependent` (judgment), `c:fails-out`, `c:dependent-cancelled`, `c:one-failure-notice` writer hears one failure notice naming the dependent it cancelled, and none for the dependent; `c:once`.
+- **sweep** (`sweep.mjs`, the engine CI runs): 0 live lines and no CAN'T TELL (every allowed tool read, every recorder key naming one function), and `--control` reports exactly its plants.
 - **children** (`children.mts`): every child's goal or check with its controls, the set read from Linear; plus the coordinators, hand-offs and FIX-2005 privacy goals, and the goal-seek loop.
 - **gaps** (`gaps.mts`): the 31 in-scope gaps rows, each mapped to the checks that read it.
 
@@ -30,7 +30,7 @@
 
 - `GOAL_CONTROL=no-sweeper-payment` (FIX-2078's, imported from its goal's `controls.mts`) must FAIL **`b:hears-in-due-time`**.
 - `GOAL_CONTROL=no-cascade` (FIX-2080's, imported from its goal's `controls.mts`) must FAIL **`c:dependent-cancelled`**.
-- `node sweep.mjs --control` plants a sixth tool, a removed name, a write through a renamed variable and a claim-passing cancel, and must report exactly those. `node sweep.mjs --at <commit>` sweeps another commit's tree: today's `main` before the epic must FAIL.
+- `node sweep.mjs --control` plants tools built through a renamed local alias, a template name, a renamed `handler` import and a namespace import in sibling files; a removed name; endings through a renamed variable, a claim-passing cancel, a renamed and a namespace pass-through, destructuring, element access and `.call`; and a second function named like a recorder. It must report exactly those, and say it can't tell when the real capability's `createTask` isn't built with `handler`. `node sweep.mjs --at <commit>` sweeps another commit's tree: today's `main` before the epic must FAIL.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

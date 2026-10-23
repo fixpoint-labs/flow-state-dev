@@ -5,8 +5,9 @@
  *
  * Three rules:
  *
- * - **tools**: every task tool the task-tools capability declares, by literal name or
- *   `named()`, is on {@link TOOLS_ALLOWED}. A name not on it fails, deprecated ones included.
+ * - **tools**: every task tool the task-tools capability declares (a call of core's
+ *   `handler`, read by symbol), by literal name or `named()`, is on {@link TOOLS_ALLOWED}. A name
+ *   not on it fails, deprecated ones included; an allowed name not read can't be told.
  * - **removed**: no surface the epic's migration table removes is live in the swept files.
  *   Each name row of the table is matched by a scoped matcher where its name means that
  *   surface ({@link REMOVED}); a behaviour row has no name and is proved by its owning child's
@@ -14,8 +15,9 @@
  *   fails when a row has neither.
  * - **endings**: every caller of a task collection's `complete` or `fail`, read by type through
  *   the TypeScript program, and every `cancel` that passes the caller's own claim, sits in a
- *   recorder function on {@link RECORDERS}. A write helper on {@link PASS_THROUGHS} is not a
- *   recorder: its own callers are read in its place.
+ *   recorder function on {@link RECORDERS}. A write helper on {@link PASS_THROUGHS}, and a
+ *   collection wrapper on {@link FORWARDERS}, is not a recorder: its own callers are read in
+ *   its place. Each key names exactly one function, or the sweep can't tell.
  *
  * A line that names a removed surface on purpose (a BP-030 legacy read, a refusal) carries
  * the `retired-name-refusal` marker, FIX-1875's and FIX-1876's spelling. The allow lists change
@@ -72,7 +74,7 @@ export const EXCLUDE = [
 ];
 
 /** Code and the pages a user reads: where a removed name is live. */
-const SWEPT_TEXT = /^(packages|apps|goals)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs)$|^(apps\/docs\/(docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
+const SWEPT_TEXT = /^(packages|apps)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs)$|^(apps\/docs\/(docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 /** The pages a user reads. */
 const PAGES = /^(apps\/docs\/(docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 /** Product code only (no tests): where a common word means the removed surface only in a declaration. */
@@ -240,6 +242,18 @@ export const RECORDERS = {
   "patterns:createRecordArgument": "a pattern's own inline recorder (patterns stay)",
   "patterns:createRecordContribution": "a pattern's own inline recorder (patterns stay)",
   "patterns:routedSpecialists": "a pattern's own inline recorder (patterns stay)",
+};
+
+/**
+ * Collection wrappers: functions that build a task collection over another one and hand its
+ * `complete` or `fail` on (a bound method, or a method picked by name). Not recorders: the
+ * wrapper is itself a collection, so every call of its `complete` or `fail` is read in its place.
+ * Keyed like {@link RECORDERS}.
+ */
+export const FORWARDERS = {
+  "workforce:guarded": "the conversation board's ref: complete and fail bound through, deleting a finished top task's chain count",
+  "workforce:byRow": "the plan board: a write sent to the ledger holding the row (the plan's, or the board's)",
+  "workforce:notOnAStep": "the plan board: complete and fail refused on a step, else sent to the board",
 };
 
 /**

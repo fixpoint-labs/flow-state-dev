@@ -95,10 +95,13 @@ jobs:
       - name: One task surface
         run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs
 
-      # Every plant (a sixth tool, a removed name, a write through a renamed
-      # variable, a claim-passing cancel) must be reported, and nothing else,
-      # or the sweep above could pass because it stopped reading a rule.
+      # Every plant (tools built under other names and in sibling files, a
+      # removed name, endings written through renames, helpers, destructuring,
+      # element access and .call, a second function named like a recorder) must
+      # be reported, and nothing else, or the sweep above could pass because it
+      # stopped reading a rule. It runs even when the sweep above is red.
       - name: The task-surface sweep reports its plants
+        if: ${{ !cancelled() }}
         run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --control
 
   # The package tests, split across runners by scripts/test-shards.mjs. Each

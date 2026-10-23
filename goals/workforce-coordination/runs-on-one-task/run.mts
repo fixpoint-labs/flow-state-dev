@@ -51,6 +51,7 @@ const show = (value: unknown, n = 400) => JSON.stringify(value)?.slice(0, n);
 /** The task-surface sweep, the engine CI runs, as one JSON result. */
 interface Swept {
   findings: Array<{ rule: string; where: string; what: string }>;
+  cantTell: string[];
   tools: string[];
   scanned: Record<string, number>;
   rows: Array<{ row: string; by: string }>;
@@ -77,6 +78,7 @@ export const TAGS: Record<string, Kind> = {
   "a:follow-up": "structural",
   "a:original-unchanged": "structural",
   "a:once": "structural",
+  "j1:routed": "structural",
   "j1:files": "judgment",
   "j1:waits-in-request": "structural",
   "j1:answer": "judgment",
@@ -87,9 +89,12 @@ export const TAGS: Record<string, Kind> = {
   "j2:steer-shows": "judgment",
   "j2:cancelled": "structural",
   "j2:cancel-heard-once": "structural",
+  "b:routed": "structural",
+  "b:files-research": "judgment",
   "b:killed": "structural",
   "b:hears-in-due-time": "structural",
   "b:once": "structural",
+  "c:routed": "structural",
   "c:files-dependent": "judgment",
   "c:fails-out": "structural",
   "c:dependent-cancelled": "structural",
@@ -214,7 +219,7 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
 function gradeJ1(store: string, j: Awaited<ReturnType<typeof journeyHandsOut>>, cast: Cast, tell: Tell): string[] {
   const f: string[] = [];
   const E = j.routed;
-  if (E === undefined) return [`j1:files — no routed task for desk.editor`];
+  if (E === undefined) return [`j1:routed — no routed task for desk.editor`];
   const editorSession = E.run?.sessionId;
   const research = filedBy(store, E.id).filter((r) => r.assignee === CAST.researcher);
   if (research.length === 0) f.push(`j1:files — editor filed nothing for desk.researcher`);
@@ -328,7 +333,9 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
       const R = allTaskRows(store).find((r) => r.id.startsWith(`routed:${k.turn.requestId}:`));
       const research = R === undefined ? [] : filedBy(store, R.id).filter((r) => r.assignee === CAST.researcher);
       const ended = research.find((r) => r.status === "completed");
-      if (R === undefined || ended === undefined || !Object.keys(ended.metadata ?? {}).some((m) => m.startsWith("noticeOwed:"))) {
+      if (R === undefined) return [`b:routed — no routed task for desk.writer`];
+      if (research.length === 0) return [`b:files-research — writer filed nothing for desk.researcher before the server died`];
+      if (ended === undefined || !Object.keys(ended.metadata ?? {}).some((m) => m.startsWith("noticeOwed:"))) {
         return [`b:killed — wanted researcher's ending written with its notice owed when the server died: ${show({ R: R?.status, research: research.map((r) => [r.status, Object.keys(r.metadata ?? {})]) })}`];
       }
       const writerSession = R.run?.sessionId;
@@ -365,7 +372,7 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
         const c = await walkFails({ origin: served.origin, store, shipped, cast, say });
         if (patches.length > 0) assertPatched(patches, REPO_ROOT, mark);
         const R = c.routed;
-        if (R === undefined) return [`c:files-dependent — no routed task for desk.writer`];
+        if (R === undefined) return [`c:routed — no routed task for desk.writer`];
         const research = filedBy(store, R.id).filter((r) => r.assignee === CAST.researcher);
         const dependent = research.find((r) => ((r as { deps?: string[] }).deps ?? []).length > 0);
         const first = research.find((r) => r !== dependent && ((dependent as { deps?: string[] } | undefined)?.deps ?? []).includes(r.id));
@@ -399,6 +406,7 @@ await runGoal(async (failures, tell) => {
     const plain = (swept ??= sweepJson());
     tell.over("sweep · task tools the capability declares", plain.tools);
     for (const finding of plain.findings) failures.push(`sweep:${finding.rule} — ${finding.where} ${finding.what}`);
+    for (const reason of plain.cantTell) failures.push(`sweep:cant-tell — ${reason}`);
     report.push(`sweep: ${plain.tools.length} tools, ${plain.scanned.endings} ending writes, ${plain.rows.length} migration rows; ${plain.findings.length} live lines`);
     const ctl = spawnSync(process.execPath, [join(HERE, "sweep.mjs"), "--control"], { encoding: "utf8" });
     if (ctl.status !== 0) failures.push(`sweep:control — the plants were not reported exactly:\n${ctl.stdout.slice(-1500)}`);

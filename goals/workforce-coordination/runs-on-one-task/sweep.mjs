@@ -10,10 +10,11 @@
  *   node goals/workforce-coordination/runs-on-one-task/sweep.mjs --control  # every plant must be reported
  *   node goals/workforce-coordination/runs-on-one-task/sweep.mjs --json     # the result as one JSON line (run.mts)
  *
- * Exit 0 = PASS, 1 = FAIL, 3 = CAN'T TELL (a rule read nothing).
+ * Exit 0 = PASS, 1 = FAIL, 3 = CAN'T TELL (a rule read nothing, an allowed tool wasn't read, or a
+ * recorder's name names more than one function).
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sweepTaskSurface } from "./engine.mjs";
@@ -22,37 +23,99 @@ import { MIGRATION_TABLE, ROOTS, TOOLS_ALLOWED } from "./rules.mjs";
 const args = new Set(process.argv.slice(2));
 const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 
+/** The capability's file, copied into plants so a planted tool is read the way the real ones are. */
+const CAPABILITY = "packages/orchestration/src/skills/task-tools-capability.ts";
+const COLLECTION = 'import type { TaskCollectionRef, TaskClaimTicket } from "@flow-state-dev/orchestration/tasks";\n';
+
 /**
- * The negative control: one plant per rule, and a claim-passing cancel besides, each in a file
- * the sweep reads through the same path as a real one. Each must be reported, and nothing else
- * may change.
+ * The negative control: plants per rule, each in a file the sweep reads through the same path as
+ * a real one. Each must be reported `expect` times (default once) and nothing else may change.
+ * `cantTell` is how many CAN'T TELL lines a plant adds.
  */
-const PLANTS = [
-  {
-    rule: "tools",
-    path: "packages/orchestration/src/skills/__planted_tool__.ts",
-    text: 'import { defineTool } from "@flow-state-dev/core";\nexport const poke = defineTool({ name: "pokeTask", description: "Poke a task." });\n',
-  },
-  {
-    rule: "removed",
-    path: "packages/workforce/src/__planted_removed__.ts",
-    text: "export const legacy = { tool: \"dispatchTask\" };\n",
-  },
-  {
-    rule: "endings",
-    path: "packages/workforce/src/__planted_complete__.ts",
-    text:
-      'import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";\n' +
-      "export async function wrapUp(rows: TaskCollectionRef, taskId: string, output: unknown) {\n  const renamed = rows;\n  await renamed.complete(taskId, output);\n}\n",
-  },
-  {
-    rule: "endings",
-    path: "packages/workforce/src/__planted_cancel__.ts",
-    text:
-      'import type { TaskCollectionRef, TaskClaimTicket } from "@flow-state-dev/orchestration/tasks";\n' +
-      "export async function giveUp(board: TaskCollectionRef, id: string, claim: TaskClaimTicket) {\n  await board.cancel(id, \"done here\", { claim });\n}\n",
-  },
-];
+function plantsOf(root) {
+  const capability = readFileSync(join(root, CAPABILITY), "utf8");
+  const anchor = "  const createTask = defineTool({";
+  if (!capability.includes(anchor) || !capability.includes("const defineTool = ")) throw new Error(`the control can't plant: ${CAPABILITY} has no \`${anchor.trim()}\``);
+  // A copy of the capability with its local alias renamed, a sixth tool built with it, one with a
+  // template name, and two tools imported from sibling files: one through a renamed import of
+  // `handler`, one through a namespace import.
+  const copy =
+    'import { nudge } from "./__planted_side_tool__";\nimport { prod } from "./__planted_namespace_tool__";\n' +
+    capability
+      .replace(anchor, '  const poke = defineTool({ name: named("pokeTask"), description: "Poke a task." } as any);\n  const twice = defineTool({ name: `poke${"Twice"}` } as any);\n' + anchor)
+      .replaceAll("defineTool", "makeTool");
+  return [
+    { rule: "tools", path: "packages/orchestration/src/skills/__planted_capability__.ts", text: copy, expect: 2 },
+    {
+      rule: "tools",
+      path: "packages/orchestration/src/skills/__planted_side_tool__.ts",
+      text: 'import { handler as defineIt } from "@flow-state-dev/core";\nexport const nudge = defineIt({ name: "nudgeTask" } as any);\n',
+    },
+    {
+      rule: "tools",
+      path: "packages/orchestration/src/skills/__planted_namespace_tool__.ts",
+      text: 'import * as core from "@flow-state-dev/core";\nexport const prod = core.handler({ name: "prodTask" } as any);\n',
+    },
+    {
+      rule: "removed",
+      path: "packages/workforce/src/__planted_removed__.ts",
+      text: "export const legacy = { tool: \"dispatchTask\" };\n",
+    },
+    {
+      rule: "endings",
+      path: "packages/workforce/src/__planted_complete__.ts",
+      text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, taskId: string, output: unknown) {\n  const renamed = rows;\n  await renamed.complete(taskId, output);\n}\n",
+    },
+    {
+      rule: "endings",
+      path: "packages/workforce/src/__planted_cancel__.ts",
+      text: COLLECTION + "export async function giveUp(board: TaskCollectionRef, id: string, claim: TaskClaimTicket) {\n  await board.cancel(id, \"done here\", { claim });\n}\n",
+    },
+    {
+      rule: "endings",
+      path: "packages/orchestration/src/__planted_renamed_helper__.ts",
+      text: 'import { advisoryComplete as done } from "./tasks/collection/advisory-write-back";\nexport async function finish(ref: any, id: string) {\n  await done(ref, id, "ok");\n}\n',
+    },
+    {
+      rule: "endings",
+      path: "packages/orchestration/src/__planted_namespace_helper__.ts",
+      text: 'import * as writes from "./tasks/collection/advisory-write-back";\nexport async function flop(ref: any, id: string) {\n  await writes.advisoryFail(ref, id, "no");\n}\n',
+    },
+    {
+      rule: "endings",
+      path: "packages/workforce/src/__planted_destructured__.ts",
+      text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, id: string) {\n  const { complete } = rows;\n  await complete(id, 1);\n}\n",
+    },
+    {
+      rule: "endings",
+      path: "packages/workforce/src/__planted_element__.ts",
+      text: COLLECTION + 'export async function giveUp(rows: TaskCollectionRef, id: string) {\n  await rows["fail"](id, "no");\n}\n',
+    },
+    {
+      rule: "endings",
+      path: "packages/workforce/src/__planted_call__.ts",
+      text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, id: string) {\n  await rows.complete.call(rows, id, 1);\n}\n",
+    },
+    {
+      // A second function named like a recorder: its write would be read as the recorder's.
+      rule: "endings",
+      path: "packages/orchestration/src/__planted_recorder__.ts",
+      text: COLLECTION + "export async function releaseRow(rows: TaskCollectionRef, id: string) {\n  await rows.complete(id, 1);\n}\n",
+      cantTell: 1,
+    },
+  ];
+}
+
+/**
+ * The floor's control: the real capability with `createTask` built by something other than
+ * `handler`. The tools rule then can't read an allowed name, and must say it can't tell.
+ */
+function floorPlant(root) {
+  const capability = readFileSync(join(root, CAPABILITY), "utf8");
+  const anchor = "const createTask = defineTool({";
+  if (!capability.includes(anchor)) throw new Error(`the control can't plant: ${CAPABILITY} has no \`${anchor}\``);
+  return [{ path: CAPABILITY, text: capability.replace(anchor, "const createTask = ((config: any) => config)({") }];
+}
 
 const started = Date.now();
 const control = args.has("--control");
@@ -69,11 +132,13 @@ if (at !== undefined) {
 }
 const table = at === undefined ? undefined : join(repo, MIGRATION_TABLE);
 const plain = sweepTaskSurface({ repo: root, tracked, table });
+const PLANTS = control ? plantsOf(root) : [];
 const result = control ? sweepTaskSurface({ repo: root, tracked, table, plants: PLANTS }) : plain;
+const floor = control ? sweepTaskSurface({ repo: root, tracked, table, plants: floorPlant(root) }) : undefined;
 const secs = ((Date.now() - started) / 1000).toFixed(1);
 if (args.has("--json")) {
-  const { findings, tools, scanned, rows } = result;
-  console.log(JSON.stringify({ findings, tools, scanned, rows, allowed: Object.keys(TOOLS_ALLOWED) }));
+  const { findings, cantTell, tools, scanned, rows } = result;
+  console.log(JSON.stringify({ findings, cantTell, tools, scanned, rows, allowed: Object.keys(TOOLS_ALLOWED) }));
   process.exit(0);
 }
 
@@ -93,20 +158,26 @@ if (control) {
   const key = (f) => `${f.rule} ${f.where} ${f.what}`;
   const before = new Set(plain.findings.map(key));
   const added = result.findings.filter((f) => !before.has(key(f)));
-  const missed = PLANTS.filter((p) => !added.some((f) => f.rule === p.rule && f.where.startsWith(p.path)));
-  const stray = added.filter((f) => !PLANTS.some((p) => f.rule === p.rule && f.where.startsWith(p.path)));
-  for (const p of PLANTS) console.log(`  plant ${p.rule.padEnd(8)} ${p.path}: ${missed.includes(p) ? "MISSED" : "reported"}`);
+  const of = (p) => added.filter((f) => f.rule === p.rule && f.where.includes(p.path));
+  const missed = PLANTS.filter((p) => of(p).length !== (p.expect ?? 1));
+  const stray = added.filter((f) => !PLANTS.some((p) => f.rule === p.rule && f.where.includes(p.path)));
+  for (const p of PLANTS) console.log(`  plant ${p.rule.padEnd(8)} ${p.path}: ${of(p).length} of ${p.expect ?? 1} reported${missed.includes(p) ? "  MISSED" : ""}`);
   for (const f of stray) console.log(`  stray   ${f.rule} ${f.where}  ${f.what}`);
-  if (missed.length > 0 || stray.length > 0 || added.length !== PLANTS.length) {
-    console.log(`CONTROL BROKEN: ${missed.length} plant(s) passed, ${stray.length} other line(s) changed, ${added.length} added for ${PLANTS.length} plants`);
+  const wantCantTell = plain.cantTell.length + PLANTS.reduce((n, p) => n + (p.cantTell ?? 0), 0);
+  const floorOk = floor.cantTell.some((c) => c.startsWith("tools:") && c.includes("createTask")) && floor.findings.length === plain.findings.length;
+  console.log(`  floor   createTask built apart from handler: ${floorOk ? "CAN'T TELL, as it must" : `NOT REPORTED (${JSON.stringify(floor.cantTell)})`}`);
+  const expected = PLANTS.reduce((n, p) => n + (p.expect ?? 1), 0);
+  if (missed.length > 0 || stray.length > 0 || added.length !== expected || result.cantTell.length !== wantCantTell || !floorOk) {
+    console.log(`CONTROL BROKEN: ${missed.length} plant(s) not reported as expected, ${stray.length} other line(s) changed, ${added.length} added for ${expected} expected, ${result.cantTell.length} CAN'T TELL for ${wantCantTell}, floor ${floorOk ? "ok" : "missed"}`);
     process.exit(1);
   }
-  console.log(`CONTROL OK: the plain run's ${plain.findings.length} live lines and exactly the ${PLANTS.length} plants`);
+  console.log(`CONTROL OK: the plain run's ${plain.findings.length} live lines, exactly the ${expected} planted ones from ${PLANTS.length} plants, and the floor`);
   process.exit(0);
 }
 
-if (result.scanned.tools === 0 || result.scanned.endings === 0 || result.rows.length === 0) {
-  console.log(`CAN'T TELL — a rule read nothing (tools ${result.scanned.tools}, endings ${result.scanned.endings}, rows ${result.rows.length})`);
+if (result.scanned.tools === 0 || result.scanned.endings === 0 || result.rows.length === 0 || result.cantTell.length > 0) {
+  console.log(`CAN'T TELL — a rule read nothing (tools ${result.scanned.tools}, endings ${result.scanned.endings}, rows ${result.rows.length})${result.cantTell.map((c) => `\n  ${c}`).join("")}`);
+  for (const f of result.findings) console.log(`  ${f.rule.padEnd(8)} ${f.where}  ${f.what}`);
   process.exit(3);
 }
 if (result.findings.length === 0) {
