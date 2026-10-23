@@ -583,6 +583,39 @@ describe("a step filed session: \"new\" runs in a session of its own, and its dr
     }
   }, 30_000);
 
+  // The plan's last open step is the one in its own session: when it ends, nothing is left to work,
+  // and the request that waited on it still owes the worker's answer (FIX-2110).
+  it("answers once after it when it is the plan's last step, and the answer is the request's result", async () => {
+    const h = host({ durable: true });
+    try {
+      await h.state.getRouter();
+      h.controls.plans.writer = plan.slice(0, 2);
+      h.controls.ownSession.add("Fact-check the outline");
+      const talk = await h.open("alice", "writer");
+      const run = await h.act("alice", talk, "respond", { message: "write a post" }, "stepper");
+      expect(run.error, messageOf(run.error)).toBeUndefined();
+      await h.settled(20_000);
+
+      const steps = await h.steps("alice");
+      expect(steps.map((row) => [row.id, row.status])).toEqual([
+        ["s-outline", "completed"],
+        ["s-check", "completed"]
+      ]);
+      const own = /#own@(\S+)$/.exec(String(steps.find((row) => row.id === "s-check")!.output))![1]!;
+      const answers = h.controls.turns.filter((t) => t.sessionId === talk && t.kind === "answer");
+      expect(answers).toHaveLength(1);
+      // Told how the step in its own session ended: with what only that session produced.
+      expect(answers[0]!.message).toContain(own);
+      // The request's result is that answer, not the turn's before the drain.
+      const requests = await (await h.state.getRuntime()).stores.request.list({ sessionId: talk });
+      const respond = requests.find((r) => r.actionName === "respond");
+      expect(respond?.status).toBe("completed");
+      expect(String(respond?.result?.output)).toMatch(/^answered: The steps you filed for yourself have ended/);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
   it("refuses a step filed session: \"ongoing\": a step runs here, or in a new session of its own", async () => {
     const h = host({ durable: true });
     try {
