@@ -126,13 +126,14 @@ flowchart LR
 | Ways a harness reports to its host during a run | **One:** `HarnessSessionHook` / `onSession` (core, fed by harness-manager's slot). **Twins** it: `HarnessUsageHook` / `onUsage`, as FIX-2141 *Decided, not asked* reserved |
 | `probeClaudeAccount` (claude-code) | **Builds on** it: the reader maps its answer, so there is no second account read (FIX-2141, *Decided, not asked*) |
 | FIX-2141's window shape: *"Percent is 0 to 100 as the vendor sent it, never derived"* | **Amends** it: the percent may be absent, and a level says why. Claude's fraction is scaled to 0 to 100; nothing else is derived |
+| FIX-2141's record (account, plan, `checkedAt`, windows) | **Amends** it: adds `accountAt`, when the account was last set, so an account change is one ordered step. A row stored without it reads as 0 |
 | The Error Reporter runs Claude Code outside harness-manager (FIX-1983) | **Leaves** it unrecorded ([D1](DECISIONS.md#d1)) |
 | Kitchen-sink's Claude Code mode runs `claudeCodeAgent` with no harness-manager | **Leaves** it unrecorded: it has no usage query to feed |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing. The event was dropped, not handled |
-| **Adds** | One hook type and one slot feed (twins of the session pair), one reader, a one-window write, a level on the window. Permanent by design |
+| **Adds** | One hook type and one slot feed (twins of the session pair), one reader, a one-window write, a level on the window, `accountAt` on the record. Permanent by design |
 | **Leaves** | Below Claude's warning line there is no percent, until Anthropic stabilises a usage read (the SDK's call says not to rely on it). The Error Reporter's runs ([D1](DECISIONS.md#d1)) |
 
 **Net: up, small.** One hook beside its twin and one source into an existing store.
