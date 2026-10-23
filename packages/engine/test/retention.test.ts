@@ -580,34 +580,48 @@ describe("applyRetentionPolicy", () => {
   describe("interrupted requests", () => {
     // The stale sweep writes `interrupted` over a run that died: no
     // `completedAtMs`, `finalizedAtMs` still null, and `interruptedAt` set.
-    const interrupted = (id: string, startedAtMs: number, interruptedAt: number): RequestRecord => ({
-      ...makeRequest(id, SESSION_ID, { startedAtMs, completedAtMs: startedAtMs, itemCount: 2, status: "interrupted", finalizedAtMs: null }),
-      completedAtMs: undefined,
-      interruptedAt
+    const interrupted = (
+      id: string,
+      startedAtMs: number,
+      interruptedAt: number | undefined,
+      opts: { itemCount?: number; gate?: string } = {}
+    ): RequestRecord => {
+      const base = makeRequest(id, SESSION_ID, {
+        startedAtMs, completedAtMs: startedAtMs, itemCount: opts.itemCount ?? 2, status: "interrupted", finalizedAtMs: null
+      });
+      return {
+        ...base,
+        completedAtMs: undefined,
+        ...(interruptedAt !== undefined ? { interruptedAt } : {}),
+        // A parked run's log names the gate it is parked on.
+        items: [...(base.items ?? []), ...(opts.gate !== undefined ? [{ type: "suspension", suspensionId: opts.gate } as never] : [])]
+      };
+    };
+    const gate = (requestId: string, suspensionId: string, status: "pending" | "approved") => ({
+      suspensionId,
+      requestId,
+      flowKind: "test-flow",
+      actionName: "run",
+      sessionId: SESSION_ID,
+      userId: "user1",
+      reason: "human_approval" as const,
+      message: "Approve?",
+      status,
+      blockInstanceId: "inst",
+      stepIndex: 0,
+      createdAt: 350,
+      ...(status === "pending" ? {} : { resolvedAt: 360, resolvedBy: "user1" })
     });
+    const policy = resolveRetentionPolicy({ maxAge: 1_000 })!;
 
     it("evicts one past maxAge, and keeps one that still holds a pending gate", async () => {
       const stores = await setupStores([
         interrupted("req_dead", 100, 200),
-        interrupted("req_parked", 300, 400),
+        interrupted("req_parked", 300, 400, { gate: "susp_1" }),
         makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
       ]);
-      await stores.suspensions.set({
-        suspensionId: "susp_1",
-        requestId: "req_parked",
-        flowKind: "test-flow",
-        actionName: "run",
-        sessionId: SESSION_ID,
-        userId: "user1",
-        reason: "human_approval",
-        message: "Approve?",
-        status: "pending",
-        blockInstanceId: "inst",
-        stepIndex: 0,
-        createdAt: 350
-      });
+      await stores.suspensions.set(gate("req_parked", "susp_1", "pending"));
 
-      const policy = resolveRetentionPolicy({ maxAge: 1_000 })!;
       const result = await applyRetentionPolicy(
         stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, createCheckpointDurabilityProvider(stores)
       );
@@ -615,6 +629,72 @@ describe("applyRetentionPolicy", () => {
       expect(result.deletedRequestIds).toEqual(["req_dead"]);
       expect(await stores.request.get("req_dead")).toBeUndefined();
       expect(await stores.request.get("req_parked")).toBeDefined();
+    });
+
+    // A person resolved the gate, and the sweep's re-drive has not yet run
+    // the turn on: the record is what that re-drive continues.
+    it("keeps one whose gate is resolved and still owes a re-drive", async () => {
+      const stores = await setupStores([
+        interrupted("req_owed", 300, 400, { gate: "susp_1" }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
+      ]);
+      await stores.suspensions.set(gate("req_owed", "susp_1", "approved"));
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, createCheckpointDurabilityProvider(stores)
+      );
+
+      expect(result.deletedRequestIds).toEqual([]);
+      expect(await stores.request.get("req_owed")).toBeDefined();
+    });
+
+    // The sweep wrote it and no run is left to stamp `finalizedAtMs`: it is
+    // held for the rollout-safety bound after `interruptedAt`, even past maxAge.
+    it("holds one the sweep wrote for the rollout-safety bound after it was found interrupted", async () => {
+      const stores = await setupStores([
+        interrupted("req_swept", 100, 1_000),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 500_000, completedAtMs: 500_100, itemCount: 2 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs! - 1);
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const atBound = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs!);
+      expect(atBound.deletedRequestIds).toEqual(["req_swept"]);
+    });
+
+    // The parked turn is the oldest, so were it evictable it would go first;
+    // kept, its items (7 and its gate) and the current request's fill the
+    // budget, and the newer completed turn is evicted in its place.
+    it("counts a parked one toward maxItems, so other history is evicted in its place", async () => {
+      const stores = await setupStores([
+        interrupted("req_parked", 100, 150, { itemCount: 7, gate: "susp_1" }),
+        makeRequest("req_old", SESSION_ID, { startedAtMs: 1_000, completedAtMs: 1_100, itemCount: 5, finalizedAtMs: 1_200 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 2_000, completedAtMs: 2_100, itemCount: 2 }),
+      ]);
+      await stores.suspensions.set(gate("req_parked", "susp_1", "pending"));
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 10, terminalGraceMs: 60_000 }, 1_000_000, undefined,
+        createCheckpointDurabilityProvider(stores)
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_old"]);
+      expect(await stores.request.get("req_parked")).toBeDefined();
+    });
+
+    // A record without `interruptedAt` (BP-030) ages from when it started.
+    it("ages one with no interruptedAt from its start", async () => {
+      const stores = await setupStores([
+        interrupted("req_legacy", 100, undefined),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 500_000, completedAtMs: 500_100, itemCount: 2 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 100 + policy.legacyGraceMs! - 1);
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const atBound = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 100 + policy.legacyGraceMs!);
+      expect(atBound.deletedRequestIds).toEqual(["req_legacy"]);
     });
   });
 });

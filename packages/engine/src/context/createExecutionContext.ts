@@ -695,13 +695,24 @@ export async function createExecutionContext<
 
   // The windowed list already filters by status at the store; exclude the
   // current request (defends a retry that reuses an id), an interrupted turn
-  // that is parked on a pending gate or that a retry re-ran (`past-turns.ts`),
+  // that will run again (parked) or that a retry re-ran (`past-turns.ts`),
   // keep only the settled items of an interrupted turn (a call the kill cut
   // off has no result to show), then sort ascending for stable history
   // ordering. Reused by all()/client() (via priorItems) and history() (via
   // loadLLMHistory).
   const retried = retriedIds(priorRequests, options.metadata);
-  const parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
+  // A gate read that fails costs this turn a view that may show a parked
+  // turn, never the turn itself: nothing is treated as parked, and it is logged.
+  let parked = new Set<string>();
+  try {
+    parked = await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, priorRequests);
+  } catch (error) {
+    logRuntimeEvent(options.logger ?? DEFAULT_RUNTIME_LOGGER, "warn", "[flow-state] history could not read the gates of interrupted turns", {
+      requestId,
+      sessionId,
+      error: String(error)
+    });
+  }
   const settledPriorRequests = priorRequests
     .filter((r) => r.id !== requestId)
     .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))

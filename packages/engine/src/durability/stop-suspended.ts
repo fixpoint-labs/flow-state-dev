@@ -38,6 +38,7 @@
 import { isWaitGate, isExpiredApproval, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { DurabilityProvider } from "./types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
@@ -213,6 +214,27 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
   if (isWaitGate(gate)) return undefined;
   const actions = Object.keys(RESUME_ACTION_STATUS) as ResumeAction[];
   return actions.find((action) => RESUME_ACTION_STATUS[action] === gate.status);
+}
+
+/**
+ * Whether an `interrupted` request will run again: the last gate on its log is
+ * still pending (a resume drives it), or resolved and owed a re-drive, which
+ * the durability sweep gives it (step 2b). An interrupted request with no such
+ * gate died while it ran, and nothing drives it again: its work is over.
+ *
+ * The one definition of a parked `interrupted` request: a wait's `ended`
+ * (`wait-chain.ts`), history and session retention (`execution/past-turns.ts`)
+ * all read it. `record.items` must hold the request's log.
+ */
+export async function drivenAgain(
+  provider: Pick<DurabilityProvider, "loadSuspension">,
+  record: Pick<RequestRecord, "id" | "items">
+): Promise<boolean> {
+  const gateId = latestGateIdOf(record);
+  if (gateId === undefined) return false;
+  const gate = await provider.loadSuspension(record.id, gateId);
+  if (gate === null) return false;
+  return gate.status === "pending" || owesRedrive(gate);
 }
 
 /** Whether this gate owes a re-drive. The sweep and {@link redriveResolvedGate} both use it. */

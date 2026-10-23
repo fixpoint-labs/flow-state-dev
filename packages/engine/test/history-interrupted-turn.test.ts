@@ -142,32 +142,67 @@ describe("history across a turn the host died in", () => {
     expect(history).not.toContain("Draw a ticket.");
   });
 
-  // An interrupted request still holding a pending gate is parked, not dead: a
-  // resume drives the same id again. Like a `suspended` one, it is left out
-  // until it finishes, so a restart does not change what other turns see.
+  /** `drew`, parked: its log names the gate it stopped at. */
+  const parkedOn = (id: string, startedAtMs: number, ticket: string, gateId: string) => {
+    const record = drew(id, "interrupted", startedAtMs, ticket);
+    return { ...record, items: [...(record.items ?? []), { type: "suspension", suspensionId: gateId } as never] };
+  };
+  const gate = (requestId: string, status: "pending" | "approved") => ({
+    suspensionId: `susp_${requestId}`,
+    requestId,
+    flowKind: "chat",
+    actionName: "run",
+    sessionId: SESSION,
+    userId: "alice",
+    reason: "human_approval" as const,
+    message: "Approve?",
+    status,
+    blockInstanceId: "gen_1",
+    stepIndex: 0,
+    createdAt: 1001,
+    ...(status === "pending" ? {} : { resolvedAt: 1002, resolvedBy: "alice" })
+  });
+  const withProvider = (stores: ReturnType<typeof createInMemoryStores>, provider = createCheckpointDurabilityProvider(stores)) => ({
+    effectiveRuntimeConfig: { durabilityProvider: provider } as unknown as RuntimeConfig
+  });
+
+  // An interrupted request that will run again under the same id is parked,
+  // not dead: its gate is pending (a resume drives it), or resolved and owed
+  // the sweep's re-drive. Like a `suspended` one, it is left out until it
+  // finishes, so a restart does not change what other turns see.
   it("leaves out an interrupted turn that still holds a pending gate", async () => {
     const stores = createInMemoryStores();
-    await stores.request.set("req_parked", drew("req_parked", "interrupted", 1000, "TCK-PARKED"), "any");
+    await stores.request.set("req_parked", parkedOn("req_parked", 1000, "TCK-PARKED", "susp_req_parked"), "any");
     await stores.request.set("req_dead", drew("req_dead", "interrupted", 2000, "TCK-DEAD"), "any");
-    await stores.suspensions.set({
-      suspensionId: "susp_1",
-      requestId: "req_parked",
-      flowKind: "chat",
-      actionName: "run",
-      sessionId: SESSION,
-      userId: "alice",
-      reason: "human_approval",
-      message: "Approve?",
-      status: "pending",
-      blockInstanceId: "gen_1",
-      stepIndex: 0,
-      createdAt: 1001
-    });
+    await stores.suspensions.set(gate("req_parked", "pending"));
 
-    const history = await historyOf(stores, {
-      effectiveRuntimeConfig: { durabilityProvider: createCheckpointDurabilityProvider(stores) } as unknown as RuntimeConfig
-    });
+    const history = await historyOf(stores, withProvider(stores));
     expect(history).not.toContain("TCK-PARKED");
     expect(history).toContain("TCK-DEAD");
+  });
+
+  it("leaves out an interrupted turn whose gate is resolved and still owes a re-drive", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_owed", parkedOn("req_owed", 1000, "TCK-OWED", "susp_req_owed"), "any");
+    await stores.suspensions.set(gate("req_owed", "approved"));
+
+    const history = await historyOf(stores, withProvider(stores));
+    expect(history).not.toContain("TCK-OWED");
+  });
+
+  // A gate read that fails costs one turn's view, never the turn: nothing is
+  // treated as parked.
+  it("still builds the turn when the gates cannot be read", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_parked", parkedOn("req_parked", 1000, "TCK-PARKED", "susp_req_parked"), "any");
+    const broken = {
+      ...createCheckpointDurabilityProvider(stores),
+      loadSuspension: async () => {
+        throw new Error("the gate store is down");
+      }
+    };
+
+    const history = await historyOf(stores, withProvider(stores, broken));
+    expect(history).toContain("TCK-PARKED");
   });
 });

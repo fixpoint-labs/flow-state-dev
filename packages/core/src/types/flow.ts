@@ -334,7 +334,10 @@ export type SessionConfig = {
   /**
    * Bounds the cross-turn history loaded per request to the most recent
    * `turns` past turns (default 50): completed requests, and requests cut
-   * short when their server died, with only what they had finished. This caps the store read and
+   * short when their server died, with only what they had finished. The
+   * window is counted before an interrupted request that a retry re-ran, or
+   * one still parked on a gate, is left out, so those take a slot and a full
+   * window can show fewer than `turns` turns. This caps the store read and
    * the default generator's in-prompt history; the full session stays
    * retrievable via the state endpoint. Per-call `history({ limit })`
    * refines within this window — it cannot widen it. Use a positive

@@ -48,8 +48,7 @@ import {
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { DurabilityProvider } from "./types";
 import { resumeWaitGate, type WaitResumeDeps } from "./resume-wait-gate";
-import { latestGateIdOf } from "./resume-under-lease";
-import { owesRedrive } from "./stop-suspended";
+import { drivenAgain } from "./stop-suspended";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { TASK_SOURCE } from "../execution/transport-sources";
 
@@ -257,23 +256,6 @@ export function createRequestWaits(inputs: {
 
 /** Request statuses after which a request runs no more of its own work. */
 const WORK_OVER: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);
-
-/**
- * Whether an `interrupted` request will run again: the last gate on its log is
- * still pending (a resume drives it), or resolved and owed a re-drive, which
- * the durability sweep gives it (step 2b). An interrupted request with no such
- * gate died while it ran, and nothing drives it again: its work is over.
- */
-async function drivenAgain(
-  provider: Pick<DurabilityProvider, "loadSuspension">,
-  record: Pick<RequestRecord, "id" | "items">
-): Promise<boolean> {
-  const gateId = latestGateIdOf(record);
-  if (gateId === undefined) return false;
-  const gate = await provider.loadSuspension(record.id, gateId);
-  if (gate === null) return false;
-  return gate.status === "pending" || owesRedrive(gate);
-}
 
 /** Request statuses after which a request does no more work. */
 const ENDED: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);

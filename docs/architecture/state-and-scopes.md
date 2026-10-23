@@ -340,7 +340,7 @@ await ctx.session.items.history({ limit: 20 })
 await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The history view converts the items of completed requests with `history: true` into `{ role, content }` message pairs for model context assembly. A request its host died in (`interrupted`) counts too, with only its settled items: the message that started it and the tool calls that finished are part of the conversation, a call the kill cut off is not. Two interrupted requests are left out: one still parked on a pending gate (a resume drives it again, as with a `suspended` one), and one a `/retry` re-ran under a new id (`metadata.retryOf`), since the retry is the turn. Session retention bounds the same set (`execution/past-turns.ts`).
+The history view converts the items of completed requests with `history: true` into `{ role, content }` message pairs for model context assembly. A request its host died in (`interrupted`) counts too, with only its settled items: the message that started it and the tool calls that finished are part of the conversation, a call the kill cut off is not. Two interrupted requests are left out: one still parked on a gate that drives it again (pending, or resolved and owed a re-drive), as with a `suspended` one, and one a `/retry` re-ran under a new id (`metadata.retryOf`), since the retry is the turn. Session retention reads the same statuses and the same parked rule (`execution/past-turns.ts`), but not `retryOf`.
 
 ## Session Journal
 
