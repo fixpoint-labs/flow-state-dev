@@ -33,6 +33,7 @@ export type Piece = {
   maxAttempts?: number;
   held?: boolean;
   followUpOf?: string;
+  deps?: string[];
 };
 
 /** What the splitter's turns do, by worker id: the test sets and changes these. */
@@ -54,6 +55,12 @@ export type SplitControls = {
   batch: Set<string>;
   /** What a worker's turn waits on before it files its pieces (not on a notice). */
   holdBeforeFiling: Record<string, Promise<void>>;
+  /**
+   * Once, the next time a worker's turn files: after it has read its board
+   * (the request's snapshot) and before it files, call `reached`, then wait on
+   * `release` (FIX-2114: a dependency another request ends meanwhile).
+   */
+  holdAfterResolve: Record<string, { reached: () => void; release: Promise<void> }>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -88,6 +95,14 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
       if (ref === undefined) {
         controls.refusals.push({ worker, error: "no_delegation_board" });
         return `${worker} has no board`;
+      }
+      const afterResolve = controls.holdAfterResolve[worker];
+      if (afterResolve !== undefined) {
+        delete controls.holdAfterResolve[worker];
+        // Read the board, as a turn's tools do before they file: the snapshot this request keeps.
+        ref.list();
+        afterResolve.reached();
+        await afterResolve.release;
       }
       const initOf = ({ goal, assignee, id, ...settings }: Piece) => ({ goal, ...(assignee ? { assignee } : {}), ...(id ? { id } : {}), ...settings });
       const refused = (error: unknown) =>
@@ -162,7 +177,8 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
     failAfterFiling: new Set(),
     holdAfterFiling: {},
     batch: new Set(),
-    holdBeforeFiling: {}
+    holdBeforeFiling: {},
+    holdAfterResolve: {}
   };
   const host = bootBoardHost({
     standard: splitWorkers(),

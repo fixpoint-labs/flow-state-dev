@@ -7,12 +7,14 @@ import type { ModulePatch } from "../../lib/index.mts";
 
 /** Each named control, by its `GOAL_CONTROL` name. */
 export const PATCHES: Record<string, ModulePatch[]> = {
-  // The sweeper fires no wake: only a fast path or a touch pays a debt.
+  // The sweeper fires no wake: only a fast path or a touch pays a debt. The
+  // patch skips the fire of each due wake. The wake step still resumes waits
+  // past their deadline (FIX-2082), a debt this goal does not grade.
   "no-sweeper-payment": [
     {
       module: "packages/engine/src/durability/durability-sweeper.ts",
-      from: String.raw`  if \(fireWake === undefined \|\| wakes === undefined\) return;`,
-      to: "  return;"
+      from: String.raw`      if \(fireWake === undefined\) continue;`,
+      to: "      continue;"
     }
   ]
 };

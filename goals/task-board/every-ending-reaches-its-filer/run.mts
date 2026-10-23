@@ -30,7 +30,7 @@
  *      with no touch, within the lease's end plus 2 s the row is reclaimed or
  *      settled
  *
- * Control: GOAL_CONTROL=no-sweeper-payment turns the sweeper's wake step off
+ * Control: GOAL_CONTROL=no-sweeper-payment stops the sweeper firing any due wake
  * (a scratch patch to the engine as it loads; `goals/lib/module-patch.mts`).
  * Must FAIL leg b on "the filer hears within due time" and leg e.
  *

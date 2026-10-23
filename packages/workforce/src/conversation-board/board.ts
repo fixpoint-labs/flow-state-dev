@@ -386,7 +386,8 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
  * The session a row runs in, as the one-open-task rule keys it (FIX-2080):
  * a task's own session (its root's, for a follow-up), or, filed `session:
  * "ongoing"`, the delegate's ongoing session for the conversation, or the
- * workstream session its filing resolved (FIX-2083).
+ * workstream session its filing resolved (FIX-2083). A follow-up's row
+ * carries its root's setting, so it keys where its root ran (FIX-2111).
  */
 function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
   if (task.assignee === undefined) return undefined;
@@ -977,6 +978,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * stands.
      */
     const withTarget = async (init: TaskInit): Promise<TaskInit> => {
+      // A follow-up runs where its root ran, and the ledger writes the root's
+      // workstream on it (FIX-2111): there is no target to choose or resolve.
+      if (init.followUpOf !== undefined) return init;
       const { records } = await reach(ctx);
       // The assignee the row will have: the one named, or the one the board
       // gives a row with none (the conversation's only task-taking delegate).
@@ -1151,6 +1155,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
         for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
+        // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
+        // A backing with no `refresh` must serve `get` committed across requests.
+        const filed = new Set(batch.map((init) => init.id));
+        for (const depId of new Set(batch.flatMap((init) => init.deps ?? []))) {
+          if (!filed.has(depId)) await ref.refresh?.(depId);
+        }
         assertDepsFileable(batch, (id) => ref.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
