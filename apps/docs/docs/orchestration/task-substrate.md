@@ -195,7 +195,7 @@ export const seedResearchPlan = handler({
 
 ### Recording a result that may no longer apply
 
-Every lifecycle method that moves a task's status — `complete`, `fail`, `awaitReview`, `unpark`, `cancel` — takes an optional trailing options argument. `hold` and `release` take none: they are settings writes, and only reach a task that hasn't started. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
+Every lifecycle method that moves a task's status — `complete`, `fail`, `awaitReview`, `unpark`, `cancel` — takes an optional trailing options argument. The options argument exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded. `hold` and `release` take no options argument. Like `patchSettings`, they only apply to a task that hasn't started.
 
 Passing options makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
 
@@ -388,7 +388,7 @@ Surface `undefined` as its own condition instead of guessing. It means the task 
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
-**Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `awaitReview`, `unpark`, and `cancel`, plus `renewLease` and `linkRun`, which require it for the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail`, `awaitReview`, `unpark` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
