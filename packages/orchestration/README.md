@@ -1091,9 +1091,9 @@ finished task it answers `task_finished` and writes nothing. The collection side
 
 `createTask` takes `followUpOf` to file new work on a task: the follow-up
 is a new task, with the same worker, that runs in that task's session. Its
-row carries that task's `session`, `target` and `targetSessionId`, written by
-the task collection when it is filed, so a follow-up of a task filed
-`session: "ongoing"` or for a workstream runs there too. If that session no
+row carries that task's `session`, `target` and `targetSessionId`, so a
+follow-up of a task filed with `session: "ongoing"`, or filed for a
+workstream, runs in that same session. If that session no
 longer exists, the follow-up runs nowhere else: its hand-over fails it with
 `session-not-found`, and its filer hears the failure. A follow-up takes no
 `session` or `target` of its own (`follow_up_takes_no_session`,
