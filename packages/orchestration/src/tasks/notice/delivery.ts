@@ -22,7 +22,7 @@
  * undeliverable, recorded on the row, and handed to the board's
  * `onUndeliverable`. Nothing here fails the write that already committed.
  */
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
@@ -104,7 +104,25 @@ export interface DeliveryHooks {
     rows: readonly Task[],
     patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
   ): Promise<void>;
+  /**
+   * Run `send` once the running request has ended (FIX-2123), on the
+   * engine's request-end seam. Nothing runs when it parks: a parked request
+   * holds no notice, so the filer's pass sends what it held, and a hook at a
+   * park would delay the request's park record. A failure is logged, never
+   * thrown; what `send` didn't send stays owed for the filer's pass. Nothing
+   * runs on a context with no seam, or on a host that doesn't record which
+   * requests are running. Optional, so hooks built by hand keep compiling:
+   * without it, the pass sends instead.
+   */
+  whenRequestEnds?(send: () => Promise<void>): void;
 }
+
+/**
+ * The boards a request has asked to send at its stop (FIX-2123), keyed by
+ * its request-end seam, which every resolution in the request shares and a
+ * resume replaces. Weak, so a request's entry goes with it.
+ */
+const sendsAtStop = new WeakMap<object, Set<string>>();
 
 /** The refusal that says the filer's session is gone: it can never be told. */
 const FILER_GONE = "session-not-found";
@@ -159,8 +177,43 @@ export function createDelivery(
     filerOf,
     beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
     owePassAt,
-    afterEnding
+    afterEnding,
+    whenRequestEnds
   };
+
+  function whenRequestEnds(send: () => Promise<void>): void {
+    // Only where a notice can be held for this request: a host that records
+    // which requests are running. Anywhere else nothing is held for it, and a
+    // hook would be owed for nothing: a context built outside a request's
+    // run (a test harness's) never runs its hooks, and a host's shutdown
+    // waits out its drain budget for every hook still owed in the process.
+    if (ctx.requestHost?.waits?.running === undefined) return;
+    // Once per request and board: every resolution of the board in this
+    // request reaches the same request-end list.
+    const seam = (ctx as { readonly [REQUEST_END_SEAM]?: object })[REQUEST_END_SEAM];
+    if (seam === undefined) return;
+    const boardKey = `${board.collectionId}\u0000${board.partition ?? ""}`;
+    const registered = sendsAtStop.get(seam) ?? new Set<string>();
+    if (registered.has(boardKey)) return;
+    registered.add(boardKey);
+    sendsAtStop.set(seam, registered);
+    onRequestEnded(ctx, async (ending) => {
+      // Nothing at a park: a hook runs there before the request is recorded
+      // parked, and any time it takes delays that record, which a wait's
+      // resume reads. A parked request holds no notice, so the filer's pass
+      // sends what it held at the notice's next send. The request that runs
+      // again after the park registers anew (the board notes the rows it filed).
+      if (ending.status === "suspended") return;
+      try {
+        await send();
+      } catch (error) {
+        console.warn("[orchestration] a notice held for the request that filed its task wasn't sent as it ended: the filer's pass sends it", {
+          boardId: board.collectionId,
+          error: (error as Error).message
+        });
+      }
+    });
+  }
 
   async function owePassAt(row: Task, dueAt: number): Promise<void> {
     if (owesNothing(row)) return;

@@ -145,7 +145,9 @@ export async function payCascadeAfterWrite(writes: CascadeWrites, row: Task | un
  * or held) whose dependency has failed or been cancelled. An ending records
  * its debt from the rows its own process has seen, so a dependent filed by
  * another process can be missed; the touch reads the committed rows and
- * catches it. A dependency whose own debt isn't due yet is left to the
+ * catches it. The filer's `onTaskSettled` touches before it acts on a
+ * failure's or a cancel's notice, so that notice names such a dependent
+ * (FIX-2136). A dependency whose own debt isn't due yet is left to the
  * ending's pass that is paying it. Repeats until a pass cancels nothing, so
  * a chain goes in one touch.
  *
