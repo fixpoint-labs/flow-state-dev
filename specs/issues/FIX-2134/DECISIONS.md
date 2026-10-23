@@ -50,7 +50,25 @@ It comes down to a later PR: run only here, a returned park is seen at the next 
 **What would change my mind:** FIX-2087's #3692 not reaching `main` before this run. Then the rule
 runs in this goal alone, and its CI step is filed as an ordinary issue, not built here.
 
+## The plan in full
+
+| # | What runs | PASS means |
+|---|---|---|
+| 1 | Legs a to d and the sweep ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)) | Each green; each control red where named |
+| 2 | **j1** *files work:* the filer's steer naming its task's midway question answers it, and a later Inbox answer is told so; its steer to a routed task's question, or to an approval, answers nothing. **j2** *writes a flow that asks:* with the person-stop default shortened, an approval reads as a no, an unhandled input fails try 1, a caught one goes on, a held question goes ahead from its brief told no answer came (`j2:held-deadline-goes-ahead`); a user's stop of a waiting run ends it, closes the item and cancels the task. **j3** *runs it locally:* the host is killed while leg a's six wait; after a restart all six are listed once and leg b passes on them | Each green |
+| 3 | Every child's goal check with its controls, read from Linear at run time and printed; FIX-2133's on both store backings. FIX-2137 is a bug with no goal; leg b's work counter is its check. One the walk covers only in part runs | Each PASS beside its documented FAIL |
+| 4 | The gap sweep: each [coordination seam](../../epics/FIX-2058/DECISIONS.md#coordination-seams) read from both sides; the human-in-the-loop guide and the task-board page followed as written; each epic *not done if* state absent; the Inbox's three reads judged (below) | Every seam two-sided |
+
+**Must be green first:** every other child merged with its goal's PASS and control's FAIL in its PR;
+FIX-2087's #3692 for D2, or the rule runs in this goal alone.
+
 ## Decided, not asked
+
+- **A session line answers only by becoming an id-carrying steer.** ER-7 allows one route per kind:
+  a held question is answered by a steer carrying its question id through `updateTask`. The coding
+  session's `harnessSessionDoor` is the one place a typed line answers, and it does so by writing
+  that steer for the oldest open question (FIX-2132). Leg d fails if a plain message to a
+  non-coding task's session answers anything.
 
 - **Inherited from [FIX-2087 D1](../FIX-2087/DECISIONS.md#d1):** on a real model, a structural miss
   (counts, attempts, which route answered, what a row reads) on any attempt is a finding; only a
@@ -97,6 +115,8 @@ runs in this goal alone, and its CI step is filed as an ordinary issue, not buil
 - **Draft** — framed as the epic's goal check on the assembled set, with six kinds waiting at once
   so the gaps between children show; FIX-2087's closure shape and D1 kept; the sweep added to its
   CI engine.
+- **Review, the Architect's coherence read** — leg d's session line was reworded so it can't read as
+  a third answer route: a held question is answered only by a steer carrying its id (ER-7, ER-8).
 
 **Open: none of its own.** What a held question does at its deadline is the
 [epic's](../../epics/FIX-2058/DECISIONS.md#open); `j2:held-deadline-goes-ahead` is the leg that flips.

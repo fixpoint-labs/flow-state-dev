@@ -81,12 +81,12 @@
   <g id="r5"><text class="t-k" x="44" y="314">A midway question</text><text class="t-s" x="44" y="330">a worker's model asks</text>
     <text class="t-b" x="222" y="314">Parks; answerTask</text><text class="t-s" x="222" y="331">a new turn from the queue</text>
     <text class="t-b" x="442" y="322">question</text>
-    <text class="t-b" x="566" y="314">updateTask, as the user</text><text class="t-s" x="566" y="331">or a line in its session</text>
+    <text class="t-b" x="566" y="314">updateTask, as the user</text><text class="t-s" x="566" y="331">a steer naming its question id</text>
     <text class="t-b" x="746" y="314">one more turn</text><text class="t-s" x="746" y="331">on the same attempt</text></g>
   <g id="r6"><text class="t-k" x="44" y="370">A coding run's question</text><text class="t-s" x="44" y="386">through its ask marker</text>
     <text class="t-b" x="222" y="370">Harness inbox, no screen</text><text class="t-s" x="222" y="387">the answer spends a retry</text>
     <text class="t-b" x="442" y="378">question</text>
-    <text class="t-b" x="566" y="370">updateTask, as the user</text><text class="t-s" x="566" y="387">FIX-2132 on FIX-2133</text>
+    <text class="t-b" x="566" y="370">updateTask, as the user</text><text class="t-s" x="566" y="387">or the session door, as that steer</text>
     <text class="t-b" x="746" y="370">the same coding session</text><text class="t-s" x="746" y="387">on the same try</text></g>
 
   <g id="every-row">
