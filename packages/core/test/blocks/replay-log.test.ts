@@ -326,6 +326,27 @@ describe("buildReplayLog", () => {
     });
   });
 
+  describe("skipLeanTraces", () => {
+    it("ignores lean completion records only when asked", () => {
+      const lean = { ...blockTrace("root/step[0]", "completed", 0, 1), lean: true } as RuntimeItem;
+      const full = blockTrace("root/step[1]", "completed", 1, 2);
+      expect(buildReplayLog([lean, full]).getCompletedOutput(`${REQ}:root/step[0]`)).toBeDefined();
+      const skipping = buildReplayLog([lean, full], { skipLeanTraces: true });
+      expect(skipping.getCompletedOutput(`${REQ}:root/step[0]`)).toBeUndefined();
+      expect(skipping.getCompletedOutput(`${REQ}:root/step[1]`)).toEqual({ kind: "inline", value: 2 });
+    });
+  });
+
+  describe("completedRescued", () => {
+    it("reads the rescued mark from the canonical completed trace", () => {
+      const rescued = { ...blockTrace("root/step[0]", "completed", 0, 1), rescued: true } as RuntimeItem;
+      const log = buildReplayLog([rescued, blockTrace("root/step[1]", "completed", 1, 2)]);
+      expect(log.completedRescued(`${REQ}:root/step[0]`)).toBe(true);
+      expect(log.completedRescued(`${REQ}:root/step[1]`)).toBe(false);
+      expect(log.completedRescued(`${REQ}:root/step[9]`)).toBe(false);
+    });
+  });
+
   describe("recordedBlockTraceId (FIX-814)", () => {
     it("returns the canonical completed trace id for a logical path", () => {
       const trace = blockTrace("root/branch[a]", "completed", 2, "out");

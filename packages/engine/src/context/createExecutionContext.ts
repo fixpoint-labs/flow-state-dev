@@ -2240,10 +2240,25 @@ export async function createExecutionContext<
   // so this reads back exactly that base (0 on a fresh run). Both block-emitted
   // items and runtime items reserved via `_reserveItemIndex` draw from this one
   // counter so their indices stay distinct and monotonic across the resume.
-  let emittedItemCount =
-    typeof options.response?.getItemCount === "function"
-      ? options.response.getItemCount()
-      : 0;
+  // A response that tracks items but has no `getItemCount()` may hold items
+  // that don't start at 0 (a seeded log), so its next free index is the
+  // highest one it holds plus 1; its length only when no item carries one.
+  const responseItemCursor = (): number => {
+    if (options.response?.getItemCount !== undefined) return options.response.getItemCount();
+    const items = options.response?.getItems?.() ?? [];
+    const next = items.reduce((m, i) => (typeof i.itemIndex === "number" ? Math.max(m, i.itemIndex + 1) : m), -1);
+    return next === -1 ? items.length : next;
+  };
+  let emittedItemCount = responseItemCursor();
+  // Every index this context hands out comes from here. A block that emits
+  // straight through `ctx.response` (a generator's message, a tool output)
+  // takes the emitter's cursor without passing through this counter, so the
+  // next reservation starts at whichever of the two is further along.
+  const reserveItemIndex = (): number => {
+    const itemIndex = Math.max(emittedItemCount, responseItemCursor());
+    emittedItemCount = itemIndex + 1;
+    return itemIndex;
+  };
 
   // The request store as the request-state write sees it: a full-record
   // write leaves `items` off, because the record's are the snapshot from when
@@ -2630,7 +2645,7 @@ export async function createExecutionContext<
       container,
       getResponse: () => responseRef.current,
       requestId: requestRef.current.id,
-      nextItemIndex: () => emittedItemCount++,
+      nextItemIndex: () => reserveItemIndex(),
       provenance: () => ({
         blockName: "runtime",
         blockInstanceId: "runtime",
@@ -2973,7 +2988,7 @@ export async function createExecutionContext<
       blockInstanceId: "runtime",
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++,
+    nextItemIndex: () => reserveItemIndex(),
   };
 
   // Request-level trace emitters used by `_runtimeHooks` (router decisions,
@@ -3046,6 +3061,34 @@ export async function createExecutionContext<
     );
   };
 
+  // The identity half of every auto-emitted `block_trace`: what replay keys
+  // on. Both capture branches below build from it, so the lean record stays a
+  // subset of the full one when an identity field is added.
+  const baseBlockTraceFromIdentity = (
+    identity: NonNullable<BlockContext["_blockIdentity"]>,
+    at: { status: BlockTraceItem["status"]; ts: number }
+  ): BlockTraceItem => {
+    const itemIndex = reserveItemIndex();
+    return {
+      id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "block_trace",
+      status: at.status,
+      requestId: requestRef.current.id,
+      itemIndex,
+      provenance: {
+        blockName: identity.blockName,
+        blockInstanceId: identity.blockInstanceId,
+        parentBlockInstanceId: identity.parentBlockInstanceId,
+        phase: identity.phase ?? "main",
+      },
+      ts: at.ts,
+      ownedBy: identity.ownedBy,
+      blockName: identity.blockName,
+      blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
+      blockInstanceId: identity.blockInstanceId,
+    };
+  };
+
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
     onBlockStart: logger
       ? (blockName, blockKind, input, transient) => {
@@ -3115,7 +3158,7 @@ export async function createExecutionContext<
       // Emit router_decision trace item. The emit chain is returned so the
       // router can await the decision anchor's durability before dispatching
       // the selected branch (FIX-814).
-      const itemIndex = emittedItemCount++;
+      const itemIndex = reserveItemIndex();
       const decisionItem: RouterDecisionItem = {
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
@@ -3138,6 +3181,16 @@ export async function createExecutionContext<
     // in place on `input` / `generator` / `output` phases. Item.added fires
     // immediately at `added`; subsequent phases emit item.updated; the
     // `output` phase additionally emits item.done.
+    //
+    // With observability off the second branch runs instead: one lean record
+    // (identity, output, the rescued mark, `lean: true`) per completed block,
+    // written at its `output` phase, because resume reads it to skip the
+    // block; without it, finished steps run again. It is a separate branch,
+    // not an early return in the first, because the first opens its row at
+    // `added` with the block's input. Here
+    // the index is taken at completion (after the items the block emitted),
+    // and failed, suspended and transient blocks get no record at all, not
+    // even a live one.
     onBlockTraceCapture: isTraceObservabilityEnabled()
       ? (payload, firingCtx) => {
           const identity = firingCtx._blockIdentity;
@@ -3151,7 +3204,6 @@ export async function createExecutionContext<
             // Construct + emit. Store on the per-request trace map so later
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
-            const itemIndex = emittedItemCount++;
             // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
             // items inherit the originating block's `transient` flag. Traces
             // from `transient: true` blocks (e.g. Task Board's `claim-task` /
@@ -3159,23 +3211,11 @@ export async function createExecutionContext<
             // but are not retained in the persisted items log. Non-transient
             // blocks (the default) keep the canonical retained-trace behavior.
             const item: BlockTraceItem = {
-              id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-              type: "block_trace",
-              status: payload.data.status ?? "in_progress",
+              ...baseBlockTraceFromIdentity(identity, {
+                status: payload.data.status ?? "in_progress",
+                ts: startedAt,
+              }),
               transient: identity.transient === true ? true : undefined,
-              requestId: requestRef.current.id,
-              itemIndex,
-              provenance: {
-                blockName: identity.blockName,
-                blockInstanceId: instanceId,
-                parentBlockInstanceId: identity.parentBlockInstanceId,
-                phase: identity.phase ?? "main",
-              },
-              ts: startedAt,
-              ownedBy: identity.ownedBy,
-              blockName: identity.blockName,
-              blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
-              blockInstanceId: instanceId,
               input: payload.data.input,
               // FIX-701: the block's own declared accessor keys, stamped here
               // so the DevTool can show "declared but not loaded".
@@ -3241,7 +3281,24 @@ export async function createExecutionContext<
             blockTraceMap.delete(instanceId);
           }
         }
-      : undefined,
+      : (payload, firingCtx) => {
+          if (payload.phase !== "output" || payload.data.status !== "completed") return;
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined || identity.transient === true) return;
+          const completedAt = payload.data.completedAt ?? Date.now();
+          const item: BlockTraceItem = {
+            ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
+            lean: true,
+            output: payload.data.output,
+            completedAt,
+            duration: payload.data.duration,
+            rescued: payload.data.rescued,
+          };
+          void emissionResponse
+            .emitItemAdded(item)
+            .then(() => emissionResponse.emitItemDone(item))
+            .catch(() => { /* best-effort */ });
+        },
   };
 
   // Per-request trace map. Keyed by blockInstanceId; entries are removed
@@ -3373,7 +3430,7 @@ export async function createExecutionContext<
               container,
               getResponse: () => responseRef.current,
               requestId: requestRef.current.id,
-              nextItemIndex: () => emittedItemCount++,
+              nextItemIndex: () => reserveItemIndex(),
               provenance: () => ({
                 blockName: matched.parent.name,
                 blockInstanceId: matched.parent.instanceId,
@@ -3561,7 +3618,7 @@ export async function createExecutionContext<
       // Shares the per-run synchronous item-index counter with block-emitted
       // items so runtime items (e.g. runAction's `suspension_resume`) get a
       // distinct, monotonic index that continues the prior log on resume.
-      _reserveItemIndex: () => emittedItemCount++,
+      _reserveItemIndex: () => reserveItemIndex(),
       suspend: async (suspendOpts) => {
         // The typed resolution `runAction` threads on a same-request
         // continuation — never `options.metadata`, which callers control
@@ -3692,11 +3749,11 @@ export async function createExecutionContext<
       // `getBlockOutput`/`getBlockResult` read only `parent` + `result.output`,
       // and `getTarget` (which would dereference the container) is never used to
       // reach a replayed leaf.
-      _registerReplayedChild: (parent: ExecutionParent, output: unknown): void => {
+      _registerReplayedChild: (parent: ExecutionParent, output: unknown, rescued?: boolean): void => {
         childSiblingRegistry.push({
           parent,
           parentStateContainer: undefined,
-          result: { status: "completed", output }
+          result: { status: "completed", output, rescued: rescued === true }
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
@@ -3741,7 +3798,7 @@ export async function createExecutionContext<
             typeof typed.emitItemAdded === "function" &&
             typeof typed.emitItemDone === "function"
           ) {
-            const itemIndex = emittedItemCount++;
+            const itemIndex = reserveItemIndex();
             containerStartedAt = Date.now();
             containerItem = {
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -3813,7 +3870,7 @@ export async function createExecutionContext<
             parentBlockInstanceId: resolvedParent.parentInstanceId,
             phase: childPhase
           }),
-          nextItemIndex: () => emittedItemCount++,
+          nextItemIndex: () => reserveItemIndex(),
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
@@ -3978,6 +4035,7 @@ export async function createExecutionContext<
                   duration: completedAt - traceStartedAt,
                   modelUsage: generatorModelUsage,
                   model: generatorModelIdentity,
+                  rescued: siblingEntry.result.rescued === true ? true : undefined,
                 },
               },
               childContext
