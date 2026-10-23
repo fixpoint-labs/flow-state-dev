@@ -185,16 +185,24 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const stopScript = (s: FixtureSession, task: FixtureTask): Step[] => [
     [700, () => {
+      // The task may have settled since the turn began; a finished task stays finished.
+      if (s.tasks.find((t) => t.id === task.id)?.status !== "in_progress") {
+        push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
+        return;
+      }
       push(s, { kind: "tool", id: nextId("tool"), name: "updateTask", summary: `${task.title} → cancelled` });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined });
+      push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
-    [500, say(s, `Stopped "${task.title}". The summary covers what is done so far.`)],
     [200, () => endTurn(s)],
   ];
 
   const turn = (s: FixtureSession, text: string) => {
     startTurn(s);
-    const running = s.tasks.find((t) => t.status === "in_progress");
+    // The running task the line names (by a word of its title), else the first one running.
+    const runningTasks = s.tasks.filter((t) => t.status === "in_progress");
+    const named = runningTasks.find((t) => t.title.split(" ").slice(1).some((word) => new RegExp(`\\b${word}\\b`, "i").test(text)));
+    const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
       play(s, stopScript(s, running));
     } else if (s.tasks.length === 0) {
