@@ -15,8 +15,8 @@
  * - another request takes the lapsed wait slot between the drain's lapse and
  *   its re-mark: the same conditional write `getTask({ id, wait: true })`
  *   makes;
- * - the ledger's `lapseWait` write throws;
- * - the row is gone when the drain resumes;
+ * - the ledger's `lapseWait` or `markWait` write throws;
+ * - the row is gone to the wait's own read when the drain resumes;
  * - the wait gate resumes with something that is not a wait outcome;
  * - the seam throws, rather than refusing, once the claim is released.
  */
@@ -30,16 +30,23 @@ import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
+  MIN_LEASE_DURATION_MS,
+  type TaskDispatcher,
   type TaskWorker,
   type TaskWorkerInput
 } from "../../src/tasks";
 import { taskSettledEntry } from "../../src";
 
-/** The one failure a test arms. Each is spent the first time it fires. */
+/**
+ * The one failure a test arms. Each is spent the first time it fires, except
+ * `rowGone`: armed, it turns `"gone"` once the replay has read its recorded
+ * hand-over (see `boot`), and the row stays gone from then on.
+ */
 const fault = vi.hoisted(() => ({
   takeSlotOnLapse: false,
   lapseThrows: false,
-  rowGone: false,
+  markThrows: false,
+  rowGone: false as boolean | "gone",
   garbledResume: false
 }));
 
@@ -67,12 +74,14 @@ vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => 
         }
         return lapsed;
       };
-      // Gone to the wait's own read only: the drain's other reads of the row
-      // (the seed, the claim) would fail first, and not past the hand-over.
-      ref.get = (id) =>
-        fault.rowGone && id === "fact-check" && (new Error().stack ?? "").includes("wait-on-task")
-          ? undefined
-          : get.call(ref, id);
+      ref.markWait = async (id, slot) => {
+        if (fault.markThrows && id === "fact-check") {
+          fault.markThrows = false;
+          throw new Error("the ledger store is unavailable");
+        }
+        return markWait!.call(ref, id, slot);
+      };
+      ref.get = (id) => (fault.rowGone === "gone" && id === "fact-check" ? undefined : get.call(ref, id));
       return ref;
     }
   };
@@ -109,6 +118,13 @@ const holdTheStep = () => {
   });
 };
 
+/** Claims under the shortest lease, so its lapse is observable on the wall clock: the board has no lease knob. */
+const shortLease: TaskDispatcher = {
+  async claim(collection, workerId) {
+    return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
+  }
+};
+
 function planFlow(): FlowInstance {
   const ledger = defineTaskCollection({ id: "plan-fail-steps", scope: "user" });
   const inline = handler({
@@ -133,6 +149,7 @@ function planFlow(): FlowInstance {
     workers: inline,
     newSession: dispatcher({ name: "own-session", type: "task", action: "work", session: "per-task" }),
     concurrency: 1,
+    dispatcher: shortLease,
     initialTasks: [
       { id: "outline", goal: "Outline", assignee: "writer" },
       { id: "fact-check", goal: "Fact-check", assignee: "writer", deps: ["outline"], session: "new" },
@@ -184,11 +201,12 @@ describe("a plan drain that fails after handing a row over", () => {
     state = undefined;
     fault.takeSlotOnLapse = false;
     fault.lapseThrows = false;
+    fault.markThrows = false;
     fault.rowGone = false;
     fault.garbledResume = false;
   });
 
-  /** @param seamThrows Fail the child session's birth: the seam throws past the claim's release. */
+  /** @param seamThrows Fail the first child session's birth: the seam throws past the claim's release. */
   async function boot(options: { seamThrows?: boolean } = {}) {
     const flow = planFlow();
     state = createFlowState({
@@ -200,12 +218,30 @@ describe("a plan drain that fails after handing a row over", () => {
     });
     await state.getRouter();
     const runtime = await state.getRuntime();
+    // The replay after a park reads the row for the seed and the claim before
+    // it reaches the wait: a row gone to those reads is seeded again, or not
+    // claimed, and the drain never reaches its wait. So the row goes once the
+    // replay has read its recorded hand-over, which comes after both reads and
+    // before the wait's own.
+    const requests = runtime.stores.request;
+    const getRunOnceResult = requests.getRunOnceResult.bind(requests);
+    requests.getRunOnceResult = (async (requestId: string, key: string) => {
+      const found = await getRunOnceResult(requestId, key);
+      if (fault.rowGone === true && found.found && /^fsd\.plan\.dispatch:[^:]+:fact-check:\d+$/.test(key)) {
+        fault.rowGone = "gone";
+      }
+      return found;
+    }) as typeof requests.getRunOnceResult;
+    let failBirth = options.seamThrows === true;
     if (options.seamThrows === true) {
       const sessions = runtime.stores.session;
       const set = sessions.set.bind(sessions);
       sessions.set = (async (...args: Parameters<typeof set>) => {
         const record = args[1] as { parentSessionId?: string } | undefined;
-        if (record?.parentSessionId === SESSION) throw new Error("the session store is unavailable");
+        if (failBirth && record?.parentSessionId === SESSION) {
+          failBirth = false;
+          throw new Error("the session store is unavailable");
+        }
         return set(...args);
       }) as typeof sessions.set;
     }
@@ -256,12 +292,22 @@ describe("a plan drain that fails after handing a row over", () => {
     await expectAVisiblePlanFailure(booted, run.requestId!, /wait_taken/);
   }, 20_000);
 
-  it("fails the plan when a ledger write in its wait throws", async () => {
+  it("fails the plan when the ledger's lapse write in its wait throws", async () => {
     holdTheStep();
     const booted = await boot();
     const run = await booted.act("run");
     expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
     fault.lapseThrows = true;
+    await expectAVisiblePlanFailure(booted, run.requestId!, /the ledger store is unavailable/);
+  }, 20_000);
+
+  it("fails the plan when the ledger's mark write in its wait throws", async () => {
+    holdTheStep();
+    const booted = await boot();
+    const run = await booted.act("run");
+    expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
+    // The next mark is the replay's, after the deadline.
+    fault.markThrows = true;
     await expectAVisiblePlanFailure(booted, run.requestId!, /the ledger store is unavailable/);
   }, 20_000);
 
@@ -283,7 +329,7 @@ describe("a plan drain that fails after handing a row over", () => {
     await expectAVisiblePlanFailure(booted, run.requestId!, /not a wait outcome/);
   }, 20_000);
 
-  it("fails the plan when the seam throws once the claim is released", async () => {
+  it("fails the plan when the seam throws once the claim is released, and a later run takes the row up past its lease", async () => {
     holdTheStep();
     const booted = await boot({ seamThrows: true });
     // No park here: the drain's request runs to its end in this call, or never ends.
@@ -292,5 +338,17 @@ describe("a plan drain that fails after handing a row over", () => {
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("the drain's request never ended")), 8_000))
     ]);
     await expectAVisiblePlanFailure(booted, run.requestId!, /the session store is unavailable/);
+
+    // Nothing runs the row: no session was born for it. Once its lease lapses,
+    // the plan run again claims it, hands it over, and finishes the plan.
+    open();
+    await new Promise((resolve) => setTimeout(resolve, MIN_LEASE_DURATION_MS + 200));
+    const again = await booted.act("run");
+    expect(await booted.until(async () => (await booted.recordOf(again.requestId!))?.status === "completed")).toBe(true);
+    expect((await booted.rowsNow()).map((row) => [row.id, row.status])).toEqual([
+      ["outline", "completed"],
+      ["fact-check", "completed"],
+      ["publish", "completed"]
+    ]);
   }, 20_000);
 });

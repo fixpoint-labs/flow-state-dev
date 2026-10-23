@@ -81,8 +81,8 @@ import {
 } from "../../tasks/collection/advisory-write-back";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
-import { HandedOverRowError } from "./dispatch-row";
 import {
+  HandedOverRowError,
   reportRecorderFailure,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,

@@ -1038,7 +1038,9 @@ before it starts the rows that depend on it. No completion notice is sent for th
 board may hold dispatcher assignees too, whose rows it waits on the same way; a plan board's
 dispatcher with `wait: false` and a delegation board's with `wait: true` are refused. A drain
 that fails after it handed a row over fails its request, naming the row, whatever `onError`
-says; the row is left to the session that runs it. Declare
+says, and no row that hasn't started runs. It writes nothing on the handed-over row: when the
+dispatch itself threw, nothing may be running it, so it stays `in_progress` until its lease
+lapses and the plan's next run claims it again. Declare
 the board's pass entry on the flow: without it, the board still builds, and the drain hears a
 row's ending at its next check-in, up to the host's default wait deadline later.
 

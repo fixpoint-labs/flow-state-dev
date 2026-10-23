@@ -73,6 +73,11 @@
  * park is not a failure and passes through. On the replay after a park the
  * whole call is past the hand-over, its checks included, which is why they run
  * inside the recorded hand-over on the first run and inside the wait after it.
+ *
+ * Without `wait` (a delegation board) a seam that threw past the release is
+ * not wrapped, and that is sound: the drain waits on no row, so it ends, and
+ * the row keeps its lapsing lease until a later drain claims it again (see
+ * "Threw" above).
  */
 import { handler, SuspensionError } from "@flow-state-dev/core";
 import {
@@ -98,6 +103,7 @@ import { checkWait, waitOnTask, type CheckedWait, type WaitOnTaskOptions } from 
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
+import { HandedOverRowError } from "./recorder-failure";
 
 export interface RowDispatchOptions {
   /** Block-name prefix, so a refusal names the board it came from. */
@@ -119,23 +125,6 @@ export interface RowDispatchOptions {
    * plan board's dispatch. Needs `collection`, the board's ledger.
    */
   wait?: { collection: (ctx: BlockContext) => Promise<TaskCollectionRef> };
-}
-
-/**
- * A plan drain failed after it handed `taskId` to a session of its own (see
- * the file header). The row is that session's, so this is never recorded on
- * it: every recorder rethrows it, whatever `onError` says, and the drain's
- * request fails.
- */
-export class HandedOverRowError extends Error {
-  constructor(boardId: string, taskId: string, cause: unknown) {
-    super(
-      `[task-board] "${boardId}" handed task "${taskId}" to a session of its own and then failed, so the plan ` +
-        `fails: ${cause instanceof Error ? cause.message : String(cause)}`
-    );
-    this.name = "HandedOverRowError";
-    this.cause = cause;
-  }
 }
 
 /**
@@ -230,7 +219,9 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
     const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
 
-    // Release BEFORE the point of no return — see the file header.
+    // Release BEFORE the point of no return — see the file header. Every
+    // throw above keeps the claim, and a refusal below hands it back:
+    // `handOverAndWait` reads "no claim on the state" as "handed over".
     await ctx.sequencer!.patchState({ currentClaim: undefined });
 
     const outcome = await dispatchThroughSeam(ctx, {
@@ -354,8 +345,10 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     } catch (error) {
       if (error instanceof SuspensionError) throw error;
       // Past the hand-over once the claim has left this request: on the first
-      // run the hand-over released it (a refusal hands it back), on the replay
-      // an earlier run did.
+      // run the hand-over released it, on the replay an earlier run did. This
+      // reads the first run's answer off the state, so it holds only while
+      // `handOver` keeps the claim on every throw before its release and
+      // hands it back on a refusal: change either and fix this with it.
       const released = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim === undefined;
       if (!replayed && !released) throw error;
       throw new HandedOverRowError(boardId, taskId, error);
