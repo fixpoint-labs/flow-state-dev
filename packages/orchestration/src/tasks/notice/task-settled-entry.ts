@@ -20,6 +20,11 @@
  * request that failed. Queued on the session by default, so a second copy of
  * one notice waits behind the first and finds it no longer owed.
  *
+ * A failure's or a cancel's notice is completed here before the block runs
+ * (FIX-2136): a touch of the board cancels any dependent the ending's own
+ * cascade never read, and the notice names it, as it names the ones that
+ * cascade cancelled.
+ *
  * While the request that filed the task is running (not while it is parked),
  * its notice is turned away as `defer` turns one away (FIX-2123): a wait in
  * that request reads the ending first and drops it, and the request sends
@@ -32,8 +37,10 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
-import { filerResolver, TASK_SETTLED_ENTRY } from "./delivery";
+import type { Task } from "../schema/task";
+import type { TaskCollectionRef } from "../collection/types";
+import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
+import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
 
 /** A notice, as `onTaskSettled` and a flow's block take it. */
@@ -109,6 +116,32 @@ async function boardOf(ctx: BlockContext, boardId: string) {
 }
 
 /**
+ * A failure's or a cancel's notice, naming every dependent its ending
+ * cancelled (FIX-2136). The request that wrote the ending cascades over the
+ * rows it has read, so a dependent another request filed after that read is
+ * missed there, and the notice it sent names none. This request read the
+ * board after the ending: a touch here cancels such a dependent, and the
+ * notice names it before the flow's block runs. A cascaded cancel owes no
+ * notice of its own (FIX-2080 D2), so this notice is the filer's one hearing
+ * of it. A touch that fails leaves the notice as it was sent.
+ */
+async function withCascadeNamed(
+  board: { ref: TaskCollectionRef; delivery: DeclaredDelivery },
+  row: Task,
+  notice: TaskSettledInput
+): Promise<TaskSettledInput> {
+  if (notice.ending !== "errored" && notice.ending !== "cancelled") return notice;
+  try {
+    await board.ref.payOwedCascades?.();
+  } catch {
+    return notice;
+  }
+  const named = cancelledDependents(row, board.ref.list(), filerResolver(board.delivery, board.ref.partition));
+  for (const id of notice.cancelled ?? []) if (!named.includes(id)) named.push(id);
+  return named.length > 0 ? { ...notice, cancelled: named } : notice;
+}
+
+/**
  * Build the `onTaskSettled` internal entry: spread it as
  * `internal: { actions: { onTaskSettled: taskSettledEntry({ block }) } }`.
  */
@@ -172,7 +205,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
         });
         if (took.outcome !== "recorded") return { owed: false };
       }
-      return { owed: true, notice };
+      return { owed: true, notice: await withCascadeNamed(board!, row, notice) };
     }
   });
 
