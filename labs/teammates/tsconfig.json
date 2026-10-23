@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "types": ["node", "vite/client"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src/**/*", "test/**/*", "cli/**/*.ts", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist-client"]
+}
