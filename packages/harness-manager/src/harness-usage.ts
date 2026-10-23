@@ -135,7 +135,7 @@ export const harnessUsageCollection = defineResourceCollection({
  * The collection, installed on the action that reads it and on the manager
  * and session door whose runs write it.
  */
-export const harnessUsageCapability = defineCapability({
+const harnessUsageCapability = defineCapability({
   name: "harness-manager:usage",
   resources: { [HARNESS_USAGE]: harnessUsageCollection },
 });
