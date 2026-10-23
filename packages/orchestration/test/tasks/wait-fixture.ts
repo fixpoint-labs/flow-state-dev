@@ -77,8 +77,8 @@ export const fileCall = (id: string, question = "Is ACME's SOC 2 current?"): Ste
 });
 
 /** A step that parks the turn on a person, until they approve. */
-export const askPerson = (id: string): StepFn => (_options) => ({
-  toolCalls: [{ toolCallId: id, toolName: "ask_person", args: {} }],
+export const awaitApproval = (id: string): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: id, toolName: "await_approval", args: {} }],
   finishReason: "tool-calls"
 });
 
@@ -242,8 +242,8 @@ export function waitFlow(
       return waited.ok ? shown(waited.task) : { ok: false, taskId: input.id, error: `${waited.error}: ${waited.message}` };
     }
   });
-  const askPersonTool = handler({
-    name: "ask_person",
+  const approvalTool = handler({
+    name: "await_approval",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
     execute: async (_input, ctx) => ({ answer: await ctx.suspend!({ reason: "human_approval", message: "Go ahead?" }) })
@@ -328,7 +328,7 @@ export function waitFlow(
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(
-          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool, fileTool, askPersonTool, finishTaskTool] })
+          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool, fileTool, approvalTool, finishTaskTool] })
         ),
         inputSchema: z.object({}).passthrough(),
         ...(options.noticeAfterTurn === true ? { concurrency: "hold" as const } : {})
