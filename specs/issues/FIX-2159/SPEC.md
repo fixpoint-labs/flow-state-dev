@@ -58,15 +58,21 @@ bottom row is a second ending, which loops once more within the bound ([D3](DECI
 ```diff
   export default defineAgentWorkerFlow({
     installation,
-+   // What else the worker answers about, in the same request: anything that finished while it ran?
-+   // Fed to the answer-once-more step the plan already uses. A message, or nothing to stop.
-+   answerAgain: sequencer({ name: "lab-answer-again" })
-+     .step(takeFinishedTasks)
-+     .step(handler({
-+       name: "lab-finished-message",
-+       execute: (finished) => finished.length === 0 ? {} : { message: `These finished while you answered:\n${finished.map((f) => f.line).join("\n")}` }
-+     }))
++   // In the same request, answer again with anything that finished while the worker answered.
++   answerAgain: true
   });
+```
+
+`true` uses the package's pre-built block. An app that wants its own wording passes a block
+instead, usually the package's factory with an option, or its own sequencer around the take:
+
+```ts
+answerAgain: sequencer({ name: "lab-answer-again" })
+  .step(takeFinishedTasks)
+  .step(handler({
+    name: "lab-finished-message",
+    execute: (finished) => finished.length === 0 ? {} : { message: `Done while you answered:\n${finished.map((f) => f.line).join("\n")}` }
+  }))
 ```
 
 **One way to answer again, not two.** `planned` (FIX-2076) already wraps every turn of the
@@ -79,11 +85,13 @@ as `planned`'s does today; a task for a delegate is still dispatched. After the 
 answer no source runs, so later endings stay owed for the queued `onTaskSettled` rather than
 being taken with no answer to use them.
 
-**Why the app still passes a block.** The person's door is built inside the factory
-(`agent-user-turn` runs `run`), and its one seam, `afterAnswer`, is a side step that can't
-answer. Without a slot an app can't put anything after the turn. The slot adds no loop and no
-cap of its own: it is a second source for the existing step. `takeFinishedTasks` is a handler the
-package exports; the rest of the app's block is the app's. Both names are working names.
+**A block underneath, never required.** The option is `true` or a block. `true` is the
+package's pre-built block from an exported factory: take what finished, then turn the lines into
+a message. A block replaces it. Either way the source is a block, so it shows in the trace and
+composes like any other. An option is needed at all because the person's door is built inside the
+factory (`agent-user-turn` runs `run`), and its one seam, `afterAnswer`, is a side step that can't
+answer. The option adds no loop and no cap of its own: it is a second source for the existing
+step. `takeFinishedTasks` is a handler the package exports. All names are working names.
 
 **Where it runs.** Wherever `planned` does, which is every turn of the worker on an installation.
 The take hands over nothing outside a person's turn ([D2](DECISIONS.md#d2)), so in a task or
@@ -155,9 +163,10 @@ the result twice.
 on the answer step `planned` already runs, nothing removed. If wrong: two callers of one ending
 handling that someone must keep in step.
 
-1. **[D3](DECISIONS.md#d3) · The app's block feeds the one answer-again step `planned` already
-   runs; the package adds only the take.** If wrong: every app that wants Claude Code's behaviour
-   writes the same lines.
+1. **[D3](DECISIONS.md#d3) · Finished tasks feed the one answer-again step `planned` already
+   runs (`answerAgain: true`, or a block to override); the package adds only the take and its
+   default block.** If wrong: a factory option stands where a public way to compose the person's
+   door should be.
 2. **[D1](DECISIONS.md#d1) · The take is FIX-2123's take record, in the turn's name, with the
    queued handling's order.** If wrong: a result taken in the turn has weaker guarantees than one after it.
 3. **[D2](DECISIONS.md#d2) · Only a turn a person's own message started can take a result.** If

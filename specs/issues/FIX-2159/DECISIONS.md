@@ -32,7 +32,7 @@ lab's flow. Tested against the lab bar before it was drafted.*
 |---|---|
 | **Instead of** | (a) All of it in the lab, on public entries only. (b) The package reading results before every model call, through a context entry like the steer one, and answering once more itself. (c) A hook on the agent flow with its own answer-again loop and its own cap of three, beside `planned`'s |
 | **Because** | (a) fails on public entries: nothing public takes a notice, and the agent flow has no step that may answer again (`afterAnswer` is a side step that can't change the answer). A lab that only *reads* finished rows leaves the notice owed, so the queued `onTaskSettled` says the line and wakes a second turn after the reply: heard twice ([POC](poc/take-in-turn/README.md), control). A lab that takes them itself must also report a failure, dedupe and free the delegate's session, which is package work in the lab (ER-4). (b) works, but the loop is package code no app can see or change, and the before-each-call read is a second mechanism step 4 doesn't need. (c) works, and was this card's first draft, but `planned` (FIX-2076) already answers once more after a turn in the same request: a second step with a second limit is a second way to answer again |
-| **Locks in** | `planned`'s answer-once-more step, extracted into one block with two sources (the plan's ended steps, the app's block) and one exported cap on answers again per request, the plan's included, built on core's `doWhile`. One source slot on the agent worker flow, `answerAgain`, a block that returns a message or nothing; it adds no loop and no cap. The person's door is built inside the factory and `afterAnswer` can't answer, so without the slot an app has nowhere to put a block after the turn. One public take, a handler block the workforce package exports, that hands over what finished, once. An app that sets no source behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
+| **Locks in** | `planned`'s answer-once-more step, extracted into one block with two sources (the plan's ended steps, and finished tasks) and one exported cap on answers again per request, the plan's included, built on core's `doWhile`. One option on the agent worker flow, `answerAgain`: `true` for the package's pre-built block (an exported factory: take, then turn the lines into a message), or a block that replaces it. A block underneath either way, never one the app must write. It adds no loop and no cap. The person's door is built inside the factory and `afterAnswer` can't answer, so without the option nothing can run after the turn. One public take, a handler block the workforce package exports, that hands over what finished, once. An app that sets no source behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
 
 ![D3: the app's block feeds the shared answer step and the package takes, chosen, beside all in the lab and the package reading before every call; decided by hearing each result once](figures/d3-app-flow-answers-again.svg)
 
@@ -147,6 +147,8 @@ Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `m
   cap. Asked to drop the slot entirely; kept as a source only, because the person's door is built
   inside the factory and has no other seam (`agent-worker-flow.ts`, `agent-user-turn`). `planned`
   answers once with no loop today, so the cap is new to it, not shared from it.
+- **Jake** — the option shouldn't require a block: `answerAgain: true` uses the package's
+  pre-built block, and a block overrides it. A block underneath either way.
 
 ## Notes from review
 
@@ -162,7 +164,8 @@ Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `m
 - "Finding owed rows: reuse the `owesAnyNotice` prefilter, avoid a full scan plus a committed
   read per candidate on every hook call, cap work when many tasks finish together." — cursor
   ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#discussion_r4364611475))
-- "Consider exporting a default `answerAgain` helper (take, format the lines) that an app can use
+- *(Adopted after Jake's comment: `answerAgain: true` uses a pre-built block from an exported factory; a block overrides it.)*
+  "Consider exporting a default `answerAgain` helper (take, format the lines) that an app can use
   or override, so each app doesn't copy the same body; the loop stays visible in the flow." —
   cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#discussion_r4364611466))
 
