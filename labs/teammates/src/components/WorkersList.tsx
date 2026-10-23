@@ -5,7 +5,7 @@ import { age, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 
 /** The entries that count toward unread: everything but your own lines. */
-export const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind !== "user").length;
+const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind !== "user").length;
 
 /**
  * The left pane: one row per worker, never a list of sessions. Each row is the
