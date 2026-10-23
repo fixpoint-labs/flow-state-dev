@@ -46,7 +46,7 @@ flowchart LR
 | **Goal check** | The closure issue's (FIX-2156), on one `main` commit after every other child merges |
 | **Signal** | Leg a, FIX-2153's script: you ask the main session; it does part of the work; it starts 2 background tasks; one result shows in the main thread while that turn is still running; you stop the other task by asking the main session. Leg b, FIX-2154's script: you talk to worker A; A messages worker B; B's reply reaches A while you are still talking to A; the conversation stays coherent over a long session. Leg c, FIX-2157's script: you ask the main session; it starts 3 threads; one waits on you for a decision; one becomes ready for review; you resolve it. Plus each lab's inventory |
 | **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state |
-| **Control that must fail** | Leg a with the mid-turn notice off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
+| **Control that must fail** | Leg a with the lab flow's loop-back off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
 
 **Lead measure:** scripted steps that pass on `main` with a real model, of 14 (5, 5 and 4). **0 today.**
 
@@ -70,7 +70,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path ([D2](DECISIONS.md#d2)) | Jake's amendment (D2) |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | **Fallback only.** A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path. Built only if FIX-2153's lab flow can't keep each ending heard once ([D2](DECISIONS.md#d2), amended) | FIX-2153's spec showing the lab flow can't do it |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
 Two labs, one with two modes, two gaps known before review, and a closure. fsd-architect checked
@@ -128,17 +128,17 @@ code.
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one list call on the workforce client · one delivery mode on the ending path |
+| **Adds** | Two private labs under `labs/` · one list call on the workforce client · one delivery mode on the ending path, only if the lab flow can't do it (D2) |
 | **Removes** | Nothing |
 
-**Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to
+**Net: up, by two labs and one or two package entries.** The labs are the evidence the epic exists to
 produce. Each package entry is a gap the labs proved, and the next app gets it for nothing.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 14 steps, with a real model,
 and an inventory with no *other* row. **[The debt](#whats-already-here-and-the-debt):** up, by
-two labs and two package entries.
+two labs and one or two package entries.
 
 1. **[D1](DECISIONS.md#d1) · A gap that blocks a lab's script is a child of this epic and is
    built here.** If wrong: the epic grows by package work that another epic should own.

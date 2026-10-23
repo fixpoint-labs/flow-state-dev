@@ -46,6 +46,16 @@ It comes down to whether the epic can finish on its own work.
 *A product call the brief makes (step 4 of FIX-2153's script); the cost is engineering, so it is
 recorded here.*
 
+> **Amended 2026-10-23, after the merge of #3783.** The outcome is unchanged. The mechanism moves
+> to the lab first, at the owner's direction relayed by fsd-product-lead (agent-mailbox #46,
+> comment 6375479737), as a showcase of customizing a flow. FIX-2153's main worker runs on one small
+> lab flow that checks at turn end for tasks that settled while the turn ran, and loops back to the
+> generator in the same request. That lab flow must also keep each ending heard exactly once: the
+> queued `onTaskSettled` that follows must not answer the same ending a second time. If the lab can't
+> do both with public package entries and one flow under 200 lines, FIX-2159 builds the package
+> mechanism below, and its spec says why. Until then FIX-2159 is the fallback, and the row below
+> describes it.
+
 | | |
 |---|---|
 | **Instead of** | The main session hearing the result only after its turn ends, which is what happens on `main` today: a settled notice waits for the reply (`AFTER_REPLY_CONCURRENCY`, `workforce/src/conversation-board/task-settled.ts`) |
@@ -111,7 +121,7 @@ goes first; the gap issues own their mechanisms.
 | ER-3 | One way to set up a lab: under `labs/`, private, launched with `fsdev dev --app` as Shift Manager is; the theme from `@flow-state-dev/design-system` and components from the `packages/ui` registry (`fsdev ui add`). A lab defines no color tokens of its own. The two labs share no code: a piece both need that isn't UI is a package gap ([ER-4](#who-owns-what)), and a piece of UI both need is copied, so each inventory shows what that app adds. FIX-2157 is a mode of FIX-2153's app, not a third lab, so it shares that app's code | FIX-2153 | Every lab's spec review |
 | ER-4 | Any need beyond ER-1's three kinds goes to the package: filed against workforce or orchestration (or react, for a hook), named in the lab's spec, and never worked around in the lab, not even for a while. A gap that blocks a script is a child of this epic ([D1](#d1)) | FIX-2153 | Every lab's spec review; the closure |
 | ER-5 | Until wiring, a lab reads and writes through one adapter whose functions each name the package call they stand for, by post-refactor names ([D4](#d4)); a fixture carries a plain `fixture:` marker, and the README maps each to its gap (BP-006); at wiring the fixtures are deleted. FIX-2153's spec sets the adapter's layout (file names, one function per package call), and FIX-2154 copies the layout, not the code | FIX-2153 | Each lab's wiring PR; the closure |
-| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in; the mechanism is FIX-2159's spec | FIX-2159 | FIX-2153's wiring; the closure's leg a |
+| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in. The mechanism is FIX-2153's lab flow first, and FIX-2159's package mechanism only if the lab flow can't keep each ending heard once with public entries | FIX-2153 (FIX-2159 as fallback) | FIX-2153's wiring; the closure's leg a |
 | ER-7 | A lab session is an ordinary session of the worker on its flow; a person lists only their own, through the workforce client; the derived session stays the default conversation, where messages and routed tasks land ([D3](#d3)) | FIX-2158 | FIX-2153's wiring; the closure's legs a and c |
 
 ## Coordination seams
@@ -119,7 +129,7 @@ goes first; the gap issues own their mechanisms.
 | Seam | Owner, then who else touches it |
 |---|---|
 | The workforce client (`workforce/src/workers/client.ts`) | FIX-2158 adds the list of a person's sessions of one worker; FIX-2153 and FIX-2157 call it through their adapters |
-| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the context the generator re-reads before each model call (`orchestration/src/skills/steer-context.ts`) | FIX-2159 adds the take and its mark; FIX-2153 shows the result in the main thread |
+| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the context the generator re-reads before each model call (`orchestration/src/skills/steer-context.ts`) | FIX-2153's lab flow loops back at turn end and shows the result in the main thread; FIX-2159 adds the take and its mark only if that flow can't keep each ending heard once |
 | Messages (`workforce/src/messages/`, the user-scoped `workerMessagesCollection`) | FIX-2070 owns the rename to `sendMessage` and `receive`, where a message lands, and the row it ships (call ids, `{ task }` addresses). FIX-2154 is blocked by FIX-2070 and keys its worker-talk view to that row; a pair filter is UI, and a gap is filed only if paging by pair needs a server index |
 | Routed tasks, task statuses and the hold on questions (`workforce/src/coordinator/`, FIX-2058's hold and `waitForUser`) | FIX-2083 and FIX-2058 own them. FIX-2157's status board reads them and adds no status of its own; a column the statuses can't fill is a gap |
 | The app's mode switch (FIX-2153's host and UI) | FIX-2153 plans for it in its spec; FIX-2157 adds threads mode behind it |
