@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, how a screen answers a person's stop in a run a task started. Chosen: a route that takes only where the stop is (its request and id) and the answer, reading the flow and user from the stored stop. Instead of: opening the resume route to task runs behind a check. It comes down to the first row: under the chosen route nothing but the answer reaches the run, while the resume route takes a request id and gate data from the caller and would re-enter a task's handler with them. The price is the second row: two routes to keep, resume for a user's own runs and answer for a person's stop, where the other option keeps one with an exception inside. The third row is a tie: only the stop's own user may answer either way. Locks in: a public answer route and client call that every screen answers a person through. Flips if: the resume route comes to take nothing but an answer."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, how a screen answers a person's stop in a run a task started. Chosen: a route that takes only where the stop is (its request and id) and the answer, reading the flow and user from the stored stop and checking the caller reaches its request. Instead of: opening the resume route to task runs behind a check. It comes down to the first row: under the chosen route nothing but the answer reaches the run, while the resume route takes a request id and gate data from the caller and would re-enter a task's handler with them. The price is the second row: two routes to keep, resume for a user's own runs and answer for a person's stop, where the other option keeps one with an exception inside. The third row is a tie: either way only the request's own caller may answer, checked by user, tenant and organization as the resume path checks. Locks in: a public answer route and client call that every screen answers a person through. Flips if: the resume route comes to take nothing but an answer."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -76,10 +76,10 @@
   <g id="row-tie">
     <text class="t-lbl" x="32" y="280">WHO MAY ANSWER</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">The stop's own user</text>
-    <text class="t-s" x="248" y="299">rule 11</text>
+    <text class="t-b" x="248" y="281">The request's own caller</text>
+    <text class="t-s" x="248" y="299">user, tenant and org (ER-7)</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">The stop's own user</text>
+    <text class="t-b" x="612" y="281">The request's own caller</text>
     <text class="t-s" x="612" y="299">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>

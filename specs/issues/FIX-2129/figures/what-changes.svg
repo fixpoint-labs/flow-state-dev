@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments in the life of a task whose run stops to ask a person, today and after. Reading the task: today it shows running, after it shows waiting on a person with the kind, prompt and deadline. Answered in the Inbox: today a run a task started can't be answered there, after it is answered there and the same try carries on. No answer by the deadline: today an approval reads as a rejection and a question waits for good, after the flow decides, and unhandled an approval is a no and a question or review fails the try. The task is cancelled: today the run stays parked and its item open, after the block resumes cancelled, runs to its end, its writes to the task are refused, and the item closes. The user stops it: today the try fails and the task runs again, after the request ends, the item closes and the task is cancelled."
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments in the life of a task whose run suspends for a person, today and after. Reading the task: today it shows running, after it shows waiting on a person with the kind, prompt and deadline. Answered in the Inbox: today a run a task started can't be answered there, after it is answered there and the same try carries on. No answer by the deadline: today an approval reads as a rejection and an input waits for good, after the flow decides, and unhandled an approval is a no and a review or input fails the try. The task is cancelled: today the run stays parked and its item open, after the block resumes cancelled, runs to its end, its writes to the task are refused, and the item closes. The user stops it: today the try fails and the task runs again, after the request ends, the item closes and the task is cancelled."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,7 +35,7 @@
     <text class="t-bad" x="150" y="72">Shows running</text>
     <text class="t-s" x="150" y="92">nothing says it waits</text>
     <text class="t-s" x="150" y="108">on a person, or for</text>
-    <text class="t-s" x="150" y="124">what question</text>
+    <text class="t-s" x="150" y="124">what it asked</text>
     <rect class="cell" x="296" y="50" width="150" height="100" rx="4"/>
     <text class="t-bad" x="306" y="72">Can't be answered</text>
     <text class="t-s" x="306" y="92">the Inbox never</text>
@@ -44,13 +44,13 @@
     <rect class="cell" x="452" y="50" width="150" height="100" rx="4"/>
     <text class="t-bad" x="462" y="72">Only an approval acts</text>
     <text class="t-s" x="462" y="92">it reads as a rejection;</text>
-    <text class="t-s" x="462" y="108">a question stays</text>
+    <text class="t-s" x="462" y="108">an input stays</text>
     <text class="t-s" x="462" y="124">parked for good</text>
     <rect class="cell" x="608" y="50" width="150" height="100" rx="4"/>
     <text class="t-bad" x="618" y="72">Item stays open</text>
     <text class="t-s" x="618" y="92">the row cancels, but</text>
     <text class="t-s" x="618" y="108">the run stays parked</text>
-    <text class="t-s" x="618" y="124">on the question</text>
+    <text class="t-s" x="618" y="124">for the person</text>
     <rect class="cell" x="764" y="50" width="150" height="100" rx="4"/>
     <text class="t-bad" x="774" y="72">The try fails</text>
     <text class="t-s" x="774" y="92">and the task runs</text>
@@ -75,7 +75,7 @@
     <text class="t-ok" x="462" y="200">The flow decides</text>
     <text class="t-s" x="462" y="220">7 days by default;</text>
     <text class="t-s" x="462" y="236">unhandled, approval is no,</text>
-    <text class="t-s" x="462" y="252">a question fails the try</text>
+    <text class="t-s" x="462" y="252">review or input fails</text>
     <rect class="good" x="608" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="618" y="200">Resumes cancelled</text>
     <text class="t-s" x="618" y="220">the block runs to its</text>

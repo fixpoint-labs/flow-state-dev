@@ -3,30 +3,32 @@
 [Spec](SPEC.md) · **Decisions**
 
 Most of this issue was decided above it: the concept's rule 12, and the epic's ER-1, ER-2, ER-3,
-ER-7 and D3. Two calls are left, both about the surface the later children write against.
+ER-7 and D3. Since the epic's amendment (#3748), a question with a task row holds its task (ER-8,
+FIX-2133) and a question with none is input, so `waitForUser` has three kinds: approval, review and
+input. Two calls are left, both about the surface the later children write against.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2129"] --> D1["D1 · at the deadline a question or review throws SuspensionTimeoutError, an approval is a no"]
+  I["FIX-2129"] --> D1["D1 · at the deadline a review or input throws SuspensionTimeoutError, an approval is a no"]
   D1 -.->|"rejected · a flow that never checks carries on with no answer"| X1["always return a no-answer outcome"]
-  I --> D2["D2 · an answer route that takes only where the stop is and the answer"]
+  I --> D2["D2 · an answer route that takes only where the stop is and the answer, after the resume path's ownership checks"]
   D2 -.->|"rejected · caller gate data re-enters a task's handler"| X2["open the resume route to task runs behind a check"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · At its deadline, a question or review throws `SuspensionTimeoutError`, which the block may catch; an approval reads as a no
+## D1 · At its deadline, a review or input throws `SuspensionTimeoutError`, which the block may catch; an approval reads as a no
 
 | | |
 |---|---|
 | **Instead of** | Always returning a "no answer by the deadline" outcome, as a wait on a task does, for the block to branch on |
-| **Because** | The concept says an unhandled deadline fails a question's or review's try, using an attempt. With a returned outcome nothing can tell a block that handled it from one that forgot, so the forgetful one carries on with an empty answer and nobody sees it. A thrown error is unhandled exactly when nobody catches it. An approval keeps what FIX-1846 shipped, a no marked as the deadline's: that is a choice, not the same rule. A no leaves undone the one thing that waited for a yes, and a question's empty answer has no value that is safe to carry on with |
-| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and at a question's or review's deadline throws `SuspensionTimeoutError`, which `core` already exports and nothing throws today: one timeout error for one suspension mechanism. The throw is a block's contract; FIX-2131's model tool returns a deadline result instead, since a model can't catch. ER-1's "share answered and deadline" means the same words, not the same shape: a wait returns `{ answered: false, deadline: true }`. FIX-2131 to FIX-2133 and every app that asks a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's question must not |
+| **Because** | The concept says an unhandled deadline fails a review's or input's try, using an attempt. With a returned outcome nothing can tell a block that handled it from one that forgot, so the forgetful one carries on with an empty answer and nobody sees it. A thrown error is unhandled exactly when nobody catches it. An approval keeps what FIX-1846 shipped, a no marked as the deadline's: that is a choice, not the same rule. A no leaves undone the one thing that waited for a yes, and an input's empty answer has no value that is safe to carry on with: code reads it on its next line, which is why it suspends and doesn't hold (epic D1) |
+| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and at a review's or input's deadline throws `SuspensionTimeoutError`, which `core` already exports and nothing throws today: one timeout error for one suspension mechanism. The throw is a block's contract; FIX-2131's model tool returns a deadline result instead, since a model can't catch. ER-1's "share answered and deadline" means the same words, not the same shape: a wait returns `{ answered: false, deadline: true }`. FIX-2131 and every app that suspends for a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's input must not. A held question's deadline is not this: it is FIX-2133's, and the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open) |
 
-![D1: a question throws and an approval is a no, chosen, beside always returning a no-answer outcome. Decides it: a flow that never checks. Price: a catch around the call](figures/d1-deadline-throws.svg)
+![D1: a review or input throws and an approval is a no, chosen, beside always returning a no-answer outcome. Decides it: a flow that never checks. Price: a catch around the call](figures/d1-deadline-throws.svg)
 
 It comes down to a flow that never checks: a returned outcome lets it carry on with no answer.
 
@@ -34,15 +36,15 @@ It comes down to a flow that never checks: a returned outcome lets it carry on w
 returning it is the common path, and the throw is ceremony.
 
 <a name="d2"></a>
-## D2 · A screen answers a person's stop through a route that takes only where the stop is and the answer
+## D2 · A screen answers a person's suspension through a route that takes only where the stop is and the answer, after the resume path's ownership checks
 
 *An engineering call, decided; recorded because it fixes a public route.*
 
 | | |
 |---|---|
 | **Instead of** | Opening the resume route to runs a task started, with an exception for a person's stop |
-| **Because** | The resume route takes a request id, an action and gate data from the caller, and re-entering a task's handler with them is what its source allow-list refuses (BP-031, FIX-999). The answer route finds the stop by its request and its id, the pair every store keys a stop by (a stop's id is unique only within its request), as the Inbox item and the row's record carry them. It reads the flow, session and user from the stored stop, checks the stop is a person's and the caller is its user, and validates the answer against the stop's own schema. The pair only finds the stop; nothing it trusts comes from the caller but the answer |
-| **Locks in** | A public route and a client call, which the implementer names, beside resume. Every screen answers a person's stop through it, and no child builds another (ER-7). The resume route keeps serving a user's own runs, unchanged |
+| **Because** | The resume route takes a request id, an action and gate data from the caller, and re-entering a task's handler with them is what its source allow-list refuses (BP-031, FIX-999). The answer route finds the stop by its request and its id, the pair every store keys a stop by (a stop's id is unique only within its request), as the Inbox item and the row's record carry them. It loads the stop's request and runs the checks the public resume path runs, `ownsRecord` and `callerReachesRequest` (flow instance, user, tenant, org), before it loads or resolves the stop, answering a miss as an unknown stop. A stored stop carries no tenant or org, so checking its user alone would let a known pair cross a tenant where user ids overlap. Then it checks the stop is a person's, reads the flow and session from the stored stop, and validates the answer against the stop's own schema. The pair only finds the stop; nothing it trusts comes from the caller but the answer |
+| **Locks in** | A public route and a client call, which the implementer names, beside resume. Every screen answers a person's suspension through it, and no child builds another: ER-7's one trusted route per kind, the other being FIX-2133's `updateTask` for a held question. The ownership checks are shared with resume, not copied, so the two can't drift. The resume route keeps serving a user's own runs, unchanged |
 
 ![D2: an answer route that takes where the stop is and the answer, chosen, beside the resume route opened behind a check. Decides it: what the caller sends. Price: two routes to keep](figures/d2-answer-route.svg)
 
@@ -52,8 +54,9 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 
 - **"Resumes once" has one convergence point:** the stop's single pending state, the fence every
   resume already shares (FIX-1816 BR-16b). Every writer resolves through it: the answer route, the
-  sweeper at the deadline, the cancel's payment, the user's stop, and FIX-2131's steer. The loser
-  is told `already-resolved`. Nothing resolves a person's stop another way.
+  sweeper at the deadline, the cancel's payment and the user's stop. A steer into a suspended task
+  waits for the resume (ER-2); it answers only a held question, which isn't a suspension (ER-8).
+  The loser is told `already-resolved`. Nothing resolves a person's suspension another way.
 - **Once a cancel is written, it wins.** The row commits the cancel before its debt reaches the
   fence, so an answer landing in between must not win it: the answer is told `already-resolved`
   and the block resumes `cancelled`, never with an answer for a task already ended. How the answer
@@ -64,8 +67,9 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   (ER-1). The claim gate and the answer route read it here; FIX-2131 moves the Inbox and the send.
   `ctx.suspend` with `human_approval` or `human_input` passes it too, so a raw person's stop gets the
   mark, the cancel and the stop; resumed `cancelled`, it throws as a reject does.
-- **The kind is a field on the suspension**, with the reasons unchanged, so every renderer that
-  knows the two reasons keeps working. A record without it reads its kind from its reason (BP-030).
+- **The kind is a field on the suspension**, approval, review or input and never a question, with
+  the reasons unchanged, so every renderer that knows the two reasons keeps working. A record
+  without it reads its kind from its reason (BP-030): `human_approval` an approval, `human_input` input.
 - **The row copies the stop** (its request and id, kind, prompt and deadline) in the write that sets the mark
   and drops the lease (ER-2), from the request's ending. `listTasks` reads no suspension store per
   row (BP-033), and a stop's prompt never changes. Admission and every ending clear it.
@@ -73,11 +77,18 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   now show. The park's `question` string stays until FIX-2131 removes it.
 - **The cancel is a debt with a due time** (rule 8), written in the cancel's own write: the
   cancelling side pays it at once through the request host, and a board touch or the sweeper
-  resends it. It never goes over HTTP.
+  resends it. It never goes over HTTP. A crash between the row's cancel and the resume is the
+  case the debt exists for, so the goal check kills the host there (leg e).
 - **A cancelled block's writes to the task are refused** by the claim fence already there, and
   nothing it returns is recorded. What it does outside the task (a call, another scope's resource)
   lands, as any block's does. A stop it asks after the cancel resolves `cancelled` at once and opens
   no item.
+- **A cancelled task has no live child.** The filed-work cascade cancels only what the row filed up
+  to the cancel's time, so a filing the cancelled block makes afterwards would outlive it, against
+  the concept's "anything it creates is cancelled with it". A filing whose parent is already
+  cancelled is refused, the parent read in the filing's write. Where the parent is on another board
+  and can't be read there, the filing lands cancelled instead; either way nothing runs. Refused
+  beats cancelling it later: no row to explain, and the block is told.
 - **A user's stop of a person's stop cancels the task.** The request's ending tells the gate the
   stop was a person's, and the gate cancels where it would have failed the try. A stop of a running
   request, or of a wait, is unchanged.
@@ -85,16 +96,16 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   stop's existing `expiresAt` (the field `timeoutMs` sets), which FIX-2063's sweeper fires: one
   clock. The host setting has its own bounds beside `waitDeadlines`; its name is the implementer's.
   The default applies to `waitForUser` only: a raw `ctx.suspend` keeps its own `timeoutMs`, none
-  meaning no deadline, so an approval that waits today doesn't start expiring. A question's and a
-  review's expiry now resume the block, as an approval's already does (FIX-1846). A question that
+  meaning no deadline, so an approval that waits today doesn't start expiring. An input's and a
+  review's expiry now resume the block, as an approval's already does (FIX-1846). Input that
   fails its try at the deadline is asked again on the next try, so it can stay open a deadline per
   try.
 - **A person's stop never holds back a notice.** A task the stopped request filed ends during the
   stop, and its `onTaskSettled` runs then (ER-2). A filing request parked on a person's stop counts
   as ended for holding notices back; a wait after the resume that finds the notice taken says it is
   arriving as a notice, the mechanism #3733 adds.
-- **The model's `waitForUser` tool is FIX-2131's**, which swaps it for `parkOnQuestion` in one
-  change, so a model never has two ways to ask.
+- **The model's `waitForUser` tool is FIX-2131's**, landing in the change that retires
+  `parkOnQuestion` for the hold, so a model never has two ways to ask.
 - **Messages:** a send or call to a session waiting on a person queues (rule 10, epic D2). A test
   pins it so FIX-2070's change is seen.
 
@@ -108,6 +119,9 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 | Read the stop's text from the suspension store at `getTask` time | A store read per row in `listTasks`, and a second read path for the same fact |
 | Cancel the run's stop synchronously in `updateTask`, with no debt | A crash between the row's cancel and the resume leaves the run parked for good, which is today's bug |
 | Keep failing the try on a user's stop | Rule 12, and it asks the person the same question again |
+| A `question` kind on `waitForUser` | The epic's amendment (#3748, D1): a question with a task row holds its task and needs no durable execution (ER-8); one with none is input |
+| Check only the stored stop's user on an answer | The stop carries no tenant or org; where user ids overlap, a known stop could be answered across a tenant (BP-031) |
+| Let a cancelled block's late filing land, and cascade it later | The cascade is bounded by the cancel's time, so it would never be cancelled: an orphan that runs |
 | Hold the session's key while waiting | The epic's D2 rejected it: `onTaskSettled` must still run |
 
 ## Settled
@@ -135,5 +149,13 @@ Recorded for the implementer, not folded into the design.
 - **Draft** — framed as the base every later stop builds on: `waitForUser` on `ctx.suspend`, the
   mark keyed on one predicate with the stop recorded on the row, four endings through one fence,
   and one trusted answer route; FIX-2130 folded in as the epic decided.
+- **Review round 1** — the deadline error is the existing `SuspensionTimeoutError`; a person's stop
+  holds back no notice; the docs line gains the architecture page.
+- **Review round 2** — the answer route finds a stop by its request and id; a written cancel beats
+  a late answer.
+- **Round 3, to the epic's amendment** (#3748) — the `question` kind dropped: a question holds its
+  task (FIX-2133) or is input. The answer route runs the resume path's ownership checks (ER-7,
+  Codex). A cancelled task refuses new filings, and a crash after the cancel is a goal leg (Codex).
+  FIX-2137 blocks approval resumes; the goal check runs with trace observability off.
 
 **Open: none.**
