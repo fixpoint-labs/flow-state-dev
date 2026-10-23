@@ -32,7 +32,7 @@ import {
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
 import { detectInterruptedRequests } from "../execution/request-recovery";
-import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
+import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
@@ -942,10 +942,9 @@ class InternalFlowState<TSettings extends object>
     // per-layer signature change.
     // Durable execution: build the default checkpoint provider from the SAME
     // resolved stores the router/worker use, so checkpoints, suspensions, and
-    // leases all read/write the active profile. Opt-in via `durable: true`.
-    const durabilityProvider = this.#options.durable === true
-      ? createCheckpointDurabilityProvider(stores)
-      : undefined;
+    // leases all read/write the active profile. On by default wherever those
+    // stores persist (FIX-2063 D2); `durable: false` turns it off.
+    const durabilityProvider = resolveDurabilityProvider({ stores, durable: this.#options.durable });
 
     // The request-host seam (FIX-999) belongs on the SHARED config, not on the
     // router's copy of it. This config is handed to `worker.startWorker` below
