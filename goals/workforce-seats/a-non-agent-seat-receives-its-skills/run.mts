@@ -77,7 +77,7 @@ async function open(router: Router, flow: string, worker: string, sessionId: str
 }
 
 async function act(router: Router, flow: string, sessionId: string): Promise<Response> {
-  const path = [flow, sessionId, "actions", "respond"];
+  const path = [flow, sessionId, "actions", "run"];
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",

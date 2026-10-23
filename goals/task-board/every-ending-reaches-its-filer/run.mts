@@ -190,7 +190,7 @@ function buildHost(filename: string) {
         if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "two-passes") {
           const send = () =>
-            dispatchThroughSeam(ctx, { type: "internal", action: "runTaskBoard", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
+            dispatchThroughSeam(ctx, { type: "internal", action: "dispatch", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
           return { ok: true, outcomes: await Promise.all([send(), send()]) };
         }
         return { ok: false, error: "unknown op" };
@@ -334,7 +334,7 @@ function buildHost(filename: string) {
         .filter((r) => r.actionName === "onTaskSettled" && (r.input as { taskId?: string } | undefined)?.taskId !== undefined)
         .map((r) => ({ ...(r.input as { taskId: string; ending: string; error?: string; cancelled?: string[] }), at: r.startedAtMs }));
     const passes = async (sessionId: string) =>
-      (await runtime.stores.request.list({ sessionId, withItems: true })).filter((r) => r.actionName === "runTaskBoard");
+      (await runtime.stores.request.list({ sessionId, withItems: true })).filter((r) => r.actionName === "dispatch");
     const act = (flow: string, session: string, action: string, input: unknown) => http.act(flow, session, action, input);
     const script = (session: string, s: Script) => act("desk", session, "respond", { message: JSON.stringify(s) });
     const until = async (check: () => Promise<boolean>, ms: number) => {

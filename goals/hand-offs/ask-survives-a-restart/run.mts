@@ -252,7 +252,7 @@ function grade(O: Observed, store: string, userId: string): Graded {
   const all = requests(store);
   const askedRequest = all.find((r) => r.id === O.asked);
   if (askedRequest?.status !== "completed") failures.push(`a:completed — the asker's request ended ${askedRequest?.status}, not completed`);
-  const turns = all.filter((r) => r.sessionId === O.conv && r.actionName === "run");
+  const turns = all.filter((r) => r.sessionId === O.conv && r.actionName === "respond");
   if (turns.length !== 1) failures.push(`a:same-turn — the asker's conversation ran ${turns.length} turns; the ask must resume its own, not start another`);
   const said = items(store, O.conv, "message")
     .filter((m) => m.requestId === O.asked && m.role === "assistant")

@@ -72,7 +72,7 @@ async function open(router: Router, worker: string, sessionId: string): Promise<
 async function act(router: Router, worker: string, sessionId: string): Promise<Response> {
   const opened = await open(router, worker, sessionId);
   if (opened !== 201) return new Response(`the session naming "${worker}" was not created (${opened})`, { status: opened });
-  const path = [TRIAGE_KIND, sessionId, "actions", "respond"];
+  const path = [TRIAGE_KIND, sessionId, "actions", "run"];
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",

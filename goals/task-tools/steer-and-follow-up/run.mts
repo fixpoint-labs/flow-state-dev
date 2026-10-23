@@ -284,7 +284,7 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { message },
+    actions: { respond: message },
     internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }) } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "steer-goal-coder-work", block: manager as never }) } }
   } as never);

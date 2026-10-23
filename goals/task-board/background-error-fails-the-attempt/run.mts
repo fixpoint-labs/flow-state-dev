@@ -639,7 +639,7 @@ async function legD(run: Run): Promise<void> {
   const session = await run.h.http.open("doer", { workerId: "eng.doer" });
   await run.h.http.act("doer", session, "respond", { message: word("[bg:always] a plain request") });
   await run.h.idle();
-  const requests = run.tell.over("d · the plain session's requests", (await run.h.requests(session)).filter((r) => r.actionName === "run"));
+  const requests = run.tell.over("d · the plain session's requests", (await run.h.requests(session)).filter((r) => r.actionName === "respond"));
   const threw = readProofs().filter((p) => p.kind === "step" && p.step === "bg-after-answer" && p.did === "threw" && p.sessionId === session);
   if (requests.some((r) => r.status !== "completed") || threw.length !== 1) {
     run.failures.push(`d:completed — wanted the plain request completed with its background step having thrown; requests ${show(requests.map((r) => r.status))}, threw ${threw.length}`);
