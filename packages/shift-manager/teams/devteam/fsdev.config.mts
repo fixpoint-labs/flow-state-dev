@@ -41,9 +41,11 @@
  *   checkout's code. This team names no tracker, so reports are kept, not
  *   filed; a draft needs a Claude Code account, and waits for one otherwise.
  *
- * - **Codex usage left.** Usage shows how much of each Codex window this
- *   machine's Codex sign-in has used, read from the Codex CLI when someone
- *   looks, at most once a minute. Nothing is read until then.
+ * - **Usage left.** Usage shows how much of each Codex window this machine's
+ *   Codex sign-in has used, read from the Codex CLI when someone looks, at
+ *   most once a minute. Nothing is read until then. For Claude Code, a look
+ *   reads who is signed in, and each window comes from a coding run, as
+ *   Claude Code reports it.
  *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
@@ -58,12 +60,13 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { errorReporterHarness, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
@@ -194,6 +197,7 @@ const lab = await openLab({
   usage: {
     codex: ({ signal } = {}) =>
       readCodexUsage({ env: harnessEnv({ pass: CODEX_USAGE_PASS }), ...(signal === undefined ? {} : { signal }) }),
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
 });
 

@@ -47,6 +47,7 @@ import type {
   HarnessBlock,
   HarnessResolver,
   HarnessSessionHook,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
 import { renderSteers, showTakenSteers } from "@flow-state-dev/orchestration";
 import { TaskEndsForGoodError, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
@@ -104,6 +105,7 @@ import {
   withHoldRetries,
 } from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
+import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
 import {
   HARNESS_RUN_OWNER_KEY,
@@ -570,6 +572,13 @@ export interface HarnessFeeds {
    * id onto the run row. **The sole writer of that field.**
    */
   onSession: HarnessSessionHook;
+  /**
+   * Called by the harness with each subscription usage window its vendor
+   * reports during the run, writing it into the run owner's usage record
+   * (`harness-usage/**`, through `recordHarnessUsage`). A harness that reports
+   * no usage ignores it.
+   */
+  onUsage: HarnessUsageHook;
 }
 
 /**
@@ -1224,6 +1233,9 @@ function createManagerCapability(options: {
       // question a child session writes is the one the coordinator session
       // reads — one registration, not two storage slots that look alike.
       [INBOX]: inboxCollection,
+      // Where `onUsage` records the subscription windows a run reports, in the
+      // run owner's row. The usage query declares the same definition object.
+      [HARNESS_USAGE]: harnessUsageCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1371,7 +1383,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
+  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, HARNESS_USAGE, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1391,7 +1403,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${HARNESS_USAGE}" is the usage record` +
         (boardCollectionId !== undefined
           ? `, and "${boardCollectionId}" is the board ledger the attempt fence reads`
           : "") +
@@ -2651,6 +2663,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         }),
         "the harness named its session",
       );
+    },
+    // **Not fenced, unlike `onSession`.** A replaced attempt's window is still
+    // a true reading of the pool, and it lands in the run owner's own row, not
+    // on the run record a replacement holds. The harness swallows a throw.
+    onUsage: async (report, ctx) => {
+      await recordHarnessUsage(ctx, report);
     },
   });
 

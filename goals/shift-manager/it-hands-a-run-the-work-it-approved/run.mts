@@ -387,14 +387,14 @@ await runGoal(async (failures) => {
     });
     const { lab, sourceRepo } = await open(
       "handed-b",
-      ({ cwd, resume, onSession }) =>
+      (feeds) =>
         sequencer({
           name: "handed-recorded-harness",
           inputSchema: harnessRunInputSchema,
           outputSchema: harnessRunHandleSchema,
         })
           .tap(recordPrompt)
-          .step(claudeCodeHarness({ cwd, resume, onSession }) as never) as unknown as HarnessBlock,
+          .step(claudeCodeHarness(feeds) as never) as unknown as HarnessBlock,
       fixture.realRun,
       { runTimeoutMs: REAL_RUN_TIMEOUT_MS },
     );

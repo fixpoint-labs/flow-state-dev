@@ -91,6 +91,7 @@ export {
   type UpsertableCollection,
 } from "./work-recorder";
 export { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "./errors";
+export { CLAUDE_CODE_HARNESS, readClaudeUsage, usageWindowOf, type ReadClaudeUsageOptions } from "./usage";
 
 export {
   createWorkspaceAgentCapability,

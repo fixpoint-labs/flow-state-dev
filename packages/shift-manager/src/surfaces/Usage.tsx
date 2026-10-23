@@ -5,19 +5,23 @@
  * A number is never shown without where it came from and how old it is. A
  * window whose reset has passed shows when it reset instead of its old
  * percent, and a harness with no number (an API key, nobody signed in, a read
- * that failed) says why, with no percent at all.
+ * that failed) says why, with no percent at all. A window the harness sent no
+ * percent for (Claude Code below its warning line, or at its limit) says how
+ * close it is instead, and a window a run reported says so, with its own age.
  */
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import type { LoadedSnapshot } from "../lib/derive";
-import { ageLabel, harnessName, percentLabel, resetLabel, useHarnessUsage, windowName, type HarnessUsage, type UsageWindow } from "../lib/usage";
+import { ageLabel, harnessName, levelLabel, percentLabel, resetLabel, useHarnessUsage, windowName, type HarnessUsage, type UsageWindow } from "../lib/usage";
 
-function WindowLine({ window }: { window: UsageWindow }) {
+function WindowLine({ window, harness }: { window: UsageWindow; harness: string }) {
   return (
     <li
       className="grid grid-cols-[minmax(9rem,max-content)_1fr] items-baseline gap-x-4 border-b border-foreground/10 py-2"
       data-testid="usage-window"
       data-window-id={window.id}
       data-rolled-over={window.rolledOver}
+      data-level={window.level ?? undefined}
+      data-origin={window.origin}
     >
       <span className="text-sm" data-testid="usage-window-name">
         {windowName(window)}
@@ -27,15 +31,26 @@ function WindowLine({ window }: { window: UsageWindow }) {
           {window.resetsAt === null ? "reset" : `reset at ${resetLabel(window.resetsAt)}`}, not checked since
         </Meta>
       ) : (
-        <span className="flex items-baseline gap-3">
-          <Meta role="control" testId="usage-percent">
-            {percentLabel(window.usedPercent)}
-          </Meta>
+        <span className="flex flex-wrap items-baseline gap-x-3">
+          {window.level === "reached" || window.usedPercent === null ? (
+            <Meta role="control" testId="usage-level">
+              {levelLabel(window.level, harness)}
+            </Meta>
+          ) : (
+            <Meta role="control" testId="usage-percent">
+              {percentLabel(window.usedPercent)}
+            </Meta>
+          )}
           {window.resetsAt === null ? null : (
             <Meta className="text-muted-foreground" testId="usage-reset">
               resets at {resetLabel(window.resetsAt)}
             </Meta>
           )}
+          {window.origin === "run" ? (
+            <Meta className="text-muted-foreground" testId="usage-window-age">
+              from a run, {ageLabel(window.ageMs)}
+            </Meta>
+          ) : null}
         </span>
       )}
     </li>
@@ -54,7 +69,11 @@ function HarnessCard({ row }: { row: HarnessUsage }) {
           </Meta>
         )}
         <Meta className="ml-auto text-muted-foreground" testId="usage-age">
-          {row.ageMs === null ? "not checked yet" : `from ${name}, checked ${ageLabel(row.ageMs)}`}
+          {row.ageMs !== null
+            ? `from ${name}, checked ${ageLabel(row.ageMs)}`
+            : row.windows.length > 0
+              ? `from ${name}'s runs`
+              : "not checked yet"}
         </Meta>
       </header>
       {row.status === "windows" ? (
@@ -65,7 +84,7 @@ function HarnessCard({ row }: { row: HarnessUsage }) {
         ) : (
           <ul className="mt-1">
             {row.windows.map((window) => (
-              <WindowLine key={window.id} window={window} />
+              <WindowLine key={window.id} window={window} harness={row.harness} />
             ))}
           </ul>
         )
