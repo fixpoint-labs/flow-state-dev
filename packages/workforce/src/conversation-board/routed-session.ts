@@ -2,15 +2,9 @@
  * Which routed task a session by id works now (FIX-2083): a workstream's
  * session, the one session several of its user's conversations can route to.
  *
- * Rule 5 (one open task per session) is each board's own check, and a
- * workstream's session is no one board's: two conversations route to it from
- * two boards. So the session has one record, in the user's scope, naming the
- * routed task that holds it and the board that task is on. A board takes the
- * record before it claims a routed task for the session, in one
- * compare-and-swap write: the record names its task, or another board's task
- * that is still open there, and only the board it names claims. A task that
- * has ended, or was held, holds nothing, so the next claim takes the record
- * over. The record is server-written, and a caller reads only its own user's.
+ * Rule 5 is each board's own check, and this session is no one board's, so
+ * it has one record in the user's scope. Server-written; a caller reads only
+ * its own user's.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
@@ -59,10 +53,7 @@ function requireRecords(ctx: BlockContext): ResourceCollectionRef<RoutedSessionH
 /** A session id as one key segment: it may hold any character. */
 const keyOf = (sessionId: string): string => encodeURIComponent(sessionId);
 
-/**
- * Whether `holder` holds `sessionId` now: its row, as stored now (another
- * request may have ended it), is open there and not held.
- */
+/** Whether the committed row still holds `sessionId` (open there, not held). Committed, so a request that just ended it counts. */
 async function holds(ctx: BlockContext, holder: RoutedSessionHolder, sessionId: string): Promise<boolean> {
   const ledger = await conversationLedgerAt(ctx, holder.partition);
   const row = ledger === undefined ? undefined : await readCommittedTask(ledger, holder.taskId);
@@ -100,11 +91,9 @@ export async function holdRoutedSession(
 }
 
 /**
- * Record, from the `work` entry, the routed task it just let into
- * `sessionId`, when the record names no task that holds it: none yet, or one
- * that has ended or was held (a task claimed by a host before claims took the
- * record, as in a rolling deploy). A record naming a task still open there is
- * left alone, in the same compare-and-swap write a claim takes.
+ * From the `work` entry: name the routed task just let into `sessionId` when
+ * the record names none that still holds it (ended, held, or a claim from
+ * before records existed, as in a rolling deploy).
  *
  * @throws when the running flow doesn't declare the records.
  */

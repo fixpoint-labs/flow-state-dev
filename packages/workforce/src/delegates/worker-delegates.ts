@@ -59,11 +59,7 @@ export interface TaskDelegates {
   readonly records: readonly DelegateRecord[];
 }
 
-/**
- * The one delegate a task filed with no assignee goes to: the only one that
- * takes a task now. `undefined` with none or several, so the task waits
- * unassigned (or a scheduled fire is refused) until one is named.
- */
+/** The only task-taking delegate, or `undefined` when there isn't exactly one. */
 export function soleTaskDelegate(delegates: Pick<TaskDelegates, "available">): string | undefined {
   return delegates.available.size === 1 ? [...delegates.available.keys()][0] : undefined;
 }

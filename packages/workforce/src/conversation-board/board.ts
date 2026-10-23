@@ -444,13 +444,7 @@ function heldByAnotherBoard(task: Task, held: ReadonlySet<string> | undefined): 
   return task.targetSessionId !== undefined && held?.has(task.targetSessionId) === true;
 }
 
-/**
- * Take each session by id a startable row here would start in (FIX-2083
- * rule 5 across boards): for each, the one row of this board that may start
- * there now, or none while another board's routed task holds it. The rows
- * for one session are taken earliest filed first; this board's own rule 5
- * starts one of them at a time anyway.
- */
+/** Hold each target session for this board's earliest startable, claimable row. Rule 5 starts one at a time; `undefined` means another board holds it. */
 async function takeTargetSessions(ctx: BlockContext, collection: TaskCollectionRef): Promise<ReadonlyMap<string, string | undefined>> {
   const now = collection.now();
   const lookup = (taskId: string): Task | undefined => collection.get(taskId);
@@ -1005,11 +999,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
       const { id, markAdded } = reserved;
       let assignee = init.assignee;
-      if (assignee === undefined) {
-        // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned.
-        assignee = soleTaskDelegate(await options.delegates(ctx));
-      }
+      if (assignee === undefined) assignee = await soleDelegate();
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);

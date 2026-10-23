@@ -59,6 +59,25 @@ async function answerAsOf(b: Awaited<ReturnType<typeof board>>, asOf: Task, answ
   return runForTest(toolNamed(tools, "answerTask"), { taskId: asOf.id, answer }, b.ctx) as Promise<any>;
 }
 
+/** One model tool call on a shared `runOnce` memo. `gate` holds the call's id record. */
+function planCall(memo: Map<string, unknown>, callId: string, gate?: { before?: Promise<void>; arrived?: () => void }) {
+  return {
+    _blockIdentity: { blockName: "createTask", blockInstanceId: `req_1:root/step[0]/tool[createTask][0%3A${callId}]:0` },
+    session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
+    request: { identity: { type: "request", id: "req_1" } },
+    runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+      if (gate !== undefined && key.startsWith("fsd.dispatch.plan:")) {
+        gate.arrived?.();
+        await gate.before;
+      }
+      if (memo.has(key)) return memo.get(key) as T;
+      const value = await fn();
+      memo.set(key, value);
+      return value;
+    }
+  } as never;
+}
+
 /** File `id` for researcher and run it to completion, as a board does: claimed, run-linked, completed. */
 async function ranAndCompleted(ref: TaskCollectionRef, id: string) {
   await ref.addTask({ id, goal: `do ${id}`, assignee: "researcher" });
@@ -290,26 +309,8 @@ describe("createTask's followUpOf (S4)", () => {
     const c2HasPicked = new Promise<void>((r) => (c2Picked = r));
     let c1Filed!: () => void;
     const c1HasFiled = new Promise<void>((r) => (c1Filed = r));
-    type Gate = { before?: Promise<void>; arrived?: () => void };
-    const callCtx = (callId: string, gate?: Gate) =>
-      ({
-        _blockIdentity: { blockName: "createTask", blockInstanceId: `req_1:root/step[0]/tool[createTask][0%3A${callId}]:0` },
-        session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
-        request: { identity: { type: "request", id: "req_1" } },
-        runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-          // The gate holds the record of the call's id, after its checks.
-          if (key.startsWith("fsd.dispatch.plan:")) {
-            gate?.arrived?.();
-            await gate?.before;
-          }
-          if (memo.has(key)) return memo.get(key) as T;
-          const value = await fn();
-          memo.set(key, value);
-          return value;
-        }
-      }) as never;
-    const file = (goal: string, callId: string, gate?: Gate) =>
-      runForTest(tool as never, { goal, followUpOf: "root" } as never, callCtx(callId, gate)) as Promise<any>;
+    const file = (goal: string, callId: string, gate?: { before?: Promise<void>; arrived?: () => void }) =>
+      runForTest(tool as never, { goal, followUpOf: "root" } as never, planCall(memo, callId, gate)) as Promise<any>;
     const [one, two] = await Promise.all([
       file("first", "c1", { before: c2HasPicked }).finally(() => c1Filed()),
       file("second", "c2", { arrived: () => c2Picked(), before: c1HasFiled })
@@ -321,20 +322,15 @@ describe("createTask's followUpOf (S4)", () => {
     expect(refused[0].error).toMatch(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`));
     const followUps = ref.list().filter((t) => t.followUpOf === "root");
     expect(followUps).toHaveLength(1);
-    // The accepted call's goal is the one on the row.
     expect(followUps[0]!.goal).toBe(accepted[0] === one ? "first" : "second");
-    // A replay of the accepted call finds its own row and files nothing more.
     const acceptedCall = accepted[0] === one ? ["first", "c1"] : ["second", "c2"];
     expect(await file(acceptedCall[0]!, acceptedCall[1]!)).toMatchObject({ ok: true, taskId: accepted[0].taskId });
-    // A replay of the refused call finds the id it recorded taken by the other
-    // call's row, and is refused again: never told that row is its own.
     const refusedCall = accepted[0] === one ? ["second", "c2"] : ["first", "c1"];
     expect(await file(refusedCall[0]!, refusedCall[1]!)).toMatchObject({
       ok: false,
       error: expect.stringMatching(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`))
     });
     expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
-    // The row names the call that filed it, and a caller can't write that.
     expect(ref.get(accepted[0].taskId)!.metadata?.filedByCall).toEqual(expect.stringContaining(`0%3A${acceptedCall[1]}`));
   });
 
@@ -347,16 +343,7 @@ describe("createTask's followUpOf (S4)", () => {
     await ranAndCompleted(ref, "root");
     const tools = taskToolsForTurn(async () => ref, undefined, { dispatches: true })({});
     const tool = (name: string) => tools.find((t) => (t as { name?: string }).name === name)!;
-    const memo = new Map<string, unknown>();
-    const ctx = {
-      _blockIdentity: { blockName: "createTask", blockInstanceId: "req_1:root/step[0]/tool[createTask][0%3Ac1]:0" },
-      session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
-      request: { identity: { type: "request", id: "req_1" } },
-      runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-        if (!memo.has(key)) memo.set(key, await fn());
-        return memo.get(key) as T;
-      }
-    } as never;
+    const ctx = planCall(new Map(), "c1");
     const filed = (await runForTest(tool("createTask") as never, { goal: "next", followUpOf: "root" } as never, ctx)) as { ok: boolean; taskId: string };
     expect(filed).toMatchObject({ ok: true });
     const marker = ref.get(filed.taskId)!.metadata?.filedByCall;

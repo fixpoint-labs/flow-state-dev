@@ -464,12 +464,7 @@ const awaitingAnswerError = (taskId: string) => ({
     `with its worker, in the session that filed it. Reassign it after that run starts. Nothing was written.`,
 });
 
-/**
- * The metadata key a row filed under an id picked from the board (a
- * follow-up's) names the call that filed it in (its logical id), so a replay
- * of the call finds its own row and no other. Server-written: a caller's
- * metadata never sets or changes it.
- */
+/** Server-written call id on a row filed under a picked id. A caller never sets it. */
 const FILED_BY_CALL_KEY = "filedByCall";
 
 /** A caller's metadata, without the keys only the server writes: the notice markers and {@link FILED_BY_CALL_KEY}. */
@@ -1042,13 +1037,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // The board's own id shape: twenty hex characters, unique across processes.
       return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
     });
-    // An id minted here is this call's alone, so a row with it is its own. A
-    // follow-up's id is picked from the board, so another call can have
-    // filed it: such a row names the call that filed it, and is this call's
-    // only when it names this one; otherwise the add refuses the id as taken.
-    // A row filed before rows named their call (BP-030) is this call's on a
-    // replay, as it was then. That holds while every filer of a picked id on
-    // a dispatching board goes through this function.
+    // A minted id is this call's. A picked id is a follow-up: the row is this
+    // call's only when it names the call, or on replay when it names none
+    // (BP-030). That reading holds only while every filer of a picked id on a
+    // dispatching board is this function.
     const picked = init.id !== undefined;
     const existing = collection.get(id);
     const filedBy = existing?.metadata?.[FILED_BY_CALL_KEY];
