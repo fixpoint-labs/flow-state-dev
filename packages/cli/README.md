@@ -233,7 +233,7 @@ Options:
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
-Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores.
+Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores. Without a config, chat uses `.fsdev/data/fsdev.db`, the file `fsdev run` and `fsdev dev` share; a turn that stops for a person is held there, and chat prints one line naming the stop and saying to answer it in `fsdev dev`.
 
 Each turn asks the app who it is for that turn's flow, as [`fsdev run`](#who-a-run-is) does. A turn whose flow refuses the terminal fails on its own and the session carries on; `/status` shows the organization the active target's last turn ran in.
 

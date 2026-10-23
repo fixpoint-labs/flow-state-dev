@@ -40,6 +40,8 @@ export interface ChatLoopParams {
   renderer: ChatRenderer;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
+  /** Where a turn held on a stop is answered, as one sentence a person reads. */
+  answerAt: string;
   /**
    * Who a turn runs as, asked for that turn's target and text. Rejects with the
    * refusal to show when the app's resolver refuses the terminal.
@@ -67,7 +69,7 @@ export function decideIdleInterrupt(armed: boolean): { action: "warn" | "exit"; 
 /** Run the loop to completion; returns the process exit code. */
 export async function runChatLoop(params: ChatLoopParams): Promise<number> {
   const {
-    state, registry, targets, builtins, renderer, stores, runtimeConfig,
+    state, registry, targets, builtins, renderer, stores, runtimeConfig, answerAt,
     principalFor, runtime, validateSessionForTarget, input, output, isTTY,
   } = params;
 
@@ -189,6 +191,7 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
           orgId: principal.orgId,
           stores,
           runtimeConfig,
+          answerAt,
           renderer,
         });
 

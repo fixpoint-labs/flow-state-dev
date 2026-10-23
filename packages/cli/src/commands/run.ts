@@ -619,8 +619,9 @@ export async function executeRunCommand(
 /**
  * The stop a run ended on, when its request is held waiting for a person:
  * the request record says `suspended`, and the stop is its last suspension item.
+ * `fsdev chat` reads a held turn the same way.
  */
-async function heldStop(
+export async function heldStop(
   result: ExecutionResult,
   stores: StoreRegistry,
   sessionId: string,

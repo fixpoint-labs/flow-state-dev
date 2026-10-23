@@ -278,8 +278,9 @@ export interface CreateFlowStateOptions<
   durable?: boolean;
 
   /**
-   * Retention policy for the durability sweeper (FIX-141). Only takes effect
-   * alongside durability (`durable: true` or a custom provider). Enforces
+   * Retention policy for the durability sweeper (FIX-141). Takes effect
+   * wherever durable execution is on: by default over persisting stores, or
+   * with `durable: true`. Enforces
    * suspension expiry and prunes aged-out suspensions, leases, and orphaned
    * checkpoints on a cadence.
    */

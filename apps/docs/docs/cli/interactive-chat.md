@@ -50,7 +50,7 @@ Anything after `/` that no built-in claims is sent to the flow unchanged. That's
 
 ## Sessions and state
 
-Each flow kind gets its own session within a run, so conversation history and state don't bleed across a `/use` switch. Switch away and back, and the first flow's session resumes where it left off. History persists in the engine's stores — the same SQLite database (`.fsdev/data/fsdev.db`) the DevTool reads in the discovery path — so a conversation survives restarts of the session.
+Each flow kind gets its own session within a run, so conversation history and state don't bleed across a `/use` switch. Switch away and back, and the first flow's session resumes where it left off. History persists in the engine's stores — the same SQLite database (`.fsdev/data/fsdev.db`) the DevTool reads in the discovery path — so a conversation survives restarts of the session. A turn that stops to wait for a person is held there too: the session prints one line with what it is waiting for, the stop's id, and that you answer it in `fsdev dev`.
 
 Turns run as whoever your app's resolver says, asked once per turn for that turn's flow. With no resolver, that is `devuser` in the development organization, `DEFAULT_ORG_ID` (`__fsd_default_org__` in output): the user the DevTool defaults to, so a chat session shows in the DevTool's session list. If a flow's resolver refuses the CLI, that turn fails and the chat keeps going. Pass `--org` to get past it. `/status` shows the organization the current flow's last turn ran in. See [Who a run is](./configuration.md#who-a-run-is) for how the resolver is asked and what `--org` and `--user` change.
 
