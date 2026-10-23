@@ -2,6 +2,8 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
+> **Amended after merge.** Two later rules take precedence over any statement below that every check runs on one commit, or that a closure PR needs a clean run. [QR-19](BUSINESS-RULES.md) lets a re-run carry forward each check its fix didn't touch. [QR-22](BUSINESS-RULES.md) lets the owner close without a clean run, which the owner did on 2026-10-23 ([closed by the owner](DECISIONS.md#closed-by-the-owner)).
+
 ## Five people, before and after
 
 | Someone who… | Today | After this closes |
@@ -99,5 +101,5 @@ wrong: the epic wraps on checks that never met each other, or waits on a bar nob
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Improvement · closure (QA) · `goals/` only · large, repeats per finding · a milestone run, then 1
-PR after a clean run · epic [FIX-1786](../../epics/FIX-1786/SPEC.md), closure · required · runs
+PR after a clean run, or on the owner's close (QR-22) · epic [FIX-1786](../../epics/FIX-1786/SPEC.md), closure · required · runs
 after every child except FIX-1795 merges · Linear [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)
