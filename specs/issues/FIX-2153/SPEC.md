@@ -103,10 +103,14 @@ flowchart LR
 ```
 
 The main session's flow is the lab's own, and small. When the generator finishes, the flow
-checks for tasks this session filed that settled while the turn ran. If there are any, it runs
-the generator again in the same request with those results, so the turn picks them up; if
-not, the turn ends. The check runs after the last model call, so a task that settles during
-that call is still caught. The lab draws the result card from the item the loop-back emits.
+checks for tasks this session filed that settled while the turn ran. If there are any, it takes
+their notices and runs the generator again in the same request with those results; if not, the
+turn ends. The check runs after the last model call, so a task that settles during that call is
+still caught. The take is not the lab's: it goes through FIX-2078's one ending path with the
+durable "taken in request R" mark ([ER-6](../../epics/FIX-2152/DECISIONS.md#who-owns-what)),
+moving the notice's handling and acknowledgement into this request, so the queued
+`onTaskSettled` notice for the same ending skips and the main session hears each ending once.
+The lab owns only the decision to loop. The result card is drawn from the item the take emits.
 
 ## What stays as it is
 
@@ -133,7 +137,7 @@ that call is still caught. The lab draws the result card from the item the loop-
 | Gap | Blocks |
 |---|---|
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · **the workforce client lists a person's sessions of one worker.** A new session is an ordinary session on the worker's flow; the derived session stays the default conversation, where messages and routed tasks land ([epic D3, ER-7](../../epics/FIX-2152/DECISIONS.md#d3)). No new criteria key | The sessions list · steps 1 to 5 |
-| Only if the loop-back can't be a small flow: [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken inside the filer's running request**. The wiring PR says why the flow wasn't enough. Whichever carries it, a task that settles during the turn's last model call still gets a further model step in that same request | Step 4, as a fallback |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a flow can take a settled notice inside the filer's running conversation request**, on FIX-2078's one path with the "taken in request R" mark, the handling and the acknowledgement moving as one transaction (ER-6). The take also runs the shared handling (the failure report, the dedupe key, freeing the delegate's session) before it clears, and reads committed rows, not the turn's snapshot. Plus a hook on the agent worker flow that lets a turn answer again, since `afterAnswer` can't change the answer today. The lab's loop-back calls both at turn end, so a task that settles during the last model call is still heard in that request, and only once | Step 4 |
 | Checked at wiring: **the person can read a task's run session** | Opening a row; a gap only if refused |
 | **`listTasks` rows carry when a task started and ended** | Nothing; without it the pane shows no elapsed time. Filed in the project, not as a child |
 

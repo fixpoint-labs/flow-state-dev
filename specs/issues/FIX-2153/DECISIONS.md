@@ -59,7 +59,7 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   right (a row per task: title, status, last progress note, worker; a row opens the task's
   work read only). Flow State theme, square corners; `attention` only where a person must act.
 - **A result is a card in the thread at the point the main session took it**, labelled with
-  the task's title and ending. It is drawn from the item the loop-back emits, never from the pane.
+  the task's title and ending. It is drawn from the item the take emits, never from the pane.
 - **The *Projects* view is planned in, not built.** A mode is `{ main worker, right pane }` in one
   config object, keyed by view; session mode is its only built entry. A session's mode is
   the view that lists it, never stored. FIX-2157 adds threads mode as the *Projects* entry
@@ -69,7 +69,9 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   checks for tasks that settled while the turn ran and, if any, loops back to the generator in
   the same request (epic D2, the product owner's call). It is built at wiring and must stay
   under 200 lines. `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
-  The front end needs no change for it: the result card reads the item the loop-back emits.
+  The take it calls is FIX-2159's, on FIX-2078's one path with the "taken in request R" mark, so
+  the deferred notice skips and each ending is heard once (ER-6). The lab owns only the
+  decision to loop. The front end needs no change for it: the card reads the item the take emits.
 - **The inventory check is owned here** (ER-1). It classifies every tracked file under the lab
   as config, UI or flow by path, counts lines, writes the README table, and fails on any file
   it can't classify and on a flow over 200 lines. Its negative control plants `src/glue.ts`
@@ -105,7 +107,8 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   Signal 4 now names the first request, and a late settle must still get a model step.
 - **Product owner's answers:** the mode comes from the view you're in (*Sessions* or
   *Projects*), not from a choice at *New session*. A result reaches the running turn through
-  the lab's own flow looping back at turn end, with FIX-2159 only as the fallback.
+  the lab's own flow looping back at turn end. The take stays FIX-2159's, on FIX-2078's one
+  path, so an ending is heard once; the epic's D2 is amended to match.
 
 ## Notes from review
 
