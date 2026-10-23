@@ -73,6 +73,13 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 - **The row copies the stop** (its request and id, kind, prompt and deadline) in the write that sets the mark
   and drops the lease (ER-2), from the request's ending. `listTasks` reads no suspension store per
   row (BP-033), and a stop's prompt never changes. Admission and every ending clear it.
+- **`waitingOn: "user"`, not `"person"`** (owner, 2026-10-23), to match `waitForUser` and
+  `userId`. `"person"` already ships (FIX-2077) and is persisted on rows, so this is a persisted
+  field change under BP-030: new rows write `"user"`, a read takes a stored `"person"` as `"user"`
+  through the same retired-value map the field already uses for its queued wait, and no row is
+  rewritten. The exported `TaskWaitingOn` becomes `"user" | "wait" | "filed" | "steer"`. A patch or
+  minor changeset carries a one-line migration note. Goal leg a seeds a legacy `"person"` row and
+  answers it.
 - **`waitingFor`** is the public name on `getTask` and `listTasks`, beside `waitingOn`, which they
   now show. The park's `question` string stays until FIX-2131 removes it.
 - **The cancel is a debt with a due time** (rule 8), written in the cancel's own write: the
@@ -172,5 +179,6 @@ Recorded for the implementer, not folded into the design.
   FIX-2137 blocks approval resumes; the goal check runs with trace observability off.
 - **Cross-spec alignment** — the person-stop host setting also replaces FIX-2133's question-deadline
   constant; FIX-2137 merged (#3749).
+- **Owner, 2026-10-23** — `waitingOn: "person"` renamed `"user"`, the old value dual-read.
 
 **Open: none.**
