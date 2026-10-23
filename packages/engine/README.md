@@ -737,7 +737,7 @@ deleteIfStatus(
 ): Promise<ConditionalWriteResult>;
 ```
 
-It deletes what `delete` deletes (the record, its items, stream events and runOnce results), but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step, as `setFieldsIfStatus` does. Session retention deletes through it with the status it judged each record in, so a request that started running in between, such as an `interrupted` one the durability sweep re-drives, keeps everything under its id. The outcomes match `setFieldsIfStatus`: `{ applied: true, status }` when deleted, `{ applied: false, status }` when a record exists outside the predicate, and `{ applied: false, status: undefined }` when no record exists. Wait for item and event writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
+It deletes what `delete` deletes, only while the status is one of `allowedStatuses`, in one atomic step, as `setFieldsIfStatus` does. Outcomes match `setFieldsIfStatus`. Session retention calls it with the status it judged. Wait for item and event writes already in flight, but don't drop them first: a failed predicate belongs to a run that is still going.
 
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 

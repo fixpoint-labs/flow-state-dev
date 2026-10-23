@@ -721,11 +721,6 @@ describe("applyRetentionPolicy", () => {
       expect(await stores.request.get("req_parked")).toBeDefined();
     });
 
-    // The durability sweep can re-drive an interrupted turn after this pass
-    // judged it evictable and before it deletes it. The record is then a
-    // running request again, and deleting it would pull a live run's record
-    // out from under it: the delete holds only while the status it was judged
-    // in still holds.
     it("keeps one a re-drive started running between the read and the delete", async () => {
       const stores = await setupStores([
         interrupted("req_redriven", 100, 200),
@@ -735,7 +730,6 @@ describe("applyRetentionPolicy", () => {
       stores.request.get = async (id) => {
         const record = await get(id);
         if (id === "req_redriven") {
-          // The re-drive lands right after retention's read.
           await stores.request.setFieldsIfStatus(
             id,
             { status: "in_progress", result: undefined },

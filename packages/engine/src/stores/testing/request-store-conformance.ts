@@ -736,8 +736,6 @@ export function createRequestStoreConformanceTests(
       });
     });
 
-    // Retention judges a record evictable by its status, then deletes it. A
-    // record that started running in between must not be the one deleted.
     describe("deleteIfStatus", () => {
       it("deletes the request and everything under its id while its status is allowed", async () => {
         await withStore(async (store) => {

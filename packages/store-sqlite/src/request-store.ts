@@ -570,9 +570,7 @@ export function createSQLiteRequestStore(
       id: string,
       allowedStatuses: readonly RequestStatus[]
     ): Promise<ConditionalWriteResult> {
-      // One IMMEDIATE transaction, for the reason `setFieldsIfStatus` gives:
-      // the status the predicate reads is the status of the row deleted.
-      // Children and record go together, so a failure rolls back all of them.
+      // One IMMEDIATE transaction, for the reason `setFieldsIfStatus` gives.
       const result = db.transaction((): ConditionalWriteResult => {
         const row = selectStatusStmt.get(id) as { status: RequestStatus } | undefined;
         if (row === undefined) return { applied: false, status: undefined };

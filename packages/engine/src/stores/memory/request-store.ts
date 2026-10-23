@@ -157,8 +157,7 @@ export class InMemoryRequestStore implements RequestStore {
     if (!allowedStatuses.includes(current.status)) {
       return { applied: false, status: current.status };
     }
-    // Atomic by construction: `delete` does not yield before it removes the
-    // record, so the status checked is the status of the record removed.
+    // `delete` does not yield, so the checked status is the one removed.
     await this.delete(id);
     return { applied: true, status: current.status };
   }

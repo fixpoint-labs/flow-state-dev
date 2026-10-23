@@ -269,9 +269,8 @@ export type FilesystemRecordStore<
    * if the sweep throws, the record stays, the id cannot be claimed over the
    * data left behind, and the delete can be retried.
    *
-   * `when`, if given, decides under the same lock, from the record read
-   * there, whether anything is deleted: when it returns `false` neither
-   * `alsoDelete` nor the removal runs. Resolves whether the delete ran.
+   * `when`, read under this lock, skips `alsoDelete` and the removal when it
+   * returns false. Resolves whether the delete ran.
    */
   delete(
     id: string,

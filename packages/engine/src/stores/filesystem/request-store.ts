@@ -425,13 +425,11 @@ export class FilesystemRequestStore implements RequestStore {
     id: string,
     allowedStatuses: readonly RequestStatus[]
   ): Promise<ConditionalWriteResult> {
-    // Wait out event writes already queued, without dropping the unwritten
-    // batch first as `delete` does: if the predicate fails, they belong to a
-    // run that is still going.
+    // Do not drop the unwritten batch first, as `delete` does: a failed
+    // predicate belongs to a run that is still going.
     await this.eventWriteQueues.get(id)?.drain();
     let found: RequestStatus | undefined;
-    // The status check, the sidecar sweep and the record removal share the
-    // per-id lock, so no conditional write lands between check and delete.
+    // Predicate, sidecar sweep, and removal share the per-id lock.
     const deleted = await this.store.delete(
       id,
       () => this.deleteSidecars(id),

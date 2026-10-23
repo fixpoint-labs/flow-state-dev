@@ -180,13 +180,10 @@ export async function applyRetentionPolicy(
 
   let remaining = sorted;
 
-  // Each record was judged by the status it was listed in, and is deleted
-  // only while it still has it. The durability sweep can re-drive an
-  // interrupted turn in between (`interrupted` → `in_progress`); that record
-  // is a running request again and is left alone. There is deliberately no
-  // incarnation fence: for the record to be back in the judged status, a
-  // re-driven run would have to go back to `interrupted`, which takes at least
-  // the stale-request threshold, far longer than this pass.
+  // The durability sweep can re-drive `interrupted` to `in_progress` after
+  // this pass listed the record. No incarnation fence: matching again means
+  // the run went back to `interrupted`, which takes at least the stale-request
+  // threshold.
   const evict = async (req: RequestRecord): Promise<void> => {
     const { applied } = await stores.request.deleteIfStatus(req.id, [req.status]);
     if (applied) deletedRequestIds.push(req.id);

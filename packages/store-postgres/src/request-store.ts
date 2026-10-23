@@ -552,21 +552,15 @@ export function createPostgresRequestStore(
       id: string,
       allowedStatuses: readonly RequestStatus[]
     ): Promise<ConditionalWriteResult> {
-      // Wait out item and event writes already queued, without dropping the
-      // unwritten batches first as `delete` does: if the predicate fails,
-      // they belong to a run that is still going.
+      // Do not drop queued batches first, as `delete` does: a failed predicate
+      // belongs to a run that is still going.
       const pending = pendingItemWrites.get(id);
       if (pending) await pending;
       const pendingEvents = pendingEventWrites.get(id);
       if (pendingEvents) await pendingEvents;
-      // ONE statement, gated on a LOCKING read of the status, for the reasons
-      // `setFieldsIfStatus` gives. The executor has no transaction, and one
-      // statement is what makes the check, the child deletes and the record
-      // delete land together or not at all: `delete`'s children-first order
-      // is not needed when nothing can fail in between. "Together" covers
-      // the child rows that existed when the statement started: the child
-      // deletes read its snapshot, so a child row committed after that is
-      // not deleted, the same window plain `delete` has.
+      // One statement, for the reasons `setFieldsIfStatus` gives. The executor
+      // has no transaction. Child rows committed after the statement starts
+      // are not deleted, the same window plain `delete` has.
       const result = await executor.query(
         `WITH locked AS (
            SELECT id, status FROM requests WHERE id = $1 FOR UPDATE
