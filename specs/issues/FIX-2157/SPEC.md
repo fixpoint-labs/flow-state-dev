@@ -25,7 +25,7 @@ flows.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The closest familiar app to Shift Manager's coordinator and task board, run on the same pieces. Leg c of [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)'s goal |
-| **Smaller, and rejected** | "The status board looks like Claude Code's." It ships on fixtures in this issue's first PR and proves nothing about the coordinator. "Threads mode is session mode with a different pane." A manager told by a skill to delegate everything meets it and proves nothing about Shift Manager's coordinator ([D1](DECISIONS.md#d1)) |
+| **Smaller, and rejected** | "The status board looks like Claude Code's." It ships on fixtures in this issue's first PR and proves nothing about the coordinator. "Threads mode is session mode with a different pane." A manager told by a skill to delegate everything meets it and proves nothing about Shift Manager's coordinator, its delegates or its board ([D1](DECISIONS.md#d1)) |
 | **Not done if** | A step passes only on fixtures · two threads on one delegate wait in line or share one history · *Ready for review* or *Resolved* is a mark the lab keeps instead of the task's state · the lab's inventory has an *other* row · a gap is worked around in the lab |
 
 ```mermaid
@@ -45,9 +45,9 @@ the lab's own state.
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/threads-mode-script/` · real model · Playwright, against `fsdev dev --app` · run by the implementer at wiring · verdict in the wiring PR. The epic's closure reruns it as leg c |
 | **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` |
-| **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters when the vendor has more than one. A different ask that starts three threads must pass too |
+| **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
-| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. Today's `main` with one delegate: the three routed tasks share its one session and two wait `pending`, FAIL on step 2. The thread worker without review on: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to hand the request on as routed tasks (`resultTo: "conversation"`): all three run in the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker without review on: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -69,7 +69,7 @@ review, and *Resolve* answers its review.
 + # workforce/teams/desk/workers/thread/WORKER.md
 + ---
 + description: Works one request in its own session and hands it back for review.
-+ review: true             # gap: the task ends in a review (D2)
++ review: true             # gap A: the task ends in a review (D2)
 + ---
 ```
 
@@ -96,7 +96,7 @@ the inventory). No `apps/docs` page, per the epic.
 ```mermaid
 flowchart LR
   U["you · send"] --> L["lead · coordinator turn"]
-  L -->|"createTask · new session · gap"| B["the conversation's board"]
+  L -->|"createTask · ordinary task · new session"| B["the conversation's board"]
   B --> T1["thread 1 · own session"]
   B --> T2["thread 2 · own session"]
   B --> T3["thread 3 · own session"]
@@ -123,28 +123,29 @@ status of its own.
 | Already here | What this does with it |
 |---|---|
 | FIX-2153's app: the sessions list, the main thread, the modes config, the adapter, the inventory check | **Builds on.** Threads mode is that app's second mode and shares its code ([ER-3](../../epics/FIX-2152/DECISIONS.md#who-owns-what)) |
-| The coordinator flow, routed tasks and the `coordinator-route` item (FIX-2083) | **Builds on**, through gap A. A route item is where a feed card is drawn |
+| The coordinator flow: its delegate list, the roster check, its judgment turn, its board, and settled notices that wake it (FIX-2083) | **Builds on.** Its turn files ordinary tasks; the board files a plain task unless the result goes to the conversation on a routing turn (`conversation-board/board.ts`, `addTask`), and a delegated task runs in a new session by default (`orchestration/src/tasks/schema/task.ts`, FIX-2080) |
+| Routed tasks and the `coordinator-route` item (FIX-2083) | **Not used.** A thread is not a message handed on ([D1](DECISIONS.md#d1)) |
 | Task statuses and `waitingOn` (`orchestration/src/tasks/schema/`); `waitForUser` with its kind, the row's record of its stop, and the answer route (FIX-2129); a question that holds its task, answered by a steer that names it (FIX-2131) | **Builds on.** The board's columns, step 3, and *Resolve* |
 | The public `updateTask_tasks` action, where a person's `message` is a user steer (FIX-2086) | **Builds on.** Talking inside a thread |
-| Shift Manager's board (`shift-manager/src/lib/columns.ts`): its *In review* column is drawn and stays empty, because no status means it | **Leaves alone**, and gap B is what could fill it |
+| Shift Manager's board (`shift-manager/src/lib/columns.ts`): its *In review* column is drawn and stays empty, because no status means it | **Leaves alone**, and gap A is what could fill it |
 | `@flow-state-dev/react`'s `BoardColumns` and `BoardCard` | **Not used.** Their columns are task statuses; this board's are what the person owes. The lab writes its own, as UI |
 
 **Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)). The epic files them:
 
 | Gap | Blocks |
 |---|---|
-| **A. A routed task can run in a new session of its delegate**, so several threads run on one delegate at once, each with its own history. Today the coordinator refuses anything but the delegate's one ongoing session (`routed_session_ongoing`) ([D1](DECISIONS.md#d1)). Whatever form it takes, a thread's session is just another session of the same hired worker, the shape of [epic D3](../../epics/FIX-2152/DECISIONS.md#d3): no new key on `WorkerSessionCriteria`, no hired copy per thread, and one session still works one task at a time (FIX-2080). Once FIX-2160 lands, it is reachable as `{ session: id }` like any other. A new session per thread keeps FIX-2080's one task per session by construction. Thread sessions are reached through their task, never listed as your conversations: FIX-2158's list of a person's sessions of one worker leaves them out. **Amends** [epic ER-7](../../epics/FIX-2152/DECISIONS.md#who-owns-what) (routed tasks land in the default session) and FIX-2083's routed tasks, which own that rule | Step 2 · a child |
-| **B. An agent worker's task can end in a review**, a worker setting over FIX-2131's `waitForUser({ kind: "review" })`: accepted completes it, revision words are a steer the work takes next, and an unanswered review completes at its deadline, through FIX-2129's existing `waitForUser` deadline, with no second timeout path ([D2](DECISIONS.md#d2)) | Steps 4 and 5 · a child |
-| **C. A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
-| Checked at wiring: **a `coordinator-route` item names the task it filed** | The feed cards; a gap only if it doesn't |
+| **A. An agent worker's task can end in a review**, a worker setting over FIX-2131's `waitForUser({ kind: "review" })`: accepted completes it, revision words are a steer the work takes next, and an unanswered review completes at its deadline, through FIX-2129's existing `waitForUser` deadline, with no second timeout path ([D2](DECISIONS.md#d2)) | Steps 4 and 5 · a child |
+| **B. A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
+| Checked at wiring: **three ordinary tasks for one delegate run side by side**, each in its own new session. Read from code (above), not yet run | Step 2; a gap only if it fails |
+| Checked at wiring: **the coordinator's `createTask` call item names the task it filed** | The feed cards; a gap only if it doesn't |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, and their fixtures until wiring. Two package entries from gaps A and B, which Shift Manager can use too |
-| **Leaves** | Shift Manager's empty *In review* column. Gap B gives it a source; wiring it there is Shift Manager's issue |
+| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, and their fixtures until wiring. One package entry from gap A, which Shift Manager can use too |
+| **Leaves** | Shift Manager's empty *In review* column. Gap A gives it a source; wiring it there is Shift Manager's issue |
 
-**Net: up, by one mode of a private lab and two package entries.** The mode is the epic's
+**Net: up, by one mode of a private lab and one package entry.** The mode is the epic's
 evidence; each entry is a gap the lab proved.
 
 ## Sign off
@@ -152,15 +153,16 @@ evidence; each entry is a gap the lab proved.
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** five steps, a real model, a
 browser, and no *other* row. If wrong: a board that looks right on fixtures and proves nothing.
 
-**[The debt](#whats-already-here-and-the-debt), net up:** one mode, two package entries. If
-wrong: two entries no other app uses.
+**[The debt](#whats-already-here-and-the-debt), net up:** one mode, one package entry. If
+wrong: an entry no other app uses.
 
-1. **[D1](DECISIONS.md#d1) · The main worker is a coordinator, and each thread runs in a session
-   of its own.** If wrong: one more gap in the epic for a coordinator setting nobody else wants.
+1. **[D1](DECISIONS.md#d1) · The main worker is a coordinator, and a thread is an ordinary task
+   it files, in a session of its own.** No gap. If wrong: leg c proves the coordinator's board and
+   delegates but not its routing, and routing stays proved only by Shift Manager.
 2. **[D2](DECISIONS.md#d2) · *Ready for review* is a review the thread's task waits on, and
    *Resolve* answers it.** If wrong: one more gap where a mark the lab keeps would have done.
 
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).
 
-Feature · a mode of a private lab, two `workforce` gaps filed by the epic · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)
+Feature · a mode of a private lab, one `workforce` gap filed by the epic · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)

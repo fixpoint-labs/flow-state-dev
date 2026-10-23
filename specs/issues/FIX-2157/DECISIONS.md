@@ -12,8 +12,8 @@ and are not decided again here.
 
 ```mermaid
 flowchart TD
-  I["FIX-2157"] --> D1["D1 · a coordinator, each thread in a session of its own"]
-  D1 -.->|"rejected: threads wait in line and share one history"| X1a["the delegate's one ongoing session"]
+  I["FIX-2157"] --> D1["D1 · a coordinator; a thread is an ordinary task in its own session"]
+  D1 -.->|"rejected: threads wait in line, or a gap"| X1a["a routed task, handed on"]
   D1 -.->|"rejected: proves nothing about the coordinator"| X1b["a manager told to delegate everything"]
   I --> D2["D2 · Ready for review is a review the task waits on"]
   D2 -.->|"rejected: the task's state lives in the lab"| X2["a resolved mark the lab keeps"]
@@ -26,23 +26,24 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The main worker is a coordinator, and each thread runs in a session of its own
+## D1 · The main worker is a coordinator, and a thread is an ordinary task it files, in a session of its own
 
-*An engineering call that adds a gap to the epic, so it comes to the owner.*
+*It decides what leg c proves about the coordinator, so it comes to the owner.*
 
 | | |
 |---|---|
-| **Instead of** | (a) Routed tasks in the delegate's one ongoing session, as the coordinator files them today. (b) A `manager` on the agent flow whose skill tells it to hand everything off, as FIX-2153's main worker does |
-| **Because** | The issue exists to run Shift Manager's coordinator and board under a familiar UI, so the main worker is a `coordinator` (epic, [What stays](../../epics/FIX-2152/SPEC.md#what-stays-as-it-is)). But the coordinator works every routed task in the delegate's one session for the conversation, and a session works one task at a time (`coordinator-flow.ts`, `routed_session_ongoing`; FIX-2080). Three threads on one thread worker would run one after another in one history. Claude Code runs them side by side, each its own conversation. (b) avoids the gap, but "delegates everything" is then only a prompt, and the mode proves nothing FIX-2153 doesn't |
-| **Locks in** | Gap A, a child of the epic ([FIX-2152 D1](../../epics/FIX-2152/DECISIONS.md#d1)): a coordinator can file a routed task in a new session of its delegate. Whether that is a worker setting or a per-task choice is the gap's call. A thread's view is its task's run session, reached through the task; FIX-2158's session list leaves thread sessions out. One session still works one task at a time (FIX-2080). It amends [epic ER-7](../../epics/FIX-2152/DECISIONS.md#who-owns-what) and FIX-2083's routed tasks, so the epic's update on merge changes ER-7 too |
+| **Instead of** | (a) A routed task, the coordinator's way to hand a message on (FIX-2083), which runs in the delegate's one ongoing session. (b) A `manager` on the agent flow whose skill tells it to hand everything off, as FIX-2153's main worker does |
+| **Because** | The issue exists to run Shift Manager's coordinator and board under a familiar UI. (a) puts every thread for one delegate in one session, and a session works one task at a time (`routed_session_ongoing`, FIX-2080), so threads wait in line and share a history; making them side by side is a gap that amends epic ER-7. A thread isn't a message handed on: it is a piece of work with its own history, and the coordinator's turn can already file one. The board files a plain task unless the result goes to the conversation on a routing turn (`conversation-board/board.ts`, `addTask`), and a delegated task runs in a new session by default (`task.ts`). (b) proves nothing FIX-2153 doesn't |
+| **Locks in** | No gap. The lead's `WORKER.md` tells it to file each piece with `createTask` for a delegate, leaving `resultTo` out, so the result comes back to the lead as a settled notice. Leg c proves the coordinator's delegate list and roster check, its judgment turn, its board and its settled notices under a status board. It does not prove routing; Shift Manager still does. A thread's session is another session of the same hired worker (epic D3): no new key on `WorkerSessionCriteria`, one task per session (FIX-2080), reached through its task and left out of FIX-2158's list, and reachable as `{ session: id }` once FIX-2160 lands |
 
-![D1: a coordinator with each thread in a session of its own, chosen, beside the delegate's one ongoing session and a manager told to delegate everything. Decides it: threads side by side under Shift Manager's coordinator. Price: one more gap in the epic](figures/d1-thread-sessions.svg)
+![D1: a coordinator that files each thread as an ordinary task in its own session, chosen, beside a routed task handed on. Decides it: threads side by side with no gap. Price: leg c doesn't prove routing](figures/d1-thread-sessions.svg)
 
-It comes down to running Shift Manager's coordinator the way Claude Code runs threads: side by side.
+It comes down to what a thread is: work with its own history, not a message handed on.
 
-**What would change my mind:** Jake preferring a smaller epic. Then the lab uses three
-different delegates so the script passes on today's coordinator, and the copy is less close:
-two requests of the same kind wait in line.
+**What would change my mind:** wanting leg c to prove routing too. Then threads are routed
+tasks, and a gap lets a routed task run in a new session of its delegate, amending epic ER-7.
+Or the wiring check finding that three ordinary tasks for one delegate don't run side by side;
+then that refusal is the gap.
 
 <a name="d2"></a>
 ## D2 · *Ready for review* is a review the thread's task waits on, and *Resolve* answers it
@@ -53,7 +54,7 @@ two requests of the same kind wait in line.
 |---|---|
 | **Instead of** | A *resolved* mark the lab keeps per task: *Ready for review* is "completed and not marked", *Resolved* is "marked" |
 | **Because** | A review is already a kind of wait in the package (FIX-2129, FIX-2131): the task waits on you, the Inbox lists it, an answer carries the work on, and revision words are a steer the work takes next. That gives *Request changes* for free, and *Resolve* means the task completes. A lab mark puts a task's state in the lab, where ER-4 says it can't go, and Shift Manager's empty *In review* column gains nothing |
-| **Locks in** | Gap B, a child of the epic: an agent worker can end its task in a review, set in `WORKER.md`. *Resolve* and *Request changes* are the answer route's two verdicts. A review nobody answers completes at the person-stop deadline and lands in *Resolved*, so a week away doesn't fail a thread. It uses FIX-2129's existing `waitForUser` deadline, with no second timeout path; how it completes there is the gap's call |
+| **Locks in** | Gap A, a child of the epic: an agent worker can end its task in a review, set in `WORKER.md`. *Resolve* and *Request changes* are the answer route's two verdicts. A review nobody answers completes at the person-stop deadline and lands in *Resolved*, so a week away doesn't fail a thread. It uses FIX-2129's existing `waitForUser` deadline, with no second timeout path; how it completes there is the gap's call |
 
 ![D2: a review the task waits on, chosen, beside a resolved mark the lab keeps. Decides it: where a thread's state lives. Price: one more gap in the epic](figures/d2-review-wait.svg)
 
@@ -98,8 +99,8 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   waiting on you with kind `review`. *Resolved*: `completed` and `cancelled`, collapsed with a
   count. *Pinned* comes first and takes its rows out of the others.
 - **The original's layout, copied closely.** The same sessions list and main thread as session
-  mode. Your line carries *Sent to a thread* when the coordinator routed it. A compact thread card
-  sits where its `coordinator-route` item is: an icon, the title, a status line, the last
+  mode. Your line carries *Sent to a thread* when the lead's turn filed threads for it. A compact thread
+  card sits where the lead's `createTask` call is: an icon, the title, a status line, the last
   progress note, and *View thread*, plus *Resolve* and *Request changes* when ready for review or
   *Answer* when waiting. The board's header has the title *Threads*; each group has a count and
   collapses. A row: status icon, title, last progress note, age, step progress when known. Flow
@@ -111,7 +112,7 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   timer, with a question and a review, so the board can be seen and tested in the browser. Each
   fixture standing in for a gap carries the gap's issue id. They are deleted at wiring.
 - **Two PRs.** The front end on fixtures first, stacked on FIX-2153's front end; the wiring and
-  the goal check after FIX-2056, FIX-2058, and gaps A and B merge.
+  the goal check after FIX-2056, FIX-2058 and gap A merge.
 
 ## Considered and dropped
 
@@ -120,12 +121,29 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 | A third lab for threads mode | The epic made it a mode of FIX-2153's app ([ER-3](../../epics/FIX-2152/DECISIONS.md#who-owns-what)) |
 | React's `BoardColumns` for the board | Its columns are task statuses; this board's are what the person owes |
 | A mode switch on an open session | [FIX-2153 D1](../FIX-2153/DECISIONS.md#d1): the mode is which main worker the session is with |
-| Three different delegates to dodge gap A | Kept as D1's fallback; it copies the original less closely |
+| Routed tasks, with a gap for a new session each | D1's fallback, if leg c must prove routing |
+| Three different delegates, to run routed tasks side by side | Copies the original less closely: two requests of the same kind wait in line |
 
 ## How it got here
 
 - **Draft:** built on FIX-2153's spec at its D1 (mode is which main worker) and adapter verbs;
   the board read from FIX-2129's and FIX-2131's waits; the two open questions answered with the
   epic's recommendation.
+- **Review round 1:** fsd-architect pinned a thread's session to epic D3's shape and named the
+  ER-7 amendment. A second look found that the coordinator's turn can file ordinary tasks, each
+  in a new session, so D1 moved from "routed tasks plus a gap" to "ordinary tasks, no gap", and
+  says what leg c no longer proves. The review gap became gap A.
+
+## Notes from review
+
+For the implementer, recorded and not folded:
+- An unanswered review that completes at the deadline lands in *Resolved* beside accepted ones.
+  Make it tell apart on the row, from the task row only, if gap A's outcome allows.
+- Keep the `taskRow → column` projection a pure function in a leaf module with a table test,
+  free of React, so it can sit beside Shift Manager's `columns.ts` and move later.
+- Consider splitting the adapter into a task port and a pins port, and `resolve` and
+  `requestChanges` into one `answerReview(task, verdict, words?)`.
+- Weigh a pins resource on an existing flow against the `pins` flow; the inventory counts both.
+- Keep the fixtures under one directory, so deleting them at wiring is one `git rm`.
 
 **Open: none.**
