@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 294" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: seven rules by five issues and the closure FIX-2134, each rule with one owner. FIX-2129 owns one call to stop for a person with one predicate, the row's person mark that keeps a task's turns apart, a stop resuming once, and one answer route the server trusts. FIX-2131 owns no task tool answering a stop, and parked rows read through one map. FIX-2063 owns durable execution by default. Other cells use the rule or are blank.">
+     aria-label="Who owns what: seven rules by five issues and the closure FIX-2134, each rule with one owner. FIX-2129 owns one call to stop for a person with one predicate, the row's person mark that keeps a task's requests apart, a stop resuming once, and one answer route the server trusts. FIX-2131 owns no task tool answering a stop, and parked rows read through one map. FIX-2063 owns durable execution by default. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -33,7 +33,7 @@
     <rect class="use" x="746" y="58" width="66" height="26" rx="3"/><text class="t-use" x="752" y="75">uses</text>
   </g>
   <g id="er2">
-    <text class="t-row" x="16" y="108">ER-2 the row's mark keeps turns apart</text>
+    <text class="t-row" x="16" y="108">ER-2 the row's mark keeps requests apart</text>
     <rect class="own" x="426" y="90" width="66" height="26" rx="3"/><text class="t-own" x="432" y="107">OWNS</text>
     <rect class="use" x="506" y="90" width="66" height="26" rx="3"/><text class="t-use" x="512" y="107">uses</text>
     <rect class="use" x="586" y="90" width="66" height="26" rx="3"/><text class="t-use" x="592" y="107">uses</text>

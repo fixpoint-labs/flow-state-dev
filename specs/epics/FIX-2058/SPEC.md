@@ -8,11 +8,11 @@
 |---|---|---|
 | **uses Shift Manager** | The Inbox lists approvals and input. A question or review parks where it can't see it; a coding run's question has no screen | Every stop waiting on them is one Inbox item, answered there, on the same attempt |
 | **builds a worker that files work** | Answers its task's question with `answerTask`, a second tool; can't ask before a task starts | Answers a midway question with a steer, first answer wins; files a task held on questions |
-| **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, deadline? })`; the flow decides at the deadline; a cancel or a stop closes the item |
+| **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, prompt, deadline? })`, 7 days by default; the flow decides at the deadline; a cancel or a stop closes the item |
 | **runs flows locally or self-hosted** | `fsdev run` with no app config refuses to stop for a person | Durable execution by default on file-backed hosts |
 | **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one held start, one answer path |
 
-**Why now.** FIX-2056 is in its last PRs (#3698, #3701). Its claim gate already records a person's
+**Why now.** FIX-2056 is in its last PRs (#3701, and #3692, its closure). Its claim gate already records a person's
 stop on the row (FIX-2077), a steer exists (FIX-2086), and the renames (FIX-2071) wait for this.
 
 ## The goal, and how we'll know it's met
@@ -42,7 +42,7 @@ flowchart LR
   I --> L4["leg d · steer it while it waits"]
   L2 -->|"same attempt, claim kept · a held task starts · item closes"| P["PASS · the epic's goal is met"]
   L3 -->|"item closes"| P
-  L4 -->|"answers or waits · no turn beside it"| P
+  L4 -->|"answers or waits · no request beside it"| P
   C["control · today's main"] -.-> L1
   L1 -.->|"under the control"| F["must FAIL · four kinds missing"]
 ```
@@ -55,7 +55,7 @@ the Inbox shows the item as unanswerable (`shift-manager/src/lib/reads.ts:834-83
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2134), real model, in Shift Manager, on one `main` commit after every other child merges |
-| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes a stop's same attempt with its claim, and a held task's last answer starts its first attempt. Leg c: cancelling the task closes its item. Leg d: a steer into a task waiting on a person answers it or waits; no turn runs beside the request. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes a stop's same attempt with its claim, and a held task's last answer starts its first attempt. Leg c: cancelling the task closes its item. Leg d: a steer into a task waiting on a person answers it or waits; no request runs beside it. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
 | **Anti-game** | Assert on what the Inbox shows and on rows read through public task actions |
 | **Control that must fail** | Today's `main`: leg a, leg b for a task's stop, and the sweep. Every other check names its control, and each is run red at least once: a control never seen failing proves nothing |
 
@@ -136,15 +136,15 @@ FIX-2056 block every child, drawn once through FIX-2129; after it, three run in 
 | [FIX-2056 D2](../FIX-2056/DECISIONS.md#d2): marking the task and answering by steer are this epic's | **Kept and finished** by FIX-2129 and FIX-2131 |
 | [FIX-2056 (e)](../FIX-2056/DECISIONS.md#e): its closure sweep allows `answerTask` and `parkOnQuestion` until this epic (`rules.mjs`, on `fix/FIX-2087`; on `main` with FIX-2056's closure, before any child starts) | **Ended** by FIX-2131 |
 | [FIX-2056 D3](../FIX-2056/DECISIONS.md#d3): retired rows read through FIX-2080's one map | **Extended** to parked rows ([ER-5](DECISIONS.md#who-owns-what)) |
-| #3696: a parked request gives back the session's reply-line key | **Kept**; the row's mark holds a person's stop instead ([D2](DECISIONS.md#d2)) |
+| #3696: a parked request gives back the session's key | **Kept**; the row's mark holds a person's stop instead ([D2](DECISIONS.md#d2)) |
 | Three copies of "is it a person's stop": the gate's `stopOf` (`task-request.ts`), `PERSON_REASONS` (`shift-manager/src/lib/reads.ts`) and the Lab send's own `stopOf` on it (`send.ts`) | **Replaced** by one predicate in `contracts` ([ER-1](DECISIONS.md#who-owns-what)) |
 | The Inbox can't answer a stop in a task's request: the public resume route refuses a `task` source, and opening it would re-enter a task's handler with caller data (BP-031) | **Replaced** by one answer route the server trusts ([ER-7](DECISIONS.md#who-owns-what)), FIX-2129 |
-| [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612), open, never merged): a coding run's question parks its task and is answered through the harness inbox; worker suspension is in its Not doing ([its D2](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/pi-harness/specs/epics/LAB-162/DECISIONS.md#d2), on FIX-1241 D-1) | **Superseded** in its ask half by FIX-2132 and [D1](DECISIONS.md#d1). LAB-164 closes as superseded on this epic's approval; LAB-163, OMP dispatch continuing the saved session, stays LAB-162's ([decided in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
+| [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612), closed unmerged as superseded): a coding run's question parks its task and is answered through the harness inbox; worker suspension is in its Not doing ([its D2](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/pi-harness/specs/epics/LAB-162/DECISIONS.md#d2), on FIX-1241 D-1) | **Superseded** by FIX-2132 and [D1](DECISIONS.md#d1); this epic keeps shared harness dispatch and a coding run continuing its saved session. LAB-164 closes as superseded on this epic's approval; LAB-163, the OMP slot, needs a fresh spec on `waitForUser` if still wanted ([decided in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
 
 | The debt | |
 |---|---|
 | **Removes** | Both parks, the harness question inbox, `answerTask`, `unparkAndDrain`, `answerQuestion()`, two extra person-stop checks, the Inbox's unanswerable task stops |
-| **Adds** | `waitForUser`, held on questions, a default deadline for a person's stop, one trusted answer route, map entries until FIX-2071 |
+| **Adds** | `waitForUser`, held on questions, a default deadline for a person's stop ([D3](DECISIONS.md#d3)), one trusted answer route, retired-shape map entries for parked rows |
 
 **Net: down.** Six forms and three answer paths become one suspension, one held start and one answer.
 
@@ -156,15 +156,20 @@ net down. If wrong: map entries nobody reads.
 
 1. **[D1](DECISIONS.md#d1) · Durable execution by default comes first; no park survives as a
    fallback.** If wrong: a host we care about loses stopping for a person.
-2. **[D2](DECISIONS.md#d2) · The row's person mark, not the reply-line key, keeps a task's turns
-   apart across a stop.** Engineering, decided. If wrong: a steer runs beside a waiting request.
+2. **[D2](DECISIONS.md#d2) · The row's person mark, not the session's key, keeps a task's requests
+   apart across a stop.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
+   beside a waiting request.
+3. **[D3](DECISIONS.md#d3) · A person's stop has its own default deadline, 7 days,** a host
+   setting overridable per call. The owner's, decided. If wrong: one host setting to change.
 
 **Decided by the owner:** the five objective lines; FIX-2133 kept; the filer's message to FIX-2070;
-[no shim for in-flight states](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them).
+[no shim for in-flight states](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them);
+#1612 closed as superseded; D3.
 
 **Decided in review, engineering:** FIX-2130 folded into FIX-2129; LAB-162's park superseded;
-`waitForUser` on the person suspensions, not the wait gate; one trusted answer route (ER-7).
+`waitForUser` on the person suspensions, not the wait gate, resuming with `cancelled`; one trusted
+answer route (ER-7).
 
-**Open, the owner's:** [how long a person has to answer by default](DECISIONS.md#open).
+**Open:** none.
 
 Epic · 5 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest · Goal 2, differentiate on hard problems

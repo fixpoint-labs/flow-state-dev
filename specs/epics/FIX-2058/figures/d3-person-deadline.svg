@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork, not decided: how long a person has to answer by default before an unanswered stop counts against the work. Recommended: a default of its own for a person's stop, 7 days, set per host and per call. Beside it: the 5-minute default a wait on a task already has, and no default at all. It comes down to the first row, a person away for lunch or a weekend: with 7 days their work waits; with 5 minutes an unanswered question fails a try at the task; with none it waits forever. The price of the recommendation is the second row: a forgotten question sits in the Inbox up to a week, where 5 minutes clears it in minutes and none never clears it. The third row: the model's rule that every stop has a deadline holds with either default and breaks with none. Locks in: one host setting for a person's stop, beside the wait's. Flips if: apps where a stale question is worse than a failed try; then 24 hours."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, decided by the owner: how long a person has to answer by default before an unanswered stop counts against the work. Chosen: a default of its own for a person's stop, 7 days, a host setting overridable on each call, separate from the wait default. Beside it: the 5-minute default a wait on a task already has, and no default at all. It comes down to the first row, a person away for lunch or a weekend: with 7 days their work waits; with 5 minutes an unanswered question fails a try at the task; with none it waits forever. The price of the choice is the second row: a forgotten question sits in the Inbox up to a week, where 5 minutes clears it in minutes and none never clears it. The third row: the model's rule that every stop has a deadline holds with either default and breaks with none. Locks in: one host setting for a person's stop, beside the wait's. Flips if: apps where a stale question is worse than a failed try; then 24 hours."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -10,7 +10,7 @@
               --gone:#DE8A84; } }
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -35,13 +35,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN · THE OWNER'S CALL</text>
+    <text class="t-lbl" x="32" y="32">D3 · THE OWNER'S CALL, DECIDED</text>
     <text class="t-q" x="32" y="52">How long does a person have to answer, by default?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-code" x="226" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
     <text class="t-h c-code" x="226" y="112">Its own default, 7 days</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
