@@ -21,7 +21,7 @@ import {
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
-import { deliverHeldEnding, payOwedResumes, toolCallOf, waitOnTask } from "../../src/tasks/helpers/wait-on-task";
+import { arrivesAsNoticeAnswer, deliverHeldEnding, payOwedResumes, toolCallOf, waitOnTask } from "../../src/tasks/helpers/wait-on-task";
 import { taskSettledEntry, type TaskSettledInput } from "../../src";
 
 export const USER = "u_asker";
@@ -70,6 +70,24 @@ export const waitAgain = (callId: string, id: () => string, deadline?: number): 
   finishReason: "tool-calls"
 });
 
+/** A step that files a task and doesn't wait on it, as `createTask` alone does. */
+export const fileCall = (id: string, question = "Is ACME's SOC 2 current?"): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: id, toolName: "file_task", args: { question } }],
+  finishReason: "tool-calls"
+});
+
+/** A step that parks the turn on a person, until they approve. */
+export const awaitApproval = (id: string): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: id, toolName: "await_approval", args: {} }],
+  finishReason: "tool-calls"
+});
+
+/** A step in which the colleague finishes a task already filed, by id, while this turn runs. */
+export const finishTask = (callId: string, id: () => string, output: unknown): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: callId, toolName: "finish_task", args: { id: id(), output } }],
+  finishReason: "tool-calls"
+});
+
 /** A step that reads a task without waiting, as a plain `getTask({ id })` does. */
 export const readTask = (callId: string, id: () => string): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: callId, toolName: "read_task", args: { id: id() } }],
@@ -114,6 +132,8 @@ export function waitFlow(
      * does: `run` holds the session's line and `onTaskSettled` defers on it.
      */
     noticeAfterTurn?: boolean;
+    /** Awaited by the `heard` block after it records a notice: holds the notice's request open. */
+    heardGate?: () => Promise<void>;
     /** The board's scope: `session` (the default), or `user`, which every session of the user reaches. */
     scope?: "session" | "user";
   } = {}
@@ -193,6 +213,7 @@ export function waitFlow(
         ...(input.deadline !== undefined ? { deadlineMs: input.deadline } : {})
       });
       if (!waited.ok) return { ok: false, taskId, error: `${waited.error}: ${waited.message}` };
+      if (waited.arrivesAsNotice === true) return arrivesAsNoticeAnswer(waited.task);
       const { status, output, error } = waited.task;
       return { ok: true, taskId, status, ...(output !== undefined ? { output } : {}), ...(error !== undefined ? { error } : {}) };
     }
@@ -217,7 +238,39 @@ export function waitFlow(
         step: call.stepKey,
         ...(input.deadline !== undefined ? { deadlineMs: input.deadline } : {})
       });
+      if (waited.ok && waited.arrivesAsNotice === true) return arrivesAsNoticeAnswer(waited.task);
       return waited.ok ? shown(waited.task) : { ok: false, taskId: input.id, error: `${waited.error}: ${waited.message}` };
+    }
+  });
+  const approvalTool = handler({
+    name: "await_approval",
+    inputSchema: z.object({}).passthrough(),
+    outputSchema: z.any(),
+    execute: async (_input, ctx) => ({ answer: await ctx.suspend!({ reason: "human_approval", message: "Go ahead?" }) })
+  });
+  const finishTaskTool = handler({
+    name: "finish_task",
+    inputSchema: z.object({ id: z.string(), output: z.unknown() }),
+    outputSchema: z.any(),
+    execute: async (input, ctx) => {
+      const board = await boardOf(ctx);
+      await ctx.runOnce!(`fixture.finish:${toolCallOf(ctx)!.logicalId}`, async () => {
+        await board.claim("researcher-worker");
+        await board.complete(input.id, input.output);
+        return true;
+      });
+      return { ok: true };
+    }
+  });
+  const fileTool = handler({
+    name: "file_task",
+    inputSchema: z.object({ question: z.string() }),
+    outputSchema: z.any(),
+    execute: async (input, ctx) => {
+      const board = await waitBoard(ctx);
+      const call = toolCallOf(ctx)!;
+      const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => (await board.addTask({ goal: input.question, assignee: "researcher" })).id);
+      return { ok: true, taskId };
     }
   });
   const readTaskTool = handler({
@@ -275,7 +328,7 @@ export function waitFlow(
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(
-          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool] })
+          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool, fileTool, approvalTool, finishTaskTool] })
         ),
         inputSchema: z.object({}).passthrough(),
         ...(options.noticeAfterTurn === true ? { concurrency: "hold" as const } : {})
@@ -293,8 +346,9 @@ export function waitFlow(
                   name: "record-heard",
                   inputSchema: z.any(),
                   outputSchema: z.any(),
-                  execute: (notice: TaskSettledInput) => {
+                  execute: async (notice: TaskSettledInput) => {
                     options.heard!.push(notice);
+                    await options.heardGate?.();
                     return {};
                   }
                 }),

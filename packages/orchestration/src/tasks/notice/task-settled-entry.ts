@@ -13,10 +13,17 @@
  * ```
  *
  * One request per ending. The entry admits a notice only while its row still
- * owes it, runs the flow's block with it, and then acknowledges it (clears the
- * row's marker), so a block that fails leaves the notice owed and the filer's
- * next pass sends it again. Queued on the session by default, so a second
- * copy of one notice waits behind the first and finds it no longer owed.
+ * owes it, takes it (FIX-2123: one conditional write, so a wait's drop and this
+ * delivery never both go through), runs the flow's block with it, and then
+ * acknowledges it (clears the row's marker), so a block that fails leaves the
+ * notice owed and the filer's next pass sends it again, taken over from the
+ * request that failed. Queued on the session by default, so a second copy of
+ * one notice waits behind the first and finds it no longer owed.
+ *
+ * While the request that filed the task is running (not while it is parked),
+ * its notice is turned away as `defer` turns one away (FIX-2123): a wait in
+ * that request reads the ending first and drops it, and the request sends
+ * what is still owed as it ends; at a park, the filer's pass sends it.
  *
  * Woken with an empty input, by the wake a board's delivery owes when it
  * names this entry as its pass (the default): it pays what this session's
@@ -25,7 +32,7 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { clearNotice, deferredNoticePatch, isNoticeOwed, type TaskNotice } from "./task-notice";
+import { clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
 
@@ -74,6 +81,28 @@ export interface TaskSettledEntryOptions {
   readonly defer?: (ctx: BlockContext, notice: TaskSettledInput) => Promise<boolean>;
 }
 
+/**
+ * Whether a request of this session has stopped running (FIX-2123), as the
+ * engine records it. A host that keeps no such record answers `true`: there a
+ * notice is admitted as it was before.
+ */
+async function hasEnded(ctx: BlockContext, requestId: string): Promise<boolean> {
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended === undefined) return true;
+  return (await ended([requestId]))[requestId] === true;
+}
+
+/**
+ * Whether a request of this session is running its own work now, neither
+ * parked nor ended (FIX-2123), as the engine records it. A host that keeps no
+ * such record answers `false`: there no notice is held for it.
+ */
+async function isRunning(ctx: BlockContext, requestId: string): Promise<boolean> {
+  const running = ctx.requestHost?.waits?.running;
+  if (running === undefined) return false;
+  return (await running([requestId]))[requestId] === true;
+}
+
 /** The running session's board a notice names, at this session's partition. */
 async function boardOf(ctx: BlockContext, boardId: string) {
   return (await delegatingBoardsOf(ctx, boardId)).find((board) => board.ref.collectionId === boardId);
@@ -114,10 +143,34 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       // A notice its row doesn't owe was delivered already, or never owed.
       if (row === undefined || !isNoticeOwed(row, notice)) return { owed: false };
       // Not now: left owed, for the pass to send again, with the time it was
-      // turned away, so its age (which ends it as undeliverable) counts from then.
-      if (options.defer !== undefined && (await options.defer(ctx, notice))) {
+      // turned away, so its age (which ends it as undeliverable) counts from
+      // then. Turned away while the request that filed the task is running
+      // too (FIX-2123), not while it is parked: a wait in it reads the ending
+      // first, and that request sends what is still owed as it ends (at a park, the pass does).
+      const own = ctx.request.identity.id;
+      const filing = row.filer?.requestId;
+      const turnedAway =
+        (options.defer !== undefined && (await options.defer(ctx, notice))) ||
+        (filing !== undefined && filing !== own && (await isRunning(ctx, filing)));
+      const notNow = async () => {
         await board!.ref.patchMetadata(row.id, deferredNoticePatch(row, notice, board!.ref.now()));
         return { owed: false };
+      };
+      if (turnedAway) return notNow();
+      // Taken in one conditional write before the block runs (FIX-2123), so a
+      // wait's drop and this delivery can't both go through. Taken by a request
+      // that hasn't ended, running or parked: it is delivering it, and this
+      // copy runs nothing (recorded as turned away, so the notice doesn't age
+      // out while it is delivered). Taken by one that ended without clearing
+      // it (its block failed): this copy takes it over.
+      const taker = noticeTakenBy(row, notice);
+      if (taker !== undefined && taker !== own && !(await hasEnded(ctx, taker))) return notNow();
+      if (board!.ref.takeNotice !== undefined) {
+        const took = await board!.ref.takeNotice(row.id, notice, {
+          by: own,
+          ...(taker !== undefined && taker !== own ? { replacing: taker } : {})
+        });
+        if (took.outcome !== "recorded") return { owed: false };
       }
       return { owed: true, notice };
     }

@@ -84,6 +84,7 @@ import { boardResolverOf } from "../task-board/board-resolver";
 // The one task-turn test (FIX-1816 BR-5a), owned by the task-board.
 import { isTaskTurn } from "../task-board/task-turn";
 import {
+  arrivesAsNoticeAnswer,
   canHoldWait,
   deliverHeldEnding,
   toolCallOf,
@@ -1487,6 +1488,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             .optional(),
         }),
       }),
+      /** A wait whose task's ending arrives as a notice, which the conversation hears on its own (FIX-2123). */
+      z.object({ ok: z.literal(true), taskId: z.string(), arrivesAsNotice: z.literal(true), message: z.string() }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
     execute: async (raw, ctx) => {
@@ -1541,6 +1544,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           };
         }
         if (!waited.ok) return { ok: false as const, taskId: t.id, error: `${waited.error}: ${waited.message}` };
+        // The filer's onTaskSettled took its ending first: that notice is the one hearing of it.
+        if (waited.arrivesAsNotice === true) return arrivesAsNoticeAnswer(waited.task);
         t = waited.task;
       } else {
         // The ending held for this request, when its wait on the task lapsed:
