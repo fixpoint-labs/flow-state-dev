@@ -45,7 +45,7 @@ Then a question's answer rides it, and `updateTask` drops `question`.
 |---|---|
 | **Instead of** | `status: "held"` for a task held before it starts (this spec's first draft), with a midway question marked some other way |
 | **Because** | The owner's hold is one predicate before the start and midway. A midway row is `in_progress`; it can't read `held` without a new transition, and a status for the pre-start case beside a predicate for midway is two gates. The predicate lands once: in the shared admission helper (`isClaimable`, FIX-1005, which the claim path, the wake probe and the preview read; `isReady` built on the same helper) and in the settle guard |
-| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once. A question is open while no steer carries its key, so "answered" is never stored twice; a stored answered park that FIX-2131's retired-shape map reads is a recognised answer source too, projected at read time as a keyed user steer that the open-question check counts and the brief carries, but the cap does not. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
+| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once. A question is open while no steer carries its key, so "answered" is never stored twice. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
 
 ![D2: what the hold is on the row. The open-questions predicate on any status, chosen, beside a held status for the pre-start case. Decides it: how many gates cover both cases; one predicate, against a status plus a second gate for midway. The price: every start path reads the predicate, through one shared helper. A tie: dependents wait either way. Locks in: questions on the row, open while no steer carries the key. Flips if a start path can't go through the shared helper](figures/d2-one-hold.svg)
 
@@ -61,7 +61,7 @@ its own guard, and the goal check's leg a must name it.
 |---|---|
 | **Instead of** | Re-entry through FIX-2078's wake alone, as FIX-2086's steer turn starts today, with tickets fenced by row, status and attempt |
 | **Because** | The wake is written before the row write and is absent on a host without `RequestWakes`, so a turn owed only by a wake can be stranded. And a same-attempt re-entry means two turns share an attempt: an attempt fence can't tell the asking turn's late renewal or result from its successor's |
-| **Locks in** | **Ask:** one write adds the questions, drops the lease and ends the turn unsettled. **Lease fence:** `renewLease` and `reclaim()` refuse a row with an open question, decided on the committed row, so a renewal racing an ask loses. **Release:** the write that closes the last question makes a `pending` row claimable with a fresh budget, or sets the owed-turn mark on an `in_progress` row (FIX-2086's `waitingOn: "steer"`) in that same write. **Claim:** the gate claims a marked `in_progress` row with no lease and no open question for its same attempt, uncharged, and clears the mark in the claim write; a wake only starts that claim sooner, and whichever claims first wins. FIX-2086's late-steer turn gets the same backstop. **Generation:** every claim advances a turn generation on the row; the ticket carries it; ask, renew, complete, fail and settle refuse a ticket whose generation isn't the row's. A row or ticket without one reads as 0 (BP-030). **Invariants**, tested on both backings: at most one live turn per attempt; a row with no open question is never left with no lease, no mark and nothing to claim it; a stop ends exactly once |
+| **Locks in** | **Ask:** one write adds the questions, drops the lease and ends the turn unsettled. **Lease fence:** `renewLease` and `reclaim()` refuse a row with an open question, decided on the committed row, so a renewal racing an ask loses. **Release:** the write that closes the last question makes a `pending` row claimable with a fresh budget, or sets the owed-turn mark on an `in_progress` row (FIX-2086's `waitingOn: "steer"`) in that same write. **Claim:** the gate claims a marked `in_progress` row with no lease and no open question for its same attempt, uncharged, and clears the mark in the claim write; a wake only starts that claim sooner, and whichever claims first wins. FIX-2086's late-steer turn gets the same backstop. **Generation:** every claim advances a turn generation on the row; the ticket carries it; ask, renew, complete, fail and settle refuse a ticket whose generation isn't the row's. An unclaimed row's generation is 0. **Invariants**, tested on both backings: at most one live turn per attempt; a row with no open question is never left with no lease, no mark and nothing to claim it; a stop ends exactly once |
 
 ![D3: how a midway task gets its turn back. An owed mark on the row that the claim gate claims, with a turn generation, chosen, beside the wake alone fenced by attempt. Decides it: a host with no wake; the gate claims the row, against the row stranded. The price: two starters for one turn, which the generation fence makes safe. A tie: the same attempt, no budget spent, either way. Locks in: the mark, the lease fences and the generation on every claim-ticket write. Flips if the wake became one write with the row on every host](figures/d3-owed-turn.svg)
 
@@ -87,12 +87,10 @@ Then the gate's backstop could go; the generation stays either way.
   is always answerable, and a row never holds more than the cap. A refused ask tells the model it
   can't ask more and to go on from its brief. The check sits inside the one question write: the ask
   takes the reservation, and the answer or the deadline's "no answer came" steer fills it. FIX-2086's
-  turn bound stays 20, 21 on a migrated row. One allowance: an answer or deadline steer to a migrated question (one
-  FIX-2131's retired-shape map created, outside the reserving ask) may land one place above the cap,
-  once per row ([FIX-2131 D2](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md#d2)).
+  turn bound stays 20.
   A prompt-length cap is the implementer's (BP-042).
 - **One wait per turn, enforced in the writes** (FIX-2131 states the rule: a row holds an open
-  question or a person suspension, never both). The ask refuses a row marked `waitingOn: "user"` (renamed from `"person"` in FIX-2129, #3735, which reads a stored `"person"` as `"user"`),
+  question or a person suspension, never both). The ask refuses a row marked `waitingOn: "user"` (renamed from `"person"` in FIX-2129, #3735),
   and this issue's addition to the claim gate's stop arm refuses to mark a row that has an open
   question.
 - **The deadline:** each question is due 7 days after it is asked: a 7-day constant until FIX-2129's
@@ -149,6 +147,10 @@ Then the gate's backstop could go; the generation stays either way.
   row, status and attempt only (`internal.ts`, `attemptOwnsTask`), and a wake is written before its
   debt and absent without `RequestWakes` (`core/src/types/request-host.ts`). The mechanism is
   proved by the implementation's tests on both backings, as ER-8 asks.
+
+## Owner decisions
+
+- **Owner, 2026-10-23** — no old data: stores are reset, so no migrated questions and no +1 allowance; the turn bound is 20 (BP-030 waived for this epic's persisted shapes).
 
 ## How it got here
 
