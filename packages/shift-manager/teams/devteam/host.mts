@@ -453,13 +453,8 @@ const askFire = handler({
   inputSchema: z.object({ id: z.string() }).passthrough(),
   outputSchema: z.void(),
   execute: async (input: { id: string }, ctx: BlockContext) => {
-    if (ctx.suspend === undefined) {
-      throw new Error(
-        `firing "${input.id}" waits for a user's approval here, and this app can't ask for one: it runs ` +
-          `without durable execution. Nothing was changed.`,
-      );
-    }
-    await ctx.suspend({
+    // A host without durable execution refuses at the stop itself (FIX-2063).
+    await ctx.suspend!({
       reason: "human_approval",
       message: `Fire worker "${input.id}"?`,
       data: { worker: input.id },

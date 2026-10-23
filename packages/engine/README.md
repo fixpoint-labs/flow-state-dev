@@ -1070,7 +1070,11 @@ By default the final checkpoint is retained after terminal completion (success /
 
 ## DurabilityProvider
 
-`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume. Wire it onto `RuntimeConfig.durabilityProvider` to enable `ctx.suspend()` in durable actions.
+`DurabilityProvider` coordinates checkpoint-based crash recovery and HITL (human-in-the-loop) suspend/resume.
+
+**On by default wherever stores persist.** `createFlowState` installs the checkpoint provider over its active profile's stores unless `durable: false`. Over in-memory stores it installs none unless `durable: true`, because a stop held there is lost when the process ends: the in-memory checkpoint and suspension stores say `persists: false`, and a custom store that leaves `persists` unset is treated as persisting. `resolveDurabilityProvider({ stores, durable })` is that rule, for a host that builds its own `createFlowApiRouter` or calls `runAction`; those take a provider only through `RuntimeConfig.durabilityProvider`. Without one, `ctx.suspend()` throws, naming the rule and the setting, and the request fails.
+
+The sweeper runs only where a router is built. It arms for the earliest deadline among pending stops and waits, and reads the store's deadlines once at start, so a stop a one-shot process left is expired at its deadline once a server runs on the store.
 
 ```ts
 import { createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
@@ -1081,7 +1085,7 @@ const provider = createCheckpointDurabilityProvider({
   leases: stores.leases
 });
 
-// Pass to runtime config
+// Pass to runtime config (or use resolveDurabilityProvider({ stores }))
 { durabilityProvider: provider }
 ```
 

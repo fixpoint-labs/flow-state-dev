@@ -8,28 +8,58 @@ Long-running flows have two failure modes worth planning for. The first is crash
 
 Durable execution addresses both. The runtime checkpoints sequencer state at every step boundary and stores suspension records when a block explicitly pauses for external input. A resume endpoint re-invokes the original action, restores state from the checkpoint, skips already-completed steps, and runs the suspended step again — this time returning the resume data instead of suspending.
 
-The tradeoff: durability requires a store capable of persistence (not just in-memory), and it requires a `DurabilityProvider` wired into the runtime. Neither is free, and for short-lived flows without approval gates the overhead isn't worth it. Opt out with `durable: false` on a sequencer when you don't need it.
+Durable execution is on by default wherever your stores persist: filesystem, SQLite and Postgres. It isn't free. Every sequencer writes a checkpoint at each step, a request that crashed resumes instead of rerunning, and a sweeper reads the store on a schedule even when nothing waits. For short-lived sequencers without approval gates, opt out per sequencer with `durable: false`, or for the whole app with `durable: false` on `createFlowState`.
 
 ## Enabling durability
 
-Sequencers default to `durable: true`. Checkpoints write automatically at every step boundary as long as a `DurabilityProvider` is configured on the runtime. Without a provider, checkpoint writes are skipped silently and `ctx.suspend()` is unavailable.
-
-Wire a provider at startup:
+There's nothing to enable on stores that persist. An app on SQLite, Postgres or the filesystem store is durable without any setting:
 
 ```ts
-import { createFlowState, inMemoryStores, createCheckpointDurabilityProvider } from "@flow-state-dev/engine";
-
-const stores = inMemoryStores();
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 
 export const flowstate = createFlowState({
   flows: { contentReview },
   models: { default: "openai/gpt-6-luna" },
-  stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
+  stores: { default: { primary: sqliteStores({ filename: "data/app.db" }) } },
 });
 ```
 
-`createCheckpointDurabilityProvider` is the standard factory. It delegates to the same store adapters the rest of the runtime uses (`checkpoints`, `suspensions`, `leases`). If you're using filesystem, SQLite, or Postgres stores, the suspension and lease tables are created alongside the other tables.
+`createFlowState` builds the checkpoint provider from the active profile's stores (`checkpoints`, `suspensions`, `leases`), so sequencers checkpoint and `ctx.suspend()` holds a stop until someone answers it, across a restart. `fsdev dev` and `fsdev run` with no config get the same default over their local SQLite file. See [the CLI reference](/docs/api/cli#fsdev-run).
+
+The `durable` option on `createFlowState` is the host setting:
+
+| `durable` | Persisting stores | In-memory stores |
+| --- | --- | --- |
+| not set | on | off |
+| `false` | off | off |
+| `true` | on | on |
+
+In-memory stores are off by default because a stop held there is lost, without a word, when the process ends. Tests that want stops held in memory set `durable: true`.
+
+This is the host's setting, not an action's or a sequencer's. `durable` on an action or a sequencer says whether that piece takes part, and it means nothing on a host without durable execution. Turning the host on doesn't make an action durable that sets `durable: false`.
+
+A host without durable execution refuses a stop at the stop: `ctx.suspend()` throws an error that names the rule and the setting to change, and the request fails. Nothing is held.
+
+### Which hosts sweep
+
+The sweeper (see [Retention and cleanup](#retention-and-cleanup)) runs in a process that serves the routes: `fsdev dev`, `fsdev serve`, a self-hosted server, `createFlowApiRouter`. That is what fires a stop's deadline. A one-shot command such as `fsdev run` sweeps nothing. It holds the stop, exits, and leaves the deadline to whichever server runs on the same store next.
+
+### A router you build yourself
+
+The low-level `createFlowApiRouter` and `runAction` are durable only when you give them a provider, through `runtimeConfig.durabilityProvider`. `resolveDurabilityProvider({ stores, durable })` applies the same rule `createFlowState` does:
+
+```ts
+import { createFlowApiRouter, resolveDurabilityProvider } from "@flow-state-dev/engine";
+
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  runtimeConfig: { durabilityProvider: resolveDurabilityProvider({ stores }) },
+});
+```
+
+`createCheckpointDurabilityProvider(stores)` builds the provider directly, whatever the stores.
 
 To opt a specific sequencer out of checkpointing:
 
@@ -298,14 +328,13 @@ A run started in the background, dispatched to a separate process with no browse
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config alongside your provider and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) falls due, a wait's deadline among them.
+Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a stop's deadline falls due. It reads the deadlines in the store when it starts, so a stop `fsdev run` left behind expires on time once a server runs. A stop another process writes while the server runs is seen at the next tick.
 
 ```ts
 export const flowstate = createFlowState({
   flows: { contentReview },
   models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
-  durabilityProvider: createCheckpointDurabilityProvider(stores),
   durabilityRetention: {
     sweepIntervalMs: 600_000,                 // sweep every 10 minutes
     checkpointMaxAgeMs: 86_400_000,           // backstop: drop terminal-run checkpoints after 24h
@@ -343,7 +372,6 @@ A wait's deadline is five minutes unless the call names one. A host sets the def
 export const flowstate = createFlowState({
   flows: { issues },
   stores: { default: { primary: sqliteStores({ filename: "./data.sqlite" }) } },
-  durable: true,
   waitDeadlines: { defaultMs: 120_000, minMs: 1_000, maxMs: 3_600_000 },
 });
 ```
@@ -359,7 +387,6 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 export const flowstate = createFlowState({
   flows: { issues },
   stores: { default: { primary: sqliteStores({ filename: "./data.sqlite" }) } },
-  durable: true,
   maxDebtAgeMs: 3_600_000,   // give up on a notice still owed an hour past due
 });
 ```
@@ -374,7 +401,7 @@ When a flow suspends for human input, an operator needs to see what's waiting wi
 
 From the detail pane you can **approve** or **reject** a pending suspension and supply the resume data. That posts to the same resume endpoint a production client would call, so resolving from the DevTool drives the real flow forward.
 
-The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It requires a configured `durabilityProvider`; without one, the suspension store is empty and the tab shows nothing to act on.
+The tab reads through the gated debug endpoints, which are disabled by default and loopback-only. It needs a host with durable execution; without it, nothing is held and the tab shows nothing to act on.
 
 The same request panel also lists interrupted runs, not just suspensions — a request that stopped abruptly (a crash, a restart, a mid-execution deploy) but is still resumable. See [DevTool — Interrupted runs and crash recovery](/docs/devtool/overview#interrupted-runs-and-crash-recovery) for spotting one and continuing it.
 

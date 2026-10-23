@@ -313,11 +313,7 @@ curl -X POST localhost:3000/api/flows/coordinator/requests/$REQUEST_ID/resume \
 
 On approve, the fire runs. On reject, nothing changes, and the model is told the request was denied. The ask outlives a restart: a user can approve tomorrow what the Shift Coordinator asked today.
 
-Asking needs durable execution, so turn it on with `durable: true` on `createFlowState`. Without it, the ask above refuses rather than firing unasked:
-
-```text
-firing "scribe" waits for a user's approval, and this app can't ask for one. Nothing was changed.
-```
+Asking needs durable execution, which is on by default wherever your stores persist. On a host without it (`durable: false`, or in-memory stores), the ask refuses at the stop rather than firing unasked, and nothing is changed.
 
 Asking also needs a model with the single-step methods: `generateStep`, and `streamStep` when it streams. Models from the built-in AI SDK adapter have them. On a custom model without them, or a fallback group none of whose models has them, the tool can't pause the request: the call fails before anything changes, the model is told the tool failed, and the turn carries on with no approval raised. [Suspending inside generators](../advanced/generator-and-router-suspend-resume.md) covers a pause inside a tool call.
 
