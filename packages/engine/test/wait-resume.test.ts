@@ -344,6 +344,14 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
     await h.provider.releaseLease(requestId, lease!.leaseId);
     const second = await resumeWaitGate(deps, gate, { answered: true, answer: "second" }, "test");
     expect(second).toMatchObject({ ok: false, refused: "already-resolved" });
+    // The continuation runs the turn again, so the request reads
+    // `in_progress`, as a turn still parking does (FIX-2135). The resolved
+    // gate decides first: a late resume is `already-resolved`, never the
+    // retryable `busy`, or its sender would retry an answered wait forever.
+    const running = await h.stores.request.get(requestId);
+    await h.stores.request.set(requestId, { ...running!, status: "in_progress" }, "any");
+    const late = await resumeWaitGate(deps, gate, { answered: true, answer: "late" }, "test");
+    expect(late).toMatchObject({ ok: false, refused: "already-resolved" });
     expect(continuations).toBe(1);
     expect((await h.provider.loadSuspension(requestId, GATE_ID))?.resumeData).toEqual({
       answered: true,
