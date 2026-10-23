@@ -92,7 +92,9 @@ Then the gate's backstop could go; the generation stays either way.
 - **One wait per turn, enforced in the writes** (FIX-2131 states the rule: a row holds an open
   question or a person suspension, never both). The ask refuses a row marked `waitingOn: "user"` (renamed from `"person"` in FIX-2129, #3735),
   and this issue's addition to the claim gate's stop arm refuses to mark a row that has an open
-  question.
+  question. The engine creates the suspension before that mark is tried, so the step that refuses
+  the mark also cancels the suspension it was for, through ER-1's cancel (it resumes `cancelled`),
+  in the same step: no Inbox item survives for it.
 - **The deadline:** each question is due 7 days after it is asked: a 7-day constant until FIX-2129's
   host setting lands and replaces it. A test hook overrides the question deadline (FIX-2132's leg e
   uses it). It is paid by the board's debt pass on a touch past due (rule 8). It
@@ -103,10 +105,11 @@ Then the gate's backstop could go; the generation stays either way.
 - **Who asks.** The filer, at filing; midway, only the turn holding the current ticket, through the
   collection's ask, which FIX-2131's `askQuestion({ question })` tool calls. Answers arrive as
   `updateTask({ id, question, message })` (D1). A fixed-board harness run holds no `state.claim`
-  (`harness-manager/src/manager.ts`, its mismatch park), so its ask presents a ticket minted from
-  its own row as the claim path mints one (`ticketForClaim` on the fixed board, with the run's
-  `identity.attempt` as the attempt fence) plus the turn generation its attempt was claimed under,
-  and is refused when either isn't the row's. Nobody adds,
+  (`harness-manager/src/manager.ts`, its mismatch park), so its ask presents the ticket minted at
+  claim time (`ticketForClaim` on the fixed board: the row's identity, the run's `identity.attempt`
+  as the attempt fence, and the turn generation it was claimed under), carried into the run, and is
+  refused when any of them isn't the row's. It never mints one from the row read at ask time, so a
+  stale turn can't park a row deleted and recreated under the same id. Nobody adds,
   changes or removes a question afterwards. At filing, questions are refused where `held` is (a
   step for a worker's own turn), since nothing waits; midway, any claimed task can ask.
 - **Midway, what stands:** the turn's writes, messages and last checkpoint; the next turn starts from
@@ -139,6 +142,8 @@ Then the gate's backstop could go; the generation stays either way.
 - *Second look:* keep the Inbox's routing (item kind to path) in one place in its client.
 - *Cursor:* derive held-question items in the snapshot pass stops use, with no second scan, and keep
   `tasksSummary` in step.
+- *Codex:* a fixed-board ask must carry the claim-time ticket into the run; check the manager's run
+  state holds it, not only the task id and attempt, so a recreated row can't match.
 - *Cursor:* the people table and the grid overlap; trimmed in the re-spec.
 
 ## Settled
