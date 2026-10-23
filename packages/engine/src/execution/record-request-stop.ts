@@ -11,7 +11,7 @@
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types";
 import { abortRequest } from "./abort-registry";
-import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
+import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 
 /**
  * What recording a stop came to.
@@ -69,9 +69,10 @@ export async function recordRequestStop(
   );
 
   if (result.status === undefined) return { kind: "gone" };
-  // Parked: `suspended`, or `interrupted` (the process died) while a gate of
-  // it is still pending. An interrupted request with no pending gate is not
-  // waiting on anything, and answers as before.
+  // Parked: `suspended`, or `interrupted` (the process died) while it is
+  // parked (`parkedInterruptedIds`: a pending gate, or a logged gate owed a
+  // re-drive). An interrupted request that is not is waiting on nothing, and
+  // answers as before.
   if (
     !result.applied &&
     (result.status === "suspended" || result.status === "interrupted") &&
@@ -83,7 +84,7 @@ export async function recordRequestStop(
     if (current === undefined || resolveRequestIncarnation(current) !== incarnation) {
       return { kind: "gone" };
     }
-    if (current.status === "interrupted" && (await pendingGatesOf(parked, current)).length === 0) {
+    if (current.status === "interrupted" && !(await parkedInterruptedIds(parked.provider, [current])).has(current.id)) {
       return { kind: "finished", status: "interrupted" };
     }
     const stopped = await stopSuspendedRequest(parked, current);

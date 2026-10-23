@@ -683,6 +683,44 @@ describe("applyRetentionPolicy", () => {
       expect(await stores.request.get("req_parked")).toBeDefined();
     });
 
+    // The gate is stored but its log append never landed: a crash between
+    // `provider.suspend` and the append, or a re-suspension. Still parked.
+    it("keeps one whose pending gate is stored but not yet on its log", async () => {
+      const stores = await setupStores([
+        interrupted("req_dead", 100, 200),
+        interrupted("req_parked", 300, 400),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
+      ]);
+      await stores.suspensions.set(gate("req_parked", "susp_1", "pending"));
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, createCheckpointDurabilityProvider(stores)
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_dead"]);
+      expect(await stores.request.get("req_parked")).toBeDefined();
+    });
+
+    // Not knowing whether a record is parked must never read as "not parked":
+    // the pass rejects and deletes nothing.
+    it("deletes nothing when a gate cannot be read", async () => {
+      const stores = await setupStores([
+        interrupted("req_parked", 300, 400, { gate: "susp_1" }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 9_000_000, completedAtMs: 9_000_100, itemCount: 2 }),
+      ]);
+      const broken = {
+        ...createCheckpointDurabilityProvider(stores),
+        loadSuspension: async () => {
+          throw new Error("the gate store is down");
+        }
+      };
+
+      await expect(
+        applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, 9_000_200, undefined, broken)
+      ).rejects.toThrow("the gate store is down");
+      expect(await stores.request.get("req_parked")).toBeDefined();
+    });
+
     // A record without `interruptedAt` (BP-030) ages from when it started.
     it("ages one with no interruptedAt from its start", async () => {
       const stores = await setupStores([

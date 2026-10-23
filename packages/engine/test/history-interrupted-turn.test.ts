@@ -181,6 +181,15 @@ describe("history across a turn the host died in", () => {
     expect(history).toContain("TCK-DEAD");
   });
 
+  it("leaves out an interrupted turn whose pending gate is stored but not yet on its log", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_parked", drew("req_parked", "interrupted", 1000, "TCK-PARKED"), "any");
+    await stores.suspensions.set(gate("req_parked", "pending"));
+
+    const history = await historyOf(stores, withProvider(stores));
+    expect(history).not.toContain("TCK-PARKED");
+  });
+
   it("leaves out an interrupted turn whose gate is resolved and still owes a re-drive", async () => {
     const stores = createInMemoryStores();
     await stores.request.set("req_owed", parkedOn("req_owed", 1000, "TCK-OWED", "susp_req_owed"), "any");

@@ -82,10 +82,11 @@ export function resolveRetentionPolicy(
  *
  * Eviction operates at request granularity — entire old requests are removed,
  * not individual items within a request. The current request is never evicted,
- * and neither is an interrupted request that will run again (its last gate
- * pending, or resolved and owed a re-drive: `drivenAgain`), which `provider`
- * reads (none is parked without one: nothing can suspend). Each interrupted
- * record's log is read to find its last gate.
+ * and neither is a parked interrupted request (a pending gate, or a logged
+ * gate owed a re-drive: `parkedInterruptedIds`), which `provider` reads (none
+ * is parked without one: nothing can suspend). An interrupted record nothing
+ * else protects is read whole to find its last gate. A failed read rejects,
+ * and nothing is deleted.
  */
 export async function applyRetentionPolicy(
   stores: StoreRegistry,
@@ -94,7 +95,7 @@ export async function applyRetentionPolicy(
   policy: ResolvedRetentionPolicy,
   now: number = Date.now(),
   tenantId?: string,
-  provider?: Pick<DurabilityProvider, "loadSuspension">
+  provider?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">
 ): Promise<{ deletedRequestIds: string[] }> {
   const deletedRequestIds: string[] = [];
 
@@ -156,16 +157,20 @@ export async function applyRetentionPolicy(
   // Exclude current request, sort oldest-first by when each turn ended
   const history = requests.filter((r) => r.id !== currentRequestId);
   // The list carries no items; a parked check needs an interrupted record's
-  // log, so only those are read whole. A session holds few.
+  // log, so only the interrupted records nothing else protects are read whole.
+  // A failed read must abort the pass (it rejects), never default to "not
+  // parked": that would delete a request a resume or re-drive still drives.
+  const heldAnyway = (r: RequestRecord): boolean => stillRunning.has(r.id) || !isEvictable(r);
   const interruptedLogs =
     provider === undefined
       ? []
-      : (await Promise.all(history.filter((r) => r.status === "interrupted").map((r) => stores.request.get(r.id)))).filter(
-          (r): r is RequestRecord => r !== undefined
-        );
+      : (
+          await Promise.all(
+            history.filter((r) => r.status === "interrupted" && !heldAnyway(r)).map((r) => stores.request.get(r.id))
+          )
+        ).filter((r): r is RequestRecord => r !== undefined);
   const parked = await parkedInterruptedIds(provider, interruptedLogs);
-  const isProtected = (r: RequestRecord): boolean =>
-    stillRunning.has(r.id) || parked.has(r.id) || !isEvictable(r);
+  const isProtected = (r: RequestRecord): boolean => heldAnyway(r) || parked.has(r.id);
   const protectedIds = history.filter(isProtected).map((r) => r.id);
   const sorted = history
     .filter((r) => !isProtected(r))

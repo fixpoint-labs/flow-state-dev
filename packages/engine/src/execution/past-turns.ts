@@ -9,9 +9,10 @@
  * own:
  *
  * - **Parked.** An interrupted record that will run again under the same id
- *   (`drivenAgain` in `durability/stop-suspended.ts`: its last gate is pending,
- *   or resolved and owed a re-drive), like a `suspended` one. History leaves
- *   it out until it finishes; retention never deletes it.
+ *   (`parkedInterruptedIds` in `durability/stop-suspended.ts`: a pending gate,
+ *   or a logged gate owed a re-drive), like a `suspended` one. History leaves
+ *   it out until it finishes; retention never deletes it; a stop reads the
+ *   same rule.
  * - **Retried.** `/retry` runs the turn again under a new id with
  *   `metadata.retryOf` naming the original, which stays `interrupted`. The
  *   retry is the turn, so history leaves the original out while the retry is
@@ -20,7 +21,7 @@
  *   no history read holds), nothing names the original, and history shows it
  *   again as a partial turn until it too is evicted.
  */
-import { drivenAgain } from "../durability/stop-suspended";
+import { parkedInterruptedIds as parkedIds } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
 import type { RequestRecord } from "../stores/types";
 
@@ -28,21 +29,15 @@ import type { RequestRecord } from "../stores/types";
 export const PAST_TURN_STATUSES: readonly RequestRecord["status"][] = ["completed", "interrupted"];
 
 /**
- * The ids of the `interrupted` records in `records` that will run again
- * ({@link drivenAgain}). Each record must carry its item log, where its last
- * gate is named. Reads a gate only for an interrupted record. Without a
- * durability provider nothing can suspend, so none are parked.
+ * The parked interrupted records among `records` (`parkedInterruptedIds` in
+ * `durability/stop-suspended.ts`). Without a durability provider nothing can
+ * suspend, so none are parked. A failed read rejects.
  */
 export async function parkedInterruptedIds(
-  provider: Pick<DurabilityProvider, "loadSuspension"> | undefined,
-  records: readonly Pick<RequestRecord, "id" | "status" | "items">[]
+  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension"> | undefined,
+  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
 ): Promise<Set<string>> {
-  const parked = new Set<string>();
-  if (provider === undefined) return parked;
-  for (const record of records) {
-    if (record.status === "interrupted" && (await drivenAgain(provider, record))) parked.add(record.id);
-  }
-  return parked;
+  return provider === undefined ? new Set() : parkedIds(provider, records);
 }
 
 /**

@@ -69,7 +69,7 @@ export type SuspendedStopResult = "stopped" | "already-resolved";
 export const PARKED: readonly RequestRecord["status"][] = ["suspended", "interrupted"];
 
 /** The pending gate(s) `record` is parked on, newest first. */
-export async function pendingGatesOf(
+async function pendingGatesOf(
   deps: SuspendedStopDeps,
   record: Pick<RequestRecord, "id" | "sessionId" | "userId">
 ): Promise<SuspensionRecord[]> {
@@ -222,9 +222,8 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
  * the durability sweep gives it (step 2b). An interrupted request with no such
  * gate died while it ran, and nothing drives it again: its work is over.
  *
- * The one definition of a parked `interrupted` request: a wait's `ended`
- * (`wait-chain.ts`), history and session retention (`execution/past-turns.ts`)
- * all read it. `record.items` must hold the request's log.
+ * A wait's `ended` (`wait-chain.ts`) reads it; {@link parkedInterruptedIds}
+ * builds the parked rule on it. `record.items` must hold the request's log.
  */
 export async function drivenAgain(
   provider: Pick<DurabilityProvider, "loadSuspension">,
@@ -235,6 +234,39 @@ export async function drivenAgain(
   const gate = await provider.loadSuspension(record.id, gateId);
   if (gate === null) return false;
   return gate.status === "pending" || owesRedrive(gate);
+}
+
+/**
+ * The ids of the `interrupted` records in `records` that are parked, not dead:
+ * {@link drivenAgain} (the last logged gate is pending, or resolved and owed a
+ * re-drive), or the store holds a pending gate of the request that its log
+ * does not name yet (a crash between `provider.suspend` and the log append, or
+ * a re-suspension). The one rule of a parked interrupted request: a stop
+ * (`execution/record-request-stop.ts`), history and session retention
+ * (`execution/past-turns.ts`) read it.
+ *
+ * Each record must carry its item log. One pending-gate read per session, and
+ * a gate read per interrupted record the pending gates do not already cover.
+ * A failed read rejects: the caller decides what an unknown answer means.
+ */
+export async function parkedInterruptedIds(
+  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">,
+  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
+): Promise<Set<string>> {
+  const parked = new Set<string>();
+  const interrupted = records.filter((r) => r.status === "interrupted");
+  if (interrupted.length === 0) return parked;
+  const ids = new Set(interrupted.map((r) => r.id));
+  const sessions = new Map<string, { userId: string; sessionId: string | undefined }>();
+  for (const r of interrupted) sessions.set(`${r.userId}\u0000${r.sessionId ?? ""}`, { userId: r.userId, sessionId: r.sessionId });
+  for (const { userId, sessionId } of sessions.values()) {
+    const pending = await provider.listSuspended({ userId, ...(sessionId !== undefined ? { sessionId } : {}), status: "pending" });
+    for (const gate of pending) if (ids.has(gate.requestId)) parked.add(gate.requestId);
+  }
+  for (const record of interrupted) {
+    if (!parked.has(record.id) && (await drivenAgain(provider, record))) parked.add(record.id);
+  }
+  return parked;
 }
 
 /** Whether this gate owes a re-drive. The sweep and {@link redriveResolvedGate} both use it. */
