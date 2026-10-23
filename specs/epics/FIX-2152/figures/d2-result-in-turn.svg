@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 426" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D2: a background result is taken before the main session&#x27;s next model call, chosen, beside after the turn ends as today. Decided by working the way Claude Code does.">
+     aria-label="D2: a background result is taken at turn end in the same request, chosen, beside after the turn ends as today. Decided by working the way Claude Code does.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="344" height="46" rx="5"/>
     <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="226" y="112">Before its next model call</text>
+    <text class="t-h c-code" x="226" y="112">At turn end, in the same request</text>
     <rect class="lost" x="572" y="76" width="344" height="46" rx="5"/>
     <text class="t-tag c-mute" x="586" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="586" y="112">After the turn ends, as today</text>
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="231">HEARD ONCE</text>
     <text class="mark tie" x="226" y="224">=</text>
     <text class="t-b" x="244" y="223">Once</text>
-    <text class="t-s" x="244" y="241">taken by a model call or the notice turn</text>
+    <text class="t-s" x="244" y="241">taken by the lab flow or the notice turn</text>
     <text class="mark tie" x="586" y="224">=</text>
     <text class="t-b" x="604" y="223">Once</text>
     <text class="t-s" x="604" y="241">by the notice turn</text>
@@ -78,8 +78,8 @@
     <text class="t-lbl" x="32" y="280">NEW PACKAGE</text>
     <text class="t-lbl" x="32" y="293">CODE</text>
     <text class="mark minus" x="226" y="286">−</text>
-    <text class="t-b" x="244" y="285">One path for the filer</text>
-    <text class="t-s" x="244" y="303">beside the steer path that exists</text>
+    <text class="t-b" x="244" y="285">A public take and an answer-again hook</text>
+    <text class="t-s" x="244" y="303">the loop stays in the lab flow</text>
     <text class="mark plus" x="586" y="286">+</text>
     <text class="t-b" x="604" y="285">None</text>
     <text class="t-s" x="604" y="303">the deferred notice turn as is</text>
@@ -89,8 +89,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="357">LOCKS IN</text>
-    <text class="t-b" x="32" y="377">A delivery mode on the one ending path, FIX-2159</text>
-    <text class="t-s" x="32" y="395">one durable taken mark; rule 7 gains a destination</text>
+    <text class="t-b" x="32" y="377">The lab flow loops back; FIX-2159 adds a public take</text>
+    <text class="t-s" x="32" y="395">on the one ending path; rule 7 gains a destination</text>
   </g>
 
   <g id="flips-if">

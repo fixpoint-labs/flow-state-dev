@@ -70,7 +70,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | **Fallback only.** A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path. Built only if FIX-2153's lab flow can't keep each ending heard once ([D2](DECISIONS.md#d2), amended) | FIX-2153's spec showing the lab flow can't do it |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | Two public pieces for FIX-2153's lab flow: a take-and-acknowledge for a settled notice on the one ending path, and an answer-again hook. The loop itself stays in the lab ([D2](DECISIONS.md#d2), amended) | — |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
 Two labs, one with two modes, two gaps known before review, and a closure. fsd-architect checked
@@ -128,17 +128,17 @@ code.
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one list call on the workforce client · one delivery mode on the ending path, only if the lab flow can't do it (D2) |
+| **Adds** | Two private labs under `labs/` · one list call on the workforce client · a public take and an answer-again hook on the ending path (D2) |
 | **Removes** | Nothing |
 
-**Net: up, by two labs and one or two package entries.** The labs are the evidence the epic exists to
+**Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to
 produce. Each package entry is a gap the labs proved, and the next app gets it for nothing.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 14 steps, with a real model,
 and an inventory with no *other* row. **[The debt](#whats-already-here-and-the-debt):** up, by
-two labs and one or two package entries.
+two labs and two package entries.
 
 1. **[D1](DECISIONS.md#d1) · A gap that blocks a lab's script is a child of this epic and is
    built here.** If wrong: the epic grows by package work that another epic should own.
