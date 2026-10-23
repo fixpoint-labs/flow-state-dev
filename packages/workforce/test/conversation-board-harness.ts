@@ -129,7 +129,7 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...conversationLedgerResources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "tasker-task", turn }) } }
   });
 }
@@ -146,7 +146,7 @@ function helperFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
@@ -270,7 +270,13 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent })
   });
-  flows = { tasker, helper, agent, coordinator, ...(options.flows?.(installation) ?? {}) };
+  flows = {
+    tasker: { flow: tasker, roles: ["contributor"] },
+    helper: { flow: helper, roles: ["contributor"] },
+    agent,
+    coordinator,
+    ...(options.flows?.(installation) ?? {})
+  };
 
   // One copy per worker flow, and the roster flow, as an app registers them.
   const instances: Record<string, FlowInstance> = Object.fromEntries(

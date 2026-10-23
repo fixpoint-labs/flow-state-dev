@@ -4,8 +4,14 @@
  * importing each other.
  */
 
-/** The internal entry a filing dispatches to run its session's board: the board's one pass. */
-export const RUN_BOARD_ENTRY = "runTaskBoard";
+/**
+ * The internal entry a filing dispatches to run its session's board: the
+ * board's one pass, one at a time per session. A manager's entry (its role
+ * table, `../worker-roles`). **Pinned**: a wake stores it by name; a wake or
+ * request an older host stored under `runTaskBoard` is rewritten to it at host
+ * start (`upgradeWorkerEntryNames`).
+ */
+export const DISPATCH_ENTRY = "dispatch";
 
 /**
  * The internal entry that checks a task session's waiting task, and does

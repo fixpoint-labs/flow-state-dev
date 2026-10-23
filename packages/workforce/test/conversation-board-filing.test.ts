@@ -51,7 +51,8 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       expect(host.runs).toHaveLength(1);
       expect(host.runs[0]).toMatchObject({ worker: "eng.tasker", userId: "alice", taskId: filed.taskId });
       const actions = (await host.requestsOf(conv)).map((request) => request.actionName);
-      expect(actions).toContain("runTaskBoard");
+      expect(actions).toContain("dispatch");
+      expect(actions).not.toContain("runTaskBoard");
     } finally {
       await host.dispose();
     }
@@ -74,7 +75,7 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      const turn = await host.act("alice", conv, "run", { message: "get the notes written" });
+      const turn = await host.act("alice", conv, "respond", { message: "get the notes written" });
       expect(turn.error, messageOf(turn.error)).toBeUndefined();
       await host.settled();
       const rows = await host.rows("alice");
@@ -366,7 +367,7 @@ describe("each conversation's board is its own", () => {
       await file(host, "alice", one, { goal: "in one", assignee: "eng.tasker" });
       await host.settled();
       await list(host, "alice", two);
-      expect((await host.act("alice", two, "run", { message: "anything new?" })).error).toBeUndefined();
+      expect((await host.act("alice", two, "respond", { message: "anything new?" })).error).toBeUndefined();
       await host.settled();
       const own = `tasks/${encodeUserSegment(await host.filingOf("alice", two))}/`;
       const loads = (await host.requestsOf(two))

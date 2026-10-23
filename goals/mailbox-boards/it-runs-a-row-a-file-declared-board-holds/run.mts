@@ -107,7 +107,7 @@ await runGoal(async (failures) => {
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(filerTurn, () => "fixed") }
@@ -128,11 +128,11 @@ await runGoal(async (failures) => {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
+    actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
     task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
   } as never);
 
-  workerFlows = { [filerKind]: filerFlow, [delegateKind]: delegateFlow };
+  workerFlows = { [filerKind]: { flow: filerFlow, roles: ["manager"] }, [delegateKind]: { flow: delegateFlow, roles: ["contributor"] } };
   const hired = hireWorkforce(installation);
   const state = createFlowState({
     flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),

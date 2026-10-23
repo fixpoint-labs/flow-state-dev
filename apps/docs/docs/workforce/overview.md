@@ -127,7 +127,7 @@ The **Shift Coordinator** is an org-level worker a user asks about the organizat
 
 A [coordinator](./coordinators.md) files tasks for its delegates on its conversation's board, and any worker can file tasks for delegates of its own, as [Delegating work](./delegating-work.md) shows. A task names its worker by id, the name `discover` lists: `engineering.lead`. When the board hands the task over, the task runs in a session of that worker's flow that names it, one run per task.
 
-A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
+A worker on the built-in `agent` flow runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A worker flow you write takes tasks when it declares the `contributor` role and a `work` task entry, built with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks).
 
 Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 

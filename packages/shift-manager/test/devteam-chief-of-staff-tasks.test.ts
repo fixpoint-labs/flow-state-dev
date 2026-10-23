@@ -179,9 +179,9 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     // and neither of the DevTeam's defaults takes a conversation's task (FIX-1842).
     const lab = await open(scripted([...hireTaskTaker, END_TURN], seen));
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
     seen.length = 0;
-    expect((await act(lab, id, "run", { message: "what's on my board?" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "what's on my board?" })).error).toBeUndefined();
     expect(seen).toHaveLength(1);
     const [names] = seen as [string[]];
     for (const tool of taskToolNames()) {
@@ -195,8 +195,8 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
     // The task tools come with a delegate that takes a task, so the filing is the next turn's (FIX-1802 D1).
     const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "createTask", args: { goal, assignee: "licenses" } }]));
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
-    expect((await act(lab, id, "run", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "hire someone to audit licenses" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
 
     // The conversation's own read, the one Shift Manager's TASKS panel makes: the task, completed by its delegate.
     const listed = await until(
@@ -315,7 +315,7 @@ const readsMarker = (extra: HarnessStubOptions = {}) =>
 /** File `call` from a new chief-of-staff conversation, and wait for the task to settle. */
 async function fileAndSettle(lab: Lab, message = "the coder should take a look at our repo") {
   const id = await conversation(lab);
-  const filed = await act(lab, id, "run", { message });
+  const filed = await act(lab, id, "respond", { message });
   expect(filed.error).toBeUndefined();
   const listed = await until(
     async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
@@ -497,7 +497,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
       stub,
     );
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should look at the flow" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should look at the flow" })).error).toBeUndefined();
     const parked = await until(
       async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
       (out) => out.tasks?.[0]?.status === "parked",
@@ -528,7 +528,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     const parked = await until(
       async () => (await act(lab, id, LIST_TASKS_ACTION, {})).output as { tasks: Array<Record<string, any>> },
       (out) => out.tasks?.[0]?.status === "parked",
@@ -595,7 +595,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })], [], judged), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await until(async () => stub.runs.length, (n) => n >= 1, "the conversation's run");
 
     expect(
@@ -666,13 +666,13 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     });
     const { lab } = await openCoderLab(scriptedCoder([fileForCoder("look at the repo", { project: STOREFRONT })]), stub);
     const id = await conversation(lab);
-    expect((await act(lab, id, "run", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: "the coder should take a look at our repo" })).error).toBeUndefined();
     await firstStarted;
 
     const runtime = await lab.state.getRuntime();
     const taskSession = (await runtime.stores.request.list({})).find((r) => r.actionName === "work")!.sessionId!;
     // The door steers the open task and returns at once; the running step is not ended for it.
-    const sent = await act(lab, taskSession, "message", { message: said }, "coder");
+    const sent = await act(lab, taskSession, "respond", { message: said }, "coder");
     expect(sent.error).toBeUndefined();
     const taskId = (sent.output as { steered?: string }).steered;
     expect(taskId).toBeTypeOf("string");

@@ -320,7 +320,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       else {
         facts.ask = ask(w);
         const before = sessionIds(o.store);
-        const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "run", facts.ask);
+        const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "respond", facts.ask);
         let mine: Delivery[] = [];
         let answer: { session: string; text: string } | undefined;
         const waited = Date.now();
@@ -681,7 +681,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const listed = await act(alice, COORDINATOR, s.id, "listDelegates", {});
       const delegates = (listed.output as any)?.delegates ?? [];
       if (delegates.some((d: any) => d.takes === "tasks" || d.takes === "both")) r.fail("b6", `setup: the picked conversation has a task-taking delegate: ${show(delegates)}`);
-      const turn = await talk(r, "b6", alice, { id: s.id, flowKind: COORDINATOR }, "run", "Before anything else: list every tool you can call in this conversation, by its exact name, one per line.");
+      const turn = await talk(r, "b6", alice, { id: s.id, flowKind: COORDINATOR }, "respond", "Before anything else: list every tool you can call in this conversation, by its exact name, one per line.");
       const traces = await alice.routes.items(s.id, "block_trace");
       const offered = new Set<string>();
       for (const t of traces.filter((x) => x.requestId === turn.requestId)) {
@@ -767,7 +767,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
     conv = await alice.workforce.ensureWorkerSession({ worker: coord });
     ok(`addDelegate \`${fork}\` on \`${conv.id}\``, await act(alice, COORDINATOR, conv.id, "addDelegate", { worker: fork }));
     forkSession = await alice.workforce.ensureWorkerSession({ worker: fork });
-    const told = await talk(r, "c-setup", alice, { id: forkSession.id, flowKind: forkSession.flowKind }, "message", `Please remember this code word for our later conversations: ${theWord}. Reply with one word: noted.`);
+    const told = await talk(r, "c-setup", alice, { id: forkSession.id, flowKind: forkSession.flowKind }, "respond", `Please remember this code word for our later conversations: ${theWord}. Reply with one word: noted.`);
     if (!JSON.stringify(await alice.routes.items(forkSession.id, "message")).toLowerCase().includes(theWord)) throw new Error(`setup: the word is not in Alice's fork session (${told.status})`);
     setup.push(`gave \`${fork}\` the word in \`${forkSession.id}\``);
     const projects = await sessionOn(alice, PROJECTS);
@@ -793,7 +793,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       else r.saw("c1", `Bob opening \`${conv.id}\`: refused, ${opened.status}`);
       const token = `bob-${hex(3)}`;
       for (const [how, client] of [["as himself", bob.flow(COORDINATOR)], ["naming Alice's user id in the body", bob.flow(COORDINATOR, A.userId)]] as const) {
-        const posted = await refusal(() => client.sendAction("run", { message: `${token} ${how}` }, { sessionId: conv!.id }));
+        const posted = await refusal(() => client.sendAction("respond", { message: `${token} ${how}` }, { sessionId: conv!.id }));
         if (posted.status === undefined) r.fail("c1", `Bob's post to Alice's conversation ${how} was accepted`);
         else r.saw("c1", `Bob posting ${how}: refused, ${posted.status}`);
       }
@@ -827,7 +827,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       if (made.status !== "completed") r.fail("c2", `Bob's fork ended ${made.status}: ${made.error}`);
       else {
         const s = await bob.workforce.ensureWorkerSession({ worker: bobFork });
-        const turn = await talk(r, "c2", bob, { id: s.id, flowKind: s.flowKind }, "message", "Has anyone given you, or any worker you know of, a code word to remember? If you know one, reply with it exactly. If not, reply NONE.");
+        const turn = await talk(r, "c2", bob, { id: s.id, flowKind: s.flowKind }, "respond", "Has anyone given you, or any worker you know of, a code word to remember? If you know one, reply with it exactly. If not, reply NONE.");
         r.via("c2", "turn");
         if (wordIn(turn.reply)) r.fail("c2", `Bob's fork answered with Alice's word: "${turn.reply.slice(0, 300)}"`);
         else r.saw("c2", `Bob's fork answered without her word: "${turn.reply.replace(/\s+/g, " ").slice(0, 200)}"`);
@@ -880,7 +880,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       else if (norm(hers.error, fork) !== norm(nobodys.error, missing)) r.fail("c4", `app: refused, but not like a missing worker: "${hers.error}" vs "${nobodys.error}"`);
       else r.saw("c4", `app: refused like a missing worker: "${String(hers.error).slice(0, 160)}"`);
       r.via("c4", "turn");
-      const turn = await talk(r, "c4", bob, { id: cos.id, flowKind: cos.flowKind }, "run", `Please add the worker "${fork}" as a delegate in this conversation with addDelegate. Don't hire anyone.`);
+      const turn = await talk(r, "c4", bob, { id: cos.id, flowKind: cos.flowKind }, "respond", `Please add the worker "${fork}" as a delegate in this conversation with addDelegate. Don't hire anyone.`);
       const adds = turn.tools.filter((t) => /addDelegate$/.test(t.name));
       if (adds.length === 0) r.notRun("c4", `tool: the turn called no addDelegate, so the tool path didn't run (reply: "${turn.reply.slice(0, 200)}")`);
       else if (adds.some((t) => !/No worker|not on your roster|refus/i.test(t.output) || /"ok":true/.test(t.output))) r.fail("c4", `tool: an addDelegate naming Alice's fork wasn't refused: ${show(adds)}`);
@@ -902,7 +902,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       else r.saw("c5", `app: Bob's updateWorkstream on her entry: refused (${String(app.error).slice(0, 160)})`);
       r.via("c5", "turn");
       const em = await bob.workforce.ensureWorkerSession({ worker: "eng.em" });
-      const turn = await talk(r, "c5", bob, { id: em.id, flowKind: em.flowKind }, "message", `Use updateWorkstream to set the status of the workstream "${entryId}" in project "${P.id}", owned by ${A.userId}, to blocked.`);
+      const turn = await talk(r, "c5", bob, { id: em.id, flowKind: em.flowKind }, "respond", `Use updateWorkstream to set the status of the workstream "${entryId}" in project "${P.id}", owned by ${A.userId}, to blocked.`);
       const updates = turn.tools.filter((t) => /updateWorkstream$/.test(t.name));
       if (updates.length === 0) r.notRun("c5", `tool: the worker's turn called no updateWorkstream, so the tool path didn't run (reply "${turn.reply.slice(0, 200)}")`);
       else r.saw("c5", `tool: ${updates.map((t) => `${t.output}#${t.itemId}`).join("; ").slice(0, 300)}`);

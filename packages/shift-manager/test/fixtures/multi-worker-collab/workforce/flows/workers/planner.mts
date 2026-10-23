@@ -42,6 +42,6 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
     resources: { ...installation.resources, ...kit.resources },
     actions: { ...hearingDoor, ...kit.actions },
     // A task's notice lands as a line in the conversation; nothing here acts on it.
-    internal: { actions: kit.entries(hearingDoor.message.block, () => "fixed") },
+    internal: { actions: kit.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);
 }

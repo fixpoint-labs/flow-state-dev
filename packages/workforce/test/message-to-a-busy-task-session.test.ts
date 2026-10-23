@@ -71,7 +71,7 @@ function slowHelperFlow(installation: WorkerInstallation, behaviour: Behaviour) 
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "slow-helper-task", turn }) } }
   } as never);
 }
@@ -154,7 +154,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
-    actions: { run: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
     internal: { actions: board.entries(turn, () => "judgment") },
     task: { actions: { work: workerTaskEntry({ name: "busy-doer-task", turn }) } }
   } as never);
@@ -170,7 +170,10 @@ async function fileOne(h: BoardHost): Promise<string> {
 function boot(seen: Seen[], behaviour: Behaviour) {
   return bootBoardHost({
     standard: WORKERS,
-    flows: (installation) => ({ doer: doerFlow(installation, seen, behaviour), slowhelper: slowHelperFlow(installation, behaviour) })
+    flows: (installation) => ({
+      doer: { flow: doerFlow(installation, seen, behaviour), roles: ["contributor", "manager"] },
+      slowhelper: { flow: slowHelperFlow(installation, behaviour), roles: ["contributor"] }
+    })
   });
 }
 

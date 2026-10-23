@@ -219,7 +219,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       },
       // A user's line in one of this worker's runs' sessions: a steer while
       // its task is open, talk once it has finished.
-      message,
+      respond: message,
     },
     internal: {
       actions: {

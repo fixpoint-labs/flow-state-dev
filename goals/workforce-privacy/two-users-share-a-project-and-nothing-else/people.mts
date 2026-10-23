@@ -157,9 +157,9 @@ function providerError(text: string): boolean {
   return /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|AI SDK stream failed/i.test(text);
 }
 
-/** The talk action a worker flow takes a person's message through: `run` on `agent`, else `message`. */
+/** The talk action a worker flow takes a person's message through: `respond`, on every worker flow. */
 export function talkAction(actions: readonly string[]): string | undefined {
-  return ["run", "message"].find((a) => actions.includes(a));
+  return actions.includes("respond") ? "respond" : undefined;
 }
 
 /**

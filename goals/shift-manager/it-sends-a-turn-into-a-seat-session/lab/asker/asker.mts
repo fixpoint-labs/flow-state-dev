@@ -64,7 +64,7 @@ export function defineAskerFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     actions: {
       ask: { block: sequencer({ name: "turn-goal-asker-ask", inputSchema: askSchema }).step(gate), durable: true },
-      message: {
+      respond: {
         block: hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,

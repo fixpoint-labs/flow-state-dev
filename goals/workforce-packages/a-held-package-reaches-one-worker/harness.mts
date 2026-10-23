@@ -149,7 +149,7 @@ async function main(): Promise<void> {
     if (opened.status !== 201) {
       throw new Error(`${address}: a session on "${seat.kind}" naming it answered ${opened.status}: ${await opened.text()}`);
     }
-    const path = [seat.kind, sessionId, "actions", "run"];
+    const path = [seat.kind, sessionId, "actions", "respond"];
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",

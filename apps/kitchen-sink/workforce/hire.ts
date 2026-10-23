@@ -101,7 +101,12 @@ export async function buildKitchenSinkWorkforce(): Promise<KitchenSinkWorkforce>
   // routed tasks. The goal check's `no-landing` control swaps it for one that
   // takes a routed task and hands no answer back, and `no-delivery` for one
   // that takes none, in test mode only.
-  const agent = agentFlowUnderControl(landingControl(blocks, installation) ?? defineAgentWorkerFlow({ installation, catalog: blocks }));
+  // The landing control's flow takes tasks and keeps no board of its own.
+  const landing = landingControl(blocks, installation);
+  const agent =
+    landing === undefined
+      ? agentFlowUnderControl(defineAgentWorkerFlow({ installation, catalog: blocks }))
+      : { flow: landing, roles: ["contributor"] };
   flows = {
     ...workerFlows,
     agent,

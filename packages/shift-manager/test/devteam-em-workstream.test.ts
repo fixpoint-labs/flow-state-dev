@@ -203,7 +203,7 @@ describe("the EM files from the workstream it leads", () => {
 
     // Her Storefront project coordinator hands the job to her `feature` workstream.
     const pc = (await workforceClientFor(clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-    await runAction(clients, "coordinator", pc, "run", { message: "Add guest checkout: first the guest cart, then the checkout." });
+    await runAction(clients, "coordinator", pc, "respond", { message: "Add guest checkout: first the guest cart, then the checkout." });
 
     // The EM filed one task per part, from the workstream session, on that session's board; each ran and completed.
     const settled = await eventually(async () => {

@@ -185,7 +185,7 @@ async function withLongWorker(page: Page): Promise<void> {
         kind: "agent",
         cardinality: "collection",
         requireUser: true,
-        actions: ["run"],
+        actions: ["respond"],
       });
       await route.fulfill({ response, json: body });
     },

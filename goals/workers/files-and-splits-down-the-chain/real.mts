@@ -27,7 +27,7 @@ export async function legE(o: { origin: string; store: string; shipped: Shipped;
   const w = word();
   const ask = o.asks[randomInt(o.asks.length)]!.replaceAll("{word}", w);
   o.say(`leg e: "${ask}"`);
-  const turn = await alice.act("agent", conv, "run", { message: ask }, 240_000);
+  const turn = await alice.act("agent", conv, "respond", { message: ask }, 240_000);
   // The pieces it filed, their notices, and the turns those wake: all of it quiet, then a grace.
   await sleep(2_000);
   await quiet(o.store, 360_000);

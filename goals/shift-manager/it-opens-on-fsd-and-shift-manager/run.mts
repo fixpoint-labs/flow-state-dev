@@ -245,7 +245,7 @@ await runGoal(async (failures) => {
         const ask =
           `On ${item.title} (the shared project "${item.id}"), have the coder create the file ${item.file} ` +
           `containing exactly the line "${item.stamp}", and commit it on its branch. Nothing else.`;
-        const turn = await http.act("coordinator", sessionId, "run", { message: ask });
+        const turn = await http.act("coordinator", sessionId, "respond", { message: ask });
         if (turn.error !== undefined) note(`b:${item.id}:asked`, `the chief of staff's turn failed: ${turn.error}`);
         let task: Record<string, any> | undefined;
         for (const until = Date.now() + ITEM_BUDGET_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 2_000))) {

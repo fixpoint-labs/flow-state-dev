@@ -243,11 +243,14 @@ function buildHost(filename: string) {
       configSchema: workerConfigSchema(),
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
-      actions: { run: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
       internal: { actions: board.entries(turn, () => "fixed") },
       task: { actions: { work: workerTaskEntry({ name: `filing-settings-${kind}-task`, turn }) } }
     } as never);
-  workerFlows = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn) };
+  workerFlows = {
+    desk: { flow: flowOf("desk", deskBoard, deskTurn), roles: ["contributor", "manager"] },
+    doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] }
+  };
 
   const state = createFlowState({
     flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
@@ -271,7 +274,7 @@ function buildHost(filename: string) {
     const named = async (goal: string) => (await rows()).filter((r) => r.goal === goal);
     const byId = async (id: string) => (await rows()).find((r) => r.id === id);
     const act = (session: string, action: string, input: unknown) => http.act("desk", session, action, input);
-    const script = async (session: string, s: Script) => act(session, "run", { message: JSON.stringify(s) });
+    const script = async (session: string, s: Script) => act(session, "respond", { message: JSON.stringify(s) });
     const until = async (check: () => Promise<boolean>, ms: number) => {
       for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(25)) if (await check()) return true;
       return check();

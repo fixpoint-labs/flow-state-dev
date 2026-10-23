@@ -58,12 +58,7 @@ import { ProjectRefusedError } from "./project-refusal";
 import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamEntrySchema, workstreamViewSchema } from "./workstream-collections";
 import { parseProjectRef, parseWorkstreamRef, workstreamRef } from "./workstream-ref";
 
-/**
- * The coordinator's internal entry an entry path dispatches into the user's
- * coordinator session, to add or remove one workstream's record. **Pinned**:
- * the workstream writes name it.
- */
-export const WORKSTREAM_DELEGATE_ACTION = "changeWorkstreamDelegate";
+export { WORKSTREAM_DELEGATE_ACTION } from "../coordinator/coordinator-keys";
 
 /** What a workstream's entry path hands its coordinator: the change, and the record. */
 export const workstreamDelegateChangeSchema = z

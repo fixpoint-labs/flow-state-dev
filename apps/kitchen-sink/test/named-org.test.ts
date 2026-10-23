@@ -144,7 +144,7 @@ describe("V18 · one organization, from the host resolver", () => {
     const { router, runtime } = await bootApp();
     const opened = await openSession(router, "coordinator", { orgId: "globex", state: { workerId: "support.help" } });
     expect(opened.status, opened.text).toBe(201);
-    const posted = await act(router, "coordinator", "run", opened.id!, { message: "a post naming nobody" }, { orgId: "globex" });
+    const posted = await act(router, "coordinator", "respond", opened.id!, { message: "a post naming nobody" }, { orgId: "globex" });
     expect(posted.status, posted.text).toBe(200);
     // Best fit cannot place it, so the fallback takes it, in a session the post's conversation started.
     let delegate: { orgId?: string } | undefined;

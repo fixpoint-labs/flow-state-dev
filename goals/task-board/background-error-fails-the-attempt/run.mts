@@ -428,7 +428,7 @@ function buildHost(filename: string) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
     resources: { ...installation.resources, ...deskBoard.resources },
-    actions: { run: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
+    actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
     internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
     task: { actions: { work: workerTaskEntry({ name: "bg-desk-task", turn: deskTurn }) } }
   } as never);
@@ -437,7 +437,7 @@ function buildHost(filename: string) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
     resources: { ...installation.resources, ...doerBoard.resources },
-    actions: { run: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
+    actions: { respond: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
     // A piece's notice wakes the doer's turn (judgment).
     internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
     task: {
@@ -461,7 +461,7 @@ function buildHost(filename: string) {
       if (first) throw new Error("memory-capture timed out");
     }
   });
-  workerFlows = { desk: deskFlow, doer: doerFlow, agent: defineAgentWorkerFlow({ installation, afterAnswer: memoryCapture }) };
+  workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] }, agent: defineAgentWorkerFlow({ installation, afterAnswer: memoryCapture }) };
 
   const state = createFlowState({
     flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
@@ -648,9 +648,9 @@ async function legC(run: Run): Promise<void> {
 async function legD(run: Run): Promise<void> {
   const before = (await run.h.rows()).length;
   const session = await run.h.http.open("doer", { workerId: "eng.doer" });
-  await run.h.http.act("doer", session, "run", { message: word("[bg:always] a plain request") });
+  await run.h.http.act("doer", session, "respond", { message: word("[bg:always] a plain request") });
   await run.h.idle();
-  const requests = run.tell.over("d · the plain session's requests", (await run.h.requests(session)).filter((r) => r.actionName === "run"));
+  const requests = run.tell.over("d · the plain session's requests", (await run.h.requests(session)).filter((r) => r.actionName === "respond"));
   const threw = readProofs().filter((p) => p.kind === "step" && p.step === "bg-after-answer" && p.did === "threw" && p.sessionId === session);
   if (requests.some((r) => r.status !== "completed") || threw.length !== 1) {
     run.failures.push(`d:completed — wanted the plain request completed with its background step having thrown; requests ${show(requests.map((r) => r.status))}, threw ${threw.length}`);

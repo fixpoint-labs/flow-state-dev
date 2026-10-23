@@ -51,7 +51,7 @@ function emFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(answer) }
@@ -75,7 +75,7 @@ function host(script = [{ when: () => true, then: { text: "OK." } }] as never[])
       worker("lone.em", { flow: "em" }, "Works alone.")
     ],
     agentAnswer: mockGenerator({ script: [{ when: () => true, then: { text: "otto did it." } }] }),
-    flows: (installation) => ({ em: emFlow(installation) }),
+    flows: (installation) => ({ em: { flow: emFlow(installation), roles: ["manager"] } }),
     generators: { "em-answer": emAnswer },
     observeTools: (block, names, input) => {
       if (block === "em-answer") seen.push({ names, input: JSON.stringify(input) });
@@ -132,7 +132,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
     ] as never[]);
     try {
       const talk = await emSession(h, "alice", "lead.em");
-      const turn = await h.act("alice", talk, "run", { message: "ship it" }, "em");
+      const turn = await h.act("alice", talk, "respond", { message: "ship it" }, "em");
       expect(turn.error, messageOf(turn.error)).toBeUndefined();
       await h.settled();
       const [first] = h.seen;
@@ -147,7 +147,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
     const h = host();
     try {
       const talk = await emSession(h, "alice", "lone.em");
-      expect((await h.act("alice", talk, "run", { message: "anything?" }, "em")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "anything?" }, "em")).error).toBeUndefined();
       expect(h.seen[0]!.names.filter((name) => TASK_TOOLS.includes(name))).toEqual([]);
       expect(await file(h, "alice", talk, { goal: "x", assignee: "otto" })).toMatchObject({
         ok: false,

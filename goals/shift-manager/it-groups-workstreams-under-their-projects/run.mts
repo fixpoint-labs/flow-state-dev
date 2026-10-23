@@ -987,7 +987,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, fail: (leg: string, 
   const session = String(opened.body.session.id);
   const beforePrivate = new Set((await privateRows(person, session))?.map((r) => r.id) ?? []);
   const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
-  const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/run`, {
+  const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/respond`, {
     userId: person.user.userId,
     input: { message: ask },
   });

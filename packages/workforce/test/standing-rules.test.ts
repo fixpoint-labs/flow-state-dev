@@ -90,7 +90,7 @@ async function agentSession(h: BoardHost, userId: string, worker: string, sessio
 
 /** One user's turn on the agent flow. */
 async function say(h: BoardHost, userId: string, sessionId: string, message: string) {
-  const turn = await h.act(userId, sessionId, "run", { message }, "agent");
+  const turn = await h.act(userId, sessionId, "respond", { message }, "agent");
   expect(turn.error).toBeUndefined();
   return turn;
 }
@@ -118,14 +118,14 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(ruleToolsOf(calls.find((c) => c.block === "agent-answer"))).toEqual(RULE_TOOL_NAMES);
 
     const conversation = await h.conversation("alice", "lead");
-    expect((await h.act("alice", conversation, "run", { message: "hello" })).error).toBeUndefined();
+    expect((await h.act("alice", conversation, "respond", { message: "hello" })).error).toBeUndefined();
     expect(ruleToolsOf(calls.find((c) => c.block === "coordinator-judgment"))).toEqual(RULE_TOOL_NAMES);
   });
 
   it("offers none on the task turn a coordinator's filing runs, nor on the coordinator turn its ending wakes", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "lead");
-    const filed = await h.act("alice", conversation, "run", {
+    const filed = await h.act("alice", conversation, "respond", {
       message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Write the summary." })}`
     });
     expect(filed.error).toBeUndefined();
@@ -142,7 +142,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
   it("offers none on a coordinator's routed task to an agent delegate", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "front");
-    expect((await h.act("alice", conversation, "run", { message: "Who can help with billing?" })).error).toBeUndefined();
+    expect((await h.act("alice", conversation, "respond", { message: "Who can help with billing?" })).error).toBeUndefined();
     await h.settled();
     const delivered = calls.find((c) => c.block === "agent-answer");
     expect(delivered).toBeDefined();
@@ -207,7 +207,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
   it("offers none to a user's message inside a task's session: that is task input", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "lead");
-    await h.act("alice", conversation, "run", {
+    await h.act("alice", conversation, "respond", {
       message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Draft the notes." })}`
     });
     await h.settled();
@@ -219,7 +219,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(taskSession).toBeDefined();
     calls = [];
     // The task has finished, so the message is talk in the task's session: still not a user's turn.
-    await h.act("alice", taskSession!.id, "run", { message: "Also add a title." }, "agent");
+    await h.act("alice", taskSession!.id, "respond", { message: "Also add a title." }, "agent");
     await h.settled();
     const turn = calls.find((c) => c.block === "agent-answer");
     expect(turn).toBeDefined();
@@ -322,7 +322,7 @@ describe("what every turn reads (V4, BR-6 to BR-8)", () => {
     await h.client("alice").standingRules("otto", { op: "add", version: 0, text: "Alice's rule." });
     await h.client("bob").standingRules("otto", { op: "add", version: 0, text: "Bob's rule." });
     const conversation = await h.conversation("alice", "lead");
-    await h.act("alice", conversation, "run", {
+    await h.act("alice", conversation, "respond", {
       message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Sum it up." })}`
     });
     await h.settled();
@@ -488,7 +488,7 @@ describe("the page's action (V2, V5, V6, BR-15, BR-17 to BR-19)", () => {
     };
     h = boot({ judgmentModel });
     const conversation = await h.conversation("alice", "lead");
-    expect((await h.act("alice", conversation, "run", { message: "save a rule" })).error).toBeUndefined();
+    expect((await h.act("alice", conversation, "respond", { message: "save a rule" })).error).toBeUndefined();
     expect(results.join(" ")).toMatch(/changed since/);
     // The retry names the list the refusal showed, so it lands after the page's rule, with its line.
     expect((await rulesOf(h, "alice", "lead")).rules.map((r) => r.text)).toEqual(["from the page", "from the turn"]);

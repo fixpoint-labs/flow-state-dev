@@ -176,7 +176,7 @@ await runGoal(async (failures) => {
   if (opened.status !== 201) throw new Error(`the conversation was not opened: ${opened.status} ${opened.text.slice(0, 300)}`);
   const conversation = (JSON.parse(opened.text) as { session: { id: string } }).session.id;
   const post = async (message: string) => {
-    const res = await call("POST", ["coordinator", "actions", "run"], { userId: OWNER, sessionId: conversation, input: { message } });
+    const res = await call("POST", ["coordinator", "actions", "respond"], { userId: OWNER, sessionId: conversation, input: { message } });
     if (res.status !== 200) throw new Error(`post "${message}" refused: ${res.status} ${res.text.slice(0, 300)}`);
   };
   const conversationsOf = async (seat: string): Promise<Conversation[]> => {

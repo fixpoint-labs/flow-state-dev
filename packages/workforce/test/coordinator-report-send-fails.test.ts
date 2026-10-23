@@ -18,7 +18,7 @@ describe("a delegate's failed routed task whose report can't be sent", () => {
   it("keeps its ending owed for the board's next touch, and writes no report marker", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
-    await host.act("alice", id, "run", { message: "[route:eng.em] [conf:0.9] [fail:eng.em] plan the release" });
+    await host.act("alice", id, "respond", { message: "[route:eng.em] [conf:0.9] [fail:eng.em] plan the release" });
     const requests = await host.settled();
     const [row] = await host.routedRows("alice");
     expect(row).toMatchObject({ status: "errored", assignee: "eng.em" });

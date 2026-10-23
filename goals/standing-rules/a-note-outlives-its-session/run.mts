@@ -119,9 +119,9 @@ class SignedIn {
     return sessionId;
   }
 
-  /** Say `words` in `sessionId` through the worker's door (`run`), and read the turn back by request id. */
+  /** Say `words` in `sessionId` through the worker's door (`respond`), and read the turn back by request id. */
   async say(worker: { flow: string }, sessionId: string, words: string): Promise<Turn> {
-    const posted = await this.routes.call("POST", `/${encodeURIComponent(worker.flow)}/${encodeURIComponent(sessionId)}/actions/run`, {
+    const posted = await this.routes.call("POST", `/${encodeURIComponent(worker.flow)}/${encodeURIComponent(sessionId)}/actions/respond`, {
       userId: this.person.userId,
       input: { message: words },
     });

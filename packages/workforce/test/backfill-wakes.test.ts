@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { backfillBoardWakes } from "../src/conversation-board/backfill-wakes";
-import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, SPLIT_MARKER } from "../src/conversation-board/board-entries";
+import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, SPLIT_MARKER } from "../src/conversation-board/board-entries";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
 import { bootSplitHost } from "./split-harness";
 
@@ -41,7 +41,7 @@ async function storeLegacyOwed(host: BoardHost, conv: string): Promise<Task> {
   });
   // The task's own wake, still fenced on its writer's lease, isn't one an old host kept.
   const wakes = (await host.state.getRuntime()).stores.wakes!;
-  const kept = await wakes.get({ sessionId: conv, entry: RUN_BOARD_ENTRY });
+  const kept = await wakes.get({ sessionId: conv, entry: DISPATCH_ENTRY });
   if (kept !== null) expect(await wakes.clear(kept, kept.version)).toBe(true);
   return done!;
 }
@@ -133,7 +133,7 @@ describe("a split parked before FIX-2077, every piece's notice already acted on"
     }
     const runtime = await h.state.getRuntime();
     for (const session of [planner, taskSession]) {
-      const kept = await runtime.stores.wakes!.get({ sessionId: session, entry: RUN_BOARD_ENTRY });
+      const kept = await runtime.stores.wakes!.get({ sessionId: session, entry: DISPATCH_ENTRY });
       if (kept !== null) await runtime.stores.wakes!.clear(kept, kept.version);
     }
     // As stored (the board reads it as running, waiting on its pieces).
@@ -184,7 +184,7 @@ describe("a task stored while a queued message held it open", () => {
     } as unknown as Task);
     const runtime = await h.state.getRuntime();
     for (const session of [planner, done!.run!.sessionId]) {
-      for (const entry of [RUN_BOARD_ENTRY, CHECK_TASK_ENTRY]) {
+      for (const entry of [DISPATCH_ENTRY, CHECK_TASK_ENTRY]) {
         const kept = await runtime.stores.wakes!.get({ sessionId: session, entry });
         if (kept !== null) await runtime.stores.wakes!.clear(kept, kept.version);
       }
@@ -234,7 +234,7 @@ describe("the backfill's other two old debts", () => {
   it("owes the filing conversation's pass for a report marker stored before wakes", async () => {
     const { owed, registry } = stores({ id: "t1", goal: "g", status: "errored", metadata: { "reportOwed:1": { attempt: 1, error: "x" } } });
     expect(await backfillBoardWakes(registry, { userCell, now: 5 })).toBe(1);
-    expect(owed).toEqual([{ sessionId: "conv", entry: RUN_BOARD_ENTRY }]);
+    expect(owed).toEqual([{ sessionId: "conv", entry: DISPATCH_ENTRY }]);
   });
 
   it("owes the task session's check for a split parked on its pieces, which settles it", async () => {

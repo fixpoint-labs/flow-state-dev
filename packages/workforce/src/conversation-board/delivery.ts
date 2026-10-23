@@ -4,7 +4,7 @@
  * delivery runs around every ending's write.
  *
  * - **The pass** a wake runs in the filer's session is the board's run entry
- *   (`runTaskBoard`): one pass at a time, which pays every debt and clears the
+ *   (`dispatch`): one pass at a time, which pays every debt and clears the
  *   wake (`./board`).
  * - **The notice** arrives on `onTaskSettled`, a routed task's too (FIX-2083).
  * - **Reaching the filer** from the running request: its own session; or,
@@ -26,14 +26,14 @@ import type { DeclaredDelivery, Task, TaskNotice } from "@flow-state-dev/orchest
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
 import { boardAboveOf } from "./board-above";
-import { RUN_BOARD_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
+import { DISPATCH_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { sendTaskReport } from "./report-owed";
 
 /** The conversation ledger's delivery. `ledgerId` is the board id its notices name. */
 export function conversationDelivery(ledgerId: string): DeclaredDelivery {
   return {
-    passEntry: RUN_BOARD_ENTRY,
+    passEntry: DISPATCH_ENTRY,
     noticeEntry: () => TASK_SETTLED_ENTRY,
     address: (ctx, filer) => {
       if (filer === ctx.session.identity.id) return { session: { id: filer } };

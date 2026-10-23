@@ -150,10 +150,10 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       const bobConv = await bob.conversation("agent", lead);
       const w = word();
       const bw = word();
-      const turn = await alice.act("agent", conv, "run", { message: `[file:crew.planner] [split:crew.one,crew.two] Plan the ${w} launch` });
+      const turn = await alice.act("agent", conv, "respond", { message: `[file:crew.planner] [split:crew.one,crew.two] Plan the ${w} launch` });
       // While Alice's chain runs, Bob's worker of the same name tries her delegate, then files for its own.
-      const bobTurn = await bob.act("agent", bobConv, "run", { message: `[file:crew.planner] Plan the ${bw} launch` });
-      const bobOwn = await bob.act("agent", bobConv, "run", { message: `[file:crew.one] Sort the ${bw} receipts` });
+      const bobTurn = await bob.act("agent", bobConv, "respond", { message: `[file:crew.planner] Plan the ${bw} launch` });
+      const bobOwn = await bob.act("agent", bobConv, "respond", { message: `[file:crew.one] Sort the ${bw} receipts` });
       const quietAt = await quiet(o.store);
       out.a = { lead, hired, conv, bobConv, word: w, bobWord: bw, turn, bobTurn, bobOwn, quietAt };
     });
@@ -163,7 +163,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     await leg("b", async () => {
       const conv = await alice.conversation("foreman", "shop.foreman");
       const w = word();
-      const turn = await alice.act("foreman", conv, "run", { message: `[file:crew.one] Paint the ${w} shed` });
+      const turn = await alice.act("foreman", conv, "respond", { message: `[file:crew.one] Paint the ${w} shed` });
       const quietAt = await quiet(o.store);
       out.b = { conv, word: w, turn, quietAt };
     });
@@ -180,7 +180,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
         ["solo", "agent", "crew.solo"],
       ] as const) {
         const conv = await alice.conversation(flowKind, worker);
-        const turn = await alice.act(flowKind, conv, "run", { message: `[tools] [try-file] Sort the ${w} pile` });
+        const turn = await alice.act(flowKind, conv, "respond", { message: `[tools] [try-file] Sort the ${w} pile` });
         const app = await alice.act(flowKind, conv, "createTask_tasks", { held: true, goal: `Sort the ${w} pile` });
         c[label] = { conv, flowKind, worker, turn, app };
       }
@@ -194,14 +194,14 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       const w = word();
       const conv = await alice.conversation("agent", "deep.d0");
       const marks = [1, 2, 3, 4, 5, 6].map((i) => `[file:deep.d${i}]`).join(" ");
-      const turn = await alice.act("agent", conv, "run", { message: `${marks} Dig the ${w} well` });
+      const turn = await alice.act("agent", conv, "respond", { message: `${marks} Dig the ${w} well` });
       await quiet(o.store);
       // The app files on the deepest board too: the session of the task on the fifth.
       const d5 = sessionOf(o.store, "deep.d5", conv);
       const deepApp = d5 === null ? null : await alice.act("agent", d5, "createTask_tasks", { goal: `Dig the ${w} well deeper`, assignee: "deep.d6" });
       const fw = word();
       const fanConv = await alice.conversation("agent", "wide.top");
-      const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);
+      const fanTurn = await alice.act("agent", fanConv, "respond", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);
       await quiet(o.store, 300_000);
       const fan = sessionOf(o.store, "wide.fan", fanConv);
       const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });
@@ -220,7 +220,7 @@ export async function capLeg(o: { origin: string; store: string; shipped: Shippe
   const alice = connect(o.shipped, o.origin, o.store, PEOPLE.alice);
   const fw = word();
   const fanConv = await alice.conversation("agent", "wide.top");
-  const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:${o.cap + 1}] Count the ${fw} beans` });
+  const fanTurn = await alice.act("agent", fanConv, "respond", { message: `[file:wide.fan] [fan:${o.cap + 1}] Count the ${fw} beans` });
   await quiet(o.store);
   const fan = sessionOf(o.store, "wide.fan", fanConv);
   const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });

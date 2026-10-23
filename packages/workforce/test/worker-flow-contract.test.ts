@@ -33,7 +33,7 @@ function flowWith(flow: string, over: Record<string, unknown> = {}) {
     kind: flow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { run: door },
+    actions: { respond: door },
     ...over
   } as never);
 }
@@ -101,7 +101,7 @@ describe("configuration (BR-2)", () => {
   });
 
   it("refuses a flow that declares no configuration, naming it", () => {
-    const bare = defineFlow({ kind: "bare", cardinality: "collection", actions: { run: door } });
+    const bare = defineFlow({ kind: "bare", cardinality: "collection", actions: { respond: door } });
     const problems = workerFlowProblems("bare", bare as never);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('"bare"');
@@ -160,7 +160,7 @@ describe("configuration (BR-2)", () => {
       execute: (input) => input
     });
     const flow = flowWith("flattened", {
-      actions: { run: { ...door, block: flattens } }
+      actions: { respond: { ...door, block: flattens } }
     });
     // Every hire of it fails: the mint refuses the bag as a whole.
     expect(() => (flow as never as (o: object) => unknown)({ id: "x", config: { ...CONTRACT_PROBE_BAG } })).toThrow(

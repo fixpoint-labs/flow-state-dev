@@ -40,7 +40,7 @@ export function isCoordinatorFlow(flow: string): boolean {
 export const SHELL_COORDINATORS = ["support.help"] as const;
 
 /** What a coordinator's composer sends: the user's post, through the flow's door. */
-export const COORDINATOR_ASK = { action: "run", field: "message" } as const;
+export const COORDINATOR_ASK = { action: "respond", field: "message" } as const;
 
 /**
  * The worker flows a user talks to one worker on: the built-in `agent`, plus
@@ -65,7 +65,7 @@ export type WorkerAsk =
  * `test/workforce-shell.test.ts` instead.
  */
 export const WORKER_ASKS = {
-  agent: { action: "run", field: "message" },
+  agent: { action: "respond", field: "message" },
 } as const satisfies Record<(typeof WORKER_FLOWS)[number], WorkerAsk>;
 
 /**

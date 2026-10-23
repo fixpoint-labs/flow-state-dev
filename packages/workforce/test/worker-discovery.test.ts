@@ -217,8 +217,8 @@ describe("the `discover:` worker-file key", () => {
       orgId: "test-org",
       org: { state: {} },
       sessionId: `session-${worker.id}`,
-      sequencerName: worker.actions.run!.block.name,
-      declaredResources: worker.actions.run!.block.declaredResources,
+      sequencerName: worker.actions.respond!.block.name,
+      declaredResources: worker.actions.respond!.block.declaredResources,
       modelResolver: (modelId: string) => ({
         modelId,
         async generate(options: {
@@ -237,7 +237,7 @@ describe("the `discover:` worker-file key", () => {
     } as never);
 
     const result = await executeBlock({
-      block: worker.actions.run.block,
+      block: worker.actions.respond.block,
       input: { message: "who can do this?" },
       ctx: runtime.ctx,
     });

@@ -54,10 +54,10 @@ import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { ROUTED_FROM_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
-import { takesConversationTasks } from "../worker-task-entry";
+import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
-import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
 import { questionPark } from "./question-park";
@@ -134,12 +134,16 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
-    takesOwnTasks: () => takesConversationTasks(options.installation.workerFlows()[options.flowKind]?.flow),
+    takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
 
   const messages = defineMessageWorkerCapability(options.installation, options.flowKind);
+
+  // The manager's pieces: a flow that spreads any of them declares `manager` (`../worker-roles`).
+  const managerActions = { ...board.actions, ...delegates.actions };
+  for (const action of Object.values(managerActions)) markRolePiece(action, "manager");
 
   return {
     /** The session's delegates: the one check, the list a task sees, the four actions and tools. */
@@ -188,8 +192,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
     /** File a routed task and start it: the write under a coordinator's one filing step (FIX-2083). */
     fileRouted: board.fileRouted,
-    /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
-    actions: { ...board.actions, ...delegates.actions },
+    /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
+    actions: managerActions,
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */
@@ -198,7 +202,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow, in this order: a run
-     * of the board; the notice of a task the session filed; a check of the
+     * of the board (`dispatch`); the notice of a task the session filed
+     * (`onTaskSettled`), the two a flow declaring `manager` is checked for; a check of the
      * session's waiting task (`CHECK_TASK_ENTRY`); the turn a late steer is
      * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
      * (`onWorkerMessage`, FIX-1989), which always wakes the turn; and a
@@ -222,8 +227,14 @@ export function defineSessionBoard(options: SessionBoardOptions) {
       return {
         // One pass at a time per session (FIX-2078): a second waits its turn,
         // and runs once the first ends.
-        [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
-        [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
+        [DISPATCH_ENTRY]: markRolePiece(
+          { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
+          "manager"
+        ),
+        [TASK_SETTLED_ENTRY]: markRolePiece(
+          taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
+          "manager"
+        ),
         // A check of the session's waiting task, on the notices' line: what
         // the upgrade's backfill wakes for a split an older host parked.
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),

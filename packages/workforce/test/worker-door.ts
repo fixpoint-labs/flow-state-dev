@@ -22,7 +22,7 @@ const talk = handler({
   execute: (input) => input
 });
 
-/** One door, under the action name `talk`. */
+/** One door, `respond`. */
 export const workerDoor = {
-  talk: { inputSchema: messageInput, block: talk, userMessage: (input: { message: string }) => input.message }
+  respond: { inputSchema: messageInput, block: talk, userMessage: (input: { message: string }) => input.message }
 };

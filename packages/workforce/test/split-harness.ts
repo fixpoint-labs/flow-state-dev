@@ -122,7 +122,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(turn) },
@@ -166,7 +166,7 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
   };
   const host = bootBoardHost({
     standard: splitWorkers(),
-    flows: (installation) => ({ splitter: splitterFlow(installation, controls) }),
+    flows: (installation) => ({ splitter: { flow: splitterFlow(installation, controls), roles: ["contributor", "manager"] } }),
     ...options
   });
 
@@ -179,7 +179,7 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
 
   /** Run a turn of `sessionId` that files its worker's plan. */
   const turn = async (userId: string, sessionId: string, message = "file the plan") => {
-    const result = await host.act(userId, sessionId, "run", { message }, "splitter");
+    const result = await host.act(userId, sessionId, "respond", { message }, "splitter");
     if (result.error !== undefined) throw new Error(`the turn failed: ${messageOf(result.error)}`);
     return result.output as string;
   };

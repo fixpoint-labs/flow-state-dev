@@ -190,7 +190,7 @@ function buildHost(filename: string) {
         if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "two-passes") {
           const send = () =>
-            dispatchThroughSeam(ctx, { type: "internal", action: "runTaskBoard", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
+            dispatchThroughSeam(ctx, { type: "internal", action: "dispatch", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
           return { ok: true, outcomes: await Promise.all([send(), send()]) };
         }
         return { ok: false, error: "unknown op" };
@@ -227,11 +227,14 @@ function buildHost(filename: string) {
       configSchema: workerConfigSchema(),
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
-      actions: { run: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
       internal: { actions: board.entries(turn, () => "fixed") },
       task: { actions: { work: workerTaskEntry({ name: `every-ending-${kind}-task`, turn: turn as never }) } }
     } as never);
-  workerFlows = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn as never) };
+  workerFlows = {
+    desk: { flow: flowOf("desk", deskBoard, deskTurn), roles: ["contributor", "manager"] },
+    doer: { flow: flowOf("doer", doerBoard, doerTurn as never), roles: ["contributor", "manager"] }
+  };
 
   // The plain flow: orchestration's board, with no Workforce, handing rows to
   // its own task entry in sessions of their own.
@@ -331,9 +334,9 @@ function buildHost(filename: string) {
         .filter((r) => r.actionName === "onTaskSettled" && (r.input as { taskId?: string } | undefined)?.taskId !== undefined)
         .map((r) => ({ ...(r.input as { taskId: string; ending: string; error?: string; cancelled?: string[] }), at: r.startedAtMs }));
     const passes = async (sessionId: string) =>
-      (await runtime.stores.request.list({ sessionId, withItems: true })).filter((r) => r.actionName === "runTaskBoard");
+      (await runtime.stores.request.list({ sessionId, withItems: true })).filter((r) => r.actionName === "dispatch");
     const act = (flow: string, session: string, action: string, input: unknown) => http.act(flow, session, action, input);
-    const script = (session: string, s: Script) => act("desk", session, "run", { message: JSON.stringify(s) });
+    const script = (session: string, s: Script) => act("desk", session, "respond", { message: JSON.stringify(s) });
     const until = async (check: () => Promise<boolean>, ms: number) => {
       for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(50)) if (await check()) return true;
       return check();
@@ -414,7 +417,7 @@ await runGoal(async (failures, tell) => {
       await h.script(conversation, { op: "wait", taskId: waited }).catch(() => undefined);
       const waitedTurn = async () =>
         (await h.runtime.stores.request.list({ sessionId: conversation })).find(
-          (r) => r.actionName === "run" && JSON.stringify(r.input ?? "").includes(waited)
+          (r) => r.actionName === "respond" && JSON.stringify(r.input ?? "").includes(waited)
         );
       await h.until(async () => (await waitedTurn())?.status === "completed", 10_000);
       const answer = ((await waitedTurn())?.result as { output?: { ok?: boolean; answer?: unknown } } | undefined)?.output;

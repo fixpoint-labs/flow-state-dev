@@ -245,7 +245,7 @@ describe("a coding run on the fsd profile's projects", () => {
         stores: runtime.stores,
         runtimeConfig: runtime.runtimeConfig,
       } as never)) as { output?: any; error?: unknown };
-    expect((await act("run", { message: "on Shift Manager, note the row" })).error).toBeUndefined();
+    expect((await act("respond", { message: "on Shift Manager, note the row" })).error).toBeUndefined();
 
     let task: Record<string, any> | undefined;
     for (const deadline = Date.now() + 30_000; Date.now() < deadline; await new Promise((r) => setTimeout(r, 50))) {

@@ -403,7 +403,7 @@ async function fileFrom(lab: Lab, flow: string, sessionId: string, message: stri
   const runsBefore = stub.runs.length;
   const listTasks = async (): Promise<Array<Record<string, any>>> => (await http.act(flow, sessionId, LIST_TASKS, {})).output?.tasks ?? [];
   const filedBefore = new Set((await listTasks()).map((t) => t.id));
-  const turn = await http.act(flow, sessionId, "run", { message });
+  const turn = await http.act(flow, sessionId, "respond", { message });
   let task: Record<string, any> | undefined;
   const turnEnded = Date.now();
   for (const deadline = turnEnded + LINE_BUDGET_MS; Date.now() < deadline; await sleep(200)) {

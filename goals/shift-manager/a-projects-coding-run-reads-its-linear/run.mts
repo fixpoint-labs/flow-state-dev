@@ -232,7 +232,7 @@ await runGoal(async (failures) => {
         stores: runtime.stores,
         runtimeConfig: runtime.runtimeConfig,
       } as never)) as { output?: any; error?: unknown };
-    const said = await act("run", { message: `On FSD: ${goal}` });
+    const said = await act("respond", { message: `On FSD: ${goal}` });
     if (said.error !== undefined) throw new Error(`the chief of staff's turn failed: ${JSON.stringify(said.error)}`);
 
     // While the run works, read every process working in the runs' places.

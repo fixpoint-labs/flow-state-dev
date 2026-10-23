@@ -70,7 +70,7 @@ const launchFlow = defineFlow({
   session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
   resources: { ...installation.resources, ...board.resources },
   actions: {
-    run: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
+    respond: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
     ...board.actions
   },
   internal: { actions: board.entries(launchTurn) }
@@ -89,10 +89,10 @@ const researcherFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
+  actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
   task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
 } as never);
-workerFlows = { launch: launchFlow, researcher: researcherFlow };
+workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { flow: researcherFlow, roles: ["contributor"] } };
 
 // No schedule index: the host's own cron POSTs per schedule.
 const flows = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));

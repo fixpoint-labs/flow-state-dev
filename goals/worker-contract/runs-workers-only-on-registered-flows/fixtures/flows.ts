@@ -40,7 +40,7 @@ export function defineFlows(workers: WorkerInstallation) {
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     ...bound,
-    actions: { run: hearing("triage") },
+    actions: { respond: hearing("triage") },
   });
 
   /** A coordinator: its delegates live in its session state. */
@@ -51,7 +51,7 @@ export function defineFlows(workers: WorkerInstallation) {
     session: workers.session({ delegates: z.array(z.string()).default([]) }),
     resources: { ...workers.resources },
     actions: {
-      run: {
+      respond: {
         inputSchema: message,
         userMessage: (input: { message: string }) => input.message,
         block: handler({
@@ -80,7 +80,7 @@ export function defineFlows(workers: WorkerInstallation) {
     session: workers.session(),
     resources: { ...workers.resources },
     actions: {
-      run: hearing("sharer"),
+      respond: hearing("sharer"),
       share: {
         inputSchema: noteInput,
         block: handler({
@@ -105,7 +105,7 @@ export function defineFlows(workers: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     ...bound,
     actions: {
-      run: hearing("org-keeper"),
+      respond: hearing("org-keeper"),
       keep: {
         inputSchema: noteInput,
         block: handler({
@@ -153,7 +153,7 @@ export function defineFlows(workers: WorkerInstallation) {
       workerId: z.number().optional(),
     }),
     ...bound,
-    actions: { run: hearing("numbered") },
+    actions: { respond: hearing("numbered") },
   });
 
   /** Breaks one rule: declares `writtenBy` optional, so an entry can name nobody. */
@@ -173,7 +173,7 @@ export function defineFlows(workers: WorkerInstallation) {
         }),
       }),
     },
-    actions: { run: hearing("loose-attribution") },
+    actions: { respond: hearing("loose-attribution") },
   });
 
   return {

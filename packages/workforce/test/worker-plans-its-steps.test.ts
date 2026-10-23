@@ -130,7 +130,7 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: planned, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: planned, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(planned) },
@@ -148,7 +148,7 @@ function host(options: { taskChainLimit?: number; durable?: boolean } = {}) {
       worker("writer", { flow: "stepper" }),
       worker("editor", { flow: "stepper", delegates: ["writer"] })
     ],
-    flows: (installation) => ({ stepper: stepperFlow(installation, controls) }),
+    flows: (installation) => ({ stepper: { flow: stepperFlow(installation, controls), roles: ["contributor", "manager"] } }),
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.taskChainLimit === undefined ? {} : { hire: { taskChainLimit: options.taskChainLimit } })
   });
@@ -183,7 +183,7 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
       h.controls.plans.writer = outline;
       const talk = await h.open("alice", "writer");
       const before = (await h.sessions()).length;
-      const result = await h.act("alice", talk, "run", { message: "write me a post" }, "stepper");
+      const result = await h.act("alice", talk, "respond", { message: "write me a post" }, "stepper");
       expect(result.error, messageOf(result.error)).toBeUndefined();
       await h.settled();
 
@@ -220,7 +220,7 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
     const h = host();
     try {
       const talk = await h.open("alice", "writer");
-      const result = await h.act("alice", talk, "run", { message: "just answer" }, "stepper");
+      const result = await h.act("alice", talk, "respond", { message: "just answer" }, "stepper");
       expect(result.error, messageOf(result.error)).toBeUndefined();
       expect(result.output).toBe("writer planned");
       expect(h.controls.turns.map((t) => t.kind)).toEqual(["turn"]);
@@ -236,7 +236,7 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
       h.controls.plans.writer = outline;
       h.controls.failSteps.add("Draft the post");
       const talk = await h.open("alice", "writer");
-      const result = await h.act("alice", talk, "run", { message: "write me a post" }, "stepper");
+      const result = await h.act("alice", talk, "respond", { message: "write me a post" }, "stepper");
       expect(result.error, messageOf(result.error)).toBeUndefined();
 
       const steps = await h.steps("alice");
@@ -253,7 +253,7 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
       expect(answer).toContain(`"Tighten the draft" (s-tighten) cancelled`);
       // Nothing is left for a later turn to answer again.
       h.controls.plans.writer = [];
-      const again = await h.act("alice", talk, "run", { message: "anything else?" }, "stepper");
+      const again = await h.act("alice", talk, "respond", { message: "anything else?" }, "stepper");
       expect(again.output).toBe("writer planned");
     } finally {
       await h.dispose();
@@ -266,7 +266,7 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
       h.controls.plans.writer = [outline[0]!];
       h.controls.answerFiles.add("writer");
       const talk = await h.open("alice", "writer");
-      const result = await h.act("alice", talk, "run", { message: "outline it" }, "stepper");
+      const result = await h.act("alice", talk, "respond", { message: "outline it" }, "stepper");
       expect(result.error, messageOf(result.error)).toBeUndefined();
       expect(h.controls.refusals).toEqual([{ worker: "writer", error: "no_step_while_answering" }]);
       expect((await h.steps("alice")).map((row) => row.id)).toEqual(["s-outline"]);
@@ -287,7 +287,7 @@ describe("a step and a delegate's task don't wait on each other: each ledger's d
         { id: "e-review", goal: "Review the draft", deps: ["w-draft"] }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
       expect(await h.steps("alice")).toEqual([]);
@@ -306,7 +306,7 @@ describe("a step and a delegate's task don't wait on each other: each ledger's d
         { id: "w-draft", goal: "Draft the post", assignee: "writer", deps: ["e-outline"] }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
       expect(await h.rows("alice")).toEqual([]);
@@ -327,7 +327,7 @@ describe("a batch of steps and delegates' tasks is filed whole or not at all", (
         { id: "e-review", goal: "Review the draft", deps: ["e-ghost"] }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.refusals).toEqual([{ worker: "editor", error: "TaskFilingRefusedError" }]);
       // The refused step's batch reached neither ledger: the delegate never ran the draft.
@@ -348,7 +348,7 @@ describe("a batch of steps and delegates' tasks is filed whole or not at all", (
         { id: "e-outline", goal: "Outline the post" }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.refusals).toEqual([]);
       expect((await h.rows("alice")).map((row) => [row.id, row.status])).toEqual([["w-draft", "completed"]]);
@@ -373,7 +373,7 @@ describe("a batch is refused whole before anything is reserved or filed", () => 
         { id: "e-a", goal: "Outline it again" }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.rules).toEqual(["duplicate_task_id"]);
       expect(await h.rows("alice")).toEqual([]);
@@ -392,7 +392,7 @@ describe("a batch is refused whole before anything is reserved or filed", () => 
         { id: "e-review", goal: "Review the draft", deps: ["w-draft"] }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.rules).toEqual(["deps_across_ledgers"]);
       expect(await h.rows("alice")).toEqual([]);
@@ -411,7 +411,7 @@ describe("a batch is refused whole before anything is reserved or filed", () => 
         { id: "w-draft", goal: "Draft the post", assignee: "writer", deps: ["e-outline"] }
       ];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan it" }, "stepper")).error).toBeUndefined();
       await h.settled();
       expect(h.controls.rules).toEqual(["deps_across_ledgers"]);
       expect(await h.rows("alice")).toEqual([]);
@@ -429,7 +429,7 @@ describe("a step's own turn files no step: further work goes in its answer", () 
       h.controls.plans.writer = [outline[0]!];
       h.controls.stepFiles.add("Outline the post");
       const talk = await h.open("alice", "writer");
-      expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "outline it" }, "stepper")).error).toBeUndefined();
       expect(h.controls.refusals).toEqual([{ worker: "writer", error: "no_step_while_stepping" }]);
       expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([["s-outline", "completed"]]);
       expect(h.controls.turns.map((t) => t.kind)).toEqual(["turn", "step", "answer"]);
@@ -443,7 +443,7 @@ describe("a step's own turn files no step: further work goes in its answer", () 
     try {
       h.controls.plans.writer = [outline[0]!];
       const talk = await h.open("alice", "writer");
-      expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "outline it" }, "stepper")).error).toBeUndefined();
       const step = h.controls.turns.find((t) => t.kind === "step")!;
       expect(step.message).toMatch(/say so in your answer rather than filing it/);
     } finally {
@@ -459,7 +459,7 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
       h.controls.plans.writer = [outline[0]!];
       h.controls.probes.add("writer");
       const talk = await h.open("alice", "writer");
-      expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "outline it" }, "stepper")).error).toBeUndefined();
       expect(h.controls.refusals.map((r) => r.error)).toEqual(["step_settles_itself", "step_settles_itself", "step_and_task_filed_apart", "step_cannot_wait"]);
       const [row] = await h.steps("alice");
       expect(row).toMatchObject({ id: "s-outline", status: "completed", output: "Outline the post#done", assignee: "writer" });
@@ -486,7 +486,7 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
     try {
       h.controls.plans.editor = [{ id: "e-plan", goal: "Plan the edit" }];
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "run", { message: "plan the edit" }, "stepper")).error).toBeUndefined();
+      expect((await h.act("alice", lead, "respond", { message: "plan the edit" }, "stepper")).error).toBeUndefined();
       expect((await h.act("alice", lead, "createTask_tasks", { goal: "Write the piece", assignee: "writer" }, "stepper")).output).toMatchObject({ ok: true });
       await h.settled();
       const listed = (await h.act("alice", lead, "listTasks_tasks", {}, "stepper")).output as { tasks: Array<{ id: string; assignee: string }> };
@@ -556,7 +556,7 @@ describe("a step filed session: \"new\" runs in a session of its own, and its dr
       h.controls.plans.writer = plan;
       h.controls.ownSession.add("Fact-check the outline");
       const talk = await h.open("alice", "writer");
-      const run = await h.act("alice", talk, "run", { message: "write a post" }, "stepper");
+      const run = await h.act("alice", talk, "respond", { message: "write a post" }, "stepper");
       expect(run.error, messageOf(run.error)).toBeUndefined();
       await h.settled(20_000);
 
@@ -588,7 +588,7 @@ describe("a step filed session: \"new\" runs in a session of its own, and its dr
     try {
       h.controls.plans.writer = [{ id: "s-ongoing", goal: "Keep at it", session: "ongoing" }];
       const talk = await h.open("alice", "writer");
-      await h.act("alice", talk, "run", { message: "keep at it" }, "stepper");
+      await h.act("alice", talk, "respond", { message: "keep at it" }, "stepper");
       expect(h.controls.rules).toEqual(["step_session_ongoing"]);
       expect(await h.steps("alice")).toEqual([]);
     } finally {

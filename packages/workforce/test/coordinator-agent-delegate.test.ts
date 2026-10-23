@@ -90,7 +90,7 @@ async function postToOtto(answer: MockGeneratorInstance, message: string, desk: 
   const runtime = await state.getRuntime();
   const posted = await runAction({
     flow: copies.find((copy) => copy.id === "coordinator")!,
-    actionName: "run",
+    actionName: "respond",
     input: { message },
     userId: "alice",
     orgId: "acme",

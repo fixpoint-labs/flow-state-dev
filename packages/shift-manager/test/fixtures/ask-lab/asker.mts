@@ -169,7 +169,7 @@ export function defineAskerFlow(
     configSchema: workerConfigSchema(),
     actions: {
       ask: { block: ask, durable: true, description: "Ask a user to approve something." },
-      message: {
+      respond: {
         block: options.projects === true ? hearAndStartProjects() : hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,

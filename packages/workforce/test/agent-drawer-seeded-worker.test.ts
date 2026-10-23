@@ -59,7 +59,7 @@ async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<s
       const result = await runAction({
         orgId: ORG,
         flow: instance!,
-        actionName: "run",
+        actionName: "respond",
         input: { message: "how long do refunds take?" },
         userId: "alice",
         sessionId,

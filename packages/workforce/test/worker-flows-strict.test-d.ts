@@ -56,7 +56,7 @@ const researchFlow = defineFlow({
   session: installation.session(),
   resources: { ...installation.resources },
   request: { onStarted: loadWorker },
-  actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
+  actions: { respond: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
   task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research", turn: researchAnswer }) } },
 });
 
@@ -65,7 +65,7 @@ const plainFlow = defineFlow({
   kind: "plain",
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema, block: door, userMessage: (input) => input.message } },
+  actions: { respond: { inputSchema, block: door, userMessage: (input) => input.message } },
 });
 
 const coordinatorFlow = defineCoordinatorFlow({

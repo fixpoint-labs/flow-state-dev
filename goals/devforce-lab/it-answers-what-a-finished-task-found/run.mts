@@ -162,7 +162,7 @@ await runGoal(async (failures) => {
     await quiet(lab);
 
     // ---- the ask: one turn, a real model ------------------------------------
-    const turn = await http.act(conversation, "run", { message: fixture.ask });
+    const turn = await http.act(conversation, "respond", { message: fixture.ask });
     if (turn.requestId === undefined) throw new Error(`the ask was refused — ${turn.error}`);
     const { tools, reply } = await http.turnOf(conversation, turn.requestId);
     const lower = reply.toLowerCase();

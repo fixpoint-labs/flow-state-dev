@@ -150,7 +150,7 @@ describe("DevTeam's triage coordinator", () => {
     const lab = await open();
     const id = await conversation(lab, workerId);
     const issue = `report-${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    expect((await act(lab, id, "run", { message: `${issue}: the cart badge is off by one` })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: `${issue}: the cart badge is off by one` })).error).toBeUndefined();
     // The EM's routed task stays open while the coder's task it filed runs (FIX-2083, rule 6):
     // its answer lands once that work ends.
     let items = await settledItems(lab, id);

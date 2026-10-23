@@ -99,13 +99,15 @@ export const emFlow = workerFlow((installation) => {
     resources: { ...installation.resources, ...board.resources },
     request: { onStarted: loadWorker },
     actions: {
-      run: { inputSchema: messageInput, block: answer, userMessage: (input) => input.message },
+      respond: { inputSchema: messageInput, block: answer, userMessage: (input) => input.message },
       ...board.actions,
     },
     internal: { actions: board.entries(answer) },
   });
-});
+}, { roles: ["manager"] });
 ```
+
+`roles: ["manager"]` declares that the flow files tasks. When you register it, `hireWorkforce` checks that the board's `dispatch` and `onTaskSettled` are among its internal entries, and refuses the flow, naming what's missing, if they aren't. A flow that also takes tasks adds `"contributor"` and a `work` entry from `workerTaskEntry`. See [A worker flow's roles](./workers-on-disk.md#a-worker-flows-roles).
 
 Pass it in `workerFlows` like any worker flow: `createWorkerInstallation({ standardWorkers: workers, workerFlows: { em: emFlow } })`.
 
@@ -121,8 +123,8 @@ What the kit gives you, and where each piece goes:
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
-| `planned(turn)` | Wrap the block that answers a message, and use what it returns wherever that block runs as the worker: the `run` action, the task entry's `turn`, and `entries`. The steps the worker files for itself then run in the same request. See [Working in steps](#working-in-steps). Leave it out and the flow's workers file no steps. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. The entries include `onTaskSettled`, where each of those endings arrives. |
+| `planned(turn)` | Wrap the block that answers a message, and use what it returns wherever that block runs as the worker: the `respond` action, the task entry's `turn`, and `entries`. The steps the worker files for itself then run in the same request. See [Working in steps](#working-in-steps). Leave it out and the flow's workers file no steps. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. The entries include `dispatch`, which runs the session's board one pass at a time, and `onTaskSettled`, where each of those endings arrives. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 

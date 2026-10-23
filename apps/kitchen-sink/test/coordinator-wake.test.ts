@@ -86,7 +86,7 @@ async function openConversation(router: Router): Promise<string> {
 
 /** Post the way the page's composer does: the coordinator's door, the post only. */
 async function post(router: Router, sessionId: string, message: string) {
-  const res = await call(router, "POST", ["coordinator", "actions", "run"], { userId: USER, sessionId, input: { message } });
+  const res = await call(router, "POST", ["coordinator", "actions", "respond"], { userId: USER, sessionId, input: { message } });
   expect(res.status, res.text).toBe(200);
   return res;
 }
@@ -237,7 +237,7 @@ describe("V3 · a post runs the specialist best fit picked once, on the app's ow
     const router = await bootApp();
     const conversation = await openConversation(router);
     const mark = token("claimed");
-    const res = await call(router, "POST", ["coordinator", "actions", "run"], {
+    const res = await call(router, "POST", ["coordinator", "actions", "respond"], {
       userId: USER,
       sessionId: conversation,
       input: { message: `[route:${ROUTED}] [scenario:wake] ${mark}`, author: "support.devices" },
