@@ -7,7 +7,8 @@ needs is a gap filed against the package.
 
 - **Left:** a Sessions / Projects switch, then your sessions. The view sets the mode: Sessions is
   session mode, and Projects (threads mode) is shown and comes later. Each session in the view is
-  with the same main worker, and *New session* opens one in the view's mode.
+  with the same main worker. *New session* asks which project the session works in, with no
+  default, then opens it in the view's mode.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. A background result shows as a card
   at the point the main session took it, even while its turn is still running.
@@ -45,6 +46,7 @@ fixtures are deleted and each verb calls the package.
 | Fixture stands in for | Package piece |
 |---|---|
 | The sessions list and *New session* | FIX-2158, a user's sessions of one worker |
+| The project picker and a session's project | FIX-2161, an ordinary session opened on a project |
 | A result card inside a running turn | the lab's loop-back flow (built at wiring) |
 | Sending, interrupting, the thread and the tasks pane | `respond`, aborting a request, session items, `listTasks` |
 
@@ -56,9 +58,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 13 | 239 |
-| React UI | 14 | 772 |
+| Configuration | 13 | 241 |
+| React UI | 15 | 839 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 291 |
-| Checks (not app code) | 4 | 334 |
+| Fixtures (deleted at wiring) | 1 | 302 |
+| Checks (not app code) | 4 | 369 |
 <!-- inventory:end -->

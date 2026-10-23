@@ -1,12 +1,16 @@
 import { useEffect, useRef } from "react";
-import type { LabAdapter, SessionRow } from "../adapter";
+import type { LabAdapter, ProjectRow, SessionRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
 
-/** The center: the open session's thread, its working indicator, and the composer. */
-export function Thread({ adapter, session }: { adapter: LabAdapter; session: SessionRow }) {
+/**
+ * The center: the open session's thread, its working indicator, and the
+ * composer. The header names the session's project; a session with none gets
+ * no composer, so nothing runs until it has one (spec D3).
+ */
+export function Thread({ adapter, session, project }: { adapter: LabAdapter; session: SessionRow; project: ProjectRow | undefined }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
   const running = view?.running ?? false;
   const now = useNow(running);
@@ -20,7 +24,12 @@ export function Thread({ adapter, session }: { adapter: LabAdapter; session: Ses
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
-        <h1 className="truncate text-sm font-semibold">{session.title}</h1>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold">{session.title}</h1>
+          <div className="truncate font-mono text-xs text-muted-foreground">
+            {session.projectId === null ? "no project" : `in project: ${project?.name ?? session.projectId}`}
+          </div>
+        </div>
         <span className="border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
           {mode?.label ?? session.worker}
         </span>
@@ -43,11 +52,18 @@ export function Thread({ adapter, session }: { adapter: LabAdapter; session: Ses
           </div>
         )}
       </div>
-      <Composer
-        running={running}
-        onSend={(text) => void adapter.send(session.id, text)}
-        onStop={() => void adapter.interrupt(session.id)}
-      />
+      {session.projectId === null ? (
+        <div role="note" className="border-t border-border px-6 py-4 text-sm">
+          <span className="font-semibold">Choose a project</span>
+          <span className="text-muted-foreground"> · This session has none, so nothing runs here. Start a new session and pick one.</span>
+        </div>
+      ) : (
+        <Composer
+          running={running}
+          onSend={(text) => void adapter.send(session.id, text)}
+          onStop={() => void adapter.interrupt(session.id)}
+        />
+      )}
     </main>
   );
 }

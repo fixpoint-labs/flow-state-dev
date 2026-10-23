@@ -12,7 +12,7 @@ afterEach(() => vi.useRealTimers());
 
 async function start(): Promise<{ lab: LabAdapter; id: string; status: (title: string) => string | undefined }> {
   const lab = createFixtureLab();
-  const { id } = await lab.openSession("session");
+  const { id } = await lab.openSession("session", "project-vendor-notes");
   let rows: TaskRow[] = [];
   lab.watchTasks(id, (next) => (rows = next));
   await lab.send(id, "Compare Acme and Globex for us.");

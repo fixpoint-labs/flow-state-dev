@@ -14,6 +14,7 @@
  */
 import type {
   LabAdapter,
+  ProjectRow,
   SessionRow,
   TaskRow,
   TaskWork,
@@ -212,10 +213,15 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     }
   };
 
-  const seed = (title: string, ago: number, lines: [string, string]) => {
+  const projects: ProjectRow[] = [
+    { id: "project-vendor-notes", name: "vendor-notes" },
+    { id: "project-onboarding-app", name: "onboarding-app" },
+  ];
+
+  const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
     sessions.set(id, {
-      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false },
+      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, projectId },
       entries: [
         { kind: "user", id: nextId("u"), text: lines[0] },
         { kind: "assistant", id: nextId("a"), text: lines[1] },
@@ -227,17 +233,22 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       tasks: [],
     });
   };
-  seed("Fix the onboarding copy", 26 * 60 * MINUTE, ["Tighten the onboarding copy.", "Done. The three screens now read in under ten seconds each."]);
-  seed("Draft the launch note", 2 * 60 * MINUTE, ["Draft the launch note.", "Here is a first draft, about 200 words."]);
+  // fixture: an older session with no project, so the screen shows what asking looks like.
+  seed("Fix the onboarding copy", 26 * 60 * MINUTE, null, ["Tighten the onboarding copy.", "Done. The three screens now read in under ten seconds each."]);
+  seed("Draft the launch note", 2 * 60 * MINUTE, "project-vendor-notes", ["Draft the launch note.", "Here is a first draft, about 200 words."]);
 
   return {
     watchSessions(onChange) {
       return watch(() => onChange([...sessions.values()].map((s) => s.row).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
-    async openSession(mode: ModeId) {
+    async listProjects() {
+      return projects;
+    },
+
+    async openSession(mode: ModeId, projectId: string) {
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false };
+      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
