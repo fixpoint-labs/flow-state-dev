@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Every session that names the worker, task runs and delegate sessions included; or a flat list with no default mark, so the app calls `findWorkerSession` too to know where messages land |
 | **Because** | A task's session is reached through its task (Jake's note on the issue, from FIX-2157: threads-mode threads are ordinary tasks, each in a new session of the delegate). Listed beside chats, every thread would show twice. The default is the one that receives messages, so a person needs to see it in the same list, and know which it is. The rule is the one `find` already uses: a session carrying a criteria key the call didn't name is not this kind of session ([tenet 3](../../../docs/philosophy.md)) |
-| **Locks in** | `listWorkerSessions(worker)` on the workforce client. It returns the worker's top-level sessions on its current flow that carry no criteria key but `workerId`, each marked default or not, the default first and the rest by latest activity. It never creates the default conversation. Task-run, delegate, workstream-lead and project-coordinator sessions are not in it |
+| **Locks in** | `listWorkerSessions(worker)` on the workforce client. It returns the worker's top-level sessions on its current flow that carry no criteria key but `workerId`, each marked default or not, the default first and the rest by latest activity. It never creates the default conversation. Task-run, delegate and workstream-lead sessions are not in it, and neither are the project coordinator's per-project conversations, which a person reaches through their project. So the list is a person's own conversations with the worker: the default and the ones they opened |
 
 **What would change my mind:** an app that needs a worker's task runs in the same list as its
 chats. Then that is an option on the list, not a second list.
@@ -75,6 +75,11 @@ It comes down to threads mode: listing task runs shows every thread twice.
   top-level, criterion-bearing session (the project coordinator's project session) joins the
   check with a control, since the listing's default already leaves dispatch runs out and
   `no-task-runs` alone could not catch a missing criteria-key filter. No direction change.
+- **Codex (round 3), inline corrections, no round charged:** "Where it lands" now names the
+  project coordinator's exception (`conversationAddress` in `workforce/src/messages/send-message.ts`
+  targets the per-project session from project work); D1 says outright that per-project
+  conversations are left out; and the goal check lists before the first ensure, so a list that
+  secretly creates the default fails.
 - **Cursor (round 1, approved), for the implementer:** "extract/shared filter with `findWorkerSession`
   in `client.ts` (criteria-key rule + filing top-level guard). That's the main code simplification;
   without it, list and find will drift."

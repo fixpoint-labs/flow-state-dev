@@ -190,7 +190,8 @@ whether it waits, and the budget. To answer a send, the recipient sends to its s
 `inReplyTo`; the reply lands in the session that sent the original, even if that session's task has
 ended.
 
-**Where it lands:** the recipient's default conversation with this user, except that a message to the worker
+**Where it lands:** the recipient's default conversation with this user (to the project
+coordinator from work in a project, that project's conversation), except that a message to the worker
 that filed your task lands in the session that filed it, and one to a task in that task's session.
 It never changes the brief or stops the request working the task. To an open task, it's
 conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
