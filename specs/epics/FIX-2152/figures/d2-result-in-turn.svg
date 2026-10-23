@@ -89,14 +89,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="357">LOCKS IN</text>
-    <text class="t-b" x="32" y="377">A filer takes a settled notice before its next model call</text>
-    <text class="t-s" x="32" y="395">one gap issue, in workforce, over the generator&#x27;s prepareStep</text>
+    <text class="t-b" x="32" y="377">A delivery mode on the one ending path, FIX-2159</text>
+    <text class="t-s" x="32" y="395">one durable taken mark; rule 7 gains a destination</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="357">FLIPS IF</text>
-    <text class="t-b" x="494" y="377">fsd-architect shows it breaks one-request-per-session</text>
+    <text class="t-b" x="494" y="377">The take cannot be made crash-safe like steersTakenIn</text>
     <text class="t-s" x="494" y="395">then the lab shows the result after the turn, and step 4 changes</text>
   </g>
 </svg>

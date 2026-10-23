@@ -68,13 +68,13 @@ The reviewed snapshot; live state is in Linear.
 |---|---|---|
 | [FIX-2153](https://linear.app/fixpoint-labs/issue/FIX-2153) · Claude Code-style lab | Spec and UI design; the front end on fixtures now; the wiring and its scripted session after the refactor | FIX-2056 (wiring only); the gaps it files ([D1](DECISIONS.md#d1)) |
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
-| [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070 where its script needs it; the gaps it files |
-| `FIX-XXX` · a person opens several sessions of one worker | Open and list a user's sessions of one worker through the workforce client ([D3](DECISIONS.md#d3)) | — |
-| `FIX-XXX` · a result reaches a running turn | A filer's settled notice is taken before its next model call, as a steer is ([D2](DECISIONS.md#d2)) | — |
+| [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
+| [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · more conversations with one worker | A person opens and lists more conversations with one worker, through one optional criteria key ([D3](DECISIONS.md#d3)) | Jake's amendment (D3) |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path ([D2](DECISIONS.md#d2)) | Jake's amendment (D2) |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
-Two labs, one with two modes, two gaps known before review, and a closure. The two gaps are working titles until
-fsd-architect answers ([Open](DECISIONS.md#open)); each lab's spec may add more.
+Two labs, one with two modes, two gaps known before review, and a closure. fsd-architect checked
+both gaps against `main` and agreed their shape; each lab's spec may add more.
 
 ## How the issues flow into each other
 
@@ -83,8 +83,9 @@ flowchart LR
   R["FIX-2056 · one task primitive · consumed"] -.-> A
   M["FIX-1989 · worker messaging · consumed"] -.-> B
   N["FIX-2070 · Messages · consumed"] -.-> B
-  G1["FIX-XXX · several sessions of one worker"] -->|"open and list sessions"| A["FIX-2153 · Claude Code-style lab"]
-  G2["FIX-XXX · a result reaches a running turn"] -->|"step 4"| A
+  G1["FIX-2158 · more conversations with one worker"] -->|"open and list conversations"| A["FIX-2153 · Claude Code-style lab"]
+  G1 -->|"conversations"| T
+  G2["FIX-2159 · a result reaches a running turn"] -->|"step 4"| A
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
   A -->|"the inventory check and the setup pattern"| B["FIX-2154 · Grok Bot-style lab"]
@@ -104,7 +105,8 @@ code.
 - **The worker model.** A lab adds no kind of worker and no role. The Claude
   Code-style main worker is a `manager` on the agent flow in session mode and a `coordinator` in
   threads mode; each Grok Bot-style worker is an ordinary worker with one conversation
-  ([D3](DECISIONS.md#d3)).
+  ([D3](DECISIONS.md#d3)). A background copy of the main worker is a second hired worker on the
+  same flow, which is configuration.
 - **Skills.** A skill can't start a worker: `agents:` and `workers:` frontmatter stay refused
   (`orchestration/src/skills/skill-md.ts`). A skill that "starts a worker" tells the model to
   `createTask` for a named delegate, which is the package's one way to start work.
@@ -120,12 +122,12 @@ code.
 | Routed tasks, the coordinator flow and the task-board statuses (FIX-2083); `waitForUser` and the hold on questions (FIX-2058) | **Builds on.** Threads mode's threads and its *Waiting on you* and *Ready for review* columns |
 | `messageWorker` and `onWorkerMessage` (FIX-1989); `sendMessage` and `receive` (FIX-2070, planned) | **Builds on.** FIX-2154 is written against FIX-2070's names |
 | The agent flow's planned turn (`board.planned`), where one worker does work and files work | **Builds on.** The main session that works and delegates |
-| Workstream sessions (FIX-1883), several sessions of one worker that only a coordinator opens | **Extended** by the sessions gap, if fsd-architect agrees ([D3](DECISIONS.md#d3)) |
+| `WorkerSessionCriteria` and its derived ids (`workforce/src/workers/derive-session-id.ts`), built to take more keys | **Extended** by FIX-2158's one optional key. Workstream sessions (FIX-1883) are not used: they need a project and a lead ([D3](DECISIONS.md#d3)) |
 | `@flow-state-dev/design-system` and the `packages/ui` registry | **Builds on.** The labs' only theme and components |
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one workforce client call to open and list sessions · one way for a notice to reach a running request |
+| **Adds** | Two private labs under `labs/` · one criteria key and a list call on the workforce client · one delivery mode on the ending path |
 | **Removes** | Nothing |
 
 **Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to
@@ -142,12 +144,15 @@ two labs and two package entries.
 2. **[D2](DECISIONS.md#d2) · A background result reaches the main session inside its running
    turn.** If wrong: step 4 of the Claude Code-style script is dropped, and the lab works
    differently from the app it copies.
-3. **[D4](DECISIONS.md#d4) · Front ends are built now, on fixtures behind one adapter, and the
+3. **[D3](DECISIONS.md#d3) · A person can have more conversations with one worker.** An
+   amendment to the concept's "one conversation per worker per user". If wrong: the Claude
+   Code-style app has one session per worker, and its session list goes.
+4. **[D4](DECISIONS.md#d4) · Front ends are built now, on fixtures behind one adapter, and the
    fixtures are deleted at wiring.** If wrong: some UI is redone when the refactor changes a
    shape.
 
-**Open, the architect's:** whether several sessions of one worker is a new concept, and where
-worker-to-worker talk is shown ([Open](DECISIONS.md#open)).
+**Open, the owner's:** none beyond the sign-off. D2 and D3 each amend the coordination concept,
+and the merge of this PR approves both amendments.
 
 Epic · 2 labs (one in two modes), 2 known gaps and a closure · Workforce: Shift Manager · Goal 1, validate through
 real usage · Goal 4, keep the foundation honest
