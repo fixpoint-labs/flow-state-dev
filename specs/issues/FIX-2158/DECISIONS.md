@@ -70,6 +70,11 @@ It comes down to threads mode: listing task runs shows every thread twice.
   (FIX-2160), and "the one a message lands in" is only true for a message addressed to the worker.
   Folded as a wording fix: this PR now carries #3789's paragraph verbatim, so the two merge as one
   rule. No direction change.
+- **Codex (round 2), folded into the goal check:** the message signal is qualified to a message
+  addressed to the worker (a message to a filer or a task lands elsewhere by rule), and a
+  top-level, criterion-bearing session (the project coordinator's project session) joins the
+  check with a control, since the listing's default already leaves dispatch runs out and
+  `no-task-runs` alone could not catch a missing criteria-key filter. No direction change.
 - **Cursor (round 1, approved), for the implementer:** "extract/shared filter with `findWorkerSession`
   in `client.ts` (criteria-key rule + filing top-level guard). That's the main code simplification;
   without it, list and find will drift."

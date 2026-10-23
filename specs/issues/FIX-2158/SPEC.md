@@ -11,25 +11,25 @@
 | **is another person on the same worker id** | Never sees the first person's sessions | The same: the server scopes every listing to its caller |
 | **waits on a background task or thread** (threads mode) | The task's session is a dispatch run, reached through its task | The same: the list leaves task-run sessions out, so a thread never shows up as a second chat |
 
-A message from another worker still lands in the default conversation, however many sessions the
+A message another worker addresses to the worker still lands in the default conversation, however many sessions the
 person opens.
 
 ## The goal, and how we'll know it's met
 
 **A person who opens more sessions with one worker gets all of them, and only theirs, from the
-workforce client, while messages keep landing in the one default conversation.**
+workforce client, while messages addressed to the worker keep landing in the one default conversation.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | "In the Claude Code-style app, a person has a list of sessions with one main worker and opens new ones" (the issue). The lab's session list (FIX-2153) and threads mode (FIX-2157) wire to it; under the epic's [ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what) the lab can't list sessions itself |
 | **Smaller, and rejected** | "The lab lists sessions with the session client and filters by `workerId`." It works, but it is glue in the lab, and it is exactly the filter the package must own: which sessions are conversations and which are task runs |
 | **Bigger, and not this issue's** | A message landing in a session other than the default ([FIX-2160](https://linear.app/fixpoint-labs/issue/FIX-2160), session-to-session messaging; rule 21 forbids it today) · a new criteria key or a change to the worker model (rejected by the epic's [D3](../../epics/FIX-2152/DECISIONS.md#d3)) · titles or names for sessions |
-| **Not done if** | The list misses a session the person opened at a random id · it returns another person's session · a task-run session shows up · the default conversation is not first and marked · a message from another worker lands anywhere but the default |
+| **Not done if** | The list misses a session the person opened at a random id · it returns another person's session · a task-run or project-coordinator session shows up · the default conversation is not first and marked · a message addressed to the worker lands anywhere but the default |
 
 ```mermaid
 flowchart LR
   A["Alice · ensure, then 2 more creates · real HTTP router"] --> T["one task handed to the worker · a task session"]
-  T --> B["Bob · own session with the same worker id"]
+  T --> B["the project coordinator · a project session · Bob · own session"]
   B --> L["Alice lists, Bob lists · and a worker message to Alice"]
   L -->|"Alice 3 sessions · default first · Bob 1 · message in default"| P["PASS"]
   C["control · list returns find's answer"] -.-> L
@@ -41,10 +41,10 @@ The check reads what the client returns and where the message's request ran, nev
 | How we verify | |
 |---|---|
 | **Goal check** | No `goals/` script: the path is model-free (session create, list, a scripted worker message), so a `packages/workforce` CI test on the real engine and HTTP router, as `test/worker-sessions.test.ts` already runs, covers it with nothing mocked. Verdict in the implementation PR |
-| **Signal** | `three-sessions`: Alice's list holds exactly her derived conversation and the two she created, the derived one first and marked default. `own-only`: Bob's list holds only his session. `no-task-runs`: the task's session is absent. `message-in-default`: a message from another worker starts its `receive` in the derived conversation, after the other two were used more recently |
+| **Signal** | `three-sessions`: Alice's list holds exactly her derived conversation and the two she created, the derived one first and marked default. `own-only`: Bob's list holds only his session. `no-task-runs`: the task's session is absent. `no-other-kinds`: on the installation's project coordinator, listed after `ensureWorkerSession({ worker, projectId })`, the top-level project session is absent and only its default conversation is listed. `message-in-default`: a message another worker addresses to Alice's worker (`to` the worker id, not a task) starts its `receive` in the derived conversation, after the other two were used more recently |
 | **Input** | Two sessions created at random ids. Created before the first `ensureWorkerSession` must pass too |
 | **Anti-game** | Assert on the client's answer and on where the `receive` request ran. Don't seed sessions in the store by hand |
-| **Control that must fail** | `listWorkerSessions` returning `findWorkerSession`'s answer fails `three-sessions`. The listing asked with `include: "dispatch-runs"` and no criteria filter fails `no-task-runs`. The PR shows both FAILs before the PASS |
+| **Control that must fail** | `listWorkerSessions` returning `findWorkerSession`'s answer fails `three-sessions`. The listing asked with `include: "dispatch-runs"` and no criteria filter fails `no-task-runs`. The top-level listing by `workerId` with the criteria-key filter removed fails `no-other-kinds`. The PR shows all three FAILs before the PASS |
 
 ## What changes
 
@@ -124,7 +124,7 @@ runs out unless asked. The client adds the worker and the criteria-key rule `fin
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** every conversation a person
-opened with a worker, only theirs, and messages still in the default. If wrong: the lab lists
+opened with a worker, only theirs, and messages addressed to the worker still in the default. If wrong: the lab lists
 sessions its own way, or a thread shows up as a second chat.
 
 **[The debt](#whats-already-here-and-the-debt): up by one read on the client.** Adds
