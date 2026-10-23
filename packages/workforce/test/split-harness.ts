@@ -55,11 +55,7 @@ export type SplitControls = {
   batch: Set<string>;
   /** What a worker's turn waits on before it files its pieces (not on a notice). */
   holdBeforeFiling: Record<string, Promise<void>>;
-  /**
-   * Once, the next time a worker's turn files: after it has read its board
-   * (the request's snapshot) and before it files, call `reached`, then wait on
-   * `release` (FIX-2114: a dependency another request ends meanwhile).
-   */
+  /** Once, after this turn reads its board and before it files (FIX-2114). */
   holdAfterResolve: Record<string, { reached: () => void; release: Promise<void> }>;
 };
 

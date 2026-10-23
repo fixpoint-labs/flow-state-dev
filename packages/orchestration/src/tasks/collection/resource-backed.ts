@@ -740,16 +740,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return r === undefined ? undefined : (readTaskState(r) as Task);
   }
 
-  /**
-   * Bring each row `batch` depends on, off the batch, up to its committed
-   * state (FIX-2114): a dependency another request ended while this one ran
-   * is refused at filing, not accepted and cascaded after.
-   */
+  /** Each outside dependency as stored now, so one another request ended is refused here (FIX-2114). */
   async function refreshDeps(batch: readonly Pick<Task, "id" | "deps">[]): Promise<void> {
     const filed = new Set(batch.map((row) => row.id));
     for (const depId of new Set(batch.flatMap((row) => row.deps ?? []))) {
-      const depRef = filed.has(depId) ? undefined : mirror.get(depId);
-      if (depRef !== undefined) await readCommitted(depRef, () => undefined);
+      if (!filed.has(depId)) await ref.refresh?.(depId);
     }
   }
 

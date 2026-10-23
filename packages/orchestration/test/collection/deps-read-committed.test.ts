@@ -1,14 +1,3 @@
-/**
- * A filing's dependency check reads each dependency as stored now, not as
- * the filing request first read the board (FIX-2114): a dependency that
- * failed in another request while this one ran is refused `dependency_ended`,
- * as one that failed before it is, and nothing is stored.
- *
- * Without this the filing is accepted and a cascade cancels it moments later.
- * The failure's notice went out before the dependent existed, so it can't
- * name it, and the dependent's cancel, caused by a row its filer filed too,
- * owes no notice of its own: its filer never hears of it.
- */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";

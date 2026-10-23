@@ -1,13 +1,3 @@
-/**
- * A batch a task session files reads its dependencies as stored now
- * (FIX-2114): a dependency another request failed while the turn ran is
- * refused `dependency_ended` before anything is written, and that includes the
- * chain's reservation for the row.
- *
- * The turn reads its board (the snapshot its request keeps), then a piece it
- * filed earlier fails in the piece's own session, then the turn files a
- * batch depending on that piece.
- */
 import { describe, expect, it } from "vitest";
 import { bootSplitHost } from "./split-harness";
 
@@ -50,7 +40,6 @@ describe("a task session's batch reads its dependencies as stored now", () => {
       releaseTurn();
       // The refusal is recorded once the batch's add returns: whatever it reserved is written by then.
       expect(await h.until(async () => h.controls.refusals.length > 0)).toBe(true);
-      // Nothing reserved for the refused row: the chain holds the three pieces filed, each added.
       const entries = Object.values(await h.chains("alice")).flatMap((record) => Object.values(record.entries));
       expect(entries.map((entry) => entry.state)).toEqual(["added", "added", "added"]);
       releaseKeep();
