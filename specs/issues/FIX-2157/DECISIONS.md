@@ -94,11 +94,16 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 
 ## Decided, not asked
 
-- **The board's columns, from the task row only.** *Working*: `pending`, `in_progress`, and
-  `held` with no wait on you. *Waiting on you*: waiting on you with kind `approval` or `input`,
-  a held question, or `errored` (it failed; ask the main session to retry). *Ready for review*:
-  waiting on you with kind `review`. *Resolved*: `completed` and `cancelled`, collapsed with a
-  count. *Pinned* comes first and takes its rows out of the others.
+- <a name="columns"></a>**The board's columns, from the task row only.** The one table; the
+  spec's signals read from it.
+
+  | Column | A task row lands here when |
+  |---|---|
+  | *Pinned* | its id is in your pins; it leaves every other column and keeps its status icon |
+  | *Working* | `pending`, `in_progress`, or `held` with no open question |
+  | *Waiting on you* | waiting on you with kind `approval` or `input`, a held question, or `errored` (it failed; you ask the main session to retry, there is no retry button) |
+  | *Ready for review* | waiting on you with kind `review` |
+  | *Resolved* | `completed` or `cancelled`; collapsed, with a count |
 - **The original's layout, copied closely.** The same sessions list and main thread as session
   mode. Your line carries *Sent to a thread* when the lead's turn filed threads for it. A compact thread
   card sits where the lead's `createTask` call is: an icon, the title, a status line, the last
@@ -110,8 +115,9 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 - **The thread view replaces the board** in the right pane, with a back arrow, as the original
   opens a thread. The main thread stays in the center.
 - **Fixtures play the script.** Until wiring, the adapter's fixtures run the five steps on a
-  timer, with a question and a review, so the board can be seen and tested in the browser. Each
-  fixture standing in for a gap carries the gap's issue id. They are deleted at wiring.
+  timer, with a question and a review, so the board can be seen and tested in the browser. As in
+  FIX-2153, fixture code carries a plain `fixture:` marker, not an issue id (BP-006), and the
+  README lists which gap each one stands for. They are deleted at wiring.
 - **Two PRs.** The front end on fixtures first, stacked on FIX-2153's front end; the wiring and
   the goal check after FIX-2056 and FIX-2058 (FIX-2129, FIX-2131) merge.
 
@@ -147,5 +153,7 @@ For the implementer, recorded and not folded:
   `requestChanges` into one `answerReview(task, verdict, words?)`.
 - Weigh a pins resource on an existing flow against the `pins` flow; the inventory counts both.
 - Keep the fixtures under one directory, so deleting them at wiring is one `git rm`.
+- `sayInThread`, `resolve` and `requestChanges` are adapter bindings to public surfaces that
+  already exist (`updateTask_tasks`, FIX-2129's answer route); only the pins verbs are new.
 
 **Open: none.**

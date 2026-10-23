@@ -107,8 +107,8 @@ flowchart LR
   B -->|"listTasks"| P["status board and feed cards"]
 ```
 
-The board's columns are read from each task's status and what it waits on; the lab adds no
-status of its own.
+The board's columns are read from each task's status and what it waits on, by [one
+table](DECISIONS.md#columns); the lab adds no status of its own.
 
 ## What stays as it is
 
