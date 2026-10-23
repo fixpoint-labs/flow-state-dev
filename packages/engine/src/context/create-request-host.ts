@@ -646,6 +646,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
         dispatch: {
+          // The sender's facts, without any key the seam owns: a provenance
+          // never moves the address, the reply route, the approved recipient
+          // or the waiter. Stripped rather than only out-ordered, because the
+          // seam writes several of them only on some dispatches, and on the
+          // rest a provenance one would read as server truth.
+          ...withoutSeamKeys(spec.provenance),
           type: spec.type,
           action: spec.action,
           // The instance the entry was resolved on, stamped only when the
@@ -667,8 +673,6 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
             : {}),
-          // Never a `waitedBy` of the caller's: that key is the seam's own, below.
-          ...withoutWaitedBy(spec.provenance),
           // A sender that waits on this dispatch (FIX-2082): who it is and
           // the row it works, from this request's own server-derived facts.
           ...(spec.waits === true && inputs.waits !== undefined
@@ -968,9 +972,20 @@ async function isDescendantSession(
   return false;
 }
 
-/** `provenance` without a `waitedBy` key, which only the seam writes (FIX-2082). */
-function withoutWaitedBy(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+/** Every key of `metadata.dispatch` the seam writes itself, some only on some dispatches. */
+const SEAM_KEYS: ReadonlySet<string> = new Set([
+  "type",
+  "action",
+  "flowKind",
+  "flowId",
+  "from",
+  "key",
+  "recipientLineageId",
+  "waitedBy"
+]);
+
+/** `provenance` without any key the seam owns ({@link SEAM_KEYS}). */
+function withoutSeamKeys(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
   if (provenance === undefined) return {};
-  const { waitedBy: _dropped, ...rest } = provenance;
-  return rest;
+  return Object.fromEntries(Object.entries(provenance).filter(([key]) => !SEAM_KEYS.has(key)));
 }
