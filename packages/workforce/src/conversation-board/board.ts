@@ -487,15 +487,7 @@ const startableOnly: TaskDispatcher = {
   }
 };
 
-/**
- * At the claim, in the filer's own pass (FIX-2106): a row's filed hop count
- * (`FILED_HOP`) stands until a user's line in the filer's conversation. The
- * record keeps how many user's lines the filer's session had taken at the
- * filing; one more since, and the record is cleared, server-side, and the
- * task's turn runs as a row with none would: at its born-with count, which
- * is the filer's now, or its session's. A message from another chain that
- * moved the filer's session elsewhere is no user's line, and leaves it.
- */
+/** Clear `FILED_HOP` when the filer session has taken a user's line since the filing. Another chain's message does not. */
 async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<Task> {
   const mark = hopMarkOf(task.metadata?.[FILED_HOP]);
   if (mark === undefined || sessionUserLinesOf(ctx.session.state) <= mark.lines) return task;
@@ -1032,7 +1024,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
-      // The filing turn's hop count, which the task's turn starts at (FIX-2106).
       const metadata = { ...(given ?? {}), ...(owner === undefined ? {} : { [PIECE_OF]: owner }), [FILED_HOP]: turnHopMark(ctx) };
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
@@ -1610,7 +1601,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (ref.get(filing.id) !== undefined) return "exists";
     // What a model asked beside the message is a caller's, as on any filing:
     // no board marker in its metadata, and the session's own project in its input.
-    // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx) };
     const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
     const { metadata: _metadata, input: _input, ...rest } = filing;

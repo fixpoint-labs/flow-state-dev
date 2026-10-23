@@ -173,21 +173,15 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(first.patches).toEqual([
       { [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceTurnChain: chain, workforceMessagesSent: 0, workforceMessagedWorkers: [] }
     ]);
-    // It counts one more user's line on the session, which a filed task's
-    // record is checked against (FIX-2106).
     expect(first.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain, workforceUserLines: 1 }]);
     const second = await marked({ workforceUserLines: 4 });
     expect((second.patches[0] as Record<string, unknown>).workforceTurnChain).not.toBe((first.patches[0] as Record<string, unknown>).workforceTurnChain);
     expect(second.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain, workforceUserLines: 5 }]);
   });
 
-  // Two user turns in one session, each started from the same stored state:
-  // the count is read in the write, as the store holds it then, so neither
-  // line is lost (FIX-2106).
   it("counts both of two user turns that start at once in one session", async () => {
     const stored: Record<string, unknown> = { workforceUserLines: 3 };
     const ops = () => ({
-      // Each turn read the session as it was when its request started.
       state: { ...stored },
       patchState: async (p: Record<string, unknown>) => void Object.assign(stored, p),
       atomicState: async (mutator: (s: Record<string, unknown>) => Record<string, unknown>) => void Object.assign(stored, mutator({ ...stored }))

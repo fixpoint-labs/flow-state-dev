@@ -13,11 +13,8 @@
  *   written (`../coordinator/routed-brief`), and its model is shown the
  *   conversation's recent lines for that turn when the flow's generator reads
  *   `routedTaskHistory`.
- * - **Its hop count** (FIX-2106). The turn starts at the worker-message hop
- *   count and chain its filing recorded on the row, read off the row the gate
- *   verified, so a message from it counts on in its filer's exchange, in an
- *   ongoing session as in one of its own. A row filed before rows recorded
- *   one reads the session's count, as before.
+ * - **Its hop count** (FIX-2106). The turn starts at the mark on the row the
+ *   gate verified, not the dispatch payload. A row with none reads the session's.
  * - **The message** (FIX-1817). The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
@@ -218,12 +215,7 @@ const noteRoutedFrom = handler({
   }
 });
 
-/**
- * Start the task's turn at the hop count and chain its filing recorded on the
- * row (FIX-2106): read off the row the gate just verified, through the ledger
- * the claim names, never off the dispatch's payload. A row with none (one
- * filed before rows recorded it, or a step) leaves the turn at its session's.
- */
+/** The filing's hop mark, off the row the claim verified. */
 const startAtFiledHop = handler({
   name: "worker-task-start-at-filed-hop",
   inputSchema: z.unknown(),
