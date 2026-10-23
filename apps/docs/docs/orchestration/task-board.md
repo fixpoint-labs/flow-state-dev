@@ -487,7 +487,7 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
-Anything else waiting to run in that session, such as a message another worker sent it, doesn't hold the task. It runs after the task is done, outside the task: it can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
+Anything else that runs in that session, such as a message another worker sent it, doesn't hold the task and isn't part of it. While the task's turn is running, it runs after that turn. It can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
 
 Background work counts as part of the request. If a `.sideChain()` step throws in any request working the task, the attempt fails just as if the request had thrown. That covers steps your `onCompleted` or `onFinished` hooks start, and a step a plain `.waitForSideChain()` already waited on. The task runs again while it has attempts left. Otherwise it fails, and its error names the step, as in `Background work "notify" failed: ...`. The request itself still reports `completed`, so read the task, not the request, to see how the work went.
 

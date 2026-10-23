@@ -146,8 +146,8 @@ export function workerMessageEntry(options: {
     }
   });
 
-  // A message is conversation, never part of a task: one to a task's busy
-  // session runs after that task settles, with no claim on it.
+  // A message is conversation, never part of a task, with no claim on it:
+  // one to a task session whose turn is running runs after that turn.
   const block = sequencer({ name: "worker-message-arrived", inputSchema: workerMessageInputSchema })
     .step(heard)
     .tapIf((got: Heard) => got.act !== "none", line)

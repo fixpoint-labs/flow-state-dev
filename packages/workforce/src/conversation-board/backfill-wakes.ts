@@ -12,6 +12,9 @@
  * session's check entry instead (`CHECK_TASK_ENTRY`, FIX-2077): it reads as
  * running, and the check settles it once no piece holds it, also when every
  * piece's notice was acted on before the upgrade and none is left to wake it.
+ * So does a running task a queued message held open (`waitingOn: "queued"`):
+ * it reads as answered and waiting on its filed work, and the check settles
+ * it with the answer it kept.
  *
  * Safe to run again: a wake coalesces into the one already kept, and a pass
  * that finds nothing owed clears it.
@@ -70,6 +73,7 @@ export interface BoardWakeBackfillOptions {
 interface StoredRow {
   readonly goal?: unknown;
   readonly status?: unknown;
+  readonly waitingOn?: unknown;
   readonly metadata?: Record<string, unknown>;
   readonly filer?: { sessionId?: unknown };
   readonly run?: { sessionId?: unknown };
@@ -79,7 +83,8 @@ const OWED_MARKER = /^(noticeOwed|reportOwed):/;
 
 /** The session a row's debt is paid in and the entry that pays it, or `undefined` when it owes nothing. */
 function payerOf(row: StoredRow, partition: string): { session: string; entry: string } | undefined {
-  if (row.status === "parked") return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
+  const checked = row.status === "parked" || (row.status === "in_progress" && row.waitingOn === "queued");
+  if (checked) return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
   // A paid marker is kept as `null`.
   if (!Object.entries(row.metadata ?? {}).some(([key, value]) => value != null && OWED_MARKER.test(key))) return undefined;
   return { session: typeof row.filer?.sessionId === "string" ? row.filer.sessionId : sessionIdOfFiling(partition), entry: RUN_BOARD_ENTRY };

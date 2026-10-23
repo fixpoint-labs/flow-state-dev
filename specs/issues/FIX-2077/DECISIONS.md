@@ -72,7 +72,7 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   that framework packages register for a request. It is not a flow-author hook. An author's
   `onFinished`, and a throw from it, cannot skip it.
 - ~~**"Queued" is durable, and Workforce answers it.**~~ Removed by amendment 4: a message queued
-  for the task's session holds nothing, and runs after the task settles.
+  for the task's session holds nothing and isn't part of the task.
 - **Admitted for a task** (rule 2): `work`, `onTaskSettled` in the task's session, and a resume of
   either. A message is never admitted (amendment 4). Admission re-mints the claim from the
   row (its run link names the session), restarts renewal and clears `waitingOn`.
@@ -167,10 +167,11 @@ For the implementer, recorded verbatim, not baked into the design.
   review in [#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592): rule 6 counts
   [filed work still holding the parent](#filed-work-holding). No change to the approach.
 - **Amendment, after merge (4)** — FIX-2103 (owner's decision, Oct 22) reverses the queued-message
-  hold: a task settles when its turn ends, and a message queued to its busy session is
-  conversation after it, with no claim, no `reportProgress`, and no say in the attempt. "Queued"
-  leaves rule 6, `TaskEndRules` and `waitingOn`; leg c is inverted; a stored `waitingOn: "queued"`
-  reads as waiting on nothing. Steering stays the one way into open work (FIX-2086). No other
+  hold: a task settles when its turn ends, and a message to its session doesn't hold it and isn't
+  part of it (while its turn runs, it's answered after), with no claim, no `reportProgress`, and
+  no say in the attempt. "Queued" leaves rule 6, `TaskEndRules` and `waitingOn`; leg c is
+  inverted; a stored `waitingOn: "queued"` reads as `"filed"` with no lease, and the upgrade's
+  backfill owes its session the check that settles it with its kept answer. Steering stays the one way into open work (FIX-2086). No other
   change to the approach.
 
 Open: none.

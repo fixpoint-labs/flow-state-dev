@@ -8,7 +8,8 @@
  * resume); {@link taskRequestAdmission} admits the other requests for it a
  * package runs in the task's session while it waits (a notice of a piece's
  * ending, a steer's turn). A message to the task's session is none of them:
- * it is conversation there, and runs after the task settles. Every admitted
+ * it is conversation there, never part of the task; while the task's turn
+ * runs, it runs after that turn. Every admitted
  * request ends at the same check, which runs after the
  * engine's last drain through its request-end seam (`onRequestEnded`), on every
  * way the request can end:

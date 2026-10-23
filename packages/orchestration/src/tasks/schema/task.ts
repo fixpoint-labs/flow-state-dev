@@ -498,12 +498,13 @@ export const taskSchema = z.object({
    *
    * Not FIX-2080's `held`, which is a status before a start: this applies only
    * after one. Server-written by the claim gate (`setWaitingOn`), never by a
-   * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030), and
-   * so does `"queued"`, which a row stored while a queued message held it
-   * open carries (the retired-shape map's `queued` entry).
+   * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
+   * `"queued"`, which a row stored while a queued message held it open
+   * carries, reads as `"filed"`: its request had answered (the retired-shape
+   * map's `queued` entry).
    */
   waitingOn: z
-    .preprocess((value) => (value === QUEUED_WAIT ? null : value), z.enum(["person", "wait", "filed", "steer"]).nullable())
+    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["person", "wait", "filed", "steer"]).nullable())
     .optional(),
 
   /**

@@ -165,7 +165,7 @@ this step failing". Then the wait exempts its failures and the docs say so.
   message is a one-attempt task whose result goes to the conversation, so D1 would drop a delegate's
   right answer over a failed capture. The owner approved a carve-out for such tasks
   ([D1's amendment](#d1-amendment)); leg k added.
-- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message queued to its busy session is conversation after it, holding no claim. Its request isn't admitted for the task, so its
+- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message to its session is conversation, not part of it, holding no claim. Its request isn't admitted for the task, so its
   background error no longer fails the attempt: leg g inverts, and the admission list drops it. No
   change to D1-D3.
 

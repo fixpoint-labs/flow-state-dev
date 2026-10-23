@@ -5,7 +5,8 @@
  * for it through orchestration's `taskRequestAdmission`, and the task is
  * checked at its end (rule 6), as at the end of `work`. A worker's message
  * (`onWorkerMessage`) is never one of them: it is conversation in the
- * session, and one sent while the task runs is answered after it settles.
+ * session, never part of the task; while the task's turn runs, it is
+ * answered after that turn.
  *
  * Workforce answers the two things orchestration can't:
  *

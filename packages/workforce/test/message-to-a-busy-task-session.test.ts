@@ -12,26 +12,71 @@
  * On the real engine, through the board host: `lead` files a task for
  * `eng.doer`, whose task turn sends a message to its own session while it
  * runs (a delivered row in the message log, and its delivery dispatched), so
- * the message waits on the session's reply line behind the task's turn.
+ * the message waits on the session's reply line behind the task's turn. The
+ * message's turn calls `reportProgress`, built as Workforce builds it.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext } from "@flow-state-dev/core/types";
+import { createReportProgress } from "@flow-state-dev/orchestration";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
+import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerTaskEntry, type WorkerManifest } from "../src";
+import { boardAboveOf } from "../src/conversation-board/board-above";
+import { conversationLedgerAt } from "../src/conversation-board/ledger";
 import { messageLogOf } from "../src/messages/message-log";
 import { WORKER_MESSAGE_ENTRY } from "../src/messages/keys";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
-const WORKERS = [worker("lead", { flow: "coordinator", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer" })];
+const WORKERS = [
+  worker("lead", { flow: "coordinator", delegates: ["eng.doer"] }),
+  worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
+  worker("eng.helper", { flow: "slowhelper" })
+];
+
+/** `reportProgress` as a task session's turn is offered it: on the board above the session. */
+const reportProgress = createReportProgress({
+  resolve: async (ctx: BlockContext) => {
+    const filing = boardAboveOf(ctx);
+    return filing === undefined ? undefined : conversationLedgerAt(ctx, filing);
+  }
+});
 
 /** What the message's turn saw, from inside its own run. */
-type Seen = { at: number; claimed: boolean; statuses: string[]; reported?: string };
+type Seen = { at: number; claimed: boolean; statuses: string[]; waitingOn: Array<string | undefined>; reported: { ok: boolean; error?: string } };
 
-function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: { throwInMessage: boolean }) {
+type Behaviour = {
+  throwInMessage: boolean;
+  /** The task's turn files one piece for `eng.helper`, which runs until this settles. */
+  piece?: Promise<void>;
+};
+
+/** `eng.helper`'s flow: each task runs until the test lets the piece end. */
+function slowHelperFlow(installation: WorkerInstallation, behaviour: Behaviour) {
+  const doorInput = z.object({ message: z.string() });
+  const turn = handler({
+    name: "slow-helper-turn",
+    inputSchema: doorInput,
+    outputSchema: z.unknown(),
+    execute: async () => {
+      await behaviour.piece;
+      return "piece done";
+    }
+  });
+  return defineFlow({
+    kind: "slowhelper",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    task: { actions: { work: workerTaskEntry({ name: "slow-helper-task", turn }) } }
+  } as never);
+}
+
+function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Behaviour) {
   const board = defineSessionBoard({ installation, flowKind: "doer" });
   const doorInput = z.object({ message: z.string() });
 
@@ -74,18 +119,26 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: { t
         const ctx = rawCtx as unknown as BlockContext;
         if (input.message.startsWith("Message ")) {
           const above = await filingConversationBoard(ctx);
-          const rows = above?.tasks.list() ?? [];
-          const claim = currentWorkerClaim(ctx);
-          const entry: Seen = { at: Date.now(), claimed: claim !== undefined, statuses: rows.map((row) => row.status) };
-          seen.push(entry);
-          // A turn that could write as the task's worker would land this on the row.
-          if (claim !== undefined) {
-            const outcome = await above!.tasks.reportProgress!(claim.taskId, { output: "the message's checkpoint" }, { claim });
-            entry.reported = outcome.outcome;
-          }
+          const rows = (above?.tasks.list() ?? []).filter((row) => row.assignee === "eng.doer");
+          const at = Date.now();
+          // A turn holding the task's claim would land this checkpoint on the row.
+          const reported = (await runForTest(reportProgress.tool, { output: "the message's checkpoint" }, ctx as never)) as Seen["reported"];
+          seen.push({
+            at,
+            claimed: currentWorkerClaim(ctx) !== undefined,
+            statuses: rows.map((row) => row.status),
+            waitingOn: rows.map((row) => row.waitingOn ?? undefined),
+            reported
+          });
           if (behaviour.throwInMessage) throw new Error("the message's turn broke");
           // No text: a woken turn's text would be relayed back as an answer, a second message.
           return "";
+        }
+        // A piece's ending wakes this turn: its answer is the task's result.
+        if (input.message.startsWith('Task "')) return "the woken turn's answer";
+        if (behaviour.piece !== undefined) {
+          const ref = await board.board.resolver(ctx as never);
+          await ref!.addTask({ goal: "a piece of it", assignee: "eng.helper" });
         }
         await sendToSelf(ctx);
         // Still working when the message arrives.
@@ -114,9 +167,14 @@ async function fileOne(h: BoardHost): Promise<string> {
   return filed.output.taskId as string;
 }
 
-function boot(seen: Seen[], behaviour: { throwInMessage: boolean }) {
-  return bootBoardHost({ standard: WORKERS, flows: (installation) => ({ doer: doerFlow(installation, seen, behaviour) }) });
+function boot(seen: Seen[], behaviour: Behaviour) {
+  return bootBoardHost({
+    standard: WORKERS,
+    flows: (installation) => ({ doer: doerFlow(installation, seen, behaviour), slowhelper: slowHelperFlow(installation, behaviour) })
+  });
 }
+
+const NOT_A_TASK_TURN = { ok: false, error: expect.stringMatching(/^not_a_task_turn:/) };
 
 describe("a message to a task's session while the task runs", () => {
   it("doesn't delay the settle: the task completes with its work's answer, and the message runs after, outside the task", async () => {
@@ -131,8 +189,7 @@ describe("a message to a task's session while the task runs", () => {
       expect(row.checkpointed).toBeFalsy();
       // The message's turn ran once, after the task settled, holding no claim.
       expect(seen).toHaveLength(1);
-      expect(seen[0]).toMatchObject({ claimed: false, statuses: ["completed"] });
-      expect(seen[0]!.reported).toBeUndefined();
+      expect(seen[0]).toMatchObject({ claimed: false, statuses: ["completed"], reported: NOT_A_TASK_TURN });
       expect(row.completedAt!).toBeLessThanOrEqual(seen[0]!.at);
     } finally {
       await h.dispose();
@@ -152,6 +209,30 @@ describe("a message to a task's session while the task runs", () => {
       expect(row.error).toBeUndefined();
       expect(row.feedback).toBeUndefined();
     } finally {
+      await h.dispose();
+    }
+  });
+
+  it("holds no claim while a split task waits on its piece, and the task still settles on the piece's ending", async () => {
+    let endPiece!: () => void;
+    const piece = new Promise<void>((resolve) => (endPiece = resolve));
+    const seen: Seen[] = [];
+    const h = boot(seen, { throwInMessage: false, piece });
+    try {
+      const taskId = await fileOne(h);
+      // The task's turn ended with its piece open: the session's reply line is
+      // free, so the message runs now, while the task waits on the piece.
+      for (let i = 0; i < 300 && seen.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ claimed: false, statuses: ["in_progress"], waitingOn: ["filed"], reported: NOT_A_TASK_TURN });
+
+      endPiece();
+      await h.settled();
+      const row = (await h.rows("alice")).find((r) => r.id === taskId)!;
+      expect(row).toMatchObject({ status: "completed", output: "the woken turn's answer", attempts: 1 });
+      expect(row.checkpointed).toBeFalsy();
+    } finally {
+      endPiece();
       await h.dispose();
     }
   });

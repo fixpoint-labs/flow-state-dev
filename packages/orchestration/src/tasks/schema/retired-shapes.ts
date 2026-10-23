@@ -19,7 +19,7 @@
  * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
  * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
- * | `queued` | a running row held open for a message queued to its session (`waitingOn: "queued"`) | running, waiting on nothing, its lease kept | a task settles when its turn ends |
+ * | `queued` | a running row held open for a message queued to its session (`waitingOn: "queued"`) | running, `waitingOn: "filed"`, no lease | FIX-2103 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
  * code that still writes it expects. Removed no earlier than FIX-2071.
@@ -159,14 +159,16 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...rest, status: "pending", turnReentries: reentries + 1 };
     },
   },
-  // A running row a queued message held open: a message no longer holds a
-  // task, and nothing will check this one again. It waits on nothing and
-  // keeps the lease it was given, so the lapse takes it back and it runs
-  // again, as a task whose queued message never ran always did.
+  // A running row a queued message held open: its work had answered, and the
+  // answer is kept as its output. A message no longer holds a task, so it
+  // reads as a task whose request answered and that waits on its filed work,
+  // with no lease: no lapse runs the answered work again, and the check its
+  // session runs next (the upgrade's backfill owes one) settles it with the
+  // kept answer once no filed work holds it.
   queued: {
     on: true,
-    owner: "a task settles when its turn ends",
-    read: (row) => (row.waitingOn === QUEUED_WAIT ? without(row, "waitingOn") : undefined),
+    owner: "FIX-2103",
+    read: (row) => (row.waitingOn === QUEUED_WAIT ? { ...without(row, "leaseUntil"), waitingOn: "filed" } : undefined),
   },
 };
 

@@ -707,8 +707,8 @@ only with `answerCounts: true` and a `noteTaskAnswer` tap after the step that pr
 such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds? }`
 (type `TaskEndRules`, also on `taskLedgers`) replaces what holds a task: by default its
 filed tasks. Anything else that runs in the child's session, such as a message to it, is
-not admitted for the task: it runs after the task settles, and its answer and its errors
-are its own. The output is the latest `reportProgress` checkpoint,
+not admitted for the task: it doesn't hold the task and isn't part of it (while the task's
+turn is running, it runs after that turn), and its answer and its errors are its own. The output is the latest `reportProgress` checkpoint,
 else the last answer that counts. A request that fails, aborts or is interrupted fails
 the attempt, and the board's `onError` reaches it: `"skip"` settles the row and lets the
 child's request complete, `"fail"` also fails that request. A result the board can't

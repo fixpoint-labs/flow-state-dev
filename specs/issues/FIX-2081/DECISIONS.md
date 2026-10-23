@@ -179,7 +179,7 @@ Recorded for the implementer, not folded into the design.
   a claimless self-filing refused, `filedByTask`, the self-step grant in `reach()`, the cancel's
   notice marker, the goals it rewrites, and FIX-2077's output line carried through the rest of its
   spec. FIX-2076 now lands before this issue, and this before FIX-2077. No change to D1-D3.
-- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message queued to its busy session is conversation after it, holding no claim, so it can't call `reportProgress`. The two field-table
+- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message to its session is conversation, not part of it, holding no claim, so it can't call `reportProgress`. The two field-table
   rows and the sign-off line drop "a queued `receive` included". No change to D1-D3.
 
 Open: none.

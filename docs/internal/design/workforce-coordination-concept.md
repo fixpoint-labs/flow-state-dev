@@ -192,8 +192,9 @@ ended.
 **Where it lands:** the recipient's conversation with this user, except that a message to the worker
 that filed your task lands in the session that filed it, and one to a task in that task's session.
 It never changes the brief or stops the request working the task. To an open task, it's
-conversation in that session, answered after the task settles: it holds no claim, doesn't delay
-the settle, and an error in it is its own, never the attempt's. To a finished task,
+conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
+is running, it's answered after that turn. It holds no claim, doesn't delay the settle, and an
+error in it is its own, never the attempt's. To a finished task,
 `receive` handles it with the session's full history. The user typing in a task's session answers
 its question, if its request waits on one; otherwise it steers it while open, as `updateTask({
 message })` does. Once finished, `respond` takes it as talk there.

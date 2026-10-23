@@ -1902,7 +1902,9 @@ heard within seconds, without anyone opening the conversation, through the sessi
 **After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
 whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. Call `backfillBoardWakes(stores, { userCell })` once at host
+version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+task an earlier version held open for a message queued to its session: its work had answered, and
+it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
 orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
 now, in each session holding such a debt, and returns how many. It is safe to run again, and
@@ -1943,9 +1945,9 @@ ending wakes a turn in the task session, which decides what it means: a failed p
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
 throws fails the attempt. Read a piece's result from its own row (`listTasks({ filedByTask })`,
-`getTask`). A message to the worker in its task session while the task runs doesn't hold it open:
-it is answered after the task settles, outside the task, and an error in that answer doesn't fail
-the task. To change open work, steer it with `updateTask`'s `message`. Run a workforce that splits on a host with durable
+`getTask`). A message to the worker in its task session doesn't hold the task and isn't part of it:
+while the task's turn is running, it is answered after that turn, and an error in that answer
+doesn't fail the task. To change open work, steer it with `updateTask`'s `message`. Run a workforce that splits on a host with durable
 execution: if the server stops between a piece's ending and its notice reaching the task session,
 a durable host delivers the notice when it starts again; without durable execution the task stays
 `in_progress` with nothing to wake it. Splitting goes up to

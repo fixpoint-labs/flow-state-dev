@@ -17,8 +17,8 @@
 
 **A dispatched task is settled once, by the claim gate, only when its work is over: its request
 and all that request's background work have ended, no [filed work is still holding
-it](DECISIONS.md#filed-work-holding). A task that waits is never run twice. A message queued to its
-session runs after it settles, outside it (amendment 4).**
+it](DECISIONS.md#filed-work-holding). A task that waits is never run twice. A message to its session
+doesn't hold it and isn't part of it (amendment 4).**
 
 | Is it the right goal? | |
 |---|---|
@@ -73,7 +73,7 @@ Nothing else is written differently. A flow author's own `onFinished` keeps runn
 **Docs:** update *Workforce → Delegating work → Splitting a task* (the task stays running; its
 output is the latest `reportProgress` checkpoint, else the worker's last answer; a failed piece
 does not fail it alone). Update *Orchestration →
-Task board → Assignees that dispatch* (the run settles after background work, and a queued message runs after it;
+Task board → Assignees that dispatch* (the run settles after background work, and a message to its session doesn't hold it;
 a suspended run keeps its claim). Update the orchestration and workforce READMEs where they say
 the same. No new page.
 

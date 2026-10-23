@@ -708,7 +708,7 @@ async function legF(run: Run): Promise<void> {
 
 /**
  * g. A queued message's request, whose step throws: the message is
- * conversation after the task settles, so its failure is its own.
+ * conversation, not part of the task, so its failure is its own.
  */
 async function legG(run: Run): Promise<void> {
   const taskId = await file(run, word("[message-first] a message arrives while you work"));
