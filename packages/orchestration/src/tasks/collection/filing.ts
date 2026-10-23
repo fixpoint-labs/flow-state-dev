@@ -26,6 +26,8 @@ export type TaskFilingRule =
   | "follow_up_takes_no_session"
   /** A follow-up runs where its root ran, so it takes no workstream `target`. */
   | "follow_up_takes_no_target"
+  /** A follow-up's result goes where its root's went, so it takes no `resultTo`. */
+  | "follow_up_takes_no_result_to"
   /** A conversation-result task has one attempt. */
   | "conversation_result_one_attempt"
   /** A setting only a conversation may choose, filed from a task's session. */
@@ -118,6 +120,13 @@ export function assertFilingSettings(init: TaskInit, support: TaskSettingsSuppor
       detail: `a follow-up runs where the task it follows ran, its workstream included, so it takes no target. Leave target unset.`,
     });
   }
+  if (init.followUpOf !== undefined && init.resultTo !== undefined) {
+    throw new TaskFilingRefusedError({
+      rule: "follow_up_takes_no_result_to",
+      taskId,
+      detail: `a follow-up's result goes where the result of the task it follows went, so it takes no resultTo. Leave resultTo unset.`,
+    });
+  }
   if (init.session !== undefined && !(support?.session ?? DEFAULT_SESSIONS).includes(init.session)) {
     throw new TaskFilingRefusedError({
       rule: "setting_not_supported",
@@ -194,27 +203,33 @@ export function assertFollowUpHasRun(
 }
 
 /**
- * A follow-up as it is written: in the session its root task ran in (FIX-2111).
- * A follow-up takes no session or target of its own (`follow_up_takes_no_session`,
- * `follow_up_takes_no_target`), so the root's `session`, `target` and
- * `targetSessionId` are copied onto it,
- * server-side, and every reader of the row (the start test, the dispatch, the
- * hold on a workstream's session) places it where its root ran. A root filed
- * with none leaves the follow-up with none.
+ * A follow-up as it is written: in the session its root task ran in
+ * (FIX-2111), with its result going where the root's went (FIX-2122). A
+ * follow-up takes no placement or result setting of its own
+ * (`follow_up_takes_no_session`, `follow_up_takes_no_target`,
+ * `follow_up_takes_no_result_to`), so the root's `session`, `target`,
+ * `targetSessionId` and `resultTo` are copied onto it, server-side. Every
+ * reader of the row (the start test, the dispatch, the hold on a workstream's
+ * session, the ending's delivery) then treats it as its root. A follow-up whose
+ * result goes to the conversation has one attempt, as every such task does: a
+ * `maxAttempts` given with it becomes 1.
+ * A root filed with none leaves the follow-up with none.
  *
  * @param lookup The board's committed row by id.
  */
 export function withFollowUpPlacement<T extends TaskInit>(
   init: T,
-  lookup: (id: string) => Pick<Task, "id" | "followUpOf" | "session" | "target" | "targetSessionId"> | undefined
+  lookup: (id: string) => Pick<Task, "id" | "followUpOf" | "session" | "target" | "targetSessionId" | "resultTo"> | undefined
 ): T {
   if (init.followUpOf === undefined) return init;
   const named = lookup(init.followUpOf);
   const root = named === undefined ? undefined : lookup(named.followUpOf ?? named.id);
   if (root === undefined) return init;
-  const { session: _session, target: _target, targetSessionId: _targetSessionId, ...rest } = init;
+  const { session: _session, target: _target, targetSessionId: _targetSessionId, resultTo: _resultTo, ...rest } = init;
   return {
     ...rest,
+    ...(root.resultTo !== undefined ? { resultTo: root.resultTo } : {}),
+    ...(root.resultTo === "conversation" ? { maxAttempts: 1 } : {}),
     ...(root.session !== undefined ? { session: root.session } : {}),
     ...(root.target !== undefined ? { target: root.target } : {}),
     ...(root.targetSessionId !== undefined ? { targetSessionId: root.targetSessionId } : {}),

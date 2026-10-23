@@ -191,6 +191,50 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
+  it("lands a routed task's follow-up as the delegate's answer, once, as the routed task's did (FIX-2122)", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "lead");
+      const root = await file(h, conv, { goal: "Draft the post", assignee: "eng.tasker", session: "ongoing", resultTo: "conversation" });
+      await h.settled();
+      const followUp = await file(h, conv, { goal: "A shorter version", followUpOf: root.taskId });
+      await h.settled();
+      const lines = (await h.messages(conv)).filter((m) => m.agentName === "eng.tasker");
+      // Each answer is a line of its own under the delegate's name: no notice about a task.
+      expect(lines.map((m) => m.text)).toEqual(["eng.tasker did: Draft the post", "eng.tasker did: A shorter version"]);
+      const row = (await h.rows("alice")).find((r) => r.id === followUp.taskId)!;
+      expect(row).toMatchObject({ status: "completed", resultTo: "conversation", maxAttempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("hears a routed task's failed follow-up as its routing does: a line, and a turn only where the routing runs one (FIX-2122)", async () => {
+    for (const [coordinator, turns] of [
+      ["rota", 0],
+      ["lead", 1]
+    ] as const) {
+      const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] });
+      const h = bootBoardHost({ judgment });
+      try {
+        const conv = await h.conversation("alice", coordinator);
+        const root = await file(h, conv, { goal: "Draft the post", assignee: "eng.tasker", session: "ongoing", resultTo: "conversation" });
+        await h.settled();
+        const before = judgment.calls.length;
+        const followUp = await file(h, conv, { goal: "[fail] A shorter version", followUpOf: root.taskId });
+        await h.settled();
+        expect((await h.rows("alice")).find((r) => r.id === followUp.taskId)).toMatchObject({ status: "errored" });
+        // The line lands either way.
+        const lines = (await h.messages(conv)).filter((m) => m.text.includes(followUp.taskId!) && m.text.includes("failed for good"));
+        expect(lines, coordinator).toHaveLength(1);
+        // A round-robin coordinator runs no turn of its own; a judgment one reads the failure.
+        expect(judgment.calls.length - before, coordinator).toBe(turns);
+      } finally {
+        await h.dispose();
+      }
+    }
+  });
+
   it("refuses a follow-up that names a target, and files nothing: it runs where its root ran (FIX-2111)", async () => {
     const h = plain();
     try {

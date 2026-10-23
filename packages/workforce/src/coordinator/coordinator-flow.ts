@@ -1682,7 +1682,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * picks the coordinator for and on a miss with no fallback. Round robin and
    * everyone never run it, so the ending is a line there. A task whose result
    * goes to this conversation (a routed task) is {@link onRoutedEnded}'s,
-   * under every routing.
+   * under every routing: its answer, and a routed round's failure or cancel.
+   * The failure or cancel of one with no routed brief (a routed task's
+   * follow-up, FIX-2122) is in no round, and is heard as a filed task's is.
    */
   const boardEntries = sessionBoard.entries(
     turn.run,

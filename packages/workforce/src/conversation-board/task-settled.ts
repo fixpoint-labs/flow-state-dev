@@ -14,12 +14,15 @@
  *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
  *   starts the attempt or resumes the turn.
  * - **A task whose result goes to the conversation** (`resultTo:
- *   "conversation"`, a routed task among them, FIX-2083) wakes no turn: its
- *   answer lands as a line under the delegate's name. A conversation that
- *   routes messages hands its completion, failure or cancel to its own
- *   handling instead ({@link TaskSettledOptions.onRouted}: the line, and the
- *   rounds it feeds), and acknowledges the notice only once that has run, so a
- *   failure there leaves the answer owed.
+ *   "conversation"`, a routed task among them, FIX-2083): its answer wakes no
+ *   turn, and lands as a line under the delegate's name. A conversation that
+ *   routes messages hands its completion to its own handling instead
+ *   ({@link TaskSettledOptions.onRouted}: the line, and the rounds it feeds),
+ *   and a routed round's failure or cancel too, and acknowledges the notice
+ *   only once that has run, so a failure there leaves the answer owed. A
+ *   failure or cancel of one with no routed brief (a routed task's follow-up,
+ *   FIX-2122) is in no round: it is heard as any task's the conversation
+ *   filed, by the one decision above.
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -107,9 +110,12 @@ export interface TaskSettledOptions {
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
   /**
-   * A conversation-result task's completion, failure or cancel, acted on once
-   * like any notice, and handed here instead of a line ({@link RoutedEnding}):
-   * a coordinator's routing lands the answer and feeds its rounds (FIX-2083).
+   * A conversation-result task's completion, and a routed round's failure or
+   * cancel, acted on once like any notice, and handed here instead of a line
+   * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
+   * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
+   * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
+   * here: it is heard as any task's the conversation filed.
    */
   readonly onRouted?: BlockDefinition<any, any>;
 }
@@ -253,9 +259,9 @@ function resultLine(notice: TaskNotice, row: { goal: string; title?: string; ass
 export function taskSettledEntry(options: TaskSettledOptions) {
   /**
    * A conversation-result task's ending (FIX-2083): no turn wakes for it. With
-   * a routing layer, a completion, failure or cancel goes to it, and is
-   * acknowledged after; anything else, and any ending without one, lands as a
-   * line now.
+   * a routing layer, a completion goes to it, and a routed round's failure or
+   * cancel too, and is acknowledged after; anything else, and any ending
+   * without one, lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -265,8 +271,14 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       return { act: "none" };
     }
-    if (options.onRouted !== undefined && (notice.ending === "completed" || notice.ending === "errored" || notice.ending === "cancelled")) {
-      const brief = routedBriefOf(row);
+    const brief = routedBriefOf(row);
+    // A row with no routed brief (a routed task's follow-up, FIX-2122) is in
+    // no round: its answer goes to the routing, which lands it, and its failure
+    // or cancel is heard as any task's the conversation filed is: a line, and
+    // the coordinator's turn when its routing runs one (`decideNotice`).
+    const unrouted = brief === undefined && (notice.ending === "errored" || notice.ending === "cancelled");
+    const routes = notice.ending === "completed" || (brief !== undefined && (notice.ending === "errored" || notice.ending === "cancelled"));
+    if (options.onRouted !== undefined && routes) {
       const routed: RoutedEnding = {
         taskId: row.id,
         ending: notice.ending,
@@ -279,7 +291,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     const first = await noteSeen(ctx, key);
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
-    return { act: "line", text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+    return { act, text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({
