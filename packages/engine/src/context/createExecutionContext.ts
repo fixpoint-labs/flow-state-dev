@@ -3046,6 +3046,34 @@ export async function createExecutionContext<
     );
   };
 
+  // The identity half of every auto-emitted `block_trace`: what replay keys
+  // on. Both capture branches below build from it, so the lean record stays a
+  // subset of the full one when an identity field is added.
+  const baseBlockTraceFromIdentity = (
+    identity: NonNullable<BlockContext["_blockIdentity"]>,
+    at: { status: BlockTraceItem["status"]; ts: number }
+  ): BlockTraceItem => {
+    const itemIndex = emittedItemCount++;
+    return {
+      id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "block_trace",
+      status: at.status,
+      requestId: requestRef.current.id,
+      itemIndex,
+      provenance: {
+        blockName: identity.blockName,
+        blockInstanceId: identity.blockInstanceId,
+        parentBlockInstanceId: identity.parentBlockInstanceId,
+        phase: identity.phase ?? "main",
+      },
+      ts: at.ts,
+      ownedBy: identity.ownedBy,
+      blockName: identity.blockName,
+      blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
+      blockInstanceId: identity.blockInstanceId,
+    };
+  };
+
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
     onBlockStart: logger
       ? (blockName, blockKind, input, transient) => {
@@ -3139,8 +3167,14 @@ export async function createExecutionContext<
     // immediately at `added`; subsequent phases emit item.updated; the
     // `output` phase additionally emits item.done.
     //
-    // Observability off still records a completed block's output. Resume reads
-    // that record to skip the block; without it, finished steps run again.
+    // With observability off the second branch runs instead: one lean record
+    // (identity + output) per completed block, written at its `output` phase,
+    // because resume reads it to skip the block; without it, finished steps
+    // run again. It is a separate branch, not an early return in the first,
+    // because the first opens its row at `added` with the block's input. Here
+    // the index is taken at completion (after the items the block emitted),
+    // and failed, suspended and transient blocks get no record at all, not
+    // even a live one.
     onBlockTraceCapture: isTraceObservabilityEnabled()
       ? (payload, firingCtx) => {
           const identity = firingCtx._blockIdentity;
@@ -3154,7 +3188,6 @@ export async function createExecutionContext<
             // Construct + emit. Store on the per-request trace map so later
             // phases can find and patch the row.
             const startedAt = payload.data.startedAt ?? Date.now();
-            const itemIndex = emittedItemCount++;
             // FIX-586 restores the FIX-478 contract: auto-emitted block_trace
             // items inherit the originating block's `transient` flag. Traces
             // from `transient: true` blocks (e.g. Task Board's `claim-task` /
@@ -3162,23 +3195,11 @@ export async function createExecutionContext<
             // but are not retained in the persisted items log. Non-transient
             // blocks (the default) keep the canonical retained-trace behavior.
             const item: BlockTraceItem = {
-              id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-              type: "block_trace",
-              status: payload.data.status ?? "in_progress",
+              ...baseBlockTraceFromIdentity(identity, {
+                status: payload.data.status ?? "in_progress",
+                ts: startedAt,
+              }),
               transient: identity.transient === true ? true : undefined,
-              requestId: requestRef.current.id,
-              itemIndex,
-              provenance: {
-                blockName: identity.blockName,
-                blockInstanceId: instanceId,
-                parentBlockInstanceId: identity.parentBlockInstanceId,
-                phase: identity.phase ?? "main",
-              },
-              ts: startedAt,
-              ownedBy: identity.ownedBy,
-              blockName: identity.blockName,
-              blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
-              blockInstanceId: instanceId,
               input: payload.data.input,
               // FIX-701: the block's own declared accessor keys, stamped here
               // so the DevTool can show "declared but not loaded".
@@ -3245,29 +3266,12 @@ export async function createExecutionContext<
           }
         }
       : (payload, firingCtx) => {
-          // Index at completion, so this record follows the items the block emitted.
           if (payload.phase !== "output" || payload.data.status !== "completed") return;
           const identity = firingCtx._blockIdentity;
           if (identity === undefined || identity.transient === true) return;
           const completedAt = payload.data.completedAt ?? Date.now();
-          const itemIndex = emittedItemCount++;
           const item: BlockTraceItem = {
-            id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-            type: "block_trace",
-            status: "completed",
-            requestId: requestRef.current.id,
-            itemIndex,
-            provenance: {
-              blockName: identity.blockName,
-              blockInstanceId: identity.blockInstanceId,
-              parentBlockInstanceId: identity.parentBlockInstanceId,
-              phase: identity.phase ?? "main",
-            },
-            ts: completedAt,
-            ownedBy: identity.ownedBy,
-            blockName: identity.blockName,
-            blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
-            blockInstanceId: identity.blockInstanceId,
+            ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
             output: payload.data.output,
             completedAt,
             duration: payload.data.duration,

@@ -1,15 +1,22 @@
 /**
  * Observability off (production) still replays a finished step from its
- * `block_trace`. This loop stops twice; each pass runs once, and the kept
- * record has no input, prompt, or resource-load payload.
+ * `block_trace`. A loop that stops twice runs each pass once and keeps a
+ * record for every block full capture keeps, with no input, prompt, or
+ * resource-load payload. A generator step (recorded as a ref to its message,
+ * not inline) is not called again on resume, and `/continue` crash recovery
+ * with no durability provider skips the steps that finished before the crash.
  */
-import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
+import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { handleContinueRequest } from "../src/routes/recovery-routes";
+import type { InboundTransportHost } from "../src/transports/types";
 
 /** Real executions of the side-effecting step, counted outside every store. */
 const runs: string[] = [];
@@ -60,15 +67,28 @@ function buildFlow(): FlowInstance {
   })({ id: "replay-traces-off" });
 }
 
-async function driveTwoAnswers() {
-  runs.length = 0;
-  const flow = buildFlow();
+/** `blockName@path` of each retained, completed trace, sorted. */
+function completedTraceKeys(items: readonly { type: string }[]): string[] {
+  return (items.filter((i) => i.type === "block_trace") as BlockTraceItem[])
+    .filter((t) => t.status === "completed" && t.transient !== true)
+    .map((t) => `${t.blockName}@${parseBlockInstanceId(t.blockInstanceId)?.path}`)
+    .sort();
+}
+
+function durableStores() {
   const stores = createInMemoryStores();
   const provider = createCheckpointDurabilityProvider({
     checkpoints: stores.checkpoints,
     suspensions: stores.suspensions,
     leases: stores.leases,
   });
+  return { stores, provider };
+}
+
+async function driveTwoAnswers() {
+  runs.length = 0;
+  const flow = buildFlow();
+  const { stores, provider } = durableStores();
   const registry = createFlowRegistry();
   registry.register(flow as never);
   const started = (await runAction({
@@ -125,8 +145,14 @@ describe("resume replay with trace observability off", () => {
     expect(r.record?.status).toBe("completed");
     expect(r.second.output).toMatchObject({ pass: 3, answers: ["A1", "A2"] });
 
+    // The lean records name exactly the blocks full capture records as
+    // completed, so a dropped block fails here.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+    const full = completedTraceKeys((await driveTwoAnswers()).record?.items ?? []);
+    expect(full).toContain("loop@root");
+    expect(completedTraceKeys(r.record?.items ?? [])).toEqual(full);
+
     const traces = (r.record?.items ?? []).filter((i) => i.type === "block_trace") as BlockTraceItem[];
-    expect(traces.length).toBeGreaterThan(0);
     for (const trace of traces) {
       expect(trace.status).toBe("completed");
       expect(trace.output).toBeDefined();
@@ -135,5 +161,153 @@ describe("resume replay with trace observability off", () => {
       expect(trace.resourceLoads).toBeUndefined();
       expect(trace.declaredResources).toBeUndefined();
     }
+  });
+
+  it("does not call a generator's model again on resume", async () => {
+    let modelCalls = 0;
+    const model: GeneratorModel = {
+      modelId: "stub",
+      generate: async () => {
+        modelCalls += 1;
+        return {
+          text: "the draft",
+          finishReason: "stop",
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        };
+      },
+    };
+    // With an item visibility the generator emits its text as a message, and
+    // its recorded output is a reference to that message, not an inline copy.
+    const draft = generator({
+      name: "draft",
+      model,
+      prompt: "write it",
+      itemVisibility: { client: true, history: true },
+    });
+    const review = handler({
+      name: "review",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input: unknown, ctx) => {
+        const verdict = await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return { draft: input, verdict };
+      },
+    });
+    const flow = defineFlow({
+      kind: "replay-traces-off-generator",
+      actions: {
+        run: { inputSchema: z.any(), block: sequencer({ name: "seq", durable: true }).step(draft).step(review) },
+      },
+    })({ id: "replay-traces-off-generator" });
+    const { stores, provider } = durableStores();
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+
+    const started = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: { durabilityProvider: provider },
+    } as never);
+    const requestId = (started as { requestId: string }).requestId;
+    expect(modelCalls).toBe(1);
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now(), resumeData: "ok" });
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registry,
+      resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", data: "ok", resumedBy: "alice" },
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const result = await finished;
+
+    expect(modelCalls).toBe(1);
+    expect(result.output).toEqual({ draft: "the draft", verdict: "ok" });
+    // Its recorded output is a reference to the message, resolved on replay.
+    const items = (await stores.request.get(requestId))?.items ?? [];
+    const draftTrace = (items as BlockTraceItem[]).find((i) => i.type === "block_trace" && i.blockName === "draft");
+    expect(draftTrace?.output?.kind).toBe("ref");
+  });
+
+  it("skips finished steps when /continue recovers a crashed request with no durability provider", async () => {
+    let workRuns = 0;
+    let crashed = true;
+    const stalled = new Promise<never>(() => {});
+    const work = handler({
+      name: "work",
+      inputSchema: z.any(),
+      outputSchema: z.object({ n: z.number() }),
+      execute: async () => {
+        workRuns += 1;
+        return { n: workRuns };
+      },
+    });
+    // On the first run this step never returns, standing in for a process
+    // that died mid-step; after recovery it finishes.
+    const slow = handler({
+      name: "slow",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input: unknown) => (crashed ? stalled : { after: input }),
+    });
+    const flow = defineFlow({
+      kind: "replay-traces-off-continue",
+      actions: { run: { inputSchema: z.any(), block: sequencer({ name: "seq" }).step(work).step(slow) } },
+    })({ id: "replay-traces-off-continue" });
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+
+    void runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {},
+    } as never);
+    // Let `work` finish and its items reach the store, as they would before a crash.
+    for (let i = 0; i < 100 && workRuns === 0; i += 1) await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 20));
+    const [running] = await stores.request.list();
+    const requestId = running!.id;
+    expect(running!.status).toBe("in_progress");
+    expect(workRuns).toBe(1);
+
+    // The stale sweep marks the dead run interrupted, the state /continue accepts.
+    const swept = await detectInterruptedRequests({ stores, staleThresholdMs: -1 });
+    expect(swept.map((s) => s.entry.requestId)).toEqual([requestId]);
+    crashed = false;
+
+    let finished: Promise<{ output: unknown }> | undefined;
+    const host = {
+      continueRequest: async (opts: { requestId: string }) => {
+        const handle = await continueRequest({
+          requestId: opts.requestId,
+          stores,
+          flowRegistry: registry,
+          runtimeConfig: {},
+        });
+        finished = handle.finished as Promise<{ output: unknown }>;
+        return handle;
+      },
+    } as unknown as InboundTransportHost;
+    const response = await handleContinueRequest(
+      new Request("http://localhost/continue", { method: "POST" }),
+      { kind: "continue_request", flowKind: "replay-traces-off-continue", sessionId: "s1", requestId },
+      { registry, stores, runtimeConfig: {}, host } as never
+    );
+    expect(response.status).toBe(202);
+    const result = await finished!;
+
+    expect(workRuns).toBe(1);
+    expect(result.output).toEqual({ after: { n: 1 } });
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 });
