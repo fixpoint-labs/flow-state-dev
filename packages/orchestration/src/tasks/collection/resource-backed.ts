@@ -727,28 +727,33 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return { sessionId, ...(filing !== undefined ? { requestId: filing } : {}) };
   }
 
-  /** The rows this request filed whose notice waits for it to end (FIX-2123). */
-  const filedHere = new Set<string>();
-
   /**
    * Note a row this request filed with itself as the filing request
-   * (FIX-2123), and, on the first, ask to be called as the request ends: a
-   * notice it turned away while it ran is sent then, past any backoff, rather
-   * than at the pass's next resend. Not at a park: the request hasn't ended.
+   * (FIX-2123), and ask to be called as the request stops running (it parks
+   * or ends): a notice turned away while it ran is sent then, past any
+   * backoff, rather than at the pass's next resend. The delivery registers
+   * once per request and board, so the call reads every row the request
+   * filed there, whichever resolution of the board filed it.
    */
   function noteFiled(row: Task): void {
-    if (delivery === undefined || row.filer?.requestId === undefined || row.filer.requestId !== delivery.ownRequest) return;
-    const first = filedHere.size === 0;
-    filedHere.add(row.id);
-    if (!first) return;
-    delivery.hooks.whenRequestEnds?.(async () => {
-      for (const id of filedHere) {
-        await ref.refresh?.(id);
-        const row = lookupRow(id);
-        if (row === undefined || !owesUntakenNotice(row)) continue;
-        const sooner = resendNowPatch(row);
-        if (Object.keys(sooner).length > 0) await ref.patchMetadata(id, sooner);
-        await deliverAfter(lookupRow(id) ?? row);
+    const own = delivery?.ownRequest;
+    // A ledger that owes no notices (a plan board) has nothing to send, and
+    // its drain's parked rows are left untouched.
+    if (delivery === undefined || delivery.hooks.notices === false || own === undefined || row.filer?.requestId !== own) return;
+    delivery.hooks.whenRequestEnds?.(async (parked) => {
+      await adoptUnknownRows(mirror, options.collection);
+      for (const filed of listAll() as Task[]) {
+        if (filed.filer?.requestId !== own) continue;
+        await ref.refresh?.(filed.id);
+        const current = lookupRow(filed.id);
+        if (current === undefined || !owesUntakenNotice(current)) continue;
+        const sooner = resendNowPatch(current);
+        if (Object.keys(sooner).length > 0) await ref.patchMetadata(current.id, sooner);
+        // At a park the request still reads as running until its hooks have
+        // run, so a notice sent now would be turned away again: the filer's
+        // pass is owed shortly instead, and sends it once the park is recorded.
+        if (parked) await delivery.hooks.owePassAt(current, now() + NOTICE_DUE_MS);
+        else await deliverAfter(lookupRow(current.id) ?? current);
       }
     });
   }
@@ -848,6 +853,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
     ...(filed !== undefined ? { filed } : {}),
   };
+
+  // A request that runs again after a park (FIX-2123) is a new resolution of
+  // the board: its own rows are noted again, so it sends what it held when
+  // it next parks or ends.
+  if (delivery?.ownRequest !== undefined) {
+    const own = listAll().find((row) => row.filer?.requestId === delivery.ownRequest);
+    if (own !== undefined) noteFiled(own as Task);
+  }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,

@@ -76,6 +76,18 @@ export const fileCall = (id: string, question = "Is ACME's SOC 2 current?"): Ste
   finishReason: "tool-calls"
 });
 
+/** A step that parks the turn on a person, until they approve. */
+export const askPerson = (id: string): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: id, toolName: "ask_person", args: {} }],
+  finishReason: "tool-calls"
+});
+
+/** A step in which the colleague finishes a task already filed, by id, while this turn runs. */
+export const finishTask = (callId: string, id: () => string, output: unknown): StepFn => (_options) => ({
+  toolCalls: [{ toolCallId: callId, toolName: "finish_task", args: { id: id(), output } }],
+  finishReason: "tool-calls"
+});
+
 /** A step that reads a task without waiting, as a plain `getTask({ id })` does. */
 export const readTask = (callId: string, id: () => string): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: callId, toolName: "read_task", args: { id: id() } }],
@@ -230,6 +242,26 @@ export function waitFlow(
       return waited.ok ? shown(waited.task) : { ok: false, taskId: input.id, error: `${waited.error}: ${waited.message}` };
     }
   });
+  const askPersonTool = handler({
+    name: "ask_person",
+    inputSchema: z.object({}).passthrough(),
+    outputSchema: z.any(),
+    execute: async (_input, ctx) => ({ answer: await ctx.suspend!({ reason: "human_approval", message: "Go ahead?" }) })
+  });
+  const finishTaskTool = handler({
+    name: "finish_task",
+    inputSchema: z.object({ id: z.string(), output: z.unknown() }),
+    outputSchema: z.any(),
+    execute: async (input, ctx) => {
+      const board = await boardOf(ctx);
+      await ctx.runOnce!(`fixture.finish:${toolCallOf(ctx)!.logicalId}`, async () => {
+        await board.claim("researcher-worker");
+        await board.complete(input.id, input.output);
+        return true;
+      });
+      return { ok: true };
+    }
+  });
   const fileTool = handler({
     name: "file_task",
     inputSchema: z.object({ question: z.string() }),
@@ -296,7 +328,7 @@ export function waitFlow(
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(
-          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool, fileTool] })
+          generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool, fileTool, askPersonTool, finishTaskTool] })
         ),
         inputSchema: z.object({}).passthrough(),
         ...(options.noticeAfterTurn === true ? { concurrency: "hold" as const } : {})

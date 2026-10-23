@@ -42,7 +42,7 @@
  * ({@link takenNoticePatch}). A wait's drop and that take are writes to the
  * same row, each conditional on the other not having happened, so exactly one
  * goes through: a wait leaves a taken marker alone ({@link deliveredByWait})
- * and answers that the ending arrives as a notice ({@link noticeDelivery}). A
+ * and answers that the ending arrives as a notice ({@link deliveredAsNotice}). A
  * taken marker is still owed, and the filer's pass still sends it again: a
  * copy finds it taken and runs nothing while the request that took it runs,
  * and takes it over once that request has ended without clearing it (its
@@ -277,19 +277,16 @@ export function takenNoticePatch(
 }
 
 /**
- * Who delivers the ending `row` holds as a notice (FIX-2123): the request,
- * other than `requestId` (the one asking), that took the notice owed for that
- * ending, and whether the notice is still owed. `undefined` when no other
- * request took it. A wait answers that the ending arrives as a notice while
- * the notice is owed, or that request still runs: the notice is the filer's
- * one hearing of it.
+ * Whether the ending `row` holds reaches its filer as a notice (FIX-2123): a
+ * request other than `requestId` (the one asking) took the notice owed for
+ * that ending, whether it is delivering it now, has delivered it, or failed
+ * and leaves it to be sent again. A wait answers so, not with the ending: the
+ * notice is the filer's one hearing of it.
  */
-export function noticeDelivery(row: Task, requestId: string): { readonly by: string; readonly owed: boolean } | undefined {
-  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return undefined;
+export function deliveredAsNotice(row: Task, requestId: string): boolean {
+  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return false;
   const by = takerOf(row, row.attempts, row.status);
-  if (by === undefined || by === requestId) return undefined;
-  const key = markerKey(row.attempts, row.status);
-  return { by, owed: isSendable(key, (row.metadata ?? {})[key]) };
+  return by !== undefined && by !== requestId;
 }
 
 /**

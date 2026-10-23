@@ -69,7 +69,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS, noticeDelivery } from "../notice/task-notice";
+import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS, deliveredAsNotice } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
@@ -507,9 +507,8 @@ async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: s
  * and the filer hears the ending a second time.
  *
  * @returns Whether the filer's `onTaskSettled` took the notice first
- *   (FIX-2123), read off the row as stored after the drop: the notice is the
- *   delivery while it is owed or the request that took it still runs, and the
- *   wait says so.
+ *   (FIX-2123), read off the row as stored after the drop: that notice is the
+ *   delivery, whether it is under way or done, and the wait says so.
  */
 async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
   const filer = collection.filerOf?.(task) ?? task.filer?.sessionId;
@@ -526,11 +525,7 @@ async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollect
       return false;
     }
   }
-  const delivery = noticeDelivery(row, ctx.request.identity.id);
-  if (delivery === undefined) return false;
-  if (delivery.owed) return true;
-  const ended = ctx.requestHost?.waits?.ended;
-  return ended !== undefined && (await ended([delivery.by]))[delivery.by] !== true;
+  return deliveredAsNotice(row, ctx.request.identity.id);
 }
 
 /**
@@ -549,8 +544,8 @@ export function arrivesAsNoticeAnswer(task: Pick<Task, "id" | "goal" | "title">)
     taskId: task.id,
     arrivesAsNotice: true,
     message:
-      `Task "${task.title ?? task.goal}" (${task.id}) has ended. Its ending is arriving as a notice, ` +
-      `which you'll read on its own; don't wait on this task again.`
+      `Task "${task.title ?? task.goal}" (${task.id}) has ended. Its ending comes to this conversation as a notice, ` +
+      `on its own; don't wait on this task again.`
   };
 }
 

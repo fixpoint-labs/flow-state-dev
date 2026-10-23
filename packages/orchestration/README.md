@@ -507,12 +507,15 @@ the filer waited on (`getTask` with `wait`), nor a cancel the filer's own model 
 task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
 sent again. The entry queues on the session unless `concurrency` says otherwise.
 
-A notice waits for the request that filed its task. While that request is still running (or
-parked), the entry holds the notice back the way `defer` does (below), and the request sends it as
-it ends. A wait in the filing request therefore reads the ending first. Before it runs `block`,
-the entry takes the notice in one conditional write (the board's optional `takeNotice`, which both
-built-in backings implement), so a wait that reads the task and the notice never both deliver the
-same ending. A notice whose `block` threw stays owed, and the next copy takes it over.
+A notice waits for the request that filed its task while that request is running, not while it is
+parked on a person or a wait. The entry holds the notice back the way `defer` does (below), and the
+request sends it as it parks or ends. A wait in the filing request therefore reads the ending
+first. Before it runs `block`, the entry takes the notice in one conditional write (the board's
+optional `takeNotice`, which both built-in backings implement), so a wait that reads the task and
+the notice never both deliver the same ending. A notice whose `block` threw stays owed, and the
+next copy takes it over; a copy that finds the notice taken by a request that hasn't ended,
+running or parked, runs nothing. Holding needs a host that records which requests are running
+(durable execution, `requestHost.waits.running`); anywhere else a notice is admitted at once.
 
 **Holding a notice back.** Give `taskSettledEntry` a `defer(ctx, notice)` when the session can be
 busy with something a notice must not run beside, such as a turn that is still under way. When it
@@ -1006,11 +1009,11 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
 deadline is milliseconds from the call, five minutes by default, within the host's
 `waitDeadlines` bounds. A task that already ended is returned at once, and your `onTaskSettled`
-block isn't called for it: a task's notice waits until the request that filed it has ended, so a
-wait in that request reads the ending first. If the notice is already being handled when the wait
-reads the task (another request filed it, or its turn had ended), the wait returns
-`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task: the notice is how the
-session hears that ending. At the deadline the task runs on and nothing is cancelled. If it ends before the
+block isn't called for it: a task's notice waits while the request that filed it runs, so a wait
+in that request reads the ending first. If the notice was taken by `onTaskSettled` before the wait
+reads the task (the filing request was parked, or another request waits), the wait returns
+`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task, whether that notice is
+still being handled or done: the notice is how the session hears that ending. At the deadline the task runs on and nothing is cancelled. If it ends before the
 waiting request does, that request's next `getTask` on it returns the ending. If
 the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
 task's own turn may wait too. A wait is refused when it would make a chain of more than five

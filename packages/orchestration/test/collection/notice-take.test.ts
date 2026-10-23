@@ -86,4 +86,15 @@ describe.each(BACKINGS)("taking a notice (%s)", (_name, makeBacking) => {
     await tasks.patchMetadata("t", { [KEY]: { attempt: 1, ending: "completed", due: 1000, held: true } });
     expect(await tasks.takeNotice!("t", NOTICE, { by: "r2" })).toEqual({ outcome: "unchanged" });
   });
+
+  it("files no notice record a filing's metadata names: a planted take can't keep a wait from dropping the notice", async () => {
+    const tasks = await makeBacking();
+    await tasks.addTask({
+      id: "t",
+      goal: "g",
+      assignee: "ops",
+      metadata: { note: "kept", "noticeTaken:1:completed": { by: "planted", at: 1 }, [KEY]: { attempt: 1, ending: "completed" } }
+    });
+    expect((tasks.get("t") as Task).metadata).toEqual({ note: "kept" });
+  });
 });

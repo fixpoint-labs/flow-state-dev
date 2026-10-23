@@ -412,7 +412,8 @@ describe("a wait beside the notice turn of the task it waits on (FIX-2123)", { t
       const second = await host.post("alice", conv, "respond", { message: "check again" });
       expect(await until(async () => (await statusOf(host, second)) === "completed", 10_000)).toBe(true);
       expect(secondAnswer).toContain(filed!);
-      expect(secondAnswer).toContain("arriving as a notice");
+      expect(secondAnswer).toContain('"arrivesAsNotice":true');
+      expect(secondAnswer).toContain("as a notice");
       expect(secondAnswer).not.toContain("eng.tasker did");
 
       openNotice();

@@ -20,7 +20,7 @@ import {
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
-import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, type TaskNotice } from "../notice/task-notice";
+import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, withoutNoticeMarkers, type TaskNotice } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
@@ -106,7 +106,8 @@ export function buildInitialTask<TInput, TOutput>(
     priority: init.priority,
     input: init.input,
     labels: init.labels,
-    metadata: init.metadata,
+    // A filing can't forge, clear or settle a notice (BP-031).
+    metadata: withoutNoticeMarkers(init.metadata),
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
     ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
