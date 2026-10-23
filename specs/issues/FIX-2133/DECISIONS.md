@@ -45,7 +45,7 @@ Then a question's answer rides it, and `updateTask` drops `question`.
 |---|---|
 | **Instead of** | `status: "held"` for a task held before it starts (this spec's first draft), with a midway question marked some other way |
 | **Because** | The owner's hold is one predicate before the start and midway. A midway row is `in_progress`; it can't read `held` without a new transition, and a status for the pre-start case beside a predicate for midway is two gates. The predicate lands once: in the shared admission helper (`isClaimable`, FIX-1005, which the claim path, the wake probe and the preview read; `isReady` built on the same helper) and in the settle guard |
-| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once. A question is open while no steer carries its key, so "answered" is never stored twice. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
+| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once. A question is open while no steer carries its key, so "answered" is never stored twice; a stored answered park that FIX-2131's retired-shape map reads is a recognised answer source too, projected at read time as a keyed user steer that the open-question check counts and the brief carries, but the cap does not. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
 
 ![D2: what the hold is on the row. The open-questions predicate on any status, chosen, beside a held status for the pre-start case. Decides it: how many gates cover both cases; one predicate, against a status plus a second gate for midway. The price: every start path reads the predicate, through one shared helper. A tie: dependents wait either way. Locks in: questions on the row, open while no steer carries the key. Flips if a start path can't go through the shared helper](figures/d2-one-hold.svg)
 
@@ -81,9 +81,7 @@ Then the gate's backstop could go; the generation stays either way.
   if the row already carries the same question key, words and sender, the answer is `unchanged`
   even when the row has since finished. Different words, or another user, are refused as already
   answered; any other answer to a finished row is refused as finished.
-- **The steer cap keeps room for answers** (the rule in FIX-2131's
-  [DECISIONS](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md),
-  "The steer cap keeps room for answers", owned here). An answer is a steer and counts against
+- **The steer cap keeps room for answers** (owned here; FIX-2131's tools and composer call it). An answer is a steer and counts against
   `MAX_STEERS`. Every open question reserves its answer's place: an ask is refused when the row's
   steers plus open questions reach the cap, and an ordinary steer at that same count. So a question
   is always answerable, and a row never holds more than the cap. A refused ask tells the model it
@@ -93,15 +91,24 @@ Then the gate's backstop could go; the generation stays either way.
   FIX-2131's retired-shape map created, outside the reserving ask) may land one place above the cap,
   once per row ([FIX-2131 D2](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md#d2)).
   A prompt-length cap is the implementer's (BP-042).
-- **The deadline:** each question is due 7 days after it is asked (FIX-2129's host setting once it
-  lands, a constant until then), paid by the board's debt pass on a touch past due (rule 8). It
+- **One wait per turn, enforced in the writes** (FIX-2131 states the rule: a row holds an open
+  question or a person suspension, never both). The ask refuses a row marked `waitingOn: "person"`,
+  and this issue's addition to the claim gate's stop arm refuses to mark a row that has an open
+  question.
+- **The deadline:** each question is due 7 days after it is asked: a 7-day constant until FIX-2129's
+  host setting lands and replaces it. A test hook overrides the question deadline (FIX-2132's leg e
+  uses it). It is paid by the board's debt pass on a touch past due (rule 8). It
   closes the question with a "no answer came" steer from a new server-written sender, the board,
   and the last close lets the work go on as an answer would. A board nobody touches pays late.
   If the owner picks "fail" in the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open), this
   write fails the try instead.
 - **Who asks.** The filer, at filing; midway, only the turn holding the current ticket, through the
   collection's ask, which FIX-2131's `askQuestion({ question })` tool calls. Answers arrive as
-  `updateTask({ id, question, message })` (D1). Nobody adds,
+  `updateTask({ id, question, message })` (D1). A fixed-board harness run holds no `state.claim`
+  (`harness-manager/src/manager.ts`, its mismatch park), so its ask presents a ticket minted from
+  its own row as the claim path mints one (`ticketForClaim` on the fixed board, with the run's
+  `identity.attempt` as the attempt fence) plus the turn generation its attempt was claimed under,
+  and is refused when either isn't the row's. Nobody adds,
   changes or removes a question afterwards. At filing, questions are refused where `held` is (a
   step for a worker's own turn), since nothing waits; midway, any claimed task can ask.
 - **Midway, what stands:** the turn's writes, messages and last checkpoint; the next turn starts from
