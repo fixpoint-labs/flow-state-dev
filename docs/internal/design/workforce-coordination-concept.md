@@ -21,8 +21,8 @@ crosses rosters (rule 3). A **screen** is an app's UI, acting as the signed-in u
 **roster** is all their workers; adding one is a **hire**.
 
 **A session is where a worker works.** Only its user can open it. A **conversation** is the session
-where a user talks to one worker: one per worker per user, plus one per project a coordinator
-coordinates.
+where a user talks to one worker. Each worker has one default conversation per user, its message
+inbox, plus one per project a coordinator coordinates; the user may open more.
 
 **A request is one run of a worker in a session.** The server sets its **sender**: a user, another
 worker's session, or **the engine**, starting a request for a task. It produces a **result**. A
@@ -176,10 +176,11 @@ on a later touch.
 **A message is talk with any worker on your roster,** delegate or not. Help bigger than the
 recipient's one request is a task.
 
-`sendMessage({ to, text, wait?, deadline?, inReplyTo? })` addresses a worker (`to: "writer"`) or a
-task (`to: { task: id }`). It **sends**, returning nothing, or **calls** (`wait: true`), waiting for
-the result until its deadline, the host's default unless `deadline` is passed. A late result is kept
-under its **call id** for a caller that waits again or repeats the call.
+`sendMessage({ to, text, wait?, deadline?, inReplyTo? })` addresses a worker (`to: "writer"`), a
+task (`to: { task: id }`) or one of its user's own conversations (`to: { session: id }`). It
+**sends**, returning nothing, or **calls** (`wait: true`), waiting for the result until its
+deadline, the host's default unless `deadline` is passed. A late result is kept under its **call
+id** for a caller that waits again or repeats the call.
 
 A message is a dispatcher block calling the recipient's `receive`. Delivery is retried until it
 lands; the receiver dedupes by id, so it sees each message once, and a repeated call gets the kept
@@ -433,9 +434,15 @@ A behavior none of these rules explains is a bug in the model.
 20. Each `updateTask` field has one rule: edits, hold and release before a task starts; cancel and a
     message until it finishes; nothing after, and its output never changes. A follow-up is a new
     task, whose output is the new version.
-21. A message addresses a roster worker or any task of its user's, or replies with `inReplyTo`,
-    never a raw session; the server resolves the session. It never steers a task; to a finished one
-    it is talk in its session, which outlives the task.
+21. A message addresses a roster worker, any task of its user's (`{ task: id }`), or one of its
+    user's own conversations (`{ session: id }`), or replies with `inReplyTo`. The server resolves
+    the session within the sending session's tenant and checks it: a `{ session }` target must be a
+    conversation of the sender's user, in the sender's org, of a worker still on the roster and
+    still on that session's flow, not a task or delegate session (those are reached by `{ task }`),
+    and anything else is refused. A worker may message itself only through `{ session }` naming a
+    different session of its own; its own name as `to` is refused. In the first version the user
+    supplies the `{ session }` id by pasting it; a lookup comes later. A message never steers a
+    task; to a finished one it is talk in its session, which outlives the task.
 22. Only a request holding a task's claim reports its progress, with `reportProgress`, until the
     task finishes; its `statusNote` never changes the task's status, and only a `work` or
     `onTaskSettled` request checkpoints `output`. A final result replaces the checkpoint unless it
@@ -519,7 +526,7 @@ waits (rule 9); and twenty-three newly decided:
 - [x] **A worker block never settles its own row (rule 18).**
 - [x] **A goal-seek loop needs a plan board (rule 19).**
 - [x] **Patterns are plan boards,** unchanged.
-- [x] **`sendMessage` addresses a worker or `{ task: id }` (rule 21);** no `{ sessionId }` (BP-031).
+- [x] **`sendMessage` addresses a worker, `{ task: id }` or `{ session: id }` (rule 21);** the server refuses a `{ session }` that isn't, within the sender's tenant, a conversation of the sender's user in the sender's org, of a worker still on the roster and on that session's flow, or that names a task or delegate session (BP-031).
 - [x] **Four task tools, one rule per field (rule 20):** `addTask`, `readTask`, `cancelTask` go.
 - [x] **When a task is done (rule 6).**
 - [x] **A task's session outlives its task (rule 21).**
