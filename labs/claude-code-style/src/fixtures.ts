@@ -157,7 +157,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       statusNote: undefined,
       work: [...task.work, { kind: "assistant", id: nextId("w"), text: summary }],
     });
-    // fixture: stands in for the mid-turn notice gap: the take shows as an item in the running request.
+    // fixture: stands in for the lab's loop-back flow: the take shows as an item in the running request.
     push(s, {
       kind: "result",
       id: nextId("r"),

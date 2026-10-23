@@ -45,7 +45,7 @@ fixtures are deleted and each verb calls the package.
 | Fixture stands in for | Package piece |
 |---|---|
 | The sessions list and *New session* | FIX-2158, a user's sessions of one worker |
-| A result card inside a running turn | FIX-2159, a settled notice taken before the next model call |
+| A result card inside a running turn | the lab's loop-back flow (built at wiring) |
 | Sending, interrupting, the thread and the tasks pane | `respond`, aborting a request, session items, `listTasks` |
 
 ## What this app adds
@@ -57,7 +57,7 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 | Kind | Files | Lines |
 |---|---:|---:|
 | Configuration | 13 | 239 |
-| React UI | 14 | 769 |
+| React UI | 14 | 772 |
 | Small flows | 0 | 0 |
 | Fixtures (deleted at wiring) | 1 | 283 |
 | Checks (not app code) | 3 | 282 |

@@ -14,10 +14,13 @@ import { modeOfWorker, type ModeId } from "./modes";
 export function App({ adapter }: { adapter: LabAdapter }) {
   const sessions = useWatch((emit: (rows: SessionRow[]) => void) => adapter.watchSessions(emit), [adapter]) ?? [];
   const [view, setView] = useState<ModeId>("session");
-  const [selectedId, setSelectedId] = useState<string>();
+  // Each view keeps its own open session when you switch away and back.
+  const [openByView, setOpenByView] = useState<Partial<Record<ModeId, string>>>({});
+  const selectedId = openByView[view];
+  const select = (mode: ModeId, id: string) => setOpenByView((open) => ({ ...open, [mode]: id }));
 
   const openNew = (mode: ModeId) => {
-    void adapter.openSession(mode).then((row) => setSelectedId(row.id));
+    void adapter.openSession(mode).then((row) => select(mode, row.id));
   };
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
   // StrictMode replays this effect on mount; the ref keeps it to one new session per adapter.
@@ -38,7 +41,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         sessions={inView}
         selectedId={selectedId}
         onView={setView}
-        onSelect={setSelectedId}
+        onSelect={(id) => select(view, id)}
         onNew={() => openNew(view)}
       />
       {selected ? <Thread adapter={adapter} session={selected} /> : <main aria-label="Main thread" />}
