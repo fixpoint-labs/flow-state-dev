@@ -81,7 +81,7 @@ A new private lab, `labs/teammates`, launched with `fsdev dev --app` and themed 
 | `listTalk(worker)` | the message log (`workerMessagesCollection`) as FIX-2070 ships its row: `sendMessage`, `receive`, `inReplyTo`, call ids | fixture |
 | `workerActivity(worker)` | `listSessionRequests` on the worker's conversation | fixture |
 | `summarizedUpTo(sessionId)` | gap G1 | fixture carrying G1's id |
-| `directory(worker)`, `setDirectory(worker, project)` | FIX-2161, widened: the project a worker's default conversation works in; the projects to pick from are the user's projects | fixture carrying FIX-2161's id |
+| `workProject(worker)`, `setWorkProject(worker, project)` | FIX-2161's `setWorkProject`, which writes `workProjectId` on the worker's default conversation and checks membership; the projects to pick from are the user's projects. A later change leaves tasks already filed on their project | fixture carrying FIX-2161's id |
 | `listTasks(sessionId)` | the conversation board's rows for the tasks lead filed: the task cards | fixture |
 | `watchRun(taskId)` | the harness run's items, read only: coder has no composer | fixture |
 
