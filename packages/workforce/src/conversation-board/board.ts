@@ -1155,6 +1155,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
         for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
+        // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
+        // A backing with no `refresh` must serve `get` committed across requests.
+        const filed = new Set(batch.map((init) => init.id));
+        for (const depId of new Set(batch.flatMap((init) => init.deps ?? []))) {
+          if (!filed.has(depId)) await ref.refresh?.(depId);
+        }
         assertDepsFileable(batch, (id) => ref.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));

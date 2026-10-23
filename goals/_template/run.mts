@@ -18,9 +18,9 @@
 import {
   KITCHEN_SINK,
   DEFAULT_MODEL,
-  answerText,
   goalTmpDir,
   loadFixture,
+  messageText,
   readCapture,
   runFsdev,
   runGoal,
@@ -59,11 +59,17 @@ await runGoal((failures, tell) => {
   }
 
   // 3. Assert on the user-visible surface, graded against the fixture — NOT on
-  //    implementation internals. `answerText` joins the assistant messages and
-  //    the action's terminal output, which is the surface a user sees.
+  //    implementation internals. Grade the assistant messages AND the action's
+  //    terminal output together, which is the surface a user sees: either alone
+  //    can miss the answer.
   //    Note: worker/block execution items are `type: "block_trace"` carrying an
   //    internal `BlockValueInternal` value — never unwrap those.
-  const answer = answerText(capture);
+  const answer = [
+    ...capture.items.filter((i) => i.type === "message" && i.role !== "user").map(messageText),
+    String(capture.result.output ?? ""),
+  ]
+    .join("\n")
+    .trim();
   // emptyIs only when empty is the claim. README → Script techniques #5.
   tell.over("answer · text", [answer].filter((text) => text.length > 0));
   if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {

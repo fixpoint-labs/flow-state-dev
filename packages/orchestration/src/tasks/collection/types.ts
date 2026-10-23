@@ -1042,6 +1042,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   releaseWait?(id: string, release: { readonly requestId: string; readonly read: boolean }): Promise<TaskWriteOutcome>;
   /**
+   * The filer's wait found the row already ended and returned it (FIX-2112):
+   * drop the notice the ending owes the filer, which that answer delivered.
+   * `unchanged` when the row owes none for its ending. Server-owned, as the
+   * other wait writes are: a caller's `patchMetadata` can't clear a notice.
+   *
+   * Optional: both built-in backings implement it. On a ref without it the
+   * filer hears the ending again, as `onTaskSettled`.
+   */
+  dropNoticeReadByWait?(id: string): Promise<TaskWriteOutcome>;
+  /**
    * A touch of the board: pay every cascade owed past its due time
    * (`Task.cascadeOwed`, FIX-2080 D2), so one a crash left owed is paid.
    * Returns how many were paid. Whatever touches a board calls it: a board's

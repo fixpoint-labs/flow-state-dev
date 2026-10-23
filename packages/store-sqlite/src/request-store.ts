@@ -56,6 +56,28 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
 }
 
 /**
+ * Whether a deferred write found the connection closed, and so is dropped
+ * (FIX-2097). At host shutdown a request the drain cancelled can still emit
+ * after the registry closed the database; its write runs in a microtask with
+ * no caller to reach, so a throw there would be an uncaught exception that
+ * takes the host down. Nothing is left to persist to, so the write is logged
+ * and dropped instead.
+ */
+function droppedAfterClose(
+  db: Database.Database,
+  kind: "items" | "events",
+  requestId: string,
+  count: number
+): boolean {
+  if (db.open) return false;
+  console.warn(
+    `[store-sqlite] dropped ${count} ${kind} for request ${requestId}: ` +
+      `the write arrived after the database closed`
+  );
+  return true;
+}
+
+/**
  * Force `abortRequested` to the value already stored, whatever the incoming
  * record says — the adapter half of `RequestStore.set`'s rule that the flag is
  * off its write surface (FIX-1026).
@@ -629,6 +651,7 @@ export function createSQLiteRequestStore(
         const snapshot = latestItemSnapshots.get(requestId);
         latestItemSnapshots.delete(requestId);
         if (snapshot === undefined) return;
+        if (droppedAfterClose(db, "items", requestId, snapshot.length)) return;
 
         const { batch, persisted } = itemDelta(requestId, snapshot);
         if (batch.length > 0) writeItemsBatchTxn(batch, requestId);
@@ -661,6 +684,7 @@ export function createSQLiteRequestStore(
         const newEvents = pendingNewEvents.get(requestId) ?? [];
         pendingNewEvents.delete(requestId);
         if (newEvents.length === 0) return;
+        if (droppedAfterClose(db, "events", requestId, newEvents.length)) return;
         // INSERT OR REPLACE handles duplicates by sequence_number.
         insertEventsBatch(newEvents, requestId);
         // Nudge the shared live-tail loop to deliver the just-committed events

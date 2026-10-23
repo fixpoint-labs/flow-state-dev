@@ -12,7 +12,7 @@
 **Anti-game:** No spies on sends and no stubbed sweeper. Requests are read from the engine's request store, rows through the store, and each worker writes its own proof from inside its run. The kills are real process exits, and the restarted host gets no action on any board, so only a wake can pay what is owed.
 **Model:** n/a, model-free.
 **Run:** `pnpm tsx goals/task-board/every-ending-reaches-its-filer/run.mts`
-**Control:** `GOAL_CONTROL=no-sweeper-payment` turns the sweeper's wake step off (a scratch patch to the engine as it loads). It must FAIL leg b on *the filer hears within due time*, and leg e.
+**Control:** `GOAL_CONTROL=no-sweeper-payment` stops the sweeper firing any due wake (a scratch patch to the engine as it loads; the wake step still resumes waits past their deadline, which this goal does not grade). It must FAIL leg b on *the filer hears within due time*, and leg e.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -26,3 +26,6 @@
 > Against `main` before this issue the script does not load: it imports `NOTICE_DUE_MS` and the delivery entry this issue adds. The control above is the discriminating run.
 | 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | PASS | The waiter files, then waits with `waitOnTask`. a: 3 endings each; the waiter got its answer. b: the notice fell due 1933 ms after the restart; the filer heard 417 ms and the parent settled 493 ms after that. c: the dependent started 39 ms after its dependency ended; 8 passes, none overlapping |
 | 2026-10-23 | fix/FIX-2083 on 52ad9b934 (the merge with FIX-2082) + the `dispatchTask` removal, uncommitted | n/a (model-free) | PASS | The waiter releases its held task (`release`, where it called the ref's `dispatch`) and waits with `waitOnTask`. a, b, c, d, e as before |
+| 2026-10-23 | b72c5f8 (`main`), `GOAL_CONTROL=no-sweeper-payment` | n/a (model-free) | CONTROL BROKEN | Exits at setup: `durability-sweeper.ts has nothing matching` the old anchor, `if (fireWake === undefined \|\| wakes === undefined) return;`. FIX-2082 changed that line when the wake step started to resume wait deadlines (FIX-2118) |
+| 2026-10-23 | fix/FIX-2118 on b72c5f8, `GOAL_CONTROL=no-sweeper-payment` | n/a (model-free) | FAIL (expected) | The patch now skips the fire of each due wake (`if (fireWake === undefined) continue;` becomes `continue;`). `b:the filer hears within due time` (0 notices), `b:the parent whose last filed task ended settles within due time` (in progress), `e:within its lease's end plus 2 s the row is reclaimed or settled` (2.5 s past the lease, in progress on attempt 1). a, c and d pass |
+| 2026-10-23 | fix/FIX-2118 on b72c5f8 | n/a (model-free) | PASS | b: the notice fell due 1910 ms after the restart; the filer heard 412 ms and the parent settled 568 ms after that. a, c, d, e as before |
