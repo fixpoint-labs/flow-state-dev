@@ -53,27 +53,29 @@ It comes down to notices: holding the key across a stop keeps a task from hearin
 
 ## Who owns what
 
-![Who owns what: six rules by six issues and the closure FIX-2134, each rule with one owner](figures/ownership.svg)
+![Who owns what: seven rules by five issues and the closure FIX-2134, each rule with one owner](figures/ownership.svg)
 
 A *uses* cell is a place a child must not re-decide.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | One call stops a request for a person: `waitForUser({ kind, prompt, deadline? })`, kind approval, question or review. One predicate says whether a suspension is a person's; the claim gate and the Inbox both read it, and no child keeps its own list of reasons | FIX-2129 | Every later spec review; the closure's leg a |
-| ER-2 | A task waiting on a person is marked on its row with the suspension that holds it. That mark, never the reply-line key, keeps its turns apart: while it waits, only notices and the stop's own answer are admitted ([D2](#d2)) | FIX-2129 | FIX-2131's and FIX-2132's spec review |
-| ER-3 | A stop resumes exactly once: answered, deadline or cancelled. Whichever comes first wins and the rest find it resolved. A user's stop ends the request, closes its item and cancels its task | FIX-2130 | FIX-2131's, FIX-2132's and FIX-2133's spec review; legs b and c |
+| ER-1 | One call stops a request for a person: `waitForUser({ kind, prompt, deadline? })`, kind approval, question or review. It is built on the person suspensions, not the wait gate: a wait gate is resumed only from inside its own session, and a person answers from outside it; the two share only the outcome words. One predicate, in `contracts` beside the suspension reasons, says whether a suspension is a person's; the claim gate, the Inbox and the Lab's send all read it, and no child keeps its own list of reasons | FIX-2129 | Every later spec review; the closure's leg a |
+| ER-2 | A task waiting on a person is marked on its row with the suspension that holds it. That mark, never the reply-line key, keeps its turns apart: while it waits, only notices and the stop's own answer are admitted ([D2](#d2)). The mark lands in the same write that drops the lease | FIX-2129 | FIX-2131's and FIX-2132's spec review; the closure's leg d |
+| ER-3 | A stop resumes exactly once: answered, deadline or cancelled. Whichever comes first wins and the rest find it resolved, and every ending closes its item, an unhandled deadline included. A user's stop ends the request, closes its item and cancels its task | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; legs b and c |
 | ER-4 | No task tool answers a stop for a person. The filer answers only a question its task asked midway, by a steer, and not on a routed task; approvals, reviews and held questions are the user's (rule 11) | FIX-2131 | Every later spec review; the closure sweep |
 | ER-5 | A row parked before the refactor is read through FIX-2080's one map ([FIX-2056 D3](../FIX-2056/DECISIONS.md#d3)), never a child's own read. States in flight between the refactor epics get no shim | FIX-2131 | FIX-2132's spec review |
 | ER-6 | Stopping for a person needs durable execution, on by default wherever stores persist. No child builds a path for a host without it; such a host refuses a stop loudly | FIX-2063 | Every spec review |
+| ER-7 | The Inbox answers every item through one route the server trusts. It resumes a stop in a task's request without opening the public resume route to a `task` source (BP-031), and records a held task's answers on its row. No child builds a second route | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; leg b |
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
-| The claim gate's stop arm (`orchestration/src/task-board/task-request.ts`, `stopOf`) | FIX-2129 keys it on ER-1's predicate and records the suspension on the row; FIX-2130 adds the cancel and the user's stop |
-| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind; FIX-2130 the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) already resumes once with answered, deadline or stopped: FIX-2130 uses the same outcome words, not a second set |
+| The claim gate's stop arm (`orchestration/src/task-board/task-request.ts`, `stopOf`) | FIX-2129 keys it on ER-1's predicate, records the suspension on the row, and adds the cancel and the user's stop |
+| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind, the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) stays for waits on work: `waitForUser` uses its outcome words, answered, deadline or stopped, not its mechanism (ER-1) |
+| The answer route (`engine/src/routes/resume-routes.ts`, its public re-entry check; `shift-manager/src/lib/reads.ts`, `REOPENED_SOURCES`) | FIX-2129 builds ER-7's route; FIX-2131, FIX-2132 and FIX-2133 answer through it |
 | Steer admission (`workforce/src/conversation-board/steer.ts`, `task-admission.ts`) | FIX-2113's gate stays for plan waits. FIX-2131 makes a steer into a task waiting on a person answer or wait (ER-2); FIX-2132 makes it end the coding run |
-| The Inbox read (`shift-manager/src/lib/reads.ts`, `surfaces/Inbox.tsx`) | FIX-2131 lists questions and reviews through ER-1's predicate; FIX-2133 adds held tasks, read from task rows; FIX-2132 adds nothing a question doesn't |
+| The Inbox read (`shift-manager/src/lib/reads.ts`, `send.ts`, `surfaces/Inbox.tsx`) | FIX-2131 lists questions and reviews through ER-1's predicate and moves `reads.ts` and `send.ts` onto it; FIX-2133 adds held tasks, read from task rows; FIX-2132 adds nothing a question doesn't |
 | The task tools and the closure sweep (`orchestration/src/skills/task-tools-capability.ts`; `rules.mjs` on `fix/FIX-2087`) | FIX-2131 removes `answerTask` and `parkOnQuestion` and their allowances in the sweep |
 | FIX-2080's retired-shape map (`orchestration/src/tasks/collection/`) | FIX-2131 adds the parked question and review entries (ER-5); FIX-2132 the harness's. Mapping a parked question onto *held on questions* would make that child wait on FIX-2133, and the graph would show it |
 | The held start (`updateTask` `status: "held"`, FIX-2080) | FIX-2133 adds held on questions, released by its last answer, never by `status` |
@@ -101,6 +103,15 @@ Settled from the sources before review:
 - **The person mark is not new.** FIX-2077 D1 records it and drops the lease; FIX-2129 keys it on
   `waitForUser` and records which suspension holds the task.
 
+In the first review round:
+
+- **FIX-2130 folded into FIX-2129** (engineering): a `waitForUser` without its deadline, cancel
+  and stop is no contract for the children after it to test against. FIX-2130 closed as a duplicate.
+- **LAB-162's park is superseded:** LAB-164 closes as superseded on this epic's approval; LAB-163,
+  OMP dispatch, stays LAB-162's, whose D2 is rewritten before it starts. Neither has started.
+- **`waitForUser` on the person suspensions, not the wait gate** (engineering): a wait gate is
+  never resumed from outside its session, and a person's answer always is ([ER-1](#who-owns-what)).
+
 ## What the end-state POC showed
 
 None built. The seams sit on code FIX-2056 has just shipped and tested (the claim gate's stop
@@ -114,6 +125,8 @@ check.
 - **2026-10-21**: FIX-2056 D2 moved marking the task and answering by steer here.
 - **2026-10-23**: FIX-2129 to FIX-2133 filed; the five objective lines agreed; the filer's
   message moved to FIX-2070; drafted, with the closure FIX-2134.
+- **2026-10-23**, first review round: FIX-2130 folded into FIX-2129; LAB-162's park superseded;
+  ER-7 added for the answer route; held tasks start, not resume; leg d for a steer during a stop.
 
 <a name="open"></a>
 ## Open
@@ -128,7 +141,7 @@ check.
 | **What would change my mind** | Apps where a stale question is worse than a failed try, such as a live chat. Then 24 hours |
 | **What being wrong costs** | Little, and it's reversible: one host setting. Too short fails real work; too long leaves an item up for a week |
 
-It doesn't hold the epic's gate. FIX-2130's spec needs the answer.
+It doesn't hold the epic's gate. FIX-2129's spec needs the answer.
 
 ![Open: a default of its own for a person's stop, 7 days, recommended, beside the 5-minute wait default and no default; decided by work failing while a person is away](figures/open-person-deadline.svg)
 
