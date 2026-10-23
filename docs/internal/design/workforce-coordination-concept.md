@@ -433,9 +433,13 @@ A behavior none of these rules explains is a bug in the model.
 20. Each `updateTask` field has one rule: edits, hold and release before a task starts; cancel and a
     message until it finishes; nothing after, and its output never changes. A follow-up is a new
     task, whose output is the new version.
-21. A message addresses a roster worker or any task of its user's, or replies with `inReplyTo`,
-    never a raw session; the server resolves the session. It never steers a task; to a finished one
-    it is talk in its session, which outlives the task.
+21. A message addresses a roster worker, any task of its user's (`{ task: id }`), or one of its
+    user's own conversations (`{ session: id }`), or replies with `inReplyTo`. The server resolves
+    the session and checks it: a `{ session }` target must be a conversation of the sender's user on
+    a worker flow, not a task or delegate session (those are reached by `{ task }`), and anything
+    else is refused. A worker may message itself only through `{ session }` naming a different
+    session of its own. A message never steers a task; to a finished one it is talk in its
+    session, which outlives the task.
 22. Only a request holding a task's claim reports its progress, with `reportProgress`, until the
     task finishes; its `statusNote` never changes the task's status, and only a `work` or
     `onTaskSettled` request checkpoints `output`. A final result replaces the checkpoint unless it
@@ -519,7 +523,7 @@ waits (rule 9); and twenty-three newly decided:
 - [x] **A worker block never settles its own row (rule 18).**
 - [x] **A goal-seek loop needs a plan board (rule 19).**
 - [x] **Patterns are plan boards,** unchanged.
-- [x] **`sendMessage` addresses a worker or `{ task: id }` (rule 21);** no `{ sessionId }` (BP-031).
+- [x] **`sendMessage` addresses a worker, `{ task: id }` or `{ session: id }` (rule 21);** the server refuses a `{ session }` that isn't a conversation of the sender's user on a worker flow, or that names a task or delegate session (BP-031).
 - [x] **Four task tools, one rule per field (rule 20):** `addTask`, `readTask`, `cancelTask` go.
 - [x] **When a task is done (rule 6).**
 - [x] **A task's session outlives its task (rule 21).**
