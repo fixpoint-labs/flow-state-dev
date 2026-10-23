@@ -39,9 +39,10 @@ step or report line that shows the rule held.
 | QR-16 | An older check is red, or deleted with no line naming what replaced it ([D3](DECISIONS.md#d3)) | A finding against the child whose PR touched what the check asserts | P3.9 |
 | QR-17 | A promised screen is missing or broken | A finding against the child that promised it; an unpromised one is an observation ([D2](DECISIONS.md#d2)) | Report |
 | QR-18 | J1 hits a step the docs don't cover | A failed step, reason *doc silent*: QR-13 | J1 |
-| QR-19 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, the failed checks and every check the diff since the run touches run again on a fresh commit; the rest carry forward (*amended after merge*, [How it got here](DECISIONS.md#how-it-got-here)) | The epic wake |
+| QR-19 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, the failed checks and every check the diff since the run touches run again on a fresh commit; the rest carry forward ([re-check failures](DECISIONS.md#re-check-failures), *amended after merge*) | The epic wake |
 | QR-20 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
 | QR-21 | A final run files nothing | The closure PR opens with the goal check and its verdict log; its body is the report | The closure PR |
+| QR-22 | The owner closes the closure without a final run that files nothing | The closure PR records the owner's decision, the last graded commit and each finding's fix; the closure closes on it ([closed by the owner](DECISIONS.md#closed-by-the-owner), *amended after merge*) | The closure PR |
 
 ## Failure taxonomy
 
@@ -55,4 +56,4 @@ The milestone run on FIX-1788's merge commit files nothing, or reruns on each fi
 until it does. Then one
 final run on one `main` commit files nothing: legs a to c pass and each control fails its step,
 J1 passes, part 3 passes with every older check green or retired with its line, and every
-required part-4 row holds (QR-21).
+required part-4 row holds (QR-21). Or the owner closes it without that run (QR-22), as on 2026-10-23.
