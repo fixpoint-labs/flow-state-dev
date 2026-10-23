@@ -90,17 +90,30 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
 const statusOf = async (host: BoardHost, requestId: string) =>
   (await (await host.state.getRuntime()).stores.request.get(requestId))?.status;
 
+/** The host's wait resume, as a test replaces it. */
+type WaitResume = (input: unknown) => Promise<unknown>;
+
 /**
  * A durable host whose router has built its durability sweeper, so `getTask`
  * offers the wait. A `[hold:g]` task waits on `held` until the test opens it.
+ *
+ * @param resume Replaces the host's wait resume, given the real one. Put on
+ *   the shared request host before the router is built: the router serves
+ *   HTTP requests from its own copy of the request host, made then, so a
+ *   resume replaced after it reaches only the requests run in process, and
+ *   an HTTP-started board pass would still resume with the real one.
  */
-async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel, held = gate()) {
+async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel, held = gate(), resume?: (real: WaitResume) => WaitResume) {
   const holds = new Map([["g", held.opened]]);
   const host = bootBoardHost(
     "generateStep" in judgment
       ? { judgmentModel: judgment as GeneratorModel, durable: true, holds }
       : { judgment, durable: true, holds }
   );
+  if (resume !== undefined) {
+    const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: WaitResume };
+    requestHost.waitResume = resume(requestHost.waitResume);
+  }
   await host.state.getRouter();
   return host;
 }
@@ -185,13 +198,10 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
       const held = gate();
-      const host = await waitingHost(judgment.model, held);
+      // The host's wait resume fails the first time it is called, then works.
+      let calls = 0;
+      const host = await waitingHost(judgment.model, held, (real) => (input) => (++calls === 1 ? failOnce() : real(input)));
       try {
-        // The host's wait resume fails the first time it is called, then works.
-        const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
-        const real = requestHost.waitResume;
-        let calls = 0;
-        requestHost.waitResume = (input) => (++calls === 1 ? failOnce() : real(input));
 
         const conv = await host.conversation("alice", "lead");
         const waiting = await host.act("alice", conv, "run", { message: "how many desks?" });
@@ -220,18 +230,27 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
 
   it("a board run whose resume throws still delivers another row's owed notice", async () => {
     const judgment = waitingJudgment("Count chairs [hold:g]", () => "unused");
+    // The second task's notice wakes the judgment turn too. That turn says a
+    // line and files nothing: run on the waiting script, it filed chairs again
+    // and waited on them, a second waiting turn whose fate hung on timing.
+    const model: GeneratorModel = {
+      ...judgment.model,
+      async generateStep(options) {
+        if (JSON.stringify(options.messages).includes("Count tables")) return { text: "Noted.", finishReason: "stop" };
+        return judgment.model.generateStep!(options);
+      }
+    };
     const held = gate();
-    const host = await waitingHost(judgment.model, held);
+    // Every resume fails, on every request the host serves: the waited-on row keeps owing its turn.
+    const host = await waitingHost(model, held, () => () => Promise.reject(new Error("the store blinked")));
     try {
-      // Every resume fails: the waited-on row keeps owing its turn.
-      const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
-      requestHost.waitResume = () => Promise.reject(new Error("the store blinked"));
 
       const conv = await host.conversation("alice", "lead");
       const waiting = await host.act("alice", conv, "run", { message: "how many chairs?" });
       await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
+      const chairs = (await host.rows("alice"))[0]!.id;
       expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
 
       // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
@@ -266,7 +285,9 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       expect(run.error, messageOf(run.error)).toBeUndefined();
       await host.settled();
       expect(await owedOn(tables)).toEqual([]);
-      expect((await host.rows("alice")).find((r) => r.id !== tables)!.resumeOwed).toBe(true);
+      // The waited-on row still owes its resume, and no other row was filed.
+      expect((await host.rows("alice")).map((r) => r.id).sort()).toEqual([chairs, tables].sort());
+      expect((await host.rows("alice")).find((r) => r.id === chairs)!.resumeOwed).toBe(true);
     } finally {
       await host.dispose();
     }
