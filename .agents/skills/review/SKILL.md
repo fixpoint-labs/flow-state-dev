@@ -32,12 +32,9 @@ Coherence, Restraint, and Depth are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
 so their prompts live below.
 
-**Review looks for flaws; it does not ask whether this was the right approach.** That is
-[`analysis`](../analysis/SKILL.md), which runs before the direction gate and at epic wrap,
-where its answer can still change something
+**Whether this was the right approach is [`analysis`](../analysis/SKILL.md), not a lens here**
 ([`orchestration.md`](../../../docs/contributing/orchestration.md#analysis-and-review)).
-Generating other shapes a change could have taken (`adhd`) belongs there, not here. To ask it
-of a shipped change, run `analysis` on it directly.
+Other shapes (`adhd`) belong there. On a shipped change, run `analysis` directly.
 
 ## Resolve target & select lenses
 

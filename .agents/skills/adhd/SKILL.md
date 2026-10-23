@@ -203,12 +203,8 @@ neutral menu. Rejected branches are one line each. Do not paste the wide set int
 ### B. Analysis context — objective 3, *other shapes*
 
 **When.** [`analysis`](../analysis/SKILL.md) dispatches this for its *other shapes*
-objective: **always on an epic spec**, where the division of the set into issues is the
-most expensive shape to get wrong, and on an issue spec only when its own trigger fires
-(new public surface, a new pattern / capability / block kind, or a schema or scope decision,
-with no real alternative weighed in *Considered and dropped*). Wrap-altitude analysis may
-dispatch it too, when what the build revealed reopens the shape. `review` does not run it:
-looking for flaws in a change is a different job from asking what else it could have been.
+objective. That skill owns when. Wrap-altitude analysis may dispatch it too, when what
+the build revealed reopens the shape. `review` does not run it.
 
 **Scope: alternatives only.** Report *other shapes this could take*. Not bugs, not bloat, not
 pattern conflicts.

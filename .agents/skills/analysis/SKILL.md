@@ -11,13 +11,7 @@ argument-hint: "<spec dir | epic id | feature> [spec | wrap]"
 
 **Review looks for flaws in the work. Analysis asks whether it is the right work.**
 
-A review stares at what exists and reports what is wrong with it: a bug, a gap, drift from a
-pattern. That is valuable and it stays where it is ([`review`](../review/SKILL.md)). An
-analysis steps back from the artifact and thinks: *is this the right approach? what did we
-already have? how does everyone else do this? what else could it be? what has changed since
-we decided?* It is generative and outward-looking, and it is where better work comes from.
-
-The canonical definition and where each runs is
+Where the process runs this:
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Analysis and review".
 
 | | **Analysis** (this skill) | **Review** |

@@ -809,17 +809,11 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   `lessons: <PR#> [proposal skipped: <why>]` to the epic record — the same token the coordinator
   state uses — and report it, so EPIC_WRAP completes on a PR that exists rather than waiting on
   one that never opens.
-- **Analyse the epic.** Lessons asks how our *process* did; this asks whether the *work* was
-  right. Once the lessons worker returns, dispatch **one bounded sub-agent** (Opus) to run
-  [`analysis`](../analysis/SKILL.md) at **wrap altitude**, with the epic issue, the retained
-  set, the merged child specs and impl PRs, and the lessons PR (it reads that PR's job audit
-  for the reuse question rather than re-running it). It asks: was this a good idea, did the
-  build hold the approved direction, how do other frameworks do it, and what has been filed in
-  Linear since the spec's *Analysis* date that changes the picture. It posts the report as a
-  comment on the Linear epic issue and files each concern worth acting on through
-  `issue-manager`, in the epic's project. **It never gates the wrap and never reopens the
-  epic** — the code has merged, so a concern is follow-up work with an owner. Record
-  `analysis: <comment link> [N filed]` and surface the verdict in the wrap report.
+- **Analyse the epic.** Once the lessons worker returns, dispatch **one bounded sub-agent**
+  (Opus) to run [`analysis`](../analysis/SKILL.md) at **wrap altitude**, with the epic issue,
+  the retained set, the merged child specs and impl PRs, and the lessons PR. Record
+  `analysis: <comment link> [N filed]` and surface the verdict in the wrap report. **It never
+  gates the wrap and never reopens the epic.**
 
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
