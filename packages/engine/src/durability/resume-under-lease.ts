@@ -156,7 +156,8 @@ export async function resumeUnderLease<TRefusal>(
     });
     return { ok: true, handle };
   } catch (error) {
-    await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
+    // As admitted: `pending`, or the resolution a stop overrode (FIX-2108).
+    await provider.suspend(suspension).catch(() => {});
     await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
     throw error;
   }
