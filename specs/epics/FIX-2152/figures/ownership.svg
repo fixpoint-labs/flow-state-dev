@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 294" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: seven rules by two labs, threads mode FIX-2157, the gaps FIX-2158 and FIX-2159, and the closure FIX-2156, each rule with one owner. FIX-2153 owns the three kinds of code, public package entries only, one theme and launch with nothing shared, a need going to the package, and fixtures behind one adapter. FIX-2159 owns a result reaching a running turn once. FIX-2158 owns a user&#x27;s sessions of one worker. FIX-2157, FIX-2154 and the closure use the lab rules.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="294"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE FIX- ISSUES</text>
+  <g id="columns">
+    <text class="t-col" x="352" y="46">2153</text>
+    <text class="t-col" x="432" y="46">2157</text>
+    <text class="t-col" x="512" y="46">2154</text>
+    <text class="t-col" x="602" y="46">2158·gap</text>
+    <text class="t-col" x="712" y="46">2159·gap</text>
+    <text class="t-col" x="832" y="46">2156·closure</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 three kinds of code, counted</text>
+    <rect class="own" x="346" y="58" width="66" height="26" rx="3"/><text class="t-own" x="352" y="75">OWNS</text>
+    <rect class="use" x="426" y="58" width="66" height="26" rx="3"/><text class="t-use" x="432" y="75">uses</text>
+    <rect class="use" x="506" y="58" width="66" height="26" rx="3"/><text class="t-use" x="512" y="75">uses</text>
+    <rect class="use" x="826" y="58" width="66" height="26" rx="3"/><text class="t-use" x="832" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 public package entries only</text>
+    <rect class="own" x="346" y="90" width="66" height="26" rx="3"/><text class="t-own" x="352" y="107">OWNS</text>
+    <rect class="use" x="426" y="90" width="66" height="26" rx="3"/><text class="t-use" x="432" y="107">uses</text>
+    <rect class="use" x="506" y="90" width="66" height="26" rx="3"/><text class="t-use" x="512" y="107">uses</text>
+    <rect class="use" x="826" y="90" width="66" height="26" rx="3"/><text class="t-use" x="832" y="107">uses</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 one theme, one launch, no lab shares</text>
+    <rect class="own" x="346" y="122" width="66" height="26" rx="3"/><text class="t-own" x="352" y="139">OWNS</text>
+    <rect class="use" x="426" y="122" width="66" height="26" rx="3"/><text class="t-use" x="432" y="139">uses</text>
+    <rect class="use" x="506" y="122" width="66" height="26" rx="3"/><text class="t-use" x="512" y="139">uses</text>
+    <rect class="use" x="826" y="122" width="66" height="26" rx="3"/><text class="t-use" x="832" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 a need goes to the package</text>
+    <rect class="own" x="346" y="154" width="66" height="26" rx="3"/><text class="t-own" x="352" y="171">OWNS</text>
+    <rect class="use" x="426" y="154" width="66" height="26" rx="3"/><text class="t-use" x="432" y="171">uses</text>
+    <rect class="use" x="506" y="154" width="66" height="26" rx="3"/><text class="t-use" x="512" y="171">uses</text>
+    <rect class="use" x="596" y="154" width="66" height="26" rx="3"/><text class="t-use" x="602" y="171">uses</text>
+    <rect class="use" x="706" y="154" width="66" height="26" rx="3"/><text class="t-use" x="712" y="171">uses</text>
+    <rect class="use" x="826" y="154" width="66" height="26" rx="3"/><text class="t-use" x="832" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 fixtures behind one adapter</text>
+    <rect class="own" x="346" y="186" width="66" height="26" rx="3"/><text class="t-own" x="352" y="203">OWNS</text>
+    <rect class="use" x="426" y="186" width="66" height="26" rx="3"/><text class="t-use" x="432" y="203">uses</text>
+    <rect class="use" x="506" y="186" width="66" height="26" rx="3"/><text class="t-use" x="512" y="203">uses</text>
+    <rect class="use" x="826" y="186" width="66" height="26" rx="3"/><text class="t-use" x="832" y="203">uses</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 a result in a running turn, once</text>
+    <rect class="use" x="346" y="218" width="66" height="26" rx="3"/><text class="t-use" x="352" y="235">uses</text>
+    <rect class="own" x="706" y="218" width="66" height="26" rx="3"/><text class="t-own" x="712" y="235">OWNS</text>
+    <rect class="use" x="826" y="218" width="66" height="26" rx="3"/><text class="t-use" x="832" y="235">uses</text>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="268">ER-7 a lab session is an ordinary session</text>
+    <rect class="use" x="346" y="250" width="66" height="26" rx="3"/><text class="t-use" x="352" y="267">uses</text>
+    <rect class="use" x="426" y="250" width="66" height="26" rx="3"/><text class="t-use" x="432" y="267">uses</text>
+    <rect class="own" x="596" y="250" width="66" height="26" rx="3"/><text class="t-own" x="602" y="267">OWNS</text>
+    <rect class="use" x="826" y="250" width="66" height="26" rx="3"/><text class="t-use" x="832" y="267">uses</text>
+  </g>
+</svg>
