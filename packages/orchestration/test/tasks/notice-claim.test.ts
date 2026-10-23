@@ -193,7 +193,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
   });
 
   it("a notice held a while for its filing request is heard within seconds of that request's park, not at its resend's backoff", async () => {
-    // The filer hears a task it handed off as soon as its turn stops on a
+    // The filer hears a task it filed as soon as its turn stops on a
     // person: the person may take hours, and the turn holds the notice no more.
     const notices: TaskSettledInput[] = [];
     let taskId = "";
