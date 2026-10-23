@@ -127,15 +127,23 @@ export function isAnsweringTurn(ctx: BlockContext): boolean {
 }
 
 /**
- * Session state: the request whose plan has a step in a session of its own to
- * wait on (FIX-2113), from its turn's end until it answers. Written by that
- * request; cleared once it answers. A request that dies leaves it, and it
- * then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether it ended).
+ * Session state: the requests whose plan has a step in a session of its own
+ * to wait on (FIX-2113), each from its turn's end until it answers, keyed by
+ * request id. Each request writes and clears only its own key, so two that
+ * plan in one session never overwrite each other. A request that dies leaves
+ * its key, which then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether
+ * it ended), and the next plan in the session clears it.
  */
-const PLAN_WAITING_STATE = "planWaitingRequest";
+const PLAN_WAITING_STATE = "planWaitingRequests";
 
 /** The session state a plan writes. */
-const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.string().nullable().optional() });
+const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.record(z.string(), z.literal(true)).optional() });
+
+/** The requests the session's state marks as waiting on a step of their own plan. */
+function markedRequests(ctx: BlockContext): string[] {
+  const marked = (ctx.session?.state as Record<string, unknown> | undefined)?.[PLAN_WAITING_STATE];
+  return marked !== null && typeof marked === "object" ? Object.keys(marked) : [];
+}
 
 /**
  * Whether another request in this session is working a plan with a step in a
@@ -146,12 +154,16 @@ const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.string().null
  * ledger as the snapshot it first took, and its own plan reads it later.
  */
 export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<boolean> {
-  const waiting = (ctx.session?.state as Record<string, unknown> | undefined)?.[PLAN_WAITING_STATE];
-  if (typeof waiting !== "string" || waiting === ctx.request?.identity?.id) return false;
-  // A request that died holds nothing.
+  const others = markedRequests(ctx).filter((requestId) => requestId !== ctx.request?.identity?.id);
+  if (others.length === 0) return false;
+  // A host with no record of ended requests holds no durable wait, and a step
+  // filed `session: "new"` is refused there, so no request marks the session;
+  // reading a mark anyway, take it as live.
   const ended = ctx.requestHost?.waits?.ended;
   if (ended === undefined) return true;
-  return (await ended([waiting]))[waiting] !== true;
+  // A request that died holds nothing.
+  const answers = await ended(others);
+  return others.some((requestId) => answers[requestId] !== true);
 }
 
 /** Whether the running request is in a step's turn. */
@@ -307,7 +319,16 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       const workable = (own?.list() ?? []).filter(isWorkable);
       await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0 } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
-      if (workable.some((row) => row.session === "new")) await ctx.session.patchState({ [PLAN_WAITING_STATE]: ctx.request.identity.id });
+      if (workable.some((row) => row.session === "new")) {
+        // Keys left by requests that died first: they hold nothing.
+        const ended = ctx.requestHost?.waits?.ended;
+        const others = markedRequests(ctx as never).filter((requestId) => requestId !== ctx.request.identity.id);
+        if (ended !== undefined && others.length > 0) {
+          const answers = await ended(others);
+          for (const requestId of others) if (answers[requestId] === true) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, requestId);
+        }
+        await ctx.session.setStateRecord(PLAN_WAITING_STATE, ctx.request.identity.id, true);
+      }
     }
   });
 
@@ -317,8 +338,8 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     inputSchema: z.unknown(),
     sessionStateSchema: planWaitingSessionState,
     execute: async (_input, ctx) => {
-      if ((ctx.session.state as Record<string, unknown>)[PLAN_WAITING_STATE] === ctx.request.identity.id) {
-        await ctx.session.patchState({ [PLAN_WAITING_STATE]: null });
+      if (markedRequests(ctx as never).includes(ctx.request.identity.id)) {
+        await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, ctx.request.identity.id);
       }
     }
   });

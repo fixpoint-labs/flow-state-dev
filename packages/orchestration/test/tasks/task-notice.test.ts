@@ -17,11 +17,13 @@ import {
   cancelledDependents,
   clearNotice,
   decideNotice,
+  deferredNoticePatch,
   deliveredByWait,
   NOTICE_DUE_MS,
   noticeDueAt,
   isNoticeOwed,
   noticeKey,
+  noticeTimes,
   noticeText,
   owedNotices,
   recordEnding,
@@ -123,6 +125,17 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     // The owed marker itself stays; a row with no resend record needs nothing.
     expect(isNoticeOwed(now, notice)).toBe(true);
     expect(resendNowPatch(written)).toEqual({});
+  });
+
+  it("counts a turned-away notice's age from when it was turned away, not from its due time (FIX-2113)", () => {
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    const notice = { attempt: 1, ending: "completed" } as const;
+    expect(noticeTimes(written, notice)?.since).toBe(10_000 + NOTICE_DUE_MS);
+    const turnedAway = { ...written, metadata: { ...written.metadata, ...deferredNoticePatch(written, notice, 90_000) } };
+    expect(noticeTimes(turnedAway, notice)).toMatchObject({ due: 10_000 + NOTICE_DUE_MS, since: 90_000 });
+    // Still owed, and a row that owes nothing is left as it is.
+    expect(isNoticeOwed(turnedAway, notice)).toBe(true);
+    expect(deferredNoticePatch(row(), notice, 90_000)).toEqual({});
   });
 
   it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {

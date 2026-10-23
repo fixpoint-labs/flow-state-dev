@@ -135,6 +135,13 @@ interface OwedMarker {
    * fast path and no pass until it is released. Absent on every other marker.
    */
   readonly held?: true;
+  /**
+   * When a session last turned it away because it was busy (FIX-2113:
+   * `taskSettledEntry`'s `defer`). That is no failed delivery, so the
+   * notice's age, which ends it at the maximum debt age, counts from here.
+   * Absent on a marker never turned away.
+   */
+  readonly deferredAt?: number;
 }
 
 function markerKey(attempt: number, ending: NoticeEnding): string {
@@ -358,14 +365,31 @@ function nextSendAt(row: Task, marker: OwedMarker): number {
 }
 
 /**
- * When `notice` first fell due, and when it is next sent (see `nextSendAt`).
- * `undefined` when `row` no longer owes it. Its age counts from `due`.
+ * When `notice` first fell due, when it is next sent (see `nextSendAt`), and
+ * when its age counts from: its due time, or the last time a busy session
+ * turned it away, whichever is later. `undefined` when `row` no longer owes it.
  */
-export function noticeTimes(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): { due: number; next: number } | undefined {
+export function noticeTimes(
+  row: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">
+): { due: number; next: number; since: number } | undefined {
   const key = markerKey(notice.attempt, notice.ending);
   const value = (row.metadata ?? {})[key];
   if (!isSendable(key, value)) return undefined;
-  return { due: value.due ?? 0, next: nextSendAt(row, value) };
+  const due = value.due ?? 0;
+  return { due, next: nextSendAt(row, value), since: Math.max(due, value.deferredAt ?? 0) };
+}
+
+/**
+ * The metadata patch that records a busy session turning `notice` away at
+ * `now` (FIX-2113): the marker, as it is, with `deferredAt`. `{}` when `row`
+ * no longer owes it.
+ */
+export function deferredNoticePatch(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, OwedMarker> {
+  const key = markerKey(notice.attempt, notice.ending);
+  const value = (row.metadata ?? {})[key];
+  if (!isSendable(key, value)) return {};
+  return { [key]: { ...value, deferredAt: now } };
 }
 
 /** The metadata patch that records one more resend of `notice` at `now`. */

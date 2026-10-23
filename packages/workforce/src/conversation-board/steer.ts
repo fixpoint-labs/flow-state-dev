@@ -21,7 +21,6 @@ import { admitOwnTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
 import { boardAboveOf } from "./board-above";
 import { sessionTaskOf } from "./task-entry";
-import { anotherTurnWaitsOnItsPlan } from "./plan";
 
 export { STEER_TURN_ENTRY } from "./board-entries";
 
@@ -207,29 +206,19 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     }
   });
 
-  const turnOfTask = sequencer({ name: `${name}-turn`, inputSchema: z.unknown() })
-    .tap(admitOwnTask(`${name}-admission`, true))
-    .step(take as BlockDefinition<any, any>)
-    .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
-    .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
-    .tap(settleWake);
-
-  // One turn of a task at a time in its session (FIX-2113): while another
-  // request here waits on a step of its own plan, this runs nothing and
-  // leaves the wake. That request's end checks the task, and owes this turn
-  // again for a steer it didn't take.
-  const busy = handler({
-    name: `${name}-busy`,
-    inputSchema: z.unknown(),
-    outputSchema: z.object({ busy: z.boolean() }),
-    execute: async (_input, ctx) => ({ busy: await anotherTurnWaitsOnItsPlan(ctx as never) })
-  });
-
   return {
     inputSchema: z.object({}).passthrough(),
     block: sequencer({ name, inputSchema: z.unknown() })
-      .step(busy)
-      .stepIf((state: { busy: boolean }) => !state.busy, turnOfTask as BlockDefinition<any, any>),
+      // One turn of a task at a time in its session (FIX-2113): while another
+      // request here waits on a step of its own plan, the admission admits
+      // nothing, so the take finds no task and this runs nothing, leaving the
+      // wake. That request's end checks the task, and owes this turn again for
+      // a steer it didn't take.
+      .tap(admitOwnTask(`${name}-admission`, true, { unlessAnotherTurnWaits: true }))
+      .step(take as BlockDefinition<any, any>)
+      .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
+      .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
+      .tap(settleWake),
     concurrency: options.concurrency ?? AFTER_REPLY_CONCURRENCY
   };
 }

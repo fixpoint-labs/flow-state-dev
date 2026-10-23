@@ -25,7 +25,7 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { clearNotice, isNoticeOwed, type TaskNotice } from "./task-notice";
+import { clearNotice, deferredNoticePatch, isNoticeOwed, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
 
@@ -65,8 +65,11 @@ export interface TaskSettledEntryOptions {
   /**
    * Whether this notice must wait: `true` runs nothing and acknowledges
    * nothing, so the notice stays owed and the filer's pass sends it again
-   * (with its backoff). For a session that is busy with something the notice
-   * must not run beside. Default: never.
+   * (with its backoff, at most every 5 minutes). For a session that is busy
+   * with something the notice must not run beside. Being turned away is no
+   * failed delivery: the notice's age, which ends it as undeliverable past
+   * the host's maximum debt age, counts from the last time it was turned
+   * away. Default: never.
    */
   readonly defer?: (ctx: BlockContext, notice: TaskSettledInput) => Promise<boolean>;
 }
@@ -110,8 +113,12 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       const row = board?.ref.get(notice.taskId);
       // A notice its row doesn't owe was delivered already, or never owed.
       if (row === undefined || !isNoticeOwed(row, notice)) return { owed: false };
-      // Not now: left owed, for the pass to send again.
-      if (options.defer !== undefined && (await options.defer(ctx, notice))) return { owed: false };
+      // Not now: left owed, for the pass to send again, with the time it was
+      // turned away, so its age (which ends it as undeliverable) counts from then.
+      if (options.defer !== undefined && (await options.defer(ctx, notice))) {
+        await board!.ref.patchMetadata(row.id, deferredNoticePatch(row, notice, board!.ref.now()));
+        return { owed: false };
+      }
       return { owed: true, notice };
     }
   });

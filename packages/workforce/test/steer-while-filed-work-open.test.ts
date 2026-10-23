@@ -13,6 +13,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf } from "./conversation-board-harness";
 import type { WorkerManifest } from "../src/manifest";
+import { anotherTurnWaitsOnItsPlan } from "../src/conversation-board/plan";
 
 const workers = (): WorkerManifest[] => [
   ...boardWorkers({ otto: { delegates: ["eng.tasker"] } }),
@@ -154,6 +155,10 @@ describe("a steer while the task waits on the work it filed", () => {
       await until(async () => (await row())?.waitingOn === "filed", "the task to wait on its research");
       expect((await h.act("alice", conv, "updateTask_tasks", { id: taskId, message: "Also use the word ember." })).output).toEqual({ ok: true });
       await until(async () => steerStep.done, "the steer's turn to file its step");
+      await until(async () => sentAt.some((call) => call.asked.includes("[step] Check the draft")), "the step to start");
+      // A second steer while the steer's turn waits on its step: no turn of its own runs beside it.
+      expect((await h.act("alice", conv, "updateTask_tasks", { id: taskId, message: "Also add a title." })).output).toEqual({ ok: true });
+      await sleep(2_500);
       // The research ends while the steer's turn waits on its step.
       release();
       // Done well before a lease (120 s) could free a stalled task.
@@ -168,6 +173,9 @@ describe("a steer while the task waits on the work it filed", () => {
       // The research's turn ran only once the steer's turn had answered after its step.
       expect(steerAnswer, JSON.stringify(asked)).toBeGreaterThan(steerTurn);
       expect(researchTurn, JSON.stringify(asked)).toBeGreaterThan(steerAnswer);
+      // The second steer was read no earlier than the steer's turn's answer: by that answer, or a turn after it.
+      const secondSteer = agentAnswer.calls.findIndex((call) => sentText(call.input).includes("Also add a title."));
+      expect(secondSteer, JSON.stringify(asked)).toBeGreaterThanOrEqual(steerAnswer);
       // At once: the steer's turn sends it on as it answers, not at the notice's next resend.
       const answered = sentAt.find((call) => call.asked.includes(ANSWERING))!.at;
       const heard = sentAt.find((call) => call.asked.includes("completed by eng.tasker"))!.at;
@@ -181,4 +189,27 @@ describe("a steer while the task waits on the work it filed", () => {
       await h.dispose();
     }
   }, 40_000);
+});
+
+describe("whether another turn of the session waits on its plan", () => {
+  /** A context as the check reads it: the session's marks, the running request, and the host's record of ended requests. */
+  const ctxWith = (marked: string[], ended?: Record<string, boolean>) =>
+    ({
+      session: { state: { planWaitingRequests: Object.fromEntries(marked.map((id) => [id, true])) } },
+      request: { identity: { id: "req-me" } },
+      requestHost:
+        ended === undefined
+          ? {}
+          : { waits: { ended: async (ids: readonly string[]) => Object.fromEntries(ids.map((id) => [id, ended[id] === true])) } }
+    }) as never;
+
+  it("is true for another request's live mark, and false for its own, none, or one whose request ended", async () => {
+    expect(await anotherTurnWaitsOnItsPlan(ctxWith([], {}))).toBe(false);
+    expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-me"], {}))).toBe(false);
+    expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-other"], { "req-other": false }))).toBe(true);
+    // The request that marked it died: it holds nothing.
+    expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-other"], { "req-other": true }))).toBe(false);
+    // Two marks: one dead, one live.
+    expect(await anotherTurnWaitsOnItsPlan(ctxWith(["req-dead", "req-live"], { "req-dead": true }))).toBe(true);
+  });
 });
