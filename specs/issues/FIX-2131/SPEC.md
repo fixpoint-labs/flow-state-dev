@@ -157,6 +157,7 @@ before the steer cap, so a question is always answerable by steer.
 | labs/conductor's `onReview: "exit"` and its unpark answer | **Rewritten** onto `waitForUser` and the Inbox route |
 | Goals asserting `parked` or `answerTask` (about twenty today, from task-session-stays-open to a-mapped-project) | **Rewritten** onto the new stop, or **retired** where the park was the thing proved |
 | Integration tests of the drain's park exit | **Deleted**, with the feature. Tests that only use a park to stop a task move onto `waitForUser` |
+| Docs pages naming `parked` or `answerTask` (the glossary and its figure, the orchestration and workforce pages, the goal-seek loop, durable execution, background work, the `ui` and devtool overviews) | **Rewritten** onto FIX-2129's *When a task waits on a person* section, which they link to instead of re-explaining the stop |
 
 ## Sign off
 
