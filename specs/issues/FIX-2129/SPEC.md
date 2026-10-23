@@ -136,7 +136,7 @@ resolves the stop (ER-7). The resumed run is admitted on its claim as today.
 | The debt | |
 |---|---|
 | **Removes** | The gate's own person check; a declared error nothing throws; the Inbox's unanswerable task stops; a stop that runs a person's work twice; a cancelled task's run left parked; a cancelled task's late filings |
-| **Adds** | `ctx.waitForUser`, the answer route and client call, a person-deadline host setting ([D3](../../epics/FIX-2058/DECISIONS.md#d3)), a `cancelled` suspension status, the row's record of its stop, the cancel's debt, the refusal of a filing under a cancelled parent. All permanent by design. `ctx.suspend` with a person's reason stays the lower-level form of the same stop, as it is under the wait gate; new code asks with `waitForUser` |
+| **Adds** | `ctx.waitForUser`, the answer route and client call, a person-deadline host setting ([D3](../../epics/FIX-2058/DECISIONS.md#d3)), which also replaces FIX-2133's 7-day question-deadline constant, a `cancelled` suspension status, the row's record of its stop, the cancel's debt, the refusal of a filing under a cancelled parent. All permanent by design. `ctx.suspend` with a person's reason stays the lower-level form of the same stop, as it is under the wait gate; new code asks with `waitForUser` |
 | **Leaves** | `PERSON_REASONS` and the send's `stopOf` until FIX-2131; the parks until FIX-2131 and FIX-2132; the error reporter's own `ctx.suspend` question, which works as before |
 
 **Net: flat here, down across the epic.** One call is added and one check replaced; the review
@@ -148,7 +148,7 @@ park it lets FIX-2131 remove, and the one trusted route per kind, are what bring
 |---|---|
 | FIX-2056 | Its claim gate, steer and `getTask` (the epic's base) |
 | FIX-2063 | Durable execution and the sweeper on file-backed hosts: a suspension needs them (ER-6), and leg e's restart needs the sweep |
-| FIX-2137, for approval resumes ([#3749](https://github.com/fixpoint-labs/flow-state-dev/pull/3749), not merged as of 2026-10-23) | A durable resume with trace observability off runs its completed steps again. Until it lands, an approval's resume does the work before it twice, and the goal check, run with observability off, can't pass. The implementation PR doesn't merge before it |
+| FIX-2137, for approval resumes ([#3749](https://github.com/fixpoint-labs/flow-state-dev/pull/3749), merged; Done) | A durable resume with trace observability off ran its completed steps again. With it on `main`, a resume skips them, which the goal check, run with observability off, confirms |
 
 ## Sign off
 
@@ -167,4 +167,4 @@ replaced. If wrong: `ctx.suspend` and `waitForUser` drift into two ways to ask.
 
 **Open: none.** D1 is the one to weigh: it is the contract every later child and app writes against.
 
-Feature · `contracts`, `core`, `engine`, `client`, `orchestration`, `shift-manager` · large · epic FIX-2058 · blocked by FIX-2056, FIX-2063, and FIX-2137 for approval resumes
+Feature · `contracts`, `core`, `engine`, `client`, `orchestration`, `shift-manager` · large · epic FIX-2058 · blocked by FIX-2056 and FIX-2063 (FIX-2137, for approval resumes, merged)
