@@ -113,7 +113,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 ## What stays as it is
 
 - **The worker model.** The main worker is a `coordinator`; the thread worker is an ordinary
-  worker on the agent flow. No new role.
+  worker on the agent flow. No new kind of worker.
 - **Session mode** and FIX-2153's pane, adapter and decisions. Threads mode is a second entry in
   the same modes config.
 - **Shift Manager**, its board and its coordinator. This lab reads the same rows; it changes
