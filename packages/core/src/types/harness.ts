@@ -380,7 +380,7 @@ export const harnessUsageWindowSchema = z.object({
   id: z.string(),
   label: z.string().nullable().default(null),
   minutes: z.number().nullable().default(null),
-  usedPercent: z.number().nullable(),
+  usedPercent: z.number().finite().min(0).max(100).nullable(),
   level: z.enum(["ok", "warning", "reached"]).nullable().default(null),
   resetsAt: z.number().nullable().default(null),
 });

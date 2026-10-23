@@ -68,14 +68,14 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     },
   } as never)({ id: "usage-flow" } as never);
   const state = createFlowState({ flows: { "usage-flow": flow }, stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
-  const act = async (actionName: string, input: unknown, userId = "alice"): Promise<any> => {
+  const act = async (actionName: string, input: unknown, userId = "alice", orgId = "org_1"): Promise<any> => {
     const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
     const result = (await runAction({
       flow,
       actionName,
       input,
       userId,
-      orgId: "org_1",
+      orgId,
       sessionId: `s_${userId}_${Math.random().toString(36).slice(2)}`,
       stores: rt.stores,
       runtimeConfig: { ...rt.runtimeConfig },
@@ -83,8 +83,8 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
     return result.output;
   };
-  const usage = async (refresh: boolean, userId?: string): Promise<HarnessUsageRow[]> =>
-    ((await act("harnessUsage", refresh ? { refresh: true } : {}, userId)) as { harnesses: HarnessUsageRow[] }).harnesses;
+  const usage = async (refresh: boolean, userId?: string, orgId?: string): Promise<HarnessUsageRow[]> =>
+    ((await act("harnessUsage", refresh ? { refresh: true } : {}, userId, orgId)) as { harnesses: HarnessUsageRow[] }).harnesses;
   return { act, usage };
 }
 
@@ -149,6 +149,21 @@ describe("harnessUsage — the one query", () => {
       expect(rows[0]!.windows[0]!.usedPercent).toBe(42);
       expect(rows[0]!.ageMs).toBeGreaterThanOrEqual(120_000);
     }
+  });
+
+  it("keeps one person's racing refreshes in two organizations apart: each organization's row is read", async () => {
+    const codex = scripted([SIGNED_IN]);
+    const { usage } = lab({ codex: codex.reader });
+    const [first, second] = await Promise.all([usage(true, "alice", "org_1"), usage(true, "alice", "org_2")]);
+    expect(codex.calls()).toBe(2);
+    for (const rows of [first, second]) expect(rows[0]).toMatchObject({ status: "windows", refreshError: null });
+  });
+
+  it("stores no window outside 0 to 100: a reader that sends one reads as unavailable", async () => {
+    const bad = scripted([{ ...SIGNED_IN, windows: [{ ...SIGNED_IN.windows[0]!, usedPercent: 140 }] }]);
+    const { usage } = lab({ codex: bad.reader });
+    const rows = await usage(true);
+    expect(rows[0]).toMatchObject({ status: "unavailable", reason: "Codex sent a reading that isn't one", windows: [] });
   });
 
   it("answers with the stored row when a reader throws before it returns a promise", async () => {

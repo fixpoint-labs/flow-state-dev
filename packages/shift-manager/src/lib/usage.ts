@@ -9,7 +9,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
-import { runAction } from "./action";
+import { ActionRefused, runAction } from "./action";
+import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
 import { describeFailure, PROJECT_READER_FLOW, readerSessionId, type Failure } from "./reads";
 import type { LabClients } from "./connection";
@@ -62,6 +63,31 @@ function usageFlowOf(clients: LabClients): Promise<string | null> {
   return found;
 }
 
+/** The prefix of the usage session opened when the user's one reader id is another organization's. */
+const USAGE_SESSION_PREFIX = "usage-own";
+
+/**
+ * Run the query on the user's reading session on `flow`. Session ids are not
+ * scoped by organization, so when that one id is held in another of the
+ * user's organizations (refused here, and not in this organization's
+ * listing), it runs on this organization's own usage session instead, opened
+ * on first use and found again by its prefix.
+ */
+export async function runUsageQuery(clients: LabClients, flow: string): Promise<unknown> {
+  const reader = readerSessionId(clients.userId, flow);
+  try {
+    return (await runAction(clients, flow, reader, HARNESS_USAGE_ACTION, { refresh: true })).output;
+  } catch (error) {
+    if (!(error instanceof ActionRefused)) throw error;
+    const listed = await clients.sessions.listSessions({ userId: clients.userId });
+    if (listed.some((session) => session.id === reader)) throw error;
+    const own = listed.find(
+      (session) => session.parentSessionId == null && session.flowKind === flow && session.id.startsWith(`${USAGE_SESSION_PREFIX}-`),
+    )?.id;
+    return (await runAction(clients, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), HARNESS_USAGE_ACTION, { refresh: true })).output;
+  }
+}
+
 /** The query's rows, as sent. A row that isn't one is left out. */
 export function toHarnessUsage(output: unknown): HarnessUsage[] {
   const rows = (output as { harnesses?: unknown } | null | undefined)?.harnesses;
@@ -88,8 +114,7 @@ export function useHarnessUsage(readAt: number): {
     usageFlowOf(clients)
       .then(async (flow) => {
         if (flow === null) return null;
-        const { output } = await runAction(clients, flow, readerSessionId(clients.userId, flow), HARNESS_USAGE_ACTION, { refresh: true });
-        return toHarnessUsage(output);
+        return toHarnessUsage(await runUsageQuery(clients, flow));
       })
       .then((read) => {
         if (closed) return;
