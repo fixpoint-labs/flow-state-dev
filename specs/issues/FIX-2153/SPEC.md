@@ -75,7 +75,8 @@ result that arrived while the turn was still running.
 + Call createTask for desk.researcher with one topic per task. Keep working; its result reaches you.
 + # workforce/teams/desk/workers/coder/WORKER.md
 + ---
-+ flow: coder-claude-code      # or coder-codex: one worker flow per harness
++ flow: coder
++ harness: claude-code          # or codex: a setting the hire passes to the flow
 + description: Makes code changes in the session's project.
 + ---
 ```
@@ -139,7 +140,7 @@ The lab owns only the decision to loop. The result card is drawn from the item t
 | A worker running on a flow you wrote (`flow:` in `WORKER.md`, `workerFlows`, `defineSessionBoard`) | **Builds on.** The main worker's flow adds only the loop-back ([epic D2](../../epics/FIX-2152/DECISIONS.md#d2)) |
 | `@flow-state-dev/design-system`, the `packages/ui` registry, `fsdev dev --app` | **Builds on.** The only theme, the copied components, the launch |
 | `projectWorkspace()` (`workforce/src/projects/project-workspace.ts`): a harness run works in its workstream's project, its conversation's (`filingProjectId`, copied at hand-over), or the one its task names, else refuses `no-project` | **Builds on.** A task the main session files inherits the session's project through `filingProjectId`, so delegates work where the session does with no new mechanism |
-| `harnessManager({ harness, workspace, ledgers })`, `localWorkspaceHost`, and the Claude Code and Codex harness blocks | **Builds on.** The lab's two coding worker flows, one per harness, each under 200 lines |
+| `harnessManager({ harness, workspace, ledgers })`, `localWorkspaceHost`, and the Claude Code and Codex harness blocks | **Builds on.** The lab's one coding worker flow, which builds a manager per harness and runs each task through the one its worker's `harness` setting names (`settingsOf`, `workforce/src/hire.ts`), under 200 lines ([epic ER-9](../../epics/FIX-2152/DECISIONS.md#who-owns-what)) |
 | Shift Manager's `coder` worker flow (`teams/devteam/workforce/flows/workers/coder.mts`) and Kitchen Sink's harness modes | **Leaves alone.** The lab writes its own small coding flows (ER-3). Kitchen Sink falls back to the server's own checkout when unset (`lib/harness-workspace.ts`); the lab never does |
 | FIX-2152 ER-1 to ER-7, D2 and D4 | **Kept.** This issue owns ER-1 to ER-5, so it builds the inventory check FIX-2154 copies |
 | FIX-1883 workstream sessions as "several sessions of one worker" | **Not used.** fsd-architect showed a workstream needs a project and caps a user at 25 ([#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)) |
@@ -157,7 +158,7 @@ The lab owns only the decision to loop. The result card is drawn from the item t
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One private lab under `labs/` with its inventory check and three small flows (the loop-back and one coding flow per harness); the epic's evidence. The fixtures and their adapter bodies, deleted at wiring (the closure checks it) |
+| **Adds** | One private lab under `labs/` with its inventory check and two small flows (the loop-back and the coding worker); the epic's evidence. The fixtures and their adapter bodies, deleted at wiring (the closure checks it) |
 | **Leaves** | The same task-row-to-view shaping (status, note, worker, run session) lives in Shift Manager, here, and soon FIX-2154, and each lab carries its own inventory check. ER-3 forbids sharing between labs; the closure prices it ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3788#issuecomment-6375045433)). The registry has no sessions list or tasks pane, so the lab writes both |
 
 **Net: up, by one private lab.** It is what the epic exists to produce.

@@ -101,12 +101,13 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   `fixture:` marker, not an issue id (BP-006); the README lists which gap each one stands for, and
   the closure greps for the marker. This is how ER-5's "carries the gap's issue id" is met.
 - **A coding harness runs only on delegated workers.** The main session stays on our generator,
-  because the loop-back owns its turn. `desk.coder` runs on one of two lab flows,
-  `coder-claude-code` or `coder-codex`, each `harnessManager({ harness, workspace, ledgers })` with
-  `localWorkspaceHost({ source: projectWorkspace() })`. One flow per harness means the worker's
-  `flow:` line picks the harness with no new config key. A per-worker harness setting is
-  FIX-1652's, not this lab's. If a coding flow can't stay under 200 lines, a public harness worker
-  flow is filed as a gap, rather than copying Shift Manager's.
+  because the loop-back owns its turn. `desk.coder` runs on the lab's one `coder` flow (epic
+  ER-9). It builds one `harnessManager({ harness, workspace, ledgers })` per harness, each with
+  `localWorkspaceHost({ source: projectWorkspace() })`, and runs each task through the one the
+  worker's own `harness:` setting names. The hire passes that line to the flow as a setting
+  (`settingsOf`, `workforce/src/hire.ts`), so a second coding worker on Codex is one more
+  `WORKER.md`, not another flow. If the flow can't stay under 200 lines, this spec raises the cap
+  for it once and says why, rather than copying Shift Manager's.
 - **A coding run shows like any task.** Its row carries the status and progress note the run
   writes, and opening it shows its run session's items read only, the harness's steps included.
   The thread board is FIX-2157's.
