@@ -564,8 +564,14 @@ export const taskSchema = z.object({
    * is delivered. Its flow is read from the session's own record when needed.
    * **Absent** on a row filed before it (BP-030): a composing layer may name a
    * fallback, and with none its notice is settled undeliverable.
+   *
+   * `requestId` is the request that filed it, when that request runs in the
+   * filer's session (FIX-2123), from the engine's request identity: the row's
+   * notice waits until that request ends, so a wait in it reads the ending
+   * first. Absent on a row filed before it, and on a follow-up filed outside
+   * the filer's session: its notice is admitted at once, as before.
    */
-  filer: z.object({ sessionId: z.string() }).optional(),
+  filer: z.object({ sessionId: z.string(), requestId: z.string().optional() }).optional(),
 
   /**
    * The task whose ending cancelled this row (FIX-2080): set by a cascade's
