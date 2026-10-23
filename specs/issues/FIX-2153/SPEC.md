@@ -45,7 +45,7 @@ never the lab's own state. With the mid-turn notice off, step 4 must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/session-mode-script/` · real model · Playwright, against `fsdev dev --app` · run by the implementer at wiring · verdict in the wiring PR. The epic's closure reruns it as leg a |
-| **Signal** | 1 your line shows · 2 the main session's own text shows before any task row · 3 two task rows show, both filed by this session · 4 a result card shows while the turn's working indicator is on, and text after it in the same turn names the result · 5 after you ask to stop the other task, its row reads `cancelled` through `listTasks` |
+| **Signal** | 1 your line shows · 2 the main session's own text shows before any task row · 3 two task rows show, both filed by this session · 4 a result card shows while the turn's working indicator is on, and text after it in the same turn names the result; the card, the indicator and that text all carry the request id of your first `respond`, so a second request started by the settled notice does not count · 5 after you ask to stop the other task, its row reads `cancelled` through `listTasks` |
 | **Input** | "Compare two vendors and write a summary": one quick research task and one long one. The skill tells the main session to keep working after it files them, so the turn outlasts the quick task. A different ask with one quick and one long task must pass too; a run where the turn ends before the quick task does is a bad input, not a FAIL |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't cancel through the public `updateTask` action from the test |
 | **Control that must fail** | The lab without FIX-2159's mid-turn delivery: today's `main`, or the lab's config not turning the delivery on if FIX-2159 makes it opt-in. FAIL on signal 4. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL |
@@ -128,7 +128,7 @@ draws the item it emits.
 | Gap | Blocks |
 |---|---|
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · **the workforce client lists a person's sessions of one worker.** A new session is an ordinary session on the worker's flow; the derived session stays the default conversation, where messages and routed tasks land ([epic D3, ER-7](../../epics/FIX-2152/DECISIONS.md#d3)). No new criteria key | The sessions list · steps 1 to 5 |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken before the filer's next model call**, as a delivery mode on FIX-2078's one path, and the take shows as an item in the running request | Step 4 |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken before the filer's next model call**, as a delivery mode on FIX-2078's one path, and the take shows as an item in the running request. A notice that lands during the turn's last model call still gets a further model step in that same request, so the turn cannot end with the notice untaken | Step 4 |
 | Checked at wiring: **the person can read a task's run session** | Opening a row; a gap only if refused |
 | **`listTasks` rows carry when a task started and ended** | Nothing; without it the pane shows no elapsed time. Filed in the project, not as a child |
 
