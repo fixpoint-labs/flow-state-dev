@@ -496,7 +496,7 @@ function buildTaskGate(options: {
           ctx._markTaskScope?.(held.id);
           stampCurrentClaim(ticket, ctx);
           // ADMISSION (FIX-2077): a row waiting on something (a stop, filed
-          // work, a queued message) gets a lease again, renewed until this
+          // work, a steer's turn) gets a lease again, renewed until this
           // request ends, and the task is checked at that end.
           const renewal = await admitClaimedTask(ctx, {
             ref: board,
@@ -688,8 +688,8 @@ async function writeRunLink(
       requestId: ctx.request.identity.id,
       attempt: held.attempts,
       // The attempt's start, kept when this run relinks the same attempt (a
-      // resume, a lapsed lease taken back): the "queued" window counts from
-      // it. A new attempt starts with no link (the claim clears it).
+      // resume, a lapsed lease taken back). A new attempt starts with no link
+      // (the claim clears it).
       startedAt: held.run?.attempt === held.attempts && held.run.startedAt != null ? held.run.startedAt : board.now(),
     },
     { claim: ticket }

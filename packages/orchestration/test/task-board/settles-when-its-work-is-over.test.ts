@@ -1,13 +1,13 @@
 /**
  * The claim gate settles a dispatched task once, when its work is over
  * (FIX-2077, rule 6): its request and that request's background work have
- * ended, no filed work still holds it, and nothing is queued for it. A task
- * that waits keeps its claim with no lease (D1), so it is never run twice.
+ * ended, and no filed work still holds it. A task that waits keeps its claim
+ * with no lease (D1), so it is never run twice.
  *
  * The gate runs as a real action root under `runAction`, so the engine's
  * drains and its request-end seam are the real ones. A second action stands
- * in for a later request for the same task (a notice of a piece's ending, a
- * queued message): it admits itself with `taskRequestAdmission`.
+ * in for a later request for the same task (a notice of a piece's ending):
+ * it admits itself with `taskRequestAdmission`.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -30,6 +30,7 @@ import {
 import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/skills/steer-context";
 import {
   createResourceBackedTaskCollection,
+  filedWorkHolds,
   type Task,
   type TaskChangeEvent,
   type TaskCollectionRef,
@@ -45,8 +46,8 @@ type Behaviour = (ctx: BlockContext, ledger: TaskCollectionRef) => Promise<unkno
 
 async function harness(
   options: {
-    queued?: () => boolean;
-    queuedWith?: (ledger: TaskCollectionRef) => Promise<boolean>;
+    /** Run while the check asks whether filed work holds the task: after its read of the row, before the settle. */
+    whileHoldsAreChecked?: (ledger: TaskCollectionRef) => Promise<void>;
     steerTurn?: boolean;
     /** What the gate's `complete` does after the store answers, with that answer. */
     afterComplete?: (outcome: TaskWriteOutcome) => Promise<void>;
@@ -101,8 +102,10 @@ async function harness(
 
   // The task session's steer entry (FIX-2086 D2), named when the flow declares one.
   const endRules = {
-    workQueued: async () =>
-      options.queuedWith !== undefined ? options.queuedWith(await ledger()) : (options.queued?.() ?? false),
+    filedWorkHolds: async (_ctx: BlockContext, task: Task, ref: TaskCollectionRef) => {
+      await options.whileHoldsAreChecked?.(await ledger());
+      return filedWorkHolds(ref, task.id);
+    },
     ...(options.steerTurn === true ? { steerTurn: { entry: "steerTurn" } } : {}),
   };
   // The waits the gate writes, as it asks for them (a declined one included).
@@ -218,7 +221,7 @@ async function harness(
     actions: {
       implement: entry,
       notice: { inputSchema: z.object({}), block: later(true) },
-      message: { inputSchema: z.object({}), block: later(false) },
+      check: { inputSchema: z.object({}), block: later(false) },
       steerTurn: { inputSchema: z.object({}), block: steerEntry },
     },
     request: {
@@ -263,7 +266,7 @@ async function harness(
       stores,
       runtimeConfig,
     });
-  const runLater = (actionName: "notice" | "message" | "steerTurn") =>
+  const runLater = (actionName: "notice" | "check" | "steerTurn") =>
     runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -413,38 +416,8 @@ describe("the claim gate settles a task when its work is over", () => {
     expect(await h.row()).toMatchObject({ status: "completed", output: "answer" });
   });
 
-  it("a message queued for the task runs before the settle, and its answer never becomes the output", async () => {
-    let queued = true;
-    const h = await harness({ queued: () => queued });
-
-    await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "queued", output: "the answer" });
-
-    queued = false;
-    h.setLaterTurn(async () => "the message's answer");
-    await h.runLater("message");
-
-    expect(await h.row()).toMatchObject({ status: "completed", output: "the answer" });
-  });
-
-  it("a task held by a queued message keeps its claim's lease, and its run link says when the attempt started", async () => {
-    const h = await harness({ queued: () => true });
-
-    await h.run();
-
-    const row = (await h.row())!;
-    expect(row).toMatchObject({ status: "in_progress", waitingOn: "queued" });
-    // What the message rule counts from: messages from before this attempt hold nothing.
-    expect(row.run?.startedAt).toEqual(expect.any(Number));
-    // A message that never runs must not hold the task forever: a span from
-    // the check, the lease lapses and the reclaim takes the task back.
-    expect(row.leaseUntil).toBeGreaterThanOrEqual(row.run!.startedAt! + row.leaseDurationMs!);
-  });
-
-  it("a resume keeps the attempt's start: a message sent before it still counts as queued", async () => {
-    // The gate links the run again on a resume. Restarting the window there
-    // would drop a message delivered while the task waited, and the task would
-    // complete past it.
+  it("a resume keeps the attempt's start on its run link", async () => {
+    // The gate links the run again on a resume: the same attempt, started when it was.
     const h = await harness();
     h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "human_input", message: "waiting" }) }));
     const first = await h.run();
@@ -457,22 +430,7 @@ describe("the claim gate settles a task when its work is over", () => {
     expect((await h.row())!.run!.startedAt).toBe(startedAt);
   });
 
-  it("a checkpoint the message's request reports is the output", async () => {
-    let queued = true;
-    const h = await harness({ queued: () => queued });
-    await h.run();
-
-    queued = false;
-    h.setLaterTurn(async (ctx, ledger) => {
-      await ledger.reportProgress!("t1", { output: "checkpointed" }, { claim: currentWorkerClaim(ctx)! });
-      return "the message's answer";
-    });
-    await h.runLater("message");
-
-    expect(await h.row()).toMatchObject({ status: "completed", output: "checkpointed" });
-  });
-
-  it.each(["notice", "message"] as const)(
+  it.each(["notice", "check"] as const)(
     "a %s request while the task's own request is stopped settles nothing: the task waits on that stop, and the resume settles it",
     async (later) => {
       const h = await harness();
@@ -483,7 +441,7 @@ describe("the claim gate settles a task when its work is over", () => {
       const first = await h.run();
       expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person" });
 
-      // A piece of the task ends (or a message arrives) while its own turn waits on the person.
+      // A piece of the task ends (or a check runs) while its own turn waits on the person.
       h.setLaterTurn(async () => "an answer while it waits");
       await h.runLater(later);
 
@@ -622,17 +580,17 @@ describe("a steer no request took gives the task one more turn before it settles
   });
 
   it("a steer that lands after the check read the row, before the settle, still gets its turn", async () => {
-    // The steer arrives while the gate asks whether work is queued: after its
-    // own read of the row, before the complete. The complete itself declines.
+    // The steer arrives while the gate asks whether filed work holds the
+    // task: after its own read of the row, before the complete. The complete
+    // itself declines.
     let steered = false;
     const h = await harness({
       steerTurn: true,
-      queuedWith: async (ledger) => {
+      whileHoldsAreChecked: async (ledger) => {
         if (!steered) {
           steered = true;
           await steer(ledger, "late redirect");
         }
-        return false;
       },
     });
     h.setBehaviour(async () => "first answer");
@@ -662,10 +620,9 @@ describe("a steer no request took gives the task one more turn before it settles
         expect((await h.reclaim())?.attempts).toBe(2);
         await steer(await h.ledger(), "for the second attempt");
       },
-      queuedWith: async (ledger) => {
+      whileHoldsAreChecked: async (ledger) => {
         // After the check's read, before the complete: the complete declines.
         if ((await ledger.get("t1"))?.steers === undefined) await steer(ledger, "late redirect");
-        return false;
       },
     });
     h.setBehaviour(async () => "first answer");
@@ -753,14 +710,23 @@ describe("a task's background error fails its attempt", () => {
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
   });
 
-  it("a background step of a queued message's request that throws fails the attempt", async () => {
-    let queued = true;
-    const h = await harness({ queued: () => queued, laterWriteFails: () => "the message's write failed" });
+  /** The task's work files a piece and answers; the piece then ends, so the notice of its ending is the request that checks it. */
+  async function waitingOnAPiece(h: Awaited<ReturnType<typeof harness>>) {
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.addTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
     await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "queued" });
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "filed" });
+    expect((await h.reclaim())?.id).toBe("piece");
+    await (await h.ledger()).complete("piece", "piece done");
+  }
 
-    queued = false;
-    await h.runLater("message");
+  it("a background step of a later request admitted for the task that throws fails the attempt", async () => {
+    const h = await harness({ laterWriteFails: () => "the notice's write failed" });
+    await waitingOnAPiece(h);
+
+    await h.runLater("notice");
 
     const row = await h.row();
     expect(row).toMatchObject({ status: "pending", attempts: 1 });
@@ -768,21 +734,19 @@ describe("a task's background error fails its attempt", () => {
   });
 
   it("when the request also threw, the request's own error is the one recorded", async () => {
-    // A message's request: no gate rescue fails the attempt in-band, so the
-    // check at its end is the one that records which error failed it.
-    let queued = true;
-    const h = await harness({ queued: () => queued, laterWriteFails: () => "the message's write failed" });
-    await h.run();
+    // A later request: no gate rescue fails the attempt in-band, so the check
+    // at its end is the one that records which error failed it.
+    const h = await harness({ laterWriteFails: () => "the notice's write failed" });
+    await waitingOnAPiece(h);
 
-    queued = false;
     h.setLaterTurn(async () => {
-      throw new Error("the message broke");
+      throw new Error("the notice broke");
     });
-    await h.runLater("message");
+    await h.runLater("notice");
 
     const row = await h.row();
     expect(row).toMatchObject({ status: "pending", attempts: 1 });
-    expect(row?.feedback).toContain("the message broke");
-    expect(row?.feedback).not.toContain("the message's write failed");
+    expect(row?.feedback).toContain("the notice broke");
+    expect(row?.feedback).not.toContain("the notice's write failed");
   });
 });

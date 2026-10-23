@@ -2,8 +2,8 @@
  * `waitingOn` (FIX-2077 D1): a running task that waits keeps its claim with no
  * lease.
  *
- * A lease means "a live worker holds this". A task waiting on a person, on
- * work it filed or on a queued message has no live worker, so the row records
+ * A lease means "a live worker holds this". A task waiting on a person, or
+ * on work it filed, has no live worker, so the row records
  * what it waits on and drops its lease, and the reclaim (which takes only rows
  * whose lease ran out) leaves it alone: a waiting task is never run twice.
  * Admission clears the field and gives the row a lease again.
@@ -94,23 +94,13 @@ describe.each([
 
   it("keeps the request's answer as the output while it waits, unless a checkpoint was reported", async () => {
     const { collection, claim } = await claimed();
-    await collection.setWaitingOn!("t", "queued", { claim, answer: { output: "the answer" } });
+    await collection.setWaitingOn!("t", "filed", { claim, answer: { output: "the answer" } });
     expect(collection.get("t")?.output).toBe("the answer");
 
     const other = await claimed();
     await other.collection.reportProgress!("t", { output: "checkpoint" }, { claim: other.claim });
-    await other.collection.setWaitingOn!("t", "queued", { claim: other.claim, answer: { output: "the answer" } });
+    await other.collection.setWaitingOn!("t", "filed", { claim: other.claim, answer: { output: "the answer" } });
     expect(other.collection.get("t")).toMatchObject({ output: "checkpoint", checkpointed: true });
-  });
-
-  it("work queued for it keeps a lease: if that work never runs, the lapse takes the task back and the next attempt waits on nothing", async () => {
-    const { collection, claim, setNow } = await claimed();
-    await collection.setWaitingOn!("t", "queued", { claim, leaseUntil: 11_000 });
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", waitingOn: "queued", leaseUntil: 11_000 });
-
-    setNow(20_000);
-    expect(await collection.claim("w2", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 2 });
-    expect(collection.get("t")?.waitingOn).toBeUndefined();
   });
 
   it("refuses a request that does not hold the claim", async () => {

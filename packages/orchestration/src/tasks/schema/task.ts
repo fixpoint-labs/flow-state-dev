@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "../steers";
+import { QUEUED_WAIT } from "./retired-shapes";
 
 /** The base Task schema. */
 export const taskSchema = z.object({
@@ -488,12 +489,9 @@ export const taskSchema = z.object({
   /**
    * What keeps this running task open while no worker holds it (FIX-2077 D1):
    * `"person"`, a stop to ask a person; `"wait"`, any other suspension (a
-   * webhook, a call); `"filed"`, work it filed that still holds it; `"queued"`,
-   * work queued for it that has not run. Only on an `in_progress` row. A row
-   * waiting on a person, a wait or filed work has no lease, so the reclaim
-   * leaves it alone: that task is never run again by a lapse. A row waiting
-   * on `"queued"` keeps its claim's lease: queued work is about to run, and
-   * if it never does the lapse takes the task back. `"steer"`, a steer no
+   * webhook, a call); `"filed"`, work it filed that still holds it. Only on an
+   * `in_progress` row. A waiting row has no lease, so the reclaim leaves it
+   * alone: that task is never run again by a lapse. `"steer"`, a steer no
    * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
    * no lease. The request admitted for it next clears it and starts a lease;
    * every ending, and every claim, clears it.
@@ -501,8 +499,15 @@ export const taskSchema = z.object({
    * Not FIX-2080's `held`, which is a status before a start: this applies only
    * after one. Server-written by the claim gate (`setWaitingOn`), never by a
    * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
+   * `"queued"`, which a row stored while a queued message held it open
+   * carries, reads as `"filed"`: its request had answered (the retired-shape
+   * map's `queued` entry).
    */
-  waitingOn: z.enum(["person", "wait", "filed", "queued", "steer"]).nullable().optional(),
+  // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
+  // it, and every src read of a stored row goes through `withRetiredShapes` first.
+  waitingOn: z
+    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["person", "wait", "filed", "steer"]).nullable())
+    .optional(),
 
   /**
    * The wait on this row is over (its turn was stopped, or it timed out) but

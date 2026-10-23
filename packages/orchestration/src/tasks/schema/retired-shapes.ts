@@ -8,7 +8,7 @@
  * migrations (`withMigratedStatus`, `withMigratedWait`). No other module reads
  * a retired shape of its own.
  *
- * Six entries, each with its own switch. An entry is turned on in the change
+ * Seven entries, each with its own switch. An entry is turned on in the change
  * that stops writing its shape, by that shape's owner:
  *
  * | Entry | Reads | As | On |
@@ -19,6 +19,7 @@
  * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
  * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
+ * | `queued` | a running row held open for a message queued to its session (`waitingOn: "queued"`) | running, `waitingOn: "filed"`, no lease | FIX-2103 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
  * code that still writes it expects. Removed no earlier than FIX-2071.
@@ -36,8 +37,11 @@ import { isTerminalStatus, type TaskStatus } from "./task-status";
 const REOPENED_STEER =
   "The user wrote to you about this task after you had finished it; their message is the latest line in this session. Pick the task up again from there.";
 
+/** The wait a row held open for a queued message stored (`waitingOn`), which no write makes now. */
+export const QUEUED_WAIT = "queued";
+
 /** The retired shapes, one entry each. */
-export type RetiredShape = "blocked" | "recorded" | "post" | "parked-split" | "reopened" | "parked-for-turn";
+export type RetiredShape = "blocked" | "recorded" | "post" | "parked-split" | "reopened" | "parked-for-turn" | "queued";
 
 /** One entry: whether it is read, who turns it on, and how it reads a row. */
 export interface RetiredShapeEntry {
@@ -155,9 +159,20 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...rest, status: "pending", turnReentries: reentries + 1 };
     },
   },
+  // A running row a queued message held open: its work had answered, and the
+  // answer is kept as its output. A message no longer holds a task, so it
+  // reads as a task whose request answered and that waits on its filed work,
+  // with no lease: no lapse runs the answered work again, and the check its
+  // session runs next (the upgrade's backfill owes one) settles it with the
+  // kept answer once no filed work holds it.
+  queued: {
+    on: true,
+    owner: "FIX-2103",
+    read: (row) => (row.waitingOn === QUEUED_WAIT ? { ...without(row, "leaseUntil"), waitingOn: "filed" } : undefined),
+  },
 };
 
-const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "parked-split", "reopened", "parked-for-turn"];
+const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "parked-split", "reopened", "parked-for-turn", "queued"];
 
 /**
  * A stored row read in the current shapes: every entry that is on, in order.
