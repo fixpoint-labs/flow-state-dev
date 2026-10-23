@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today nothing reads Codex's subscription limits, so a person learns a window ran out when a run fails. After: the host registers a Codex reader. One usage collection per person holds a record per harness and account. The one query reads it, refreshes Codex first when asked, at most once a minute, and returns each window with its age and whether it has rolled over. The Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same writer later."
+<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today nothing reads Codex's subscription limits, so a person learns a window ran out when a run fails. After: the host registers a Codex reader. One usage collection per person holds one current record per harness. The one query reads it, refreshes Codex first when asked, at most once a minute, and returns each window with its age and whether it has rolled over. The Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same writer later."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
 
     <rect class="new" x="510" y="228" width="190" height="48" rx="4"/>
     <text class="t-b" x="522" y="248">harness-usage/**</text>
-    <text class="t-s" x="522" y="264">user scope · harness, account</text>
+    <text class="t-s" x="522" y="264">user scope · one per harness</text>
     <path class="arrow" d="M460 252 L510 252"/>
 
     <rect class="new" x="510" y="160" width="190" height="48" rx="4"/>
