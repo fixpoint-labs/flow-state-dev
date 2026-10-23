@@ -619,11 +619,19 @@ describe("rounds (V5)", () => {
     await quiet(host);
 
     // The coder's post ran again once its lease lapsed, as a routed task, and answered.
-    expect(host.heard.filter((h) => h.message.includes("the old post")).map((h) => [h.worker, h.message.split(":")[0]])).toEqual([
-      ["eng.coder", "alice, through desk"],
-      ["eng.em", "eng.coder, through desk"],
-      ["eng.coder", "eng.em, through desk"]
-    ]);
+    const heard = host.heard.filter((h) => h.message.includes("the old post")).map((h) => [h.worker, h.message.split(":")[0]]);
+    expect(heard[0]).toEqual(["eng.coder", "alice, through desk"]);
+    // Then each answer went on to the other delegate. Those two turns run at
+    // once, in two delegates' sessions, and nothing orders one before the
+    // other, so which is heard first is not part of this; the round's record
+    // below names them in the order they were filed.
+    expect(heard.slice(1)).toHaveLength(2);
+    expect(heard.slice(1)).toEqual(
+      expect.arrayContaining([
+        ["eng.em", "eng.coder, through desk"],
+        ["eng.coder", "eng.em, through desk"]
+      ])
+    );
     const rows = await host.routedRows("alice");
     expect(rows.find((row) => row.id === coder.id)).toMatchObject({ status: "completed", output: "eng.coder heard: alice, through desk: the old post" });
     // The round closed on both answers, and each went on once to the other delegate.

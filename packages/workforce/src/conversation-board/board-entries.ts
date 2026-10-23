@@ -64,3 +64,15 @@ export const RETRY_OF = "retryOf";
  * sent. Server-written by the first piece's filing (`./cascade`).
  */
 export const FILED_MARKER = "filedFrom";
+
+/**
+ * The metadata key on a task's row holding the worker-message hop count and
+ * chain of the turn that filed it (FIX-2106): the task's turn starts there,
+ * so a message from it counts on in its filer's exchange whichever session
+ * it runs in, beside how many user's lines the filer's session had taken.
+ * Server-written by the filing, and cleared (`null`) by the claim once the
+ * user has written in the filer's conversation since; a caller's filing or
+ * patch never reaches it. **Absent** on a row filed before rows carried it, whose turn
+ * reads its session's count, as before (BP-030).
+ */
+export const FILED_HOP = "filedAtHop";

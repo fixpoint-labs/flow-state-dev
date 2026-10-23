@@ -13,6 +13,11 @@
  *   written (`../coordinator/routed-brief`), and its model is shown the
  *   conversation's recent lines for that turn when the flow's generator reads
  *   `routedTaskHistory`.
+ * - **Its hop count** (FIX-2106). The turn starts at the worker-message hop
+ *   count and chain its filing recorded on the row, read off the row the gate
+ *   verified, so a message from it counts on in its filer's exchange, in an
+ *   ongoing session as in one of its own. A row filed before rows recorded
+ *   one reads the session's count, as before.
  * - **The message** (FIX-1817). The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
@@ -52,7 +57,8 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { DISPATCH_ENTRY } from "./board-entries";
+import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
+import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { PLAN_LEDGER_ID, planLedgerAt } from "./plan";
 import { noteRoutedSession, routedSessionResources } from "./routed-session";
@@ -213,6 +219,27 @@ const noteRoutedFrom = handler({
 });
 
 /**
+ * Start the task's turn at the hop count and chain its filing recorded on the
+ * row (FIX-2106): read off the row the gate just verified, through the ledger
+ * the claim names, never off the dispatch's payload. A row with none (one
+ * filed before rows recorded it, or a step) leaves the turn at its session's.
+ */
+const startAtFiledHop = handler({
+  name: "worker-task-start-at-filed-hop",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  requestStateSchema: messageTurnStateSchema,
+  execute: async (_task: unknown, ctx) => {
+    const claim = currentWorkerClaim(ctx as never);
+    if (claim === undefined) return {};
+    const ledger = await conversationLedgers(claim.collectionId, ctx as never, claim.partition, claim.taskId);
+    const mark = hopMarkOf(ledger?.get(claim.taskId)?.metadata?.[FILED_HOP]);
+    if (mark !== undefined) await startTurnAtHop(ctx as never, mark.hop, mark.chain);
+    return {};
+  }
+});
+
+/**
  * The claim the gate put on its state, as a `block` entry hands it on. The
  * entry's block runs in the gate's step and declares no state of its own, so
  * the nearest stateful sequencer is the gate.
@@ -284,7 +311,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   // the task's message. A task that filed pieces stays running when the turn
   // ends, and the turn their endings wake decides it (FIX-2077): the gate's
   // check at the end of each request for it.
-  const base = sequencer({ name, inputSchema: taskWorkerInputSchema }).tap(noteRoutedFrom);
+  const base = sequencer({ name, inputSchema: taskWorkerInputSchema }).tap(noteRoutedFrom).tap(startAtFiledHop);
   const block =
     options.block !== undefined
       ? base.step(

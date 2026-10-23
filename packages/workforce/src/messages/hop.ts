@@ -11,7 +11,16 @@
  * - a turn a message wakes is at that message's count (`onWorkerMessage`);
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;
- * - every other turn (a notice's, a post's, a task's) reads the session's.
+ * - a task's turn is at its filing turn's count, which the filing records on
+ *   the row (FIX-2106), so a task run in an existing session (an ongoing one,
+ *   or a follow-up's) counts on from its filer too. The record stands until
+ *   a user's line in the filer's conversation: the record keeps how many user
+ *   lines that session had seen at the filing, and a claim that finds more
+ *   clears it, so the turn runs as a row with none. A message from another
+ *   chain moving the filer's session elsewhere leaves it standing. A row with
+ *   none (one filed before rows recorded it) reads its born-with count, or
+ *   its session's;
+ * - every other turn (a notice's, a post's) reads the session's.
  *
  * The limit is the whole exchange's, not one path's: everything descending
  * from one user's turn shares one budget. A user's turn starts a new chain id
@@ -32,6 +41,13 @@ export const MESSAGE_HOP_STATE = "workforceMessageHop";
 /** The session-state field the chain id a session's count belongs to is kept in. Server-owned. */
 export const MESSAGE_CHAIN_STATE = "workforceMessageChain";
 
+/**
+ * The session-state field counting the user's lines a session has taken, one
+ * per user's turn (`markUserTurn`), so a filed task's record can tell whether
+ * the user wrote there since (FIX-2106). Server-owned. Absent reads 0.
+ */
+export const USER_LINES_STATE = "workforceUserLines";
+
 /** The request-state field a turn's chain id is copied to. */
 export const TURN_CHAIN_STATE = "workforceTurnChain";
 
@@ -44,7 +60,8 @@ export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
   [MESSAGE_HOP_STATE]: z.number().int().nonnegative().default(0),
-  [MESSAGE_CHAIN_STATE]: z.string().nullable().default(null)
+  [MESSAGE_CHAIN_STATE]: z.string().nullable().default(null),
+  [USER_LINES_STATE]: z.number().int().nonnegative().default(0)
 } as const;
 
 /** The request state the hop and the per-turn count are kept in. */
@@ -66,6 +83,12 @@ export function turnHopOf(ctx: Pick<BlockContext, "request" | "session">): numbe
   const value = (ctx.request?.state as Record<string, unknown> | undefined)?.[TURN_HOP_STATE];
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
   return sessionHopOf(ctx.session.state);
+}
+
+/** How many user's lines a session has taken: 0 for one that counts none. */
+export function sessionUserLinesOf(state: unknown): number {
+  const value = (state as Record<string, unknown> | undefined)?.[USER_LINES_STATE];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 /** A new chain id, for a user's turn. */
@@ -95,16 +118,56 @@ export function carriedHopState(state: unknown): Record<string, unknown> {
 }
 
 /**
+ * Where a turn stands in its exchange: its hop count, the chain it belongs to,
+ * and how many user's lines its session had taken.
+ */
+export interface HopMark {
+  readonly hop: number;
+  readonly chain: string | null;
+  readonly lines: number;
+}
+
+/** The running turn's count and chain, and its session's user lines, for a filing to record on its row (FIX-2106). */
+export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): HopMark {
+  return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null, lines: sessionUserLinesOf(ctx.session.state) };
+}
+
+const hopMarkSchema = z.object({
+  hop: z.number().int().nonnegative(),
+  chain: z.string().min(1).nullable(),
+  lines: z.number().int().nonnegative()
+});
+
+/** A recorded {@link HopMark}, or `undefined` for anything else (a row filed before rows recorded one). */
+export function hopMarkOf(value: unknown): HopMark | undefined {
+  const parsed = hopMarkSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
  * Start this turn at `hop` in `chain`: the session's current count and chain,
  * and this request's. The session fields are written only when they would
  * read differently. A `null` chain (a message row from before rows carried
  * one) leaves the turn to start one at its first send.
  *
  * @param also More request state to write in the same patch.
+ * @param alsoSession More session state for the session's write, worked out
+ *   from the session's state as that write reads it (again on a retry), so a
+ *   count kept there loses no step to a write that landed first. Written only
+ *   when the session's count or chain moves, in the same atomic write.
  */
-export async function startTurnAtHop(ctx: BlockContext, hop: number, chain: string | null, also: Record<string, unknown> = {}): Promise<void> {
+export async function startTurnAtHop(
+  ctx: BlockContext,
+  hop: number,
+  chain: string | null,
+  also: Record<string, unknown> = {},
+  alsoSession?: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>
+): Promise<void> {
   if (sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain) {
-    await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain } as never);
+    const fields = { [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain };
+    await (alsoSession === undefined
+      ? ctx.session.patchState(fields as never)
+      : ctx.session.atomicState(((state: Readonly<Record<string, unknown>>) => ({ ...fields, ...alsoSession(state) })) as never));
   }
   await ctx.request.patchState({
     ...also,
