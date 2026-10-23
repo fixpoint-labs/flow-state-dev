@@ -25,7 +25,7 @@ result inside the reply that is still running, once, and that reply goes on to u
 | **The real need** | The epic's leg a, step 4: "one result shows in the main thread while that turn is still running" ([FIX-2152](../../epics/FIX-2152/SPEC.md#the-goal-and-how-well-know-its-met)). FIX-2153's signal 4 checks that the result, the working indicator and the later text share the first request's id |
 | **Smaller, and rejected** | "The app reads finished tasks after its answer." Doable in the lab today, and every result is then heard twice: once by the lab, once by the notice turn after the reply ([D1](DECISIONS.md#d1)) |
 | **Bigger, and not this issue's** | A message from another worker reaching a running turn. A message is not an ending (FIX-2103); FIX-2070 owns where messages land |
-| **Not done if** | The result shows only in a second request · it is heard twice · a crash before the acknowledgement loses it (after the acknowledgement it is dropped, as today: at most once) · the loop lives in package code the lab can't see |
+| **Not done if** | The result shows only in a second request · it is heard twice · a crash before the acknowledgement loses it (after the acknowledgement it is dropped, as today: at most once) · the app can't choose what the worker answers about |
 
 ```mermaid
 flowchart LR
@@ -43,8 +43,8 @@ The check reads the session's items, which is what the lab draws, never the take
 | **Goal check** | `goals/hand-offs/result-reaches-the-running-turn/` · `openai/gpt-5.4-mini` · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | Each result line under the delegate's name carries the respond request's id, appears once in the session, and is followed in that request by text naming the result's nonce |
 | **Input** | Each delegate answers with a nonce fixed per run. A different nonce, or the second task ending first, must pass too |
-| **Anti-game** | Don't assert on the take record, the hook's return or a mocked model. All three pass while the line lands in a second request |
-| **Control that must fail** | `GOAL_CONTROL=read-only`: the app's hook reads finished rows instead of taking them. It must FAIL on *appears once in the session*, and today's `main` on *carries the respond request's id*. The PR shows both FAILs before the PASS |
+| **Anti-game** | Don't assert on the take record, the app block's return or a mocked model. All three pass while the line lands in a second request |
+| **Control that must fail** | `GOAL_CONTROL=read-only`: the app's block reads finished rows instead of taking them. It must FAIL on *appears once in the session*, and today's `main` on *carries the respond request's id*. The PR shows both FAILs before the PASS |
 
 ## What changes
 
@@ -58,8 +58,8 @@ bottom row is a second ending, which loops once more within the bound ([D3](DECI
 ```diff
   export default defineAgentWorkerFlow({
     installation,
-+   // After each answer, in the same request: anything that finished while it ran?
-+   // A block, like afterAnswer. Its output is the next message, or nothing to stop.
++   // What else the worker answers about, in the same request: anything that finished while it ran?
++   // Fed to the answer-once-more step the plan already uses. A message, or nothing to stop.
 +   answerAgain: sequencer({ name: "lab-answer-again" })
 +     .step(takeFinishedTasks)
 +     .step(handler({
@@ -69,13 +69,28 @@ bottom row is a second ending, which loops once more within the bound ([D3](DECI
   });
 ```
 
-Both pieces are blocks, so they show in the trace and compose like any other: the flow factory's
-`answerAgain` slot takes a block, as `afterAnswer` does, and `takeFinishedTasks` is a handler the
-package exports. The factory owns going back to the worker's turn; the app's block only decides
-whether there is a next message. The two names are working names; the implementer fixes them. The hook sits on the door a person's message comes through, after the whole turn, its plan's answer included, so it runs once per request and never in a task or notice turn. Each answer again is one more turn of the worker, plan and all; the bound of three counts only these, not the plan's own answer. The bound is one named, exported constant. After the last allowed answer the hook isn't run and the take hands over nothing, so later endings stay owed for the queued `onTaskSettled` rather than being taken with no answer to use them.
+**One way to answer again, not two.** `planned` (FIX-2076) already wraps every turn of the
+worker: the turn runs, its steps drain, and the worker answers once more, told how each step
+ended. That answer-once-more step is extracted into one block with two sources: the plan's
+ended steps, and the app's `answerAgain` block. After the turn it answers while a source has a
+message, under one exported cap, built on core's `doWhile` as the board's round loop is. The
+plan's answer counts toward the cap like any other. An answering turn files no step for itself,
+as `planned`'s does today; a task for a delegate is still dispatched. After the last allowed
+answer no source runs, so later endings stay owed for the queued `onTaskSettled` rather than
+being taken with no answer to use them.
+
+**Why the app still passes a block.** The person's door is built inside the factory
+(`agent-user-turn` runs `run`), and its one seam, `afterAnswer`, is a side step that can't
+answer. Without a slot an app can't put anything after the turn. The slot adds no loop and no
+cap of its own: it is a second source for the existing step. `takeFinishedTasks` is a handler the
+package exports; the rest of the app's block is the app's. Both names are working names.
+
+**Where it runs.** Wherever `planned` does, which is every turn of the worker on an installation.
+The take hands over nothing outside a person's turn ([D2](DECISIONS.md#d2)), so in a task or
+notice turn the app's source finds nothing and the step answers only for the plan, as today.
 
 **Docs:** rule 7 of `docs/internal/design/workforce-coordination-concept.md` gains the third
-destination. The workforce README documents the hook and the take, with the lab's lines as the
+destination. The workforce README documents the `answerAgain` source and the take, with the lab's lines as the
 example. No `apps/docs` page.
 
 ## How it reaches the turn
@@ -83,7 +98,7 @@ example. No `apps/docs` page.
 ```mermaid
 flowchart LR
   D["delegate's request · records the ending"] -->|"owed marker on the row"| B["conversation ledger"]
-  A["person's turn · the answer ends"] -->|"the app's hook calls the take"| K["takeFinishedTasks"]
+  A["person's turn · the answer ends"] -->|"the shared answer step asks the app's block, which calls the take"| K["takeFinishedTasks"]
   K -->|"committed read · take in the turn's name · handle · acknowledge"| B
   K -->|"line under the delegate's name"| S["session items"]
   K -->|"message"| A2["the same turn answers again"]
@@ -98,7 +113,7 @@ finds nothing owed ([POC](poc/take-in-turn/README.md)).
 - **Core and engine.** The model loop and request concurrency are untouched.
 - **Rules 5 and 6.** A take records no ending and settles nothing.
 - **The queued `onTaskSettled`.** It still runs for every notice no turn took: in a task session,
-  in a worker-to-worker exchange, between turns, after a crash, and in any app that sets no hook.
+  in a worker-to-worker exchange, between turns, after a crash, and in any app that sets no `answerAgain` source.
 - **A wait.** A request waiting on the task with `getTask` resumes with the result; that row owes
   no notice to take.
 - **Routed results.** A task whose result goes to the conversation stays with its routing.
@@ -115,20 +130,20 @@ finds nothing owed ([POC](poc/take-in-turn/README.md)).
 | FIX-2078's one ending path: `taskSettledEntry` and Workforce's handling in `task-settled.ts` | **Factors, then builds on.** The end, report, dedupe (`noteSeen`) and acknowledge part of the queued `settle` becomes one function that `settle` and the take both call. One handling, two callers: only where the line goes differs, said here and handed back, or a woken turn |
 | FIX-2086's steer entry (`steer-context.ts`, `steersTakenIn`) | **Leaves alone.** It stays task-only; nothing reads a result before each model call |
 | `isUserTurn` (FIX-1945) | **Builds on.** The gate inside the take ([D2](DECISIONS.md#d2)) |
-| The worker turn's answer-once-more after its plan (FIX-2076) | **Builds on.** The hook's answer is the same kind of step, in the same request |
-| `afterAnswer` on the agent flow | **Leaves alone.** A side step; the new hook is the one that may answer |
-| `AFTER_REPLY_CONCURRENCY` | **Leaves alone.** The queued copy still waits; with a hook set it usually finds nothing owed |
-| `maxSteps` (core, the tool loop) and `MAX_PASS_ROUNDS` (the board's drain rounds) | **Leaves alone.** The answer-again bound is a third, separate count, of answers again in one request |
+| The worker turn's answer-once-more after its plan (FIX-2076) | **Extracts and shares.** It becomes the one answer-again step, with the plan and the app's block as its two sources and one exported cap. No second answer-again |
+| `afterAnswer` on the agent flow | **Leaves alone.** A side step that can't answer, which is why the app's source needs its own slot |
+| `AFTER_REPLY_CONCURRENCY` | **Leaves alone.** The queued copy still waits; with a source set it usually finds nothing owed |
+| `maxSteps` (core, the tool loop) and `MAX_PASS_ROUNDS` (the board's drain rounds) | **Leaves alone.** The shared step's cap counts answers again in one request, which neither counts. Built on `doWhile` like the round loop |
 | Rule 7 | **Amended** by epic D2, approved at its merge |
 | Anything else that hands an ending to a running request | **None for a conversation.** Searched `prepareStep`, `takeNotice`, `takenIn`, `noticeTaken`, `afterAnswer` across `packages/`; only steers reach a running request, and only a task's |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One public take on the workforce package · one hook on the agent worker flow · one exported bound · a second caller of the take record and of the factored handling, the person's turn |
+| **Adds** | One public take on the workforce package · one source slot on the agent worker flow, feeding an existing step · one exported cap on that step · a second caller of the take record and of the factored handling, the person's turn |
 | **Leaves** | The queued notice turn, as the path for every notice no turn took. Not debt: task sessions and worker-to-worker exchanges still need it |
 
-**Net: up, a little.** Two public entries; no new mark, no second path, no context entry.
+**Net: up, a little.** One public take and one source slot; no new mark, no second ending path, no second answer-again, no context entry.
 
 ## Sign off
 
@@ -136,17 +151,19 @@ finds nothing owed ([POC](poc/take-in-turn/README.md)).
 once, measured on the session's items. If wrong: the lab's step 4 passes while the person sees
 the result twice.
 
-**[The debt](#whats-already-here-and-the-debt), up a little:** two public entries, nothing
-removed. If wrong: two ways to hear an ending that someone must keep in step.
+**[The debt](#whats-already-here-and-the-debt), up a little:** a public take and a source slot
+on the answer step `planned` already runs, nothing removed. If wrong: two callers of one ending
+handling that someone must keep in step.
 
-1. **[D3](DECISIONS.md#d3) · The app's flow decides to answer again, through one hook; the package
-   only takes.** If wrong: every app that wants Claude Code's behaviour writes the same lines.
+1. **[D3](DECISIONS.md#d3) · The app's block feeds the one answer-again step `planned` already
+   runs; the package adds only the take.** If wrong: every app that wants Claude Code's behaviour
+   writes the same lines.
 2. **[D1](DECISIONS.md#d1) · The take is FIX-2123's take record, in the turn's name, with the
    queued handling's order.** If wrong: a result taken in the turn has weaker guarantees than one after it.
 3. **[D2](DECISIONS.md#d2) · Only a turn a person's own message started can take a result.** If
    wrong: a worker on a task, or two workers talking, wait for results Claude Code would show at once.
 
-**Open: none.** D3 is the one to weigh: it is the lab-flow build, with the part a lab can't do
-safely moved into the package.
+**Open: none.** D3 is the one to weigh: the app decides what to answer about, the package keeps
+one way to answer again and the part a lab can't do safely, the take.
 
 Feature · `workforce` · small · epic [FIX-2152](../../epics/FIX-2152/SPEC.md)

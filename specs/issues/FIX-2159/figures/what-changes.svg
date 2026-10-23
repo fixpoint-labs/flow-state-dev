@@ -72,7 +72,7 @@
     <line class="take" x1="490" y1="186" x2="490" y2="220"/>
     <circle class="lineit" cx="490" cy="230" r="4"/>
     <rect class="seg2" x="500" y="190" width="220" height="26" rx="4"/>
-    <text class="t-s" x="508" y="207">answer again · app's hook</text>
+    <text class="t-s" x="508" y="207">answer again · shared step</text>
     <text class="t-s" x="498" y="234">line in R</text>
     <text class="ghost" x="744" y="202">queued copy, after R:</text><text class="ghost" x="744" y="216">finds nothing owed</text>
     <line class="row" x1="16" y1="252" x2="924" y2="252"/>

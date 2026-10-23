@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D3: the app&#x27;s flow answers again through a hook and the package takes, chosen, beside all in the lab and the package reading before every model call. Decided by hearing each result once. Locks in a hook and a public take; flips if a lab may call the notice handling directly.">
+     aria-label="D3: the app&#x27;s block feeds the plan&#x27;s answer step and the package takes, chosen, beside all in the lab and the package reading before every model call. Decided by hearing each result once. Locks in one shared answer-again step and a public take; flips if a lab may call the notice handling directly.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -40,7 +40,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="226" y="112">App&#x27;s hook · package takes</text>
+    <text class="t-h c-code" x="226" y="112">App&#x27;s block · shared answer step</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="466" y="112">All in the lab</text>
@@ -68,8 +68,8 @@
     <text class="t-lbl" x="32" y="218">WHERE THE</text>
     <text class="t-lbl" x="32" y="231">LOOP LIVES</text>
     <text class="mark plus" x="226" y="224">+</text>
-    <text class="t-b" x="244" y="223">The app&#x27;s flow file</text>
-    <text class="t-s" x="244" y="241">a few lines a reader sees</text>
+    <text class="t-b" x="244" y="223">The plan&#x27;s answer step</text>
+    <text class="t-s" x="244" y="241">the app&#x27;s block says what about</text>
     <text class="mark plus" x="466" y="224">+</text>
     <text class="t-b" x="484" y="223">The app&#x27;s flow file</text>
     <text class="t-s" x="484" y="241">but glue for package work</text>
@@ -82,8 +82,8 @@
     <text class="t-lbl" x="32" y="280">NEW PACKAGE</text>
     <text class="t-lbl" x="32" y="293">ENTRIES</text>
     <text class="mark minus" x="226" y="286">−</text>
-    <text class="t-b" x="244" y="285">A hook and a take</text>
-    <text class="t-s" x="244" y="303">two public entries</text>
+    <text class="t-b" x="244" y="285">A take and a source slot</text>
+    <text class="t-s" x="244" y="303">on the step the plan already runs</text>
     <text class="mark plus" x="466" y="286">+</text>
     <text class="t-b" x="484" y="285">None</text>
     <text class="t-s" x="484" y="303">the lab carries it all</text>
@@ -95,13 +95,13 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="338" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="359">LOCKS IN</text>
-    <text class="t-b" x="32" y="379">A hook on the agent flow and a public take</text>
-    <text class="t-s" x="32" y="397">at most three answers again per request; no hook, today</text>
+    <text class="t-b" x="32" y="379">One answer-again step, shared with the plan</text>
+    <text class="t-s" x="32" y="397">fed by the app&#x27;s block and a public take; one exported cap</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="338" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="359">FLIPS IF</text>
     <text class="t-b" x="494" y="379">A lab may call the notice handling directly</text>
-    <text class="t-s" x="494" y="397">then the take is lab code and only the hook is new</text>
+    <text class="t-s" x="494" y="397">then the take is lab code and only the source slot is new</text>
   </g>
 </svg>
