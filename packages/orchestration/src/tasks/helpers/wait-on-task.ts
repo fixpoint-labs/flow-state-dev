@@ -9,7 +9,9 @@
  *    the rule: the host can hold a wait (durable execution, wakes, a sweeper);
  *    the deadline is within the host's bounds; this session filed the task
  *    (its server-written filer, never input, BP-031); its result doesn't go
- *    to the conversation; one wait per model step; and the chain of waits it
+ *    to the conversation; it isn't a step a plan's drain handed over and
+ *    waits on (the mark the drain's own wait writes on the slot, which
+ *    stays while the slot is lapsed); one wait per model step; and the chain of waits it
  *    joins stays within `MAX_WAIT_DEPTH`: the waits above this request and
  *    any already below the task it waits on, counted by the engine. A wait
  *    that waits again at its deadline counts again before each new park,
@@ -120,6 +122,8 @@ export type TaskWaitRefusal =
   | "wait_already_pending"
   /** Another request already waits on this task. */
   | "wait_taken"
+  /** A plan's drain handed this task over and waits on it, holding its slot or lapsed at a deadline. */
+  | "wait_on_plan_step"
   /** The chain of waits this one would join holds `MAX_WAIT_DEPTH` already. */
   | "wait_too_deep";
 
@@ -244,6 +248,16 @@ async function check(
         "when it ends. Nothing was written."
     );
   }
+  // A step a plan's drain handed over and waits on. Read off the slot, which
+  // keeps the mark while it is lapsed: a wait that took it then would leave
+  // the drain nothing to wait with, and fail the plan.
+  if (options.ownBoard !== true && row.wait?.drain === true && !isTerminalStatus(row.status)) {
+    return refused(
+      "wait_on_plan_step",
+      `task "${taskId}" is a step of a plan, and the plan's own run waits on it: a task has one waiter at a ` +
+        "time. Don't wait on the step; wait on the plan instead, which goes on once this step ends. Nothing was written."
+    );
+  }
 
   const waits = ctx.requestHost?.waits;
   if (
@@ -351,7 +365,12 @@ async function waitChecked(
       message: options.message ?? `Waiting on "${row.title ?? row.goal}"`
     };
     const requestId = ctx.request.identity.id;
-    const marked = await collection.markWait!(taskId, { gateId: planned.gateId, deadline: planned.deadline, requestId });
+    const marked = await collection.markWait!(taskId, {
+      gateId: planned.gateId,
+      deadline: planned.deadline,
+      requestId,
+      ...(drain ? { drain: true as const } : {})
+    });
     if (marked.outcome === "declined" && marked.reason !== "terminal") {
       return refused(
         "wait_taken",

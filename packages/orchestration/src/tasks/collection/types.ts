@@ -194,6 +194,8 @@ export interface TaskWaitSlot {
   readonly deadline: number;
   /** The waiting request, server-derived (`ctx.request.identity.id`). */
   readonly requestId: string;
+  /** The waiting request is a plan's drain, on a row it handed over (see `Task.wait.drain`). */
+  readonly drain?: true;
 }
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */

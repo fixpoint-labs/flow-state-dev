@@ -13,16 +13,21 @@
  * wrapping it, and the rest runs as shipped:
  *
  * - another request takes the lapsed wait slot between the drain's lapse and
- *   its re-mark: the same conditional write `getTask({ id, wait: true })`
- *   makes;
+ *   its re-mark: the conditional write a wait makes, put in under
+ *   `getTask`'s own check, which refuses that wait (below);
  * - the ledger's `lapseWait` or `markWait` write throws;
  * - the row is gone to the wait's own read when the drain resumes;
  * - the wait gate resumes with something that is not a wait outcome;
  * - the seam throws, rather than refusing, once the claim is released.
+ *
+ * And the one wait the filing session itself could make on a handed-over
+ * row, `getTask({ id, wait: true })` from a turn in the same session, is
+ * refused up front, whether the drain holds the row's slot or has lapsed it,
+ * and the plan runs on to its end.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID, defineFlow, dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
+import type { FlowInstance, GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
@@ -35,7 +40,7 @@ import {
   type TaskWorker,
   type TaskWorkerInput
 } from "../../src/tasks";
-import { taskSettledEntry } from "../../src";
+import { createTaskToolsCapability, taskSettledEntry } from "../../src";
 
 /**
  * The one failure a test arms. Each is spent the first time it fires, except
@@ -47,7 +52,9 @@ const fault = vi.hoisted(() => ({
   lapseThrows: false,
   markThrows: false,
   rowGone: false as boolean | "gone",
-  garbledResume: false
+  garbledResume: false,
+  /** Hold the drain between its lapse and its re-mark, once: the window a filer's wait would land in. */
+  holdAfterLapse: undefined as { lapsed: () => void; release: Promise<void> } | undefined
 }));
 
 vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => {
@@ -63,6 +70,12 @@ vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => 
           throw new Error("the ledger store is unavailable");
         }
         const lapsed = await lapseWait!.call(ref, id, gateId, requestId);
+        const hold = fault.holdAfterLapse;
+        if (hold !== undefined && id === "fact-check" && lapsed.outcome !== "declined") {
+          fault.holdAfterLapse = undefined;
+          hold.lapsed();
+          await hold.release;
+        }
         if (fault.takeSlotOnLapse && id === "fact-check" && lapsed.outcome !== "declined") {
           fault.takeSlotOnLapse = false;
           // Another request in the filing session waits on the row now.
@@ -125,8 +138,53 @@ const shortLease: TaskDispatcher = {
   }
 };
 
-function planFlow(): FlowInstance {
-  const ledger = defineTaskCollection({ id: "plan-fail-steps", scope: "user" });
+/**
+ * The filing agent's turn: one `getTask({ id: "fact-check", wait: true })`,
+ * then an answer. `seen` holds what each step was sent.
+ */
+function filerModel(): { model: GeneratorModel; seen: GeneratorModelCallOptions[] } {
+  const seen: GeneratorModelCallOptions[] = [];
+  const model: GeneratorModel = {
+    modelId: "step-model",
+    async generate() {
+      throw new Error("legacy generate must not be called");
+    },
+    async generateStep(options) {
+      seen.push(options);
+      if (seen.length > 1) return { text: "done", finishReason: "stop" };
+      return {
+        toolCalls: [{ toolCallId: "g1", toolName: "getTask", args: { id: "fact-check", wait: true } }],
+        finishReason: "tool-calls"
+      };
+    }
+  };
+  return { model, seen };
+}
+
+/** What the tools returned to the filer's model: the tool results its second step was sent. */
+function toolResultsOf(seen: GeneratorModelCallOptions[]): string {
+  const out: string[] = [];
+  for (const m of (seen[1]?.messages ?? []) as Array<Record<string, unknown>>) {
+    if (m.role !== "tool" || !Array.isArray(m.content)) continue;
+    for (const part of m.content as Array<Record<string, unknown>>) {
+      if (part.type === "tool-result") out.push(JSON.stringify(part.output));
+    }
+  }
+  return out.join(" | ");
+}
+
+/**
+ * @param filer The model of a turn in the plan's own session holding the task
+ *   tools over the plan's ledger, run as the `waitOnStep` action. The ledger then
+ *   names each row's filer (`delivery`), which a wait needs: this session
+ *   filed the plan.
+ */
+function planFlow(filer?: GeneratorModel): FlowInstance {
+  const ledger = defineTaskCollection({
+    id: "plan-fail-steps",
+    scope: "user",
+    ...(filer !== undefined ? { delivery: {} } : {})
+  });
   const inline = handler({
     name: "inline-step",
     inputSchema: taskWorkerInputSchema,
@@ -185,7 +243,34 @@ function planFlow(): FlowInstance {
     },
     actions: {
       run: { block: sequencer({ name: "run-plan", inputSchema: z.unknown() }).tap(board.drain).step(rows), durable: true },
-      rows: { block: rows }
+      rows: { block: rows },
+      ...(filer !== undefined
+        ? {
+            waitOnStep: {
+              block: sequencer({ name: "filer-turn" }).step(
+                generator({
+                  name: "filer",
+                  model: filer,
+                  prompt: "p",
+                  uses: [
+                    createTaskToolsCapability(
+                      async (ctx) =>
+                        getOrCreateTaskCollection({
+                          ctx: ctx as never,
+                          backing: "resource",
+                          collectionId: "plan-fail-steps",
+                          collection: resolveResourceCollection(ctx as never, "plan-fail-steps")!
+                        }),
+                      undefined,
+                      { resumesWaits: true }
+                    )
+                  ]
+                })
+              ),
+              inputSchema: z.object({}).passthrough()
+            }
+          }
+        : {})
     },
     task: { actions: { work: { block: ownSession } } }
   } as never)({ id: "plan-hand-over-fails" });
@@ -204,11 +289,15 @@ describe("a plan drain that fails after handing a row over", () => {
     fault.markThrows = false;
     fault.rowGone = false;
     fault.garbledResume = false;
+    fault.holdAfterLapse = undefined;
   });
 
-  /** @param seamThrows Fail the first child session's birth: the seam throws past the claim's release. */
-  async function boot(options: { seamThrows?: boolean } = {}) {
-    const flow = planFlow();
+  /**
+   * @param seamThrows Fail the first child session's birth: the seam throws past the claim's release.
+   * @param filer The filing agent's model, run by the `waitOnStep` action (see {@link planFlow}).
+   */
+  async function boot(options: { seamThrows?: boolean; filer?: GeneratorModel } = {}) {
+    const flow = planFlow(options.filer);
     state = createFlowState({
       flows: { "plan-hand-over-fails": flow },
       stores: { default: { primary: inMemoryStores() } },
@@ -351,4 +440,58 @@ describe("a plan drain that fails after handing a row over", () => {
       ["publish", "completed"]
     ]);
   }, 20_000);
+
+  describe("a filing agent's getTask wait on a step the drain handed over", () => {
+    /** The filer's wait was refused, pointing at the plan, and the plan then ran every row to its end. */
+    async function expectRefusedAndThePlanCompletes(
+      booted: Awaited<ReturnType<typeof boot>>,
+      runId: string,
+      waitOnStep: { requestId?: string },
+      seen: GeneratorModelCallOptions[]
+    ) {
+      // Refused in the call: the filer's turn never parked on the step.
+      expect({ status: (await booted.recordOf(waitOnStep.requestId!))?.status }).toEqual({ status: "completed" });
+      const result = toolResultsOf(seen);
+      expect(result).toContain("wait_on_plan_step");
+      expect(result).toContain("wait on the plan instead");
+      expect(result).toContain("Nothing was written");
+      open();
+      expect(await booted.until(async () => (await booted.recordOf(runId))?.status === "completed")).toBe(true);
+      expect((await booted.rowsNow()).map((row) => [row.id, row.status])).toEqual([
+        ["outline", "completed"],
+        ["fact-check", "completed"],
+        ["publish", "completed"]
+      ]);
+    }
+
+    it("is refused while the drain holds the step's wait slot, and the plan completes", async () => {
+      holdTheStep();
+      const filer = filerModel();
+      const booted = await boot({ filer: filer.model });
+      const run = await booted.act("run");
+      expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
+      const waitOnStep = await booted.act("waitOnStep");
+      await expectRefusedAndThePlanCompletes(booted, run.requestId!, waitOnStep, filer.seen);
+    }, 20_000);
+
+    it("is refused while the drain has lapsed the slot at its deadline and not yet taken it again, and the plan completes", async () => {
+      holdTheStep();
+      const filer = filerModel();
+      const booted = await boot({ filer: filer.model });
+      let release: () => void = () => undefined;
+      const lapsed = new Promise<void>((resolve) => {
+        fault.holdAfterLapse = {
+          lapsed: resolve,
+          release: new Promise<void>((done) => {
+            release = done;
+          })
+        };
+      });
+      const run = await booted.act("run");
+      // The drain reached its deadline and lapsed the slot; it is held here, before it takes the slot again.
+      await lapsed;
+      const waitOnStep = await booted.act("waitOnStep").finally(release);
+      await expectRefusedAndThePlanCompletes(booted, run.requestId!, waitOnStep, filer.seen);
+    }, 20_000);
+  });
 });
