@@ -20,7 +20,7 @@ import {
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
-import { droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices } from "../notice/task-notice";
+import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
@@ -277,6 +277,19 @@ export function releaseWaitWrite(
       ...(Object.keys(notices).length > 0 ? { metadata: { ...(task.metadata ?? {}), ...notices } } : {}),
     },
   };
+}
+
+/**
+ * The one rule for a wait that found its row already ended
+ * (`TaskCollectionRef.dropNoticeReadByWait`, FIX-2112): the wait's answer
+ * delivered the ending, so the notice the ending owes the filer is dropped.
+ *
+ * @returns The patch to write, or `undefined` when the row owes no notice for its ending.
+ */
+export function noticeReadByWaitWrite(task: Task): { patch: Partial<Task> } | undefined {
+  const dropped = deliveredByWait(task);
+  if (Object.keys(dropped).length === 0) return undefined;
+  return { patch: { metadata: { ...(task.metadata ?? {}), ...dropped } } };
 }
 
 /**
