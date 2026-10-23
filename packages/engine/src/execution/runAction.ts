@@ -16,7 +16,7 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, isTraceObservabilityEnabled, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
 import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -738,19 +738,6 @@ async function finalizeRequestRecord(
     }
   }
   return false;
-}
-
-/**
- * The same replay log with no completed block outputs: every block runs again,
- * while router decisions, resolved gates and the prior items stay readable.
- */
-function withoutCompletedOutputs(log: ReplayLog): ReplayLog {
-  return {
-    ...log,
-    getCompletedOutput: () => undefined,
-    recordedBlockTraceId: () => undefined,
-    completedRescued: () => false,
-  };
 }
 
 /**
@@ -1946,18 +1933,14 @@ async function runActionAttempt<
       // every persist must preserve under the merge — assigned before any item
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems;
-      replayLog = buildReplayLog(priorItems);
-      // Crash recovery with no durability provider keeps its behaviour from
-      // before completed blocks were recorded with trace observability off:
-      // with observability on it skips them from their full traces; with it
-      // off it re-runs them. It restores no sequencer checkpoint either way.
-      if (
-        resumeContextRaw === undefined &&
-        options.runtimeConfig.durabilityProvider === undefined &&
-        !isTraceObservabilityEnabled()
-      ) {
-        replayLog = withoutCompletedOutputs(replayLog);
-      }
+      // Crash recovery with no durability provider restores no sequencer
+      // checkpoint, so it keeps its behaviour from before lean records: it
+      // skips a completed block only from a full trace, whatever the trace
+      // setting is now.
+      replayLog = buildReplayLog(priorItems, {
+        skipLeanTraces:
+          resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined,
+      });
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
       // the log, and re-runs the in-flight one — there is no gate to resolve, so

@@ -159,6 +159,7 @@ describe("resume replay with trace observability off", () => {
     const traces = (r.record?.items ?? []).filter((i) => i.type === "block_trace") as BlockTraceItem[];
     for (const trace of traces) {
       expect(trace.status).toBe("completed");
+      expect(trace.lean).toBe(true);
       expect(trace.output).toBeDefined();
       expect(trace.input).toBeUndefined();
       expect(trace.generator).toBeUndefined();
@@ -239,16 +240,20 @@ describe("resume replay with trace observability off", () => {
 
   // With a durability provider, `/continue` replays finished steps and
   // restores the sequencer's state from its checkpoint, whatever the
-  // observability setting. Without one it behaves as it always has: with
-  // observability off it runs the request again from the top; with it on it
-  // skips finished steps from their full traces.
+  // observability setting. Without one it behaves as it always has: it skips
+  // a finished step only from a full trace, so a run recorded with
+  // observability off runs again from the top, and one recorded with it on is
+  // skipped. That follows the records, not the setting at recovery.
   it.each([
-    { provider: true, observability: "false", runs: 1 },
-    { provider: true, observability: "true", runs: 1 },
-    { provider: false, observability: "false", runs: 2 },
-    { provider: false, observability: "true", runs: 1 },
-  ])("recovers a crash through /continue (durability provider: $provider, observability: $observability)", async (c) => {
-    process.env.FSDEV_TRACE_OBSERVABILITY = c.observability;
+    { provider: true, ran: "false", recovered: "false", runs: 1 },
+    { provider: true, ran: "true", recovered: "true", runs: 1 },
+    { provider: true, ran: "false", recovered: "true", runs: 1 },
+    { provider: false, ran: "false", recovered: "false", runs: 2 },
+    { provider: false, ran: "true", recovered: "true", runs: 1 },
+    { provider: false, ran: "false", recovered: "true", runs: 2 },
+    { provider: false, ran: "true", recovered: "false", runs: 1 },
+  ])("recovers a crash through /continue (provider: $provider, observability $ran then $recovered)", async (c) => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = c.ran;
     let workRuns = 0;
     let crashed = true;
     const stalled = new Promise<never>(() => {});
@@ -309,6 +314,7 @@ describe("resume replay with trace observability off", () => {
     const swept = await detectInterruptedRequests({ stores, staleThresholdMs: -1 });
     expect(swept.map((s) => s.entry.requestId)).toEqual([requestId]);
     crashed = false;
+    process.env.FSDEV_TRACE_OBSERVABILITY = c.recovered;
 
     let finished: Promise<{ output: unknown }> | undefined;
     const host = {

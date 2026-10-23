@@ -3183,10 +3183,11 @@ export async function createExecutionContext<
     // `output` phase additionally emits item.done.
     //
     // With observability off the second branch runs instead: one lean record
-    // (identity, output, the rescued mark) per completed block, written at
-    // its `output` phase, because resume reads it to skip the block; without
-    // it, finished steps run again. It is a separate branch, not an early return in the first,
-    // because the first opens its row at `added` with the block's input. Here
+    // (identity, output, the rescued mark, `lean: true`) per completed block,
+    // written at its `output` phase, because resume reads it to skip the
+    // block; without it, finished steps run again. It is a separate branch,
+    // not an early return in the first, because the first opens its row at
+    // `added` with the block's input. Here
     // the index is taken at completion (after the items the block emitted),
     // and failed, suspended and transient blocks get no record at all, not
     // even a live one.
@@ -3287,6 +3288,7 @@ export async function createExecutionContext<
           const completedAt = payload.data.completedAt ?? Date.now();
           const item: BlockTraceItem = {
             ...baseBlockTraceFromIdentity(identity, { status: "completed", ts: completedAt }),
+            lean: true,
             output: payload.data.output,
             completedAt,
             duration: payload.data.duration,

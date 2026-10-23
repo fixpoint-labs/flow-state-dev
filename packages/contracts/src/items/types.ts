@@ -300,6 +300,12 @@ export type BlockTraceItem = OutputItemBase & {
    * replays the block keeps `ctx.wasRescued()` unchanged. Absent otherwise.
    */
   rescued?: true;
+  /**
+   * `true` on the lean completion record the runtime writes when trace
+   * observability is off: identity, output and `rescued` only. Absent on full
+   * traces and on records written before lean records existed.
+   */
+  lean?: true;
   error?: {
     message: string;
     code?: string;
