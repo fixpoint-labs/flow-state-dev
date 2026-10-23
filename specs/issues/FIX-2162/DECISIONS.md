@@ -43,7 +43,7 @@ default saves a line everywhere.
 |---|---|
 | **Instead of** | Id-taking methods on the client: `fsd.requests.continue({ flowKind, sessionId, requestId })` |
 | **Because** | The server addresses a request by flow, and to continue or retry it by session too. A caller holding only an id re-supplies both, and a wrong one is a runtime "Flow mismatch" (`recovery-routes.ts`). The object carries them, so carrying on after a crash is `lost.continue()`. Temporal and LangGraph converged on the same handle |
-| **Locks in** | One public request type: `status`, `wait`, `abort`, `continue`, `retry` (a new request), `resume` (answers a suspension), `stream`. From `send`, `flow(kind).request(id)` and `fsd.requests.interrupted()`. Three server changes so an object found by id can act: a read of the user's interrupted requests; the session id on the status read, with the tenant check that read lacks; the instance id on the interrupted and active-request lists |
+| **Locks in** | One public request type: `status`, `wait`, `abort`, `continue`, `retry` (a new request), `resume` (answers a suspension), `stream`. From `send`, `flow(kind).request(id)` and `fsd.requests.interrupted()`. Three server changes so an object found by id can act: a read of the user's interrupted requests; the session id on the status read, with the tenant check that read lacks; the instance id on the interrupted list |
 
 ![D2: a request object carrying its lifecycle, chosen, beside id-taking methods on the client. Decides it: what continue after a crash costs to write. Price: a read and two fields on the server](figures/d2-request-object.svg)
 
@@ -120,7 +120,10 @@ through the client.
 
   The full method set is the implementer's, derived from the route map and from
   `createLabClients` in `packages/shift-manager/src/lib/connection.ts`, the closest thing already
-  here. `sessions.list({ flowKind })` filters at the server (BP-033).
+  here. `sessions.list` keeps every filter `listSessions` takes today (`flowKind`, `flowId`,
+  `userId`, `include`, `state`, `limit`, `offset`), all applied at the server (BP-033); workforce's
+  `findWorkerSession`, FIX-2158's `listWorkerSessions` and Shift Manager's `reads.ts` depend on
+  them.
 - **`flow(...)` takes an instance address:** the kind of a singleton flow, the instance id of a
   collection flow, as every route does. The docs say so, or `flow("kind").request(id)` 404s on a
   collection flow.
@@ -137,8 +140,9 @@ through the client.
   `/active-requests` uses (tenant first, then the instance's own resolver or the host rule). It is
   a second listing because the data is: see *Considered and dropped*. (b) `sessionId` on the request status
   response, plus the `callerReachesRequest` check that the abort and recovery routes already make.
-  (c) `flowId` on the interrupted and `/active-requests` projections, falling back to `flowKind`
-  for rows written before it (BP-030). `/active-requests` gets no client method.
+  (c) `flowId` on the interrupted listing, which `request()` reads, falling back to `flowKind` for
+  rows written before it (BP-030). `/active-requests` is untouched: it gets no client method, so
+  nothing would read a field added there.
 - **`createSSEClient({ url })` leaves the exports:** every caller hand-built a request URL for it.
 - **React components take `client`**, typed as the slice they read; the `sessionClient` and
   `resourceClient` props go, in `packages/ui` stories too.
@@ -158,7 +162,7 @@ through the client.
   durable by default; leg a relies on it.
 - **No aliases or deprecated names** (owner). Minor changesets with a migration table.
 - **Two PRs, server first.** A: the engine and server, all additive (the interrupted read,
-  `sessionId` on status with its tenant check, `flowId` on the lists, `createInProcessFetch` and
+  `sessionId` on status with its tenant check, `flowId` on the interrupted listing, `createInProcessFetch` and
   `node` delegating to it); no caller moves. B: the client, every caller and the docs, atomic.
   The no-alias rule holds on `main` once B lands. The detail is the implementer's;
   `issue-multi-pr` can drive it.

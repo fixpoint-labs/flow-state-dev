@@ -166,7 +166,7 @@ its routes need.
 | The DevTool's four `createDevTool*Client` and two copies of `bearerFetcher` | **Removes.** They only add a fetcher |
 | `createSSEClient({ url })`, `createSessionSSEClient`, `createUserSSEClient`; six hand-built stream URLs | **Replaces** with a stream on the request, the session and the client, through the client's fetcher |
 | `POST /users/:userId/check-interrupted` | **Kept as the trigger.** It sweeps and returns what it changed. A new read lists the records ([D2](DECISIONS.md#d2)) |
-| `RequestStatusSnapshot`; the interrupted and active-request lists | **Extends:** the session id on status, with the tenant check that route lacks; the instance id on both lists ([D2](DECISIONS.md#d2)) |
+| `RequestStatusSnapshot`; the interrupted list | **Extends:** the session id on status, with the tenant check that route lacks; the instance id on the interrupted list. `/active-requests` is untouched ([D2](DECISIONS.md#d2)) |
 | [server-and-client.md → Client Setup](../../../docs/architecture/server-and-client.md#client-setup) | **Superseded**, rewritten in the same change (BP-034) |
 | [Locked Contracts](../../../docs/contributing/architecture-reference.md#locked-contracts-phase-1): "Required caller input: `userId`", "react wraps client" | **Kept.** `userId` is set once, not per call |
 | [authentication.md → Contract](../../../docs/architecture/authentication.md#contract): `body.userId` is not the principal | **Kept**, in-process too |
@@ -176,7 +176,7 @@ its routes need.
 | The debt | |
 |---|---|
 | **Removes** | Four factories; three route-addressed SSE factories and six hand-built stream URLs; `transcribe`'s own transport; three placeholder flow names; the `sendActionStream`, `continueStream` and `resumeSuspensionStream` twins; `state.getSnapshot`; three copies of a required-id check; two `bearerFetcher`s; the DevTool's four builders; plain `Error` failures; `httpActions` and the hand-built router helpers; `node`'s own path derivation |
-| **Adds** | A read of the user's interrupted requests; two response fields, with a fallback to the flow kind for rows written before the instance id (BP-030); `createInProcessFetch`, the one function that turns a Request into a router call, which `node` now calls too. Permanent by design: an object found by id needs the address the server holds, and the owner asked for the embedded transport |
+| **Adds** | A read of the user's interrupted requests; two response fields (`sessionId` on status, `flowId` on the interrupted list), with a fallback to the flow kind for rows written before the instance id (BP-030); `createInProcessFetch`, the one function that turns a Request into a router call, which `node` now calls too. Permanent by design: an object found by id needs the address the server holds, and the owner asked for the embedded transport |
 | **Leaves** | `useFlow`'s `"devuser"` fallback user, and a client with no `userId` once verified identity mints one (FIX-1503). `GET /active-requests` has no client method, before or after. An embedded caller that needs the `cli` principal uses `resolveInProcessPrincipal`, not the fetcher |
 
 **Net: down.** Six ways to build a client, plus the goals' own, become one; two ways to dispatch a Request become one; one read, two fields and one engine export are added.
