@@ -28,7 +28,7 @@ teaches another way to build a client.**
 | **The real need** | The owner, on FIX-2162: one client replaces the five factories; no wrappers; every caller moves. Since the first draft, also the owner's: the same client runs embedded, with no web server |
 | **Smaller, and rejected** | "Start, send and continue with one client." Pi's three lines pass while resources, resume and typed actions still need a second client. And "a facade over the five factories": met while the five stay taught |
 | **Bigger, and not this issue's** | "The client proves who the caller is." Verified identity is FIX-1503. `userId` stays caller-supplied and untrusted (BP-031); an embedded caller gets no trusted shortcut |
-| **Not done if** | It continues only after an interruption set by hand · the request object is built from saved fields · `interrupted()` returns only what that call swept · the client builds sub-clients inside, or takes a per-call `userId` · a call or stream bypasses the fetcher · `flow<typeof X>` imports `X` at runtime or refuses a collection flow · `createWorkforceClient` or a component builds its own client · the stale threshold can't be set · a doc shows an old factory, an alias or a placeholder flow name survives |
+| **Not done if** | It continues only after an interruption set by hand · the request object is built from saved fields · `interrupted()` returns only what that call swept · the client builds a transport per namespace, or takes a per-call `userId` · a call or stream bypasses the fetcher · a goal or test hand-builds router Requests where the client would do · `flow<typeof X>` imports `X` at runtime or refuses a collection flow · `createWorkforceClient` or a component builds its own client · the stale threshold can't be set · a doc shows an old factory, an alias or a placeholder flow name survives |
 
 ```mermaid
 flowchart LR
@@ -46,10 +46,10 @@ transports, and the repo through the census; each dashed control must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/client/does-every-job-with-one-client/` · model `n/a` · run by the implementer at completion · verdict in the implementation PR. Leg c: the implementer copies `poc/caller-census/check.mjs` into it. Prior art: `goals/continue-interrupted-run/` sets `interrupted` by hand and avoids a real crash on purpose; this check adds the crash |
-| **Signal** | Legs a and b run on both transports: `fsdev serve` on SQLite in its own process, and `createInProcessFetch` in a child process over a file store. Process 1 creates a session, sends a typed turn, reads the resource it wrote, sends an action that suspends for approval, then one that holds on a latch. The host is SIGKILLed and restarted with a short configured stale threshold, or the check waits past the 30 s default (`DEFAULT_DETECTION_STALE_THRESHOLD_MS`); a passed `staleThresholdMs` only widens the host's floor. **a:** in process 2, two reads of `fsd.requests.interrupted()` list the held request; `continue()` completes it under the same id, and the step before the kill ran once (a counter row). **b:** `request(savedId).resume(…)` completes the approval under its id; the resource read equals the input; the session lists every turn; each process called `createClient` once, and every route served for it came through its fetcher. **c:** `check.mjs --after` reports zero; `--control` names all 13 plants |
+| **Signal** | Legs a and b run on both transports: `fsdev serve` on SQLite in its own process, and `createInProcessFetch` in a child process over a file store. Process 1 creates a session, sends a typed turn, reads the resource it wrote, sends an action that suspends for approval, then one that holds on a latch. The host is SIGKILLed and restarted with a short configured stale threshold, or the check waits past the 30 s default (`DEFAULT_DETECTION_STALE_THRESHOLD_MS`); a passed `staleThresholdMs` only widens the host's floor. **a:** in process 2, two reads of `fsd.requests.interrupted()` list the held request; `continue()` completes it under the same id, and the step before the kill ran once (a counter row). **b:** `request(savedId).resume(…)` completes the approval under its id; the resource read equals the input; the session lists every turn; each process called `createClient` once, and every route served for it came through its fetcher. **One transport, structurally:** a unit test beside the client gives one `createClient` an instrumented fetcher and drives every namespace (`sessions`, `resources`, `flow().send`, `request().continue`, the streams); every call lands on that one fetcher closure and no other transport is built. **c:** `check.mjs --after` reports zero; `--control` names all 20 plants |
 | **Input** | A support exchange: a typed reply, an approval, a latched action. Second input: a collection flow addressed by its instance id, three turns, a different approval. Both must pass |
 | **Anti-game** | The in-process leg uses the public `createInProcessFetch`, never engine internals or a mocked fetch. The HTTP host is a separate process, SIGKILLed. Requests come back from `interrupted()` or `request(id)`, never from saved fields. The census skips only retained history (`specs/`, `docs/internal/`, CHANGELOGs, changesets) |
-| **Control that must fail** | `GOAL_CONTROL=retry-instead` calls `retry()`: FAIL on *same request id* and *ran once*. `GOAL_CONTROL=two-clients` builds a second client for recovery: FAIL on *one client per process*. `GOAL_CONTROL=stream-off-fetcher` reads one stream with the global fetch: FAIL on *every call through its fetcher*. `--control` plants a facade and two request helpers: the census names both. Today's `main` fails leg a on *one client from an address and a user* and leg c with 320 references |
+| **Control that must fail** | `GOAL_CONTROL=retry-instead` calls `retry()`: FAIL on *same request id* and *ran once*. `GOAL_CONTROL=two-clients` builds a second client for recovery: FAIL on *one client per process*. `GOAL_CONTROL=stream-off-fetcher` reads one stream with the global fetch: FAIL on *every call through its fetcher*. The one-transport test, given a client that builds a second fetcher wrapper for one namespace: FAIL on *one transport*. `--control` plants a named facade, a hand-built router helper, `httpActions` and each removed method: the census names every one. It also plants a facade built from neutrally named helpers and requires that the census *passes* it: the census reads names and props, and structure is the one-transport test's. Today's `main` fails leg a on *one client from an address and a user* and leg c with 403 references |
 
 ## What changes
 
@@ -119,28 +119,20 @@ after, the user sits once on the client, the flow on its handle, the transport i
 ```
 
 **Docs:** rewrite `apps/docs/docs/client/overview.md` (a tour of the one client, on both
-transports), `configuration/client.md` (the options, and `createInProcessFetch` for an embedded
-host) and `api/client.md`. Update `resources/client-access.md`; the examples in
-`fundamentals/actions.md`, `fundamentals/state-and-scopes.md`, `persistence/overview.md`,
-`streaming/items.md`, `server/host-adapters.md` (the in-process option beside the hosts),
-`server/background-work.md`, `patterns/utility-blocks/core.md` and ten `workforce/` pages
-(coordinators, delegating-work, durable-hire, inventory, messaging-workers, overview, projects,
-standing-rules, ui, workers-on-disk); `apps/docs/guides/background-work.md` and
-`apps/docs/guides/writing-ui-stories.md`. Re-check pages that show a client method:
-`advanced/durable-execution.md`, `server/connection-resilience.md`,
-`apps/docs/guides/human-in-the-loop.md`, `getting-started/quick-start.md`, `client/react.md`.
-Rewrite `docs/architecture/server-and-client.md` → *Client Setup*; update
-`docs/architecture/streaming.md`, `docs/architecture/state-and-scopes.md`,
-`docs/atlas/workforce.html` and `docs/atlas/framework.html`. Update the `client`, `react` (the
-props, around lines 419 and 503–537), `workforce`, `engine` (`createInProcessFetch`), `node` and
-root READMEs. No new page. Minor changesets: `client`, `react` (with `FlowNavigator`'s list
+transports), `configuration/client.md` (the options) and `api/client.md`; update
+`resources/client-access.md` and `server/host-adapters.md` (`createInProcessFetch` beside the
+hosts); update the `engine`, `client`, `react` and `workforce` READMEs; rewrite
+[server-and-client.md → Client Setup](../../../docs/architecture/server-and-client.md#client-setup).
+Every other page or README that shows an old factory, a removed method or a sub-client prop is
+found by the census: `check.mjs --after` is the checklist. No new page; the sidebar is unchanged.
+Minor changesets: `client`, `react` (with `FlowNavigator`'s list
 change, [D3](DECISIONS.md#d3)), `workforce`, `engine`, `core`.
 
 ## How a call reaches the server
 
 ```mermaid
 flowchart LR
-  C["createClient · userId · fetcher"] --> H["one route builder · one request helper"]
+  C["createClient · userId · fetcher"] --> H["one route builder · one transport"]
   H -->|"baseUrl over HTTP"| S["a host · fsdev serve · Next · node"]
   H -->|"createInProcessFetch"| E["the engine in this process"]
   S --> R["the flow API router · source http"]
@@ -165,9 +157,10 @@ its routes need.
 
 | Already here | What this does with it |
 |---|---|
-| The five factories and `transcribe` | **Replaces** with one `createClient`. 79 files name a factory; 153 files change by the census rules, 35 of them docs ([census](DECISIONS.md#settled)) |
+| The five factories and `transcribe` | **Replaces** with one `createClient`. 79 files name a factory; 195 files change by the census rules, 36 of them docs ([census](DECISIONS.md#settled)) |
 | Shift Manager's `LabClients`: sessions, resources, recovery and `actions(flowKind)` over one transport and user | **Replaces.** The closest thing already here: this client, built by hand. Searched `create*Client`, `bearerFetcher`, `transport` across `packages/`, `apps/`, `goals/` |
-| An in-process transport | **None shipped.** `node`'s `createServerApp(...).app.fetch` does it in one test; the Next and Vercel handlers take their path from the framework ([probe](DECISIONS.md#settled)) |
+| `node`'s `createServerApp(...).app.fetch`: waits for store init, picks the router method, takes the path from the URL, calls the router | **Reuses, by moving it.** That dispatch becomes the engine's `createInProcessFetch`, and `node` delegates to it; health, the dedicated-route fallback, JSON errors and dispose stay in `node`. No in-process transport ships today; the Next and Vercel handlers take their path from the framework ([decided](DECISIONS.md#decided-not-asked)) |
+| `httpActions` in `goals/lib/http-actions.mts`, and 24 more hand-built router helpers in goals and tests: an in-process client that builds Requests and calls `getRouter()` raw | **Replaces.** 19 files use or teach `httpActions`; with the helpers, 43 files move onto `createClient` + `createInProcessFetch`. Hosts and router unit tests that must hit the router raw are excluded by name ([census](DECISIONS.md#settled)) |
 | The DevTool's four `createDevTool*Client` and two copies of `bearerFetcher` | **Removes.** They only add a fetcher |
 | `createSSEClient({ url })`, `createSessionSSEClient`, `createUserSSEClient`; six hand-built stream URLs | **Replaces** with a stream on the request, the session and the client, through the client's fetcher |
 | `POST /users/:userId/check-interrupted` | **Kept as the trigger.** It sweeps and returns what it changed. A new read lists the records ([D2](DECISIONS.md#d2)) |
@@ -180,11 +173,11 @@ its routes need.
 
 | The debt | |
 |---|---|
-| **Removes** | Four factories; three route-addressed SSE factories and six hand-built stream URLs; `transcribe`'s own transport; three placeholder flow names; the `sendActionStream`, `continueStream` and `resumeSuspensionStream` twins; `state.getSnapshot`; three copies of a required-id check; two `bearerFetcher`s; the DevTool's four builders; plain `Error` failures |
-| **Adds** | A read of the user's interrupted requests; two response fields, with a fallback to the flow kind for rows written before the instance id (BP-030); `createInProcessFetch`. Permanent by design: an object found by id needs the address the server holds, and the owner asked for the embedded transport |
+| **Removes** | Four factories; three route-addressed SSE factories and six hand-built stream URLs; `transcribe`'s own transport; three placeholder flow names; the `sendActionStream`, `continueStream` and `resumeSuspensionStream` twins; `state.getSnapshot`; three copies of a required-id check; two `bearerFetcher`s; the DevTool's four builders; plain `Error` failures; `httpActions` and the hand-built router helpers; `node`'s own path derivation |
+| **Adds** | A read of the user's interrupted requests; two response fields, with a fallback to the flow kind for rows written before the instance id (BP-030); `createInProcessFetch`, the one function that turns a Request into a router call, which `node` now calls too. Permanent by design: an object found by id needs the address the server holds, and the owner asked for the embedded transport |
 | **Leaves** | `useFlow`'s `"devuser"` fallback user, and a client with no `userId` once verified identity mints one (FIX-1503). `GET /active-requests` has no client method, before or after. An embedded caller that needs the `cli` principal uses `resolveInProcessPrincipal`, not the fetcher |
 
-**Net: down.** Six ways to build a client become one; one read, two fields and one engine export are added.
+**Net: down.** Six ways to build a client, plus the goals' own, become one; two ways to dispatch a Request become one; one read, two fields and one engine export are added.
 
 ## Sign off
 
@@ -193,7 +186,7 @@ over HTTP and in-process, after a real crash, and nothing in the repo teaches th
 wrong: we ship a facade, the docs teach two ways, and an embedded host still needs a web server.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** six builders to one; one read, two
-fields and `createInProcessFetch` added. If wrong: the one client grows a namespace per feature
+fields and `createInProcessFetch` added, which `node` serves through too. If wrong: the one client grows a namespace per feature
 and becomes the next grab-bag.
 
 1. **[D1](DECISIONS.md#d1) · A flow is named only through `fsd.flow(kind)`; the client has no
@@ -207,7 +200,9 @@ and becomes the next grab-bag.
 **Open: none.** D1 is the one to weigh: it decides how every call site in every app reads.
 
 Improvement · `client`, `react`, `workforce`, `devtool`, `shift-manager`, `ui`, `engine` (a read,
-two fields, `createInProcessFetch`), `core`, apps and goals · large: 118 code files (49 tests),
-35 docs files; seven factories removed, `createClient` reshaped · no epic · couples with FIX-2158
-([#3796](https://github.com/fixpoint-labs/flow-state-dev/pull/3796)); leg a needs FIX-2063
+two fields, `createInProcessFetch`), `node`, `core`, apps and goals · large: 159 code files (61
+tests), 36 docs files; seven factories and `httpActions` removed, `createClient` reshaped · no
+epic · couples with FIX-2158 ([#3796](https://github.com/fixpoint-labs/flow-state-dev/pull/3796))
+and FIX-2161 ([#3805](https://github.com/fixpoint-labs/flow-state-dev/pull/3805)): whichever lands
+second moves the other onto `createWorkforceClient(fsd)` · leg a needs FIX-2063
 ([#3782](https://github.com/fixpoint-labs/flow-state-dev/pull/3782))
