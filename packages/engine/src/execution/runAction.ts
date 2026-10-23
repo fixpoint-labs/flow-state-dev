@@ -1933,7 +1933,14 @@ async function runActionAttempt<
       // every persist must preserve under the merge — assigned before any item
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems;
-      replayLog = buildReplayLog(priorItems);
+      // Crash recovery with no durability provider restores no sequencer
+      // checkpoint, so it keeps its behaviour from before lean records: it
+      // skips a completed block only from a full trace, whatever the trace
+      // setting is now.
+      replayLog = buildReplayLog(priorItems, {
+        skipLeanTraces:
+          resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined,
+      });
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
       // the log, and re-runs the in-flight one — there is no gate to resolve, so
