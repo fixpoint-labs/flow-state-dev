@@ -875,10 +875,21 @@ the ending. Only if your request ends without reading it do you
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
-When `getTask` is how you hear that a task failed or was cancelled, its answer carries
-`cancelled` beside `task`: the ids of the dependents you filed that this ending
-[cancelled](#when-a-dependency-fails). No notice goes out for that ending, so this is the only
-place they're named. Any other `getTask` answer leaves them to the notice.
+When `getTask` is how you hear that a task failed or was cancelled, its answer lists the
+dependents you filed that this ending [cancelled](#when-a-dependency-fails), if there were any:
+
+```ts
+getTask({ id: "task_8f2", wait: true })
+// → { ok: true, task: { id: "task_8f2", status: "errored", … }, cancelled: ["task_9a1"] }
+```
+
+`getTask` is how you hear the ending when a wait resumes because the task ended, when a wait
+finds the ending before any notice went out, or when any read, with or without `wait`, picks up
+an ending held for you after an earlier wait reached its deadline. No notice goes out for those
+endings, so this answer is the only place the dependents are named. An `arrivesAsNotice` answer
+has no `cancelled`, and neither does a read without `wait` of a task whose ending comes as a
+notice. There, read them from the notice's `cancelled` field; see
+[Hearing how a task ended](#hearing-how-a-task-ended).
 
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
