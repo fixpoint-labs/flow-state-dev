@@ -24,7 +24,10 @@
  *   its own `work` entry, and the drain waits on it until it ends, waiting
  *   again at each deadline; the next step sees its result. Its ending
  *   resumes the drain: the plan ledger owes no notice, only that resume,
- *   paid by the worker's board pass.
+ *   paid by the worker's board pass. Whether the request answers after its
+ *   plan is decided once, after the turn, and kept across that resume, so a
+ *   step in a session of its own that was the plan's last still gets its
+ *   answer (FIX-2110).
  *
  * A failed attempt's open steps stay open and the next attempt adopts them.
  * The task-ending cascade (FIX-2080) doesn't reach them: a request that
@@ -108,6 +111,15 @@ const PLAN_STEPPING_STATE = "planStepping";
 
 /** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
 const PLAN_SEEN_STATE = "planSeen";
+
+/**
+ * Request state: whether the turn left steps to work, decided once, right
+ * after the turn (FIX-2110). A drain that waits on a step in a session of its
+ * own suspends the request; on its resume the sequencer asks again whether to
+ * answer, and by then the plan ledger may hold no open step. The answer is
+ * this recorded decision, not a fresh read of the ledger.
+ */
+const PLAN_OWED_STATE = "planOwed";
 
 /** Whether the running request is in its answering turn. */
 export function isAnsweringTurn(ctx: BlockContext): boolean {
@@ -246,11 +258,24 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     }
   });
 
-  /** Whether the turn left steps to work: a workable row on the session's plan ledger. */
-  const owesPlan = async (_answer: unknown, ctx: unknown): Promise<boolean> => {
-    const own = await ownPlanLedger(ctx as never);
-    return (own?.list() ?? []).some(isWorkable);
-  };
+  /**
+   * Decide whether the turn left steps to work (a workable row on the
+   * session's plan ledger) and record it. Its record is replayed on a resume,
+   * so it runs once per request.
+   */
+  const decidePlan = handler({
+    name: "plan-decide",
+    inputSchema: z.unknown(),
+    resources: { ...planLedgerResources },
+    execute: async (_input, ctx) => {
+      const own = await ownPlanLedger(ctx as never);
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: (own?.list() ?? []).some(isWorkable) } as never);
+    }
+  });
+
+  /** Whether the turn left steps to work, as {@link decidePlan} recorded it. */
+  const owesPlan = (_answer: unknown, ctx: unknown): boolean =>
+    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_OWED_STATE] === true;
 
   const planned = (turn: BlockDefinition<any, any>): BlockDefinition<any, any> => {
     if (plannedBlocks.has(turn)) return turn;
@@ -287,6 +312,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       .tap(endAnswer);
     const block = sequencer({ name: `${turn.name}-planned`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
+      .tap(decidePlan)
       .stepIf(owesPlan, (value: unknown) => value, answer);
     byTurn.set(turn, block);
     plannedBlocks.add(block);
