@@ -25,7 +25,9 @@ export type WaitResumeDeps = ResumeDeps & {
  * only what makes a resume safe, under the request's lease: the gate is a wait,
  * it is still pending, and the request is parked on it. A gate that is no longer
  * pending is `already-resolved`, so a second resume (a notice delivered twice,
- * a marker replayed after the turn resumed) resumes nothing.
+ * a marker replayed after the turn resumed) resumes nothing. A pending gate
+ * whose turn has not finished parking is `busy`: the sender keeps the outcome
+ * and tries again.
  */
 export async function resumeWaitGate(
   deps: WaitResumeDeps,
@@ -73,6 +75,19 @@ export async function resumeWaitGate(
             ok: false,
             refused: "busy",
             detail: `the turn parked on wait gate "${gate.suspensionId}" was interrupted before it parked; try again once it has`
+          }
+        };
+      }
+      // Still parking: the gate is written, but the park's request-end hooks
+      // run before the request is recorded `suspended` (FIX-2135). An outcome
+      // that lands here (a waited-on task ending meanwhile) is not late, only
+      // early, so it is refused as retryable, as above.
+      if (request?.status === "in_progress") {
+        return {
+          refusal: {
+            ok: false,
+            refused: "busy",
+            detail: `the turn on wait gate "${gate.suspensionId}" has not finished parking; try again once it has`
           }
         };
       }
