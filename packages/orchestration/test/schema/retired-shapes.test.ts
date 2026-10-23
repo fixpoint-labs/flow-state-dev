@@ -9,7 +9,6 @@
 import { describe, expect, it } from "vitest";
 import {
   RETIRED_SHAPES,
-  readRetiredShape,
   withRetiredShapes,
 } from "../../src/tasks/schema/retired-shapes";
 import { persistedTaskStatusSchema } from "../../src/tasks/schema/task-status";

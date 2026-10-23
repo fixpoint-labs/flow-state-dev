@@ -160,16 +160,6 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
 const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "parked-split", "reopened", "parked-for-turn"];
 
 /**
- * Read one entry, whether or not it is on: what the row reads as once its
- * owner turns the entry on. For the owner's change and for tests; the read
- * boundary calls {@link withRetiredShapes}.
- */
-export function readRetiredShape<T>(shape: RetiredShape, row: T): T {
-  if (!isObject(row)) return row;
-  return (RETIRED_SHAPES[shape].read(row) as T | undefined) ?? row;
-}
-
-/**
  * A stored row read in the current shapes: every entry that is on, in order.
  * Call it once, at the read boundary, so every consumer downstream (the
  * transition guard, a filter, the claim, a screen) sees one vocabulary. A row
