@@ -89,7 +89,9 @@ export type ResumeWaitInput = {
  *   yet to be created.
  * - `already-resolved` — the gate was resumed before and its turn has not
  *   finished. The first answer stands.
- * - `busy` — another resume of the same turn holds its lease right now.
+ * - `busy` — another resume of the same turn holds its lease right now, or
+ *   the turn has not finished parking on the gate. Retryable: the gate is
+ *   still pending, so try again shortly.
  * - `ambiguous` — more than one turn in this session is parked on a gate with
  *   that id. Neither is resumed: guessing would hand one wait's answer to the
  *   other. Gate ids must be unique within the session (see `parkOnWait`).
