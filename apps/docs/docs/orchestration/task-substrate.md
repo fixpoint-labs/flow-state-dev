@@ -195,7 +195,7 @@ export const seedResearchPlan = handler({
 
 ### Recording a result that may no longer apply
 
-Every lifecycle method that moves a task's status — `complete`, `fail`, `awaitReview`, `unpark`, `cancel` — takes an optional trailing options argument. The options argument exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded. `hold` and `release` take no options argument. Like `patchSettings`, they only apply to a task that hasn't started.
+Every lifecycle method — `complete`, `fail`, `awaitReview`, `unpark`, `cancel` — takes an optional trailing options argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
 
 Passing options makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
 
