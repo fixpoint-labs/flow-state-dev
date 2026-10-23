@@ -91,7 +91,7 @@ async function boot(
     /** The one fit check's scripted evaluation, asked about the chosen lead. */
     leadFit?: MockEvaluationModel;
     /** When set, the fit check's evaluation is refused as a language model's, and this answers the same question. */
-    leadFitAsk?: MockGeneratorInstance;
+    leadFitAsLanguage?: MockGeneratorInstance;
     coordinatorDelegates?: "all";
   } = {}
 ) {
@@ -148,12 +148,12 @@ async function boot(
         [COORDINATOR_FLOW]: defineCoordinatorFlow({
           installation,
           routeModel: "typesafe-ai/jev",
-          agent: { catalog: openingTools(installation, options.leadFit !== undefined || options.leadFitAsk !== undefined) }
+          agent: { catalog: openingTools(installation, options.leadFit !== undefined || options.leadFitAsLanguage !== undefined) }
         })
       }),
       models: {
         evaluators: {
-          ...(options.leadFitAsk !== undefined
+          ...(options.leadFitAsLanguage !== undefined
             ? {
                 // The gateway's refusal of a language model, whatever `leadFit.model` names.
                 "workstream-lead-fit": mockEvaluationModel({
@@ -166,7 +166,7 @@ async function boot(
         },
         generators: {
           "coordinator-judgment": options.judgment ?? mockGenerator({ script: [] }),
-          ...(options.leadFitAsk === undefined ? {} : { "workstream-lead-fit-ask": options.leadFitAsk })
+          ...(options.leadFitAsLanguage === undefined ? {} : { "workstream-lead-fit-ask": options.leadFitAsLanguage })
         }
       }
     },
@@ -762,8 +762,8 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
 
     it("lets the open through when the check answers something that is no choice, and says what it answered", async () => {
       // An evaluator can only answer a choice, so it is the language-model ask that can answer off the list.
-      const leadFitAsk = mockGenerator({ script: [{ structuredOutput: { worker: "someone-else" } }] });
-      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsk });
+      const leadFitAsLanguage = mockGenerator({ script: [{ structuredOutput: { worker: "someone-else" } }] });
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
@@ -775,14 +775,14 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     });
 
     it("asks the same question as a language model when the model is one, as best fit does, and refuses on its none fits", async () => {
-      const leadFitAsk = mockGenerator({ script: [{ structuredOutput: { worker: NONE_FITS } }] });
-      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsk });
+      const leadFitAsLanguage = mockGenerator({ script: [{ structuredOutput: { worker: NONE_FITS } }] });
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFitAsLanguage });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
       await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
       await h.settled();
-      expect(leadFitAsk.calls).toHaveLength(1);
-      const asked = JSON.stringify(leadFitAsk.calls[0]!.input);
+      expect(leadFitAsLanguage.calls).toHaveLength(1);
+      const asked = JSON.stringify(leadFitAsLanguage.calls[0]!.input);
       expect(asked).toContain("alice's alice-lead");
       expect(asked).toContain(NONE_FITS);
       expect(asked).toContain("Research: what to build next");
