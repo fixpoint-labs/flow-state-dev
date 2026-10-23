@@ -123,15 +123,11 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   const lineText = (sf, node) => sf.text.split("\n")[lineOf(sf, node) - 1] ?? "";
 
   // ---- tools · every task tool the capability declares --------------------------------------
-  // A tool is a call of one of core's block builders (`handler`, `generator`, `sequencer`,
-  // `router`, `evaluator`), read by symbol, not by spelling: an import under any
-  // name, a namespace member, a local alias (the capability's own `defineTool`) and a
-  // `.withDefaults(...)` result all resolve to it. The calls read are those in the file that
-  // defines `createTaskToolsCapability` and in every file it imports, transitively, from its own
-  // directory (not its subdirectories), so a tool built in a sibling file and imported is read
-  // too. (A tool imported from another directory of the package is not read: the task board's
-  // own handler blocks live there and aren't tools.) Every allowed name must be read, or the rule stopped reading and the sweep
-  // can't tell (`cantTell`).
+  // A tool is a call of one of core's five block builders, read by symbol: any import name, a
+  // namespace member, a local alias, or `.withDefaults`. Read in the file that defines
+  // `createTaskToolsCapability` and, transitively, the files it imports from that same directory.
+  // A tool imported from another directory is not read: the task board's handler blocks live
+  // there and are not tools. An allowed name that was not read is CAN'T TELL.
   const cantTell = [];
   const resolveAlias = (sym) => (sym && sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym);
   const symbolOf = (expr) => resolveAlias(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(expr) ? expr.name : expr));
@@ -185,7 +181,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
         const name = config !== undefined && ts.isObjectLiteralExpression(config) ? nameOfTool(config) : `(config not read: ${config?.getText(sf).slice(0, 60) ?? "none"})`;
         scanned.tools++;
         tools.push(name);
-        if (!(name in TOOLS_ALLOWED) && !isMarked(lineText(sf, node))) {
+        if (!TOOLS_ALLOWED.has(name) && !isMarked(lineText(sf, node))) {
           findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, answerTask or parkOnQuestion` });
         }
       }
@@ -194,7 +190,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     visit(sf);
   }
   if (capabilityFiles.length === 0) cantTell.push("tools: no file defines createTaskToolsCapability");
-  const unread = Object.keys(TOOLS_ALLOWED).filter((n) => !tools.includes(n));
+  const unread = [...TOOLS_ALLOWED].filter((n) => !tools.includes(n));
   if (unread.length > 0) cantTell.push(`tools: the allowed tools ${unread.join(", ")} were not read, so the rule stopped reading the capability`);
 
   // ---- removed · typed matchers (declared props, members called, union members, doors) -----
@@ -335,8 +331,6 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
       // The shapes that hand a collection's write on rather than make it: a `.bind`/`.call`/`.apply`
       // receiver, an element access by a non-literal key, a property access not called directly.
       let forwards = false;
-      // A collection's complete or fail, read in any shape: called, `.call`/`.bind`, passed on,
-      // by element access, or destructured.
       if (ts.isPropertyAccessExpression(node) && ENDS.includes(node.name.text) && onCollection(node.expression, node.name)) {
         ending = `${node.getText(sf)}`;
         forwards = !(ts.isCallExpression(node.parent) && node.parent.expression === node);
