@@ -16,6 +16,7 @@ import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conver
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
 import { messageWorkerInputSchema } from "../src/messages/message-tool";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
+import { FILED_HOP } from "../src/conversation-board/board-entries";
 
 const ORG = "acme";
 
@@ -475,6 +476,27 @@ describe("the per-turn limit", () => {
   });
 });
 
+/**
+ * otto's user line asks helper-a (message 1); helper-a, woken by it, files a
+ * task for helper-b with `setting`; the task's turn messages otto.
+ */
+function relayThroughTask(setting: Record<string, unknown>): MockGeneratorScriptEntry[] {
+  return [
+    ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+    ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b", ...setting }, ""),
+    ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+    fallback
+  ];
+}
+
+/** Every tool output item any session holds. */
+async function allToolOutputs(h: BoardHost): Promise<unknown[]> {
+  return (await (await h.state.getRuntime()).stores.request.list({ withItems: true }))
+    .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+    .filter((item) => item.type === "tool_output")
+    .map((item) => item.output ?? item.error);
+}
+
 describe("the hop count through a delegation", () => {
   it("carries into a task the woken worker files, so a message from that task counts on from it", async () => {
     const h = boot({
@@ -496,6 +518,96 @@ describe("the hop count through a delegation", () => {
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
       // The task is a task: one row, on helper-a's board, for helper-b.
       expect((await h.rows("alice")).map((row) => row.assignee)).toEqual(["helper-b"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A task filed `session: "ongoing"` runs in the delegate's existing
+  // session, which keeps its own count: the task starts at its filing's count,
+  // which the row records, or a chain could restart through one (FIX-2106).
+  it('carries into a task the woken worker files in the delegate\'s ongoing session (session: "ongoing"), so a message from it counts on from the filing turn', async () => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing" }) }) });
+    try {
+      const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const tasks = await h.rows("alice");
+      expect(tasks.map((row) => [row.assignee, row.session, row.status])).toEqual([["helper-b", "ongoing", "completed"]]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
+      // One exchange: the task's message is in the chain its filing turn was in.
+      expect(new Set(rows.map((row) => row.chain)).size).toBe(1);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it.each([
+    ["in a session of its own", {}],
+    ['in the delegate\'s ongoing session (session: "ongoing")', { session: "ongoing" }]
+  ])("stops a chain through a task filed %s at the same depth: with a limit of 1, the task's message is refused", async (_where, setting) => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask(setting) }), hire: { messages: { hopLimit: 1 } } });
+    try {
+      const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      expect((await h.rows("alice")).map((row) => [row.assignee, row.status])).toEqual([["helper-b", "completed"]]);
+      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>helper-a@1"]);
+      const refusals = (await allToolOutputs(h)).filter((output) => /hop_limit: this would be message 2\b/.test(JSON.stringify(output)));
+      expect(refusals).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("starts a task's turn at the count its filing recorded, never one a caller writes on the row (BP-031)", async () => {
+    const forged = { [FILED_HOP]: { hop: 0, chain: null } };
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true, metadata: forged }) }) });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [held] = await h.rows("alice");
+      expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const patched = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, metadata: forged }, "agent");
+      expect(patched.error, messageOf(patched.error)).toBeUndefined();
+      expect((await h.rows("alice"))[0]!.metadata?.[FILED_HOP]).toEqual(held!.metadata?.[FILED_HOP]);
+
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("runs an ongoing-session task filed before rows recorded a count at its session's count, as it did", async () => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true }) }) });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      // The held row, as one stored before rows recorded their filing's count.
+      const [held] = await h.rows("alice");
+      expect(held!.status).toBe("held");
+      expect(held!.metadata, "the filing recorded its count").toHaveProperty(FILED_HOP);
+      const { partition, ...stored } = held!;
+      const { [FILED_HOP]: _dropped, ...legacy } = stored.metadata ?? {};
+      await h.writeRow("alice", decodeURIComponent(partition), { ...stored, metadata: legacy } as never);
+      expect((await h.rows("alice"))[0]!.metadata).not.toHaveProperty(FILED_HOP);
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      // Its session kept no count, so its message starts one, as before the row recorded it.
+      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
     } finally {
       await h.dispose();
     }

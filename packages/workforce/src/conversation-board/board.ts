@@ -114,7 +114,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import { carriedHopState } from "../messages/hop";
+import { carriedHopState, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -132,7 +132,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
+import { FILED_HOP, PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -989,7 +989,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
-      const metadata = owner === undefined ? given : { ...(given ?? {}), [PIECE_OF]: owner };
+      // The filing turn's hop count, which the task's turn starts at (FIX-2106).
+      const metadata = { ...(given ?? {}), ...(owner === undefined ? {} : { [PIECE_OF]: owner }), [FILED_HOP]: turnHopMark(ctx) };
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
@@ -1003,7 +1004,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A conversation-result task has one attempt (FIX-2080).
         maxAttempts: init.maxAttempts ?? (init.resultTo === "conversation" ? 1 : TASK_ATTEMPTS),
         ...(assignee !== undefined ? { assignee } : {}),
-        ...(metadata !== undefined ? { metadata } : {}),
+        metadata,
         // The task this piece is for, server-written (FIX-2081): `listTasks({ filedByTask })` reads it.
         ...(owner !== undefined ? { filedByTask: owner } : {})
       });
@@ -1566,12 +1567,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (ref.get(filing.id) !== undefined) return "exists";
     // What a model asked beside the message is a caller's, as on any filing:
     // no board marker in its metadata, and the session's own project in its input.
-    const metadata = callerMetadata(filing.metadata);
+    // The filing turn's hop count, which the task's turn starts at (FIX-2106).
+    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx) };
     const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
     const { metadata: _metadata, input: _input, ...rest } = filing;
     const init: TaskInit & { id: string } = {
       ...rest,
-      ...(metadata !== undefined && Object.keys(metadata).length > 0 ? { metadata } : {}),
+      metadata,
       ...(input !== undefined ? { input } : {})
     };
     await owePass(ctx);

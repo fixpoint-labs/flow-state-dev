@@ -11,7 +11,11 @@
  * - a turn a message wakes is at that message's count (`onWorkerMessage`);
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;
- * - every other turn (a notice's, a post's, a task's) reads the session's.
+ * - a task's turn is at its filing turn's count, which the filing records on
+ *   the row (FIX-2106), so a task run in an existing session (an ongoing one,
+ *   or a follow-up's) counts on from its filer too; a row filed before rows
+ *   recorded it reads the session's;
+ * - every other turn (a notice's, a post's) reads the session's.
  *
  * The limit is the whole exchange's, not one path's: everything descending
  * from one user's turn shares one budget. A user's turn starts a new chain id
@@ -92,6 +96,25 @@ export function turnChainOf(ctx: Pick<BlockContext, "request" | "session">): str
 /** The hop count and chain a task's session is born with: its filer's, so the task counts on in the filer's exchange. */
 export function carriedHopState(state: unknown): Record<string, unknown> {
   return { [MESSAGE_HOP_STATE]: sessionHopOf(state), [MESSAGE_CHAIN_STATE]: sessionChainOf(state) ?? null };
+}
+
+/** Where a turn stands in its exchange: its hop count, and the chain it belongs to. */
+export interface HopMark {
+  readonly hop: number;
+  readonly chain: string | null;
+}
+
+/** The running turn's count and chain, for a filing to record on its row (FIX-2106). */
+export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): HopMark {
+  return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null };
+}
+
+const hopMarkSchema = z.object({ hop: z.number().int().nonnegative(), chain: z.string().min(1).nullable() });
+
+/** A recorded {@link HopMark}, or `undefined` for anything else (a row filed before rows recorded one). */
+export function hopMarkOf(value: unknown): HopMark | undefined {
+  const parsed = hopMarkSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
