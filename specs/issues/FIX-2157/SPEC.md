@@ -46,7 +46,7 @@ the lab's own state.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/threads-mode-script/` · real model · Playwright, against `fsdev dev --app` · run by the implementer at wiring · verdict in the wiring PR. The epic's closure reruns it as leg c |
-| **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` · 6 you ask for a code change in the session's project; one card and row show tagged *Claude Code*, the run's working directory is that project's checkout, and the row reaches *Resolved*, or *Waiting on you* first if the run asks |
+| **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` · 6 you ask for a code change in the session's project; one card and row show tagged *Claude Code*, the run's working directory is that project's checkout, and the row reaches *Ready for review* with the judge's verdict shown (*Waiting on you* first if the run asks), and *Resolve* moves it under *Resolved* |
 | **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too. Step 6: "Add a CHANGELOG line for the vendor pick", in a session opened on a scratch project whose checkout the operator maps |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
 | **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. Step 6 in a session opened on no project: the run is refused `no-project`, the composer shows *Choose a project*, and nothing is written in the lab's repository, FAIL on step 6. The checkout mapping removed: the run works on a branch cut from the project's remote, not the mapped path, FAIL on step 6's directory check. And the inventory check with a planted `src/glue.ts`: FAIL |
@@ -121,8 +121,12 @@ naming one in its `flow:` line. On the board a harness thread is an ordinary row
 columns, from the same task row, plus a tag naming its harness, read from the assignee's flow in
 the lab's config (the row doesn't carry it until FIX-1652). Its note is the run's last progress
 line, or *Working* when the harness records none; a question it asks holds the task and puts it
-under *Waiting on you*, answered in the thread view as in step 3. It skips *Ready for review*:
-harness-manager settles a run on its own check, so it lands in *Resolved*.
+under *Waiting on you*, answered in the thread view as in step 3. A run that produced changes
+waits under *Ready for review*, like any thread, with the judge's verdict on its card as
+information, not approval; *Resolve* completes it and *Request changes* sends your words back as
+a steer. A run with no changes lands in *Resolved*, and a failed one shows as errored under
+*Waiting on you*. The review wait is a [gap](#gaps) today: harness-manager completes a run on its
+own check.
 
 **Docs:** threads mode joins the lab's README (how to start it, the board's columns, its rows in
 the inventory). No `apps/docs` page, per the epic.
@@ -166,11 +170,11 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | Shift Manager's board (`shift-manager/src/lib/columns.ts`): its *In review* column is drawn and stays empty, because no status means it | **Leaves alone.** A review wait, the same as here, is what could fill it |
 | `@flow-state-dev/react`'s `BoardColumns` and `BoardCard` | **Not used.** Their columns are task statuses; this board's are what the person owes. The lab writes its own, as UI |
 
-**Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)). The epic files them:
+<a name="gaps"></a>**Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)). The epic files them:
 
 | Gap | Blocks |
 |---|---|
-| **A harness run ends in a review a person answers** | Nothing; a harness thread lands in *Resolved* without one ([D5](DECISIONS.md#d5)). Filed in the project |
+| **A harness run that produced changes waits on a person's review before it completes**: in `harnessManager`'s settle step, where a judge's `ask` already parks a run today, a run with commits parks on a review wait (FIX-2129's kind `review`), with the verdict in its prompt; an accepted answer completes it without running the harness again, and a revision is a steer the next attempt takes (FIX-2086's door). Medium: one issue in harness-manager, a few days with tests, after FIX-2129 lands | **Step 6** ([D5](DECISIONS.md#d5)). Filed when this spec merges |
 | Checked at wiring: **a session opened on a project passes it to the tasks its coordinator files** (`filingProjectId`) | Step 6; a gap only if it doesn't |
 | **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
@@ -202,8 +206,9 @@ wrong: a mode nobody maintains.
    *Resolve* answers it.** No gap: the thread worker's model asks for review with FIX-2131's tool.
    If wrong: a thread's state lives on the task when a mark in the lab would have done.
 3. **[D5](DECISIONS.md#d5) · A thread may run through a harness, chosen per worker by its flow;
-   the main session never does.** No blocking gap. If wrong: a harness thread lands in *Resolved*
-   without your review until its gap ships.
+   the main session never does.** A run that produced changes waits for your review; that wait
+   is a medium gap in harness-manager and blocks step 6. If wrong: step 6 waits on a package
+   change a thread that skipped review wouldn't need.
 
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).

@@ -103,10 +103,10 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 |---|---|
 | **Instead of** | (a) A harness setting on each worker in config, read when a run starts. (b) A harness on the main session too |
 | **Because** | The harness is a slot fixed when a flow is built, and one flow copy serves every worker on it (DevTeam's `coder.mts`); a per-worker setting is FIX-1652's, not in the box. One small worker flow per harness gets the same choice with config only: a hire names `thread-claude-code` or `thread-codex` in its `flow:` line. (b) breaks the epic's D2 loop, which owns the main session's turn |
-| **Locks in** | No new mechanism: each flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. It has no review step: harness-manager settles on its own check, so it goes from *Working* to *Resolved*; a review it waits on is a gap, filed in the project, blocking nothing. Not needed: FIX-1990, since a run asks the person, never a teammate |
+| **Locks in** | No new mechanism: each flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. A run that produced changes waits under *Ready for review*, with the judge's verdict shown as information, not approval; one with no changes lands in *Resolved*, and a failed one is errored. Harness-manager completes a run on its own check today, so the review wait is a gap that blocks step 6 (product's call, overturning a draft that skipped review). Not needed: FIX-1990, since a run asks the person, never a teammate |
 
-**What would change my mind:** product wanting your review on every code change before it
-counts. Then the review gap blocks step 6, and a harness thread waits under *Ready for review*.
+**What would change my mind:** the gap proving large at its spec. Then that is raised with a
+size on this PR's successor, not worked around by skipping review.
 
 ## Decided, not asked
 
@@ -170,7 +170,9 @@ counts. Then the review gap blocks step 6, and a harness thread waits under *Rea
   (*Sessions* or *Projects*), not a choice at session start.
 
 - **Product additions:** a working directory per session that threads inherit, and a harness on
-  threads only. Folded as the session's project and D5; step 6 and its controls were added. A control that
+  threads only. Folded as the session's project and D5; step 6 and its controls were added.
+  Product then overturned a draft that let harness threads skip review: a run with changes waits
+  for yours, and that gap blocks step 6. A control that
   removed the checkout mapping was first said to give `no-project`; an unmapped project gets a
   branch from its remote instead, so that control fails on step 6's directory check, and the
   `no-project` control is a session opened on no project.
