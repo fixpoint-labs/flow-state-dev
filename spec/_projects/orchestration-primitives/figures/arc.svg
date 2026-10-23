@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 588" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: eleven lanes from Apr 15 to Oct 31, bars running from filed to wrapped. The Plan/Task series landed Apr 28 to May 1. The delegation substrate ran Jul 23 to Jul 29, durable jobs Jul 24 to Aug 12, the honest task substrate Jul 29 to Oct 10, flow instances Sep 7 to Oct 6 and the dispatch protocol Sep 5 to Oct 12, all done. dispatchTask, FIX-1870, ran Oct 11 to Oct 21 and was canceled, superseded by FIX-2056. One task primitive, FIX-2056, filed Oct 15, is in flight, its epic spec approved Oct 21. One Inbox, FIX-2058, filed Oct 15, is in flight, its epic spec drafted Oct 23. Messages (FIX-2070) and coordination renames (FIX-2071, both filed Oct 21) are filed and not started, so their lanes carry no bar. The now line is Oct 23.">
+     aria-label="The arc: eleven lanes from Apr 15 to Oct 31, bars running from filed to wrapped. The Plan/Task series landed Apr 28 to May 1. The delegation substrate ran Jul 23 to Jul 29, durable jobs Jul 24 to Aug 12, the honest task substrate Jul 29 to Oct 10, flow instances Sep 7 to Oct 6 and the dispatch protocol Sep 5 to Oct 12, all done. dispatchTask, FIX-1870, ran Oct 11 to Oct 21 and was canceled, superseded by FIX-2056. One task primitive, FIX-2056, filed Oct 15, is in flight, its epic spec approved Oct 21. One Inbox, FIX-2058, filed Oct 15, is in flight, its epic spec approved Oct 23. Messages (FIX-2070) and coordination renames (FIX-2071, both filed Oct 21) are filed and not started, so their lanes carry no bar. The now line is Oct 23.">
   <style>
     :root { --surface:#FCFCFA; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -95,7 +95,7 @@
     <text class="t-lane" x="16" y="440">one Inbox</text>
     <text class="t-s"    x="16" y="454">FIX-2058 · in flight</text>
     <rect class="flight" x="842.1" y="426" width="29.0" height="26" rx="3"/>
-    <text class="t-s" x="834.1" y="443" text-anchor="end">filed Oct 15 · spec drafted Oct 23</text>
+    <text class="t-s" x="834.1" y="443" text-anchor="end">filed Oct 15 · spec approved Oct 23</text>
   </g>
 
   <g id="messages">
