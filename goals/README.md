@@ -104,7 +104,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | ------------ | -------------- |
 | `verdict`    | `runGoal` / `pass` / `fail` / `tell.over` — the one PASS / FAIL / CAN'T TELL format and exit protocol (0 / 1 / 3); `pnpm --filter @flow-state-dev/goals check:run-goal-verdict` guards it |
 | `fixture`    | `loadFixture(import.meta.url, "x.json")`, `fixturePath`, `fixtureDir` |
-| `env`        | `intentFreeEnv` / `stripIntentOverrides` / `captureIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
+| `env`        | `intentFreeEnv` / `stripIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
 | `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
 | `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText`, `answerText` |
 | `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
