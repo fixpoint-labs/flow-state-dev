@@ -71,13 +71,14 @@ through the client.
 ## Decided, not asked
 
 - **Transport and user, once:** `createClient({ userId, baseUrl?, apiPath?, fetcher? })`, no module
-  global. Another user or server is another client. `userId` stays required, caller-supplied and
+  global. Another user or server is another client. `baseUrl` is required without a fetcher; with
+  one it defaults to a fixed internal origin, which `createInProcessFetch` ignores (it reads only
+  the path), so no embedded caller or doc writes a made-up URL. `userId` stays required, caller-supplied and
   untrusted (BP-031); there is no per-call override. Making it optional is FIX-1503's.
 - **The in-process transport is the owner's call.** One engine export, `createInProcessFetch(app,
   { basePath? })`, returns a `ClientFetch` that the client takes as its `fetcher`. The client
   stays engine-free (package boundaries), so there is no `createClient({ flowState })` overload.
-  This fixes the public name `createInProcessFetch` in `@flow-state-dev/engine`. Whether `baseUrl`
-  may be left out with it is the implementer's.
+  This fixes the public name `createInProcessFetch` in `@flow-state-dev/engine`.
 - **One dispatch path, owned by the engine.** `createInProcessFetch` is the function that turns a
   Request into a router call: it waits for store init (500 if init failed), picks the router
   method (405 for any other), takes the path from the URL with `decodePathSegments` under
@@ -132,7 +133,9 @@ through the client.
   still listed. A request with no session rejects `continue()` and `retry()` with a client error
   before any call.
 - **The server changes, kept to three.** (a) A read of one user's interrupted requests, with the
-  owner and tenant checks `check-interrupted` applies. (b) `sessionId` on the request status
+  owner and tenant checks `check-interrupted` applies, and the same per-entry admission
+  `/active-requests` uses (tenant first, then the instance's own resolver or the host rule). It is
+  a second listing because the data is: see *Considered and dropped*. (b) `sessionId` on the request status
   response, plus the `callerReachesRequest` check that the abort and recovery routes already make.
   (c) `flowId` on the interrupted and `/active-requests` projections, falling back to `flowKind`
   for rows written before it (BP-030). `/active-requests` gets no client method.
@@ -154,6 +157,11 @@ through the client.
   ([#3782](https://github.com/fixpoint-labs/flow-state-dev/pull/3782)) makes file-backed hosts
   durable by default; leg a relies on it.
 - **No aliases or deprecated names** (owner). Minor changesets with a migration table.
+- **Two PRs, server first.** A: the engine and server, all additive (the interrupted read,
+  `sessionId` on status with its tenant check, `flowId` on the lists, `createInProcessFetch` and
+  `node` delegating to it); no caller moves. B: the client, every caller and the docs, atomic.
+  The no-alias rule holds on `main` once B lands. The detail is the implementer's;
+  `issue-multi-pr` can drive it.
 
 ## Considered and dropped
 
@@ -165,6 +173,7 @@ through the client.
 | Keep the typed client taking the definition | Ships server code to the browser; the type parameter checks the same |
 | Sessions and resources also under the flow handle | Their routes aren't flow-addressed: two paths to one route |
 | `createClient({ flowState })` for the embedded case | The client would depend on the engine, which the package boundaries forbid |
+| `/active-requests`, with a status filter, as the interrupted read | It lists the in-flight registry (`stores.activeRequests`: heartbeat, age), not request records. The sweep that marks a record `interrupted` deregisters its entry in the same pass (`request-recovery.ts`), so an interrupted request is never in that list. Carrying D2 there would make one route read two stores with two meanings. The two share the admission rule instead |
 | `interrupted()` as the sweep's own answer | Racy: the startup sweep or the 30 s sweeper marks the request first, and that call then returns nothing |
 
 ## Settled
@@ -212,6 +221,24 @@ through the client.
   positive template** — lift to public `createClient` rather than designing a new composition
   story. Flat `sessions`/`resources`/`recovery` fields are isomorphic to nested `fsd.sessions.*`;
   nesting is a discoverability choice, not a transport win."
+- **Second look, #2** ([#3810](https://github.com/fixpoint-labs/flow-state-dev/pull/3810#issuecomment-6376729578)): "Keep D3 but make it its own commit (and its own test
+  asserting the old leak is closed) so it's bisectable and revertable independently of the client
+  reshape."
+- **Second look, #5** ([#3810](https://github.com/fixpoint-labs/flow-state-dev/pull/3810#issuecomment-6376729578)): "make it explicit in the spec that the handle caches it (one
+  status read per handle, not per call) and that a status read racing a state change (request
+  completed between read and `continue`) surfaces as a typed `ClientHttpError`, not a plain Error.
+  The "second-path" checklist (BP-035: concurrent-409, cancel-error) isn't mentioned for these
+  new methods."
+- **Second look, #6** ([#3810](https://github.com/fixpoint-labs/flow-state-dev/pull/3810#issuecomment-6376729578)): "hooks that previously built a client internally from
+  `baseUrl`/`userId` need that client memoized (`useMemo`), or a new client per render will
+  re-open streams. Worth one line in the spec's React section and a test that a re-render doesn't
+  reconnect."
+- **Second look, #7b** ([#3810](https://github.com/fixpoint-labs/flow-state-dev/pull/3810#issuecomment-6376729578)): "Consider promoting the `--after` rules to a permanent repo
+  check at implementation time; otherwise the "one route builder / one request helper"
+  invariant erodes the first time someone adds a stream."
+- **Second look, #8a** ([#3810](https://github.com/fixpoint-labs/flow-state-dev/pull/3810#issuecomment-6376729578)): "35 docs files: dispatch `docs-writer` → `docs-editor`
+  rather than hand-editing them while holding the spec (per CLAUDE.md), and run `polish-docs` on
+  `client/` after."
 
 ## How it got here
 
