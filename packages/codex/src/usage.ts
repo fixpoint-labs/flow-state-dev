@@ -167,6 +167,8 @@ function windowsOf(limits: RateLimitsResponse): HarnessUsageWindow[] {
         label: text(snapshot.limitName),
         minutes: typeof window.windowDurationMins === "number" ? window.windowDurationMins : null,
         usedPercent: window.usedPercent,
+        // Codex always sends a percent, and no level.
+        level: null,
         // Codex sends seconds since the epoch.
         resetsAt: typeof window.resetsAt === "number" ? window.resetsAt * 1000 : null,
       });

@@ -36,7 +36,8 @@ import {
   type ErrorReporterHarnessFeeds,
   type ProjectMcpToolsResolver,
 } from "@flow-state-dev/workforce";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
 import { commitAll, hasChanges } from "./scratch-repo.mts";
 
@@ -48,15 +49,13 @@ export const HARNESS_CHOICES = ["stub", "claude-code"] as const;
 export type HarnessChoice = (typeof HARNESS_CHOICES)[number];
 
 /**
- * The three feeds the harness contract hands a slot, and the Lab's fourth:
- * the run's MCP servers, relayed through the Lab's own connection, when the
- * Lab offers any (`openLab({ mcpServers })`). A harness that takes relayed
- * tools hands them to its run; one that doesn't says so in the run's session.
+ * The feeds the harness manager hands a slot, and the Lab's own: the run's
+ * MCP servers, relayed through the Lab's own connection, when the Lab offers
+ * any (`openLab({ mcpServers })`). A harness that takes relayed tools hands
+ * them to its run; one that doesn't says so in the run's session. Claude Code
+ * hands `onUsage` the usage windows its runs report; the stub reports none.
  */
-export interface HarnessFeeds {
-  cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
-  resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
-  onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
+export interface HarnessFeeds extends ManagerHarnessFeeds {
   mcpTools?: ProjectMcpToolsResolver;
 }
 

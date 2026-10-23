@@ -149,14 +149,14 @@ await runGoal(async (failures) => {
     // Claude Code as the lab's `claudeCodeHarness` sets it up — the same agent
     // a served Lab runs under `DEVFORCE_LAB_HARNESS=claude-code` — with the
     // prompt-recording tap in front of it.
-    harness: ({ cwd, resume, onSession }) =>
+    harness: (feeds) =>
       sequencer({
         name: "devforce-lab-recorded-harness",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
       })
         .tap(recordPrompt)
-        .step(claudeCodeHarness({ cwd, resume, onSession }) as never) as unknown as HarnessBlock,
+        .step(claudeCodeHarness(feeds) as never) as unknown as HarnessBlock,
   });
 
   try {

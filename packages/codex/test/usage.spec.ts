@@ -50,8 +50,8 @@ describe("readCodexUsage", () => {
       accountId: "acct_1",
       plan: "pro",
       windows: [
-        { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, resetsAt: 1_800_000_000_000 },
-        { id: "codex:secondary", label: null, minutes: 10_080, usedPercent: 7.5, resetsAt: 1_800_500_000_000 },
+        { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, level: null, resetsAt: 1_800_000_000_000 },
+        { id: "codex:secondary", label: null, minutes: 10_080, usedPercent: 7.5, level: null, resetsAt: 1_800_500_000_000 },
       ],
     });
     // The handshake was awaited: the fake refuses account/read before `initialized`.

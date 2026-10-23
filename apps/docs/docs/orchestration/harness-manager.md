@@ -64,7 +64,7 @@ To let a user type into a run's session, build the door with `harnessSessionDoor
 
 ## Choosing the harness
 
-The harness is a slot. You pass a factory; the manager calls it once and hands it three things.
+The harness is a slot. You pass a factory; the manager calls it once and hands it four things.
 
 ```ts
 import { harnessManager } from "@flow-state-dev/harness-manager";
@@ -77,8 +77,8 @@ const manager = harnessManager({
   phase: implementPhase(),
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
-  harness: ({ cwd, resume, onSession }) =>
-    claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+  harness: ({ cwd, resume, onSession, onUsage }) =>
+    claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
 });
 ```
 
@@ -97,11 +97,11 @@ Code needs `detached: true`: it keeps session state by default, and a dispatched
 row refuses a block that does. Codex keeps none, so it needs no equivalent. Each
 spells its sandbox its own way. None of it reaches the manager.
 
-**What the manager hands down.** `cwd` says where this run works: the checkout the manager derived and provisioned. `resume` says which conversation this attempt continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it.
+**What the manager hands down.** `cwd` says where this run works: the checkout the manager derived and provisioned. `resume` says which conversation this attempt continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it. `onUsage` is what the harness calls with each subscription usage window its run reports, so the manager can store it in the run owner's [usage record](#subscription-usage). A harness that reports no usage, such as Codex, has no use for it.
 
 **What the manager never does.** It does not read anything vendor-specific off the handle, and it does not tell the harness what model to use, what tools to allow, or how to sandbox itself. Those are yours, written inside the factory.
 
-The three feeds are declared in `@flow-state-dev/core`. Any block that takes them and returns a conforming run handle is one this manager can drive. [Coding agents](/docs/tools/coding-agents) covers the contract in full.
+`HarnessFeeds`, exported from `@flow-state-dev/harness-manager`, types the four feeds, and each signature is declared in `@flow-state-dev/core`. Any block that takes them and returns a conforming run handle is one this manager can drive. [Coding agents](/docs/tools/coding-agents) covers the contract in full.
 
 ## What a phase is
 
@@ -271,7 +271,7 @@ harness, sorted by name:
   reason: null,              // why there is no number, for the other three
   plan: "plus",
   windows: [
-    { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, resetsAt: 1798020000000,
+    { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, level: null, resetsAt: 1798020000000,
       checkedAt: 1798012000000, origin: "read", ageMs: 65000, rolledOver: false },
   ],
   checkedAt: 1798012000000,  // when the stored reading was made, or null
@@ -281,8 +281,33 @@ harness, sorted by name:
 ```
 
 A window's `origin` says how it arrived: `"read"` when a reader fetched it on a
-refresh. A harness that reports usage during its runs stores its windows through
-`recordHarnessUsage` with an origin of its own.
+refresh, `"run"` when a run reported it through `onUsage`. Each window carries
+its own `checkedAt` and `ageMs`. The row's `checkedAt` and `ageMs` belong to the
+last reading, so a harness that has only run windows and was never read has a
+row `checkedAt` of `null`, and each window says how old it is.
+
+**Run windows land on their own.** Pass the slot's `onUsage` through to a
+harness that reports usage, as the Claude Code example in
+[Choosing the harness](#choosing-the-harness) does, and every window a
+run reports is stored for the user the run belongs to. A line sent through the
+[session door](#the-session-door) stores its run's windows for the user
+talking. For Claude Code, register
+[`readClaudeUsage`](/docs/tools/claude-code-sdk#reading-usage-left) as the
+`claude-code` reader. It supplies the account and plan, and the windows come
+from runs:
+
+```ts
+import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+
+const claudeEnv = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"] });
+
+harnessUsageAction({
+  readers: {
+    codex: (options) => readCodexUsage({ env, ...options }),
+    "claude-code": () => readClaudeUsage({ env: claudeEnv }),
+  },
+});
+```
 
 **Without `refresh`, nothing is read.** The query returns what is stored.
 A harness with a reader and no reading yet is listed with `status: "unavailable"`,
@@ -300,19 +325,27 @@ query runs, by the server's clock. A window whose `resetsAt` has passed reads
 `rolledOver: true`; its percent is from before the reset, so show the reset
 rather than the number.
 
-**One current reading per user and harness.** A new reading replaces the
-whole row, so after a sign-in change no window from the earlier account is left.
-A reading older than the stored one is refused. The account is kept only as a
-hash, with no email. There is no history.
+**One current record per user and harness.** A reader's result and the
+windows runs reported sit side by side:
+
+- A reading replaces the windows the last reading left and keeps the run windows it doesn't name. Where both name one window, the newer wins.
+- A newer report for a window replaces the older one. An older one that arrives late is ignored, and so is a reading older than the stored one.
+- A reading or run window from a different account clears every window and the plan the earlier account left.
+- A reading with no number (`api-key`, `signed-out`) clears every window. A run that started before that reading doesn't bring them back.
+
+The account is kept only as a hash, with no email. There is no history.
 
 The readings live in `harnessUsageCollection` (`harness-usage/**`, user scope).
 A client can't read the collection directly. Read it through the `harnessUsage`
 query. On the server:
 
 - `readHarnessUsage(ctx, now, expected?)` returns the same rows the query does, without refreshing.
-- `recordHarnessUsage(ctx, harness, reading, checkedAt)` stores a reading from a harness that reports usage during its own runs. It answers `"recorded"`, `"kept-stored"` (an `unavailable` reading over a stored one, which stays) or `"refused-older"`.
+- `recordHarnessUsage(ctx, report)` stores one window a run reported, a `HarnessUsageReport`. The manager's and the session door's `onUsage` call it for you.
+- `recordHarnessUsage(ctx, harness, reading, checkedAt)` stores a whole reading made at `checkedAt`.
 
-Both read the collection through the calling block's resources, under the key `HARNESS_USAGE`, and throw when it isn't installed there: give that block `resources: { [HARNESS_USAGE]: harnessUsageCollection }`. `harnessUsageAction` installs it on its own block.
+Both forms answer `"recorded"`, `"kept-stored"` (an `unavailable` reading over a stored one, which stays) or `"refused-older"` (what is stored is newer, or the run started before the stored no-number reading).
+
+All of these read the collection through the calling block's resources, under the key `HARNESS_USAGE`, and throw when it isn't installed there: give that block `resources: { [HARNESS_USAGE]: harnessUsageCollection }`. `harnessUsageAction` installs it on its own block.
 
 ## Pointing it away from your own code
 

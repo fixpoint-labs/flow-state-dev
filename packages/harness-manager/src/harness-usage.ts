@@ -20,11 +20,30 @@
  * - **A failed read keeps the last good one.** An `unavailable` reading over a
  *   stored reading leaves it and records why as `refreshError`. It replaces
  *   only a row that never held one.
- * - **One current record per harness.** The key is the harness alone, and a
- *   reading replaces the whole record, account included, so a sign-in change
- *   leaves no old account's percents behind. The account is kept only as
- *   `hashKeySegment(accountId)`; no email is stored.
+ * - **One current record per harness.** The key is the harness alone. The
+ *   account is kept only as `hashKeySegment(accountId)`; no email is stored.
+ * - **Windows belong to one account at a time.** A reading or a run window
+ *   from another account is a *rebind*: it replaces the account, clears the
+ *   plan and every window the new account didn't send. No account (a
+ *   token-only sign-in) counts as an account of its own, so a move either way
+ *   between it and a named one is a rebind too. Every write that is taken
+ *   advances `accountAt`, and a rebind or a no-number reading observed before
+ *   it is refused whole: a late event from the old account can't take the
+ *   record back, and a late look can't clear a newer run's window.
  * - **Latest only.** No history: a window's next reading overwrites it.
+ *
+ * ## Two forms of one write
+ *
+ * A *reading* (an on-demand read) replaces the record: its status, plan and
+ * its own windows, keeping the windows a run wrote that it doesn't name while
+ * the account is the same. A *run window* (a {@link HarnessUsageReport}, from
+ * a harness's `onUsage` during a run) upserts one window by id with
+ * `origin: "run"` and leaves the record's clock and plan alone. It
+ * is refused when that window holds a newer reading, and it lifts a
+ * no-number status (`api-key`, `signed-out`) only when the run started after
+ * that status was read: a run already going when a look found an API key
+ * belongs to the old sign-in. On a window id both forms write, the newer
+ * `checkedAt` wins.
  *
  * ## Read when someone looks
  *
@@ -44,7 +63,7 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading } from "@flow-state-dev/core/types";
+import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
 import { harnessUsageWindowSchema } from "@flow-state-dev/core";
 import { z } from "zod";
 import { assertSafeSegment, hashKeySegment } from "./workspace";
@@ -60,8 +79,7 @@ export const USAGE_READ_TIMEOUT_MS = 10_000;
 
 /**
  * One stored window: the vendor's reading, when it was made, and how it
- * arrived. `origin` is `"read"` for an on-demand read; a run-time writer adds
- * its own value.
+ * arrived: `"read"` for an on-demand read, `"run"` for a run's `onUsage`.
  */
 const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
   checkedAt: z.number(),
@@ -79,6 +97,12 @@ export const harnessUsageStateSchema = z.object({
   reason: z.string().nullable().default("Not checked yet"),
   /** `hashKeySegment` of the vendor's account id, or `null`. Never the id or an email. */
   account: z.string().nullable().default(null),
+  /**
+   * When `account` was last set or confirmed by a write, in epoch ms. An
+   * account change observed before it is refused. A row stored before it
+   * existed reads 0, so its first rebind wins.
+   */
+  accountAt: z.number().default(0),
   plan: z.string().nullable().default(null),
   windows: z.array(storedUsageWindowSchema).default([]),
   /** When the stored reading was made, in epoch ms. `null` until one was. */
@@ -107,49 +131,146 @@ export const harnessUsageCollection = defineResourceCollection({
   llmWritable: false,
 });
 
-/** The collection, installed on the action that reads it. */
-const harnessUsageCapability = defineCapability({
+/**
+ * The collection, installed on the action that reads it and on the manager
+ * and session door whose runs write it.
+ */
+export const harnessUsageCapability = defineCapability({
   name: "harness-manager:usage",
   resources: { [HARNESS_USAGE]: harnessUsageCollection },
 });
 
-/** What {@link recordHarnessUsage} did with a reading. */
+/** What {@link recordHarnessUsage} did with a reading or a run window. */
 export type UsageWrite = "recorded" | "kept-stored" | "refused-older";
 
 /**
- * Record one reading of `harness`'s usage, made at `checkedAt` (epoch ms).
+ * Record one reading of `harness`'s usage, made at `checkedAt` (epoch ms), or
+ * one window a run heard about (`report`).
  *
- * @returns `recorded` when the reading replaced the record; `kept-stored`
- *   when it was `unavailable` over a stored reading, which stays (its reason
- *   becomes `refreshError`); `refused-older` when the stored reading is newer.
+ * @returns `recorded` when it was written; `kept-stored` when a reading was
+ *   `unavailable` over a stored reading, which stays (its reason becomes
+ *   `refreshError`); `refused-older` when what is stored is newer, or when it
+ *   is a run window from a run that started before the stored status was
+ *   read.
  */
-export async function recordHarnessUsage(
+export function recordHarnessUsage(ctx: BlockContext, report: HarnessUsageReport): Promise<UsageWrite>;
+export function recordHarnessUsage(
   ctx: BlockContext,
   harness: string,
   reading: HarnessUsageReading,
   checkedAt: number,
+): Promise<UsageWrite>;
+export async function recordHarnessUsage(
+  ctx: BlockContext,
+  harnessOrReport: string | HarnessUsageReport,
+  reading?: HarnessUsageReading,
+  checkedAt?: number,
 ): Promise<UsageWrite> {
+  const harness = typeof harnessOrReport === "string" ? harnessOrReport : harnessOrReport.harness;
   const record = await rowOf(ctx, harness);
   const outcome = await updateStateWith<Record<string, unknown>, UsageWrite>(record, (current) => {
     const stored = harnessUsageStateSchema.parse(current ?? {});
-    if (stored.checkedAt !== null && checkedAt < stored.checkedAt) return { state: current, result: "refused-older" };
-    if (reading.status === "unavailable" && stored.checkedAt !== null && stored.status !== "unavailable") {
-      return { state: { ...current, refreshError: reading.reason }, result: "kept-stored" };
-    }
-    const next: HarnessUsageState = {
-      ...stored,
-      status: reading.status,
-      reason: reading.status === "windows" ? null : reading.reason,
-      account: reading.status === "windows" && reading.accountId !== null ? hashKeySegment(reading.accountId) : null,
-      plan: reading.status === "windows" ? reading.plan : null,
-      windows:
-        reading.status === "windows" ? reading.windows.map((window) => ({ ...window, checkedAt, origin: "read" })) : [],
-      checkedAt,
-      refreshError: reading.status === "unavailable" ? reading.reason : null,
-    };
-    return { state: next as unknown as Record<string, unknown>, result: "recorded" };
+    const merged =
+      typeof harnessOrReport === "string" ? applyReading(stored, reading!, checkedAt!) : applyRunWindow(stored, harnessOrReport);
+    if (merged.result !== "recorded" && merged.result !== "kept-stored") return { state: current, result: merged.result };
+    return { state: { ...current, ...merged.state } as unknown as Record<string, unknown>, result: merged.result };
   });
   return outcome ?? "refused-older";
+}
+
+/** What a merge made of the stored record: the next state, or why it was refused. */
+type Merged = { state: Partial<HarnessUsageState>; result: UsageWrite };
+
+/**
+ * The account step both forms share. `incoming` is the hashed account the
+ * write came from, or `null` when it named none, which is an account of its
+ * own: a token-only sign-in names none.
+ *
+ * @returns `same` when the account doesn't change, `rebind` when it does and
+ *   the write was observed after `accountAt`, `older` when it does and wasn't.
+ */
+function accountStep(stored: HarnessUsageState, incoming: string | null, observedAt: number): "same" | "rebind" | "older" {
+  if (incoming === stored.account) return "same";
+  return observedAt > stored.accountAt ? "rebind" : "older";
+}
+
+/** A full reading over the stored record. Pure. */
+export function applyReading(stored: HarnessUsageState, reading: HarnessUsageReading, checkedAt: number): Merged {
+  if (stored.checkedAt !== null && checkedAt < stored.checkedAt) return { state: {}, result: "refused-older" };
+  if (reading.status === "unavailable" && stored.checkedAt !== null && stored.status !== "unavailable") {
+    return { state: { refreshError: reading.reason }, result: "kept-stored" };
+  }
+  if (reading.status !== "windows") {
+    // No number: every window goes, run-written ones too, and so does the
+    // account. Not over a write observed after this look was.
+    if (checkedAt < stored.accountAt) return { state: {}, result: "refused-older" };
+    return {
+      state: {
+        status: reading.status,
+        reason: reading.reason,
+        account: null,
+        accountAt: checkedAt,
+        plan: null,
+        windows: [],
+        checkedAt,
+        refreshError: reading.status === "unavailable" ? reading.reason : null,
+      },
+      result: "recorded",
+    };
+  }
+  const incoming = reading.accountId === null ? null : hashKeySegment(reading.accountId);
+  const step = accountStep(stored, incoming, checkedAt);
+  if (step === "older") return { state: {}, result: "refused-older" };
+  const own = reading.windows.map((window) => ({ ...window, checkedAt, origin: "read" }));
+  const named = new Set(own.map((window) => window.id));
+  // A run's windows this reading doesn't name stay while the account does; on a
+  // shared id, the newer reading wins whichever wrote it.
+  const kept = step === "rebind" ? [] : stored.windows.filter((window) => window.origin === "run");
+  const windows = [
+    ...own.map((window) => {
+      const run = kept.find((k) => k.id === window.id);
+      return run !== undefined && run.checkedAt > window.checkedAt ? run : window;
+    }),
+    ...kept.filter((window) => !named.has(window.id)),
+  ];
+  return {
+    state: {
+      status: "windows",
+      reason: null,
+      account: incoming,
+      accountAt: step === "rebind" ? checkedAt : Math.max(stored.accountAt, checkedAt),
+      plan: reading.plan,
+      windows,
+      checkedAt,
+      refreshError: null,
+    },
+    result: "recorded",
+  };
+}
+
+/** One window a run heard about, over the stored record. Pure. */
+export function applyRunWindow(stored: HarnessUsageState, report: HarnessUsageReport): Merged {
+  // A run already going when a look found no subscription belongs to the old sign-in.
+  if (stored.status !== "windows" && stored.checkedAt !== null && report.runStartedAt <= stored.checkedAt) {
+    return { state: {}, result: "refused-older" };
+  }
+  const incoming = report.accountId === null ? null : hashKeySegment(report.accountId);
+  const step = accountStep(stored, incoming, report.observedAt);
+  if (step === "older") return { state: {}, result: "refused-older" };
+  const others = step === "rebind" ? [] : stored.windows.filter((window) => window.id !== report.window.id);
+  const prior = step === "rebind" ? undefined : stored.windows.find((window) => window.id === report.window.id);
+  if (prior !== undefined && prior.checkedAt >= report.observedAt) return { state: {}, result: "refused-older" };
+  return {
+    state: {
+      status: "windows",
+      reason: null,
+      account: incoming,
+      accountAt: step === "rebind" ? report.observedAt : Math.max(stored.accountAt, report.observedAt),
+      ...(step === "rebind" ? { plan: null } : {}),
+      windows: [...others, { ...report.window, checkedAt: report.observedAt, origin: "run" }],
+    },
+    result: "recorded",
+  };
 }
 
 /** One window as the query returns it: the stored reading, its age, and whether its reset has passed. */

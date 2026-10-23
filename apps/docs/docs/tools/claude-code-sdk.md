@@ -64,9 +64,12 @@ When the host decides to run the agent (rather than letting a model choose), use
 the block directly:
 
 ```ts
+import { harnessEnv } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 
+const env = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"] });
 const agent = claudeCodeAgent({
+  env,
   systemPrompt: {
     type: "preset",
     preset: "claude_code",
@@ -785,6 +788,48 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
+
+## Reading usage left
+
+A Claude subscription limits use per time window, such as five hours or a week, and a run fails once a window is used up. Claude Code reports where those limits stand while it runs, so the numbers come from runs. Pass `onUsage` and the block hands you each one:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"] });
+const agent = claudeCodeAgent({
+  env,
+  onUsage: ({ window, observedAt }) => {
+    console.log(window.id, window.level, window.usedPercent, window.resetsAt && new Date(window.resetsAt));
+  },
+});
+```
+
+Claude Code sends an update whenever its limits change, and at least once per run on a subscription. Each update becomes one [usage window](./coding-agents.md#subscription-usage), for the limit that binds at that moment:
+
+| Field | Value |
+|---|---|
+| `id` | Claude Code's name for the window: `five_hour`, `seven_day`, or a weekly variant such as `seven_day_opus` |
+| `minutes` | 300 for `five_hour`, 10 080 for the `seven_day` family, `null` for any other id |
+| `level` | `"ok"` (under its warning line), `"warning"` (near the limit) or `"reached"` |
+| `usedPercent` | 0 to 100, only when Claude Code sends one, which it does near a limit. Otherwise `null`, never 0 |
+| `resetsAt` | When the window resets, in epoch ms |
+
+The report around it also carries `harness` (`"claude-code"`, exported as `CLAUDE_CODE_HARNESS`), `observedAt`, `runStartedAt`, and `accountId`, the signed-in email or `null`. A run on an API key reports nothing. `onUsage` is awaited, but a throw from it doesn't fail the run: a warning is logged and the run carries on. It works on in-session and detached blocks alike. `usageWindowOf(info)` maps one raw event payload to a window, or `null`, if you read the SDK stream yourself.
+
+To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage reader](./coding-agents.md#subscription-usage). It never throws:
+
+| `status` | When |
+|---|---|
+| `windows` | Signed in, or running on an OAuth token. Carries `plan` and `accountId`, and **no windows**: those arrive from runs. |
+| `api-key` | Claude Code runs on an API key, which has no subscription limit. |
+| `signed-out` | Nobody is signed in, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default). |
+| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed. |
+
+Pass the same `env` as your runs. To keep run windows and readings together and serve them to a page or a worker, register `readClaudeUsage` as the `claude-code` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage) and pass `onUsage` through from the manager's harness slot.
+
+**Where the numbers come from.** Only from Claude Code's own run events and its account answer. Nothing here reads a credentials file, calls a usage endpoint, or uses the SDK's experimental usage call.
 
 ## Error handling
 

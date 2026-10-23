@@ -20,6 +20,7 @@ import type {
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -48,6 +49,7 @@ import {
   workRecorderResources,
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
+import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
@@ -548,6 +550,22 @@ export interface ClaudeCodeAgentOptions {
    * stream, so a slow hook slows the run and a throwing one fails it.
    */
   onSession?: HarnessSessionHook;
+  /**
+   * Called with each subscription usage window Claude Code reports during the
+   * run (its `rate_limit_event`), so a host can record how much of the
+   * subscription is left. Default: unset, and the events are dropped.
+   *
+   * The report names `claude-code`, the window, when it was observed, when the
+   * run started, and the account the run is signed in as (its `accountInfo()`
+   * email, asked once at the first event; `null` when it names none). An event
+   * that names no window, as on an API key, is not reported.
+   *
+   * Awaited like `onSession`, so no write lands after the run ends, but **a
+   * throw is logged and swallowed**: a usage write never fails the run. Unlike
+   * `onSession`, it is allowed in-session too: it owns no part of the
+   * conversation, so it races nothing.
+   */
+  onUsage?: HarnessUsageHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -765,6 +783,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    onUsage,
     settingSources,
     env,
     sandbox,
@@ -1010,6 +1029,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // there, even on the rejection path that skips it) — `.current` on an
       // object isn't tracked that way.
       const inFlightRef: { current: Promise<unknown> | null } = { current: null };
+      // The account the run is signed in as, asked of the running query once,
+      // at its first usage event, so its windows are bound to it.
+      let runAccount: Promise<string | null> | undefined;
 
       // The vendor loop, hoisted so the abort branch can wait on it (bounded)
       // after the race below has been lost to the signal.
@@ -1060,10 +1082,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // terminal `item.done`, or a recorder observation landing after
           // `stop()` and never flushed.
           loop = (async () => {
-            for await (const message of resolved.query({
+            const running = resolved.query({
               prompt: promptText,
               options: queryOptions,
-            })) {
+            });
+            for await (const message of running) {
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.
@@ -1115,6 +1138,29 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
 
               if (ctx.signal.aborted) return;
+
+              // **A usage window, handed to the host and never failing the run.**
+              // Tracked like `onSession`, so it can't land after the run ends.
+              if (onUsage !== undefined && message.type === "rate_limit_event") {
+                const window = usageWindowOf(message.rate_limit_info);
+                if (window !== null) {
+                  const observedAt = Date.now();
+                  runAccount ??= accountOf(running);
+                  inFlightRef.current = runAccount
+                    .then((accountId) =>
+                      onUsage({ harness: CLAUDE_CODE_HARNESS, window, observedAt, runStartedAt: dispatchedAt, accountId }, ctx),
+                    )
+                    .catch((error: unknown) => {
+                      console.warn(`[claude-code] recording a usage window failed: ${error instanceof Error ? error.message : String(error)}`);
+                    });
+                  try {
+                    await inFlightRef.current;
+                  } finally {
+                    inFlightRef.current = null;
+                  }
+                  if (ctx.signal.aborted) return;
+                }
+              }
 
               // **Exactly the handed servers.** The init message lists every MCP
               // server the run connected to; one this block didn't hand it came
@@ -1356,6 +1402,33 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
  * the resolver answers later is closed then, so a connection it was still
  * opening isn't left open.
  */
+/** How long a run waits for its own query to name its account. */
+const ACCOUNT_TIMEOUT_MS = 5_000;
+
+/**
+ * The email of the account a running query is signed in as, or `null` when
+ * it names none (an OAuth token), can't be asked, or doesn't answer in time.
+ * Asks the query the run already holds, so no second process starts.
+ */
+async function accountOf(running: unknown): Promise<string | null> {
+  const ask = (running as { accountInfo?: () => Promise<{ email?: unknown }> }).accountInfo;
+  if (typeof ask !== "function") return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const info = await Promise.race([
+      ask.call(running),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ACCOUNT_TIMEOUT_MS);
+      }),
+    ]);
+    return typeof info?.email === "string" && info.email !== "" ? info.email : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function resolveMcpTools(
   resolve: (ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
   ctx: AgentCallbackContext,

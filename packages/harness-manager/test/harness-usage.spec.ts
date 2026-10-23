@@ -7,14 +7,18 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading } from "@flow-state-dev/core/types";
+import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   HARNESS_USAGE,
+  applyReading,
+  applyRunWindow,
   harnessUsageAction,
   harnessUsageCollection,
+  harnessUsageStateSchema,
   recordHarnessUsage,
   type HarnessUsageRow,
+  type HarnessUsageState,
 } from "../src/harness-usage";
 
 const NOW = Date.now();
@@ -23,8 +27,8 @@ const SIGNED_IN: HarnessUsageReading = {
   accountId: "acct_1",
   plan: "pro",
   windows: [
-    { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, resetsAt: NOW + 3_600_000 },
-    { id: "codex:secondary", label: null, minutes: 10_080, usedPercent: 7, resetsAt: NOW + 86_400_000 },
+    { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, level: null, resetsAt: NOW + 3_600_000 },
+    { id: "codex:secondary", label: null, minutes: 10_080, usedPercent: 7, level: null, resetsAt: NOW + 86_400_000 },
   ],
 };
 
@@ -39,6 +43,13 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
       outcome: await recordHarnessUsage(ctx, input.harness, input.reading as HarnessUsageReading, input.checkedAt),
     }),
   });
+  const runWrite = handler({
+    name: "usage-run-write",
+    inputSchema: z.object({ report: z.unknown() }),
+    outputSchema: z.object({ outcome: z.string() }),
+    uses: [defineCapability({ name: "usage-run-write", resources: { [HARNESS_USAGE]: harnessUsageCollection } })],
+    execute: async (input, ctx: BlockContext) => ({ outcome: await recordHarnessUsage(ctx, input.report as HarnessUsageReport) }),
+  });
   const raw = handler({
     name: "usage-raw",
     inputSchema: z.object({}),
@@ -52,6 +63,7 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     actions: {
       harnessUsage: harnessUsageAction({ readers, ...(timeoutMs === undefined ? {} : { timeoutMs }) }),
       write: { block: write },
+      runWrite: { block: runWrite },
       raw: { block: raw },
     },
   } as never)({ id: "usage-flow" } as never);
@@ -195,3 +207,130 @@ describe("recordHarnessUsage — the one writer", () => {
     expect(JSON.stringify(row)).not.toContain("@");
   });
 });
+
+/** A `five_hour` window as Claude Code reports it during a run. */
+function runReport(overrides: Partial<HarnessUsageReport> & { usedPercent?: number | null; level?: "ok" | "warning" | "reached" } = {}): HarnessUsageReport {
+  const { usedPercent = null, level = "ok", ...rest } = overrides;
+  return {
+    harness: "claude-code",
+    window: { id: "five_hour", label: null, minutes: 300, usedPercent, level, resetsAt: NOW + 3_600_000 },
+    observedAt: NOW,
+    runStartedAt: NOW - 1_000,
+    accountId: "alice@example.com",
+    ...rest,
+  };
+}
+
+const EMPTY: HarnessUsageState = harnessUsageStateSchema.parse({});
+
+/** Apply a merge's result as the writer does. */
+function after(stored: HarnessUsageState, merged: { state: Partial<HarnessUsageState> }): HarnessUsageState {
+  return harnessUsageStateSchema.parse({ ...stored, ...merged.state });
+}
+
+describe("recordHarnessUsage — a run's one window", () => {
+  it("writes the run owner's row only, through the same collection the query reads", async () => {
+    const { act, usage } = lab({});
+    expect(await act("runWrite", { report: runReport({ usedPercent: 91, level: "warning" }) }, "alice")).toEqual({ outcome: "recorded" });
+    const [alice] = await usage(false, "alice");
+    expect(alice).toMatchObject({ harness: "claude-code", status: "windows", checkedAt: null });
+    expect(alice!.windows.map((w) => [w.id, w.usedPercent, w.level, w.origin])).toEqual([["five_hour", 91, "warning", "run"]]);
+    expect(await usage(false, "bob")).toEqual([]);
+  });
+
+  it("parses a row stored before level and accountAt existed", () => {
+    const legacy = harnessUsageStateSchema.parse({
+      status: "windows",
+      account: "abc",
+      windows: [{ id: "codex:primary", label: null, minutes: 300, usedPercent: 42, resetsAt: null, checkedAt: 1, origin: "read" }],
+      checkedAt: 1,
+    });
+    expect(legacy.accountAt).toBe(0);
+    expect(legacy.windows[0]!.level).toBeNull();
+  });
+});
+
+describe("applyRunWindow", () => {
+  it("upserts one window by id and keeps the others, leaving the record's clock and plan", () => {
+    const stored = after(EMPTY, applyReading(EMPTY, { status: "windows", accountId: "alice@example.com", plan: "max", windows: [] }, NOW - 5_000));
+    const withWeek = after(stored, applyRunWindow(stored, runReport({ window: { id: "seven_day", label: null, minutes: 10_080, usedPercent: null, level: "ok", resetsAt: null } })));
+    const both = after(withWeek, applyRunWindow(withWeek, runReport({ observedAt: NOW + 1 })));
+    expect(both.windows.map((w) => w.id).sort()).toEqual(["five_hour", "seven_day"]);
+    expect(both).toMatchObject({ checkedAt: NOW - 5_000, plan: "max" });
+  });
+
+  it("refuses an event older than the stored window", () => {
+    const stored = after(EMPTY, applyRunWindow(EMPTY, runReport({ usedPercent: 91, level: "warning", observedAt: NOW })));
+    expect(applyRunWindow(stored, runReport({ observedAt: NOW - 1 })).result).toBe("refused-older");
+  });
+
+  it("doesn't let a run that started before a look found an API key bring windows back", () => {
+    const keyed = after(EMPTY, applyReading(EMPTY, { status: "api-key", reason: "key" }, NOW));
+    expect(applyRunWindow(keyed, runReport({ runStartedAt: NOW - 1, observedAt: NOW + 10 })).result).toBe("refused-older");
+    expect(applyRunWindow(keyed, runReport({ runStartedAt: NOW + 1, observedAt: NOW + 10 })).result).toBe("recorded");
+  });
+
+  it("rebinds to a new account whole: the old account's windows and plan go", () => {
+    const a = after(EMPTY, applyReading(EMPTY, { status: "windows", accountId: "a@example.com", plan: "max", windows: [] }, NOW - 10_000));
+    const aRun = after(a, applyRunWindow(a, runReport({ accountId: "a@example.com", window: { id: "seven_day", label: null, minutes: 10_080, usedPercent: 80, level: "warning", resetsAt: null }, observedAt: NOW - 5_000 })));
+    const b = after(aRun, applyRunWindow(aRun, runReport({ accountId: "b@example.com", observedAt: NOW })));
+    expect(b.windows.map((w) => w.id)).toEqual(["five_hour"]);
+    expect(b).toMatchObject({ plan: null, accountAt: NOW });
+    // Account A's event, retried after B's, is refused whole.
+    expect(applyRunWindow(b, runReport({ accountId: "a@example.com", observedAt: NOW - 1 })).result).toBe("refused-older");
+  });
+
+  it("treats a move between no account and a named one, either way, as a rebind", () => {
+    const seven = { id: "seven_day", label: null, minutes: 10_080, usedPercent: null, level: "ok" as const, resetsAt: null };
+    const anon = after(EMPTY, applyRunWindow(EMPTY, runReport({ accountId: null, window: seven })));
+    const named = after(anon, applyRunWindow(anon, runReport({ accountId: "b@example.com", observedAt: NOW + 1 })));
+    expect(named.windows.map((w) => w.id)).toEqual(["five_hour"]);
+    const tokenOnly = after(named, applyRunWindow(named, runReport({ accountId: null, observedAt: NOW + 2, window: seven })));
+    expect(tokenOnly.account).toBeNull();
+    expect(tokenOnly.windows.map((w) => w.id)).toEqual(["seven_day"]);
+  });
+
+  it("refuses a late event from another account once the stored one is confirmed after it (A, B late, A)", () => {
+    const a = after(EMPTY, applyRunWindow(EMPTY, runReport({ accountId: "a@example.com", observedAt: NOW })));
+    // A look confirms A at NOW + 2; B's event, observed at NOW + 1, lands after it.
+    const confirmed = after(a, applyReading(a, { status: "windows", accountId: "a@example.com", plan: "max", windows: [] }, NOW + 2));
+    expect(confirmed.accountAt).toBe(NOW + 2);
+    expect(applyRunWindow(confirmed, runReport({ accountId: "b@example.com", observedAt: NOW + 1 })).result).toBe("refused-older");
+  });
+});
+
+describe("applyReading over run windows", () => {
+  const stored = after(EMPTY, applyRunWindow(EMPTY, runReport({ usedPercent: 91, level: "warning" })));
+
+  it("keeps a run's window on the same account and adds the plan", () => {
+    const read = after(stored, applyReading(stored, { status: "windows", accountId: "alice@example.com", plan: "max", windows: [] }, NOW + 1_000));
+    expect(read.plan).toBe("max");
+    expect(read.windows.map((w) => [w.id, w.usedPercent, w.origin])).toEqual([["five_hour", 91, "run"]]);
+  });
+
+  it("keeps the newer of a run window and a read window on a shared id", () => {
+    const window = { id: "five_hour", label: null, minutes: 300, usedPercent: 50, level: null, resetsAt: null };
+    const older = applyReading(stored, { status: "windows", accountId: "alice@example.com", plan: "max", windows: [window] }, NOW - 1);
+    // The record had no clock, so the reading is taken, but the run's newer window stays.
+    expect(after(stored, older).windows.map((w) => [w.usedPercent, w.origin])).toEqual([[91, "run"]]);
+  });
+
+  it("clears a run's windows on a look from a token-only sign-in after a named one", () => {
+    const named = after(EMPTY, applyRunWindow(EMPTY, runReport({ usedPercent: 91, level: "warning" })));
+    const read = after(named, applyReading(named, { status: "windows", accountId: null, plan: null, windows: [] }, NOW + 1));
+    expect(read.windows).toEqual([]);
+    expect(read.account).toBeNull();
+  });
+
+  it("refuses a no-number look observed before a run's window it would clear", () => {
+    // The look saw an API key at NOW - 1; a run that started after it wrote at NOW; the look lands last.
+    expect(applyReading(stored, { status: "api-key", reason: "key" }, NOW - 1).result).toBe("refused-older");
+  });
+
+  it("clears every window on a move to an API key or another account", () => {
+    expect(after(stored, applyReading(stored, { status: "api-key", reason: "key" }, NOW + 1)).windows).toEqual([]);
+    const b = after(stored, applyReading(stored, { status: "windows", accountId: "b@example.com", plan: "pro", windows: [] }, NOW + 1));
+    expect(b.windows).toEqual([]);
+  });
+});
+
