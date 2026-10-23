@@ -285,13 +285,14 @@ standard of a release, and the epic cannot wrap while it is open.
   outside the epic's goal is filed normally, not under the epic.
 - **It stays open until its findings are fixed and retested.** A run that files findings opens
   no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
-  line, posts its report (the pinned commit, and each check with its verdict and evidence) as a
-  comment on the closure issue, and the new blocked-by relations park it. When the last one
-  merges, the wake dispatches implementation again and the next run, on the commit those fixes
-  landed at, re-grades **the failed checks and every check whose code, docs or surface changed
-  since the last run**, whoever changed it, not only the fixed bugs' repros, because a fix can
-  break a neighbour. The rest carry forward from the last report, each with the run it passed
-  in. This repeats until a run files nothing. This needs no `epic-wake` change: blocked-by,
+  line, posts its report (the pinned commit, each check with its verdict and evidence, and where
+  the check files it ran are kept) as a comment on the closure issue, and the new blocked-by
+  relations park it. When the last one merges, the wake dispatches implementation again and the
+  next run, on the commit those fixes landed at, re-grades **the failed checks and every check
+  whose code, docs or surface changed since the last run**, whoever changed it, not only the
+  fixed bugs' repros, because a fix can break a neighbour. The rest carry forward from the last
+  report, each with the run it passed in; a check whose file was lost and rebuilt is re-run, not
+  carried. This repeats until a run files nothing. This needs no `epic-wake` change: blocked-by,
   child discovery and `mayWrap`'s every-row-terminal rule already carry it. `verify.mjs` covers
   those pieces one at a time, but has no scenario yet for a closure run that files findings and
   is re-dispatched.
