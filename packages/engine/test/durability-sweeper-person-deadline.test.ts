@@ -1,0 +1,86 @@
+/**
+ * A person's stop whose deadline passes while a server runs is expired at its
+ * deadline, not an interval later (FIX-2063 D3).
+ *
+ * Why it matters: with durable execution on by default, the router's sweeper
+ * is what fires a person's deadline, including one a separate `fsdev run`
+ * left in the store before the server started. Its interval is ten minutes by
+ * default, so a sweeper that only ticked on the interval would leave an
+ * expired approval answerable that long. The schedule reads the suspension's
+ * `expiresAt`, the way it already does for a wait's deadline: no second loop.
+ */
+import { afterEach, describe, expect, it } from "vitest";
+import { createInMemoryStores } from "../src/stores";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { createDurabilitySweeper } from "../src/durability/durability-sweeper";
+import type { SuspensionRecord } from "@flow-state-dev/core/types";
+
+const disposers: Array<() => void> = [];
+afterEach(() => {
+  for (const dispose of disposers.splice(0)) dispose();
+});
+
+function approval(id: string, expiresAt: number): SuspensionRecord {
+  return {
+    suspensionId: id,
+    requestId: `req_${id}`,
+    flowKind: "review",
+    actionName: "submit",
+    userId: "devuser",
+    reason: "human_approval",
+    message: "Publish?",
+    status: "pending",
+    blockInstanceId: "seq_1",
+    stepIndex: 1,
+    createdAt: Date.now(),
+    expiresAt
+  };
+}
+
+async function statusWithin(read: () => Promise<string | undefined>, ms: number): Promise<string | undefined> {
+  const until = Date.now() + ms;
+  let status = await read();
+  while (status === "pending" && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 50));
+    status = await read();
+  }
+  return status;
+}
+
+describe("durability sweeper: a person's deadline", () => {
+  it("expires an approval left in the store before the server started, at its deadline", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider(stores);
+    await provider.suspend(approval("a", Date.now() + 300));
+
+    const sweeper = createDurabilitySweeper({
+      provider,
+      stores,
+      retention: { sweepIntervalMs: 600_000 },
+      prune: false,
+      continueRequest: (async () => ({ finished: Promise.resolve() })) as never
+    });
+    disposers.push(() => sweeper.dispose());
+
+    const status = await statusWithin(async () => (await provider.loadSuspension("req_a", "a"))?.status, 3_000);
+    expect(status).toBe("expired");
+  });
+
+  it("OFF STATE: an approval with no deadline stays pending", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider(stores);
+    await provider.suspend({ ...approval("b", 0), expiresAt: undefined });
+
+    const sweeper = createDurabilitySweeper({
+      provider,
+      stores,
+      retention: { sweepIntervalMs: 600_000 },
+      prune: false,
+      continueRequest: (async () => ({ finished: Promise.resolve() })) as never
+    });
+    disposers.push(() => sweeper.dispose());
+
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect((await provider.loadSuspension("req_b", "b"))?.status).toBe("pending");
+  });
+});

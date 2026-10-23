@@ -247,9 +247,11 @@ export function createDurabilitySweeper(
     }
   };
 
-  // When the next tick is due, from the pending wait gates (the tick's own, or
-  // read here when it has none): the earliest deadline, an overdue one retried
-  // shortly, else the interval.
+  // When the next tick is due, from the pending gates with a deadline (the
+  // tick's own, or read here when it has none): the earliest deadline, an
+  // overdue one retried shortly, else the interval. A person's stop counts as
+  // a wait's does (FIX-2063 D3): its `expiresAt` is the deadline this host's
+  // sweeper fires, with no second loop.
   const nextDelay = async (tickPending: SuspensionRecord[] | undefined): Promise<number> => {
     if (continueRequest === undefined && wakes === undefined) return sweepIntervalMs;
     try {
@@ -263,7 +265,7 @@ export function createDurabilitySweeper(
       if (continueRequest === undefined) return due === Number.POSITIVE_INFINITY ? sweepIntervalMs : due - now;
       const pending = tickPending ?? (await provider.listSuspended({ status: "pending" }));
       for (const gate of pending) {
-        if (!isWaitGate(gate) || gate.expiresAt == null) continue;
+        if (gate.expiresAt == null) continue;
         if (gate.expiresAt > now) due = Math.min(due, gate.expiresAt);
         else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_WAIT_RETRY_MS);
       }
@@ -318,10 +320,10 @@ export function createDurabilitySweeper(
   };
 
   arm(sweepIntervalMs);
-  // A host that starts with a debt or a wait's deadline already due (a crash
-  // left it) pays it now, not an interval later. Read off the wakes alone: a
-  // gate parked before FIX-2082 waits for the first tick.
-  if (wakes !== undefined) void nextDelay([]).then(arm);
+  // A host that starts with a debt or a deadline already in the store (a crash
+  // left it, or a one-shot `fsdev run` parked a person's stop) is armed for it
+  // now, not an interval later.
+  if (wakes !== undefined || continueRequest !== undefined) void nextDelay(undefined).then(arm);
 
   // Only a sweeper that can resume a wait at its deadline registers: that is
   // how the host tells a request a wait is bounded here (`hasWaitSweeper`). A
@@ -454,7 +456,7 @@ async function enforceSuspensionExpiry(
     for (const record of pending) {
       if (record.expiresAt == null) continue;
       if (record.expiresAt > now) {
-        if (isWaitGate(record)) stillPending.push(record);
+        stillPending.push(record);
         continue;
       }
       if (isWaitGate(record)) {
