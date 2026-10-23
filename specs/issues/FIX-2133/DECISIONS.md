@@ -77,8 +77,10 @@ Then the gate's backstop could go; the generation stays either way.
   Cancel runs it from both backings' direct and cascade cancel, closing every question with the row.
 - **An identical retry is a success; a competing answer is refused.** An answer is a user steer
   keyed to its question. The same words from the same user again return `unchanged`, reported as
-  done, so a retry after a lost response succeeds. Different words, or another user, are refused as
-  already answered; an answer to a finished row is refused as finished.
+  done, so a retry after a lost response succeeds. That match is checked before the terminal guard:
+  if the row already carries the same question key, words and sender, the answer is `unchanged`
+  even when the row has since finished. Different words, or another user, are refused as already
+  answered; any other answer to a finished row is refused as finished.
 - **The steer cap keeps room for answers** (the rule in FIX-2131's
   [DECISIONS](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md),
   "The steer cap keeps room for answers", owned here). An answer is a steer and counts against
