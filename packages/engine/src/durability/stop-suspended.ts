@@ -102,26 +102,7 @@ export async function stopSuspendedRequest(
   record: RequestRecord
 ): Promise<SuspendedStopResult> {
   const [gate] = await pendingGatesOf(deps, record);
-  if (gate === undefined) {
-    // Parked behind a gate that expired: nothing will ever continue the turn
-    // on its own, so the stop does, and it ends through its own lifecycle.
-    const expired = await expiredLatestGate(deps, record);
-    if (expired !== undefined) {
-      const resumeContext: ResumeContext = {
-        suspensionId: expired.suspensionId,
-        action: "reject",
-        resumedBy: "stop",
-        resolution: "expired"
-      };
-      return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
-    }
-    // Resolved by a person (or already stopped), and the turn never ran
-    // again: it waits on the re-drive, so the stop wins over the resolution.
-    const owed = await owedNonWaitLatestGate(deps, record);
-    if (owed !== undefined) return (await stopAtNonWaitGate(deps, record, owed)) ? "stopped" : "already-resolved";
-    // No pending gate: an answer resolved it first, and the turn runs again.
-    return "already-resolved";
-  }
+  if (gate === undefined) return stopBehindResolvedGate(deps, record);
 
   // A turn interrupted before its log held the gate can't be replayed onto it:
   // it is continued as crash recovery continues it, with the stop recorded, so
@@ -140,6 +121,31 @@ export async function stopSuspendedRequest(
 
   const ended = await stopAtNonWaitGate(deps, record, gate);
   return ended ? "stopped" : "already-resolved";
+}
+
+/** Stop a parked turn with no pending gate: its last gate is already resolved. */
+async function stopBehindResolvedGate(
+  deps: SuspendedStopDeps,
+  record: RequestRecord
+): Promise<SuspendedStopResult> {
+  // Parked behind a gate that expired: nothing will ever continue the turn
+  // on its own, so the stop does, and it ends through its own lifecycle.
+  const expired = await expiredLatestGate(deps, record);
+  if (expired !== undefined) {
+    const resumeContext: ResumeContext = {
+      suspensionId: expired.suspensionId,
+      action: "reject",
+      resumedBy: "stop",
+      resolution: "expired"
+    };
+    return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
+  }
+  // Resolved by a person (or already stopped), and the turn never ran
+  // again: it waits on the re-drive, so the stop wins over the resolution.
+  const owed = await owedNonWaitLatestGate(deps, record);
+  if (owed !== undefined) return (await stopAtNonWaitGate(deps, record, owed)) ? "stopped" : "already-resolved";
+  // No pending gate: an answer resolved it first, and the turn runs again.
+  return "already-resolved";
 }
 
 /** The turn's last logged gate, when it expired: the turn waits on nothing now. */
