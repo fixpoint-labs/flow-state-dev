@@ -164,6 +164,47 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
+  it("follows up a task filed for the delegate's ongoing session there, one open task at a time (FIX-2111)", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "lead");
+      // A routed task runs in the delegate's ongoing session, not one of its own.
+      const root = await file(h, conv, { goal: "Draft the post", assignee: "eng.tasker", session: "ongoing" });
+      await h.settled();
+      // Another ongoing task holds that session while the follow-up is filed.
+      await file(h, conv, { goal: "[slow:400] Check the alerts", assignee: "eng.tasker", session: "ongoing" });
+      const followUp = await file(h, conv, { goal: "A shorter version", followUpOf: root.taskId });
+      expect(followUp).toMatchObject({ ok: true });
+      const early = (await h.rows("alice")).find((r) => r.id === followUp.taskId)!;
+      expect(early).toMatchObject({ status: "pending", attempts: 0 });
+      await h.settled();
+      // The follow-up ran where the post was drafted, with its history, after
+      // the task that held the session.
+      expect(h.runs.map((run) => run.message)).toEqual(["Draft the post", "[slow:400] Check the alerts", "A shorter version"]);
+      expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);
+      const rows = await h.rows("alice");
+      expect(rows.find((r) => r.id === followUp.taskId)).toMatchObject({ status: "completed", followUpOf: root.taskId, session: "ongoing" });
+      const alerts = rows.find((r) => r.goal === "[slow:400] Check the alerts")!;
+      expect(rows.find((r) => r.id === followUp.taskId)!.startedAt!).toBeGreaterThanOrEqual(alerts.completedAt!);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a follow-up that names a target, and files nothing: it runs where its root ran (FIX-2111)", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "lead");
+      const root = await file(h, conv, { goal: "Draft the plan", assignee: "eng.tasker" });
+      await h.settled();
+      const refused = await file(h, conv, { goal: "Now open the PR", followUpOf: root.taskId, target: "nope/none" });
+      expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_target: /) });
+      expect((await h.rows("alice")).some((r) => r.goal === "Now open the PR")).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("keeps two conversations apart: each follows up its own task, in its own session (BR-23)", async () => {
     const h = plain();
     try {
