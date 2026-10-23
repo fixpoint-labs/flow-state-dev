@@ -14,6 +14,11 @@
  * It rewrites only what a worker flow the host registered no longer has under
  * the old name and has under the new one, so another flow's own `run` is left
  * alone. Safe to run again: a second run finds nothing under an old name.
+ * Run it before the host's router is built, so the durability sweep can't
+ * fire an old-name wake first.
+ *
+ * Not covered: a job already queued on an external dispatcher (BullMQ) under
+ * an old name. Let the queues empty before deploying.
  */
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import { RESPOND_ACTION } from "../worker-door";
@@ -30,6 +35,9 @@ const UNFINISHED = ["in_progress", "suspended", "interrupted"] as const;
 
 /** The most wakes read in one pass: far more than any host keeps due at start. */
 const WAKE_READ_LIMIT = 1_000_000;
+
+/** How many times a wake bumped while it is moved is read and moved again. */
+const WAKE_MOVE_ATTEMPTS = 5;
 
 /** A registered flow copy, as far as the upgrade reads it: what `hireWorkforce` returns. */
 export interface EntryNameFlow {
@@ -51,26 +59,52 @@ type StoredWake = {
   readonly version: number;
 };
 
+/** A stored request, as far as the upgrade reads it. */
+export interface EntryNameRequest {
+  readonly id: string;
+  readonly flowKind: string;
+  readonly flowId?: string;
+  readonly actionName: string;
+  readonly createdAt: number;
+  readonly incarnation?: string | null;
+}
+
+type ActiveEntry = { readonly requestId: string; readonly flowKind: string; readonly flowId?: string; readonly actionName: string };
+
 /** The stores the upgrade reads and writes: the engine's `StoreRegistry` fits. */
 export interface EntryNameUpgradeStores {
   readonly request: {
-    list(options: { status: readonly (typeof UNFINISHED)[number][] }): Promise<
-      ReadonlyArray<{ id: string; flowKind: string; flowId?: string; actionName: string; incarnation?: string }>
-    >;
+    list(options: { status: readonly (typeof UNFINISHED)[number][] }): Promise<ReadonlyArray<EntryNameRequest>>;
     setFieldsIfStatus(
       id: string,
       fields: { actionName: string },
       allowedStatuses: readonly (typeof UNFINISHED)[number][],
       updatedAt: number,
       expectedIncarnation?: string
-    ): Promise<unknown>;
+    ): Promise<{ applied: boolean }>;
+  };
+  /** The live-request registry, whose entries name their action too. */
+  readonly activeRequests?: {
+    listAll(): Promise<ReadonlyArray<ActiveEntry>>;
+    register(entry: never): Promise<void>;
   };
   /** Absent on a store that keeps no wakes: none is rewritten. */
   readonly wakes?: {
     listDue(now: number, limit: number): Promise<readonly StoredWake[]>;
+    get(key: { tenantId?: string; sessionId: string; entry: string }): Promise<StoredWake | null>;
     owe(input: Omit<StoredWake, "version">): Promise<unknown>;
     clear(key: { tenantId?: string; sessionId: string; entry: string }, version: number): Promise<boolean>;
   };
+}
+
+/** What {@link upgradeWorkerEntryNames} takes beside the stores and the flows. */
+export interface EntryNameUpgradeOptions {
+  /**
+   * Which request a stored record is, as the store compares it: pass the
+   * engine's `resolveRequestIncarnation`. Each rewrite is fenced on it, so a
+   * record deleted and made again under the same id is never rewritten.
+   */
+  readonly incarnationOf: (record: EntryNameRequest) => string;
 }
 
 /** Whether `name` is declared anywhere on `flow`. */
@@ -93,31 +127,58 @@ function renamed(flow: EntryNameFlow | undefined, name: string): string | undefi
  *
  * @param stores The host's stores (`runtime.stores`).
  * @param flows The flows the host registered: `hireWorkforce`'s copies.
- * @returns How many requests and wakes it rewrote.
+ * @param options `incarnationOf`: the engine's `resolveRequestIncarnation`.
+ * @returns How many requests and wakes it rewrote: only writes that applied count.
  */
 export async function upgradeWorkerEntryNames(
   stores: EntryNameUpgradeStores,
-  flows: readonly EntryNameFlow[]
+  flows: readonly EntryNameFlow[],
+  options: EntryNameUpgradeOptions
 ): Promise<{ requests: number; wakes: number }> {
   const byId = new Map(flows.map((flow) => [flow.id, flow]));
   let requests = 0;
   for (const record of await stores.request.list({ status: UNFINISHED })) {
     const to = renamed(byId.get(record.flowId ?? record.flowKind), record.actionName);
     if (to === undefined) continue;
-    await stores.request.setFieldsIfStatus(record.id, { actionName: to }, UNFINISHED, Date.now(), record.incarnation);
-    requests += 1;
+    const written = await stores.request.setFieldsIfStatus(
+      record.id,
+      { actionName: to },
+      UNFINISHED,
+      Date.now(),
+      options.incarnationOf(record)
+    );
+    if (written.applied) requests += 1;
+  }
+
+  // The live registry names each running request's action as well; it is read
+  // for listings, and kept in step with the record.
+  if (stores.activeRequests !== undefined) {
+    for (const entry of await stores.activeRequests.listAll()) {
+      const to = renamed(byId.get(entry.flowId ?? entry.flowKind), entry.actionName);
+      if (to !== undefined) await stores.activeRequests.register({ ...entry, actionName: to } as never);
+    }
   }
 
   let wakes = 0;
   if (stores.wakes !== undefined) {
-    for (const wake of await stores.wakes.listDue(Number.MAX_SAFE_INTEGER, WAKE_READ_LIMIT)) {
-      const to = renamed(byId.get(wake.flowKind), wake.entry);
+    for (const due of await stores.wakes.listDue(Number.MAX_SAFE_INTEGER, WAKE_READ_LIMIT)) {
+      const to = renamed(byId.get(due.flowKind), due.entry);
       if (to === undefined) continue;
-      const { version, ...kept } = wake;
-      // The new wake first: a crash between the two leaves a wake that pays nothing, never a lost one.
-      await stores.wakes.owe({ ...kept, entry: to });
-      await stores.wakes.clear({ ...(wake.tenantId === undefined ? {} : { tenantId: wake.tenantId }), sessionId: wake.sessionId, entry: wake.entry }, version);
-      wakes += 1;
+      const oldKey = { ...(due.tenantId === undefined ? {} : { tenantId: due.tenantId }), sessionId: due.sessionId, entry: due.entry };
+      // The new wake first: a crash between the two leaves a wake that pays
+      // nothing, never a lost one. A clear that loses to a write bumping the
+      // old wake reads it again and moves what it holds now.
+      let wake: StoredWake | null = due;
+      for (let attempt = 0; wake !== null && attempt < WAKE_MOVE_ATTEMPTS; attempt += 1) {
+        const { version, ...kept } = wake;
+        await stores.wakes.owe({ ...kept, entry: to });
+        if (await stores.wakes.clear(oldKey, version)) {
+          wakes += 1;
+          wake = null;
+        } else {
+          wake = await stores.wakes.get(oldKey);
+        }
+      }
     }
   }
   return { requests, wakes };

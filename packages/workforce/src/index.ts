@@ -78,6 +78,8 @@ export {
 export {
   upgradeWorkerEntryNames,
   type EntryNameFlow,
+  type EntryNameRequest,
+  type EntryNameUpgradeOptions,
   type EntryNameUpgradeStores
 } from "./workers/upgrade-entry-names";
 export {

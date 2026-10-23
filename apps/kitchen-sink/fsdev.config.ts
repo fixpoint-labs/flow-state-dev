@@ -35,6 +35,7 @@ import { availableHarnessFlows } from "@/lib/harness-gate";
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
 import { cursorSessionFlow } from "@/lib/cursor-mode";
+import { afterStoredWorkUpgrade } from "@/lib/stored-work-upgrade";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
@@ -209,7 +210,8 @@ const flowstate = createFlowState({
   },
 });
 
-export default flowstate;
+// The workforce's stored-work upgrades run before the first router (`lib/stored-work-upgrade.ts`).
+export default afterStoredWorkUpgrade(flowstate, workforce.copies);
 
 // `next dev` re-evaluates this module on every HMR edit, building a fresh
 // FlowState (and, under dispatch mode, a fresh BullMQ worker) each time.

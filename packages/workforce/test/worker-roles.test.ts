@@ -26,6 +26,7 @@ import { hireWorkforce } from "../src/workers/register";
 import { checkWorkerFlows } from "../src/hire";
 import { workerFlow } from "../src/workers/worker-flow";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
 import { ROLE_PROBES } from "../src/worker-roles";
 import { routeOnSchema } from "../src/coordinator/coordinator-rounds";
 import { workstreamDelegateChangeSchema } from "../src/projects/project-coordinator";
@@ -187,6 +188,16 @@ describe("every hire path reads the roles a flow is registered with", () => {
     expect(refusalOf(() => hireWorkforce(declared))).toBe("");
   });
 
+  // A builder that names no roles leaves them to the flow it builds: the
+  // built-in agent, built on the installation, declares its own.
+  it("hires a `workerFlow(build)` builder of the built-in agent with no `roles`, on the agent's own", () => {
+    const installation = createWorkerInstallation({
+      workerFlows: { agent: workerFlow((on) => defineAgentWorkerFlow({ installation: on })) }
+    });
+    expect(refusalOf(() => hireWorkforce(installation))).toBe("");
+    expect(installation.workerFlows().agent!.roles).toEqual(["contributor", "manager"]);
+  });
+
   // A flow's verdict is kept for the life of its definition; two
   // registrations of it with different roles must not share one.
   it("judges one flow under two registrations by each one's roles", () => {
@@ -196,15 +207,56 @@ describe("every hire path reads the roles a flow is registered with", () => {
   });
 });
 
+describe("the coordinator role", () => {
+  const coordinatorOn = (installation: WorkerInstallation) =>
+    defineCoordinatorFlow({ installation, routeModel: "roles-test/route" }) as unknown as {
+      internal: { actions: Record<string, unknown> };
+    };
+  const COORDINATOR_ENTRIES = ["routeOn", "roundDeadline", "changeWorkstreamDelegate"];
+
+  it("is true of the built-in coordinator, which declares all three roles itself", () => {
+    const installation = createWorkerInstallation();
+    expect(workerFlowProblems("coordinator", coordinatorOn(installation) as never)).toEqual([]);
+  });
+
+  it("refuses a flow declaring `coordinator` without its three entries, naming each and `defineCoordinatorFlow`", () => {
+    const installation = createWorkerInstallation();
+    const flow = managerFlow(installation, "self-styled", (entries) => entries);
+    const problems = workerFlowProblems("self-styled", flow, ["coordinator"]);
+    expect(problems).toHaveLength(1);
+    for (const entry of COORDINATOR_ENTRIES) expect(problems[0]).toContain(`"${entry}"`);
+    expect(problems[0]).toContain("defineCoordinatorFlow");
+  });
+
+  it("refuses the coordinator's entries on a flow that doesn't declare `coordinator`", () => {
+    const installation = createWorkerInstallation();
+    const { internal } = coordinatorOn(installation);
+    const borrowed = Object.fromEntries(COORDINATOR_ENTRIES.map((entry) => [entry, internal.actions[entry]]));
+    const flow = managerFlow(installation, "borrower", (entries) => ({ ...entries, ...borrowed }));
+    const problems = workerFlowProblems("borrower", flow, ["manager"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"coordinator"');
+    for (const entry of COORDINATOR_ENTRIES) expect(problems[0]).toContain(`"${entry}"`);
+  });
+});
+
 describe("the probe inputs", () => {
   // Each probe is what the entry's real caller sends; a probe its source
-  // schema refuses would refuse every flow, or pass a broken one.
+  // schema refuses would refuse every flow, or pass a broken one. The pass
+  // and the deadline take inline schemas, so they are read off the entries
+  // the factories build.
   it("parse against the schemas their callers send", () => {
+    const installation = createWorkerInstallation();
+    const entries = defineSessionBoard({ installation, flowKind: "probe" }).entries(turn) as Record<string, { inputSchema: z.ZodTypeAny }>;
+    const coordinator = defineCoordinatorFlow({ installation, routeModel: "roles-test/route" }) as unknown as {
+      internal: { actions: Record<string, { inputSchema: z.ZodTypeAny }> };
+    };
     expect(taskDispatchInputSchema.safeParse(ROLE_PROBES.work).success).toBe(true);
     expect(taskSettledInputSchema.safeParse(ROLE_PROBES.onTaskSettled).success).toBe(true);
-    expect(z.object({}).strict().safeParse(ROLE_PROBES.dispatch).success).toBe(true);
+    expect(entries.dispatch!.inputSchema.safeParse(ROLE_PROBES.dispatch).success).toBe(true);
+    expect(entries.onTaskSettled!.inputSchema.safeParse(ROLE_PROBES.onTaskSettled).success).toBe(true);
     expect(routeOnSchema.safeParse(ROLE_PROBES.routeOn).success).toBe(true);
-    expect(z.object({}).strict().safeParse(ROLE_PROBES.roundDeadline).success).toBe(true);
+    expect(coordinator.internal.actions.roundDeadline!.inputSchema.safeParse(ROLE_PROBES.roundDeadline).success).toBe(true);
     expect(workstreamDelegateChangeSchema.safeParse(ROLE_PROBES.changeWorkstreamDelegate).success).toBe(true);
   });
 });

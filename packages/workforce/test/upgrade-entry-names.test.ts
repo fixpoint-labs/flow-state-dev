@@ -9,9 +9,22 @@
  * worker flows the host registered and nowhere else.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
-import { upgradeWorkerEntryNames } from "../src/workers/upgrade-entry-names";
+import { z } from "zod";
+import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import {
+  continueRequest,
+  createCheckpointDurabilityProvider,
+  createFlowRegistry,
+  createInMemoryStores,
+  resolveRequestIncarnation,
+  runAction
+} from "@flow-state-dev/engine";
+import { upgradeWorkerEntryNames as upgradeWith, type EntryNameFlow } from "../src/workers/upgrade-entry-names";
+
+type Stores = Parameters<typeof upgradeWith>[0];
+/** The upgrade as a host calls it, fenced on the engine's own incarnation rule. */
+const upgradeWorkerEntryNames = (stores: Stores, flows: readonly EntryNameFlow[]) =>
+  upgradeWith(stores, flows, { incarnationOf: resolveRequestIncarnation });
 
 /** A worker flow's registered copy, as far as the upgrade reads it. */
 const workerCopy = (id: string) => ({ id, actions: { respond: {} }, internal: { actions: { dispatch: {} } } });
@@ -84,5 +97,137 @@ describe("upgradeWorkerEntryNames", () => {
     await upgradeWorkerEntryNames(stores, [workerCopy("agent")]);
     expect(await upgradeWorkerEntryNames(stores, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0 });
     expect(await upgradeWorkerEntryNames({ ...stores, wakes: undefined } as never, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0 });
+  });
+
+  it("rewrites a worker flow's old name only where the flow no longer declares it: its own `run` is left alone", async () => {
+    const stores = createInMemoryStores();
+    // A worker flow with its `respond` door and an action of its own named `run`.
+    const both = { id: "desk", actions: { respond: {}, run: {} } };
+    await stores.request.set("own-run", record("own-run", "desk", "run", "suspended"), "any");
+    expect((await upgradeWorkerEntryNames(stores, [both])).requests).toBe(0);
+    expect((await stores.request.get("own-run"))?.actionName).toBe("run");
+  });
+
+  it("counts only the writes that applied: a record that is no longer the one read is not rewritten", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("mid-reply", record("mid-reply", "agent", "run", "interrupted"), "any");
+    // The store fences on the incarnation: one that doesn't match writes nothing.
+    const result = await upgradeWith(stores, [workerCopy("agent")], { incarnationOf: () => "inc-someone-else" });
+    expect(result.requests).toBe(0);
+    expect((await stores.request.get("mid-reply"))?.actionName).toBe("run");
+  });
+
+  it("renames a running request's live-registry entry with its record", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("live", record("live", "agent", "run", "in_progress"), "any");
+    const now = Date.now();
+    await stores.activeRequests.register({
+      requestId: "live",
+      flowKind: "agent",
+      flowId: "agent",
+      actionName: "run",
+      userId: "alice",
+      source: "http",
+      startedAt: now,
+      lastHeartbeatAt: now
+    });
+    await upgradeWorkerEntryNames(stores, [workerCopy("agent")]);
+    expect((await stores.activeRequests.get("live"))?.actionName).toBe("respond");
+  });
+
+  it("moves a wake bumped while it is moved, so nothing is left under the old name", async () => {
+    const stores = createInMemoryStores();
+    const wakes = stores.wakes!;
+    const base = { sessionId: "conv", flowKind: "agent", userId: "alice", orgId: DEFAULT_ORG_ID, dueAt: 5_000, landBy: 6_000 };
+    await wakes.owe({ ...base, entry: "runTaskBoard" });
+    // A writer owes the old wake again between the read and the clear, once.
+    let bumped = false;
+    const racing = {
+      ...stores,
+      wakes: {
+        ...wakes,
+        listDue: wakes.listDue.bind(wakes),
+        get: wakes.get.bind(wakes),
+        owe: wakes.owe.bind(wakes),
+        clear: async (key: Parameters<typeof wakes.clear>[0], version: number) => {
+          if (!bumped) {
+            bumped = true;
+            await wakes.owe({ ...base, entry: "runTaskBoard", dueAt: 4_000 });
+          }
+          return wakes.clear(key, version);
+        }
+      }
+    };
+    expect((await upgradeWorkerEntryNames(racing as never, [workerCopy("agent")])).wakes).toBe(1);
+    expect(await wakes.get({ sessionId: "conv", entry: "runTaskBoard" })).toBeNull();
+    expect(await wakes.get({ sessionId: "conv", entry: "dispatch" })).toMatchObject({ dueAt: 4_000 });
+  });
+});
+
+describe("a reply an older host parked under `run`", () => {
+  /** A worker's door that asks before it answers, and the stores it parks in. */
+  async function parked() {
+    const ask = handler({
+      name: "upgrade-ask",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.unknown(),
+      execute: async (input, ctx) => ({ asked: input.message, decision: await ctx.suspend!({ reason: "human_approval", message: "Go?" }) })
+    });
+    const answer = handler({ name: "upgrade-answer", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "answered" });
+    const flow = defineFlow({
+      kind: "desk",
+      actions: {
+        respond: {
+          inputSchema: z.object({ message: z.string() }),
+          block: sequencer({ name: "upgrade-reply", durable: true }).step(ask).step(answer)
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider };
+    const first = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "respond",
+      input: { message: "ship it?" },
+      userId: "alice",
+      sessionId: "s1",
+      stores,
+      runtimeConfig
+    } as never);
+    const id = first.requestId!;
+    const record = (await stores.request.get(id))!;
+    // As an older host left it: the same parked reply, under the door's old name.
+    await stores.request.setFieldsIfStatus(id, { actionName: "run" }, ["suspended"], Date.now(), resolveRequestIncarnation(record));
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now(), resumeData: {} });
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const resume = async () =>
+      (
+        await continueRequest({
+          requestId: id,
+          stores,
+          flowRegistry: registry,
+          resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", data: {} },
+          runtimeConfig
+        } as never)
+      ).finished;
+    return { flow, stores, id, resume };
+  }
+
+  it("fails to resume without the upgrade: no worker flow has `run` any more", async () => {
+    const { resume } = await parked();
+    await expect(resume()).rejects.toThrow(/run/);
+  });
+
+  it("resumes as `respond` after the upgrade, and completes", async () => {
+    const { flow, stores, id, resume } = await parked();
+    expect((await upgradeWorkerEntryNames(stores, [flow as never])).requests).toBe(1);
+    const resumed = await resume();
+    expect(resumed.error).toBeUndefined();
+    expect(resumed.output).toBe("answered");
+    expect(await stores.request.get(id)).toMatchObject({ actionName: "respond", status: "completed" });
   });
 });

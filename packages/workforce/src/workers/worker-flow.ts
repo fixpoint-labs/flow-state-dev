@@ -32,8 +32,11 @@ export interface WorkerFlowBuilder {
   readonly build: (installation: WorkerInstallation) => unknown;
   /** Whether the app keeps the flow for the workers its files define. */
   readonly standardOnly: boolean;
-  /** The roles the flow declares, beside every worker's door. */
-  readonly roles: readonly WorkerRole[];
+  /**
+   * The roles the flow declares, beside every worker's door; `undefined` when
+   * the builder names none, so a built-in flow it builds keeps its own.
+   */
+  readonly roles: readonly WorkerRole[] | undefined;
 }
 
 /**
@@ -53,7 +56,12 @@ export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
   options: { standardOnly?: boolean; roles?: readonly WorkerRole[] } = {}
 ): WorkerFlowBuilder {
-  return { [BUILDER]: true, build, standardOnly: options.standardOnly === true, roles: [...(options.roles ?? [])] };
+  return {
+    [BUILDER]: true,
+    build,
+    standardOnly: options.standardOnly === true,
+    roles: options.roles === undefined ? undefined : [...options.roles]
+  };
 }
 
 /** Whether a `workerFlows` entry is a {@link workerFlow} builder. */
