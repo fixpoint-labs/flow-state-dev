@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, how a screen answers a person's stop in a run a task started. Chosen: a route that takes only the stop's id and the answer, reading the request, flow and user from the stored stop. Instead of: opening the resume route to task runs behind a check. It comes down to the first row: under the chosen route nothing but the answer reaches the run, while the resume route takes a request id and gate data from the caller and would re-enter a task's handler with them. The price is the second row: two routes to keep, resume for a user's own runs and answer for a person's stop, where the other option keeps one with an exception inside. The third row is a tie: only the stop's own user may answer either way. Locks in: a public answer route and client call that every screen answers a person through. Flips if: the resume route comes to take nothing but an answer."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, how a screen answers a person's stop in a run a task started. Chosen: a route that takes only where the stop is (its request and id) and the answer, reading the flow and user from the stored stop. Instead of: opening the resume route to task runs behind a check. It comes down to the first row: under the chosen route nothing but the answer reaches the run, while the resume route takes a request id and gate data from the caller and would re-enter a task's handler with them. The price is the second row: two routes to keep, resume for a user's own runs and answer for a person's stop, where the other option keeps one with an exception inside. The third row is a tie: only the stop's own user may answer either way. Locks in: a public answer route and client call that every screen answers a person through. Flips if: the resume route comes to take nothing but an answer."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">An answer route: the stop's id and answer</text>
+    <text class="t-h c-code" x="228" y="112">An answer route: the stop and its answer</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">The resume route, opened behind a check</text>
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Only the answer reaches the run</text>
-    <text class="t-s" x="248" y="179">request, flow, user read from the stored stop</text>
+    <text class="t-s" x="248" y="179">flow, user read from the stored stop</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Gate data re-enters a task</text>
     <text class="t-s" x="612" y="179">caller data in a task's handler (BP-031)</text>

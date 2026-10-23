@@ -11,7 +11,7 @@
 | **writes a block that asks a person** | Calls `ctx.suspend` with a reason. An approval past its expiry reads as a rejection; a question past it stays parked for good | Calls `ctx.waitForUser({ kind, prompt, deadline? })`, 7 days by default. At the deadline an approval is a no, and a question or review fails the try unless the block catches it |
 | **cancels a task waiting on a person** | The row cancels, but its run stays parked and its Inbox item stays open | The block resumes `cancelled` and runs to its end. Nothing it writes to the task or returns is kept; what it does elsewhere lands, as any block's does. The item closes |
 | **stops a run waiting on them** | The try fails and the task runs again, asking again | The run ends, its item closes, and the task is cancelled |
-| **answers and cancels at the same moment** | n/a | One wins; the other is told the stop is already resolved |
+| **answers and cancels at the same moment** | n/a | One wins; the other is told the stop is already resolved. Once the cancel is written, it is the one that wins |
 
 Every other stop for a person rests on this one: FIX-2131, FIX-2132 and FIX-2133 test against
 `waitForUser`, its mark on the row and its answer route.
@@ -45,7 +45,7 @@ never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/holds-a-task-waiting-on-a-person/` · model-free (`n/a`) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1; a task the request filed before it stopped ends during the stop, and its `onTaskSettled` runs then, not after the answer. b: an unhandled question fails try 1, a caught one completes it, an approval reads as a no. c: the block runs on once, its progress write is refused, the row stays `cancelled` with no output. d: `cancelled` on try 1. Every leg: the item leaves the pending list. An answer and a cancel together resume once |
+| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1; a task the request filed before it stopped ends during the stop, and its `onTaskSettled` runs then, not after the answer. b: an unhandled question fails try 1, a caught one completes it, an approval reads as a no. c: the block runs on once, its progress write is refused, the row stays `cancelled` with no output. d: `cancelled` on try 1. Every leg: the item leaves the pending list. An answer and a cancel together resume once; an answer after the cancel's write is told `already-resolved` and the block resumes `cancelled` |
 | **Input** | A question, "Which region?", an approval, and a review |
 | **Anti-game** | Don't assert on the store's writes or the suspension record; read through `getTask` and the Inbox's pending read. The work counter is a real row, not item counts |
 | **Control that must fail** | `GOAL_CONTROL=stop-fails-attempt` fails leg d on *cancelled on try 1*; `GOAL_CONTROL=public-resume` fails leg a on *answered through the route*. Today's `main` fails legs a to c: it has no `waitForUser` |
@@ -76,6 +76,9 @@ runs the work twice.
 ```
 
 **Docs:** update the `core`, `engine`, `client` and `orchestration` READMEs;
+`docs/architecture/execution-and-errors.md` (its durable-execution section: the answer route beside
+resume, a question's expiry, `SuspensionTimeoutError` thrown, the `cancelled` resume, a stop that
+cancels the task);
 `apps/docs/docs/configuration/runtime.md` (the deadline setting), `apps/docs/docs/api/client.md`
 (the answer call) and `apps/docs/docs/orchestration/task-board.md` (a task waiting on a person: its
 reads, cancel and stop). Amend the concept's "defaulting to the host's" (`workforce-coordination-concept.md`,
@@ -98,7 +101,8 @@ flowchart LR
   X -->|"first resolution wins"| B
 ```
 
-All four endings resolve the same pending state, the fence FIX-1816 built, so the first one wins.
+All four endings resolve the same pending state, the fence FIX-1816 built, so the first one wins;
+a cancel already written to the row beats an answer that lands before its debt is paid.
 The resumed run is admitted on its claim as today.
 
 ## What stays as it is
@@ -142,8 +146,8 @@ replaced. If wrong: `ctx.suspend` and `waitForUser` drift into two ways to ask.
 
 1. **[D1](DECISIONS.md#d1) · At its deadline, a question or review throws `SuspensionTimeoutError`,
    which the block may catch; an approval reads as a no.** If wrong: every asking flow wraps a catch it didn't need.
-2. **[D2](DECISIONS.md#d2) · A screen answers a person's stop through a route that takes only the
-   stop's id and the answer.** Engineering, decided. If wrong: two answer paths to keep in step.
+2. **[D2](DECISIONS.md#d2) · A screen answers a person's stop through a route that takes only
+   where the stop is and the answer.** Engineering, decided. If wrong: two answer paths to keep in step.
 
 **Open: none.** D1 is the one to weigh: it is the contract every later child and app writes against.
 

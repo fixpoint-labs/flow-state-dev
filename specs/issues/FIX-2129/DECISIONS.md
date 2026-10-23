@@ -11,7 +11,7 @@ ER-7 and D3. Two calls are left, both about the surface the later children write
 flowchart TD
   I["FIX-2129"] --> D1["D1 · at the deadline a question or review throws SuspensionTimeoutError, an approval is a no"]
   D1 -.->|"rejected · a flow that never checks carries on with no answer"| X1["always return a no-answer outcome"]
-  I --> D2["D2 · an answer route that takes only the stop's id and the answer"]
+  I --> D2["D2 · an answer route that takes only where the stop is and the answer"]
   D2 -.->|"rejected · caller gate data re-enters a task's handler"| X2["open the resume route to task runs behind a check"]
 ```
 
@@ -34,17 +34,17 @@ It comes down to a flow that never checks: a returned outcome lets it carry on w
 returning it is the common path, and the throw is ceremony.
 
 <a name="d2"></a>
-## D2 · A screen answers a person's stop through a route that takes only the stop's id and the answer
+## D2 · A screen answers a person's stop through a route that takes only where the stop is and the answer
 
 *An engineering call, decided; recorded because it fixes a public route.*
 
 | | |
 |---|---|
 | **Instead of** | Opening the resume route to runs a task started, with an exception for a person's stop |
-| **Because** | The resume route takes a request id, an action and gate data from the caller, and re-entering a task's handler with them is what its source allow-list refuses (BP-031, FIX-999). The answer route reads the request, flow, session and user from the stored stop, checks the stop is a person's and the caller is its user, and validates the answer against the stop's own schema. Only the answer comes from the caller |
+| **Because** | The resume route takes a request id, an action and gate data from the caller, and re-entering a task's handler with them is what its source allow-list refuses (BP-031, FIX-999). The answer route finds the stop by its request and its id, the pair every store keys a stop by (a stop's id is unique only within its request), as the Inbox item and the row's record carry them. It reads the flow, session and user from the stored stop, checks the stop is a person's and the caller is its user, and validates the answer against the stop's own schema. The pair only finds the stop; nothing it trusts comes from the caller but the answer |
 | **Locks in** | A public route and a client call, which the implementer names, beside resume. Every screen answers a person's stop through it, and no child builds another (ER-7). The resume route keeps serving a user's own runs, unchanged |
 
-![D2: an answer route that takes the stop's id and answer, chosen, beside the resume route opened behind a check. Decides it: what the caller sends. Price: two routes to keep](figures/d2-answer-route.svg)
+![D2: an answer route that takes where the stop is and the answer, chosen, beside the resume route opened behind a check. Decides it: what the caller sends. Price: two routes to keep](figures/d2-answer-route.svg)
 
 It comes down to what the caller sends: through resume, caller data re-enters a task's handler.
 
@@ -54,13 +54,19 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   resume already shares (FIX-1816 BR-16b). Every writer resolves through it: the answer route, the
   sweeper at the deadline, the cancel's payment, the user's stop, and FIX-2131's steer. The loser
   is told `already-resolved`. Nothing resolves a person's stop another way.
+- **Once a cancel is written, it wins.** The row commits the cancel before its debt reaches the
+  fence, so an answer landing in between must not win it: the answer is told `already-resolved`
+  and the block resumes `cancelled`, never with an answer for a task already ended. How the answer
+  route sees the written cancel (it checks the row and pays the debt itself, or the cancel reserves
+  the stop's outcome first) is the implementer's; the goal's concurrency leg asserts the loser's
+  response, not only one resume.
 - **One predicate says whether a suspension is a person's**, in `contracts` beside the reasons
   (ER-1). The claim gate and the answer route read it here; FIX-2131 moves the Inbox and the send.
   `ctx.suspend` with `human_approval` or `human_input` passes it too, so a raw person's stop gets the
   mark, the cancel and the stop; resumed `cancelled`, it throws as a reject does.
 - **The kind is a field on the suspension**, with the reasons unchanged, so every renderer that
   knows the two reasons keeps working. A record without it reads its kind from its reason (BP-030).
-- **The row copies the stop** (its id, kind, prompt and deadline) in the write that sets the mark
+- **The row copies the stop** (its request and id, kind, prompt and deadline) in the write that sets the mark
   and drops the lease (ER-2), from the request's ending. `listTasks` reads no suspension store per
   row (BP-033), and a stop's prompt never changes. Admission and every ending clear it.
 - **`waitingFor`** is the public name on `getTask` and `listTasks`, beside `waitingOn`, which they
