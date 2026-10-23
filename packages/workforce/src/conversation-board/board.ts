@@ -216,19 +216,6 @@ export interface RoutedFiling {
   file(ctx: BlockContext, init: TaskInit): Promise<Task>;
 }
 
-/**
- * Bring each row a batch depends on, off the batch, up to its committed state
- * before its dependency check (FIX-2114): this request reads the board as the
- * snapshot it first took, and a dependency another request ended since is
- * refused at filing, before any reservation.
- */
-async function refreshDeps(ref: TaskCollectionRef, batch: readonly { id: string; deps?: string[] }[]): Promise<void> {
-  const filed = new Set(batch.map((init) => init.id));
-  for (const depId of new Set(batch.flatMap((init) => init.deps ?? []))) {
-    if (!filed.has(depId)) await ref.refresh?.(depId);
-  }
-}
-
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
@@ -1168,8 +1155,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
         for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
-        // Each dependency as stored now: one another request ended is refused here (FIX-2114).
-        await refreshDeps(ref, batch);
+        // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
+        // A backing with no `refresh` must serve `get` committed across requests.
+        const filed = new Set(batch.map((init) => init.id));
+        for (const depId of new Set(batch.flatMap((init) => init.deps ?? []))) {
+          if (!filed.has(depId)) await ref.refresh?.(depId);
+        }
         assertDepsFileable(batch, (id) => ref.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
