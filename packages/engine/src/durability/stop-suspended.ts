@@ -38,6 +38,7 @@
 import { isWaitGate, isExpiredApproval, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { DurabilityProvider } from "./types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
@@ -68,7 +69,7 @@ export type SuspendedStopResult = "stopped" | "already-resolved";
 export const PARKED: readonly RequestRecord["status"][] = ["suspended", "interrupted"];
 
 /** The pending gate(s) `record` is parked on, newest first. */
-export async function pendingGatesOf(
+async function pendingGatesOf(
   deps: SuspendedStopDeps,
   record: Pick<RequestRecord, "id" | "sessionId" | "userId">
 ): Promise<SuspensionRecord[]> {
@@ -213,6 +214,60 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
   if (isWaitGate(gate)) return undefined;
   const actions = Object.keys(RESUME_ACTION_STATUS) as ResumeAction[];
   return actions.find((action) => RESUME_ACTION_STATUS[action] === gate.status);
+}
+
+/**
+ * Whether an `interrupted` request will run again: the last gate on its log is
+ * still pending (a resume drives it), or resolved and owed a re-drive, which
+ * the durability sweep gives it (step 2b). An interrupted request with no such
+ * gate died while it ran, and nothing drives it again: its work is over.
+ *
+ * A wait's `ended` (`wait-chain.ts`) reads it alone, so it does not see an
+ * unlogged pending gate; {@link parkedInterruptedIds} builds the parked rule on it. `record.items` must hold the request's log.
+ */
+export async function drivenAgain(
+  provider: Pick<DurabilityProvider, "loadSuspension">,
+  record: Pick<RequestRecord, "id" | "items">
+): Promise<boolean> {
+  const gateId = latestGateIdOf(record);
+  if (gateId === undefined) return false;
+  const gate = await provider.loadSuspension(record.id, gateId);
+  if (gate === null) return false;
+  return gate.status === "pending" || owesRedrive(gate);
+}
+
+/**
+ * The ids of the `interrupted` records in `records` that are parked, not dead:
+ * {@link drivenAgain} (the last logged gate is pending, or resolved and owed a
+ * re-drive), or the store holds a pending gate of the request that its log
+ * does not name yet (a crash between `provider.suspend` and the log append, or
+ * a re-suspension). The one rule of a parked interrupted request: a stop
+ * (`execution/record-request-stop.ts`), history and session retention
+ * (`execution/past-turns.ts`) read it.
+ *
+ * Each record must carry its item log. One pending-gate read per session, and
+ * a gate read per interrupted record the pending gates do not already cover.
+ * Without a durability provider nothing can suspend, so none are parked. A
+ * failed read rejects: the caller decides what an unknown answer means.
+ */
+export async function parkedInterruptedIds(
+  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension"> | undefined,
+  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
+): Promise<Set<string>> {
+  const parked = new Set<string>();
+  const interrupted = records.filter((r) => r.status === "interrupted");
+  if (provider === undefined || interrupted.length === 0) return parked;
+  const ids = new Set(interrupted.map((r) => r.id));
+  const sessions = new Map<string, { userId: string; sessionId: string | undefined }>();
+  for (const r of interrupted) sessions.set(`${r.userId}\u0000${r.sessionId ?? ""}`, { userId: r.userId, sessionId: r.sessionId });
+  for (const { userId, sessionId } of sessions.values()) {
+    const pending = await provider.listSuspended({ userId, ...(sessionId !== undefined ? { sessionId } : {}), status: "pending" });
+    for (const gate of pending) if (ids.has(gate.requestId)) parked.add(gate.requestId);
+  }
+  for (const record of interrupted) {
+    if (!parked.has(record.id) && (await drivenAgain(provider, record))) parked.add(record.id);
+  }
+  return parked;
 }
 
 /** Whether this gate owes a re-drive. The sweep and {@link redriveResolvedGate} both use it. */

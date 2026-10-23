@@ -22,8 +22,8 @@
  *   host's own cron POSTs per schedule.
  *
  * A fire whose filing is refused (a filer not on the roster, an assignee that
- * is the filer itself or not among its delegates) fails, naming why, and is
- * dropped. The write isn't checked against the roster: a roster changes after
+ * is the filer itself or not among its delegates, no assignee where the filer
+ * has more than one delegate) fails, naming why, and is dropped. The write isn't checked against the roster: a roster changes after
  * a row is written.
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";

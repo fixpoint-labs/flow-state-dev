@@ -2714,7 +2714,8 @@ async function runActionAttempt<
             requestId,
             resolvedRetention,
             completedAt,
-            options.tenantId
+            options.tenantId,
+            options.runtimeConfig.durabilityProvider
           );
         } catch (err) {
           logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {

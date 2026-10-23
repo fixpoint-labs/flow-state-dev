@@ -661,7 +661,7 @@ sessionId, readonlyFields, createdWith, next)` throws
 
 ## Session retention policies
 
-Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.
+Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting a session's old past turns when limits are exceeded: completed requests, and requests a dead host left `interrupted`, the same statuses the history view reads.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -678,13 +678,15 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A run that dies before finishing is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A completed run that dies before stamping `finalizedAtMs` is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A run that dies mid-turn is a different case: once the sweeper marks it `interrupted` it is evicted like any past turn, aged from `interruptedAt` (from its start, on a record without one), after the rollout-safety bound below has passed since it was marked. An `interrupted` request that will run again (a pending gate, or its last logged gate resolved and owed a re-drive) is never evicted, though its items still count toward `maxItems`. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
 
 Eviction calls `RequestStore.delete(id)`, which removes everything the store keeps under that id: the record, its items, its stream events and its runOnce results. Request ids can be supplied by the caller, so a freed id may be taken by a later request, possibly from another user. Anything a custom store leaves behind under the id would be replayed on that request's stream. `createRequestStoreConformanceTests` checks the store's `delete`; `createRequestRetentionConformanceTests` (both from `@flow-state-dev/engine/testing`) runs the whole path through retention and the stream route against a `StoreRegistry`.
+
+`applyRetentionPolicy(stores, sessionId, currentRequestId, policy, now?, tenantId?, provider?)` takes the host's durability provider as an optional last argument, to read those gates; `runAction` passes `runtimeConfig.durabilityProvider`. Without one, no request counts as waiting on a gate, which is right for a host that cannot suspend.
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 

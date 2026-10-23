@@ -282,7 +282,7 @@ defineFlow({
 });
 ```
 
-`session.historyWindow.turns` (default 50) caps how many prior completed turns the execution context loads per request. The load is bounded at the store query, so per-turn cost stays flat as a session grows instead of climbing with its length. A no-arg `history()`, or `history: true`, sees at most `historyWindow.turns` turns rather than the entire session.
+`session.historyWindow.turns` (default 50) caps how many prior turns the execution context loads per request. A turn is a completed request, or one cut short when its server died: that turn keeps what it had finished (the message that started it, the tool calls that returned), so a later turn doesn't redo work that already happened. The load is bounded at the store query, so per-turn cost stays flat as a session grows instead of climbing with its length. A no-arg `history()`, or `history: true`, sees at most `historyWindow.turns` turns rather than the entire session.
 
 The window and the per-call limit compose: the window is the ceiling, the per-call limit narrows within it. `history: { limit: { turns: 8 } }` gives at most 8 turns, and raising it past the window does not widen what was loaded. Raise `historyWindow.turns` for a flow whose generators routinely need more history than the default. The full session stays retrievable through the [state endpoint](../fundamentals/state-and-scopes.md).
 

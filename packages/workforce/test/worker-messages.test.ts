@@ -613,21 +613,29 @@ describe("the hop count through a delegation", () => {
     }
   });
 
-  it("never reaches a post: a coordinator woken by a message has no post to hand on, so a message chain can't restart through one", async () => {
+  it("never routes a message a worker sent: a coordinator woken by one files an ordinary task, with no brief of a message", async () => {
     const h = boot({
       standard: teamWorkers(),
-      // The coordinator, woken by otto's message, tries to hand it on to otto as a post.
-      judgment: mockGenerator({ script: [...callOnce("Who takes this?", "dispatchTask", { post: true, assignee: "otto" }, ""), fallback] }),
+      // The coordinator, woken by otto's message, tries to route it on to otto
+      // the way a user's message is routed: createTask with the routing settings.
+      judgment: mockGenerator({
+        script: [
+          ...callOnce("Who takes this?", "createTask", { goal: "Who takes this?", assignee: "otto", session: "ongoing", resultTo: "conversation" }, ""),
+          fallback
+        ]
+      }),
       agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, ""), fallback] })
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "run", { message: "Please ask chief" }, "agent");
       await h.settled();
-      const rows = await logRows(h, "alice");
-      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
-      // No post form is left to restart a chain through (FIX-2083): no tool by that name, and nothing filed.
-      expect(await h.rows("alice")).toEqual([]);
+      // No routed task: a turn a message woke routes no user's message (no
+      // post form is left either, FIX-2083), so what it files with the
+      // routing settings is an ordinary task, with no brief of a message.
+      const tasks = await h.rows("alice");
+      expect(tasks.map((row) => [row.assignee, row.id.startsWith("routed:"), row.sealed === undefined])).toEqual([["otto", false, true]]);
+      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
     } finally {
       await h.dispose();
     }

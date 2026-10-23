@@ -300,9 +300,9 @@ export interface McpConfig {
  * When limits are exceeded, entire old request records are evicted (lazy, on write).
  */
 export type RetentionPolicy = {
-  /** Maximum number of items across all completed requests. Oldest requests evicted first. */
+  /** Maximum number of items across the session's past turns (completed or interrupted requests). Oldest requests evicted first. */
   maxItems?: number;
-  /** Maximum age of completed requests. Milliseconds (number) or duration string ('24h', '7d'). */
+  /** Maximum age of past turns (completed or interrupted requests). Milliseconds (number) or duration string ('24h', '7d'). */
   maxAge?: number | string;
 };
 
@@ -333,7 +333,11 @@ export type SessionConfig = {
   retention?: RetentionPolicy;
   /**
    * Bounds the cross-turn history loaded per request to the most recent
-   * `turns` completed requests (default 50). This caps the store read and
+   * `turns` past turns (default 50): completed requests, and requests cut
+   * short when their server died, with only what they had finished. The
+   * window is counted before an interrupted request that a retry re-ran, or
+   * one still parked on a gate, is left out, so those take a slot and a full
+   * window can show fewer than `turns` turns. This caps the store read and
    * the default generator's in-prompt history; the full session stays
    * retrievable via the state endpoint. Per-call `history({ limit })`
    * refines within this window — it cannot widen it. Use a positive
