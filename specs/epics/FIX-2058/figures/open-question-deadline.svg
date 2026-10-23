@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open, what an unanswered question does at its deadline. Recommended: the hold releases and the work goes ahead from its brief, which records that no answer came. The other option: that try at the task fails. It comes down to the first row: a question is asked because the work can pick up from its brief, so going ahead uses what a question means, while failing treats it as input. The price is the second row: going ahead may build on a guess, where failing builds nothing on one and the filer hears a failure. The third row: a task held before it starts goes ahead on its first attempt, where failing fails it with no try made. Locks in: FIX-2133's sweeper releases the hold. Flips if: a guessed answer does harm; then the app asks an approval, which reads as a no at its deadline."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open, what an unanswered question does at its deadline. Recommended: the hold releases and the work goes ahead from its brief, which records that no answer came. The other option: that try at the task fails. It comes down to the first row: a question is asked because the work can pick up from its brief, so going ahead uses what a question means, while failing treats it as input. The price is the second row: going ahead may build on a guess, where failing builds nothing on one and the filer hears a failure. The third row: a task held before it starts goes ahead on its first attempt, where failing fails it with no try made. Locks in: FIX-2133's debt pass releases the hold. Flips if: a guessed answer does harm; then the app asks an approval, which reads as a no at its deadline."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">FIX-2133's sweeper releases the hold</text>
+    <text class="t-b" x="32" y="371">FIX-2133's debt pass releases the hold</text>
     <text class="t-s" x="32" y="389">the brief records that no answer came</text>
   </g>
 
