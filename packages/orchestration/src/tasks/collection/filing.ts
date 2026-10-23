@@ -185,6 +185,33 @@ export function assertFollowUpHasRun(
 }
 
 /**
+ * A follow-up as it is written: in the session its root task ran in (FIX-2111).
+ * A follow-up takes no session setting of its own (`follow_up_takes_no_session`),
+ * so the root's `session`, `target` and `targetSessionId` are copied onto it,
+ * server-side, and every reader of the row (the start test, the dispatch, the
+ * hold on a workstream's session) places it where its root ran. A root filed
+ * with none leaves the follow-up with none.
+ *
+ * @param lookup The board's committed row by id.
+ */
+export function withFollowUpPlacement<T extends TaskInit>(
+  init: T,
+  lookup: (id: string) => Pick<Task, "id" | "followUpOf" | "session" | "target" | "targetSessionId"> | undefined
+): T {
+  if (init.followUpOf === undefined) return init;
+  const named = lookup(init.followUpOf);
+  const root = named === undefined ? undefined : lookup(named.followUpOf ?? named.id);
+  if (root === undefined) return init;
+  const { session: _session, target: _target, targetSessionId: _targetSessionId, ...rest } = init;
+  return {
+    ...rest,
+    ...(root.session !== undefined ? { session: root.session } : {}),
+    ...(root.target !== undefined ? { target: root.target } : {}),
+    ...(root.targetSessionId !== undefined ? { targetSessionId: root.targetSessionId } : {}),
+  } as T;
+}
+
+/**
  * Refuse a batch that names one task id twice: one of the two would be lost.
  *
  * @throws {TaskFilingRefusedError} with rule `duplicate_task_id`.

@@ -1090,8 +1090,10 @@ finished task it answers `task_finished` and writes nothing. The collection side
 #### Following up on a finished task
 
 `createTask` takes `followUpOf` to file new work on a task: the follow-up
-is a new task, with the same worker, that runs in that task's session. It
-keeps that worker: `updateTask` won't move it
+is a new task, with the same worker, that runs in that task's session. Its
+row carries that task's `session`, `target` and `targetSessionId`, written by
+the board, so a follow-up of a task filed `session: "ongoing"` or for a
+workstream runs there too. It keeps that worker: `updateTask` won't move it
 (`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
 (`follow_up_takes_no_assignee`) and a task that never ran with a worker
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
