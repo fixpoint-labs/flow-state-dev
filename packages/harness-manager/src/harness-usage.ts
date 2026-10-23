@@ -241,13 +241,13 @@ export function harnessUsageAction(options: HarnessUsageActionOptions) {
     Object.entries(options.readers).map(([harness, reader]) => [assertSafeSegment("harness", harness), reader]),
   );
   const timeoutMs = options.timeoutMs ?? USAGE_READ_TIMEOUT_MS;
-  // One call in flight per person and harness, shared by every refresh that asks meanwhile.
+  // One call in flight per organization, person and harness, shared by every refresh that asks meanwhile.
   // The map lives in this process: another host process keeps its own, and only the
   // once-a-minute claim on the stored row holds across them.
   const inFlight = new Map<string, Promise<void>>();
 
   const refreshOne = (ctx: BlockContext, harness: string, reader: HarnessUsageReader): Promise<void> => {
-    const flight = `${userOf(ctx)}\u0000${harness}`;
+    const flight = `${orgOf(ctx)}\u0000${userOf(ctx)}\u0000${harness}`;
     const running = inFlight.get(flight);
     if (running !== undefined) return running;
     const started = (async () => {
@@ -308,14 +308,17 @@ async function readWithin(reader: HarnessUsageReader, harness: string, timeoutMs
     }, timeoutMs);
   });
   try {
-    return await Promise.race([
+    const reading = await Promise.race([
       Promise.resolve()
         .then(() => reader({ signal: controller.signal }))
-        .catch(
-        (): HarnessUsageReading => ({ status: "unavailable", reason: `${name}'s usage could not be read` }),
-      ),
+        .catch((): HarnessUsageReading => ({ status: "unavailable", reason: `${name}'s usage could not be read` })),
       late,
     ]);
+    // A reader is the host's code: a window outside the contract is never stored.
+    if (reading.status === "windows" && !z.array(harnessUsageWindowSchema).safeParse(reading.windows).success) {
+      return { status: "unavailable", reason: `${name} sent a reading that isn't one` };
+    }
+    return reading;
   } finally {
     clearTimeout(timer);
   }
@@ -324,6 +327,11 @@ async function readWithin(reader: HarnessUsageReader, harness: string, timeoutMs
 /** The caller's user id, which the collection's scope is keyed on. */
 function userOf(ctx: BlockContext): string {
   return String((ctx.user as { identity?: { userId?: unknown } } | undefined)?.identity?.userId ?? "");
+}
+
+/** The organization the request was admitted under: a person's row is kept per organization. */
+function orgOf(ctx: BlockContext): string {
+  return String((ctx.request?.identity as { orgId?: unknown } | undefined)?.orgId ?? "");
 }
 
 /** Strip the injected `harness-usage/` prefix a stored path carries. */
