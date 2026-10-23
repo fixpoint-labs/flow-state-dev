@@ -45,7 +45,7 @@ flowchart LR
 |---|---|
 | **Goal check** | The closure issue's (FIX-2156), on one `main` commit after every other child merges |
 | **Signal** | Leg a, FIX-2153's script: you ask the main session; it does part of the work; it starts 2 background tasks; one result shows in the main thread while that turn is still running; you stop the other task by asking the main session. Leg b, FIX-2154's script: you talk to worker A; A messages worker B; B's reply reaches A while you are still talking to A; the conversation stays coherent over a long session. Leg c, FIX-2157's script: you ask the main session; it starts 3 threads; one waits on you for a decision; one becomes ready for review; you resolve it. Plus each lab's inventory |
-| **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state |
+| **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state. Leg a also asserts each ending is heard once: no second notice turn answers a result the running turn already took |
 | **Control that must fail** | Leg a with the lab flow's loop-back off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
 
 **Lead measure:** scripted steps that pass on `main` with a real model, of 14 (5, 5 and 4). **0 today.**
@@ -85,7 +85,7 @@ flowchart LR
   N["FIX-2070 · Messages · consumed"] -.-> B
   G1["FIX-2158 · list a person's sessions of one worker"] -->|"the session list"| A["FIX-2153 · Claude Code-style lab"]
   G1 -->|"the session list"| T
-  G2["FIX-2159 · a result reaches a running turn"] -->|"step 4"| A
+  G2["FIX-2159 · a flow can take a settled notice and answer again"] -->|"the public take for step 4's lab flow"| A
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
   A -->|"the inventory check and the setup pattern"| B["FIX-2154 · Grok Bot-style lab"]
