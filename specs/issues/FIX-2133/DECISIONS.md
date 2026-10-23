@@ -89,7 +89,7 @@ Then the gate's backstop could go; the generation stays either way.
   is always answerable, and a row never holds more than the cap. A refused ask tells the model it
   can't ask more and to go on from its brief. The check sits inside the one question write: the ask
   takes the reservation, and the answer or the deadline's "no answer came" steer fills it. FIX-2086's
-  turn bound stays 20. One allowance: an answer or deadline steer to a migrated question (one
+  turn bound stays 20, 21 on a migrated row. One allowance: an answer or deadline steer to a migrated question (one
   FIX-2131's retired-shape map created, outside the reserving ask) may land one place above the cap,
   once per row ([FIX-2131 D2](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md#d2)).
   A prompt-length cap is the implementer's (BP-042).
