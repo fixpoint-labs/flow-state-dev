@@ -338,6 +338,34 @@ describe("createTask's followUpOf (S4)", () => {
     expect(ref.get(accepted[0].taskId)!.metadata?.filedByCall).toEqual(expect.stringContaining(`0%3A${acceptedCall[1]}`));
   });
 
+  it("keeps the call a follow-up names out of updateTask's reach: a metadata patch naming another call leaves it as it was", async () => {
+    const ref = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      onChange: createCapturedChanges().onChange
+    });
+    await ranAndCompleted(ref, "root");
+    const tools = taskToolsForTurn(async () => ref, undefined, { dispatches: true })({});
+    const tool = (name: string) => tools.find((t) => (t as { name?: string }).name === name)!;
+    const memo = new Map<string, unknown>();
+    const ctx = {
+      _blockIdentity: { blockName: "createTask", blockInstanceId: "req_1:root/step[0]/tool[createTask][0%3Ac1]:0" },
+      session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
+      request: { identity: { type: "request", id: "req_1" } },
+      runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+        if (!memo.has(key)) memo.set(key, await fn());
+        return memo.get(key) as T;
+      }
+    } as never;
+    const filed = (await runForTest(tool("createTask") as never, { goal: "next", followUpOf: "root" } as never, ctx)) as { ok: boolean; taskId: string };
+    expect(filed).toMatchObject({ ok: true });
+    const marker = ref.get(filed.taskId)!.metadata?.filedByCall;
+    expect(marker).toEqual(expect.stringContaining("0%3Ac1"));
+    const patched = (await runForTest(tool("updateTask") as never, { id: filed.taskId, metadata: { filedByCall: "x", note: "kept" } } as never, ctx)) as { ok: boolean };
+    expect(patched).toMatchObject({ ok: true });
+    expect(ref.get(filed.taskId)!.metadata).toMatchObject({ filedByCall: marker, note: "kept" });
+  });
+
   it("files a follow-up while the session has an unfinished task: it waits, never refused (FIX-2080)", async () => {
     const b = await board([
       row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),

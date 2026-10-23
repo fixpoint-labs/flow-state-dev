@@ -465,10 +465,6 @@ const awaitingAnswerError = (taskId: string) => ({
 });
 
 /**
- * What a follow-up's add answers when its id was taken by a row filed at the
- * same moment: the follow-up can simply be filed again, under the next id.
- */
-/**
  * The metadata key a row filed under an id picked from the board (a
  * follow-up's) names the call that filed it in (its logical id), so a replay
  * of the call finds its own row and no other. Server-written: a caller's
@@ -477,11 +473,15 @@ const awaitingAnswerError = (taskId: string) => ({
 const FILED_BY_CALL_KEY = "filedByCall";
 
 /** A caller's metadata, without the keys only the server writes: the notice markers and {@link FILED_BY_CALL_KEY}. */
-function callerMetadata(metadata: Readonly<Record<string, unknown>>): Record<string, unknown> {
+function taskToolCallerMetadata(metadata: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const { [FILED_BY_CALL_KEY]: _filedBy, ...rest } = withoutNoticeMarkers(metadata) ?? {};
   return rest;
 }
 
+/**
+ * What a follow-up's add answers when its id was taken by a row filed at the
+ * same moment: the follow-up can simply be filed again, under the next id.
+ */
 function followUpTakenError(id: string) {
   return {
     ok: false as const,
@@ -938,7 +938,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.labels !== undefined ? { labels: input.labels } : {}),
         // A caller's metadata never carries a notice marker, nor the call that filed a row (BP-031).
-        ...(input.metadata !== undefined ? { metadata: callerMetadata(input.metadata) } : {}),
+        ...(input.metadata !== undefined ? { metadata: taskToolCallerMetadata(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
@@ -1047,7 +1047,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // filed it: such a row names the call that filed it, and is this call's
     // only when it names this one; otherwise the add refuses the id as taken.
     // A row filed before rows named their call (BP-030) is this call's on a
-    // replay, as it was then.
+    // replay, as it was then. That holds while every filer of a picked id on
+    // a dispatching board goes through this function.
     const picked = init.id !== undefined;
     const existing = collection.get(id);
     const filedBy = existing?.metadata?.[FILED_BY_CALL_KEY];
@@ -1261,7 +1262,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(input.status === "pending" ? { held: false } : {}),
           ...Object.fromEntries(fields.map((field) => [field, input[field]])),
           // Nor can a patch forge, clear or settle a notice marker, or the call that filed the row (BP-031, FIX-2078).
-          ...(input.metadata !== undefined ? { metadata: callerMetadata(input.metadata) } : {}),
+          ...(input.metadata !== undefined ? { metadata: taskToolCallerMetadata(input.metadata) } : {}),
         };
         let outcome: TaskWriteOutcome | undefined;
         try {
