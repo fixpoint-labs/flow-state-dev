@@ -1,7 +1,8 @@
 /**
- * The fixture's stop script, driven through the adapter on fake timers. The
- * screen tests can't pin these orderings: asking to stop names a task, and a
- * task that finishes while the stop is under way stays finished.
+ * The fixtures, driven through the adapter. The stop script runs on fake
+ * timers, since the screen tests can't pin its orderings: asking to stop names
+ * a task, and a task that finishes while the stop is under way stays finished.
+ * The project list follows the rule a run follows: only where the person may work.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow } from "../src/adapter";
@@ -37,5 +38,13 @@ describe("the fixture's stop script", () => {
     await lab.send(id, "Stop the Acme research.");
     await vi.advanceTimersByTimeAsync(800);
     expect(status("Research Acme")).toBe("completed");
+  });
+});
+
+describe("the fixture's projects", () => {
+  it("offers only projects the person may work in, and refuses a session on one they can only read", async () => {
+    const lab = createFixtureLab();
+    expect((await lab.listProjects()).map((p) => p.name)).toEqual(["vendor-notes", "onboarding-app"]);
+    await expect(lab.openSession("session", "project-billing-service")).rejects.toThrow(/not-a-member/);
   });
 });

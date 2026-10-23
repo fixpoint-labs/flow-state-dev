@@ -213,10 +213,17 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     }
   };
 
-  const projects: ProjectRow[] = [
-    { id: "project-vendor-notes", name: "vendor-notes" },
-    { id: "project-onboarding-app", name: "onboarding-app" },
+  // fixture: the person's access to each project. A session may open only where they may work: a
+  // member of a shared project or the owner of a private one. Reading one is not enough, the same
+  // not-a-member refusal projectWorkspace() makes for a run.
+  const projects: (ProjectRow & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
+    { id: "project-vendor-notes", name: "vendor-notes", visibility: "shared", access: "member" },
+    { id: "project-onboarding-app", name: "onboarding-app", visibility: "private", access: "owner" },
+    { id: "project-billing-service", name: "billing-service", visibility: "shared", access: "reader" },
   ];
+  const mayWorkIn = projects
+    .filter((p) => (p.visibility === "shared" ? p.access === "member" : p.access === "owner"))
+    .map(({ id, name }): ProjectRow => ({ id, name }));
 
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
@@ -243,10 +250,11 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     },
 
     async listProjects() {
-      return projects;
+      return mayWorkIn;
     },
 
     async openSession(mode: ModeId, projectId: string) {
+      if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
       const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });

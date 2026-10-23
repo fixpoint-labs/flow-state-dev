@@ -8,7 +8,8 @@ needs is a gap filed against the package.
 - **Left:** a Sessions / Projects switch, then your sessions. The view sets the mode: Sessions is
   session mode, and Projects (threads mode) is shown and comes later. Each session in the view is
   with the same main worker. *New session* asks which project the session works in, with no
-  default, then opens it in the view's mode.
+  default, offering only projects you may work in (a member of a shared one, or the owner of a
+  private one), then opens it in the view's mode.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. A background result shows as a card
   at the point the main session took it, even while its turn is still running.
@@ -58,9 +59,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 13 | 241 |
+| Configuration | 13 | 242 |
 | React UI | 15 | 841 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 302 |
-| Checks (not app code) | 4 | 385 |
+| Fixtures (deleted at wiring) | 1 | 310 |
+| Checks (not app code) | 4 | 394 |
 <!-- inventory:end -->
