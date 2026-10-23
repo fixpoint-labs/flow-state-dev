@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **asks the main session for work, and it starts two background tasks** | Sees the first result only after the reply ends, as a second turn that answers again | Sees the result appear in the reply that is still running, and the same reply answers once more with it |
-| **builds an app on Workforce and wants that behaviour** | Can't: nothing public takes a result, and reading one leaves the after-the-turn notice to say it again | Writes a few lines in the app's own flow: after an answer, take what finished, and answer again ([D3](DECISIONS.md#d3)) |
+| **builds an app on Workforce and wants that behaviour** | Can't: nothing public takes a result, and reading one leaves the after-the-turn notice to say it again | Sets `answerAgain: true` on the agent flow, or passes a block to change what the worker is told ([D3](DECISIONS.md#d3)) |
 | **has a worker that runs a task, or two workers talking** | Results arrive after the turn | Unchanged. Only a turn a person's own message started can take one ([D2](DECISIONS.md#d2)) |
 | **gets a failed result the Error Reporter didn't take yet** | Heard after the turn, once reported | Unchanged: the take never hands over a failure that wasn't reported |
 | **loses the process mid-reply** | The result is never heard twice. A death after the dedupe write (`noteSeen`, just before the acknowledgement) drops the line | The same, both ways ([D1](DECISIONS.md#d1)) |
