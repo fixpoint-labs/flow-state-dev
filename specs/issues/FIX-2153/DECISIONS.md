@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-What was considered, what was chosen, and what each choice locks in. Two decisions are the
+What was considered, what was chosen, and what each choice locks in. Three decisions are the
 sign-off surface. The epic's rules ([FIX-2152 DECISIONS](../../epics/FIX-2152/DECISIONS.md))
 bind this lab and are not decided again here.
 
@@ -14,6 +14,8 @@ flowchart TD
   D1 -.->|"rejected: two workers in one history"| X1["one switch for the open session"]
   I --> D2["D2 · stop and steer by asking the main session"]
   D2 -.->|"rejected: skips the main session"| X2["a Stop button on each task row"]
+  I --> D3["D3 · a session works in a project you pick; with none, it asks"]
+  D3 -.->|"rejected: runs in the wrong repository"| X3["a default directory"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -50,6 +52,22 @@ It comes down to the way of working: a button skips the main session, and the sc
 **What would change my mind:** Jake wanting the pane to be a control surface too. That is
 cheap later: a button calls the public `updateTask_tasks` action, with no package change.
 
+<a name="d3"></a>
+## D3 · A session works in a project you pick when you create it; with none, it asks
+
+| | |
+|---|---|
+| **Instead of** | A default directory when none is picked: the lab's own checkout, as Kitchen Sink's harness modes do, or a scratch directory |
+| **Because** | A coding run that silently works in the lab's own repository changes the wrong code, and a scratch directory throws the work away. A project already names a repository and its files, and `projectWorkspace()` already refuses `no-project` when it finds none. The lab shows that refusal as the question |
+| **Locks in** | *New session* lists the projects the person can read and asks for one before the composer opens; the header shows it. The session carries it as its `projectId` (the gap row in the spec), and every task it files inherits it through `filingProjectId`, so delegates work where the session does. A task may name another project only as `projectWorkspace()` already allows. Threads mode (FIX-2157) uses the same rule. A raw path outside any project is not offered |
+
+![D3: a project picked at New session, chosen, beside a default directory. Decides it: where a coding run writes. Price: one more choice per session](figures/d3-project-per-session.svg)
+
+It comes down to where a coding run writes: a default puts it in a repository nobody chose.
+
+**What would change my mind:** Jake wanting Claude Code's raw folder picker. That needs a
+directory that isn't a project, which is a new mechanism, so it would be filed as a gap first.
+
 ## Decided, not asked
 
 - **The original's layout, copied closely.** Sessions left (*New session* on top; each row a
@@ -59,7 +77,7 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   right (a row per task: title, status, last progress note, worker; a row opens the task's
   work read only). Flow State theme, square corners; `attention` only where a person must act.
 - **A result is a card in the thread at the point the main session took it**, labelled with
-  the task's title and ending. It is drawn from the item the loop-back emits, never from the pane.
+  the task's title and ending. It is drawn from the item the take emits, never from the pane.
 - **The *Projects* view is planned in, not built.** A mode is `{ main worker, right pane }` in one
   config object, keyed by view; session mode is its only built entry. A session's mode is
   the view that lists it, never stored. FIX-2157 adds threads mode as the *Projects* entry
@@ -69,7 +87,9 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   checks for tasks that settled while the turn ran and, if any, loops back to the generator in
   the same request (epic D2, the product owner's call). It is built at wiring and must stay
   under 200 lines. `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
-  The front end needs no change for it: the result card reads the item the loop-back emits.
+  The take it calls is FIX-2159's, on FIX-2078's one path with the "taken in request R" mark, so
+  the deferred notice skips and each ending is heard once (ER-6). The lab owns only the
+  decision to loop. The front end needs no change for it: the card reads the item the take emits.
 - **The inventory check is owned here** (ER-1). It classifies every tracked file under the lab
   as config, UI or flow by path, counts lines, writes the README table, and fails on any file
   it can't classify and on a flow over 200 lines. Its negative control plants `src/glue.ts`
@@ -80,6 +100,18 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   adapter names verbs only; wiring binds each to the package. Fixture code carries a plain
   `fixture:` marker, not an issue id (BP-006); the README lists which gap each one stands for, and
   the closure greps for the marker. This is how ER-5's "carries the gap's issue id" is met.
+- **A coding harness runs only on delegated workers.** The main session stays on our generator,
+  because the loop-back owns its turn. `desk.coder` runs on one of two lab flows,
+  `coder-claude-code` or `coder-codex`, each `harnessManager({ harness, workspace, ledgers })` with
+  `localWorkspaceHost({ source: projectWorkspace() })`. One flow per harness means the worker's
+  `flow:` line picks the harness with no new config key. A per-worker harness setting is
+  FIX-1652's, not this lab's. If a coding flow can't stay under 200 lines, a public harness worker
+  flow is filed as a gap, rather than copying Shift Manager's.
+- **A coding run shows like any task.** Its row carries the status and progress note the run
+  writes, and opening it shows its run session's items read only, the harness's steps included.
+  The thread board is FIX-2157's.
+- **No mid-run messages.** The harness leg never needs a coding run to message a teammate, so
+  FIX-1990 is not needed.
 - **Working name:** `labs/claude-code-style`, private, launched with `fsdev dev --app` as Shift
   Manager is. The implementer may rename it.
 - **Two PRs.** The front end on fixtures first, stacked on this spec; the wiring and the goal
@@ -93,6 +125,8 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
 | A session as a workstream session (FIX-1883) | A workstream needs a project and a lead, and caps a user at 25. fsd-architect, [#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392) |
 | Show the result only in the pane, or after the turn | Meets a smaller goal. Claude Code shows it in the running turn, and step 4 asks for it |
 | Wire the UI to today's names now | `messageWorker` and friends are about to change (epic D4) |
+| A raw directory per session, outside any project | Not in the box, and a project already names a repository. Filed first if Jake wants it (D3) |
+| File and bash tools on the main session, with its sandbox in the session's directory | The main session works in text and hands code off; giving it tools would also make the session's directory a sandbox setting (`tools/src/bash/resolve-sandbox.ts`) |
 | A conversation key on `WorkerSessionCriteria` for more sessions | Rejected in epic D3: nothing enforces one conversation per worker, so a new session is an ordinary session on the worker's flow |
 
 ## How it got here
@@ -105,7 +139,11 @@ cheap later: a button calls the public `updateTask_tasks` action, with no packag
   Signal 4 now names the first request, and a late settle must still get a model step.
 - **Product owner's answers:** the mode comes from the view you're in (*Sessions* or
   *Projects*), not from a choice at *New session*. A result reaches the running turn through
-  the lab's own flow looping back at turn end, with FIX-2159 only as the fallback.
+  the lab's own flow looping back at turn end. The take stays FIX-2159's, on FIX-2078's one
+  path, so an ending is heard once; the epic's D2 is amended to match.
+- **Product lead's second ask:** a working directory per session (D3, with the gap that lets
+  an ordinary session open on a project) and a coding harness on delegated workers only. The
+  script gains signal 0 and a harness leg.
 
 ## Notes from review
 
