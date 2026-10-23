@@ -49,7 +49,7 @@ flow gaining a public way to compose its door: then the slot goes too, and the l
 |---|---|
 | **Instead of** | A new "taken in request R" list on the conversation, kept like `steersTakenIn` on a task |
 | **Because** | `onTaskSettled` already takes a notice in one conditional write that names its request, keeps that record after the clear, and takes a notice over once its taker ended without clearing it (FIX-2123). A turn that takes in its own name gets all three for nothing. The [POC](poc/take-in-turn/README.md) runs it on the real engine: taken in the turn and skipped by the queued copy; refused when the copy took it first; taken over after a turn that failed before clearing it |
-| **Locks in** | A result taken in the turn has exactly the guarantees of one after the turn: never twice, and taken over if the turn dies before acknowledging it. The take goes only through `takeNotice` with `by:` the turn's request: no new metadata key, and no read or write of the running-filer hold (`heldFor`, `whileRunning`). The order is the queued handling's: take, report a failure, dedupe, free the session, acknowledge, then the line, with the part from report to acknowledge one function the queued `settle` shares. A process death between the acknowledgement and the line drops the line, as it does today |
+| **Locks in** | A result taken in the turn has exactly the guarantees of one after the turn: never twice, and taken over if the turn dies before its dedupe write. The take goes only through `takeNotice` with `by:` the turn's request: no new metadata key, and no read or write of the running-filer hold (`heldFor`, `whileRunning`). The order is the queued handling's: take, report a failure, dedupe, free the session, acknowledge, then the line, with the part from report to acknowledge one function the queued `settle` shares. The point of no return is the dedupe write (`noteSeen`), which comes before the acknowledgement: a copy that takes over after it finds the key seen and says nothing. A process death from the dedupe write to the line drops the line, as it does today |
 
 ![D1: the existing take record in the turn's name, chosen, beside a new taken-in-R list; decided by one mark that the queued entry already obeys](figures/d1-one-take-record.svg)
 
@@ -98,9 +98,12 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
   task or notice turn the take hands over nothing (D2), so the step answers only for the plan, as
   today. An answering turn files no step for itself, as `planned`'s does today; a task for a
   delegate is still dispatched.
-- **At most once, as today.** The take acknowledges before it says the line, the queued
-  handling's order. A death before the acknowledgement: the queued copy takes it over and says
-  it after the turn. A death after it: the line is dropped. No idempotency key on the line.
+- **At most once, as today.** The take dedupes and acknowledges before it says the line, the
+  queued handling's order. A death before the dedupe write (`noteSeen`): the queued copy takes it
+  over and says it after the turn. A death after it, the acknowledgement included: the line is
+  dropped, because the copy finds the key seen. No idempotency key on the line. The window is the
+  queued handling's own today; the shared function keeps it, and the implementer's tests cover a
+  death between the dedupe write and the acknowledgement.
 
 ## Considered and dropped
 
@@ -116,8 +119,10 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `main` at `3d131544`.
 
 - **The take record carries a take in the turn, at most once and never lost before the
-  acknowledgement** — **CONFIRMED**: cases 1 to 4b, with the line said after the acknowledgement;
-  case 1 red with the turn's clear removed.
+  acknowledgement** — **CONFIRMED** for the take record: cases 1 to 4b, with the line said after
+  the acknowledgement; case 1 red with the turn's clear removed. The POC has no dedupe write, so
+  with Workforce's handling the boundary moves earlier, to `noteSeen` (see *At most once* above;
+  Codex, review round 4).
 - **A lab can do the end-of-turn loop on public entries alone** — **REFUTED**: case 5, a turn that
   only reads the finished row, is heard twice. The public surface has no take and no
   answer-again step (`afterAnswer` is a side step).

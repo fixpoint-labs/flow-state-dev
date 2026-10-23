@@ -10,7 +10,7 @@
 | **builds an app on Workforce and wants that behaviour** | Can't: nothing public takes a result, and reading one leaves the after-the-turn notice to say it again | Writes a few lines in the app's own flow: after an answer, take what finished, and answer again ([D3](DECISIONS.md#d3)) |
 | **has a worker that runs a task, or two workers talking** | Results arrive after the turn | Unchanged. Only a turn a person's own message started can take one ([D2](DECISIONS.md#d2)) |
 | **gets a failed result the Error Reporter didn't take yet** | Heard after the turn, once reported | Unchanged: the take never hands over a failure that wasn't reported |
-| **loses the process mid-reply** | The result is never heard twice. A death between the acknowledgement and the line drops the line | The same, both ways ([D1](DECISIONS.md#d1)) |
+| **loses the process mid-reply** | The result is never heard twice. A death after the dedupe write (`noteSeen`, just before the acknowledgement) drops the line | The same, both ways ([D1](DECISIONS.md#d1)) |
 
 Claude Code shows a background result inside the running turn. Step 4 of FIX-2153's script asks
 for it, and the epic signed it as [D2](../../epics/FIX-2152/DECISIONS.md#d2).
@@ -25,7 +25,7 @@ result inside the reply that is still running, once, and that reply goes on to u
 | **The real need** | The epic's leg a, step 4: "one result shows in the main thread while that turn is still running" ([FIX-2152](../../epics/FIX-2152/SPEC.md#the-goal-and-how-well-know-its-met)). FIX-2153's signal 4 checks that the result, the working indicator and the later text share the first request's id |
 | **Smaller, and rejected** | "The app reads finished tasks after its answer." Doable in the lab today, and every result is then heard twice: once by the lab, once by the notice turn after the reply ([D1](DECISIONS.md#d1)) |
 | **Bigger, and not this issue's** | A message from another worker reaching a running turn. A message is not an ending (FIX-2103); FIX-2070 owns where messages land |
-| **Not done if** | The result shows only in a second request · it is heard twice · a crash before the acknowledgement loses it (after the acknowledgement it is dropped, as today: at most once) · the app can't choose what the worker answers about |
+| **Not done if** | The result shows only in a second request · it is heard twice · a crash before the dedupe write loses it (after it the line is dropped, as today: at most once) · the app can't choose what the worker answers about |
 
 ```mermaid
 flowchart LR
