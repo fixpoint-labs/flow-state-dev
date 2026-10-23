@@ -151,10 +151,18 @@ export function hopMarkOf(value: unknown): HopMark | undefined {
  * one) leaves the turn to start one at its first send.
  *
  * @param also More request state to write in the same patch.
+ * @param alsoSession More session state to write in the session's patch, which it always makes then.
  */
-export async function startTurnAtHop(ctx: BlockContext, hop: number, chain: string | null, also: Record<string, unknown> = {}): Promise<void> {
-  if (sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain) {
-    await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain } as never);
+export async function startTurnAtHop(
+  ctx: BlockContext,
+  hop: number,
+  chain: string | null,
+  also: Record<string, unknown> = {},
+  alsoSession: Record<string, unknown> = {}
+): Promise<void> {
+  const moved = sessionHopOf(ctx.session.state) !== hop || (sessionChainOf(ctx.session.state) ?? null) !== chain;
+  if (moved || Object.keys(alsoSession).length > 0) {
+    await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop, [MESSAGE_CHAIN_STATE]: chain, ...alsoSession } as never);
   }
   await ctx.request.patchState({
     ...also,

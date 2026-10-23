@@ -32,8 +32,7 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
-  await ctx.session.patchState({ [USER_LINES_STATE]: sessionUserLinesOf(state) + 1 } as never);
-  await startTurnAtHop(ctx, 0, newChainId(), { [USER_TURN_STATE]: true });
+  await startTurnAtHop(ctx, 0, newChainId(), { [USER_TURN_STATE]: true }, { [USER_LINES_STATE]: sessionUserLinesOf(state) + 1 });
 }
 
 /** Whether this request is a turn a user's own message started. */

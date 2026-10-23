@@ -169,9 +169,12 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(first.patches).toEqual([
       { [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceTurnChain: chain, workforceMessagesSent: 0, workforceMessagedWorkers: [] }
     ]);
-    expect(first.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain }]);
-    const second = await marked({});
+    // It counts one more user's line on the session, which a filed task's
+    // record is checked against (FIX-2106).
+    expect(first.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain, workforceUserLines: 1 }]);
+    const second = await marked({ workforceUserLines: 4 });
     expect((second.patches[0] as Record<string, unknown>).workforceTurnChain).not.toBe((first.patches[0] as Record<string, unknown>).workforceTurnChain);
+    expect(second.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain, workforceUserLines: 5 }]);
   });
 
   it("offers none to a user's message inside a task's session: that is task input", async () => {
