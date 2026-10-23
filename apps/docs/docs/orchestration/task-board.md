@@ -98,7 +98,7 @@ The last case needs a turn to run. A Workforce conversation's board has one. For
 
 The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
 
-`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). A message the work reads mid-run also shows in the task's session as a line from its sender.
+`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). A message the work reads after the task starts, mid-run or in the turn it starts, also shows in the task's session as a line from its sender, so a later turn there reads it too.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
 
