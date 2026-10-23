@@ -188,8 +188,8 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, two harness worker flows, and their fixtures until wiring. No package entry |
 | **Leaves** | Shift Manager's empty *In review* column. A review wait gives it a source; wiring it there is Shift Manager's issue |
 
-**Net: up, by one mode of a private lab.** It is the epic's evidence, and it needs no
-package change: the gaps it lists block nothing.
+**Net: up, by one mode of a private lab.** It is the epic's evidence. One package change
+blocks a step: a harness run's review wait, step 6; the other gaps block nothing.
 
 ## Sign off
 
@@ -213,4 +213,4 @@ wrong: a mode nobody maintains.
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).
 
-Feature · a mode of a private lab, no blocking gap · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)
+Feature · a mode of a private lab, one gap blocking step 6 · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)
