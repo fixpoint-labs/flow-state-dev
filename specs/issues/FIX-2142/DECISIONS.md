@@ -110,3 +110,15 @@ coding runs of its own.
   the pinned CLI first showed the event carries a percent only near a limit, so the issue's
   "percent on every window" is put to Jake as an open question, recommended: ship what Claude
   Code reports.
+
+## Notes from review
+
+For the implementer to weigh against the real code. Recorded as given, not folded into the design.
+
+- **Cursor, round 1 (hook payload).** *"Mirror `HarnessSessionHook` more closely — `(window, ctx)` with harness id coming from the slot feed, and `checkedAt` only on the window."* The report names its harness today because harness-manager's feed is harness-neutral; if the host's slot names it instead, either shape holds the direction.
+- **Cursor, round 1 (window lengths).** *"Hard-coded `five_hour` → 300 / `seven_day*` → 10080 duplicates CLI knowledge … persist `id` + optional `minutes`, label by id when minutes are absent."*
+- **Cursor, round 1 (one merge function).** *"A single named merge spec (function signature + invariants) … would shrink implementer error surface."* The run write and the read merge should share one function in `harness-usage.ts`.
+- **Cursor, round 1 (what is swallowed).** *"Worth one explicit sentence on expected hook failures (only persistence errors?) so implementers don't accidentally broaden catch-all swallow."*
+- **Cursor, round 1 (percent and level).** *"Consider a documented invariant … or a Claude-biased discriminated shape at the harness boundary while keeping the flat neutral type for Codex."* Note: `reached` has no percent and a warning can lack one if the header is missing, so check any invariant against the POC first.
+- **Cursor, round 1 (fixtures).** *"Check in small fixture event objects (per status) as the contract tests/goal seam rely on; keep `inspect.mjs` as optional archaeology."*
+- **Cursor, round 1 (docs and types).** One harness-usage section with README pointers may be enough; extend harness-manager's `HarnessFeeds` and use core's `HarnessUsageHook` in Shift Manager rather than a drifting local copy. Guard writes on an actual window change and keep per-event logging out of the message loop.
