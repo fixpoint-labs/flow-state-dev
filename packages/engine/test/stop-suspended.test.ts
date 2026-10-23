@@ -452,33 +452,11 @@ describe("stop a parked turn", () => {
     expect(seen).toEqual([]);
   });
 
-  // A person approved, and the turn died before it ran again: it owes a
-  // re-drive. They then stop it. The stop wins: the approved step never runs.
-  it("a turn interrupted after its approval, still owed a re-drive, is stopped and the approved step never runs", async () => {
-    const seen: string[] = [];
-    const finishedWith: string[] = [];
-    const flow = parkingFlow(seen, { onFinished: (info) => finishedWith.push(info.status) });
-    const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "approve");
-    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
-
-    expect((await stop(h, requestId)).status).toBe(204);
-    await drain(h);
-    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
-    expect(finishedWith).toEqual(["aborted"]);
-    expect(seen).toEqual([]);
-    // Recorded as a stop, so a later sweep owes it nothing more.
-    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
-    const continued = h.finished.length;
-    await runTick(tickArgs(h));
-    expect(h.finished).toHaveLength(continued);
-    expect(seen).toEqual([]);
-  });
-
-  /** A turn parked on an approval a person approved, then interrupted before it ran again. */
-  async function approvedThenInterrupted(seen: string[]) {
-    const flow = parkingFlow(seen);
+  async function approvedThenInterrupted(
+    seen: string[],
+    onFinished?: (info: { status: string }) => void
+  ) {
+    const flow = parkingFlow(seen, onFinished !== undefined ? { onFinished } : {});
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "approve");
     await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
@@ -486,11 +464,27 @@ describe("stop a parked turn", () => {
     return { h, requestId, gate };
   }
 
+  it("a turn interrupted after its approval, still owed a re-drive, is stopped and the approved step never runs", async () => {
+    const seen: string[] = [];
+    const finishedWith: string[] = [];
+    const { h, requestId, gate } = await approvedThenInterrupted(seen, (info) => finishedWith.push(info.status));
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(finishedWith).toEqual(["aborted"]);
+    expect(seen).toEqual([]);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+    const continued = h.finished.length;
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(continued);
+    expect(seen).toEqual([]);
+  });
+
   it("a second stop of that turn, while the first holds its lease, is answered as stopped too", async () => {
     const seen: string[] = [];
     const { h, requestId, gate } = await approvedThenInterrupted(seen);
-    // The first stop has the lease and has recorded the gate stopped; its run
-    // has not moved the turn on yet.
+    // The first stop holds the lease; the gate is already stopped and the turn has not moved on.
     await h.provider.acquireLease(requestId, { holder: "stop", durationMs: 60_000 });
     await h.provider.suspend({ ...gate, status: "stopped", resolvedAt: Date.now(), resolvedBy: "stop" });
 
@@ -501,7 +495,7 @@ describe("stop a parked turn", () => {
   it("a stop that loses the lease to the sweep's re-drive of the approval reports it resumed, and changes nothing", async () => {
     const seen: string[] = [];
     const { h, requestId, gate } = await approvedThenInterrupted(seen);
-    // The re-drive took the lease first: the turn is running the approval again.
+    // The re-drive holds the lease, so the turn is running the approval.
     await h.provider.acquireLease(requestId, { holder: "redrive", durationMs: 60_000 });
 
     const res = await stop(h, requestId);
@@ -1100,7 +1094,6 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     await runTick(tickArgs(h));
     await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
-    // The recorded stop wins over the approval: the approved step never runs.
     expect(seen).toEqual([]);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
     const continued = h.finished.length;

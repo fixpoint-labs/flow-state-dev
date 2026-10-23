@@ -19,18 +19,10 @@
  *
  * A stop that finds no pending gate lost the race to an answer: the turn is
  * running again, and the stop reports `already-resolved`. A second stop reaches
- * the running turn as any stop does.
- *
- * Unless the turn never ran again: a person resolved its gate (approved it,
- * say) and the process died before the turn continued, so it waits on the
- * sweep's re-drive (FIX-2108). The stop wins over that resolution. The gate is
- * re-recorded `stopped`, under the request's lease and fenced on the
- * resolution read, and the turn continues as a stop of a pending gate
- * continues it: it ends `aborted`, and the approved step never runs. The
- * person's resolution (and any data they sent) is replaced by the stop, not
- * kept: the turn never logged it, so nothing records it afterwards. A gate is
- * owed only while it is the turn's last logged gate; one a re-drive already
- * ran past is left alone.
+ * the running turn as any stop does. A non-wait gate a person already resolved,
+ * still owed a re-drive, is the exception (FIX-2108): re-recorded `stopped`,
+ * fenced on that resolution and on it still being the last logged gate. The
+ * person's answer is replaced, not kept: the turn never logged it.
  *
  * The gate's resolved record, `stopped`, is the obligation. If the process dies
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
@@ -127,56 +119,28 @@ export async function stopSuspendedRequest(
   return ended ? "stopped" : "already-resolved";
 }
 
-/** Stop a parked turn with no pending gate: its last gate is already resolved. */
+/** No pending gate. An expiry is continued; a non-wait resolution still owed a re-drive is stopped. */
 async function stopBehindResolvedGate(
   deps: SuspendedStopDeps,
   record: RequestRecord
 ): Promise<SuspendedStopResult> {
-  // Parked behind a gate that expired: nothing will ever continue the turn
-  // on its own, so the stop does, and it ends through its own lifecycle.
-  const expired = await expiredLatestGate(deps, record);
-  if (expired !== undefined) {
-    const resumeContext: ResumeContext = {
-      suspensionId: expired.suspensionId,
+  const suspensionId = latestGateIdOf(record);
+  const gate = suspensionId === undefined ? null : await deps.provider.loadSuspension(record.id, suspensionId);
+  // Nothing continues an expired gate, so the stop does. Any `expired` status,
+  // including a form that allows no reject (`isExpiredApproval` is narrower).
+  if (gate?.status === "expired") {
+    return (await continueWithStop(deps, record, {
+      suspensionId: gate.suspensionId,
       action: "reject",
       resumedBy: "stop",
       resolution: "expired"
-    };
-    return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
+    })) ? "stopped" : "already-resolved";
   }
-  // Resolved by a person (or already stopped), and the turn never ran
-  // again: it waits on the re-drive, so the stop wins over the resolution.
-  const owed = await owedNonWaitLatestGate(deps, record);
-  if (owed !== undefined) return (await stopAtNonWaitGate(deps, record, owed)) ? "stopped" : "already-resolved";
-  // No pending gate: an answer resolved it first, and the turn runs again.
+  // A person's resolution, or a stop. A resolved wait stays `already-resolved`.
+  if (gate !== null && !isWaitGate(gate) && owesRedrive(gate)) {
+    return (await stopAtNonWaitGate(deps, record, gate)) ? "stopped" : "already-resolved";
+  }
   return "already-resolved";
-}
-
-/** The turn's last logged gate, when it expired: the turn waits on nothing now. */
-async function expiredLatestGate(
-  deps: SuspendedStopDeps,
-  record: RequestRecord
-): Promise<SuspensionRecord | undefined> {
-  const suspensionId = latestGateIdOf(record);
-  if (suspensionId === undefined) return undefined;
-  const gate = await deps.provider.loadSuspension(record.id, suspensionId);
-  return gate?.status === "expired" ? gate : undefined;
-}
-
-/**
- * The turn's last logged gate, when it is not a wait and is resolved but owed
- * a re-drive (a person's resolution, or a stop): nothing has continued the
- * turn past it yet. An expired approval is {@link expiredLatestGate}'s.
- */
-async function owedNonWaitLatestGate(
-  deps: SuspendedStopDeps,
-  record: RequestRecord
-): Promise<SuspensionRecord | undefined> {
-  const suspensionId = latestGateIdOf(record);
-  if (suspensionId === undefined) return undefined;
-  const gate = await deps.provider.loadSuspension(record.id, suspensionId);
-  if (gate === null || isWaitGate(gate) || isExpiredApproval(gate) || !owesRedrive(gate)) return undefined;
-  return gate;
 }
 
 /**
@@ -201,11 +165,7 @@ async function recordStop(
 /**
  * Resolve a non-wait gate `stopped` and continue the turn with the stop
  * recorded on it: it ends `aborted` through its own lifecycle without running
- * on. Under the request's lease, fenced on the gate still holding the status
- * read (`pending`, or a resolution owed a re-drive): one that moved on since
- * was resolved by someone else. A lease held elsewhere over a gate already
- * `stopped` is a stop that got there first: the turn ends `aborted` all the
- * same, so this stop is reported done too.
+ * on. Under the request's lease, fenced on the status that was read.
  */
 async function stopAtNonWaitGate(
   deps: SuspendedStopDeps,
