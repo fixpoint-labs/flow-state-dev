@@ -268,9 +268,10 @@ standard of a release, and the epic cannot wrap while it is open.
   commits prove nothing about the assembled set, unless nothing they assert changed in between
   (see *It stays open* below). **A run finishes on the commit it pinned**, and only a clean
   verdict closes the closure issue. It never re-pins to chase merges from other epics. When a
-  check fails because another epic's merge changed what it asserts, the report says so: a goal
-  made stale (a rename, a new lead, a new surface) is recorded as stale, not filed, and a real
-  regression is filed normally, outside the epic.
+  check fails because another epic's merge changed what it asserts, the run sorts it: a check
+  made stale (a rename, a new lead, a new surface) is updated to the new surface and re-run in
+  the same run, not filed, and the report notes it; a real regression is still a broken goal, so
+  it is filed and blocks the closure like any finding, naming the merge that caused it.
 - **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
   as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
   wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
