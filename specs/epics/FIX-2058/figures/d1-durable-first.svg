@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what stops for a person on a host without durable execution. Chosen: durable execution by default comes first, and no park is kept. Instead of: keeping the parks as a fallback on hosts without durability. It comes down to the first row: a fallback keeps two forms of one job, the thing this epic removes, while the chosen option leaves one. The price is the second row: a host without durable execution, such as serverless, can't stop for a person and refuses loudly, where the fallback still asks there. The third row: dev, local and self-hosted hosts stop for a person either way, the chosen option through FIX-2063's default. Locks in: FIX-2063 blocks every child, and the kill line. Flips if: FIX-2063 can't make durability the default on those hosts; then we stop before any park is retired."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what stops for a person on a host without durable execution. Chosen: durable execution by default comes first, and no park is kept. Instead of: keeping the parks as a fallback on hosts without durability. It comes down to the first row: a fallback keeps two forms of one job, the thing this epic removes, while the chosen option leaves one. The price is the second row: a host without durable execution, such as serverless, can't ask for an approval or a review and refuses loudly, where the fallback still asks there; a question still holds its task on any host. The third row: dev, local and self-hosted hosts stop for a person either way, the chosen option through FIX-2063's default. Locks in: FIX-2063 blocks every child that suspends, and the kill line. Flips if: FIX-2063 can't make durability the default on those hosts; then we stop before the review park is retired."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,8 +66,8 @@
     <text class="t-lbl" x="32" y="222">SERVERLESS,</text>
     <text class="t-lbl" x="32" y="235">NO DURABILITY</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Can't stop for a person</text>
-    <text class="t-s" x="248" y="241">refuses the stop loudly</text>
+    <text class="t-b" x="248" y="223">Can't ask for an approval or review</text>
+    <text class="t-s" x="248" y="241">refuses loudly · a question still holds its task</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Still asks, through a park</text>
     <text class="t-s" x="612" y="241">the answer starts a new attempt</text>
@@ -89,14 +89,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">FIX-2063 blocks every child</text>
-    <text class="t-s" x="32" y="389">and the kill line: no default, no park retired</text>
+    <text class="t-b" x="32" y="371">FIX-2063 blocks every child that suspends</text>
+    <text class="t-s" x="32" y="389">and the kill line: no default, the review park stays</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
     <text class="t-b" x="494" y="371">A host we support can't be made durable</text>
-    <text class="t-s" x="494" y="389">then the kill line fires, and the parks stay</text>
+    <text class="t-s" x="494" y="389">then the kill line fires, and the review park stays</text>
   </g>
 </svg>
