@@ -149,7 +149,7 @@ import type { DeliveryHooks } from "../notice/delivery";
 import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
-import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
+import { assertDepsFileable, assertFilingSettings, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
 import {
   cascadeCancelPatch,
   endsDependents,
@@ -821,7 +821,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async addTask(init) {
       assertFilingSettings(init, options.settings, options.collectionId);
-      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy, filerFor(init));
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init));
       assertDepsFileable([task as Task], lookupRow);
       const created = await options.collection.create(
         task.id,
@@ -835,7 +835,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async addTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, options.collectionId);
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy, filerFor(init)));
+      const built = inits.map((init) =>
+        buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init))
+      );
       // Every row is checked before any is written; ids in the batch count (FIX-2080).
       assertDepsFileable(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];

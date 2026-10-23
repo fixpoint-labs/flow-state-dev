@@ -138,6 +138,8 @@ const SCRIPT: Record<string, Step[]> = {
   b3: [{ call: { toolName: "reportProgress", args: { statusNote: "draft", output: "b3-first" } } }, { hold: "b3", text: "b3 answer" }],
   d1: [{ text: "d1 original answer" }],
   d2: [{ text: "d2 corrected answer" }],
+  d3: [{ text: "d3 the launch post" }],
+  d4: [{ text: "d4 the shorter post" }],
   e2: [{ text: "e2 found licence KESTREL-41" }]
 };
 
@@ -535,7 +537,20 @@ await runGoal(async (failures) => {
       if (view?.current?.id !== followUp || show(view?.current?.output) !== show(f?.output)) {
         failures.push(`d:getTask shows the follow-up's output as current — read ${show(view?.current)}`);
       }
-      notes.push(`d: refused "${String(refused?.error).slice(0, 60)}…"; current ${show(view?.current)}`);
+      // A routed task ran in the delegate's ongoing session, not one of its own:
+      // its follow-up runs there too (FIX-2111).
+      const d3 = await dispatch({ goal: "#d3# draft the launch post", assignee: "writer", session: "ongoing", resultTo: "conversation" });
+      await finished(d3);
+      await idle();
+      const routed = await get(d3);
+      const d4 = await dispatch({ goal: "#d4# a version half as long", followUpOf: d3 });
+      await finished(d4);
+      await idle();
+      const g = await get(d4);
+      if (g?.status !== "completed" || routed?.run?.sessionId === undefined || g?.run?.sessionId !== routed.run.sessionId) {
+        failures.push(`d:a follow-up of a routed task runs in the session it ran in — ${show({ status: g?.status, session: g?.run?.sessionId, routed: routed?.run?.sessionId })}`);
+      }
+      notes.push(`d: refused "${String(refused?.error).slice(0, 60)}…"; current ${show(view?.current)}; routed follow-up in ${g?.run?.sessionId === routed?.run?.sessionId ? "its" : "another"} session`);
     });
 
     // ---- leg e (finished): talk in a finished task's session --------------------------------
