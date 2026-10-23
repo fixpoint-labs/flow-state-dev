@@ -38,7 +38,7 @@ flowchart LR
   S --> W["wait past three lease periods"]
   W --> E["leg a · answer · b · deadline · c · cancel · d · stop · e · crash after cancel"]
   E -->|"one ending each · same try · item closed · work ran once"| P["PASS · goal met"]
-  C["controls · stop fails the try · public resume · stored user only"] -.-> E
+  C["controls · stop fails the try · public resume · stored user only · cancel after add"] -.-> E
   E -.->|"under a control"| F["must FAIL · the leg that control names"]
 ```
 
@@ -48,10 +48,10 @@ never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/holds-a-task-waiting-on-a-person/` · model-free (`n/a`) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1; the same answer from a caller with the stop's user id in another tenant, and in another org, is told the stop doesn't exist; a task the request filed before it stopped ends during the stop, and its `onTaskSettled` runs then, not after the answer. b: an unhandled input fails try 1, a caught one completes it, an approval reads as a no and its resume runs no completed step again. c: the block runs on once, its progress write is refused, a task it files is refused, the row stays `cancelled` with no output and no open child. d: `cancelled` on try 1. e: the host dies after the cancel's row write and before the resume; after a restart, a board touch or the sweep resumes the block `cancelled` and the item closes. Every leg: the item leaves the pending list. An answer and a cancel together resume once; an answer after the cancel's write is told `already-resolved` and the block resumes `cancelled` |
+| **Signal** | a: past three lease periods, `getTask` shows `waitingOn: "person"` and the prompt, a second worker claims nothing, and the answer completes try 1 with the work counter at 1; the same answer from a caller with the stop's user id in another tenant, and in another org, is told the stop doesn't exist; a task the request filed before it stopped ends during the stop, and its `onTaskSettled` runs then, not after the answer. b: an unhandled input fails try 1, a caught one completes it, an approval reads as a no and its resume runs no completed step again. c: the block runs on once, its progress write is refused, a task it files on the same board is refused, the row stays `cancelled` with no output and no open child. c′: the cancelled block files onto another board while a second worker there polls to claim; the child is never claimable, which the racing claimer asserts on every poll, not only from the end state. d: `cancelled` on try 1. e: the host dies after the cancel's row write and before the resume; after a restart, a board touch or the sweep resumes the block `cancelled` and the item closes. Every leg: the item leaves the pending list. An answer and a cancel together resume once; an answer after the cancel's write is told `already-resolved` and the block resumes `cancelled` |
 | **Input** | An input, "Which region?", an approval, and a review |
 | **Anti-game** | Run with `FSDEV_TRACE_OBSERVABILITY=0`, production's default, so a resume that runs completed steps again (FIX-2137) shows as a work counter of 2, not hidden by dev's traces. Don't assert on the store's writes or the suspension record; read through `getTask` and the Inbox's pending read. The work counter is a real row, not item counts. Leg e kills the host process, not a mocked fast path |
-| **Control that must fail** | `GOAL_CONTROL=stop-fails-attempt` fails leg d on *cancelled on try 1*; `GOAL_CONTROL=public-resume` fails leg a on *answered through the route*; `GOAL_CONTROL=stored-user-only` fails leg a on *another tenant is told the stop doesn't exist*. Today's `main` fails legs a to c and e: it has no `waitForUser` |
+| **Control that must fail** | `GOAL_CONTROL=stop-fails-attempt` fails leg d on *cancelled on try 1*; `GOAL_CONTROL=public-resume` fails leg a on *answered through the route*; `GOAL_CONTROL=stored-user-only` fails leg a on *another tenant is told the stop doesn't exist*; `GOAL_CONTROL=cancel-after-add`, which keeps today's order of adding the child and then cancelling it, fails leg c′ on *never claimable*. Today's `main` fails legs a to c′ and e: it has no `waitForUser` |
 
 ## What changes
 
@@ -87,7 +87,7 @@ the `cancelled` resume, a stop that cancels the task);
 reads, cancel and stop). Amend the concept's "defaulting to the host's" (`workforce-coordination-concept.md`,
 *Inbox items*) to name the person-stop default ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). A
 changeset with a migration note: a raw `ctx.suspend` person's stop now gets the mark, the cancel and
-the stop, an input's expiry now resumes its block, a cancelled task refuses new filings, and
+the stop, an input's expiry now resumes its block, a cancelled task refuses new filings, and a cross-board child of one is never claimable, and
 `contracts` gains a `cancelled` status. No new page; the one-way-to-stop story is FIX-2131's (the
 epic's docs line).
 

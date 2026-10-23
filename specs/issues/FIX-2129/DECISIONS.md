@@ -87,8 +87,13 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   to the cancel's time, so a filing the cancelled block makes afterwards would outlive it, against
   the concept's "anything it creates is cancelled with it". A filing whose parent is already
   cancelled is refused, the parent read in the filing's write. Where the parent is on another board
-  and can't be read there, the filing lands cancelled instead; either way nothing runs. Refused
-  beats cancelling it later: no row to explain, and the block is told.
+  and can't be read there, the child must never be claimable, not even for an instant: today's
+  cross-board filing adds the child and only then cancels it (`addTask`, then `cancelIfParentEnded`,
+  `workforce/src/conversation-board/board.ts`), which leaves a window a claimer can win. Either the
+  filing lands the child already cancelled in the same write that adds it, or the claim gate checks
+  the parent and refuses a child whose parent has ended. The implementer picks one. Goal leg c′ races
+  a claimer against the filing, and `GOAL_CONTROL=cancel-after-add` must fail it. Refused beats
+  cancelling it later: no row to explain, and the block is told.
 - **A user's stop of a person's stop cancels the task.** The request's ending tells the gate the
   stop was a person's, and the gate cancels where it would have failed the try. A stop of a running
   request, or of a wait, is unchanged.
@@ -156,6 +161,8 @@ Recorded for the implementer, not folded into the design.
 - **Round 3, to the epic's amendment** (#3748) — the `question` kind dropped: a question holds its
   task (FIX-2133) or is input. The answer route runs the resume path's ownership checks (ER-7,
   Codex). A cancelled task refuses new filings, and a crash after the cancel is a goal leg (Codex).
+  A cross-board child of a cancelled task is never claimable: the same write, or the claim gate, with
+  a racing leg c′ and a control on today's order (Codex).
   FIX-2137 blocks approval resumes; the goal check runs with trace observability off.
 
 **Open: none.**
