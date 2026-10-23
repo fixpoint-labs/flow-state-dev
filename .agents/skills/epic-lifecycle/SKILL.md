@@ -1004,8 +1004,9 @@ step. So:
   wiring *is* observable and must be proven through `fsdev run`) — or a genuine
   inference-credential failure.
 - **The epic's goal is proven by its closure issue, and nothing else.** Every child passing its
-  own goal check is not the epic passing. The closure issue's QA run on one `main` commit is,
-  and it stays open until every bug it found is fixed and retested by a later run
+  own goal check is not the epic passing. The closure issue's QA run on one pinned `main` commit
+  is, and it stays open until every bug it found is fixed and retested by a later run, which
+  re-grades the failed checks and the checks the fixes touch and carries the rest forward
   ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
   Never wrap over an open closure issue, and never close it on a run that filed a finding.
 - **Stop before implementation merge**, per issue. Spec merge follows its separate approved-head/checks gate; implementation merges remain human-controlled.
