@@ -252,9 +252,9 @@ function resultLine(notice: TaskNotice, row: { goal: string; title?: string; ass
 export function taskSettledEntry(options: TaskSettledOptions) {
   /**
    * A conversation-result task's ending (FIX-2083): no turn wakes for it. With
-   * a routing layer, a completion, failure or cancel goes to it, and is
-   * acknowledged after; anything else, and any ending without one, lands as a
-   * line now.
+   * a routing layer, a completion goes to it, and a routed round's failure or
+   * cancel too, and is acknowledged after; anything else, and any ending
+   * without one, lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -264,8 +264,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await ref.patchMetadata(row.id, clearNotice(notice));
       return { act: "none" };
     }
-    if (options.onRouted !== undefined && (notice.ending === "completed" || notice.ending === "errored" || notice.ending === "cancelled")) {
-      const brief = routedBriefOf(row);
+    const brief = routedBriefOf(row);
+    // A row with no routed brief (a routed task's follow-up, FIX-2122) is in
+    // no round: its answer goes to the routing, which lands it, and its failure
+    // or cancel lands as a line, as any task's the conversation filed does.
+    const routes = notice.ending === "completed" || (brief !== undefined && (notice.ending === "errored" || notice.ending === "cancelled"));
+    if (options.onRouted !== undefined && routes) {
       const routed: RoutedEnding = {
         taskId: row.id,
         ending: notice.ending,

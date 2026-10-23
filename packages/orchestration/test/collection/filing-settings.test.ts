@@ -303,6 +303,29 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       expect(tasks.get("plain-f1")?.session).toBeUndefined();
       expect(tasks.get("plain-f1")?.targetSessionId).toBeUndefined();
     });
+
+    it("delivers a follow-up's result where its root's went: a conversation result, with one attempt (FIX-2122)", async () => {
+      // A routed root's answer lands in the conversation as the delegate's
+      // reply. Its follow-up's must too, not as a notice about a task.
+      const { seed } = await makeBacking();
+      const base = { attempts: 1, createdAt: 1_000, updatedAt: 1_000, revision: 2 } as const;
+      const tasks = await seed({ ...base, id: "root", goal: "root", status: "completed", assignee: "writer", resultTo: "conversation", maxAttempts: 1, run: { sessionId: "dsx_s" } } as Task);
+      // The filer's default attempts don't make it a retried conversation result.
+      await tasks.addTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root", maxAttempts: 3 });
+      expect(tasks.get("root-f1")).toMatchObject({ resultTo: "conversation", maxAttempts: 1 });
+      // A root whose result went to its filer leaves the follow-up's there too.
+      await tasks.addTask({ id: "plain", goal: "plain", assignee: "writer", maxAttempts: 3 });
+      await tasks.addTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain", maxAttempts: 3 });
+      expect(tasks.get("plain-f1")?.resultTo).toBeUndefined();
+      expect(tasks.get("plain-f1")?.maxAttempts).toBe(3);
+    });
+
+    it("refuses a follow-up that names where its result goes, and files nothing", async () => {
+      const { tasks } = await makeBacking();
+      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", resultTo: "filer" }));
+      expect(refused.rule).toBe("follow_up_takes_no_result_to");
+      expect(tasks.get("f")).toBeUndefined();
+    });
   });
 
   describe("the dependents cascade", () => {
