@@ -728,6 +728,17 @@ How you store the flag is yours. The shipped adapters differ: in-memory and the 
 
 **A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
 
+**`deleteIfStatus`** is the conditional form of `delete`, and is required too:
+
+```ts
+deleteIfStatus(
+  id: string,
+  allowedStatuses: readonly RequestStatus[]
+): Promise<ConditionalWriteResult>;
+```
+
+It deletes what `delete` deletes (the record, its items, stream events and runOnce results), but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step, as `setFieldsIfStatus` does. Session retention deletes through it with the status it judged each record in, so a request that started running in between, such as an `interrupted` one the durability sweep re-drives, keeps everything under its id. The outcomes match `setFieldsIfStatus`: `{ applied: true, status }` when deleted, `{ applied: false, status }` when a record exists outside the predicate, and `{ applied: false, status: undefined }` when no record exists. Wait for item and event writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
+
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
 ## Custom model resolution
@@ -1108,7 +1119,7 @@ Each tick takes a single-holder sentinel lease (co-located hosts serialize), enf
 
 `WakeStore` (`owe`, `get`, `move`, `clear`, `listDue`, `earliestDueAt`) is optional on `StoreRegistry` as `wakes`. `createInMemoryWakeStore()` and `createFilesystemWakeStore(dir)` ship here, and `inMemoryStores()` / `filesystemStores()` include them; the SQLite and Postgres adapters ship their own. A custom `WakeStore` can run `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`.
 
-**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` throws `WaitStoppedError`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A stop that finds the gate already resolved answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
+**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` throws `WaitStoppedError`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
 ## Connection resilience
 

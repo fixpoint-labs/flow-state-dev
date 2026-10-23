@@ -268,8 +268,16 @@ export type FilesystemRecordStore<
    * disagreeing. The record goes last because it is what makes the id taken:
    * if the sweep throws, the record stays, the id cannot be claimed over the
    * data left behind, and the delete can be retried.
+   *
+   * `when`, if given, decides under the same lock, from the record read
+   * there, whether anything is deleted: when it returns `false` neither
+   * `alsoDelete` nor the removal runs. Resolves whether the delete ran.
    */
-  delete(id: string, alsoDelete?: () => Promise<void>): Promise<void>;
+  delete(
+    id: string,
+    alsoDelete?: () => Promise<void>,
+    when?: (current: TRecord | undefined) => boolean
+  ): Promise<boolean>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
 
@@ -546,12 +554,20 @@ export function createFilesystemRecordStore<
       );
     },
 
-    delete: (id: string, alsoDelete?: () => Promise<void>): Promise<void> =>
+    delete: (
+      id: string,
+      alsoDelete?: () => Promise<void>,
+      when?: (current: TRecord | undefined) => boolean
+    ): Promise<boolean> =>
       withLock(id, async () => {
+        if (when !== undefined && !when(await readRecord<TRecord>(rootDir, id))) {
+          return false;
+        }
         if (alsoDelete !== undefined) {
           await alsoDelete();
         }
         await deleteRecord(rootDir, id);
+        return true;
       }),
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {

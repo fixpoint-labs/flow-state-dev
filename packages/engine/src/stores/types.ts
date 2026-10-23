@@ -768,6 +768,25 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * for the id, so none of them lands after the delete.
    */
   delete(id: string): Promise<void>;
+  /**
+   * {@link RequestStore.delete}, only while the request's status is one of
+   * `allowedStatuses`: the status check and the delete are one atomic step
+   * inside the adapter, the way {@link RequestStore.setFieldsIfStatus} gates
+   * a write. A caller that judged a record by its status (retention judging a
+   * past turn evictable) deletes it only if it is still in that status, so a
+   * request that started running in between (a re-driven `interrupted` one)
+   * keeps its record, items, events and runOnce results.
+   *
+   * Writes already in flight for the id are waited out but not dropped first:
+   * when the predicate fails they belong to a run that is still going.
+   *
+   * Returns the status found under the same step, with the outcomes of
+   * {@link ConditionalWriteResult}: an absent record is never a match.
+   */
+  deleteIfStatus(
+    id: string,
+    allowedStatuses: readonly RequestStatus[]
+  ): Promise<ConditionalWriteResult>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
   /**

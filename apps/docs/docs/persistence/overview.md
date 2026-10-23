@@ -276,6 +276,8 @@ Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an om
 
 Request ids can be chosen by the caller, so an id freed by a delete (session retention included) can be taken by another request, possibly another user's. `RequestStore.delete(id)` therefore removes everything stored under the id, its items, stream events and runOnce results, before the record itself. Remove the record last: if a child delete fails, the record keeps the id taken and the delete can be retried. Writes still queued for the id must not land after the delete.
 
+Retention deletes through `RequestStore.deleteIfStatus(id, allowedStatuses)`, which every store must implement. It deletes what `delete` deletes, but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step (a transaction, a single statement, or a per-id lock), so a request that starts running again between retention's read and its delete keeps everything stored under its id. It returns `{ applied, status }`, where `status` is the status found in that step. A record outside the predicate gives `{ applied: false, status }`. An absent record gives `{ applied: false, status: undefined }` and is never a match. Wait for writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
+
 Retention only deletes a request once its run has marked the record finished, so a custom store also has to:
 
 - persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields;
