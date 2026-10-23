@@ -62,22 +62,14 @@
  *
  * ## Past a plan's hand-over, a failure is the plan's
  *
- * Once the claim has left this request the row is the child's: the board has
- * no claim to fail it against, so `recordError` has nothing to write, and
- * under `skip` it would swallow the error while the drain waits on a row it no
- * longer waits on. So every throw past that point (a wait slot another
- * request took, a ledger write that failed, a row gone, a gate resumed with no
- * wait outcome, a seam that threw once the claim was released) leaves as a
- * {@link HandedOverRowError}, which every recorder rethrows whatever `onError`
- * says: the drain's request fails, naming the row, and no later row runs. A
- * park is not a failure and passes through. On the replay after a park the
- * whole call is past the hand-over, its checks included, which is why they run
- * inside the recorded hand-over on the first run and inside the wait after it.
+ * Once the claim has left this request, `recordError` has nothing to write,
+ * and under `skip` it would swallow the error. Every throw past that point
+ * leaves as a {@link HandedOverRowError}, which every recorder rethrows. A
+ * park passes through. On a replay the whole call is already past the
+ * hand-over, so the first run's checks stay inside the recorded hand-over.
  *
- * Without `wait` (a delegation board) a seam that threw past the release is
- * not wrapped, and that is sound: the drain waits on no row, so it ends, and
- * the row keeps its lapsing lease until a later drain claims it again (see
- * "Threw" above).
+ * Without `wait`, a seam throw past the release is not wrapped: the drain
+ * waits on no row (see "Threw" above).
  */
 import { handler, SuspensionError } from "@flow-state-dev/core";
 import {
@@ -295,9 +287,8 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
   });
 
   /**
-   * A plan board's hand-over (see the file header): the wait's checks with
-   * the claim held, the hand-over once, then the wait until the row ends. Any
-   * failure past the hand-over is the plan's.
+   * A plan board's hand-over (see the file header): hand over once, then wait
+   * until the row ends.
    */
   const handOverAndWait = async (payload: TaskWorkerInput, ctx: BlockContext) => {
     const collection = await wait!.collection(ctx);

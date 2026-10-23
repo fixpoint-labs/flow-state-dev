@@ -1,24 +1,10 @@
 /**
- * A plan board's drain that fails after it handed a row to a session of its
- * own. Past the hand-over the row is the child's, so the board has no claim to
- * fail it against and its `skip` policy has nothing to record: a failure there
- * is the plan's. Each one must end the drain's request `failed`, where its
- * filer can see it, and never run the rows after it. Before, each was
- * swallowed: the request stayed `in_progress` and the plan stopped with no
- * signal.
+ * A plan drain that fails after handing a row to a session of its own.
+ * Past the hand-over the row is the child's, so `skip` has nothing to record
+ * and the failure is the plan's: the request ends `failed`, and no later row runs.
  *
- * Real runtime: `createFlowState` over in-memory stores, its dispatch seam,
- * its durability sweeper and its wakes, as `plan-hands-a-row-over.test.ts`.
- * Each failure is put in at the one write or read that makes it, by
- * wrapping it, and the rest runs as shipped:
- *
- * - another request takes the lapsed wait slot between the drain's lapse and
- *   its re-mark: the same conditional write `getTask({ id, wait: true })`
- *   makes;
- * - the ledger's `lapseWait` or `markWait` write throws;
- * - the row is gone to the wait's own read when the drain resumes;
- * - the wait gate resumes with something that is not a wait outcome;
- * - the seam throws, rather than refusing, once the claim is released.
+ * Real runtime, as `plan-hands-a-row-over.test.ts`. Each fault is one write
+ * or read; the rest runs as shipped.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
@@ -37,11 +23,7 @@ import {
 } from "../../src/tasks";
 import { taskSettledEntry } from "../../src";
 
-/**
- * The one failure a test arms. Each is spent the first time it fires, except
- * `rowGone`: armed, it turns `"gone"` once the replay has read its recorded
- * hand-over (see `boot`), and the row stays gone from then on.
- */
+/** One armed fault. `rowGone` flips to `"gone"` in `boot` once the replay has read its hand-over. */
 const fault = vi.hoisted(() => ({
   takeSlotOnLapse: false,
   lapseThrows: false,
@@ -268,12 +250,10 @@ describe("a plan drain that fails after handing a row over", () => {
     return { act, recordOf, until, rowsNow };
   }
 
-  /** The drain's request ended `failed`, naming the row, which it left alone, and nothing after the row ran. */
   async function expectAVisiblePlanFailure(booted: Awaited<ReturnType<typeof boot>>, requestId: string, cause: RegExp) {
     const { recordOf, until, rowsNow } = booted;
-    const failed = await until(async () => (await recordOf(requestId))?.status === "failed");
+    await until(async () => (await recordOf(requestId))?.status === "failed");
     expect({ status: (await recordOf(requestId))?.status }).toEqual({ status: "failed" });
-    expect(failed).toBe(true);
     const error = JSON.stringify((await recordOf(requestId)) as { error?: unknown });
     expect(error).toContain("fact-check");
     expect(error).toMatch(cause);
@@ -283,50 +263,30 @@ describe("a plan drain that fails after handing a row over", () => {
     expect(rows.find((row) => row.id === "publish")).toMatchObject({ status: "pending" });
   }
 
-  it("fails the plan when another request takes the lapsed slot before its re-mark", async () => {
+  it.each([
+    ["another request takes the lapsed slot before its re-mark", () => {
+      fault.takeSlotOnLapse = true;
+    }, /wait_taken/],
+    ["the ledger's lapse write in its wait throws", () => {
+      fault.lapseThrows = true;
+    }, /the ledger store is unavailable/],
+    // Armed after the park, so this is the replay's mark, not the first wait's.
+    ["the ledger's mark write in its wait throws", () => {
+      fault.markThrows = true;
+    }, /the ledger store is unavailable/],
+    ["the row it waits on is gone at its resume", () => {
+      fault.rowGone = true;
+    }, /not found/],
+    ["its wait gate resumes with something that is not a wait outcome", () => {
+      fault.garbledResume = true;
+    }, /not a wait outcome/]
+  ] as const)("fails the plan when %s", async (_label, arm, cause) => {
     holdTheStep();
     const booted = await boot();
     const run = await booted.act("run");
     expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
-    fault.takeSlotOnLapse = true;
-    await expectAVisiblePlanFailure(booted, run.requestId!, /wait_taken/);
-  }, 20_000);
-
-  it("fails the plan when the ledger's lapse write in its wait throws", async () => {
-    holdTheStep();
-    const booted = await boot();
-    const run = await booted.act("run");
-    expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
-    fault.lapseThrows = true;
-    await expectAVisiblePlanFailure(booted, run.requestId!, /the ledger store is unavailable/);
-  }, 20_000);
-
-  it("fails the plan when the ledger's mark write in its wait throws", async () => {
-    holdTheStep();
-    const booted = await boot();
-    const run = await booted.act("run");
-    expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
-    // The next mark is the replay's, after the deadline.
-    fault.markThrows = true;
-    await expectAVisiblePlanFailure(booted, run.requestId!, /the ledger store is unavailable/);
-  }, 20_000);
-
-  it("fails the plan when the row it waits on is gone at its resume", async () => {
-    holdTheStep();
-    const booted = await boot();
-    const run = await booted.act("run");
-    expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
-    fault.rowGone = true;
-    await expectAVisiblePlanFailure(booted, run.requestId!, /not found/);
-  }, 20_000);
-
-  it("fails the plan when its wait gate resumes with something that is not a wait outcome", async () => {
-    holdTheStep();
-    const booted = await boot();
-    const run = await booted.act("run");
-    expect(await booted.until(async () => (await booted.recordOf(run.requestId!))?.status === "suspended")).toBe(true);
-    fault.garbledResume = true;
-    await expectAVisiblePlanFailure(booted, run.requestId!, /not a wait outcome/);
+    arm();
+    await expectAVisiblePlanFailure(booted, run.requestId!, cause);
   }, 20_000);
 
   it("fails the plan when the seam throws once the claim is released, and a later run takes the row up past its lease", async () => {

@@ -1,14 +1,7 @@
 /**
- * A delegation board's hand-over when the seam throws, rather than refuses,
- * once the claim is released. The board can't tell whether the dispatch
- * landed, so it settles nothing: its drain waits on no row and ends, and the
- * row keeps its lapsing lease. Once the lease lapses, a later drain claims the
- * row again and the work runs. Nothing hangs, and no failure is invented for a
- * row another session may be running.
- *
- * Real runtime: `createFlowState` over in-memory stores and its dispatch seam.
- * The failure is put in at the child session's birth, which the seam writes
- * after the drain released its claim.
+ * A seam throw past the release is not a plan failure here: the drain waits
+ * on no row, so it ends, and the row keeps its lease. The fault is the child
+ * session's birth, after the release.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -94,14 +87,12 @@ describe("a delegation board whose seam throws once the claim is released", () =
         (await runtime.stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, `${LEDGER.id}/t1`))
           ?.state as Task | undefined;
 
-      // The drain ends; the row is left on its lease, and nothing ran it.
       const first = await drain();
       expect(failBirth).toBe(false);
       expect(first.error).toBeUndefined();
       expect(await rowNow()).toMatchObject({ status: "in_progress" });
       expect(ran).toEqual([]);
 
-      // Past the lease, a later drain claims the row again and the work runs.
       await new Promise((resolve) => setTimeout(resolve, MIN_LEASE_DURATION_MS + 200));
       const second = await drain();
       expect(second.error).toBeUndefined();

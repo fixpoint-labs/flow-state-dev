@@ -539,10 +539,7 @@ export function createRecordError(options: RecordErrorOptions) {
         throw error;
       }
 
-      // A plan drain that failed past its hand-over: the row is another
-      // session's, so there is nothing of this request's to record on it, and
-      // `skip` swallowing it would leave the drain waiting on nothing. The
-      // plan fails instead (see `dispatch-row.ts`).
+      // No claim left to write. Rethrow so `skip` cannot swallow it (see `dispatch-row.ts`).
       if (error instanceof HandedOverRowError) {
         stopLeaseRenewal();
         throw error;

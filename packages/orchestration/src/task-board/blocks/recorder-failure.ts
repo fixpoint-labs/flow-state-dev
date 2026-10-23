@@ -245,10 +245,8 @@ function describeReports(reports: readonly RecorderFailureReport[]): string {
 }
 
 /**
- * A plan drain failed after it handed `taskId` to a session of its own (see
- * `dispatch-row.ts`). The row is that session's, so this is never recorded on
- * it: every recorder rethrows it, whatever `onError` says, and the drain's
- * request fails.
+ * Recorders rethrow this, whatever `onError` says, instead of writing the row
+ * (see `dispatch-row.ts`).
  */
 export class HandedOverRowError extends Error {
   constructor(boardId: string, taskId: string, cause: unknown) {
