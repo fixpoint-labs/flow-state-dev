@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **starts a session** | Gets session mode only; threads mode shows in *New session* but is disabled ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)) | Picks *Threads*. The session is with the threads-mode main worker, a coordinator, and the right pane is a status board |
+| **starts a session** | Gets the *Sessions* view only, which is session mode ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)) | Opens the *Projects* view and starts a session there. The view is the mode: a session in *Projects* is with the threads-mode main worker, a coordinator, and the right pane is a status board |
 | **asks the main session for something** | n/a | Sees the main session hand it to background threads, each in a session of its own. Each thread is a compact card in the feed and a row on the board: *Pinned*, *Working*, *Waiting on you*, *Ready for review*, *Resolved* |
 | **is asked a question by a thread** | n/a | Sees the thread under *Waiting on you*, opens it, and types the answer there. You can talk inside a thread directly, as well as through the main session ([D3](DECISIONS.md#d3)) |
 | **gets a thread's finished work** | n/a | Sees it under *Ready for review*. *Resolve* accepts it and moves it to *Resolved*; *Request changes* sends it back to work with your words ([D2](DECISIONS.md#d2)) |
@@ -51,7 +51,7 @@ the lab's own state.
 
 ## What changes
 
-![The threads-mode screen: sessions on the left with a Threads tag, the main thread in the center with your line marked Sent to a thread and three compact thread cards, and the status board on the right with Pinned, Working with step progress, Waiting on you with one question, Ready for review with Resolve, and Resolved collapsed to a count](figures/what-changes.svg)
+![The threads-mode screen: the Projects view selected on the left, listing threads-mode sessions, the main thread in the center with your line marked Sent to a thread and three compact thread cards, and the status board on the right with Pinned, Working with step progress, Waiting on you with one question, Ready for review with Resolve, and Resolved collapsed to a count](figures/what-changes.svg)
 
 This is the UI design. Every row and card reads one task row; the green card is ready for
 review, and *Resolve* answers its review.
@@ -76,8 +76,10 @@ review, and *Resolve* answers its review.
 ```
 
 **The modes config, its second entry** ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)): `threads: {
-main worker: desk.lead, right pane: status board }`. Nothing stores a session's mode; it is
-which main worker the session is with.
+view: Projects, main worker: desk.lead, right pane: status board }`. The mode comes from the view
+you're in, not a choice when a session starts: *Sessions* is session mode, *Projects* is threads
+mode. Nothing stores a session's mode; each view lists and starts sessions with its own main
+worker.
 
 **The adapter adds verbs** ([ER-5](../../epics/FIX-2152/DECISIONS.md#who-owns-what)):
 
@@ -115,7 +117,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 - **The worker model.** The main worker is a `coordinator`; the thread worker is an ordinary
   worker on the agent flow. No new kind of worker.
 - **Session mode** and FIX-2153's pane, adapter and decisions. Threads mode is a second entry in
-  the same modes config.
+  the same modes config, reached as the *Projects* view.
 - **Shift Manager**, its board and its coordinator. This lab reads the same rows; it changes
   neither.
 - **Core and engine.** Nothing here goes below workforce and orchestration.

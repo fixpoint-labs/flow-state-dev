@@ -105,7 +105,8 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   | *Ready for review* | waiting on you with kind `review` |
   | *Resolved* | `completed` or `cancelled`; collapsed, with a count |
 - **The original's layout, copied closely.** The same sessions list and main thread as session
-  mode. Your line carries *Sent to a thread* when the lead's turn filed threads for it. A compact thread
+  mode, under the *Projects* view; the view you're in is the mode (product lead, relaying the
+  owner, on review). Your line carries *Sent to a thread* when the lead's turn filed threads for it. A compact thread
   card sits where the lead's `createTask` call is: an icon, the title, a status line, the last
   progress note, and *View thread*, plus *Resolve* and *Request changes* when ready for review or
   *Answer* when waiting. The board's header has the title *Threads*; each group has a count and
@@ -141,6 +142,8 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   in a new session, so D1 moved from "routed tasks plus a gap" to "ordinary tasks, no gap", and
   says what leg c no longer proves. Codex showed FIX-2131 already gives the model a review
   tool, so the review gap went too: D2 is now configuration.
+- **Product answers:** yes to D1 to D4, with one refinement: the mode comes from the view
+  (*Sessions* or *Projects*), not a choice at session start.
 
 ## Notes from review
 
