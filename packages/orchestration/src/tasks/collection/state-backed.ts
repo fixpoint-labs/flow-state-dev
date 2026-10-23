@@ -79,7 +79,7 @@ import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
-import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
+import { assertDepsFileable, assertFilingSettings, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
 import {
   cascadeCancelPatch,
   endsDependents,
@@ -520,6 +520,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     );
   }
 
+  /** The board's row by id, as stored now. */
+  const committedRow = (id: string): Task | undefined => ownTask(readTasks(), id) as Task | undefined;
+
   /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
   const cascadeWrites: CascadeWrites = {
     get: (id) => ownTask(readTasks(), id) as Task | undefined,
@@ -553,7 +556,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       assertFilingSettings(init, options.settings, collectionId);
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
-      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy);
       await casWrite((tasks) => {
         if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
@@ -570,7 +573,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async addTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, collectionId);
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy));
+      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy));
       if (built.length === 0) return [];
       await casWrite((tasks) => {
         // Ids filed in the same batch count (FIX-2080).
