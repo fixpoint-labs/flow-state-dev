@@ -89,7 +89,7 @@ import {
   type AssigneeRoster,
   type AssigneeRosterSource
 } from "@flow-state-dev/orchestration";
-import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { afterTaskCheck, currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   TaskCapExceededError,
   TaskFilingRefusedError,
@@ -106,6 +106,7 @@ import {
   NOTICE_DUE_MS,
   noticeDueAt,
   filerResolver,
+  resendNowPatch,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -775,7 +776,32 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   );
 
   /** The flow's planning: its turns, wrapped so the steps they file run in their request (FIX-2076). */
-  const planning = definePlanning({ newSession: stepToOwnSession });
+  /**
+   * After a request worked its plan and answered (FIX-2113): the notices this
+   * session turned away while that turn waited on its own step
+   * (`anotherTurnWaitsOnItsPlan`) are sent now, past their backoff, by the
+   * session's pass. After the task's check, so they run after this turn,
+   * one turn at a time.
+   */
+  const sendWaitingNotices = handler({
+    name: "conversation-plan-send-waiting-notices",
+    inputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx) => {
+      await afterTaskCheck(ctx as never, async () => {
+        const own = await conversationLedgerAt(ctx as never, await filingSessionIdOf(ctx.session));
+        const owed = (own?.list() ?? []).filter((row) => noticeDueAt(row) !== undefined);
+        if (own === undefined || owed.length === 0) return;
+        for (const row of owed) {
+          const patch = resendNowPatch(row);
+          if (Object.keys(patch).length > 0) await own.patchMetadata(row.id, patch);
+        }
+        await triggerPass(ctx as never);
+      });
+    }
+  });
+
+  const planning = definePlanning({ newSession: stepToOwnSession, afterPlan: sendWaitingNotices });
 
   /** The worker this request's turn was verified to run as, when steps are worked on this flow. */
   const stepper = (ctx: BlockContext): string | undefined => (planning.wired() ? verifiedWorkerOf(ctx.session) : undefined);

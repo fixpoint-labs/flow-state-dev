@@ -57,6 +57,7 @@ import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import { sendTaskReport } from "./report-owed";
 import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask } from "./task-admission";
+import { anotherTurnWaitsOnItsPlan } from "./plan";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -355,5 +356,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       .tapIf((settled: Settled) => settled.act === "routed", acknowledge);
   }
 
-  return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
+  return orchestrationTaskSettledEntry({
+    block: handling,
+    concurrency: AFTER_REPLY_CONCURRENCY,
+    // One turn of a task at a time in its session (FIX-2113): while another
+    // request here waits on a step of its own plan, the notice stays owed,
+    // and that request sends it once it answers.
+    defer: (ctx) => anotherTurnWaitsOnItsPlan(ctx)
+  });
 }

@@ -119,6 +119,15 @@ const OWED_PREFIX = "noticeOwed:";
  */
 const RESENT_PREFIX = "noticeResent:";
 
+/**
+ * Where a busy session records that it turned an owed notice away (FIX-2113:
+ * `taskSettledEntry`'s `defer`), and when. That is no failed delivery, so the
+ * notice's age, which ends it at the maximum debt age, counts from then. Kept
+ * beside the marker, never in it, as a resend record is, so the write can't
+ * bring back a marker its entry cleared meanwhile.
+ */
+const DEFERRED_PREFIX = "noticeDeferred:";
+
 /** The longest a pass waits between two resends of one notice: 5 minutes. */
 const NOTICE_RESEND_CAP_MS = 300_000;
 
@@ -248,6 +257,23 @@ export function releasedHeldNotices(row: Task, dueAt: number): Record<string, Ow
   return patch;
 }
 
+/**
+ * The metadata patch that drops the resend records of every notice `row`
+ * still owes, so the filer's next pass sends each at once, past its backoff.
+ * For a session that turned its notices away while one of its turns was busy
+ * (`taskSettledEntry`'s `defer`) and is free now. An owed marker is left as
+ * it is.
+ */
+export function resendNowPatch(row: Task): Record<string, null> {
+  const patch: Record<string, null> = {};
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (!isSendable(key, value)) continue;
+    const resent = `${RESENT_PREFIX}${value.attempt}:${value.ending}`;
+    if ((row.metadata ?? {})[resent] != null) patch[resent] = null;
+  }
+  return patch;
+}
+
 /** Whether `row` holds an ending for the request whose wait on it lapsed (FIX-2082). */
 export function holdsAnEnding(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
@@ -341,14 +367,31 @@ function nextSendAt(row: Task, marker: OwedMarker): number {
 }
 
 /**
- * When `notice` first fell due, and when it is next sent (see `nextSendAt`).
- * `undefined` when `row` no longer owes it. Its age counts from `due`.
+ * When `notice` first fell due, when it is next sent (see `nextSendAt`), and
+ * when its age counts from: its due time, or the last time a busy session
+ * turned it away, whichever is later. `undefined` when `row` no longer owes it.
  */
-export function noticeTimes(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): { due: number; next: number } | undefined {
+export function noticeTimes(
+  row: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">
+): { due: number; next: number; since: number } | undefined {
   const key = markerKey(notice.attempt, notice.ending);
   const value = (row.metadata ?? {})[key];
   if (!isSendable(key, value)) return undefined;
-  return { due: value.due ?? 0, next: nextSendAt(row, value) };
+  const due = value.due ?? 0;
+  const deferred = (row.metadata ?? {})[`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`] as { at?: unknown } | null | undefined;
+  const deferredAt = deferred != null && typeof deferred.at === "number" ? deferred.at : 0;
+  return { due, next: nextSendAt(row, value), since: Math.max(due, deferredAt) };
+}
+
+/**
+ * The metadata patch that records a busy session turning `notice` away at
+ * `now` (FIX-2113): a record beside its marker, which it leaves as it is.
+ * `{}` when `row` no longer owes it.
+ */
+export function deferredNoticePatch(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, { at: number }> {
+  if (!isSendable(markerKey(notice.attempt, notice.ending), (row.metadata ?? {})[markerKey(notice.attempt, notice.ending)])) return {};
+  return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now } };
 }
 
 /** The metadata patch that records one more resend of `notice` at `now`. */
@@ -490,7 +533,11 @@ export function withoutNoticeMarkers(
   if (metadata === undefined) return undefined;
   return Object.fromEntries(
     Object.entries(metadata).filter(
-      ([key]) => !key.startsWith(OWED_PREFIX) && !key.startsWith(UNDELIVERABLE_PREFIX) && !key.startsWith(RESENT_PREFIX)
+      ([key]) =>
+        !key.startsWith(OWED_PREFIX) &&
+        !key.startsWith(UNDELIVERABLE_PREFIX) &&
+        !key.startsWith(RESENT_PREFIX) &&
+        !key.startsWith(DEFERRED_PREFIX)
     )
   );
 }
