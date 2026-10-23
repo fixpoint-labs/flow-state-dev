@@ -43,7 +43,7 @@ Then a review takes a typed line, and an approval still doesn't.
 |---|---|
 | **Instead of** | Running a stored parked row again so it asks again, the call this spec made before the epic's amendment; or cancelling it |
 | **Because** | The amended ER-5 maps every parked question onto the hold, harness rows included. A parked row doesn't say whether it asked a question or for a review: a coding run's question on a fixed board is written as a plain `awaitReview` park (`harness-manager/src/manager.ts`, `parkOnMismatch` and the question path), the same shape as a review park. So one entry must fit both, and only the hold fits a coding run: a re-run would redo its work, which is what Codex's round-2 finding warned of. A review park has no suspended request to resume, so it can't become a `waitForUser` review as it is; held on its parked text, its answer reaches the work as a steer, which is what a revision request now is. Cancelling loses open work |
-| **Locks in** | Two read-time entries in FIX-2080's map, onto ER-8's hold: a parked row reads running with no lease, its `feedback` as one open question, on its stored attempt; a row answered but not yet run reads the same with that question answered by its stored answer, a steer from the user, and the owed turn marked, so it runs one turn on that attempt. Nothing is written at upgrade. A person with an old review sees it as a question, worded as it was |
+| **Locks in** | Two read-time entries in FIX-2080's map, onto ER-8's hold: a parked row reads running with no lease, its `feedback` as one open question, on its stored attempt; a row answered but not yet run reads the same with that question answered by its stored answer and the owed turn marked, so it runs one turn on that attempt. The stored answer is read as that question's answer and materialises no new steer. A park written with no `feedback` (`awaitReview(id)`) gets one open question with a fixed prompt, "This task paused for review with no question recorded. Reply to continue.", so it is never invisible or stranded. A migrated question may sit one place above `MAX_STEERS`, once per row, for its own answer or deadline only, since it was never asked through the reserving ask. Where a row carries both a question park and `parkedForTurn`, the question decides: unanswered (no steer carries its key), the row is held; answered, `parked-for-turn` wins and the row re-enters pending for that turn. Nothing is written at upgrade. A person with an old review sees it as a question, worded as it was |
 
 ![D2: hold it on its parked question, chosen, beside running it again to ask again, or cancelling. Decides it: a parked row doesn't say whether it was a question or a review. Price: an old review shows as a question, and its answer is a steer](figures/d2-parked-runs-again.svg)
 
@@ -63,13 +63,17 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
   harness park reads through this issue's map entries onto the hold, like any park; FIX-2132 adds
   no entry and reads a coding row's session back from its run record (ER-5).
 - **The model's tools are `askQuestion({ question })` and `waitForUser({ kind, prompt })`,** kind
-  approval or review, in `parkOnQuestion`'s slot (`controlTools`), on every task turn, a waited-on
-  task's included. `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends
-  the turn unsettled. What the request did before asking stands, and the next turn starts from
-  the brief, the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133).
-  `waitForUser` takes the host's person-stop default and returns a no-answer result at it, since
-  a model can't catch (ER-1). `waitForUser` never takes `question` (ER-1), so a model never has
-  two ways to ask one. A turn with no task gets neither: its reply is already the question.
+  approval, review or input (ER-1), in `parkOnQuestion`'s slot (`controlTools`). **Which applies
+  when:** on a task row, a question is `askQuestion` and an approval or review is `waitForUser`;
+  with no task row there is nothing to hold, so a question is `waitForUser` input. On a task turn,
+  a waited-on task's included, `waitForUser` refuses `input` by name and points at `askQuestion`,
+  so a model never has two ways to ask one; a turn with no task row doesn't get `askQuestion`.
+  `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends the turn
+  unsettled. What the request did before asking stands, and the next turn starts from the brief,
+  the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133). `waitForUser`,
+  input included, takes the host's person-stop default and returns a no-answer result at it,
+  since a model can't catch (ER-1); input's answer is the tool's result. `waitForUser` never takes
+  `question` (ER-1).
 - **First answer wins, unless a cancel is already written,** at one point per kind: a held
   question's at ER-8's one write (FIX-2133), a review's at FIX-2129's pending state. This issue
   adds writers to the first, never a second write: the filer's tool, the task-session composer and
@@ -89,7 +93,9 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
   open questions reach the cap, and an ordinary steer at that same count. So a question is always
   answerable, and a row never holds more than the cap. A refused ask tells the model it can't ask
   more and to go on from its brief. The check sits inside ER-8's write, which is FIX-2133's; this
-  issue's tools and the composer call it.
+  issue's tools and the composer call it. A question migrated from a park was never asked, so its
+  reservation couldn't be refused: the map lets it sit at most one place above the cap, once per
+  row, for that question's answer or deadline only, and a mapped answered row adds no steer (D2).
 - **A retry keeps a question's answer and asks for a review again.** A question's answer is a
   steer on the row, so the next attempt's brief holds it, as it holds any steer. A review's verdict
   lives on its suspension, which ends with its attempt; a revision request's words are a steer, and stay.
@@ -148,7 +154,7 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
 - **Cursor:** "Inbox construction must not call task tools per row; enrichment joins snapshot boards in memory."
 - **Cursor:** "Decided, not asked re-documents FIX-2129 / FIX-2086 mechanics … one paragraph pointing at FIX-2129 + FIX-2086 and listing only this issue's deltas." And: a leg → actor → pass table for the Signal.
 - **Second look, D1:** "the tool result should make 'answered by session line' visible to the block so it can't be mistaken for the Inbox answer."
-- **Second look, D2:** "the three new map entries must have disjoint predicates from `parked-for-turn` and `parked-split` … A parked row can carry `parkedForTurn` and a question. Please pin the precedence in a test." (Two entries now; the precedence test still applies.)
+- **Second look, D2:** "the three new map entries must have disjoint predicates from `parked-for-turn` and `parked-split` … A parked row can carry `parkedForTurn` and a question. Please pin the precedence in a test." (Two entries now; the precedence is pinned in D2.)
 - **Second look, tests:** "~40 files under `packages/orchestration/test`, plus `harness-manager/test` (3 files), `integration-tests/.../task-board-park-exit-across-requests.test.ts`, `devtool/test/task-actions.test.ts`, and `shift-manager/test/devteam-chief-of-staff-tasks.test.ts` … the `park-exit` drain tests … should be deleted, not migrated."
 - **Second look:** "I'd not widen beyond [the predicate move] (e.g. leave `goal-seek-loop.ts`/`quiescence.ts` park handling to the removal itself)."
 
@@ -166,5 +172,8 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   steer. D2 flipped from running a parked row again to holding it, since ER-5 maps every parked
   question onto the hold. Round 2: the steer cap reserves an answer's place at the ask, replacing
   the round-1 exception, which was unbounded.
+- **Round 3** (Codex at 36853b4f) — `waitForUser` keeps `input`, for a turn with no task row;
+  a feedback-less park gets a fixed prompt; a migrated question may sit one place above the cap,
+  once; a question park overlapping `parkedForTurn` is held until answered, then the turn wins.
 
 **Open: none of this issue's.** The held question's deadline outcome is the epic's.

@@ -33,6 +33,7 @@ flowchart LR
   I --> B["leg b · filer's steer · leg c · Inbox · leg d · session line"]
   I --> W["leg e · a steer into the review is kept"]
   L["leg f · a row stored parked"] --> I
+  N["leg g · input on a turn with no task row"] -->|"answer as the result · no-answer at the deadline"| P
   B -->|"one more turn, same attempt · first answer wins · item closes"| P["PASS · goal met"]
   W -->|"item stays · one more turn takes the steer"| P
   C["control · the session line sent as a turn"] -.-> B
@@ -45,7 +46,7 @@ way a person or a filer does, never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/asks-a-person-one-way/` · model-free (`n/a`, scripted turns call the real tools) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: the snapshot lists one held `question` item and one `review` item; `getTask` shows the asking task running with no lease and one open question, the reviewed one waiting on a person, and no row `parked`. b: the filer's `updateTask` naming the question answers it; the task takes exactly one more turn, `attempts` stays 1, that turn's brief holds the answer, and the item leaves the list; an Inbox answer after it is told the question is answered. A filer's steer naming no question leaves the item listed, and so does one to a routed task's question. c: the snapshot lists the review as `review`; the Inbox's verdict resumes the block on its attempt, and a revision request's words reach the next model call as a steer. d: a line the user types in the task's session is written as `updateTask` from the user naming the open question, and answers a second question; `sendMessage({ to: { task } })` to a task waiting on a review queues and answers nothing (rule 10). e: a steer into a waiting review leaves its item listed; once the Inbox answers, the task takes one more turn before it completes, and that turn's brief holds the steer. f: rows stored `parked` and `awaiting_review`, one on a question and one for review, read as held midway on their parked text, `attempts` unchanged, and list as held questions; a stored answered row runs one turn on its attempt, whose brief holds the answer. Sweep: `parkOnQuestion`, `answerTask`, `unparkAndDrain`, `awaitReview`, `unpark` and `onReview` have no references in package source outside the retired-shape map |
+| **Signal** | a: the snapshot lists one held `question` item and one `review` item; `getTask` shows the asking task running with no lease and one open question, the reviewed one waiting on a person, and no row `parked`. b: the filer's `updateTask` naming the question answers it; the task takes exactly one more turn, `attempts` stays 1, that turn's brief holds the answer, and the item leaves the list; an Inbox answer after it is told the question is answered. A filer's steer naming no question leaves the item listed, and so does one to a routed task's question. c: the snapshot lists the review as `review`; the Inbox's verdict resumes the block on its attempt, and a revision request's words reach the next model call as a steer. d: a line the user types in the task's session is written as `updateTask` from the user naming the open question, and answers a second question; `sendMessage({ to: { task } })` to a task waiting on a review queues and answers nothing (rule 10). e: a steer into a waiting review leaves its item listed; once the Inbox answers, the task takes one more turn before it completes, and that turn's brief holds the steer. f: rows stored `parked` and `awaiting_review`, one on a question and one for review, read as held midway on their parked text, `attempts` unchanged, and list as held questions; a review park with no `feedback` lists with the fixed fallback prompt and is answerable; a stored answered row runs one turn on its attempt, whose brief holds the answer, and gains no steer. A parked row already holding `MAX_STEERS` steers takes its question's answer as one place above the cap, and a second steer is refused; an answered row at the cap runs with its steer count unchanged. A row with a question park and `parkedForTurn` is held while the question is unanswered, and re-enters pending for its turn once a steer carries the question's key. g: on a turn with no task row, `waitForUser` input returns the person's answer as its result, and a no-answer result, not a throw, at its deadline; on a task turn it refuses `input` and names `askQuestion`. Sweep: `parkOnQuestion`, `answerTask`, `unparkAndDrain`, `awaitReview`, `unpark` and `onReview` have no references in package source outside the retired-shape map |
 | **Input** | "Which region?" from a model turn; "Does this draft read right?" from a block. Any prompt passes the same way |
 | **Anti-game** | Don't assert on the suspension store or on rows written by hand, except leg f's seeded legacy rows. Read through the snapshot and `getTask` |
 | **Control that must fail** | `GOAL_CONTROL=composer-sends-turn` (the session line sent as a message) fails leg d on *answers a second question*. `GOAL_CONTROL=no-park-map` fails leg f on *read as held*. Today's `main` fails leg a (the task parks; no review item) and the sweep |
@@ -56,7 +57,7 @@ way a person or a filer does, never through the store.
 
 Read down each column: every red cell today is a second path or a stop the Inbox can't show.
 
-**A worker's model asks midway:**
+**A worker's model asks midway** (on a task row; with none, a question is `waitForUser` input):
 
 ```diff
 - parkOnQuestion({ question: "Which region?" })   // the task parks; the next turn is the answer
@@ -138,7 +139,7 @@ steer. The steer cap leaves room for every open question's answer
 | The debt | |
 |---|---|
 | **Removes** | `parkOnQuestion` and its capability, `answerTask` and its action, `awaitReview`, `unpark`, `unparkAndDrain`, `onReview` and the drain's park exit, the `parked` status as a write, `parkedOnQuestion` and `answered`, Chief of Staff's parked list, two person-stop checks, two sweep allowances |
-| **Adds** | Two model tools in `parkOnQuestion`'s slot: `askQuestion`, onto ER-8's ask, and FIX-2129's `waitForUser` for approvals and reviews · the session composer's steer naming the open question · two map entries. All permanent by design; the map goes no earlier than FIX-2071 |
+| **Adds** | Two model tools in `parkOnQuestion`'s slot: `askQuestion`, onto ER-8's ask, and FIX-2129's `waitForUser` for approvals, reviews and, with no task row, input · the session composer's steer naming the open question · two map entries. All permanent by design; the map goes no earlier than FIX-2071 |
 | **Leaves** | harness-manager's inbox and `answerQuestion()` (FIX-2132) · FIX-1851, which closes as superseded |
 
 **Net: down.** Two parks, two unparks and a tool become a hold, a suspension and a steer.
