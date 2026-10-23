@@ -34,7 +34,7 @@ function buildFlow(kind: string): FlowInstance {
       const pass = ((ctx.sequencer!.state as { pass: number }).pass ?? 0) + 1;
       ctx.sequencer!.patchState({ pass });
       runs.push(`pass ${pass}: ${input?.prompt ?? "brief"}`);
-      // Passes 1 and 2 each ask a question; pass 3 finishes.
+      // Passes 1 and 2 each stop for a person; pass 3 finishes.
       return { asked: pass <= 2 ? `question ${pass}` : null };
     },
   });
