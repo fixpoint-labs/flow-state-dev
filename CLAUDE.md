@@ -240,6 +240,10 @@ the project-spec exception above is unchanged.
 | `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
 
 
+## Automated PR review is Codex
+
+Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR's current head; if it hasn't and Grok hasn't asked, comment `@codex review` yourself and name the areas you're unsure of so it pays special attention to them. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
+
 ## Asking for sign-off
 
 **You are the engineer. The user is the product owner** — they set the objectives and track the process as a whole. They have technical knowledge, but that is a trap, not a licence: every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening.

@@ -217,10 +217,13 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
   const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
   const sessionId = ctx.session?.identity?.id;
+  // The engine's identity of the running request (FIX-2123), never input (BP-031).
+  const requestId = ctx.request?.identity?.id;
   const delivery =
     declaredDelivery !== undefined && sessionId !== undefined
       ? {
           ownSession: sessionId,
+          ...(requestId !== undefined ? { ownRequest: requestId } : {}),
           hooks: createDelivery(ctx, declaredDelivery, {
             collectionId: options.collectionId,
             ...(partition !== undefined ? { partition } : {}),

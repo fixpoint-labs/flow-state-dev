@@ -37,6 +37,20 @@ describe("payOwedResumes: one row's failure is that row's", () => {
     expect(cleared).toEqual(["b"]);
   });
 
+  it("a resume refused busy (the turn still parking) leaves its row owed, and only already-resolved clears it (FIX-2135)", async () => {
+    const { collection, cleared } = board(new Set());
+    const ctx = {
+      requestHost: {
+        resumeWait: async ({ gateId }: { gateId: string }) =>
+          gateId === "ask:b:a"
+            ? { ok: false, refused: "busy", detail: "not parked yet" }
+            : { ok: false, refused: "already-resolved", detail: "resolved" }
+      }
+    };
+    await expect(payOwedResumes(ctx as never, collection)).resolves.toEqual({ resumed: [], stillOwed: ["a"] });
+    expect(cleared).toEqual(["b"]);
+  });
+
   it("a marker clear that throws after an accepted resume leaves the row owed, and the touch goes on", async () => {
     const { collection, cleared } = board(new Set(["a"]));
     const ctx = { requestHost: { resumeWait: async () => ({ ok: true }) } };

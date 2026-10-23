@@ -35,6 +35,19 @@
  * filer's wait on it was made owes one at its ending, and the wait that finds
  * it ended drops it ({@link deliveredByWait}): the wait's answer delivered it.
  *
+ * ## A notice is taken before it runs (FIX-2123)
+ *
+ * The filer's `onTaskSettled` takes a notice before it runs the flow's block,
+ * in one conditional write that records its request beside the marker
+ * ({@link takenNoticePatch}). A wait's drop and that take are writes to the
+ * same row, each conditional on the other not having happened, so exactly one
+ * goes through: a wait leaves a taken marker alone ({@link deliveredByWait})
+ * and answers that the ending arrives as a notice ({@link deliveredAsNotice}). A
+ * taken marker is still owed, and the filer's pass still sends it again: a
+ * copy finds it taken and runs nothing while the request that took it runs,
+ * and takes it over once that request has ended without clearing it (its
+ * block failed, or its process died).
+ *
  * ## An ending held for the request that waited (FIX-2082)
  *
  * A wait's deadline lapses the row's wait slot rather than clearing it. An
@@ -146,6 +159,15 @@ interface OwedMarker {
   readonly held?: true;
 }
 
+/**
+ * Where the `onTaskSettled` request delivering an owed notice records that it
+ * took it (FIX-2123), by its request id, server-written, and when. Kept beside
+ * the marker, as a resend record is, and left when the marker clears: a wait
+ * reads it to tell that the request delivering the ending still runs. Absent
+ * for a notice no request has taken, and for every notice owed before FIX-2123.
+ */
+const TAKEN_PREFIX = "noticeTaken:";
+
 function markerKey(attempt: number, ending: NoticeEnding): string {
   return `${OWED_PREFIX}${attempt}:${ending}`;
 }
@@ -218,6 +240,67 @@ function isSendable(key: string, value: unknown): value is OwedMarker {
 }
 
 /**
+ * The request that took a notice (FIX-2123), off its take record, read
+ * tolerantly: anything but a well-formed record reads as none.
+ */
+function takerOf(row: Task, attempt: number, ending: NoticeEnding): string | undefined {
+  const taken = (row.metadata ?? {})[`${TAKEN_PREFIX}${attempt}:${ending}`] as { by?: unknown } | null | undefined;
+  return taken != null && typeof taken.by === "string" ? taken.by : undefined;
+}
+
+/**
+ * The request that took `notice` to deliver it (FIX-2123), or `undefined` when
+ * `row` no longer owes it, or owes it and no request has taken it.
+ */
+export function noticeTakenBy(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
+  const key = markerKey(notice.attempt, notice.ending);
+  return isSendable(key, (row.metadata ?? {})[key]) ? takerOf(row, notice.attempt, notice.ending) : undefined;
+}
+
+/**
+ * The metadata patch that takes `notice` for the request `take.by` (FIX-2123):
+ * its take record, naming that request. Empty when `row` doesn't owe it, or
+ * another request holds it: one other than `take.replacing`, the taker its
+ * caller found had ended. Run inside the write that commits it, on the row as
+ * stored.
+ */
+export function takenNoticePatch(
+  row: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">,
+  take: { readonly by: string; readonly at: number; readonly replacing?: string }
+): Record<string, { by: string; at: number }> {
+  const key = markerKey(notice.attempt, notice.ending);
+  if (!isSendable(key, (row.metadata ?? {})[key])) return {};
+  const taker = takerOf(row, notice.attempt, notice.ending);
+  if (taker !== undefined && taker !== take.by && taker !== take.replacing) return {};
+  return { [`${TAKEN_PREFIX}${notice.attempt}:${notice.ending}`]: { by: take.by, at: take.at } };
+}
+
+/**
+ * Whether the ending `row` holds reaches its filer as a notice (FIX-2123): a
+ * request other than `requestId` (the one asking) took the notice owed for
+ * that ending, whether it is delivering it now, has delivered it, or failed
+ * and leaves it to be sent again. A wait answers so, not with the ending: the
+ * notice is the filer's one hearing of it.
+ */
+export function deliveredAsNotice(row: Task, requestId: string): boolean {
+  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return false;
+  const by = takerOf(row, row.attempts, row.status);
+  return by !== undefined && by !== requestId;
+}
+
+/**
+ * Whether `row` owes a notice no request has taken (FIX-2123): one that a
+ * send now would deliver. What the request that filed `row` sends as it ends.
+ */
+export function owesUntakenNotice(row: Task): boolean {
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (isSendable(key, value) && takerOf(row, value.attempt, value.ending) === undefined) return true;
+  }
+  return false;
+}
+
+/**
  * The metadata patch that drops every held marker on `row` (FIX-2082): the
  * request it was held for read the row, which delivered the ending.
  */
@@ -234,12 +317,13 @@ export function droppedHeldNotices(row: Task): Record<string, null> {
  * the row found it already ended (FIX-2112): the wait's answer is the
  * ending's delivery, as it is for a wait the ending resumes. Empty when the
  * row hasn't ended or owes nothing for it. A marker held for a request whose
- * wait lapsed is that request's to deliver ({@link droppedHeldNotices}).
+ * wait lapsed is that request's to deliver ({@link droppedHeldNotices}). A
+ * taken marker is left too: its notice is the delivery (FIX-2123).
  */
 export function deliveredByWait(row: Task): Record<string, null> {
   if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return {};
   const key = markerKey(row.attempts, row.status);
-  return isSendable(key, (row.metadata ?? {})[key]) ? { [key]: null } : {};
+  return isSendable(key, (row.metadata ?? {})[key]) && takerOf(row, row.attempts, row.status) === undefined ? { [key]: null } : {};
 }
 
 /**
@@ -537,7 +621,8 @@ export function withoutNoticeMarkers(
         !key.startsWith(OWED_PREFIX) &&
         !key.startsWith(UNDELIVERABLE_PREFIX) &&
         !key.startsWith(RESENT_PREFIX) &&
-        !key.startsWith(DEFERRED_PREFIX)
+        !key.startsWith(DEFERRED_PREFIX) &&
+        !key.startsWith(TAKEN_PREFIX)
     )
   );
 }

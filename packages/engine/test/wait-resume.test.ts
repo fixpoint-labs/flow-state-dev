@@ -21,7 +21,9 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { onRequestEnded } from "@flow-state-dev/core/types";
 import type {
+  BlockContext,
   WaitOutcome,
   FlowInstance,
   GeneratorModel,
@@ -95,13 +97,14 @@ function answerOrThrow(outcome: WaitOutcome): unknown {
 function waitFlow(
   model: GeneratorModel,
   sideEffects: { count: number },
-  options: { deadline?: () => number } = {}
+  options: { deadline?: () => number; beforePark?: (ctx: BlockContext) => void } = {}
 ) {
   const wait = handler({
     name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.object({ answer: z.unknown() }),
     execute: async (_input, ctx) => {
+      options.beforePark?.(ctx as BlockContext);
       const outcome = await parkOnWait(ctx, {
         gateId: GATE_ID,
         binding: { board: "conversation", taskId: "task_1" },
@@ -341,11 +344,58 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
     await h.provider.releaseLease(requestId, lease!.leaseId);
     const second = await resumeWaitGate(deps, gate, { answered: true, answer: "second" }, "test");
     expect(second).toMatchObject({ ok: false, refused: "already-resolved" });
+    // The continuation runs the turn again, so the request reads
+    // `in_progress`, as a turn still parking does (FIX-2135). The resolved
+    // gate decides first: a late resume is `already-resolved`, never the
+    // retryable `busy`, or its sender would retry an answered wait forever.
+    const running = await h.stores.request.get(requestId);
+    await h.stores.request.set(requestId, { ...running!, status: "in_progress" }, "any");
+    const late = await resumeWaitGate(deps, gate, { answered: true, answer: "late" }, "test");
+    expect(late).toMatchObject({ ok: false, refused: "already-resolved" });
     expect(continuations).toBe(1);
     expect((await h.provider.loadSuspension(requestId, GATE_ID))?.resumeData).toEqual({
       answered: true,
       answer: "first"
     });
+  });
+
+  it("a resume that lands while the turn is still parking is refused busy, and lands once it has parked (FIX-2135)", async () => {
+    // The park writes the gate, runs the request-end hooks, and only then
+    // records the request `suspended`. A waited-on task that ends inside that
+    // window resumes the gate while the request still reads `in_progress`.
+    // That resume must be retryable: the waker keeps it owed only on `busy`,
+    // and the turn would otherwise sit parked until its deadline.
+    const { model, seen } = waitingModel();
+    const sideEffects = { count: 0 };
+    let h: Harness | undefined;
+    const duringPark: Array<{ status: string | undefined; result: ResumeWaitResult }> = [];
+    const flow: FlowInstance = waitFlow(model, sideEffects, {
+      beforePark: (ctx) => {
+        onRequestEnded(ctx, async () => {
+          const status = (await h!.stores.request.get(ctx.request.identity.id))?.status;
+          duringPark.push({ status, result: await touch(h!, flow, { answered: true, answer: "ended" }) });
+        });
+      }
+    });
+    h = setup(flow);
+    const parked = await startTurn(h, flow);
+    const requestId = parked.requestId!;
+
+    expect(duringPark).toHaveLength(1);
+    expect(duringPark[0]!.status).toBe("in_progress");
+    expect(duringPark[0]!.result).toMatchObject({ ok: false, refused: "busy" });
+    // Nothing was resumed: the gate is still pending, the turn parked.
+    expect(h.continued).toHaveLength(0);
+    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+
+    // The waker's retry, once the turn has parked, resumes it with the ending.
+    expect(await touch(h, flow, { answered: true, answer: "ended" })).toEqual({ ok: true });
+    const finished = await h.continued[0]!;
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("ended");
+    expect(finished.output).toContain("ended");
+    expect(sideEffects.count).toBe(1);
   });
 
   it("a resume racing another for the same turn is refused busy and leaves the gate pending", async () => {
@@ -706,24 +756,36 @@ describe("wait gate parked before FIX-2082, past its expiry: the durability swee
     expect(skipped).toEqual([["warn", expect.any(String), { count: 1 }]]);
   });
 
-  it("an overdue gate still listed pending whose turn is past waiting is left alone, with one warning", async () => {
-    const { model } = waitingModel();
+  it("an overdue gate whose turn is still parking is left pending, and a later tick resumes it once parked (FIX-2135)", async () => {
+    const { model, seen } = waitingModel();
     const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
-    await storeAsParkedBeforeWakes(h, parked.requestId!);
-    // The record and its request disagree: the gate reads pending, the turn does not.
-    const request = await h.stores.request.get(parked.requestId!);
-    await h.stores.request.set(parked.requestId!, { ...request!, status: "in_progress" }, "any");
+    const requestId = parked.requestId!;
+    await storeAsParkedBeforeWakes(h, requestId);
+    // The gate is written but the request is not yet recorded `suspended`:
+    // the park's request-end hooks are still running.
+    const request = await h.stores.request.get(requestId);
+    await h.stores.request.set(requestId, { ...request!, status: "in_progress" }, "any");
 
     const logs: Array<[string, string, unknown]> = [];
     await tick(h, true, logs);
 
+    // Not resumed, and not written off as already resolved: retried.
     expect(h.continued).toHaveLength(0);
-    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
-    const warned = logs.filter(([, m]) => m.includes("overdue wait gate already resolved"));
-    expect(warned).toHaveLength(1);
-    expect(warned[0]![0]).toBe("warn");
+    expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
+    expect(logs.filter(([, m]) => m.includes("already resolved"))).toHaveLength(0);
+    expect(logs.filter(([, m]) => m.includes("overdue wait not resumed"))).toEqual([
+      ["info", expect.any(String), expect.objectContaining({ refused: "busy" })]
+    ]);
+
+    // The park finishes; the next tick resumes the turn with its deadline outcome.
+    await h.stores.request.set(requestId, { ...request!, status: "suspended" }, "any");
+    await tick(h);
+    expect(h.continued).toHaveLength(1);
+    await h.continued[0];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
   });
 });
 
