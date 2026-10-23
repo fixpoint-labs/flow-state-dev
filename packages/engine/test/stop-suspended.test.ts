@@ -511,6 +511,39 @@ describe("stop a parked turn", () => {
     expect(h.finished).toHaveLength(0);
   });
 
+  it("a stop that reads the approval, then waits while the sweep's re-drive runs past it to a newer gate, changes nothing", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate: first } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...first, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
+
+    // The stop has read the approval as owed. Before it takes the lease, the
+    // sweep re-drives the approval: the turn runs past it and parks on the
+    // second gate.
+    const acquireLease = h.provider.acquireLease.bind(h.provider);
+    let raced = false;
+    vi.spyOn(h.provider, "acquireLease").mockImplementation(async (id, options) => {
+      if (!raced && options.holder.startsWith("stop")) {
+        raced = true;
+        await runTick(tickArgs(h));
+        await drain(h);
+      }
+      return acquireLease(id, options);
+    });
+
+    const res = await stop(h, requestId);
+    expect(raced).toBe(true);
+    expect(res.status).toBe(409);
+    expect(seen).toEqual(["first:approved"]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect((await h.provider.loadSuspension(requestId, first.suspensionId))).toMatchObject({ status: "approved", resolvedBy: USER });
+    const pending = (await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.suspensionId).not.toBe(first.suspensionId);
+  });
+
   it("a stop of that turn whose run fails before it starts stays a stop, and the sweep finishes it aborted", async () => {
     const seen: string[] = [];
     const { h, requestId, gate } = await approvedThenInterrupted(seen);

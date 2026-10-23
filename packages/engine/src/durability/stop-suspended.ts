@@ -26,7 +26,11 @@
  * sweep's re-drive (FIX-2108). The stop wins over that resolution. The gate is
  * re-recorded `stopped`, under the request's lease and fenced on the
  * resolution read, and the turn continues as a stop of a pending gate
- * continues it: it ends `aborted`, and the approved step never runs.
+ * continues it: it ends `aborted`, and the approved step never runs. The
+ * person's resolution (and any data they sent) is replaced by the stop, not
+ * kept: the turn never logged it, so nothing records it afterwards. A gate is
+ * owed only while it is the turn's last logged gate; one a re-drive already
+ * ran past is left alone.
  *
  * The gate's resolved record, `stopped`, is the obligation. If the process dies
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
@@ -214,6 +218,13 @@ async function stopAtNonWaitGate(
     admit: async () => {
       const current = await deps.provider.loadSuspension(record.id, gate.suspensionId);
       if (current === null || current.status !== gate.status) return { refusal: "refused" };
+      // A resolved status stays as it is after a run goes past the gate, so it
+      // alone can't tell an owed gate from one a re-drive already ran past to
+      // a newer gate. It is owed only while it is still the turn's last gate.
+      if (current.status !== "pending") {
+        const fresh = await deps.stores.request.get(record.id);
+        if (fresh === undefined || latestGateIdOf(fresh) !== gate.suspensionId) return { refusal: "refused" };
+      }
       // Fenced on the incarnation checked: if another request took the id in
       // between, nothing is stopped, and the caller hears `already-resolved`.
       if (!(await recordStop(deps, record))) return { refusal: "refused" };
