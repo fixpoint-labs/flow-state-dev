@@ -304,7 +304,7 @@ const claudeEnv = harnessEnv({ pass: ["PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"]
 harnessUsageAction({
   readers: {
     codex: (options) => readCodexUsage({ env, ...options }),
-    "claude-code": () => readClaudeUsage({ env: claudeEnv }),
+    "claude-code": (options) => readClaudeUsage({ env: claudeEnv, ...options }),
   },
 });
 ```

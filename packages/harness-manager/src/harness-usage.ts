@@ -83,7 +83,7 @@ export const USAGE_READ_TIMEOUT_MS = 10_000;
  */
 const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
   checkedAt: z.number(),
-  origin: z.string().default("read"),
+  origin: z.enum(["read", "run"]).default("read"),
 });
 
 /**
@@ -221,7 +221,7 @@ export function applyReading(stored: HarnessUsageState, reading: HarnessUsageRea
   const incoming = reading.accountId === null ? null : hashKeySegment(reading.accountId);
   const step = accountStep(stored, incoming, checkedAt);
   if (step === "older") return { state: {}, result: "refused-older" };
-  const own = reading.windows.map((window) => ({ ...window, checkedAt, origin: "read" }));
+  const own = reading.windows.map((window) => ({ ...window, checkedAt, origin: "read" as const }));
   const named = new Set(own.map((window) => window.id));
   // A run's windows this reading doesn't name stay while the account does; on a
   // shared id, the newer reading wins whichever wrote it.
@@ -267,7 +267,7 @@ export function applyRunWindow(stored: HarnessUsageState, report: HarnessUsageRe
       account: incoming,
       accountAt: step === "rebind" ? report.observedAt : Math.max(stored.accountAt, report.observedAt),
       ...(step === "rebind" ? { plan: null } : {}),
-      windows: [...others, { ...report.window, checkedAt: report.observedAt, origin: "run" }],
+      windows: [...others, { ...report.window, checkedAt: report.observedAt, origin: "run" as const }],
     },
     result: "recorded",
   };

@@ -95,7 +95,9 @@ export const lab = await openLab({
   errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT, tracker: { project: "shared/fsd" } },
   // Who Claude Code is signed in as, read when someone opens Usage; its
   // windows come from the coder's runs.
-  usage: { "claude-code": () => readClaudeUsage({ env: claudeCodeEnv() }) },
+  usage: {
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+  },
 });
 
 export default lab.state;

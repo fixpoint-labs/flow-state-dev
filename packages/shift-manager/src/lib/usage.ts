@@ -8,6 +8,7 @@
  * "rolled over" is the Lab's, worked out by its clock, never this page's.
  */
 import { useCallback, useEffect, useState } from "react";
+import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
 import { runAction } from "./action";
 import { useLab } from "./lab-data";
 import { describeFailure, PROJECT_READER_FLOW, readerSessionId, type Failure } from "./reads";
@@ -24,7 +25,7 @@ export type UsageWindow = {
   /** `null` when the harness sent no percent: never shown as 0. */
   usedPercent: number | null;
   /** How close to its limit, when the harness said: `ok`, `warning`, `reached`. `null` from Codex. */
-  level: "ok" | "warning" | "reached" | null;
+  level: HarnessUsageLevel | null;
   resetsAt: number | null;
   checkedAt: number;
   /** `read` when a look read it, `run` when a coding run reported it. */

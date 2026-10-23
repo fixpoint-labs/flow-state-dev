@@ -824,7 +824,7 @@ To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage 
 |---|---|
 | `windows` | Signed in, or running on an OAuth token. Carries `plan` and `accountId`, and **no windows**: those arrive from runs. |
 | `api-key` | Claude Code runs on an API key, which has no subscription limit. |
-| `signed-out` | Nobody is signed in, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default). |
+| `signed-out` | Nobody is signed in, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. |
 | `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed. |
 
 Pass the same `env` as your runs. To keep run windows and readings together and serve them to a page or a worker, register `readClaudeUsage` as the `claude-code` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage) and pass `onUsage` through from the manager's harness slot.

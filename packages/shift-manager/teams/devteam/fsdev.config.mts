@@ -197,7 +197,7 @@ const lab = await openLab({
   usage: {
     codex: ({ signal } = {}) =>
       readCodexUsage({ env: harnessEnv({ pass: CODEX_USAGE_PASS }), ...(signal === undefined ? {} : { signal }) }),
-    "claude-code": () => readClaudeUsage({ env: claudeCodeEnv() }),
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
 });
 

@@ -99,6 +99,18 @@ describe("probeClaudeAccount, scripted", () => {
     expect(sdk.seen.closed).toBe(true);
   });
 
+  it("stops and closes Claude Code when its signal aborts, without waiting out timeoutMs", async () => {
+    // A usage refresh that gives up must not leave the probe's process running.
+    const sdk = scriptedSdk(() => new Promise(() => {}));
+    const stop = new AbortController();
+    const started = Date.now();
+    setTimeout(() => stop.abort(), 20);
+    const result = await probeClaudeAccount({ env: {}, timeoutMs: 60_000, signal: stop.signal, importSdk: sdk.importSdk });
+    expect(result.status).toBe("none");
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(sdk.seen.closed).toBe(true);
+  });
+
   it("says none, with Claude Code's own error, when accountInfo fails", async () => {
     const sdk = scriptedSdk(async () => {
       throw new Error("spawn claude ENOENT");

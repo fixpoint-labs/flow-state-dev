@@ -40,6 +40,8 @@ export interface ProbeClaudeAccountOptions {
   env: Record<string, string>;
   /** How long to wait for Claude Code's answer before reading it as `none`. Default 10 000 ms. */
   timeoutMs?: number;
+  /** Stops waiting and closes Claude Code when it aborts; the answer is then `none`, as on a timeout. */
+  signal?: AbortSignal;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
   importSdk?: SdkImporter;
 }
@@ -63,7 +65,12 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Promise<ClaudeAccountProbe> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
-    { env: options.env, timeoutMs, ...(options.importSdk === undefined ? {} : { importSdk: options.importSdk }) },
+    {
+      env: options.env,
+      timeoutMs,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.importSdk === undefined ? {} : { importSdk: options.importSdk }),
+    },
     (handle) => handle.accountInfo(),
   );
   if (asked.status === "sdk-missing") return { status: "sdk-missing", reason: asked.reason };
