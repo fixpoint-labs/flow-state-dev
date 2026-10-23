@@ -73,8 +73,9 @@ the pending line becomes a line inside the turn.
   view*. It never calls a plain window boundary a summary.
 - **A probe at wiring says whether the script needs G1's summary.** Step 4 is run with memory
   alone. A pass means only that this script didn't need it (a conversation's history and memory
-  never stand in for each other, FIX-1612); the mark is still owed. A fail makes G1 block this
-  lab's wiring and the closure ([epic D1](../../epics/FIX-2152/DECISIONS.md#d1)).
+  never stand in for each other, FIX-1612). Either way G1 blocks this lab's wiring and the
+  closure, because only its mark places the divider step 4 asserts
+  ([epic D1](../../epics/FIX-2152/DECISIONS.md#d1)).
 - **Worker messages queue; task results take the ending path.** D2 is the queue rule for a
   message (a queued message is plain conversation, answered after the turn). The epic's D2
   (FIX-2159) is a task result reaching a running turn. They are separate paths, not rival designs.
@@ -116,6 +117,8 @@ the pending line becomes a line inside the turn.
   replacing it. D2 no longer names session-addressed delivery, which is FIX-2160's.
 - **Review round 1, Codex** — memory is now recorded as well as read (`afterAnswer`), so the
   probe tests what it claims, and the divider is labelled *summarized* only when it is.
+- **Review round 2, Codex** — G1 now blocks step 4 always (the divider needs its mark), and the
+  layout's divider reads *out of view*, with *summarized* only when the summary is on.
 - **Review round 1** — Cursor's review approved the direction. Two of its points are folded in:
   the goal check now asserts the Talk panel (step 2), and G2 says plainly that it blocks no step,
   so the pending line is best effort until it lands. The rest is below.
