@@ -47,7 +47,7 @@ no new session.
 | | |
 |---|---|
 | **Instead of** | Taking the message inside the recipient's running turn, before its next model call, the way the epic's D2 takes a background task's result |
-| **Because** | The concept already answers it: a message to a busy session queues until the current request ends (rule 10), and it lands in the session that sent the original (FIX-2070). So the reply runs as its own `receive` turn right after lead answers you, and that turn's line uses it. The lab adds the part a person needs: a pending line the moment the reply is logged, so it is never silent. Taking it mid-turn would amend the model a second time, beside the epic's D2 |
+| **Because** | The concept already answers it: a message to a busy session queues until the current request ends (rule 10), and in this lab every worker has only its default conversation, so the reply lands there. So the reply runs as its own `receive` turn right after lead answers you, and that turn's line uses it. The lab adds the part a person needs: a pending line the moment the reply is logged, so it is never silent. Taking it mid-turn would amend the model a second time, beside the epic's D2 |
 | **Locks in** | A turn you started is never changed by another worker's message. The reply is a separate line after your answer, and the answer you are waiting for does not use it. A person who wants it used asks again, or waits one turn |
 
 ![D2: a message arrives mid-turn. It waits for the turn and shows as pending, chosen, beside taking it inside the running turn. Decides it: the concept's queue rule. Locks in: your turn is never changed by another worker's message](figures/d2-message-mid-turn.svg)
@@ -64,9 +64,9 @@ the pending line becomes a line inside the turn.
   `ensureWorkerSession({ worker })` with no criteria. The epic's sessions gap (ER-7) is not used.
 - **One conversation forever is a package gap, not lab code** (the epic's *Decided before review*).
   The lab composes `@flow-state-dev/memory` through `defineAgentWorkerFlow({ uses })`, which is
-  configuration. History handling past the 50-turn window, turned on per flow or worker and off
-  in the stock agent flow, and the mark the divider reads, is gap G1, which goes to FIX-1613
-  rather than a new entry. The lab never summarizes on its own, not even in a small flow.
+  configuration. A summary of turns past the 50-turn window, an opt-in option on core's
+  `historyWindow` built on core's `summarizer` and off by default, and the mark the divider reads,
+  is gap G1, tracked under FIX-1613 rather than a new entry. The lab never summarizes on its own, not even in a small flow.
 - **A probe at wiring says whether the script needs G1's summary.** Step 4 is run with memory
   alone. A pass means only that this script didn't need it (a conversation's history and memory
   never stand in for each other, FIX-1612); the mark is still owed. A fail makes G1 block this
@@ -106,5 +106,6 @@ the pending line becomes a line inside the turn.
   first drafted (a busy read for the worker list) was dropped on reading the client:
   `listSessionRequests` already gives it.
 - **Architect** — fsd-architect's coherence check ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3787#issuecomment-6375046124))
-  agreed with D2 and kept it apart from the epic's D2. G1 now points at FIX-1613 instead of a new
-  entry, is opt-in per flow or worker, and a passing probe no longer reads as memory replacing it.
+  agreed with D2 and kept it apart from the epic's D2. G1 moved to core's `historyWindow` (opt-in,
+  on core's `summarizer`), is tracked under FIX-1613, and a passing probe no longer reads as memory
+  replacing it. D2 no longer names session-addressed delivery, which is FIX-2160's.
