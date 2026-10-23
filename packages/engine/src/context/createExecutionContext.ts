@@ -3139,11 +3139,8 @@ export async function createExecutionContext<
     // immediately at `added`; subsequent phases emit item.updated; the
     // `output` phase additionally emits item.done.
     //
-    // With trace observability off (production), the hook still records each
-    // completed block as a lean `block_trace` (identity + output, nothing
-    // else), because that record is what resume replay reads to skip a block
-    // that already finished. Without it, a resumed or continued request runs
-    // every completed step again (FIX-2137).
+    // Observability off still records a completed block's output. Resume reads
+    // that record to skip the block; without it, finished steps run again.
     onBlockTraceCapture: isTraceObservabilityEnabled()
       ? (payload, firingCtx) => {
           const identity = firingCtx._blockIdentity;
@@ -3248,9 +3245,7 @@ export async function createExecutionContext<
           }
         }
       : (payload, firingCtx) => {
-          // Replay record only: one item per completed block, written at its
-          // `output` phase. A failed or suspended block has no output to
-          // replay, and a transient block's trace is never retained.
+          // Index at completion, so this record follows the items the block emitted.
           if (payload.phase !== "output" || payload.data.status !== "completed") return;
           const identity = firingCtx._blockIdentity;
           if (identity === undefined || identity.transient === true) return;

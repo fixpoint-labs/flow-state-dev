@@ -1,14 +1,7 @@
 /**
- * Resume replay with trace observability off (the production default).
- *
- * A resumed request skips every block that already completed by replaying the
- * block's recorded `block_trace` output. Those records must exist whatever the
- * observability setting: with it off, a resume would otherwise run every
- * finished step's side effects again (and append to state twice). These tests
- * drive a durable sequencer that runs a side effect, stops for a person, and
- * loops back with the answer, with observability forced off, and check that
- * each pass runs exactly once and that the record kept for replay carries no
- * observability payload (inputs, prompts).
+ * Observability off (production) still replays a finished step from its
+ * `block_trace`. This loop stops twice; each pass runs once, and the kept
+ * record has no input, prompt, or resource-load payload.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
@@ -21,7 +14,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 /** Real executions of the side-effecting step, counted outside every store. */
 const runs: string[] = [];
 
-function buildFlow(kind: string): FlowInstance {
+function buildFlow(): FlowInstance {
   const stateSchema = z.object({
     pass: z.number().default(0),
     answers: z.array(z.string()).default([]),
@@ -34,7 +27,6 @@ function buildFlow(kind: string): FlowInstance {
       const pass = ((ctx.sequencer!.state as { pass: number }).pass ?? 0) + 1;
       ctx.sequencer!.patchState({ pass });
       runs.push(`pass ${pass}: ${input?.prompt ?? "brief"}`);
-      // Passes 1 and 2 each stop for a person; pass 3 finishes.
       return { asked: pass <= 2 ? `question ${pass}` : null };
     },
   });
@@ -43,7 +35,7 @@ function buildFlow(kind: string): FlowInstance {
     inputSchema: z.any(),
     outputSchema: z.any(),
     execute: async (input: { asked: string | null }, ctx) => {
-      if (input.asked === null) return { done: true };
+      if (input.asked === null) return ctx.sequencer!.state;
       const answer = (await ctx.suspend!({
         reason: "human_input",
         message: input.asked,
@@ -54,30 +46,23 @@ function buildFlow(kind: string): FlowInstance {
       return { again: true, prompt: `answer: ${answer}` };
     },
   });
-  const report = handler({
-    name: "report",
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (_input, ctx) => ctx.sequencer!.state,
-  });
   return defineFlow({
-    kind,
+    kind: "replay-traces-off",
     actions: {
       run: {
         inputSchema: z.any(),
         block: sequencer({ name: "loop", durable: true, stateSchema })
           .step(work)
           .step(ask)
-          .loopBack("work", { when: (v: { again?: boolean }) => v?.again === true, maxIterations: 4 })
-          .step(report),
+          .loopBack("work", { when: (v: { again?: boolean }) => v?.again === true, maxIterations: 4 }),
       },
     },
-  })({ id: kind });
+  })({ id: "replay-traces-off" });
 }
 
-async function driveTwoAnswers(kind: string) {
+async function driveTwoAnswers() {
   runs.length = 0;
-  const flow = buildFlow(kind);
+  const flow = buildFlow();
   const stores = createInMemoryStores();
   const provider = createCheckpointDurabilityProvider({
     checkpoints: stores.checkpoints,
@@ -114,11 +99,11 @@ async function driveTwoAnswers(kind: string) {
   };
 
   const afterStart = [...runs];
-  const first = await answer("A1");
+  await answer("A1");
   const afterFirst = [...runs];
   const second = await answer("A2");
   const record = await stores.request.get(requestId);
-  return { afterStart, first, afterFirst, second, afterSecond: [...runs], record };
+  return { afterStart, afterFirst, second, afterSecond: [...runs], record };
 }
 
 describe("resume replay with trace observability off", () => {
@@ -130,31 +115,21 @@ describe("resume replay with trace observability off", () => {
     process.env = { ...originalEnv };
   });
 
-  it("never runs a completed step again across two answers", async () => {
-    const r = await driveTwoAnswers("replay-traces-off");
+  it("never runs a completed step again, and the kept record has no observability payload", async () => {
+    const r = await driveTwoAnswers();
 
     expect(r.afterStart).toEqual(["pass 1: brief"]);
-    // Answering resumes without running pass 1 again, and pass 2's own
-    // question is a new stop, not answered by the first answer.
     expect(r.afterFirst).toEqual(["pass 1: brief", "pass 2: answer: A1"]);
     expect(r.second.suspension.message).toBe("question 2");
     expect(r.afterSecond).toEqual(["pass 1: brief", "pass 2: answer: A1", "pass 3: answer: A2"]);
-    // State a step appends to is not appended twice by a replayed step.
     expect(r.record?.status).toBe("completed");
     expect(r.second.output).toMatchObject({ pass: 3, answers: ["A1", "A2"] });
-  });
 
-  it("keeps only identity and output on the record replay reads", async () => {
-    const r = await driveTwoAnswers("replay-traces-off-lean");
     const traces = (r.record?.items ?? []).filter((i) => i.type === "block_trace") as BlockTraceItem[];
-
     expect(traces.length).toBeGreaterThan(0);
     for (const trace of traces) {
-      // Only completed blocks are recorded: a suspended or failed block has
-      // no output to replay.
       expect(trace.status).toBe("completed");
       expect(trace.output).toBeDefined();
-      // Observability payload stays off in production.
       expect(trace.input).toBeUndefined();
       expect(trace.generator).toBeUndefined();
       expect(trace.resourceLoads).toBeUndefined();
