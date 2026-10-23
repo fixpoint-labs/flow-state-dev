@@ -59,14 +59,20 @@ bottom row is a second ending, which loops once more within the bound ([D3](DECI
   export default defineAgentWorkerFlow({
     installation,
 +   // After each answer, in the same request: anything that finished while it ran?
-+   answerAgain: async (ctx) => {
-+     const finished = await takeFinishedTasks(ctx);
-+     return finished.length === 0 ? undefined : `These finished while you answered:\n${finished.map((f) => f.line).join("\n")}`;
-+   }
++   // A block, like afterAnswer. Its output is the next message, or nothing to stop.
++   answerAgain: sequencer({ name: "lab-answer-again" })
++     .step(takeFinishedTasks)
++     .step(handler({
++       name: "lab-finished-message",
++       execute: (finished) => finished.length === 0 ? {} : { message: `These finished while you answered:\n${finished.map((f) => f.line).join("\n")}` }
++     }))
   });
 ```
 
-The two names are working names; the implementer fixes them. The hook sits on the door a person's message comes through, after the whole turn, its plan's answer included, so it runs once per request and never in a task or notice turn. Each answer again is one more turn of the worker, plan and all; the bound of three counts only these, not the plan's own answer. The bound is one named, exported constant. After the last allowed answer the hook isn't run and the take hands over nothing, so later endings stay owed for the queued `onTaskSettled` rather than being taken with no answer to use them.
+Both pieces are blocks, so they show in the trace and compose like any other: the flow factory's
+`answerAgain` slot takes a block, as `afterAnswer` does, and `takeFinishedTasks` is a handler the
+package exports. The factory owns going back to the worker's turn; the app's block only decides
+whether there is a next message. The two names are working names; the implementer fixes them. The hook sits on the door a person's message comes through, after the whole turn, its plan's answer included, so it runs once per request and never in a task or notice turn. Each answer again is one more turn of the worker, plan and all; the bound of three counts only these, not the plan's own answer. The bound is one named, exported constant. After the last allowed answer the hook isn't run and the take hands over nothing, so later endings stay owed for the queued `onTaskSettled` rather than being taken with no answer to use them.
 
 **Docs:** rule 7 of `docs/internal/design/workforce-coordination-concept.md` gains the third
 destination. The workforce README documents the hook and the take, with the lab's lines as the

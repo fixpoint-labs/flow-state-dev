@@ -31,7 +31,7 @@ lab's flow. Tested against the lab bar before it was drafted.*
 |---|---|
 | **Instead of** | (a) All of it in the lab, on public entries only. (b) The package reading results before every model call, through a context entry like the steer one, and answering once more itself |
 | **Because** | (a) fails on public entries: nothing public takes a notice, and the agent flow has no step that may answer again (`afterAnswer` is a side step that can't change the answer). A lab that only *reads* finished rows leaves the notice owed, so the queued `onTaskSettled` says the line and wakes a second turn after the reply: heard twice ([POC](poc/take-in-turn/README.md), control). A lab that takes them itself must also report a failure, dedupe and free the delegate's session, which is package work in the lab (ER-4). (b) works, but the loop is package code no app can see or change, and the before-each-call read is a second mechanism step 4 doesn't need |
-| **Locks in** | Two public entries: a hook on the agent worker flow, on the door a person's message comes through, that runs after the whole turn (its plan's answer included) in the same request and may hand the worker a message to answer again, at most three times per request; and a take on the workforce package that hands over what finished, once. An app that sets no hook behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
+| **Locks in** | Two public entries, both blocks: a block slot on the agent worker flow (as `afterAnswer` is), on the door a person's message comes through, that runs after the whole turn (its plan's answer included) in the same request and may hand the worker a message to answer again, at most three times per request; and a take, a handler block the workforce package exports, that hands over what finished, once. The factory owns going back to the turn; the app's block decides whether there is a message. An app that sets no hook behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
 
 ![D3: the app's flow answers again through a hook and the package takes, chosen, beside all in the lab and the package reading before every call; decided by hearing each result once](figures/d3-app-flow-answers-again.svg)
 
@@ -135,7 +135,8 @@ Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `m
   as dropped.
 - **Review round 2** — Architect's follow-up: the take touches only the take record, never the
   hold; the shared handling named as one function with two callers; the bound exported and
-  closed after its last answer; `planned`, the round-0 post, a park and messages placed.
+  closed after its last answer; `planned`, the round-0 post, a park and messages placed. Jake asked
+  whether this was a block: both pieces are now blocks, the hook a block slot like `afterAnswer`.
 
 ## Notes from review
 
