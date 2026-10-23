@@ -5,6 +5,8 @@
  * resource-load payload. A generator step (recorded as a ref to its message,
  * not inline) is not called again on resume, and `/continue` crash recovery
  * with no durability provider skips the steps that finished before the crash.
+ * Every persisted item, block records and a generator's messages alike, gets
+ * its own index, in emission order.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
@@ -310,4 +312,53 @@ describe("resume replay with trace observability off", () => {
     expect(result.output).toEqual({ after: { n: 1 } });
     expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
+
+  // Stores that keep items in a table order history by `itemIndex`, so two
+  // items sharing one, or a later item with a lower one, reorder the log.
+  it.each(["false", "true"])(
+    "gives every persisted item a distinct, increasing index (observability %s)",
+    async (observability) => {
+      process.env.FSDEV_TRACE_OBSERVABILITY = observability;
+      const model: GeneratorModel = {
+        modelId: "stub",
+        generate: async () => ({
+          text: "the draft",
+          finishReason: "stop",
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        }),
+      };
+      const draft = generator({
+        name: "draft",
+        model,
+        prompt: "write it",
+        itemVisibility: { client: true, history: true },
+      });
+      const after = handler({
+        name: "after",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (input: unknown) => ({ got: input }),
+      });
+      const flow = defineFlow({
+        kind: "replay-traces-off-index",
+        actions: { run: { inputSchema: z.any(), block: sequencer({ name: "seq" }).step(draft).step(after).step(draft) } },
+      })({ id: "replay-traces-off-index" });
+      const stores = createInMemoryStores();
+      const started = await runAction({
+        flow,
+        actionName: "run",
+        input: {},
+        userId: "u1",
+        orgId: DEFAULT_ORG_ID,
+        stores,
+        runtimeConfig: {},
+      } as never);
+      const items = (await stores.request.get((started as { requestId: string }).requestId))?.items ?? [];
+
+      expect(items.some((i) => i.type === "message")).toBe(true);
+      const indexes = items.map((i) => i.itemIndex);
+      expect(new Set(indexes).size).toBe(indexes.length);
+      expect(indexes).toEqual([...indexes].sort((a, b) => a - b));
+    }
+  );
 });

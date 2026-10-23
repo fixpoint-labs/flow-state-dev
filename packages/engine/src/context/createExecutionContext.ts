@@ -2240,10 +2240,20 @@ export async function createExecutionContext<
   // so this reads back exactly that base (0 on a fresh run). Both block-emitted
   // items and runtime items reserved via `_reserveItemIndex` draw from this one
   // counter so their indices stay distinct and monotonic across the resume.
-  let emittedItemCount =
+  const responseItemCursor = (): number =>
     typeof options.response?.getItemCount === "function"
       ? options.response.getItemCount()
       : 0;
+  let emittedItemCount = responseItemCursor();
+  // Every index this context hands out comes from here. A block that emits
+  // straight through `ctx.response` (a generator's message, a tool output)
+  // takes the emitter's cursor without passing through this counter, so the
+  // next reservation starts at whichever of the two is further along.
+  const reserveItemIndex = (): number => {
+    const itemIndex = Math.max(emittedItemCount, responseItemCursor());
+    emittedItemCount = itemIndex + 1;
+    return itemIndex;
+  };
 
   // The request store as the request-state write sees it: a full-record
   // write leaves `items` off, because the record's are the snapshot from when
@@ -2630,7 +2640,7 @@ export async function createExecutionContext<
       container,
       getResponse: () => responseRef.current,
       requestId: requestRef.current.id,
-      nextItemIndex: () => emittedItemCount++,
+      nextItemIndex: () => reserveItemIndex(),
       provenance: () => ({
         blockName: "runtime",
         blockInstanceId: "runtime",
@@ -2973,7 +2983,7 @@ export async function createExecutionContext<
       blockInstanceId: "runtime",
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++,
+    nextItemIndex: () => reserveItemIndex(),
   };
 
   // Request-level trace emitters used by `_runtimeHooks` (router decisions,
@@ -3053,7 +3063,7 @@ export async function createExecutionContext<
     identity: NonNullable<BlockContext["_blockIdentity"]>,
     at: { status: BlockTraceItem["status"]; ts: number }
   ): BlockTraceItem => {
-    const itemIndex = emittedItemCount++;
+    const itemIndex = reserveItemIndex();
     return {
       id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_trace",
@@ -3143,7 +3153,7 @@ export async function createExecutionContext<
       // Emit router_decision trace item. The emit chain is returned so the
       // router can await the decision anchor's durability before dispatching
       // the selected branch (FIX-814).
-      const itemIndex = emittedItemCount++;
+      const itemIndex = reserveItemIndex();
       const decisionItem: RouterDecisionItem = {
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
@@ -3412,7 +3422,7 @@ export async function createExecutionContext<
               container,
               getResponse: () => responseRef.current,
               requestId: requestRef.current.id,
-              nextItemIndex: () => emittedItemCount++,
+              nextItemIndex: () => reserveItemIndex(),
               provenance: () => ({
                 blockName: matched.parent.name,
                 blockInstanceId: matched.parent.instanceId,
@@ -3600,7 +3610,7 @@ export async function createExecutionContext<
       // Shares the per-run synchronous item-index counter with block-emitted
       // items so runtime items (e.g. runAction's `suspension_resume`) get a
       // distinct, monotonic index that continues the prior log on resume.
-      _reserveItemIndex: () => emittedItemCount++,
+      _reserveItemIndex: () => reserveItemIndex(),
       suspend: async (suspendOpts) => {
         // The typed resolution `runAction` threads on a same-request
         // continuation — never `options.metadata`, which callers control
@@ -3780,7 +3790,7 @@ export async function createExecutionContext<
             typeof typed.emitItemAdded === "function" &&
             typeof typed.emitItemDone === "function"
           ) {
-            const itemIndex = emittedItemCount++;
+            const itemIndex = reserveItemIndex();
             containerStartedAt = Date.now();
             containerItem = {
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -3852,7 +3862,7 @@ export async function createExecutionContext<
             parentBlockInstanceId: resolvedParent.parentInstanceId,
             phase: childPhase
           }),
-          nextItemIndex: () => emittedItemCount++,
+          nextItemIndex: () => reserveItemIndex(),
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
