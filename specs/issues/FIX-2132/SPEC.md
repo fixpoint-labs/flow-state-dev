@@ -8,7 +8,7 @@
 |---|---|---|
 | **answers a coding run's question in Shift Manager** | Can't: the question parks the task where the Inbox can't see it | Sees it in the Inbox as a question and answers it there. The next run continues the same coding session, on the same try |
 | **filed the coding work** | Sees the task *parked*; the answer starts a new try and spends a retry | Sees the task held on the question, with its text; no retry is spent |
-| **types a line into the run's session while it waits** | The line waits for the next try; the question still waits | The line is kept on the task and goes to the run the answer starts. It answers nothing, and no run starts while the task holds |
+| **types a line into the run's session while it waits** | The line waits for the next try; the question still waits | The line answers the question, as the Inbox's answer does, and the next run continues the same coding session with it. No run starts beside the hold |
 | **cancels the task while it waits** | The task cancels; the harness inbox row stays open | The item closes, no further run starts, and the work already done stays on its branch and in its kept files |
 | **leaves the question unanswered** | It waits for good | At its deadline, 7 days by default, the next run continues the same coding session, told no answer came, and goes ahead from its brief. This follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open); if the owner picks "fail", that try fails instead |
 | **runs the conductor lab** | Answers with the lab's `answer` action, onto the harness inbox | Answers through the board's `updateTask` action, as the Inbox does; `status` lists tasks held on questions |
@@ -32,7 +32,7 @@ flowchart LR
   H["Shift Manager coder · durable SQLite host · traces off"] --> A["leg a · the run asks"]
   A --> I["the Inbox · one question item"]
   I --> B["leg b · answer it there"]
-  I --> C["leg c · a line while it holds · leg d · cancel"]
+  I --> C["leg c · a line in the session answers it · leg d · cancel"]
   I --> E["leg e · nobody answers by the deadline"]
   B -->|"same try · same coding session · each run once"| P["PASS · goal met"]
   C -->|"no run beside it · item closes · work kept"| P
@@ -46,7 +46,7 @@ The check reads the Inbox, the task through `getTask`, the checkout, and what ea
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/` · real model, Claude Code through the devteam harness, for legs a and b; legs c, d and e on the devteam harness stub · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows the open question, `attempts` 1, no lease; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; no harness run is handed the same prompt twice; the task completes and the item closes. A second question in the same try passes the same way. c: a line typed while it holds starts no harness run, the task still holds, and the run the answer starts has the line; a line while a run works ends that run, not the request (`stopsOnAbort`). d: the first run commits a unique change and writes a kept file before it asks; a cancel closes the item, no harness run starts after it, and both the commit on the branch and the kept file are still there. e: with a short person-stop deadline set on the host, the item closes at the deadline, `attempts` stays 1, the next run resumes the confirmed session and is told no answer came, and the task completes. Sweep: `answerQuestion`, `askQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source, and `awaitReview`, `HarnessRunParked` and `waitForUser` none in `harness-manager` |
+| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows the open question, `attempts` 1, no lease; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; no harness run is handed the same prompt twice; the task completes and the item closes. A second question in the same try passes the same way. c: a line typed in the run's session while it holds answers the question: the item closes, `attempts` stays 1, and the next run resumes the confirmed session with the line as the answer. A steer naming no question, the filer's steer or `updateTask({ message })`, answers nothing: the task still holds and no harness run starts, and the run the answer starts has that steer too. A line while a run works ends that run, not the request (`stopsOnAbort`). d: the first run commits a unique change and writes a kept file before it asks; a cancel closes the item, no harness run starts after it, and both the commit on the branch and the kept file are still there. e: with the question's deadline shortened through FIX-2133's test hook, the item closes after the first board touch past the deadline (the debt pass runs on a touch), `attempts` stays 1, the next run resumes the confirmed session and is told no answer came, and the task completes. Sweep: `answerQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source; harness-manager's `askQuestion` export and its inbox import path have none; and `awaitReview`, `HarnessRunParked` and `waitForUser` have none in `harness-manager` |
 | **If the owner picks "fail"** | Leg e flips: at the deadline `attempts` goes to 2, that try resumes the same session, and after the last try the task fails for good with its item closed. Nothing else in this spec moves |
 | **Input** | A coding task whose brief forces one question; for the second-question case, one that forces two in a row |
 | **Anti-game** | Don't assert on store internals or the run record; answer the way the Inbox does, never through the store. Run with `FSDEV_TRACE_OBSERVABILITY=0`, so a suspension added later can't pass on a traces-on replay |
@@ -82,9 +82,9 @@ Read down each column: every red cell today is a question the Inbox can't see, o
 **Docs:** update the `harness-manager` README (*Continuing a run*, *Running a conversation's
 tasks*, the judge's ask, the held-work mismatch, the export surface, *Limits*) and
 `apps/docs/docs/orchestration/harness-manager.md` (*Asking and being answered*: the task holds,
-no retry is spent; *Talking to a run*: a line while it holds goes with the answer), and the
+no retry is spent; *Talking to a run*: a line while it holds answers the question), and the
 conductor lab's README. A changeset with a migration note for the removed exports, `announce` and
-the marker path. No new page.
+the marker path; it says the name `askQuestion` now belongs to the orchestration model tool (FIX-2131). No new page.
 
 ## How the answer reaches the next run
 
@@ -94,7 +94,7 @@ flowchart LR
   V --> W["ask step · ER-8's ask write"]
   W -->|"question on the row · lease dropped · turn ends unsettled"| T["the task holds · the claim gate refuses it"]
   T --> I["Inbox · updateTask names the question · FIX-2133"]
-  L["a line · a steer naming no question"] -->|"kept on the row"| T
+  L["a line in the run's session · a steer naming the open question"] --> I
   I -->|"last answer · a turn owed, same attempt"| M["the manager · resumes the session this attempt confirmed"]
   M --> R
 ```
@@ -145,8 +145,8 @@ one step comes. If wrong: a host loses a status read it built on the inbox.
 
 1. **[D1](DECISIONS.md#d1) · FIX-2137 stays a blocker.** The manager's own path never suspends,
    but a host's harness block may, and its resume needs FIX-2137. Engineering, decided; it would
-   flip only if no host-supplied block or callback in the manager chain could suspend. If wrong: FIX-2132 waits on a fix
-   that is ready to merge.
+   flip only if no host-supplied block or callback in the manager chain could suspend. FIX-2137 is
+   merged, so the edge is satisfied. If wrong: nothing; the edge no longer delays anything.
 
 **Open: none of its own.** At the deadline it follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open),
 written against "goes ahead"; leg e flips if the owner picks "fail".
