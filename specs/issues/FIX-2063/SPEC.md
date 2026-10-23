@@ -131,6 +131,6 @@ old callers. If wrong: a host somewhere relied on durability being off.
 
 **Open: none.** Number 1 is the one to weigh: it changes where a developer's local runs live.
 
-**Ordering:** the implementation that flips the default waits on [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137). Where FIX-2137 sits in the epic is the coordinator's call.
+**Ordering:** the implementation that flips the default waits on [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137). Where FIX-2137 sits in the epic is the owner's call.
 
 Improvement · `engine` + `fsdev` + docs · small · epic [FIX-2058](../../epics/FIX-2058/SPEC.md)
