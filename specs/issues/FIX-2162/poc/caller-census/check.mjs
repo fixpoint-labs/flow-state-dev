@@ -105,6 +105,12 @@ const derivesRouterPath = (f, text) => !isDoc(f) && !f.startsWith("packages/engi
 const usesPlaceholder = (text, p) =>
   [...text.matchAll(new RegExp(p, "g"))].some((m) => /(flowKind|createClient\s*\(|\.flow\s*\()/.test(text.slice(Math.max(0, m.index - 60), m.index)));
 
+// The checker itself, at its spec path and where the goal check promotes it:
+// its forbidden-name lists and control fixtures are not callers.
+const SELF = new Set([
+  "specs/issues/FIX-2162/poc/caller-census/check.mjs",
+  "goals/client/does-every-job-with-one-client/check.mjs"
+]);
 // Retained history: never rewritten (spec-template, BP-037), allowed after.
 const isHistory = (f) =>
   f.startsWith("specs/") || f.startsWith("docs/internal/") || f.startsWith(".changeset/") || /(^|\/)CHANGELOG\.md$/.test(f);
@@ -212,6 +218,7 @@ function inventory(files) {
   const typeFiles = {};
   const placeholders = [];
   for (const [f, text] of Object.entries(files)) {
+    if (SELF.has(f)) continue;
     const names = new Set([...text.matchAll(FACTORY_RE)].map((m) => m[1]));
     for (const p of PLACEHOLDERS) {
       if (!isHistory(f) && usesPlaceholder(text, p)) placeholders.push(`${f} ${p}`);
@@ -241,7 +248,7 @@ function inventory(files) {
 function after(files) {
   const violations = [];
   for (const [f, text] of Object.entries(files)) {
-    if (isHistory(f) || HOMONYMS[f]) continue;
+    if (isHistory(f) || HOMONYMS[f] || SELF.has(f)) continue;
     for (const n of REMOVED_FACTORIES) if (new RegExp(`\\b${n}\\b`).test(text)) violations.push(`${f}: names ${n}`);
     for (const t of typeImporters(text)) if (REMOVED_TYPES.includes(t)) violations.push(`${f}: imports type ${t}`);
     for (const t of REMOVED_TYPES) {
@@ -275,7 +282,7 @@ function after(files) {
 function handBuilt(files) {
   const out = { routerHelpers: [], httpActions: [], pathDerivation: [], allowed: Object.keys(RAW_ROUTER_ALLOWED) };
   for (const [f, text] of Object.entries(files)) {
-    if (isHistory(f) || f.startsWith("packages/client/")) continue;
+    if (isHistory(f) || SELF.has(f) || f.startsWith("packages/client/")) continue;
     if (!RAW_ROUTER_ALLOWED[f] && handBuildsRouterCalls(text)) out.routerHelpers.push(f);
     if (!RAW_ROUTER_ALLOWED[f] && NAMES_HTTP_ACTIONS.test(text)) out.httpActions.push(f);
     if (derivesRouterPath(f, text)) out.pathDerivation.push(f);
@@ -287,7 +294,7 @@ function handBuilt(files) {
 function extras(files) {
   const out = { sse: [], devtoolBuilders: [], props: [], transcribe: [], workforceOptions: [], methods: [] };
   for (const [f, text] of Object.entries(files)) {
-    if (isHistory(f)) continue;
+    if (isHistory(f) || SELF.has(f)) continue;
     if (REMOVED_METHODS.some((n) => new RegExp(`\\b${n}\\b`).test(text)) || namesSnapshot(f, text)) out.methods.push(f);
     if (SSE_FACTORIES.some((n) => new RegExp(`\\b${n}\\b`).test(text))) out.sse.push(f);
     if (/\bcreateDevTool\w*Client\b/.test(text)) out.devtoolBuilders.push(f);
@@ -310,7 +317,7 @@ function printInventory(inv) {
   console.log(["TOTAL (excl. history)", ...FACTORIES.map((n) => totals[n])].join(" | "));
   const callerFiles = new Set();
   for (const [f, text] of Object.entries(files)) {
-    if (!isHistory(f) && !HOMONYMS[f] && FACTORY_RE.test(text)) callerFiles.add(f);
+    if (!isHistory(f) && !HOMONYMS[f] && !SELF.has(f) && FACTORY_RE.test(text)) callerFiles.add(f);
     FACTORY_RE.lastIndex = 0;
   }
   fileTotal = callerFiles.size;
@@ -402,7 +409,9 @@ if (mode === "inventory") {
   // Expected to PASS: a facade inside createClient with neutral helper names.
   // The census reads names; this is the goal's structural check's to catch.
   const INVISIBLE = new Set(["packages/client/src/zz-internal-facade.ts"]);
-  const planted = { ...clean, ...plants };
+  // The checker promoted into the goal dir must not flag itself.
+  const PROMOTED = "goals/client/does-every-job-with-one-client/check.mjs";
+  const planted = { ...clean, ...plants, [PROMOTED]: readFileSync(new URL(import.meta.url), "utf8") };
   const inv = inventory(planted);
   const v = after(planted);
   const misses = [];
@@ -414,6 +423,7 @@ if (mode === "inventory") {
   for (const f of INVISIBLE) {
     if (v.some((x) => x.startsWith(`${f}:`))) misses.push(`--after flagged ${f}: the census claims more than names now; update the spec`);
   }
+  if (v.some((x) => x.startsWith(`${PROMOTED}:`))) misses.push(`--after flagged the checker's own copy at ${PROMOTED}`);
   // And the clean corpus (history only) must pass --after: the gate can go green.
   if (after(clean).length > 0) misses.push("--after fails on history alone: it can never pass");
   if (misses.length > 0) {
@@ -421,5 +431,5 @@ if (mode === "inventory") {
     for (const m of misses) console.log(`  ${m}`);
     process.exit(1);
   }
-  console.log(`CONTROL PASS: inventory flagged the unclassified homonym; --after named all ${expected.length} planted violations; the internal facade passed, as the census can't see it; history alone passes --after`);
+  console.log(`CONTROL PASS: inventory flagged the unclassified homonym; --after named all ${expected.length} planted violations; the internal facade passed, as the census can't see it; the checker's promoted copy passed; history alone passes --after`);
 }

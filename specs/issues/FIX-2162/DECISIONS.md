@@ -184,7 +184,7 @@ through the client.
   change: 159 code (61 tests or stories), 36 docs. `--after` FAILS today with 403 references.
   `--control` plants an unlisted homonym and 20 violations, a named facade, a hand-built router
   helper, `httpActions`, a path derivation and each removed method among them, and names every
-  one; history alone passes; and a facade built inside `createClient` from neutrally named helpers
+  one; history alone passes; its own copy at the goal path passes; and a facade built inside `createClient` from neutrally named helpers
   passes, as stated: the census reads names, and the one-transport test reads structure.
 - **The client runs in-process today — CONFIRMED** by a probe: `createFlowState` with in-memory
   stores, the client's `fetcher` set to call the router. `sendAction`, `getRequestStatus`,
