@@ -796,11 +796,11 @@ When a task the board handed out ends, the session that filed it is told, once. 
 | `question` | On `parked`: what the worker asked. Answer it with [`answerTask`](#when-a-task-stops-on-a-question) |
 | `cancelled` | On `errored` or `cancelled`: the ids of the dependents this ending [cancelled](#when-a-dependency-fails) that the same session filed. Those dependents send no notice of their own |
 
-While the request that filed the task is still running, its notice waits and goes out when that request parks or ends. While the request is parked, on a person's approval or input or on a [`getTask` wait](#waiting-on-a-task), the notice goes out right away. So a turn that files a task and never waits on it hears the ending once that turn ends or parks. Waiting for the request needs a host with durable execution; elsewhere a notice is sent as soon as the task ends.
+While the request that filed the task is still running, its notice is held. When that request ends, it sends what it held right away. When it parks, on a person's approval or input or on a [`getTask` wait](#waiting-on-a-task), it holds nothing more. A task that ends during the park sends its notice right away. A notice held while the request ran goes out the next time the board tries to send it again: seconds after the park, or up to 5 minutes later if it had already been held a while (those tries back off). A task whose `getTask` wait reached its deadline is the exception: its ending goes to the request's next `getTask`, even during a park. See [Waiting on a task](#waiting-on-a-task). So a turn that files a task and never waits on it hears the ending once that turn ends, or soon after it parks. Holding needs a host with durable execution; elsewhere a notice is sent as soon as the task ends.
 
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
-- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })`, while it ran or after it ended but before an `onTaskSettled` request for that ending had started. The waiting call gets the result instead.
+- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })`, either a wait that was open when the task ended, or one started after it ended but before an `onTaskSettled` request for that ending had started. The `getTask` call gets the result instead. A wait that reached its deadline first doesn't count: that ending goes to the request's next `getTask`, and is sent as a notice only if the request ends without reading it.
 - A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
 
 A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
@@ -869,8 +869,8 @@ approval. The task finishes during that wait, and the conversation hears it from
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
 cancelled: the task runs on, and you can wait on it again. If it ends while your request is
-running, your next `getTask` on it returns the ending. If it ends while your request is parked
-on something else, or your request ends without reading it, you
+running, or while it is parked on something else, your request's next `getTask` on it returns
+the ending. Only if your request ends without reading it do you
 [hear about it](#hearing-how-a-task-ended) once, the usual way. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
