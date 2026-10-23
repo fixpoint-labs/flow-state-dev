@@ -83,7 +83,8 @@ review, and *Resolve* answers its review.
 + # workforce/teams/desk/workers/coder/WORKER.md
 + ---
 + description: Makes a code change in the session's project, through Claude Code.
-+ flow: thread-claude-code
++ flow: harness-thread
++ harness: claude-code
 + ---
 ```
 
@@ -118,12 +119,14 @@ Sink's `KITCHEN_SINK_HARNESS_WORKSPACE` default. If the lead has file or shell t
 sandbox's directory is set from the same project, never `process.cwd()`. A raw path outside any
 project is not offered.
 
-**A harness thread** ([D5](DECISIONS.md#d5)). `thread-claude-code` and `thread-codex` are two
-small worker flows in the lab, each wrapping `harnessManager({ harness, workspace })` with
-`projectWorkspace()` as its source, the way DevTeam's `coder` does. A hire picks its harness by
-naming one in its `flow:` line. On the board a harness thread is an ordinary row: the same
-columns, from the same task row, plus a tag naming its harness, read from the assignee's flow in
-the lab's config (the row doesn't carry it until FIX-1652). Its note is the run's last progress
+**A harness thread** ([D5](DECISIONS.md#d5)). One worker flow in the lab, `harness-thread`,
+builds one `harnessManager({ harness, workspace })` per harness, each with `projectWorkspace()`
+as its source, the way DevTeam's `coder` does, and routes each task by the worker's own `harness`
+setting, which its `WORKER.md` declares and the hire passes as settings (`settingsOf`,
+`workforce/src/hire.ts`). Epic ER-9 keeps it under 200 lines, or FIX-2153's spec raises the cap
+once. On the board a harness thread is an ordinary row: the same columns, from the same task
+row, plus a tag naming its harness, read from the assignee's `harness` setting (the row doesn't
+carry it until FIX-1652). Its note is the run's last progress
 line, or *Working* when the harness records none; a question it asks holds the task and puts it
 under *Waiting on you*, answered in the thread view as in step 3. A run that produced changes
 waits under *Ready for review*, like any thread, with the judge's verdict on its card as
@@ -190,7 +193,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, two harness worker flows, and their fixtures until wiring. No package entry |
+| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, one harness worker flow, and their fixtures until wiring. No package entry |
 | **Leaves** | Shift Manager's empty *In review* column. A review wait gives it a source; wiring it there is Shift Manager's issue |
 
 **Net: up, by one mode of a private lab.** It is the epic's evidence. Two package changes
@@ -211,7 +214,7 @@ wrong: a mode nobody maintains.
 2. **[D2](DECISIONS.md#d2) · *Ready for review* is a review the thread's task waits on, and
    *Resolve* answers it.** No gap: the thread worker's model asks for review with FIX-2131's tool.
    If wrong: a thread's state lives on the task when a mark in the lab would have done.
-3. **[D5](DECISIONS.md#d5) · A thread may run through a harness, chosen per worker by its flow;
+3. **[D5](DECISIONS.md#d5) · A thread may run through a harness, chosen per worker by a setting;
    the main session never does.** A run that produced changes waits for your review; that wait
    is a medium gap in harness-manager and blocks step 6. If wrong: step 6 waits on a package
    change a thread that skipped review wouldn't need.

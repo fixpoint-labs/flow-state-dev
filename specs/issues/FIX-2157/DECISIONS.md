@@ -21,7 +21,7 @@ flowchart TD
   D3 -.->|"rejected: not how the original works"| X3["only through the main session"]
   I --> D4["D4 · Pinned is your choice, in your own state"]
   D4 -.->|"rejected: no rule picks a thread a person cares about"| X4["pinned by a rule, such as long-running"]
-  I --> D5["D5 · a harness per thread worker, chosen by its flow"]
+  I --> D5["D5 · a harness per thread worker, chosen by a setting"]
   D5 -.->|"rejected: the loop must own the turn"| X5["a harness on the main session"]
 ```
 
@@ -95,15 +95,15 @@ session mode. Then the thread view is read only and step 3 is answered through t
 expects to run for days. Then the coordinator gets a tool, and that is a gap.
 
 <a name="d5"></a>
-## D5 · A thread may run through a harness, chosen per worker by its flow; the main session never does
+## D5 · A thread may run through a harness, chosen per worker by a setting; the main session never does
 
 *Product's ask (fsd-product-lead on #46, relaying the owner), with the engineering calls it left open.*
 
 | | |
 |---|---|
-| **Instead of** | (a) A harness setting on each worker in config, read when a run starts. (b) A harness on the main session too |
-| **Because** | The harness is a slot fixed when a flow is built, and one flow copy serves every worker on it (DevTeam's `coder.mts`); a per-worker setting is FIX-1652's, not in the box. One small worker flow per harness gets the same choice with config only: a hire names `thread-claude-code` or `thread-codex` in its `flow:` line. (b) breaks the epic's D2 loop, which owns the main session's turn |
-| **Locks in** | No new mechanism: each flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. A run that produced changes waits under *Ready for review*, with the judge's verdict shown as information, not approval; one with no changes lands in *Resolved*, and a failed one is errored. Harness-manager completes a run on its own check today, so the review wait is a gap that blocks step 6 (product's call, overturning a draft that skipped review). Not needed: FIX-1990, since a run asks the person, never a teammate |
+| **Instead of** | (a) One worker flow per harness, a hire picking by its `flow:` line. (b) A harness on the main session too |
+| **Because** | The harness is a slot fixed when a flow is built, and one flow copy serves every worker on it (DevTeam's `coder.mts`); so one flow builds a manager per harness and routes each task by the worker's own `harness` setting, which the hire already passes (`settingsOf`). That is config only, with no package change, and one flow instead of (a)'s two (epic ER-9, amended on review). (b) breaks the epic's D2 loop, which owns the main session's turn |
+| **Locks in** | No new mechanism: the flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. A run that produced changes waits under *Ready for review*, with the judge's verdict shown as information, not approval; one with no changes lands in *Resolved*, and a failed one is errored. Harness-manager completes a run on its own check today, so the review wait is a gap that blocks step 6 (product's call, overturning a draft that skipped review). Not needed: FIX-1990, since a run asks the person, never a teammate |
 
 **What would change my mind:** the gap proving large at its spec. Then that is raised with a
 size on this PR's successor, not worked around by skipping review.
