@@ -41,4 +41,5 @@ answers, through `continueRequest`, as the resume route does.
   non-idempotent step, not just the run.
 
 This tested the suspension shape the spec first drew. The spec has since moved the question onto a
-hold with no suspension, so the finding (FIX-2137) no longer blocks FIX-2132 ([D1](../../DECISIONS.md#d1)).
+hold with no suspension. The finding (FIX-2137) still blocks FIX-2132 through a host's harness block
+that suspends ([D1](../../DECISIONS.md#d1)).

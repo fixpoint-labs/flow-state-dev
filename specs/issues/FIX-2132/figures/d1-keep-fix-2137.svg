@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what FIX-2132 waits on now that a coding run's question holds its task. Chosen: FIX-2133's hold alone, and the edge from FIX-2137 drops. Instead of: keeping FIX-2137, the fix for a durable resume that runs completed steps again, as a blocker. It comes down to the first row, whether anything in the harness manager resumes a request: nothing does, since the question holds the task and the answer starts a new turn, so no completed step can be run again; kept, the edge guards a path FIX-2132 no longer has. The price is the second row: dropped, FIX-2132 ships without waiting on an unrelated engine fix; kept, it waits on one. The third row: if a suspension ever comes back, dropping costs one edge to add back, which the goal check run with trace observability off would show; keeping it costs nothing then. Locks in: the harness manager suspends no request. Flips if: the manager ever suspends a request for an approval or a review of its own; then FIX-2137 blocks it again."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, whether FIX-2132 still waits on FIX-2137, the fix for a durable resume that runs completed steps again, now that its own question holds the task. Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. It comes down to the first row, the public harness slot: a host's own harness block may still suspend, and its resume runs through FIX-2137's path; refusing that would be a new limit on a public slot. The price is the second row: FIX-2132 waits on a fix that is ready to merge, where dropping ships on FIX-2133 alone. The third row: keeping it adds nothing to the manager, where refusing adds a check on every harness block. Locks in: FIX-2137 blocks FIX-2132. Flips if: the harness slot refuses a block that suspends."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,67 +35,67 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Does FIX-2132 still wait on FIX-2137, now that its question holds the task?</text>
+    <text class="t-q" x="32" y="52">Does FIX-2132 still wait on FIX-2137, now that its own question holds the task?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">No: FIX-2133's hold alone</text>
+    <text class="t-h c-code" x="228" y="112">Yes: keep the FIX-2137 edge</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Yes: keep the FIX-2137 edge</text>
+    <text class="t-h c-lost" x="592" y="112">Drop it, refuse a suspending harness</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">DOES ANYTHING</text>
-    <text class="t-lbl" x="32" y="169">RESUME A REQUEST</text>
+    <text class="t-lbl" x="32" y="156">THE PUBLIC</text>
+    <text class="t-lbl" x="32" y="169">HARNESS SLOT</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Nothing to run twice</text>
-    <text class="t-s" x="248" y="179">the answer starts a new turn; no request resumes</text>
+    <text class="t-b" x="248" y="161">Any harness block still works</text>
+    <text class="t-s" x="248" y="179">one that suspends resumes through FIX-2137's path</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Guards a path that is gone</text>
-    <text class="t-s" x="612" y="179">the suspension it guarded is no longer here</text>
+    <text class="t-b" x="612" y="161">A new limit on a public slot</text>
+    <text class="t-s" x="612" y="179">a host's suspending harness is refused</text>
   </g>
 
   <g id="row-2">
     <text class="t-lbl" x="32" y="216">WHEN FIX-2132</text>
     <text class="t-lbl" x="32" y="229">CAN SHIP</text>
-    <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">On FIX-2133 alone</text>
-    <text class="t-s" x="248" y="241">the edge in Linear drops</text>
-    <text class="mark minus" x="592" y="224">−</text>
-    <text class="t-b" x="612" y="223">After an unrelated engine fix</text>
-    <text class="t-s" x="612" y="241">FIX-2137, still open</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">After FIX-2137 merges</text>
+    <text class="t-s" x="248" y="241">#3749, ready to merge</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">On FIX-2133 alone</text>
+    <text class="t-s" x="612" y="241">the edge drops</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="274">IF A SUSPENSION</text>
-    <text class="t-lbl" x="32" y="287">COMES BACK</text>
-    <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">One edge to add back</text>
-    <text class="t-s" x="248" y="299">the traces-off goal check would show it</text>
-    <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">Already covered</text>
-    <text class="t-s" x="612" y="299">nothing to add back</text>
+    <text class="t-lbl" x="32" y="274">WHAT THE</text>
+    <text class="t-lbl" x="32" y="287">MANAGER ADDS</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Nothing</text>
+    <text class="t-s" x="248" y="299">the slot stays as it is</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">A check on every harness</text>
+    <text class="t-s" x="612" y="299">and a refusal to name</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">The harness manager suspends no request</text>
-    <text class="t-s" x="32" y="389">its every ask holds the task on its row</text>
+    <text class="t-b" x="32" y="371">FIX-2137 blocks FIX-2132</text>
+    <text class="t-s" x="32" y="389">the manager's own asks still never suspend</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The manager suspends for an approval or review</text>
-    <text class="t-s" x="494" y="389">then FIX-2137 blocks this again</text>
+    <text class="t-b" x="494" y="371">The harness slot refuses a suspending block</text>
+    <text class="t-s" x="494" y="389">then nothing resumes, and the edge drops</text>
   </g>
 </svg>

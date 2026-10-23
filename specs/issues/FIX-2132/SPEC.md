@@ -100,7 +100,8 @@ flowchart LR
 ```
 
 The request ends with the ask; the answer's turn is a new request on the same attempt, FIX-2086's
-steer turn. Nothing is suspended in between, so there is no resume to run a step twice ([D1](DECISIONS.md#d1)).
+steer turn. Nothing is suspended in between, so the manager's own path has no resume to run a step
+twice. A host's own harness block may still suspend, and that path needs FIX-2137 ([D1](DECISIONS.md#d1)).
 
 ## What stays as it is
 
@@ -142,11 +143,12 @@ and try, nothing run twice. If wrong: coding questions stay off-screen, or each 
 **[The debt](#whats-already-here-and-the-debt), net down:** the harness inbox and its option go;
 one step comes. If wrong: a host loses a status read it built on the inbox.
 
-1. **[D1](DECISIONS.md#d1) · FIX-2132 no longer waits on FIX-2137.** Engineering, decided;
-   recorded because it drops an edge from the epic. If wrong: a harness suspension added later
-   could re-run finished work until FIX-2137 lands.
+1. **[D1](DECISIONS.md#d1) · FIX-2137 stays a blocker.** The manager's own path never suspends,
+   but a host's harness block may, and its resume needs FIX-2137. Engineering, decided; it would
+   flip only if the harness slot refused a suspending block. If wrong: FIX-2132 waits on a fix
+   that is ready to merge.
 
 **Open: none of its own.** At the deadline it follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open),
 written against "goes ahead"; leg e flips if the owner picks "fail".
 
-Feature · `harness-manager`, conductor lab, a goal check · medium · epic FIX-2058 · blocked by FIX-2133, FIX-2056
+Feature · `harness-manager`, conductor lab, a goal check · medium · epic FIX-2058 · blocked by FIX-2133, FIX-2137, FIX-2056

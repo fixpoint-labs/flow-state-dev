@@ -12,30 +12,30 @@ hold as the epic states it; FIX-2133's spec (#3747) is still being re-specified 
 
 ```mermaid
 flowchart TD
-  I["FIX-2132"] --> D1["D1 · no longer waits on FIX-2137 · nothing in the manager resumes a request"]
-  D1 -.->|"rejected"| X1["keep the FIX-2137 edge · guards a suspension this issue no longer has"]
+  I["FIX-2132"] --> D1["D1 · FIX-2137 stays a blocker · a host's own harness block may still suspend"]
+  D1 -.->|"rejected"| X1["drop the edge and refuse a harness block that suspends · a new limit on a public slot"]
 ```
 
 Solid edges are what you sign. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · FIX-2132 no longer waits on FIX-2137
+## D1 · FIX-2137 stays a blocker: the manager's own path never suspends, but a host's harness block may
 
-*Engineering, decided; recorded because it drops an edge from the epic's graph.*
+*Engineering, decided by the coordinator after Codex's finding on `c2aa9f5`; recorded because it
+keeps an edge in the epic's graph.*
 
 | | |
 |---|---|
-| **Instead of** | Keeping FIX-2137 (a durable resume with trace observability off runs its completed steps again; fix in #3749) as a blocker |
-| **Because** | FIX-2137 only bites a request that suspends and resumes. Under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question never suspends: it holds its task. Every ask the manager makes is a question, the run's marker, the judge's *ask*, a saved-work mismatch, and none is an approval, a review or input (searched `awaitReview`, `suspend`, `waitForUser`, `approval` in `harness-manager`). The request ends with the ask, and the answer's turn is a new request on the same attempt, so no completed step is ever resumed into. The POC's replay ([Settled](#settled)) was found on the suspension shape this spec has dropped |
-| **Locks in** | The harness manager suspends no request; the sweep checks `waitForUser` has no references in `harness-manager`. FIX-2132 is blocked by FIX-2133 and FIX-2056 only. The goal check still runs with traces off |
+| **Instead of** | Dropping the FIX-2137 edge (a durable resume with trace observability off runs its completed steps again; fix in #3749), and refusing a harness block that suspends |
+| **Because** | The built-in path holds and never suspends: under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question holds its task, and every ask the manager makes is a question (the run's marker, the judge's *ask*, a saved-work mismatch). But the public `HarnessSlot` takes any `HarnessBlock` (`manager.ts`, `HarnessSlot`), and the harness step's `onSettled` already handles a child that exits suspended. A host's own harness that calls `ctx.suspend` resumes through the engine's durable resume, which is FIX-2137's path. Refusing it would be a new limit on a public slot, to save an edge that costs nothing: #3749 is ready to merge |
+| **Locks in** | FIX-2137 blocks FIX-2132, with FIX-2133 and FIX-2056. The manager itself suspends no request; the sweep checks `waitForUser` has no references in `harness-manager`. The goal check runs with traces off |
 
-![D1: does FIX-2132 still wait on FIX-2137, now that its question holds the task? Chosen: no, FIX-2133's hold alone. Instead of: keep the FIX-2137 edge. Decides it: nothing in the manager resumes a request. Price: one edge to add back if a suspension ever comes. Locks in: the harness manager suspends no request. Flips if: the manager suspends for an approval or review](figures/d1-no-resume-to-wait-on.svg)
+![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix that is ready to merge. Locks in: FIX-2137 blocks FIX-2132. Flips if: the harness slot refuses a block that suspends](figures/d1-keep-fix-2137.svg)
 
-It comes down to whether anything resumes: nothing does, so the edge guards a path that is gone.
+It comes down to the public slot: a host's harness block can still suspend, and that path needs FIX-2137.
 
-**What would change my mind:** the manager gaining an approval or a review of its own, such as a
-person signing off a run's pull request inside the coding flow. That suspends, and FIX-2137 blocks
-it again.
+**What would change my mind:** a decision to refuse suspension in `HarnessSlot`, so no harness
+block can suspend. Then nothing in the coding flow resumes, and the edge drops.
 
 ## Decided, not asked
 
@@ -59,9 +59,15 @@ it again.
 - **The marker's path names the attempt and the run** (`<attempt>-<run>.md`), the run counted on
   the run record so the count survives the answer's turn: a run must never read a question an
   earlier turn already asked. `isAskMarkerPath` matches both shapes, so neither is ever committed.
-- **The legacy marker is read once, by the park that found it.** A `<attempt>.md` left from before
-  the upgrade already put its question on the row when its run parked, and FIX-2131's map reads that
-  row as held. The manager never reads the old path, so an answered question can't come back.
+- **The legacy marker is read at most once, behind a guard.** A `<attempt>.md` from before the
+  upgrade usually already put its question on the row when its run parked, and FIX-2131's map
+  reads that row as held. But today the manager reads the marker and parks later in the same
+  step, so a crash or an upgrade between the two leaves only the file. So: when the row holds no
+  question asked by this attempt, open or answered, and `<attempt>.md` exists, the ask step
+  records it once through ER-8's ask. After that the row holds a question for this attempt, so the
+  guard never reads that path again and an answered question can't come back. A transition test
+  covers the crash-between-read-and-park state: the file and no question on the row give one
+  question, asked once, and the run after its answer doesn't ask it again.
 - **A line while the task holds** names no question, so it answers nothing (ER-8). It is kept on
   the task, and the run the answer starts takes it. The claim gate refuses a held row, so no run
   starts beside the hold.
@@ -106,8 +112,8 @@ it again.
   specs/issues/FIX-2132/poc/answer-loops-back/run.sh`), on `main` at `f740b61c1`. Traces on: three
   passes, three runs, the second question a new stop. Traces off: six runs, pass 1 three times;
   with the run in `ctx.runOnce`, each pass ran once but appended state doubled. It tested the
-  suspension shape this spec has since dropped. Its finding is FIX-2137, which still binds
-  FIX-2063 and FIX-2129; it no longer binds this issue ([D1](#d1)).
+  suspension shape this spec has since dropped for its own asks. Its finding is FIX-2137, which
+  binds FIX-2063 and FIX-2129, and this issue through a host's harness block that suspends ([D1](#d1)).
 - **No POC for the answer's turn.** Its one premise, that a second turn on the same attempt resumes
   the session that attempt confirmed, rests on a read the manager already makes before the open
   (`manager.ts`, the session read before `openRunRow`), and leg b fails if it doesn't hold.
@@ -136,8 +142,10 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
 - **2026-10-23, re-specified on the epic's amendment** (#3748): the owner decided a question holds
   its task. The question became ER-8's hold and the answer FIX-2133's owed turn; the old D1, a
   deadline that fails the try, gave way to the epic's open call; the old D2, waiting on FIX-2137,
-  became this D1, dropping the edge. Folded from Codex on `2db22ea`: the cancel leg asserts the
-  work survives, a deadline leg, the legacy marker read once. Cursor's two-stores note is folded:
+  became this D1, which first dropped the edge; Codex on `c2aa9f5` found a host's harness block
+  may still suspend, so the edge stays. Folded from Codex on `2db22ea`: the cancel leg asserts the
+  work survives, a deadline leg, the legacy marker read once. Codex on `c2aa9f5`: the edge stays (D1); the legacy marker gets a
+  guarded fallback for a crash between its read and its park. Cursor's two-stores note is folded:
   `answers` reads the row.
 
 **Open: none of its own.**
