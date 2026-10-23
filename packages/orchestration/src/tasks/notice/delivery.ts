@@ -172,6 +172,12 @@ export function createDelivery(
   };
 
   function whenRequestEnds(send: () => Promise<void>): void {
+    // Only where a notice can be held for this request: a host that records
+    // which requests have ended. Anywhere else nothing is held for it, and a
+    // hook would be owed for nothing: a context built outside a request's
+    // run (a test harness's) never runs its hooks, and a host's shutdown
+    // waits out its drain budget for every hook still owed in the process.
+    if (ctx.requestHost?.waits?.ended === undefined) return;
     onRequestEnded(ctx, async (ending) => {
       if (ending.status === "suspended") return;
       try {

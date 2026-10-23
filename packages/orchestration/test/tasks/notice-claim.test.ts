@@ -19,7 +19,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { dispatcher, handler } from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
+import { z } from "zod";
 import type { TaskSettledInput } from "../../src";
+import { defineTaskCollection, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import { taskBoard } from "../../src/task-board";
 import {
   fileCall,
   finalAnswer,
@@ -171,5 +176,37 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       release();
       await state.dispose();
     }
+  });
+});
+
+describe("a row filed by a block run outside a request (FIX-2123)", () => {
+  it("leaves nothing for a host's shutdown to wait on: its context records no ended requests, so no notice is held for it", async () => {
+    // `testBlock` builds a request's context but never ends the request. A
+    // request-end hook registered there stays owed in the process, and every
+    // host's shutdown in it waits out its drain budget for it.
+    const board = taskBoard({
+      name: "outside-run",
+      boardId: "outside-run",
+      mode: "delegation",
+      collection: defineTaskCollection({ id: "outside-run-ledger", scope: "user" }),
+      workers: { implement: dispatcher({ name: "outside-impl", type: "task", action: "implement", session: "per-task" }) as unknown as TaskWorker }
+    });
+    const file = handler({
+      name: "outside-file",
+      inputSchema: z.unknown(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks = await (ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>)["outside-run"].tasks();
+        await tasks.addTask({ goal: "work", assignee: "implement" });
+        return {};
+      }
+    });
+    expect((await testBlock(file, { input: undefined })).error).toBeNull();
+
+    const state = runtimeFor(waitFlow(stepModel([]).model));
+    await state.getRouter();
+    const started = Date.now();
+    await state.dispose();
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });

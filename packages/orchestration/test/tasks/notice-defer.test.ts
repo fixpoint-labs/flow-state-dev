@@ -124,19 +124,15 @@ describe("a notice whose block fails (FIX-2123)", () => {
   it("stays owed, taken by the request that failed, and the next copy takes it over and is heard once", async () => {
     const h = host(() => false, true);
     try {
-      // The request that filed the task sends its notice as it ends; that copy's block fails.
       await h.act("seed", { id: "t1" });
-      const takenBy = async () =>
-        ((await h.act("read", { id: "t1" })) as Record<string, { by?: string } | null>)["noticeTaken:1:completed"]?.by;
-      for (let i = 0; i < 200 && (await takenBy()) === undefined; i += 1) await new Promise((r) => setTimeout(r, 10));
-      expect(await takenBy()).toEqual(expect.any(String));
+      await expect(h.act("onTaskSettled", notice, true)).rejects.toThrow(/execution_error/);
       expect(h.heard).toEqual([]);
+      const failed = (await h.act("read", { id: "t1" })) as Record<string, { by?: string } | null>;
+      expect(failed["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
+      expect(failed["noticeTaken:1:completed"]?.by).toEqual(expect.any(String));
 
-      // The filer's pass sends it again: once the request that took it has ended, a copy takes it over.
-      for (let i = 0; i < 200 && h.heard.length === 0; i += 1) {
-        await h.act("onTaskSettled", notice, true);
-        if (h.heard.length === 0) await new Promise((r) => setTimeout(r, 10));
-      }
+      // The filer's pass sends it again: the request that took it has ended, so this copy takes it over.
+      await h.act("onTaskSettled", notice, true);
       expect(h.heard).toEqual([expect.objectContaining({ taskId: "t1", ending: "completed" })]);
       const metadata = (await h.act("read", { id: "t1" })) as Record<string, unknown>;
       expect(metadata["noticeOwed:1:completed"] ?? null).toBeNull();
