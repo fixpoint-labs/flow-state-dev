@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 600" role="img" aria-label="The session-mode screen. Left: the sessions list, with a New session button, each row a conversation with the one main worker, its title, its age, and a dot when its turn is running. Center: the main thread. Your message, then the main session's own work, then two lines where it started background tasks, then a result card from the first task that arrived while the turn is still running, then more of the turn's text that uses the result, and the composer with a Stop button while the turn runs. Right: the background tasks pane, read only, one row per task with its status, its last progress note and the worker doing it; one row is done, one is running. You talk only to the main session. A mode tag in the header reads Session; threads mode replaces the right pane later."
+<svg viewBox="0 0 940 600" role="img" aria-label="The session-mode screen. Left: a Sessions and Projects switch at the top, with Sessions chosen, then the sessions list, with a New session button, each row a conversation with the one main worker, its title, its age, and a dot when its turn is running. Center: the main thread. Your message, then the main session's own work, then two lines where it started background tasks, then a result card from the first task that arrived while the turn is still running, then more of the turn's text that uses the result, and the composer with a Stop button while the turn runs. Right: the background tasks pane, read only, one row per task with its status, its last progress note and the worker doing it; one row is done, one is running. You talk only to the main session. The view sets the mode: Sessions is session mode, and the Projects view, threads mode, comes later with a status board in the right pane."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -26,7 +26,10 @@
 
   <g id="sessions">
     <rect class="pane" x="0" y="0" width="200" height="600"/>
-    <text class="t-lbl" x="16" y="26">SESSIONS</text>
+    <rect class="sel" x="16" y="10" width="82" height="22"/>
+    <text class="t-lbl c-acc" x="30" y="25">SESSIONS</text>
+    <rect class="box" x="102" y="10" width="82" height="22"/>
+    <text class="t-lbl" x="116" y="25">PROJECTS</text>
     <rect class="box" x="16" y="38" width="168" height="30"/>
     <text class="t-b" x="28" y="58">+ New session</text>
     <rect class="sel" x="8" y="82" width="184" height="44"/>
@@ -42,8 +45,7 @@
 
   <g id="thread">
     <text class="t-b" x="220" y="26">Compare two vendors</text>
-    <rect class="box" x="604" y="12" width="72" height="20"/>
-    <text class="t-lbl" x="614" y="26">SESSION ▾</text>
+    <text class="t-lbl" x="590" y="26">SESSION MODE</text>
     <line class="rule" x1="200" y1="42" x2="690" y2="42"/>
     <rect class="box" x="400" y="56" width="276" height="44"/>
     <text class="t-p" x="412" y="74">Compare Acme and Globex for us,</text>
@@ -55,10 +57,10 @@
     <text class="t-p" x="220" y="210">Outline: 1. Price  2. Support  3. Risks …</text>
     <rect class="res" x="220" y="226" width="456" height="58"/>
     <text class="t-lbl c-code" x="232" y="244">BACKGROUND RESULT · RESEARCH ACME · DONE</text>
-    <text class="t-p" x="232" y="262">Acme: $40/seat, 24h support, SOC 2 since 2024.</text>
+    <text class="t-p" x="232" y="262">Acme: $40/user, 24h support, SOC 2 since 2024.</text>
     <text class="t-s" x="232" y="276">arrived while this turn was running</text>
     <text class="t-p" x="220" y="308">Acme's research is in. Section 1 now reads: Acme</text>
-    <text class="t-p" x="220" y="324">costs $40 a seat …</text>
+    <text class="t-p" x="220" y="324">costs $40 per user …</text>
     <text class="t-s c-acc" x="220" y="350">● working · 0:42</text>
     <rect class="box" x="220" y="500" width="456" height="72"/>
     <text class="t-s" x="234" y="522">Reply to the main session…</text>
@@ -83,6 +85,6 @@
     <text class="t-lbl" x="706" y="210">OPEN A ROW TO READ ITS WORK</text>
     <text class="t-s" x="706" y="228">read only: to stop or steer it,</text>
     <text class="t-s" x="706" y="244">ask the main session</text>
-    <text class="t-s" x="706" y="580">threads mode: a status board here</text>
+    <text class="t-s" x="706" y="580">Projects view: a status board here</text>
   </g>
 </svg>
