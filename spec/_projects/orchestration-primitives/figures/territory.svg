@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The territory in three bands. Owned here: the Task row and TaskCollection, the task board and its drain, the claim ticket that lets a task be answered once, detached and durable task execution, addressing a flow instance by id, dispatcher with reply-to-sender, and the four task tools, createTask with getTask waiting, approved under FIX-2056, and one Inbox item for each task that stops for a person, filed as FIX-2058; both drawn dashed until built. Below a fence, assembled but owned elsewhere: scope state and stores, Workforce workers and channels, sessions that stay open for assigned work, and the hosts that keep flows alive. Outside the project: the screens that ask a person, a second message layer, several trains of thought in one session, and waiting on several tasks at once.">
+     aria-label="The territory in three bands. Owned here: the Task row and TaskCollection, the task board and its drain, the claim ticket that lets a task be answered once, detached and durable task execution, addressing a flow instance by id, dispatcher with reply-to-sender, and the five task tools, createTask with getTask waiting, under FIX-2056, and one Inbox item for each task that stops for a person, under FIX-2058; both drawn dashed until built. Below a fence, assembled but owned elsewhere: scope state and stores, Workforce workers and channels, sessions that stay open for assigned work, and the hosts that keep flows alive. Outside the project: the screens that ask a person, a second message layer, several trains of thought in one session, and waiting on several tasks at once.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -46,13 +46,13 @@
     <text class="t-b" x="377" y="112">dispatcher()</text>
     <text class="t-s" x="377" y="130">transport · reply to sender</text>
     <rect class="prop" x="550" y="90" width="172" height="56" rx="4"/>
-    <text class="t-b" x="562" y="109">four task tools</text>
+    <text class="t-b" x="562" y="109">five task tools</text>
     <text class="t-s" x="562" y="125">createTask · getTask wait</text>
-    <text class="t-s" x="562" y="138">approved · FIX-2056</text>
+    <text class="t-s" x="562" y="138">FIX-2056</text>
     <rect class="prop" x="735" y="90" width="185" height="56" rx="4"/>
     <text class="t-b" x="747" y="109">one Inbox</text>
     <text class="t-s" x="747" y="125">each stop for a person</text>
-    <text class="t-s" x="747" y="138">filed · FIX-2058</text>
+    <text class="t-s" x="747" y="138">FIX-2058</text>
   </g>
 
   <g id="fence">

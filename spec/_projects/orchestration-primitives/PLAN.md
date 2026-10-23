@@ -39,9 +39,8 @@ catalog shipped) were deleted on Oct 12 when their issues moved out.
 | v2 · Existing patterns migrated | Board-based patterns reshaped onto the primitive (FIX-447, FIX-448) | Reached with the Plan/Task series, May 1. Patterns off the board are outside it |
 | v4 · Skills declare patterns | Skills naming a pattern in `SKILL.md` frontmatter (FIX-450) | Shipped May 20, then reversed by FIX-918 in July ([PD-2](DECISIONS.md)). The milestone's name and description still describe the reversed design |
 
-FIX-2056 waits on nothing open: FIX-1047, which carries a worker's claim to its task tools, merged
-Oct 20. Its closure, FIX-2087, runs the coordinator and hand-off goals on one `main` commit, and is
-the project's next regression gate.
+FIX-2056 waits on no other epic. Its closure runs the coordinator and hand-off goals on one `main`
+commit, and is the project's next regression gate.
 
 ## Deliberately not next
 
