@@ -128,6 +128,7 @@ function plantsOf(root) {
         '  await board["cancel"](id, "not needed");\n}\n',
       expect: 0,
     },
+    ...doorPlants(root),
     forwarderPlant(root),
     {
       rule: "endings",
@@ -153,6 +154,24 @@ function plantsOf(root) {
  * The floor's control: the real capability with `createTask` built by something other than
  * `handler`. The tools rule then can't read an allowed name, and must say it can't tell.
  */
+/**
+ * A removed door brought back in each built-in worker flow: `message` in the agent's (its config
+ * is `configSchema: settings` and `...bound`, so no text names the worker contract), and `run`
+ * under a computed key in the coordinator's (its config sits under `as never`).
+ */
+const AGENT_FLOW = "packages/workforce/src/agent-worker-flow.ts";
+const COORDINATOR_FLOW = "packages/workforce/src/coordinator/coordinator-flow.ts";
+function doorPlants(root) {
+  const agent = readFileSync(join(root, AGENT_FLOW), "utf8");
+  const coordinator = readFileSync(join(root, COORDINATOR_FLOW), "utf8");
+  const anchor = "      [STANDING_RULES_ACTION]: standingRulesAction";
+  if (agent.split(anchor).length !== 2 || coordinator.split(anchor).length !== 2) throw new Error(`the control can't plant: ${AGENT_FLOW} and ${COORDINATOR_FLOW} each need one \`${anchor.trim()}\``);
+  return [
+    { rule: "removed", path: AGENT_FLOW, text: agent.replace(anchor, `      message: { block: userTurn } as any,\n${anchor}`) },
+    { rule: "removed", path: COORDINATOR_FLOW, text: coordinator.replace(anchor, `      [("run") as "run"]: { block: door } as any,\n${anchor}`) },
+  ];
+}
+
 /** A direct write planted inside a collection wrapper: only its forwarding is exempt, so this is reported. */
 const BOARD = "packages/workforce/src/conversation-board/board.ts";
 function forwarderPlant(root) {
@@ -200,6 +219,7 @@ console.log(`commit ${head} · ${secs}s`);
 console.log(`files: ${result.files.tracked} tracked · ${result.files.swept} swept by the removed rule · ${excluded} excluded · ${result.files.program} in the program`);
 for (const [why, n] of result.files.excluded) console.log(`  excluded ${n} · ${why}`);
 console.log(`tools offered (${result.tools.length}): ${result.tools.join(", ")}`);
+console.log(`worker flows read for doors (${result.workerFlows.length}): ${result.workerFlows.join(", ")}`);
 console.log(`ending writes: ${result.scanned.endings} · by recorder ${JSON.stringify(result.recorders)}`);
 console.log(`removed: ${result.rows.length} migration rows · ${result.scanned.removedText} text hits (${result.scanned.marked} marked retired-name-refusal · ${result.scanned.kept} kept by reason) · ${result.scanned.removedTyped} typed reads`);
 if (args.has("--rows")) for (const r of result.rows) console.log(`  ${r.by.padEnd(28)} ${r.row.slice(0, 110)}`);

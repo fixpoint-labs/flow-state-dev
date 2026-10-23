@@ -21,7 +21,11 @@ export interface Check {
   vitest?: { filter: string; files: string[] };
   script?: string;
   env?: Record<string, string>;
-  /** Each control by name, and the tags (or `<leg>:` prefixes) one of which must go red. */
+  /**
+   * Each control by name, and every tag its goal says it must fail: all of them must go red. A
+   * tag ending in `:` is a leg (`d:`), red when any failure in that leg is. Tags a goal says only
+   * go red "with it" are not required.
+   */
   controls?: Record<string, string[]>;
   /** What row 1 walks of it, printed beside it. */
   walked?: string;
@@ -40,19 +44,19 @@ export const CHECKS: Record<string, Check[]> = {
     { goal: "task-board/a-worker-plans-its-own-steps", controls: { "no-plan": ["a1:steps-in-task-session", "a1:no-child-session"] }, walked: "a: writer's plan step" },
     { goal: "task-board/refuses-a-board-built-wrong", controls: { "no-fence": ["b:refused"] } },
   ],
-  "FIX-2077": [{ goal: "task-board/settles-when-its-work-is-over", controls: { "settle-at-return": ["a:after-the-side-chains", "c:settles-first", "c:outside-the-task", "c:output"] }, walked: "a: writer's task stays running on its research" }],
-  "FIX-2078": [{ goal: "task-board/every-ending-reaches-its-filer", controls: { "no-sweeper-payment": ["b:the filer hears within due time"] }, walked: "b, and a's once" }],
-  "FIX-2080": [{ goal: "task-board/runs-by-its-filing-settings", controls: { "no-cascade": ["d:"] }, walked: "c: the dependent cancelled" }],
-  "FIX-2081": [{ goal: "task-tools/five-tools-one-rule-per-field", controls: { "roster-reach": ["c:a piece for a non-delegate is refused"], "edit-any-state": ["b:"] }, walked: "a: Alice's list; j1's tools" }],
-  "FIX-2082": [{ goal: "task-board/waits-on-a-task-it-filed", controls: { "deadline-cancels": ["c:"], "drain-moves-on": ["d:"] }, walked: "a: the drain waits on a dispatched step; j1" }],
+  "FIX-2077": [{ goal: "task-board/settles-when-its-work-is-over", controls: { "settle-at-return": ["a:after-the-side-chains"] }, walked: "a: writer's task stays running on its research" }],
+  "FIX-2078": [{ goal: "task-board/every-ending-reaches-its-filer", controls: { "no-sweeper-payment": ["b:the filer hears within due time", "e:"] }, walked: "b, and a's once" }],
+  "FIX-2080": [{ goal: "task-board/runs-by-its-filing-settings", controls: { "no-cascade": ["d:the open filed task is cancelled", "d:the dependent chain is cancelled"] }, walked: "c: the dependent cancelled" }],
+  "FIX-2081": [{ goal: "task-tools/five-tools-one-rule-per-field", controls: { "roster-reach": ["c:a piece for a non-delegate is refused"], "edit-any-state": ["b:running:", "b:finished:"] }, walked: "a: Alice's list; j1's tools" }],
+  "FIX-2082": [{ goal: "task-board/waits-on-a-task-it-filed", controls: { "deadline-cancels": ["c:at the deadline the task is in_progress on attempt 1", "c:a second wait gets it completed"], "drain-moves-on": ["d:"] }, walked: "a: the drain waits on a dispatched step; j1" }],
   "FIX-2083": [{ goal: "coordinators/routes-each-message-as-a-task", controls: { "round-timer": ["b:restart"], "post-map-off": ["e:legacy"] }, walked: "a: the routed task" }],
   "FIX-2084": [{ goal: "workers/roles-checked-at-hire", controls: { "no-role-check": ["a:refused"] } }],
-  "FIX-2085": [{ goal: "scheduled-work/recurring-work-files-a-task", controls: { "memory-dedupe": ["b:exactly-one-task", "b:early-files-nothing"] } }],
-  "FIX-2086": [{ goal: "task-tools/steer-and-follow-up", controls: { "drop-late-steer": ["b:"], reopen: ["d:"] }, walked: "a: the follow-up; j2: the steer" }],
+  "FIX-2085": [{ goal: "scheduled-work/recurring-work-files-a-task", controls: { "memory-dedupe": ["b:exactly-one-task"] } }],
+  "FIX-2086": [{ goal: "task-tools/steer-and-follow-up", controls: { "drop-late-steer": ["b:one more turn before the settle"], reopen: ["d:the original's output reads byte-identical"] }, walked: "a: the follow-up; j2: the steer" }],
   "FIX-2088": [
     {
       goal: "task-board/background-error-fails-the-attempt",
-      controls: { "drop-background-failures": ["a:done-on-attempt-2", "b:failed-after-1-attempt"], "no-conversation-carve-out": ["k:conversation-done-on-attempt-1"] },
+      controls: { "drop-background-failures": ["a:done-on-attempt-2", "f:done-on-attempt-2", "b:failed-after-1-attempt", "c:failed-after-1-attempt", "h:failed-after-1-attempt", "j:failed-after-1-attempt", "i:failed-after-1-attempt", "k:done-on-attempt-2"], "no-conversation-carve-out": ["k:conversation-done-on-attempt-1"] },
     },
   ],
   "FIX-2090": [
@@ -125,13 +129,23 @@ export const CHECKS: Record<string, Check[]> = {
 export const NAMED: Check[] = [
   { goal: "coordinators/every-coordinator-is-a-worker-file", controls: { "mailbox-left": ["a:no-mailbox-file", "b:after"] } },
   { goal: "coordinators/files-tasks-down-the-owners-chain", controls: { unpartitioned: ["c:runs-its-own", "c:lists-its-own"], "no-follow-up": ["a:one-notice", "e:one-notice"] } },
-  { goal: "coordinators/hands-each-post-to-its-delegates" },
-  { goal: "coordinators/routes-a-follow-up-by-its-conversation", controls: { "no-recent": ["followup:delegate", "followup:evaluated", "followup:answered"] } },
+  {
+    goal: "coordinators/hands-each-post-to-its-delegates",
+    controls: {
+      "no-roster-check": ["f:bobs-worker-refused"],
+      "no-round-limit": ["e:four-then-none"],
+      "no-delegate-read": ["d:reply-equals-list", "d:read-equals-list"],
+      "no-self-choice": ["h:hire-turn"],
+      "no-floor": ["e:below-floor"],
+      "turn-after-route": ["a:no-turn"],
+    },
+  },
+  { goal: "coordinators/routes-a-follow-up-by-its-conversation", controls: { "no-recent": ["followup:delegate"] } },
   { goal: "coordinators/task-session-stays-open", controls: { "new-session": ["a:names-ticket", "c:names-ticket"], "drop-answer": ["a:names-region"] } },
-  { goal: "hand-offs/ask-survives-a-restart", controls: { "no-waker": ["a:completed", "a:word", "b:once"] } },
+  { goal: "hand-offs/ask-survives-a-restart", controls: { "no-waker": ["a:completed"] } },
   { goal: "hand-offs/survives-a-restart-and-runs-once" },
   { goal: "workforce-privacy/two-users-share-a-project-and-nothing-else", env: { GOAL_ONLY: "milestone", PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" } },
-  { goal: "workforce/split-to-roster", controls: { "first-answer": ["1:report-is-output"], "wake-coordinator": ["4:desk-hears-tasks-only"] } },
+  { goal: "workforce/split-to-roster", controls: { "first-answer": ["1:report-is-output"], "hold-session": ["1:waiting-while-b-works"], "wake-coordinator": ["4:desk-hears-tasks-only"] } },
   { goal: "goal-seek-loop/replans-until-done", walked: "j3: a goal-seek loop that replans; refuses-a-board-built-wrong holds its delegation-board refusal" },
 ];
 
@@ -173,6 +187,9 @@ function checkBy(owner: string, check: Check, tags: readonly string[], failures:
 export const RAN = new Map<string, boolean>();
 const record = (key: string, ok: boolean) => RAN.set(key, (RAN.get(key) ?? true) && ok);
 
+/** Whether a goal's output has `tag` red: a bullet of its `FAIL —` list starting with the tag (with a leg, `d:`, any bullet in that leg). */
+const redTag = (text: string, tag: string) => text.split("\n").some((line) => /^\s*- /.test(line) && line.replace(/^\s*- /, "").startsWith(tag));
+
 /** Run one check (and its controls); push a failure per red run or control that stayed green. */
 function runCheck(owner: string, check: Check, failures: string[], report: string[], say: (s: string) => void): void {
   const runs: Array<{ control?: string; args: string[]; cmd: string }> = [];
@@ -207,10 +224,11 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
       else for (const file of check.vitest!.files) record(`${check.vitest!.filter} ${file}`, out.status === 0);
     } else {
       const tags = check.controls![run.control]!;
-      const red = out.status === 1 && tags.some((t) => text.includes(t.endsWith(":") ? `- ${t}` : t) || text.includes(t));
+      const green = tags.filter((t) => !redTag(text, t));
+      const red = out.status === 1 && green.length === 0;
       record(`${check.goal} GOAL_CONTROL=${run.control}`, red);
-      report.push(`  ${red ? "FAIL (expected)" : "CONTROL BROKEN"} ${label} (${secs}s): wanted one of ${tags.join(", ")} red; ${verdict}`);
-      if (!red) failures.push(`children:${owner} — control ${run.control} of ${check.goal} did not fail as documented (exit ${out.status}): ${text.slice(-800).replace(/\n/g, " | ")}`);
+      report.push(`  ${red ? "FAIL (expected)" : "CONTROL BROKEN"} ${label} (${secs}s): wanted every one of ${tags.join(", ")} red${green.length > 0 ? `; green: ${green.join(", ")}` : ""}; ${verdict}`);
+      if (!red) failures.push(`children:${owner} — control ${run.control} of ${check.goal} did not fail as documented (exit ${out.status}; still green: ${green.join(", ") || "none"}): ${text.slice(-800).replace(/\n/g, " | ")}`);
     }
   }
 }

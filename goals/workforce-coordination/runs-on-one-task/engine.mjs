@@ -228,6 +228,40 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   }
   const memberRules = REMOVED.filter((x) => x.kind === "member");
   const doorRule = REMOVED.find((x) => x.kind === "door");
+  /** Whether `expr` resolves, by symbol, to core's `defineFlow`. */
+  const isCoreDefineFlow = (expr) => (symbolOf(expr)?.declarations ?? []).some((d) => /\/packages\/core\/(src|dist)\/flow\/defineFlow\.(d\.)?ts$/.test(d.getSourceFile().fileName));
+  /** The worker contract's keys: the shape `workerConfigSchema()` returns, read from its declaration. */
+  const contractKeys = (() => {
+    for (const sf of ownFiles) {
+      if (!rel(sf).startsWith("packages/workforce/src/")) continue;
+      const decl = sf.statements.find((s) => ts.isFunctionDeclaration(s) && s.name?.text === "workerConfigSchema");
+      if (decl === undefined) continue;
+      const shape = checker.getReturnTypeOfSignature(checker.getSignatureFromDeclaration(decl)).getProperty("shape");
+      return shape === undefined ? [] : checker.getTypeOfSymbolAtLocation(shape, decl).getProperties().map((p) => p.name);
+    }
+    return [];
+  })();
+  if (doorRule && contractKeys.length === 0) cantTell.push("removed: workerConfigSchema's keys weren't read, so a worker flow can't be told");
+  /** Whether a `defineFlow` config's `configSchema` is typed with every key of the worker contract. */
+  const isWorkerConfig = (config) => {
+    if (contractKeys.length === 0) return false;
+    const prop = config.properties.find((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name.getText() === "configSchema");
+    if (prop === undefined) return false;
+    const shape = checker.getApparentType(checker.getTypeAtLocation(ts.isPropertyAssignment(prop) ? prop.initializer : prop.name)).getProperty("shape");
+    if (shape === undefined) return false;
+    const keys = new Set(checker.getTypeOfSymbolAtLocation(shape, prop).getProperties().map((p) => p.name));
+    return contractKeys.every((k) => keys.has(k));
+  };
+  /** An action's key: a literal name, or a computed one whose type is a string literal (`[RUN_ACTION]`). */
+  const actionKey = (p, sf) => {
+    if (p.name === undefined) return undefined;
+    if (ts.isComputedPropertyName(p.name)) {
+      const t = checker.getTypeAtLocation(p.name.expression);
+      return t.isStringLiteral() ? t.value : undefined;
+    }
+    return p.name.getText(sf).replace(/["']/g, "");
+  };
+  const workerFlows = [];
 
   // ---- endings · read by type ---------------------------------------------------------------
   // A task collection is any value whose type has the collection's lifecycle: claim, complete,
@@ -429,15 +463,22 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
           findings.push({ rule: "endings", where: `${path}:${lineOf(sf, node)}`, what: `${ending} in ${key}, which is not a recorder` });
         }
       }
-      // A worker flow's door: a `defineFlow` whose config builds a worker's config schema.
-      if (doorRule && ts.isCallExpression(node) && node.expression.getText(sf).endsWith("defineFlow") && node.arguments[0] && ts.isObjectLiteralExpression(node.arguments[0])) {
-        const config = node.arguments[0];
-        const isWorkerFlow = /workerConfigSchema\(|installation\.session\(/.test(config.getText(sf));
+      // A worker flow's door: a call of core's `defineFlow` (by symbol) that declares the `respond`
+      // door or whose `configSchema` is typed with every key of Workforce's worker contract
+      // (`workerConfigSchema()`), however either is built.
+      let config = ts.isCallExpression(node) ? node.arguments[0] : undefined;
+      // `defineFlow({ ... } as never)`, as the coordinator's is: the config under its cast.
+      while (config !== undefined && (ts.isAsExpression(config) || ts.isParenthesizedExpression(config) || ts.isSatisfiesExpression?.(config))) config = config.expression;
+      if (doorRule && ts.isCallExpression(node) && isCoreDefineFlow(node.expression) && config !== undefined && ts.isObjectLiteralExpression(config)) {
         const actions = config.properties.find((p) => ts.isPropertyAssignment(p) && p.name.getText(sf) === "actions");
-        if (isWorkerFlow && actions && ts.isObjectLiteralExpression(actions.initializer)) {
+        // The contract's one door, `respond` (worker-door.ts), marks a worker flow too: a configSchema
+        // typed only as some zod object (the coordinator's, from its turn's settings) carries no keys to read.
+        const hasRespond = actions !== undefined && ts.isObjectLiteralExpression(actions.initializer) && actions.initializer.properties.some((p) => actionKey(p, sf) === "respond");
+        if ((hasRespond || isWorkerConfig(config)) && actions && ts.isObjectLiteralExpression(actions.initializer)) {
           scanned.removedTyped++;
+          workerFlows.push(`${path}:${lineOf(sf, node)}`);
           for (const p of actions.initializer.properties) {
-            const key = p.name?.getText(sf).replace(/["']/g, "");
+            const key = actionKey(p, sf);
             if (key !== undefined && doorRule.names.includes(key) && !isMarked(lineText(sf, p))) {
               findings.push({ rule: "removed", where: `${path}:${lineOf(sf, p)}`, what: `${doorRule.row} (${doorRule.owner}) live: a worker flow declares the door "${key}"` });
             }
@@ -448,6 +489,8 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     };
     visit(sf);
   }
+  const unreadFlows = (doorRule?.floor ?? []).filter((f) => !workerFlows.some((w) => w.startsWith(`${f}:`)));
+  if (unreadFlows.length > 0) cantTell.push(`removed: the door rule read no worker flow in ${unreadFlows.join(", ")}, so it stopped reading the built-in flows`);
 
   return {
     findings,
@@ -456,6 +499,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     rows,
     tools,
     recorders,
+    workerFlows,
     files: { tracked: tracked.length, swept: swept.length, excluded, program: ownFiles.length },
   };
 }

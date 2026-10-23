@@ -81,6 +81,7 @@ export const TAGS: Record<string, Kind> = {
   "c:fails-out": "structural",
   "c:dependent-cancelled": "structural",
   "c:one-failure-notice": "structural",
+  "c:writer-ends": "structural",
   "c:once": "structural",
 };
 const tagOf = (failure: string) => failure.split(" — ")[0]!;
@@ -236,10 +237,10 @@ function gradeJ1(store: string, j: Awaited<ReturnType<typeof journeyHandsOut>>, 
     const asked = Math.min(...read.map((i) => Number(i.ts ?? Infinity)));
     f.push(`j1:read-once — researcher's ending reached editor twice: its work request read it with getTask (${asked - ended} ms after the ending) and ${heardBy.length} onTaskSettled turn(s) ran for it too (${notices.length} request(s) in all)`);
   }
-  // Discounting `{ owed: false }` must not pass a run that never read the ending, or one that admitted it twice.
-  const readIn = new Set(read.map((i) => i.requestId)).size;
-  if (research.length > 0 && (readIn !== 1 || heardBy.length !== 0)) {
-    f.push(`j1:heard-once — wanted researcher's ending heard exactly once, by editor's getTask read: read in ${readIn} request(s), ${heardBy.length} notice turn(s); ${notices.length} onTaskSettled request(s), outputs ${show(notices.map((r) => r.output), 200)}`);
+  // Discounting `{ owed: false }` must not pass a run that never read the ending, or one that
+  // admitted it twice. Every completed read counts, two in one request included.
+  if (research.length > 0 && (read.length !== 1 || heardBy.length !== 0)) {
+    f.push(`j1:heard-once — wanted researcher's ending heard exactly once, by editor's getTask read: ${read.length} completed read(s) in ${new Set(read.map((i) => i.requestId)).size} request(s), ${heardBy.length} notice turn(s); ${notices.length} onTaskSettled request(s), outputs ${show(notices.map((r) => r.output), 200)}`);
   }
   if (!outputText(E.output).includes(cast.factMark)) f.push(`j1:answer — editor's answer lacks researcher's fact: ${show(E.output, 160)}`);
   const offered = tell.over(
@@ -395,7 +396,9 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
         if (notices.length !== 1 || !(textOf(notices[0]!).includes(dependent.id) || textOf(notices[0]!).includes(dependent.goal.slice(0, 30))) || depNotices.length !== 0) {
           f.push(`c:one-failure-notice — ${notices.length} notice(s) of the failure, naming the dependent: ${notices[0] === undefined ? "-" : textOf(notices[0]).includes(dependent.id)}; ${depNotices.length} of the dependent: ${show(notices.map(textOf), 300)}`);
         }
-        if (["completed", "errored", "cancelled"].includes(R.status) && linesBy(store, c.conv, CAST.writer).length !== 1) f.push(`c:once — writer's task ${R.status}; ${linesBy(store, c.conv, CAST.writer).length} line(s) in Alice's conversation`);
+        // Writer's task must end: one still open when the walk stops was never told how its research ended.
+        if (!["completed", "errored", "cancelled"].includes(R.status)) f.push(`c:writer-ends — writer's task is still ${R.status} when the walk stops`);
+        else if (linesBy(store, c.conv, CAST.writer).length !== 1) f.push(`c:once — writer's task ${R.status}; ${linesBy(store, c.conv, CAST.writer).length} line(s) in Alice's conversation`);
         report.push(`c attempt ${attempt}: research ${first.status}, dependent ${dependent.status}, writer's task ${R.status}; notice ${show(notices.map(textOf), 240)}`);
       } finally {
         await served.stop();

@@ -170,6 +170,8 @@ export const REMOVED = [
     row: "Every worker flow's door: `run`",
     kind: "door",
     names: ["run", "message", "runTaskBoard"],
+    // The built-in worker flows: the door rule must read both, or it can't tell.
+    floor: ["packages/workforce/src/agent-worker-flow.ts", "packages/workforce/src/coordinator/coordinator-flow.ts"],
     owner: "FIX-2084",
   },
   { row: "A manager's `runTaskBoard` entry", kind: "text", files: PRODUCT.files, notFiles: PRODUCT.notFiles, pattern: /["'`]runTaskBoard["'`]|\brunTaskBoard\s*:/, owner: "FIX-2084" },
