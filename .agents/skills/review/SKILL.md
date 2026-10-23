@@ -2,7 +2,7 @@
 name: review
 context: fork
 agent: general-purpose
-description: The single definition of how we review. Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
+description: The single definition of how we review — looking for flaws in the work (whether it is the right approach is `analysis`). Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
 argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 ---
 
@@ -27,16 +27,17 @@ set together and merges the results.
 | **Correctness** | Bugs, logic errors, and the second-path checklist (BP-035)? | code-reviewer sub-agent (below) | change |
 | **Completeness** | All of the spec built, nothing extra, red shown, goal proven? | spec-compliance sub-agent (below) | change **with a spec** |
 | **Depth** *(optional)* | Shallow modules introduced or nearby? | `improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
-| **Alternatives** *(triggered)* | Is this the right *shape*, or did we stop at the first workable one? | `adhd` | change + codebase; **notes only, never must-fix** |
 
-Coherence, Restraint, Depth, and Alternatives are standalone skills — **dispatch them; don't
+Coherence, Restraint, and Depth are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
 so their prompts live below.
 
-**Restraint and Alternatives are opposite postures on purpose.** Restraint hunts surface to
-remove; Alternatives generates shapes the change could have taken instead. Kept in one lens
-they blunt each other — `second-look` explicitly drops any "could be more flexible" candidate,
-which is most of what divergence produces. They compose; they don't merge.
+**Review looks for flaws; it does not ask whether this was the right approach.** That is
+[`analysis`](../analysis/SKILL.md), which runs before the direction gate and at epic wrap,
+where its answer can still change something
+([`orchestration.md`](../../../docs/contributing/orchestration.md#analysis-and-review)).
+Generating other shapes a change could have taken (`adhd`) belongs there, not here. To ask it
+of a shipped change, run `analysis` on it directly.
 
 ## Resolve target & select lenses
 
@@ -55,24 +56,6 @@ The definition and the ask are in
 [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
 approving adds a way to do a job". A bug-route change has no spec, so everything it adds counts.
 
-**Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
-code exists most alternatives are expensive regret — the spec is where they pay for
-themselves. There are two ways in, and they are not the same:
-
-- **An explicit request always runs it.** If the caller asked for the alternatives lens,
-  run it. No exclusion below applies — the caller opted in, which is the same rule as
-  `adhd`'s own pre-flight Step 1.
-- **Automatic triggering** happens only when the change is genuinely shape-open: **new
-  public API surface**, a **new pattern / capability / block kind**, a **schema or scope
-  decision**, or a **spec whose *considered and dropped* weighed no real alternative**.
-
-**The exclusions below govern automatic triggering only.** Don't auto-add the lens to a bug
-fix or a mechanical refactor. And an **approved spec whose `DECISIONS.md` weighed a real alternative**
-suppresses every automatic trigger, including new public API surface: the divergence already
-happened at the altitude where it was cheap and a human signed the result off, so re-running
-it against shipped code pays twice to relitigate a settled decision. If someone asks for it
-anyway, they get it.
-
 ## Run
 
 1. **Dispatch the selected lenses as parallel sub-agents** (they're independent).
@@ -87,18 +70,9 @@ anyway, they get it.
    - **Completeness** (change with a spec) → the prompt below.
    - **Depth** (if selected) → run `improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
-   - **Alternatives** (if triggered) → run `adhd` in its **review context**, scoped to
-     *other shapes this change could have taken*. Its switch test (materially different ·
-     concretely describable · wins on a named axis · switch cost stated) does the pruning —
-     don't re-derive it here. Its **alternatives rows** are always **notes** and never
-     block. Its **routed findings** are not — those are correctness / restraint / coherence
-     defects that divergence happened to walk into, returned tagged for you to classify;
-     severity them as that lens would, up to and including must-fix. Note-only applies to
-     the shapes, not to everything the lens hands back.
    - **Claude model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness**
-     on **Sonnet** — they check decided work. **Coherence**, **Restraint** and
-     **Alternatives** keep the judgment tier (Opus, including Alternatives' fanout);
-     **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
+     on **Sonnet** — they check decided work. **Coherence** and **Restraint** keep the
+     judgment tier (Opus); **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
      instead; the lens selection and criteria are unchanged.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
@@ -177,8 +151,7 @@ observed fact supporting the finding; a filename alone is not evidence.
 
 In JavaScript Eval, set `reviewedRevision` to the captured identity and `reviewBrief`
 to the shared scope, bundle paths, spec and evidence references. Set `selectedLenses`
-to the selected ordinary lenses in lower case; Alternatives uses the phase dispatch
-below, not this findings schema. Dispatch one native task batch:
+to the selected lenses in lower case. Dispatch one native task batch:
 
 ```js
 const text = { type: "string", minLength: 1 };
@@ -239,13 +212,6 @@ display(reviewJobs);
 
 Collect **every** selected job from the returned IDs/artifact handles; completion is
 asynchronous. Do not use oneshot `completion` for a source-reading reviewer.
-
-For selected Alternatives, the coordinator runs `adhd` in review context, retaining
-its orchestration, scoring and clustering. Each frame/focus leaf uses `fsd-coherence`
-with an explicit **Alternatives phase, not coherence critique** assignment and strict
-phase schemas matching `adhd`'s outputs. Preserve its isolation and collect both waves;
-do not coerce generative outputs into ordinary findings or switch the user's session
-model. Shared **Run** governs pruning, routing and severity.
 
 ### Validate the round
 
@@ -314,9 +280,7 @@ to its summary.
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
-  Restraint = `second-look`, Depth = `improve-codebase-architecture`, Alternatives = `adhd`.
-- **Don't run Alternatives by reflex.** It is the one lens with a cost gate on it; a review
-  that adds it to every change has stopped reading the trigger list.
+  Restraint = `second-look`, Depth = `improve-codebase-architecture`.
 - **Dedupe.** Overlapping lenses produce one merged finding, never repeats.
 - **Don't pad.** A lens that finds nothing says so in one line; "appropriately scoped /
   coherent" is a valid, common verdict.

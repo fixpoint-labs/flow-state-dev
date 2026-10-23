@@ -54,6 +54,8 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   - `scout` (Haiku) — read-only status/handle fetches.
   - `spec-implementer` (Opus) — implements one slice of an approved spec, planning its own build.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
+  - an **analyst** (Opus, a fresh sub-agent running the `analysis` skill) — asks whether a
+    drafted spec, or a wrapped epic, is the right work. See [Analysis and review](#analysis-and-review).
 - **Workflow scripts** — the parts of a lifecycle that are pure mechanism, as deterministic
   control flow instead of prose a coordinator re-derives each wake. Both live in
   `.agents/workflows/` and share one verification harness (`node .agents/workflows/verify.mjs`,
@@ -579,6 +581,36 @@ so `merge` is completion. For a **multi-PR** issue (the implementer's PR plan), 
 `merge → done` expands: the per-sub-PR runs only prove their slices, so **after the last sub-PR
 merges the assembled end-to-end goal runs, and only its PASS marks the issue done** — the last
 merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for the exact step.
+
+## Analysis and review
+
+Two different jobs, and the process runs both on purpose.
+
+- **Review looks for flaws in the work.** A bug, a gap against the spec, drift from a
+  pattern, surface that shouldn't be there. It is critical and inward, and it runs on a
+  change. [`review`](../../.agents/skills/review/SKILL.md) is its single definition; PR
+  feedback, Codex, and spec-PR review rounds are review too.
+- **Analysis asks whether it is the right work.** Did we already have a mechanism for this?
+  How do other frameworks solve it? What else could it be? What has been filed or landed
+  since we decided? Should it exist at all? It is generative and outward, and it runs where
+  the answer can still change something.
+  [`analysis`](../../.agents/skills/analysis/SKILL.md) is its single definition, and holds
+  the six objectives every analysis answers.
+
+Analysis runs at two points:
+
+| Point | Dispatched by | What it does with the answer |
+|---|---|---|
+| **A drafted spec, before the direction gate** — issue or epic | `issue-spec` Step 4.5; `epic-agent` on Create | The author folds what changes the approach, records the rest in `DECISIONS.md` → *Analysis*, and puts a fork only the user can decide in *Open*. An epic spec always gets the `adhd` alternatives pass; an issue spec only on trigger |
+| **Epic wrap**, after the lessons worker | `epic-lifecycle` EPIC_WRAP | Was it a good idea, did the build hold, what's new since. A comment on the Linear epic, concerns filed as issues. Never gates the wrap |
+
+**The analyst is never the author.** It is a fresh sub-agent, so it judges a direction it
+has no stake in. The author still disposes of each finding, using the bar below; the
+*Analysis* section shows the human what was folded and what was set aside.
+
+**Analysis costs no review rounds.** It happens during authoring, before the spec PR is put
+to reviewers, so it does not count against the two-round budget below. Each run records its
+date, and the next analysis reads it as the "since when" for new factors.
 
 ## Spec review: the bar and the convergence rule
 

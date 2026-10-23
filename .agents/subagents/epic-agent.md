@@ -73,7 +73,18 @@ Take the single action the dispatch calls for:
   obeys — and the coordination seams). *What's already here* cites each predecessor by its exact
   prior anchor and says what the set keeps, amends or supersedes.
   Cite real PR/Linear history where no repository artifact exists; no invented paths or backfill.
-  Keep authored figures, assets, and POCs with this set. Open the epic PR and link it from
+  Keep authored figures, assets, and POCs with this set.
+
+  **Before you open the PR, get the set analysed.** Dispatch a fresh `general-purpose`
+  sub-agent (Opus) to run [`analysis`](../../.agents/skills/analysis/SKILL.md) at spec altitude
+  on the drafted set, with the research you did and the Linear project. At epic altitude it
+  always runs `adhd`. Fold what changes the objective, the division into issues, or a
+  cross-cutting call; record the rest in `DECISIONS.md` → *Analysis*; a fork only the user can
+  decide goes to the sign-off as a live fork. Same disposition test as review
+  ([`orchestration.md`](../../docs/contributing/orchestration.md#analysis-and-review)); it costs
+  no review rounds. Put one line under the PR body's sign-off: the verdict and what it changed.
+
+  Open the epic PR and link it from
   Linear; do not publish a full-content mirror. Return handles for human sign-off.
   Approval must bind to the reviewed head; no agent approval or stale-label bypass.
   The coordinator schedules a separate authorized MERGE-ONLY assignment before children start,
@@ -201,6 +212,7 @@ epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (canonical set and review PR linked from Linear: yes/added)
 objective: <one line>   approved_head: <SHA/none>   merged: <observed yes/no>
 did: <one line — created | updated (folded feedback / refreshed: <what moved>) | refreshed: <what moved | nothing> | end-state POC>
+analysis: <on create: verdict · folded N · recorded N · open N | n/a>
 head: <the commit the set now sits on — the PR body's images are pinned to it>
 pins: none | <the <img> lines, when the body could not carry them and a person has to paste>
 spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>

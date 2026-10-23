@@ -80,7 +80,7 @@ Either way the decisions land in `DECISIONS.md` as cards and on `SPEC.md`'s sign
 
 ## Workflow
 
-Run research (Steps 1–3), necessity/refinement (3.5), draft `SPEC.md` and `DECISIONS.md` with their artifacts (4), validate (5), then publish one ready spec PR and Linear links (6). Review, reframe the issue, and present (6.5–8). Record the initial draft in `DECISIONS.md → How it got here`.
+Run research (Steps 1–3), necessity/refinement (3.5), draft `SPEC.md` and `DECISIONS.md` with their artifacts (4), get the draft analysed by a fresh sub-agent (4.5), validate (5), then publish one ready spec PR and Linear links (6). Review, reframe the issue, and present (6.5–8). Record the initial draft in `DECISIONS.md → How it got here`.
 
 ### Step 1: Pull the Linear Issue
 
@@ -410,6 +410,34 @@ How this workflow's research feeds the set:
   The *how we'll know it's met* and *what changes* figures are not optional; the rest are drawn where position carries the
   meaning ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)).
 
+### Step 4.5: Analysis — is this the right work?
+
+The draft exists; before anything checks it for flaws, find out whether it's the right
+approach. Dispatch a **fresh `general-purpose` sub-agent (Opus) to run
+[`analysis`](../analysis/SKILL.md) at spec altitude**. It must not be you: you have already
+chosen the direction, and the skill's own warning about the pull toward producing a spec
+applies to judging it too.
+
+Give it the drafted `SPEC.md` and `DECISIONS.md`, the Linear issue, the returns from Agents C
+and D, your Step 3.5 answers (question 7's job list included), and the epic's retained set if
+the issue has one. It answers the six objectives — reuse, prior art, other shapes, new
+factors since the watermark, necessity, major concerns — and decides itself whether its
+trigger for `adhd` fires.
+
+Dispose of each finding with the one test from
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → the bar: *does acting on it
+change the approach?*
+
+- **Yes → fold.** Re-draft the affected document now (anti-addenda rule), then go on to Step 5,
+  so validation checks the direction you are actually publishing.
+- **No → record** it in `DECISIONS.md` → *Analysis*.
+- **Only the user can decide it → `DECISIONS.md` → Open**, in the six-part shape. It counts
+  against the ceiling of three.
+
+Write `DECISIONS.md` → *Analysis* either way: the date, the watermark, the verdict, one line
+per objective, and each finding's disposition. "Right approach" with six clean lines is a
+normal result and still gets its section. This step costs no review rounds.
+
 ### Step 5: Validate the Spec
 
 Validators check `SPEC.md` and `DECISIONS.md` — the diff, the docs line, *what's already here* and the debt — against current code/docs, not approved intent alone.
@@ -519,6 +547,7 @@ Publish canonical content in the repository; Linear carries status and links, no
      and the debt's sign-off lines are not decisions and do not count: they are what approval
      already certifies ([`orchestration.md`](../../../docs/contributing/orchestration.md) → the
      bar), stated so the size and the net are visible. When the smaller goal is what ships, that is a live fork and it counts. If the combined total exceeds three, fix the upstream spec rather than lengthening the ask. Keep Linear pointed at the current review artifact.
+   - **Analysis, one line** under the sign-off: the verdict and what it changed, linking `DECISIONS.md` → *Analysis*.
    - **`## Reviewers · look here`** — one to three items, each naming the document and the question, plus what is deliberately not here.
    - **The links line** — the two documents, Linear, the epic, predecessors, and the spec merge contract.
    - **The collapsed contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it. A second collapsed block, **engineering calls**, only when the filters dropped a decision.

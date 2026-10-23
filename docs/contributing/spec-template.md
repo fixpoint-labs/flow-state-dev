@@ -175,6 +175,7 @@ on **how**. Then **Sign off**: the goal and the debt, unnumbered, each with *If 
 decisions, hardest first, each a subheading stating it, its trade-off figure pinned
 ([`spec-figures.md`](spec-figures.md) → "The trade-off"), and one line naming the row it came
 down to and *If wrong:*, with the one to weigh named and a pointer to the decisions doc. Then
+one line of **analysis**: the verdict and what it changed. Then
 **Reviewers · look here**: one to three items, each naming where and the question, plus what is
 deliberately not here. Then the links line: the document set, Linear issue, epic, what
 it builds on, and that merge follows approval and required checks. Then the collapsed contract.
@@ -246,6 +247,8 @@ it builds on, and that merge follows approval and required checks. Then the coll
 >
 > **Open: none.** D1 is the one to weigh. Reasoning and what lost:
 > [DECISIONS.md](DECISIONS.md).
+>
+> **Analysis:** right approach. Nothing changed. [DECISIONS.md → Analysis](DECISIONS.md#analysis).
 >
 > ## Reviewers · look here
 >
@@ -569,9 +572,14 @@ review notes left for the implementer. Sections, in order:
    verdict and the evidence link, so the next reviewer can't reopen it blind, **including when
    the premise held**; a claim still in flight is marked `(POC in flight)`. Omit the section
    when there is nothing in it and say **Open: none** at the bottom instead.
-6. **How it got here** — one line per meaningful turn, newest last: draft, each review round
+6. **Analysis** — what the [`analysis`](../../.agents/skills/analysis/SKILL.md) pass
+   found before the spec went to review: the date, the watermark it read new factors from,
+   the verdict, one line per objective, and each finding's disposition (folded · recorded ·
+   open). Always present, including when the verdict is "right approach"; the next analysis
+   reads its date. See [`orchestration.md`](orchestration.md#analysis-and-review).
+7. **How it got here** — one line per meaningful turn, newest last: draft, each review round
    that moved a decision, each settlement. A round that changed only prose earns no line.
-7. **Notes from review** — below-the-bar spec-PR feedback, verbatim, one line each with a
+8. **Notes from review** — below-the-bar spec-PR feedback, verbatim, one line each with a
    thread link. Inputs for the implementer, not instructions. Omit the section when there are
    none.
 
@@ -670,6 +678,20 @@ review notes left for the implementer. Sections, in order:
 >   carries the query param because of this. ([thread](https://github.com/o/r/pull/1#discussion_2))
 > - **The seam sees every item with its sequence attached** — **CONFIRMED** by
 >   `poc/resume-seam/`: the filter is one predicate. The premise held; nothing changed.
+>
+> ## Analysis
+>
+> 2026-08-14 · watermark 2026-08-02 (issue filed) · **Right approach.**
+>
+> 1. **Reuse** — the persisted item log and its sequence allocator already exist; the spec
+>    filters at the serialization seam over them. Nothing new to build underneath.
+> 2. **Prior art** — the SSE spec's own reconnection model resumes by event id with no
+>    per-client state on the server, and so do the two event-streaming libraries checked
+>    (links in the analysis return). Confirms D3.
+> 3. **Other shapes** — client-side dedupe; weaker, recorded in *Considered and dropped*.
+> 4. **New factors** — 6 issues since the watermark; none touches the stream path.
+> 5. **Necessity** — earns its place: the duplicates are billed tokens, not a cosmetic issue.
+> 6. **Concerns** — none. Recorded, nothing folded.
 >
 > ## How it got here
 >
