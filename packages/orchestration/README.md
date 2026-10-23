@@ -988,9 +988,11 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
 deadline is milliseconds from the call, five minutes by default, within the host's
-`waitDeadlines` bounds. A task that already ended is returned at once, and its ending starts no
-`onTaskSettled`: the wait's answer delivered it. At the deadline the task runs on and nothing is cancelled. If it ends
-before the waiting request does, that request's next `getTask` on it returns the ending. If
+`waitDeadlines` bounds. A task that already ended is returned at once, and no `onTaskSettled`
+follows for it when the flow's `onTaskSettled` waits behind the turn that filed the task, as
+Workforce's `respond` and `work` turns make it: the request still runs, but your block isn't
+called. At the deadline the task runs on and nothing is cancelled. If it ends before the
+waiting request does, that request's next `getTask` on it returns the ending. If
 the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
 task's own turn may wait too. A wait is refused when it would make a chain of more than five
 waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait

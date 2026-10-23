@@ -846,8 +846,9 @@ getTask({ id: "task_8f2", wait: true })
 You can wait in the same turn or in a later one. Your turn pauses until the task ends, then
 carries on with the task as `getTask` always returns it: its status, and its output once it
 completed. Nothing holds a request open while it waits, so a server restart loses nothing.
-If the task already ended when you wait, you get it back at once, and that answer is how you
-hear about it: no `onTaskSettled` turn follows.
+A task that already ended is returned at once, and no `onTaskSettled` follows for it, as long
+as your `onTaskSettled` waits behind the turn that filed the task. A Workforce conversation or
+task turn works that way. The request still runs, but your block isn't called.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
