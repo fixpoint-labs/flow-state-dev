@@ -184,7 +184,7 @@ describe("a task stored while a queued message held it open", () => {
     } as unknown as Task);
     const runtime = await h.state.getRuntime();
     for (const session of [planner, done!.run!.sessionId]) {
-      for (const entry of [RUN_BOARD_ENTRY, CHECK_TASK_ENTRY]) {
+      for (const entry of [DISPATCH_ENTRY, CHECK_TASK_ENTRY]) {
         const kept = await runtime.stores.wakes!.get({ sessionId: session, entry });
         if (kept !== null) await runtime.stores.wakes!.clear(kept, kept.version);
       }
