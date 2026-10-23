@@ -44,7 +44,7 @@ import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
-import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
+import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { messageHopStateShape } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineMessageWorkerCapability } from "../messages/message-tool";
@@ -231,7 +231,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
-        [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
+        [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
+          soleTaskDelegate(await delegates.taskDelegates(ctx))
+        )
       };
     }
   };
