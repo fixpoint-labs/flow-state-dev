@@ -105,6 +105,11 @@ interface RateLimitsResponse {
  *   with a plain reason when the read could not be made. Never throws.
  */
 export async function readCodexUsage(options: ReadCodexUsageOptions): Promise<HarnessUsageReading> {
+  // Runs given CODEX_API_KEY use it whatever account is saved, and app-server
+  // reports the saved one, so the key decides before anything is asked.
+  if ((options.env.CODEX_API_KEY ?? "") !== "") {
+    return { status: "api-key", reason: "Codex uses an API key: no subscription limit" };
+  }
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let program: CodexProgram;
   try {
