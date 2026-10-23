@@ -170,7 +170,10 @@ counts. Then the review gap blocks step 6, and a harness thread waits under *Rea
   (*Sessions* or *Projects*), not a choice at session start.
 
 - **Product additions:** a working directory per session that threads inherit, and a harness on
-  threads only. Folded as the session's project and D5; step 6 and its control were added.
+  threads only. Folded as the session's project and D5; step 6 and its controls were added. A control that
+  removed the checkout mapping was first said to give `no-project`; an unmapped project gets a
+  branch from its remote instead, so that control fails on step 6's directory check, and the
+  `no-project` control is a session opened on no project.
 
 ## Notes from review
 
