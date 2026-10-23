@@ -9,6 +9,10 @@
  *   (`runTaskBoard`), resume under `respond` and `dispatch`.
  *
  * Both are idempotent: a second process, or a later start, finds nothing.
+ *
+ * A failed upgrade fails the start: every `getRouter()` and `ready()` rejects
+ * with it, so the host refuses to serve records it can't resume, as Shift
+ * Manager's `openLab` does.
  */
 import { resolveRequestIncarnation, resolveUserStorageKey, type FlowState } from "@flow-state-dev/engine";
 import { backfillBoardWakes, upgradeWorkerEntryNames, type EntryNameFlow } from "@flow-state-dev/workforce";
@@ -24,16 +28,11 @@ export function afterStoredWorkUpgrade<T extends FlowState>(flowstate: T, copies
   let upgraded: Promise<void> | undefined;
   const upgrade = (): Promise<void> =>
     (upgraded ??= (async () => {
-      try {
-        const runtime = await flowstate.getRuntime();
-        await backfillBoardWakes(runtime.stores, {
-          userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
-        });
-        await upgradeWorkerEntryNames(runtime.stores, copies, { incarnationOf: resolveRequestIncarnation });
-      } catch (error) {
-        // Serving goes on: an old request this missed fails on its own, by name.
-        console.error("[workforce] upgrading stored work failed:", error instanceof Error ? error.message : error);
-      }
+      const runtime = await flowstate.getRuntime();
+      await backfillBoardWakes(runtime.stores, {
+        userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+      });
+      await upgradeWorkerEntryNames(runtime.stores, copies, { incarnationOf: resolveRequestIncarnation });
     })());
   return new Proxy(flowstate, {
     get(target, key) {

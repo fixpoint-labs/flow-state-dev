@@ -211,7 +211,9 @@ const flowstate = createFlowState({
 });
 
 // The workforce's stored-work upgrades run before the first router (`lib/stored-work-upgrade.ts`).
-export default afterStoredWorkUpgrade(flowstate, workforce.copies);
+// Every caller gets this handle; only the HMR slot below keeps the raw one, to dispose it.
+const upgradedFlowstate = afterStoredWorkUpgrade(flowstate, workforce.copies);
+export default upgradedFlowstate;
 
 // `next dev` re-evaluates this module on every HMR edit, building a fresh
 // FlowState (and, under dispatch mode, a fresh BullMQ worker) each time.
@@ -233,9 +235,18 @@ hmr.__fsdFlowstate = flowstate;
 // worker consumes the queue from boot rather than from the first web request.
 // dispose() drains the worker and closes the queue before the stores.
 if (bullmq && bullmqDispatch) {
-  void flowstate.ready().then(() => {
-    console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
-  });
+  // Through the upgraded handle, so the stored-work upgrades run before the
+  // router and its sweep. A failed upgrade fails the start: the host refuses
+  // to serve records it can't resume.
+  upgradedFlowstate.ready().then(
+    () => {
+      console.log("[flowstate] BullMQ worker adapter active (all actions route through queue)");
+    },
+    (error: unknown) => {
+      console.error("[flowstate] start failed:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    },
+  );
 
   // Register signal handlers once per process (not per HMR generation —
   // process.on accumulates listeners across re-evaluations otherwise) and

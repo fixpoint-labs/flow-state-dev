@@ -46,4 +46,30 @@ describe("afterStoredWorkUpgrade", () => {
     await upgraded.getRouter();
     expect(seenAtRouter).toEqual(["respond", "respond"]);
   });
+
+  it("runs the upgrade before ready(), and fails the start when it fails", async () => {
+    const order: string[] = [];
+    const stores = createInMemoryStores();
+    const flowstate = {
+      getRuntime: async () => {
+        order.push("upgrade");
+        return { stores };
+      },
+      getRouter: async () => ({}) as never,
+      ready: async () => void order.push("ready"),
+    } as unknown as FlowState;
+    await afterStoredWorkUpgrade(flowstate, []).ready();
+    expect(order).toEqual(["upgrade", "ready"]);
+
+    const broken = {
+      getRuntime: async () => {
+        throw new Error("the store is down");
+      },
+      getRouter: async () => ({}) as never,
+      ready: async () => {},
+    } as unknown as FlowState;
+    const refusing = afterStoredWorkUpgrade(broken, []);
+    await expect(refusing.ready()).rejects.toThrow("the store is down");
+    await expect(refusing.getRouter()).rejects.toThrow("the store is down");
+  });
 });

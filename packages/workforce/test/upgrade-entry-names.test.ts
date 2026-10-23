@@ -95,8 +95,8 @@ describe("upgradeWorkerEntryNames", () => {
     const stores = createInMemoryStores();
     await stores.request.set("mid-reply", record("mid-reply", "agent", "run", "interrupted"), "any");
     await upgradeWorkerEntryNames(stores, [workerCopy("agent")]);
-    expect(await upgradeWorkerEntryNames(stores, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0 });
-    expect(await upgradeWorkerEntryNames({ ...stores, wakes: undefined } as never, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0 });
+    expect(await upgradeWorkerEntryNames(stores, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0, leftover: 0 });
+    expect(await upgradeWorkerEntryNames({ ...stores, wakes: undefined } as never, [workerCopy("agent")])).toEqual({ requests: 0, wakes: 0, leftover: 0 });
   });
 
   it("rewrites a worker flow's old name only where the flow no longer declares it: its own `run` is left alone", async () => {
@@ -133,6 +133,66 @@ describe("upgradeWorkerEntryNames", () => {
     });
     await upgradeWorkerEntryNames(stores, [workerCopy("agent")]);
     expect((await stores.activeRequests.get("live"))?.actionName).toBe("respond");
+  });
+
+  it("leaves a live-registry entry alone when its record wasn't rewritten, or when it is gone by the write", async () => {
+    const stores = createInMemoryStores();
+    const now = Date.now();
+    const entry = (requestId: string) => ({
+      requestId,
+      flowKind: "agent",
+      flowId: "agent",
+      actionName: "run",
+      userId: "alice",
+      source: "http",
+      startedAt: now,
+      lastHeartbeatAt: now
+    });
+    // A finished record: not rewritten, so its entry isn't either.
+    await stores.request.set("done", record("done", "agent", "run", "completed"), "any");
+    await stores.activeRequests.register(entry("done"));
+    // A rewritten record whose entry the sweep deregisters after the listing.
+    await stores.request.set("swept", record("swept", "agent", "run", "interrupted"), "any");
+    await stores.activeRequests.register(entry("swept"));
+    const sweeping = {
+      ...stores,
+      activeRequests: {
+        listAll: stores.activeRequests.listAll.bind(stores.activeRequests),
+        get: async (requestId: string) => {
+          if (requestId === "swept") await stores.activeRequests.deregister("swept");
+          return stores.activeRequests.get(requestId);
+        },
+        register: stores.activeRequests.register.bind(stores.activeRequests)
+      }
+    };
+    expect((await upgradeWorkerEntryNames(sweeping as never, [workerCopy("agent")])).requests).toBe(1);
+    expect((await stores.activeRequests.get("done"))?.actionName).toBe("run");
+    expect(await stores.activeRequests.get("swept")).toBeUndefined();
+  });
+
+  it("counts and warns of a wake that keeps changing through every attempt to move it", async () => {
+    const stores = createInMemoryStores();
+    const wakes = stores.wakes!;
+    const base = { sessionId: "busy", flowKind: "agent", userId: "alice", orgId: DEFAULT_ORG_ID, dueAt: 5_000, landBy: 6_000 };
+    await wakes.owe({ ...base, entry: "runTaskBoard" });
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (line: string) => void warned.push(line);
+    try {
+      const busy = {
+        ...stores,
+        wakes: {
+          listDue: wakes.listDue.bind(wakes),
+          get: wakes.get.bind(wakes),
+          owe: wakes.owe.bind(wakes),
+          clear: async () => false
+        }
+      };
+      expect(await upgradeWorkerEntryNames(busy as never, [workerCopy("agent")])).toMatchObject({ wakes: 0, leftover: 1 });
+    } finally {
+      console.warn = warn;
+    }
+    expect(warned.join("\n")).toMatch(/"runTaskBoard" in session "busy"/);
   });
 
   it("moves a wake bumped while it is moved, so nothing is left under the old name", async () => {
