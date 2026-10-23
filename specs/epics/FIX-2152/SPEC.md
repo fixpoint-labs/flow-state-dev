@@ -69,7 +69,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2153](https://linear.app/fixpoint-labs/issue/FIX-2153) · Claude Code-style lab | Spec and UI design; the front end on fixtures now; the wiring and its scripted session after the refactor | FIX-2056 (wiring only); the gaps it files ([D1](DECISIONS.md#d1)) |
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
-| [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · more conversations with one worker | A person opens and lists more conversations with one worker, through one optional criteria key ([D3](DECISIONS.md#d3)) | Jake's amendment (D3) |
+| [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path ([D2](DECISIONS.md#d2)) | Jake's amendment (D2) |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
@@ -83,8 +83,8 @@ flowchart LR
   R["FIX-2056 · one task primitive · consumed"] -.-> A
   M["FIX-1989 · worker messaging · consumed"] -.-> B
   N["FIX-2070 · Messages · consumed"] -.-> B
-  G1["FIX-2158 · more conversations with one worker"] -->|"open and list conversations"| A["FIX-2153 · Claude Code-style lab"]
-  G1 -->|"conversations"| T
+  G1["FIX-2158 · list a person's sessions of one worker"] -->|"the session list"| A["FIX-2153 · Claude Code-style lab"]
+  G1 -->|"the session list"| T
   G2["FIX-2159 · a result reaches a running turn"] -->|"step 4"| A
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
@@ -119,15 +119,16 @@ code.
 | Already here | What the set does with it |
 |---|---|
 | The five task tools, the waited `getTask`, `updateTask({ message })` and cancel (FIX-2056) | **Builds on.** Background tasks, stopping a task through the main session, and steering |
-| Routed tasks, the coordinator flow and the task-board statuses (FIX-2083); `waitForUser` and the hold on questions (FIX-2058) | **Builds on.** Threads mode's threads and its *Waiting on you* and *Ready for review* columns |
+| Routed tasks, the coordinator flow and the task-board statuses (FIX-2083) | **Builds on.** Threads mode's threads and its *Working* and *Resolved* columns |
+| `waitForUser` and the hold on questions (FIX-2058, planned: specs merged, not on `main`) | **Builds on**, once landed. Threads mode's *Waiting on you* and *Ready for review* columns; FIX-2157's wiring waits on it |
 | `messageWorker` and `onWorkerMessage` (FIX-1989); `sendMessage` and `receive` (FIX-2070, planned) | **Builds on.** FIX-2154 is written against FIX-2070's names |
 | The agent flow's planned turn (`board.planned`), where one worker does work and files work | **Builds on.** The main session that works and delegates |
-| `WorkerSessionCriteria` and its derived ids (`workforce/src/workers/derive-session-id.ts`), built to take more keys | **Extended** by FIX-2158's one optional key. Workstream sessions (FIX-1883) are not used: they need a project and a lead ([D3](DECISIONS.md#d3)) |
+| A worker's sessions: the derived default conversation, and any other session on its flow, which the create check already accepts (`workforce/src/workers/installation.ts`) | **Extended** by FIX-2158's list. Workstreams (FIX-1883, opened by `openWorkstream` or a coordinator) are not used: they need a project and a lead ([D3](DECISIONS.md#d3)) |
 | `@flow-state-dev/design-system` and the `packages/ui` registry | **Builds on.** The labs' only theme and components |
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one criteria key and a list call on the workforce client · one delivery mode on the ending path |
+| **Adds** | Two private labs under `labs/` · one list call on the workforce client · one delivery mode on the ending path |
 | **Removes** | Nothing |
 
 **Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to
@@ -144,15 +145,13 @@ two labs and two package entries.
 2. **[D2](DECISIONS.md#d2) · A background result reaches the main session inside its running
    turn.** If wrong: step 4 of the Claude Code-style script is dropped, and the lab works
    differently from the app it copies.
-3. **[D3](DECISIONS.md#d3) · A person can have more conversations with one worker.** An
-   amendment to the concept's "one conversation per worker per user". If wrong: the Claude
-   Code-style app has one session per worker, and its session list goes.
-4. **[D4](DECISIONS.md#d4) · Front ends are built now, on fixtures behind one adapter, and the
+3. **[D4](DECISIONS.md#d4) · Front ends are built now, on fixtures behind one adapter, and the
    fixtures are deleted at wiring.** If wrong: some UI is redone when the refactor changes a
    shape.
 
-**Open, the owner's:** none beyond the sign-off. D2 and D3 each amend the coordination concept,
-and the merge of this PR approves both amendments.
+**Open, the owner's:** none beyond the sign-off. D2 amends rule 7 of the coordination concept,
+and the merge of this PR approves it. Session-to-session messaging (FIX-2160) is filed outside
+this epic for the owner to place.
 
 Epic · 2 labs (one in two modes), 2 known gaps and a closure · Workforce: Shift Manager · Goal 1, validate through
 real usage · Goal 4, keep the foundation honest

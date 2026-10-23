@@ -3,9 +3,10 @@
 [Spec](SPEC.md) · **Decisions**
 
 The calls above any one lab. The product brief on FIX-2152 sets the bar, the scope and the order.
-D1, D2 and D3 come to the owner for sign-off; D2 and D3 each amend the coordination concept.
-D4 is an engineering call, recorded because every lab obeys it. fsd-architect checked D2, D3 and
-the worker-talk view against `main` ([agent-mailbox#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)).
+D1 and D2 come to the owner for sign-off, and D2 amends the coordination concept. D3 and D4 are
+engineering calls, recorded because every lab obeys them. fsd-architect checked D2, D3 and the
+worker-talk view against `main` ([agent-mailbox#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392),
+[D3 corrected](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374906557)).
 
 ## The tree
 
@@ -15,8 +16,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["another epic builds it later · a workaround in the lab"]
   E --> D2["D2 · a background result reaches the running turn, before its next model call"]
   D2 -.->|"rejected"| X2["the main session hears it after the turn, as today"]
-  E --> D3["D3 · a person can open more conversations with one worker"]
-  D3 -.->|"rejected"| X3["one hired copy per session · a workstream per session"]
+  E --> D3["D3 · a lab session is an ordinary session of one worker"]
+  D3 -.->|"rejected"| X3["one hired copy per session · a workstream per session · a new criteria key"]
   E --> D4["D4 · front ends now, on fixtures behind one adapter"]
   D4 -.->|"rejected"| X4["wait for the refactors · wire to today's names"]
 ```
@@ -30,7 +31,7 @@ flowchart TD
 |---|---|
 | **Instead of** | Filing every gap for another epic to build later, or working around it in the lab |
 | **Because** | The epic is done when the scripts pass on `main`. If another epic builds the gaps, *done* waits on a queue this epic doesn't own. A workaround puts glue in the lab, which is the thing the inventory exists to show is absent |
-| **Locks in** | A gap that blocks a script is filed as a child of FIX-2152 in the Workforce: Shift Manager project. It blocks its lab's wiring and the closure. A gap that blocks no script is filed in the project, linked from the lab's spec, and is not a child. Two are known now ([the set](SPEC.md#the-set--as-of-2026-10-23)); each lab's spec lists the rest |
+| **Locks in** | A gap that blocks a script is filed as a child of FIX-2152 in the Workforce: Shift Manager project. It blocks its lab's wiring and the closure. A gap that blocks no script is filed in the project, linked from the lab's spec, and is not a child. Two are known now ([the set](SPEC.md#the-set--as-of-2026-10-23)). Each lab's spec lists the rest, and they join in one batch when that spec merges; a gap found after that joins only with the owner's sign-off, so the epic can't grow unseen |
 
 **What would change my mind:** a gap big enough to be an epic of its own. Then it is filed as one,
 and the lab's wiring waits on it.
@@ -49,7 +50,7 @@ recorded here.*
 |---|---|
 | **Instead of** | The main session hearing the result only after its turn ends, which is what happens on `main` today: a settled notice waits for the reply (`AFTER_REPLY_CONCURRENCY`, `workforce/src/conversation-board/task-settled.ts`) |
 | **Because** | Claude Code shows a background result inside the running turn, and the brief's script asks for it. The package already delivers a steer to a running assignee before its next model call (`orchestration/src/skills/steer-context.ts`, over the generator's `prepareStep`), so a filer's notice can take the same path |
-| **Locks in** | [ER-6](#who-owns-what), built by [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159): a delivery mode on FIX-2078's one ending path, not a second path, with one durable "taken in request R" mark like `steersTakenIn`; the deferred notice skips once R has completed. Only a conversation request with no claim, or one already holding the filer task's claim, takes it, never a `receive`. A claimless take never skips a filer task's `onTaskSettled`, and a request waiting on the task with `getTask` resumes with the result instead. Rules 5 and 6 (FIX-2077) are untouched: a take records no ending. No change in core or engine |
+| **Locks in** | [ER-6](#who-owns-what), built by [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159): a delivery mode on FIX-2078's one ending path, not a second path, with one durable "taken in request R" mark like `steersTakenIn`; the deferred notice skips once R has completed. The take, the notice's handling and its acknowledgement move as one transaction from the queued `onTaskSettled` request to the running one, so the ending is never handled twice or skipped. Only a conversation request with no claim, or one already holding the filer task's claim, takes it, never a `receive`; today the context entry reads only a task turn (`steer-context.ts`), so FIX-2159 extends it to a conversation request. A claimless take never skips a filer task's `onTaskSettled`, and a request waiting on the task with `getTask` resumes with the result instead. Rules 5 and 6 (FIX-2077) are untouched: a take records no ending. No change in core or engine |
 | **Amends** | Rule 7 of [`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md) gains a third destination for an ending's notice: the filer's running request. It stays consistent with FIX-2103's call that an ending is not a message and changes no open work |
 
 **What would change my mind:** a take that can't be made crash-safe the way `steersTakenIn` is.
@@ -60,21 +61,21 @@ Then the lab shows the result after the turn and step 4 changes, which is a prod
 It comes down to working the way Claude Code does: the turn uses the result while it runs.
 
 <a name="d3"></a>
-## D3 · A person can open more conversations with one worker
+## D3 · A lab session is an ordinary session of one worker
 
-*An amendment to the coordination concept, so it comes to the owner. Shape from fsd-architect.*
+*An engineering call. fsd-architect's first answer proposed a new criteria key; the corrected answer,
+checked on `main`, needs no model change.*
 
 | | |
 |---|---|
-| **Instead of** | Hiring one copy of the main worker per session, which shows a roster of identical workers that neither original app has; or a workstream per session, which needs a project, goals and a lead (BR-42) and is capped at 25 delegates (`workforce/src/delegates/delegate-keys.ts`) |
-| **Because** | A session belongs to a worker through its `workerId`, and `WorkerSessionCriteria` (`workforce/src/workers/derive-session-id.ts`) is built to take more keys. One optional key naming a conversation gives it a derived id, so nothing new is named: it is still a conversation. Random-id sessions stay refused (`workers/client.ts`) |
-| **Locks in** | [ER-7](#who-owns-what), built by [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158): `ensureWorkerSession`, `findWorkerSession` and a new list call on the workforce client take the key; no key means the default conversation |
-| **Amends** | The concept's "one conversation per worker per user" and FIX-1989 D1's "one computed address" become: a default conversation, where messages and routed tasks land, plus any the user opens. A reply goes back to the session that sent the message, as today |
+| **Instead of** | Hiring one copy of the main worker per session, which shows a roster of identical workers that neither original app has; a workstream per session, which needs a project, goals and a lead (BR-42); or a new criteria key on `WorkerSessionCriteria` |
+| **Because** | Nothing enforces one conversation per worker. The worker flow's create check accepts a session at any id that isn't a derived address (`workforce/src/workers/installation.ts`), and only derived addresses are reserved. The derived session is the worker's default conversation: what `ensureWorkerSession` and `findWorkerSession` return, and where messages land. Other sessions of the worker are ordinary sessions on its flow, which `find` deliberately never returns (`workers/client.ts`) |
+| **Locks in** | [ER-7](#who-owns-what), built by [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158): a list of a person's sessions of one worker on the workforce client, and a documentation line in the concept that the derived conversation is the default and the message inbox, not the only one. No model amendment |
 
-**What would change my mind:** an app that needs to address a message to one of the extra
-conversations. Then messages need the key too, which is FIX-2070's call.
+**What would change my mind:** a lab that needs a message to land in one of the other sessions.
+That is session-to-session messaging, which rule 21 forbids today ([Answered](#answered-by-fsd-architect)).
 
-![D3: one optional key naming a conversation, chosen, beside a hired copy per session and a workstream per session; decided by a person opening one the way the app does](figures/d3-more-conversations.svg)
+![D3: an ordinary session of the worker, chosen, beside a hired copy per session and a workstream per session; decided by a person opening one the way the app does](figures/d3-more-conversations.svg)
 
 It comes down to opening a session the way Claude Code does: one step, with nothing around it.
 
@@ -105,19 +106,19 @@ goes first; the gap issues own their mechanisms.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | A lab has three kinds of code: configuration (`fsdev.config.mts`, the host file, `WORKER.md`, `SKILL.md`, `TEAM.md`, resources), React UI, and small flows (at most a few, each under 200 lines, composed only from package exports). The lab's README carries the inventory: files by kind, with line counts. A check in the lab fails on any file that fits none of the three, and the closure runs it. This inventory is the "what this app adds" table the brief asks for | FIX-2153 | Every lab's spec review; the closure |
+| ER-1 | A lab has three kinds of code, classified by path. **Configuration:** `fsdev.config.mts`, `host.mts`, and `workforce/**` Markdown (`WORKER.md`, `SKILL.md`, `TEAM.md`, resources). **React UI:** `src/**` (`.tsx`, `.ts`, `.css`). **Small flows:** `workforce/flows/**/*.mts`, at most 3, each under 200 lines. Outside the count: `README.md`, `package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, the lockfile and `test/**`. Anything else under the lab is *other*. Config caps at 300 lines in all, so glue can't hide in a host file. A script in the lab prints the inventory (files by kind, with line counts) and fails on any *other* file or a broken cap; the README's table is its output. Reading config and UI for logic the package should own stays a review gate at each lab's spec and the closure, because no path rule can see it. The caps are first estimates: FIX-2153's spec may change them once, with its reason | FIX-2153 | Every lab's spec review; the closure |
 | ER-2 | A lab imports only a package's public entry points (its `exports` map), never a `src/` path or a private helper | FIX-2153 | The closure sweep |
 | ER-3 | One way to set up a lab: under `labs/`, private, launched with `fsdev dev --app` as Shift Manager is; the theme from `@flow-state-dev/design-system` and components from the `packages/ui` registry (`fsdev ui add`). A lab defines no color tokens of its own. The two labs share no code: a piece both need that isn't UI is a package gap ([ER-4](#who-owns-what)), and a piece of UI both need is copied, so each inventory shows what that app adds. FIX-2157 is a mode of FIX-2153's app, not a third lab, so it shares that app's code | FIX-2153 | Every lab's spec review |
 | ER-4 | Any need beyond ER-1's three kinds goes to the package: filed against workforce or orchestration (or react, for a hook), named in the lab's spec, and never worked around in the lab, not even for a while. A gap that blocks a script is a child of this epic ([D1](#d1)) | FIX-2153 | Every lab's spec review; the closure |
-| ER-5 | Until wiring, a lab reads and writes through one adapter whose functions each name the package call they stand for, by post-refactor names ([D4](#d4)); a fixture standing in for a gap carries its issue id; at wiring the fixtures are deleted | FIX-2153 | Each lab's wiring PR; the closure |
-| ER-6 | A settled notice reaches a filer's running request once: taken before its next model call, or by the deferred notice when no model call took it, never both, on FIX-2078's one ending path with a durable taken mark. Only a claimless conversation request or the filer task's claim holder takes it, never a `receive`; a `getTask` wait resumes instead ([D2](#d2)) | FIX-2159 | FIX-2153's wiring; the closure's leg a |
-| ER-7 | A person opens and lists only their own conversations with one worker, through one optional criteria key on the workforce client; the default conversation is still where messages and routed tasks land ([D3](#d3)) | FIX-2158 | FIX-2153's wiring; the closure's legs a and c |
+| ER-5 | Until wiring, a lab reads and writes through one adapter whose functions each name the package call they stand for, by post-refactor names ([D4](#d4)); a fixture standing in for a gap carries its issue id; at wiring the fixtures are deleted. FIX-2153's spec sets the adapter's layout (file names, one function per package call), and FIX-2154 copies the layout, not the code | FIX-2153 | Each lab's wiring PR; the closure |
+| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in; the mechanism is FIX-2159's spec | FIX-2159 | FIX-2153's wiring; the closure's leg a |
+| ER-7 | A lab session is an ordinary session of the worker on its flow; a person lists only their own, through the workforce client; the derived session stays the default conversation, where messages and routed tasks land ([D3](#d3)) | FIX-2158 | FIX-2153's wiring; the closure's legs a and c |
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
-| The workforce client (`workforce/src/workers/client.ts`, `derive-session-id.ts`) | FIX-2158 adds the conversation key and the list call; FIX-2153 and FIX-2157 call them through their adapters |
+| The workforce client (`workforce/src/workers/client.ts`) | FIX-2158 adds the list of a person's sessions of one worker; FIX-2153 and FIX-2157 call it through their adapters |
 | The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the context the generator re-reads before each model call (`orchestration/src/skills/steer-context.ts`) | FIX-2159 adds the take and its mark; FIX-2153 shows the result in the main thread |
 | Messages (`workforce/src/messages/`, the user-scoped `workerMessagesCollection`) | FIX-2070 owns the rename to `sendMessage` and `receive`, where a message lands, and the row it ships (call ids, `{ task }` addresses). FIX-2154 is blocked by FIX-2070 and keys its worker-talk view to that row; a pair filter is UI, and a gap is filed only if paging by pair needs a server index |
 | Routed tasks, task statuses and the hold on questions (`workforce/src/coordinator/`, FIX-2058's hold and `waitForUser`) | FIX-2083 and FIX-2058 own them. FIX-2157's status board reads them and adds no status of its own; a column the statuses can't fill is a gap |
@@ -156,11 +157,15 @@ Checked against `main` at d5ecdb72, on [agent-mailbox#46](https://github.com/fix
    conversation's `listTasks`, one board per conversation. A filing naming the worker itself is a
    plan row the drain waits on (FIX-2076 D1, FIX-2082 D2), so a background copy of the main worker
    is a second hired worker on the same flow: configuration, not a gap.
-2. **More conversations with one worker are not workstreams.** They are one optional criteria key,
-   and an amendment to the concept ([D3](#d3)).
+2. **More sessions with one worker are not workstreams**, and need no new key: they are ordinary
+   sessions of the worker ([D3](#d3), corrected after the first answer).
 3. **A result in a running turn** keeps rules 5 and 6 and adds a destination to rule 7, under the
    conditions in [D2](#d2).
 4. **Worker talk is a view, not a session.** FIX-1989 D1 already rejected a session per pair. The
    read exists: `workerMessagesCollection` is user-scoped with a client read, and its rows carry
    from, to, exchange and sessions. FIX-2154 is blocked by FIX-2070 and keys its view to the row
    FIX-2070 ships.
+5. **Session-to-session messaging** (proposed in the corrected answer): an optional target session
+   on a message, so one session of a worker can message another. No script in this epic needs it,
+   and rule 21 says a message never addresses a raw session, so it is filed for the owner to place
+   ([FIX-2160](https://linear.app/fixpoint-labs/issue/FIX-2160)), not a child here under [D1](#d1).

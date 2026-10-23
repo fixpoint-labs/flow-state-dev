@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 450" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. Composed in by each lab: the Claude Code-style lab's three panes, its main manager worker with delegates, its skills and a few small flows, and a threads mode where a coordinator hands out all work and the right pane is a status board; the Grok Bot-style lab's list of workers with one long conversation each, who may message whom, memory and a few small flows. In the box, from the packages, for both labs: workers, tasks, messages and sessions, plus two entries this epic's gaps add: more conversations with one worker, and a result taken before the next model call. Not built, below a fence: file diffs, permissions, a harness picker, landing copy, anything beyond messaging and session management, a new kind of worker or role, or code shared between labs.">
+     aria-label="What's in the box. Composed in by each lab: the Claude Code-style lab's three panes, its main manager worker with delegates, its skills and a few small flows, and a threads mode where a coordinator hands out all work and the right pane is a status board; the Grok Bot-style lab's list of workers with one long conversation each, who may message whom, memory and a few small flows. In the box, from the packages, for both labs: workers, tasks, messages and sessions, plus two entries this epic's gaps add: a list of a person's sessions of one worker, and a result taken before the next model call. Not built, below a fence: file diffs, permissions, a harness picker, landing copy, anything beyond messaging and session management, a new kind of worker or role, or code shared between labs.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -59,7 +59,7 @@
     <text class="t-s" x="710" y="244">conversations &#183; streams</text>
     <text class="t-s" x="710" y="260">the theme &#183; registry parts</text>
     <rect class="repl" x="32" y="292" width="876" height="30" rx="4"/>
-    <text class="t-s" x="44" y="311">ADDED BY THIS EPIC'S GAPS ADDED BY THIS EPIC'S GAPS &#183; open and list a person's sessions of one worker &#183; a result taken before the next model call#183; more conversations with one worker, FIX-2158 ADDED BY THIS EPIC'S GAPS &#183; open and list a person's sessions of one worker &#183; a result taken before the next model call#183; a result taken before the next model call, FIX-2159</text>
+    <text class="t-s" x="44" y="311">ADDED BY THIS EPIC'S GAPS ADDED BY THIS EPIC'S GAPS &#183; open and list a person's sessions of one worker &#183; a result taken before the next model call#183; a person's sessions of one worker listed, FIX-2158 ADDED BY THIS EPIC'S GAPS &#183; open and list a person's sessions of one worker &#183; a result taken before the next model call#183; a result taken before the next model call, FIX-2159</text>
   </g>
 
   <g id="not-built">
