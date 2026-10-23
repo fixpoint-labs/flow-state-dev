@@ -771,8 +771,8 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
  * @param requireFrom The one status this verb may run from, when the verb owns a
- *   single edge rather than every legal path to its target. Two verbs do:
- *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
+ *   single edge rather than every legal path to its target. One verb does:
+ *   `unpark` (`parked → pending`, FIX-1244).
  *   The status table cannot express this — it maps status to status, not verb
  *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
  *   fence `unpark` would re-queue a row a worker is holding.

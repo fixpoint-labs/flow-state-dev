@@ -59,7 +59,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
+the re-entries that do not spend the budget (`release`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
 rather than parsing the error string.
