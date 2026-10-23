@@ -8,9 +8,9 @@
 |---|---|---|
 | **opens a new session in the Claude Code-style lab and picks a project** | Can't: only the project coordinator's session can carry a project, so the lab would fall back to its own checkout | The screen creates the session and sets its project with one client call. Its coding tasks run in that project's checkout |
 | **talks to a Grok Bot-style worker and hits the first job that needs files** | The worker's one conversation can never carry a project: it exists before any pick, and a session's project is fixed at create | Picks a project on the screen. The same call stores it on that worker's conversation, and the job filed again runs there |
-| **asks either one for a code change** | n/a | The task carries `filingProjectId`, so the coding worker runs in the same project through `projectWorkspace()`, as today |
+| **asks either one for a code change** | n/a | The board stamps the conversation's project on the task row when it is filed, and the coding worker runs there through `projectWorkspace()`: in a task session (`filingProjectId`, from the stamp) or in a delegate's ongoing session (from the row it holds) |
 | **picks a project they can't work in** | n/a | Is refused, and nothing is stored. Another user's private project or another org's is "not found"; a shared one they read but aren't a member of is `not-a-member` |
-| **moves a long conversation to another repo** | n/a | Sets a different project. New tasks run there; tasks already filed keep the one they were filed in |
+| **moves a long conversation to another repo** | n/a | Sets a different project. New tasks run there; tasks already filed keep the one they were filed in, even one still waiting on the board for a delegate |
 
 The project coordinator doesn't change: one session per user per project, linked at create.
 
@@ -45,10 +45,10 @@ The check reads the call's answer and the run's project answer, never a stored k
 | How we verify | |
 |---|---|
 | **Goal check** | Model-free, so no `goals/` script: a `packages/workforce` CI test on the real engine and HTTP router, nothing mocked. Verdict in the implementation PR |
-| **Signal** | `default`: Alice ensures `lead`'s conversation, talks once, then sets it to `shared/apollo` through the client; a task it files reaches the delegate's task session with `filingProjectId` apollo, and `runProjectOf` there answers apollo with owner Alice. `new-session`: a session of `main` created at a random id and set the same way answers the same. `change`: lead is set to `shared/beta`; the earlier task still answers apollo, a new one beta. `not-a-member`: Carol, who reads apollo, is refused and stores nothing; Bob's private project is not found. `not-seeded`: a create that seeds the field is refused 400. `not-these`: setting it on the project coordinator's session, a task session or a workstream lead's session is refused. `messages`: a message to `lead` still lands in its default conversation |
+| **Signal** | `default`: Alice ensures `lead`'s conversation, talks once, then sets it to `shared/apollo` through the client; a task it files reaches the delegate's task session with `filingProjectId` apollo, and `runProjectOf` there answers apollo with owner Alice. `new-session`: a session of `main` created at a random id and set the same way answers the same. `change`: lead is set to `shared/beta`; the earlier task still answers apollo, a new one beta. `waiting`: a task filed under apollo with no assignee, assigned only after the change to beta, still answers apollo. `ongoing`: a task routed to a delegate whose session is ongoing (no task session) answers apollo from the row it holds, not `no-project`. `not-a-member`: Carol, who reads apollo, is refused and stores nothing; Bob's private project is not found. `not-seeded`: a create that seeds the field is refused 400. `not-these`: setting it on the project coordinator's session, a task session or a workstream lead's session is refused. `messages`: a message to `lead` still lands in its default conversation |
 | **Input** | Shared apollo and beta with Alice a member and Carol not, Bob's private project, a workstream of Alice's |
 | **Anti-game** | Assert on the client's answer and `runProjectOf`'s answer, never on state written by hand |
-| **Control that must fail** | The field stored but not read by `filingProjectOf` fails `default` (`no-project`). The membership check removed fails `not-a-member`. The PR shows both FAILs before the PASS |
+| **Control that must fail** | The field stored but not read by `filingProjectOf` fails `default` (`no-project`). The hand-over reading the conversation's current project instead of the row's stamp fails `waiting` (beta). The membership check removed fails `not-a-member`. The PR shows each FAIL before the PASS |
 
 ## What changes
 
@@ -66,7 +66,8 @@ flowchart LR
 ```
 
 One new session field, written only by one workforce action, and read where a session's project
-is already read.
+is already read; and one server-written stamp on each task row, so a task keeps the project it was
+filed in.
 
 ```diff
   const workforce = createWorkforceClient({ userId, baseUrl, fetcher })
@@ -90,16 +91,24 @@ the conversation's own project as the second place `projectWorkspace` looks, and
 flowchart LR
   C["setWorkProject"] --> W["the action · in the conversation · member check"]
   W --> S["workProjectId on the session"]
-  S --> B["its board files a task · filingProjectId"]
-  B --> T["the delegate's task session"]
-  T --> R["runProjectOf · path 2"]
+  S --> B["its board files a task · the row stamped with the project"]
+  B -->|"hand-over · filingProjectId from the stamp"| T["the delegate's task session"]
+  B -->|"ongoing delegate · the held row's stamp"| O["the delegate's ongoing session"]
+  T --> R["runProjectOf"]
+  O --> R
   S --> R
   R --> K["the project's checkout, or its files"]
 ```
 
 `filingProjectOf` already gives a session's project to its board and its runs (`projectId`, else
-`filingProjectId`); it reads the new field between the two. The hand-over, `runProjectOf`'s order
-and its refusals stay as they are.
+`filingProjectId`); it reads the new field between the two. Two smaller changes make a filed task
+keep its project. The board stamps `filingProjectOf` on the row when the task is filed, a
+server-written marker beside `filedAtHop` that `callerMetadata` strips from a caller's metadata, and
+the hand-over copies `filingProjectId` from that stamp rather than from the conversation as it is
+at hand-over. A task can wait on the board, unassigned or held, past a change. And `runProjectOf`'s
+third step, the held row, reads the stamp before `input.project`, so a task routed to a delegate's
+ongoing session (which carries no `filingProjectId`) runs in the project too. Its refusals stay as
+they are.
 
 ## What stays as it is
 
@@ -124,11 +133,11 @@ and its refusals stay as they are.
 
 | The debt | |
 |---|---|
-| **Adds** | One session field (`workProjectId`), one action every worker flow declares, one client call. Permanent by design: it is the package's answer to where a person's conversation works |
+| **Adds** | One session field (`workProjectId`), one action every worker flow declares, one client call, and one row stamp the hand-over and the run read. Permanent by design: it is the package's answer to where a person's conversation works |
 | **Removes** | Nothing |
 | **Leaves** | The error reporter attributes a failure to a session's `projectId` only, so a lab session's failure carries no project. Not needed by any script; noted for its owner |
 
-**Net: up, by one field, one action and one call.** Each lab would otherwise keep the project in
+**Net: up, by one field, one action, one call and one row stamp.** Each lab would otherwise keep the project in
 its own state, which ER-8 forbids.
 
 ## Sign off
@@ -137,7 +146,7 @@ its own state, which ER-8 forbids.
 with a worker, the default one included, set from the screen, checked, and its tasks run there.
 If wrong: FIX-2153, FIX-2157 and FIX-2154's step 5 can't pick a directory.
 
-**[The debt](#whats-already-here-and-the-debt): up, by one field, one action and one call.**
+**[The debt](#whats-already-here-and-the-debt): up, by one field, one action, one call and one row stamp.**
 Removes nothing. If wrong: a fourth project field a later reader has to learn.
 
 1. **[D1](DECISIONS.md#d1) · A person's conversation gets its project through one server-written
@@ -148,4 +157,4 @@ Removes nothing. If wrong: a fourth project field a later reader has to learn.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
-Feature · `workforce` (one session field, one action, one client call, one reader) + docs · small (4 source files, 1 test file, 2 doc surfaces) · 1 PR · epic FIX-2152
+Feature · `workforce` (one session field, one action, one client call, one reader, one row stamp) + docs · small (6 source files, 1 test file, 2 doc surfaces) · 1 PR · epic FIX-2152

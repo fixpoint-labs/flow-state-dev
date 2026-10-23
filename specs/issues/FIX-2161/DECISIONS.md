@@ -14,8 +14,10 @@ flowchart TD
   I["FIX-2161"] --> D1["D1 · one server-written field · set by a client call · member check"]
   D1 -.->|"rejected"| X1["projectId named at create · readonly, so never on a default conversation"]
   D1 -.->|"rejected"| X2["a workstream per session · lead, title, 25 a project"]
+  D1 -.->|"rejected"| X4["re-file with input.project · the pick isn't kept"]
   I --> D2["D2 · can change · tasks already filed keep theirs"]
   D2 -.->|"rejected"| X3["fixed once set · a weeks-long conversation stuck on one repo"]
+  D2 -.->|"rejected"| X5["stamp at hand-over · a waiting task takes the new project"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -46,8 +48,8 @@ no life's end.*
 | | |
 |---|---|
 | **Instead of** | Fixing the project once it is set, as Claude Code fixes a session's directory |
-| **Because** | A Grok Bot-style worker has one conversation for weeks and no *new session*, so a fixed project would pin it to one repo for good. A change is safe where it lands: a task's project is stamped at hand-over (`filingProjectId`, readonly on the task session), and a run reads it when it starts, so nothing in flight moves. The Claude Code-style lab simply doesn't offer the change |
-| **Locks in** | `setWorkProject` sets or replaces. It doesn't clear: a conversation that had a project keeps one |
+| **Because** | A Grok Bot-style worker has one conversation for weeks and no *new session*, so a fixed project would pin it to one repo for good. A change is safe where it lands: a task's project is stamped on its row when it is filed, the hand-over copies that stamp (`filingProjectId`, readonly on the task session), and a run reads it when it starts, so nothing filed moves, even a task still waiting for a delegate. The Claude Code-style lab simply doesn't offer the change |
+| **Locks in** | `setWorkProject` sets or replaces. It doesn't clear: a conversation that had a project keeps one. The board stamps the filer's project on each row at filing, and the hand-over and a held row's run read that stamp, not the conversation's project now |
 
 **What would change my mind:** people losing track of which repo a long conversation is in. Then
 the conversation records each change as a line the person sees.
@@ -85,6 +87,8 @@ It comes down to the one long conversation: fixed once, it is pinned to one repo
 | A workstream per lab session | D1: a lead, a title, members only, listed as project work, 25 per project |
 | The project on the worker's row | Standard workers are shared by every user; the field must be per user per conversation |
 | The lab keeps the project and passes it as each task's `input.project` | Lab state as config, which ER-8 forbids, and the conversation's own runs would have none |
+| The default conversation's project carried only by re-filing the task with `input.project` (an existing path) | The pick isn't kept on the server: the next task, or the conversation's own run, forgets it, which is FIX-2154's `pick-not-kept` control. `input.project` stays as the fallback it is today |
+| The hand-over stamping the conversation's project as it is at hand-over (today's code) | A task filed under apollo and assigned after a change to beta would run in beta, against D2 |
 
 ## Open / Settled
 
@@ -106,7 +110,14 @@ every run. No POC: the goal check runs the real path.
   get one; the approach moved to one server-written field set by a client call, which leaves
   `projectId`, the seed and FIX-2158's list untouched. Membership replaced readability, per the
   updated directory rule.
+- **Review, filed tasks** — Codex found that a task filed under one project but handed over after
+  a change would take the new one, and that a task routed to a delegate's ongoing session carries no
+  project at all. Both close with one stamp on the row at filing, read by the hand-over and by
+  `runProjectOf`'s held-row step; `waiting` and `ongoing` joined the goal check.
 
 ## Notes from review
 
-None yet.
+- Wording nits from the first draft (Cursor) were on text the re-draft replaced. The "path 2" label
+  in the run diagram is gone; the diagram now names each route.
+- The sign-off repeats each decision's one line by design: it is what the reader signs, and the
+  reasoning stays here.
