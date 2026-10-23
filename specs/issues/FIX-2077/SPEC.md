@@ -17,20 +17,21 @@
 
 **A dispatched task is settled once, by the claim gate, only when its work is over: its request
 and all that request's background work have ended, no [filed work is still holding
-it](DECISIONS.md#filed-work-holding), and nothing is queued for it. A task that waits is never run twice.**
+it](DECISIONS.md#filed-work-holding). A task that waits is never run twice. A message queued to its
+session runs after it settles, outside it (amendment 4).**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | *"The result they hear about is complete, and a task waiting on other work stays running instead of being run twice"* (the issue). The epic's ER-2: one predicate for done, which every wait wakes on |
 | **Smaller, and rejected** | "The gate waits for background work." Splits still park and settle by hand, a waiting task still runs twice, and FIX-2082 has no single ending to wake on |
 | **Bigger, and not this issue's** | A task shown as *waiting on a person* in the Inbox (FIX-2058). An ending that reaches its filer when nothing touches the board (FIX-2078). Waits inside a task (FIX-2082) |
-| **Not done if** | The gate settles a row before rule 6 holds · the split park or its settle entry still exists · a waiting task runs again after a lapse · the check passes only with no background work · a queued message's answer becomes the output |
+| **Not done if** | The gate settles a row before rule 6 holds · the split park or its settle entry still exists · a waiting task runs again after a lapse · the check passes only with no background work · a queued message delays the settle or becomes the output |
 
 ```mermaid
 flowchart LR
   A["a real engine · durable store · a session board"] --> L1["leg a · background work, and work an end hook starts"]
   A --> L2["leg b · two pieces · the last ends just after a check, or during a request"]
-  A --> L3["leg c · a message queued mid-task"]
+  A --> L3["leg c · a message queued mid-task, answered after the settle"]
   A --> L4["leg d · a wait and a person's stop · a lapse · the resume"]
   L1 --> R["rows read through the collection · notices the filer heard"]
   L2 --> R
@@ -53,7 +54,7 @@ settle point, and it must fail.
 
 ## What changes
 
-![Two timelines of one task. Today the gate settles at the entry's return, before background work and a queued message end, and a waiting task's lease lapses and it runs again. After, the gate checks rule 6 at the end of each request for the task and settles once, after all of them; a wait keeps the claim with no lease](figures/what-changes.svg)
+![Two timelines of one task. Today the gate settles at the entry's return, before background work ends, and a waiting task's lease lapses and it runs again. After, the gate checks rule 6 at the end of each request for the task and settles once, after its background work; a queued message runs after that, outside the task; a wait keeps the claim with no lease](figures/what-changes.svg)
 
 The settle moves from the entry's last step to the end of the request. It moves again whenever
 another request for the task ends.
@@ -72,7 +73,7 @@ Nothing else is written differently. A flow author's own `onFinished` keeps runn
 **Docs:** update *Workforce → Delegating work → Splitting a task* (the task stays running; its
 output is the latest `reportProgress` checkpoint, else the worker's last answer; a failed piece
 does not fail it alone). Update *Orchestration →
-Task board → Assignees that dispatch* (the run settles after background work and queued messages;
+Task board → Assignees that dispatch* (the run settles after background work, and a queued message runs after it;
 a suspended run keeps its claim). Update the orchestration and workforce READMEs where they say
 the same. No new page.
 
@@ -80,10 +81,10 @@ the same. No new page.
 
 ```mermaid
 flowchart LR
-  W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
+  W["a request for the task · work, onTaskSettled, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
   E --> G["claim gate · the one rule-6 check"]
   G -->|"done"| S["settle the row once"]
-  G -->|"filed work still holding it, or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
+  G -->|"filed work still holding it"| H["record waitingOn · drop the lease · the next request re-checks"]
   W -->|"suspends"| K["record waitingOn · keep the claim · no lease"]
 ```
 

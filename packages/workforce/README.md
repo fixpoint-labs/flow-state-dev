@@ -1943,8 +1943,9 @@ ending wakes a turn in the task session, which decides what it means: a failed p
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
 throws fails the attempt. Read a piece's result from its own row (`listTasks({ filedByTask })`,
-`getTask`). A message to the worker in its task session while the task runs holds it open too,
-and its answer is never the task's output. Run a workforce that splits on a host with durable
+`getTask`). A message to the worker in its task session while the task runs doesn't hold it open:
+it is answered after the task settles, outside the task, and an error in that answer doesn't fail
+the task. To change open work, steer it with `updateTask`'s `message`. Run a workforce that splits on a host with durable
 execution: if the server stops between a piece's ending and its notice reaching the task session,
 a durable host delivers the notice when it starts again; without durable execution the task stays
 `in_progress` with nothing to wake it. Splitting goes up to

@@ -12,6 +12,7 @@ import {
   withRetiredShapes,
 } from "../../src/tasks/schema/retired-shapes";
 import { persistedTaskStatusSchema } from "../../src/tasks/schema/task-status";
+import { taskSchema } from "../../src/tasks/schema/task";
 
 const row = { id: "t", goal: "t", attempts: 0, createdAt: 1, updatedAt: 1 };
 
@@ -20,7 +21,7 @@ describe("the retired-shape map", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "parked-for-turn", "parked-split", "post", "recorded", "reopened"]);
+    expect(on.sort()).toEqual(["blocked", "parked-for-turn", "parked-split", "post", "queued", "recorded", "reopened"]);
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -126,5 +127,23 @@ describe("the retired-shape map", () => {
     expect(read).not.toHaveProperty("parkedForTurn");
     expect(read).not.toHaveProperty("leaseUntil");
     expect(withRetiredShapes(read)).toBe(read);
+  });
+
+  it("queued: a task held open for a message queued to its session reads as waiting on nothing, its lease kept", () => {
+    // Stored while a queued message held a task open: running, its answer
+    // kept, a lease one span out. No message holds a task now, so nothing
+    // will check it; the lease lapses and the reclaim takes it back, as for a
+    // message that never ran.
+    const held = { ...row, status: "in_progress", attempts: 1, waitingOn: "queued", leaseUntil: 5, output: "the answer" };
+    const read = withRetiredShapes(held) as Record<string, unknown>;
+    expect(read).toMatchObject({ status: "in_progress", attempts: 1, leaseUntil: 5, output: "the answer" });
+    expect(read).not.toHaveProperty("waitingOn");
+    expect(withRetiredShapes(read)).toBe(read);
+  });
+
+  it("queued: the parse path reads the wait as nothing too, rather than failing the row", () => {
+    const parsed = taskSchema.parse({ ...row, status: "in_progress", waitingOn: "queued" });
+    expect(parsed.waitingOn ?? undefined).toBeUndefined();
+    expect(taskSchema.parse(parsed).waitingOn ?? undefined).toBeUndefined();
   });
 });

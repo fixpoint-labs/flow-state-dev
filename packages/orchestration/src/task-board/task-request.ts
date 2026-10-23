@@ -3,18 +3,20 @@
  * the task at that request's end (FIX-2077, rule 6).
  *
  * **Done** means: a request for the task ended with a result, its background
- * work ended too, no steer is untaken by its attempt, no filed work still
- * holds the task, and nothing is queued for it. The claim gate admits the
- * task's own entry (`work`, and its resume); {@link taskRequestAdmission} admits the other requests for it a package
- * runs in the task's session (a notice of a piece's ending, a queued
- * message). Every one of them ends at the same check, which runs after the
+ * work ended too, no steer is untaken by its attempt, and no filed work still
+ * holds the task. The claim gate admits the task's own entry (`work`, and its
+ * resume); {@link taskRequestAdmission} admits the other requests for it a
+ * package runs in the task's session while it waits (a notice of a piece's
+ * ending, a steer's turn). A message to the task's session is none of them:
+ * it is conversation there, and runs after the task settles. Every admitted
+ * request ends at the same check, which runs after the
  * engine's last drain through its request-end seam (`onRequestEnded`), on every
  * way the request can end:
  *
  * - **completed** — the check. Done: the row completes with the latest
  *   checkpoint its worker reported, else the last answer a request that
- *   counts gave (the entry's, or a woken turn's; a message's never). Not done:
- *   the row records what holds it (`waitingOn`, `"filed"` or `"queued"`),
+ *   counts gave (the entry's, or a woken turn's). Not done: the row records
+ *   what holds it (`waitingOn: "filed"`),
  *   keeps that answer as its output, and drops its lease, so no reclaim takes
  *   it back. The next request admitted for it checks again.
  * - **a steer no request of its attempt took** (FIX-2086 D2): one more turn
@@ -69,11 +71,6 @@ export interface TaskEndRules {
    */
   filedWorkHolds?: (ctx: BlockContext, task: Task, ledger: TaskCollectionRef) => Promise<boolean>;
   /**
-   * Whether work is queued for the task that has not run: a durable record a
-   * later request will act on, never a process's own queue. Default: none.
-   */
-  workQueued?: (ctx: BlockContext, task: Task) => Promise<boolean>;
-  /**
    * The internal entry, on the task session's own flow, that runs one more
    * turn for a steer no request of the attempt took (FIX-2086 D2). The check
    * starts it in the running session, with a wake owed for it first, and the
@@ -96,7 +93,7 @@ interface Admitted {
   readonly ref: TaskCollectionRef;
   readonly ticket: TaskClaimTicket;
   readonly renewal: LeaseRenewalDriver | undefined;
-  /** Whether this request's answer is the task's result: the entry's and a woken turn's are, a message's isn't. */
+  /** Whether this request's answer is the task's result: the entry's and a woken turn's are, a check's isn't. */
   readonly answerCounts: boolean;
   /** What the row waited on when this request was admitted. */
   readonly prior: TaskWaitingOn | undefined;
@@ -107,7 +104,7 @@ interface Admitted {
   readonly inline: boolean;
   /**
    * The task's own request (its entry, or that entry's resume), rather than a
-   * later one admitted for it while it waits (a notice, a message).
+   * later one admitted for it while it waits (a notice, a steer's turn).
    */
   readonly own: boolean;
 }
@@ -115,8 +112,8 @@ interface Admitted {
 /**
  * The requests admitted in this process, by request id. Each leaves at its
  * request's end. Requests for the same task are serialized by admission, not
- * by this map: a task session's notices and messages run one at a time on its
- * line, and the task's own request is told from later ones by `own`.
+ * by this map: a task session's notices run one at a time on its line, and
+ * the task's own request is told from later ones by `own`.
  */
 const admitted = new Map<string, Admitted>();
 
@@ -147,7 +144,7 @@ function holds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | unde
 
 /** A task's request ended with a result that settles it, or that the next request picks up. */
 function answeredBefore(prior: TaskWaitingOn | undefined): boolean {
-  return prior === "filed" || prior === "queued" || prior === "steer";
+  return prior === "filed" || prior === "steer";
 }
 
 /**
@@ -262,7 +259,7 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   const row = ref.get(ticket.taskId);
   // Settled, retried, parked for review or taken back meanwhile: not this request's to write.
   if (!holds(ref, ticket, row)) return undefined;
-  // A later request (a notice, a message) while the task's own request is
+  // A later request (a notice, a steer's turn) while the task's own request is
   // suspended settles nothing and fails nothing: the task still waits on that
   // request, and keeps an answer this one gave that counts.
   if (!record.own && waitsOnItsOwnRequest(record.prior)) return waitOn(record, row, record.prior!, record.answer);
@@ -379,27 +376,20 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   return checkAnswered(record, fresh, true);
 }
 
-/** What else holds the task open: work it filed, then work queued for it, or nothing. */
-async function holdingWork(record: Admitted, row: Task): Promise<"filed" | "queued" | undefined> {
+/** What else holds the task open: work it filed, or nothing. */
+async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undefined> {
   const { ref, ctx, rules } = record;
   if (await (rules.filedWorkHolds ?? defaultFiledWorkHolds)(ctx, row, ref)) return "filed";
-  if (await (rules.workQueued ?? noWorkQueued)(ctx, row)) return "queued";
   return undefined;
 }
 
 /**
- * Record what the task waits on, and keep `answer` as its output while it
- * waits. A ref without `setWaitingOn` keeps its lease instead.
- *
- * Work queued for the task keeps the claim's lease, one span from now: it is
- * about to run, and its request renews the lease once admitted. If it never
- * runs (its dispatch lost to a restart), the lapse takes the task back, as for
- * a worker that died, rather than leave it waiting with nothing to wake it.
+ * Record what the task waits on, with no lease, and keep `answer` as its
+ * output while it waits. A ref without `setWaitingOn` keeps its lease instead.
  */
 async function waitOn(record: Admitted, row: Task, on: TaskWaitingOn, answer: { output: unknown } | undefined): Promise<undefined> {
   if (record.ref.setWaitingOn === undefined) return undefined;
-  const lease = on === "queued" ? { leaseUntil: record.ref.now() + (row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS) } : {};
-  await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...lease, ...(answer !== undefined ? { answer } : {}) });
+  await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...(answer !== undefined ? { answer } : {}) });
   return undefined;
 }
 
@@ -454,8 +444,6 @@ async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
 const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkHolds"]> = async (_ctx, task, ledger) =>
   filedWorkHolds(ledger, task.id);
 
-const noWorkQueued: NonNullable<TaskEndRules["workQueued"]> = async () => false;
-
 /** What {@link taskRequestAdmission} is built from. */
 export interface TaskRequestAdmissionOptions {
   /** Names the block. */
@@ -466,7 +454,7 @@ export interface TaskRequestAdmissionOptions {
    * one whose run link names the running session. `undefined` admits nothing.
    */
   readonly find: (ctx: BlockContext) => Promise<{ ref: TaskCollectionRef; row: Task } | undefined>;
-  /** Whether this entry's answer can be the task's result (a woken turn's can; a message's can't). */
+  /** Whether this entry's answer can be the task's result (a woken turn's can; the check entry's, which runs no turn, can't). */
   readonly answerCounts: boolean;
   /** What else holds the task open, as on the gate. */
   readonly endRules?: TaskEndRules;

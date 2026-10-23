@@ -1176,8 +1176,7 @@ export function requireClaimTicket(
 /**
  * The patch `setWaitingOn` writes (FIX-2077): set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
- * given (the gate gives one for `"queued"`); or cleared, with the lease the
- * admission starts.
+ * given; or cleared, with the lease the admission starts.
  *
  * @throws when clearing without a finite `leaseUntil`: a programming error.
  */
@@ -1330,8 +1329,8 @@ export function applyClaimToTask<TInput, TOutput>(
     // attempt's run onto this one.
     run: undefined,
     // A claim starts an attempt that waits on nothing yet (FIX-2077): a row
-    // taken back from a lapsed wait (`"queued"`, the one that keeps a lease)
-    // must not carry it onto the new attempt.
+    // taken back from a lapsed lease must not carry a wait onto the new
+    // attempt.
     waitingOn: undefined,
     // The attempt's brief carries every steer (FIX-2086 D1), so the claim
     // marks them all taken by it; one that arrives later is untaken until a

@@ -80,8 +80,8 @@ task finishes it is refused ([D3](DECISIONS.md#d3)):
 
 | Field | Means |
 | -- | -- |
-| `statusNote` | A one-line progress note for task views; any request holding the claim may set it, a queued `receive` included. It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
-| `output` | A checkpoint of the result so far, read by `getTask` as progress, cut to the read limit as `readTask` cuts output today; `listTasks` rows show `statusNote` only, never `output` (BP-042); any request holding the claim may set it while the task runs, a queued `receive` included. Wakes no waiter. The latest checkpoint is the task's output: the final result becomes the output only when `reportProgress` was never called with an `output`. A failed attempt or a reclaimed lease keeps it |
+| `statusNote` | A one-line progress note for task views; any request holding the claim may set it (a message holds none). It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
+| `output` | A checkpoint of the result so far, read by `getTask` as progress, cut to the read limit as `readTask` cuts output today; `listTasks` rows show `statusNote` only, never `output` (BP-042); any request holding the claim may set it while the task runs (a message holds none). Wakes no waiter. The latest checkpoint is the task's output: the final result becomes the output only when `reportProgress` was never called with an `output`. A failed attempt or a reclaimed lease keeps it |
 
 ```diff
   # WORKER.md of a coordinator

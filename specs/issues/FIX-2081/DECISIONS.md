@@ -169,8 +169,9 @@ Recorded for the implementer, not folded into the design.
   FIX-2083 replace it, amending the epic's call (e). D2 accepted: `delegates: all` follows the
   roster as it changes. D3 accepted, with two rules changed: (a) the latest `output` checkpoint is
   the output, and the final answer is only when none was made; (b) any request holding the claim
-  may checkpoint `output`, a queued `receive` included. FIX-2077's output line and its goal check's
-  leg c are amended to match in this PR.
+  may checkpoint `output`. FIX-2077's output line and its goal check's
+  leg c are amended to match in this PR. (A queued `receive` was named here too; FIX-2103 removed
+  it, since a message holds no claim.)
 - **Cross-spec audit** — the set's coherence audit aligned this spec with its siblings: the row
   `reportProgress` acts on, list rows without output, *before it starts* as never started, four
   field-table notes (inline plan rows, a plan row's hold, a cross-ledger reassign, a conversation
@@ -178,5 +179,7 @@ Recorded for the implementer, not folded into the design.
   a claimless self-filing refused, `filedByTask`, the self-step grant in `reach()`, the cancel's
   notice marker, the goals it rewrites, and FIX-2077's output line carried through the rest of its
   spec. FIX-2076 now lands before this issue, and this before FIX-2077. No change to D1-D3.
+- **Amendment, after merge** — FIX-2103 (owner's decision, Oct 22): a task settles when its turn ends, and a message queued to its busy session is conversation after it, holding no claim, so it can't call `reportProgress`. The two field-table
+  rows and the sign-off line drop "a queued `receive` included". No change to D1-D3.
 
 Open: none.

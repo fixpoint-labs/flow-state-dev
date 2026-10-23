@@ -473,21 +473,21 @@ The drain dispatches a row once it has claimed it, because the drain decides whe
 The dispatch run settles its task once, when all of the task's work is over. Returning from the entry isn't enough. The task completes only when:
 
 - the run's request has ended, along with any background work it started (`.sideChain()`) and any your flow's `onFinished` hook started;
-- every task it filed has ended, and the run's session has heard each of those endings;
-- nothing is queued for it.
+- every task it filed has ended, and the run's session has heard each of those endings.
 
 Until then the task stays `in_progress`, and its row's `waitingOn` says what it's waiting for:
 
 | `waitingOn` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
-| `"queued"` | work queued for it that hasn't run yet, such as a message to its Workforce worker | kept |
 | `"person"` | a stop that asks a person: `ctx.suspend()` with `human_approval` or `human_input` | none |
 | `"wait"` | any other stop, such as an external event | none |
 
-A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart. A task waiting on `"queued"` keeps its lease, two minutes by default. If the queued work never runs, the lease runs out and the board takes the task back, as it would from a worker that died.
+A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
+
+Anything else waiting to run in that session, such as a message another worker sent it, doesn't hold the task. It runs after the task is done, outside the task: it can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
 
 Background work counts as part of the request. If a `.sideChain()` step throws in any request working the task, the attempt fails just as if the request had thrown. That covers steps your `onCompleted` or `onFinished` hooks start, and a step a plain `.waitForSideChain()` already waited on. The task runs again while it has attempts left. Otherwise it fails, and its error names the step, as in `Background work "notify" failed: ...`. The request itself still reports `completed`, so read the task, not the request, to see how the work went.
 
@@ -507,7 +507,7 @@ Before it closes the stores, stopping the host waits for a request working a dis
 
 #### Requests that work on a waiting task
 
-On a [Workforce](../workforce/delegating-work.md#splitting-a-task) board, the notice of a piece's ending and a message to the worker are these later requests, and you don't wire anything. On a flow of your own, start each such entry with `taskRequestAdmission`, and tap `noteTaskAnswer` after the step whose answer can become the task's output:
+On a [Workforce](../workforce/delegating-work.md#splitting-a-task) board, the notice of a piece's ending is one of these later requests, and you don't wire anything. On a flow of your own, start each such entry with `taskRequestAdmission`, and tap `noteTaskAnswer` after the step whose answer can become the task's output:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
@@ -537,9 +537,9 @@ const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettle
   .tap(noteTaskAnswer);
 ```
 
-`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
+`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
 
-By default, the tasks a task filed hold it, and nothing counts as queued. To change either, pass `endRules: { filedWorkHolds, workQueued }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. Each is an async predicate over the context and the task row; `workQueued` should read a durable record, so a restart doesn't lose what it reports.
+By default, the tasks a task filed hold it. To change that, pass `endRules: { filedWorkHolds }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkHolds` is an async predicate over the context, the task row and its ledger.
 
 ### Which session a task runs in
 

@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping the lease and renewing it up to the wait's deadline |
 | **Because** | A lease means "a live worker holds this". A waiting task has no live worker: its request is stored, and after a restart nothing renews anything. So the row records what it waits on (`waitingOn`) and drops its lease, and the reclaim, which only takes rows whose lease has run out, leaves it alone. A wait on filed tasks has no deadline to renew to at all |
-| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with [filed work still holding it](#filed-work-holding), or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes, or a queued message whose request a restart dropped) stays running until its wait's own deadline or FIX-2078's sweeper pays it, so this ships with or after FIX-2078 |
+| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with [filed work still holding it](#filed-work-holding): both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes) stays running until its wait's own deadline or FIX-2078's sweeper pays it, so this ships with or after FIX-2078 |
 
 ![D1: how a waiting task keeps its claim. No lease, the row records what it waits on, chosen, beside renewing the lease to the wait's deadline. Decides it: a server restart while the task waits. The price: a lost wait has no lease backstop](figures/d1-claim-without-lease.svg)
 
@@ -39,7 +39,7 @@ to move it off a worker pool being retired. Then a row with `waitingOn` keeps a 
 | | |
 |---|---|
 | **Instead of** | Keeping [FIX-1802](../FIX-1802/DECISIONS.md#d3)'s rule: the output is `{ answer, pieces }`, and a piece that failed for good fails the task unless the next turn files it again |
-| **Because** | Rule 6 is one rule for every task: done when a request for it ends with a result, no [filed work still holding it](#filed-work-holding) and nothing queued. A second rule for tasks that filed tasks is the second answer for done the epic's POC refuted. Every piece's ending, a failure included, already reaches the worker's turn ([rule 7](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)), so that turn decides what a failed piece means, and the retry marker goes |
+| **Because** | Rule 6 is one rule for every task: done when a request for it ends with a result and no [filed work still holding it](#filed-work-holding). A second rule for tasks that filed tasks is the second answer for done the epic's POC refuted. Every piece's ending, a failure included, already reaches the worker's turn ([rule 7](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)), so that turn decides what a failed piece means, and the retry marker goes |
 | **Locks in** | The output of a task that split is its latest `reportProgress` checkpoint, else its worker's last answer ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3)), and a failed piece fails the task only if the worker's turn throws. A worker that ignores a failed piece completes its task without saying so; the changeset says that. A filer that read `.pieces` reads the pieces' rows. In the repo only the split's own tests, its goal (`goals/workforce/split-to-roster/`), the workforce README and the *Delegating work* page read it, all rewritten here. Teams outside the repo rewrite at upgrade |
 
 ![D3: a split task ends as its worker's last request ends, chosen, beside keeping answer-and-pieces and the automatic failure rule. Decides it: one rule for done. The price: filers reading pieces rewrite](figures/d3-last-request.svg)
@@ -71,12 +71,10 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   `:2936`). The check runs after that second drain, on every terminal path, through an engine seam
   that framework packages register for a request. It is not a flow-author hook. An author's
   `onFinished`, and a throw from it, cannot skip it.
-- **"Queued" is durable, and Workforce answers it.** Rule 6 takes a "work queued for this task"
-  predicate, defaulting to none. Workforce's wiring supplies it from the message log: a message
-  row for the task's session not yet acted on, not the process's admission line. `orchestration`
-  does not read Workforce state. FIX-2070 caps how many keep a task open.
-- **Admitted for a task** (rule 2): `work`, `onTaskSettled` in the task's session, the message entry
-  for a message queued there, and a resume of any of them. Admission re-mints the claim from the
+- ~~**"Queued" is durable, and Workforce answers it.**~~ Removed by amendment 4: a message queued
+  for the task's session holds nothing, and runs after the task settles.
+- **Admitted for a task** (rule 2): `work`, `onTaskSettled` in the task's session, and a resume of
+  either. A message is never admitted (amendment 4). Admission re-mints the claim from the
   row (its run link names the session), restarts renewal and clears `waitingOn`.
 - **`waitingOn`.** A new nullable row field read with a `== null` guard (BP-030), naming what keeps
   the task open: a person, filed tasks, or another wait. A running row with `waitingOn` set has no lease;
@@ -93,7 +91,7 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   ([FIX-2081's D3 (`reportProgress`)](../FIX-2081/DECISIONS.md#d3), not this spec's D3). Only when
   it never reported one is the output the last result of a `work` or `onTaskSettled` request; a
   message's answer never is. While the task is started and not finished, any request holding its
-  claim may checkpoint `output` and set a `statusNote`, a queued `receive` included. A terminal request that errors fails the attempt, keeping the checkpoint for the
+  claim may checkpoint `output` and set a `statusNote`; a message holds no claim (amendment 4). A terminal request that errors fails the attempt, keeping the checkpoint for the
   next. A notice landed as a line keeps the last answer.
 - **A task's pieces** are read through FIX-2081's tools: a filter by the filing task on
   `listTasks` (`filedByTask`) is FIX-2081's, since ER-5 makes its five tools the only task surface.
@@ -114,7 +112,7 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
 | Check in `onFinished`, and let work the end hooks start not count | The engine drains that work after `onFinished`, so a filer would hear "done" while it still writes. It narrows the goal instead of moving the check |
 | `orchestration` reads Workforce's message log | A dependency upward, from the lower package, to land one rule |
 | A new task status for "waiting" | Running is the concept's word for a waiting task. Statuses are FIX-2080's and FIX-2058's |
-| Read "queued" from the in-process admission line | Lost on restart and not seen by another process |
+| Read "queued" from the in-process admission line | Lost on restart and not seen by another process (and, since amendment 4, no queued message holds a task) |
 
 ## Settled
 
@@ -168,5 +166,11 @@ For the implementer, recorded verbatim, not baked into the design.
 - **Amendment, after merge (3)** — from the epic's cross-spec audit (F2), after the original
   review in [#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592): rule 6 counts
   [filed work still holding the parent](#filed-work-holding). No change to the approach.
+- **Amendment, after merge (4)** — FIX-2103 (owner's decision, Oct 22) reverses the queued-message
+  hold: a task settles when its turn ends, and a message queued to its busy session is
+  conversation after it, with no claim, no `reportProgress`, and no say in the attempt. "Queued"
+  leaves rule 6, `TaskEndRules` and `waitingOn`; leg c is inverted; a stored `waitingOn: "queued"`
+  reads as waiting on nothing. Steering stays the one way into open work (FIX-2086). No other
+  change to the approach.
 
 Open: none.

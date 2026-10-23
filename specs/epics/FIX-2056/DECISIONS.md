@@ -98,7 +98,7 @@ FIX-2081's own scope.
 | The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts, FIX-2080's cascade debt among them |
 | `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times, removes the `reportOwed` marker and keeps Shift Manager's error route on the ending path ([f](#f)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
 | The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
-| Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
+| Queued messages | No longer part of a task (FIX-2103): a message queued to an open task's session runs after it settles, as conversation. FIX-2070 makes the entry `receive` |
 | The filer on a task row (`tasks/schema/task.ts`) | FIX-2078 owns the server-written filer fields, session and flow, under rule 4 (a user's follow-up copies the original's). FIX-2082 and FIX-2086 read them; FIX-2081's filing-task link is its own |
 
 ## Decided in review, recorded so no child reopens them
@@ -153,6 +153,9 @@ FIX-2081's own scope.
 - **Round 2** — sources agree with D2; engine prerequisites named; (e), (f) opened.
 - **Amendment** — the owner answered (e): remove outright, no deprecation release; then (f): keep
   the error route; (a): one epic; (b): D1 kept.
+- **Amendment (FIX-2103)** — the owner reversed the queued-message hold: a task settles when its
+  turn ends, and a queued message is conversation after it. The *Queued messages* seam row and
+  POC S6's note follow.
 
 <a name="open"></a>
 ## Open
