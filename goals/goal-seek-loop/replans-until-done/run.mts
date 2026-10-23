@@ -244,24 +244,32 @@ interface Observation {
   error?: string;
 }
 
-async function runLoopOnce(attempt: number): Promise<Observation> {
-  const { loop } = buildLoop();
-
+async function drive(
+  id: string,
+  block: unknown,
+  inputSchema: z.ZodTypeAny,
+  input: unknown,
+  session: string,
+) {
   const flow = defineFlow({
-    kind: "gsl-goal",
-    actions: { run: { block: loop as never, inputSchema: z.unknown() } },
-  })({ id: "gsl-goal" });
-
-  const res = await runAction({
+    kind: id,
+    actions: { run: { block: block as never, inputSchema } },
+  })({ id });
+  return runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
-    input: {},
+    input,
     userId: "goal-user",
-    sessionId: goalSessionId(`gsl-${attempt}`),
+    sessionId: goalSessionId(session),
     stores: createInMemoryStores(),
     runtimeConfig: { modelResolver: createModelResolver(), logger: silentLogger } as never,
   });
+}
+
+async function runLoopOnce(attempt: number): Promise<Observation> {
+  const { loop } = buildLoop();
+  const res = await drive("gsl-goal", loop, z.unknown(), {}, `gsl-${attempt}`);
 
   if (res.error) return { termination: undefined, finalTaskCount: 0, error: res.error.message };
 
@@ -277,46 +285,16 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
   return { termination: readTermination(res.items), finalTaskCount: taskIds.size };
 }
 
-/**
- * Second arm (goal.md → Signal): drive the RE-EXPRESSED `planAndExecute` — the
- * shipped pattern that runs on `goalSeekLoop` — against a real model, and
- * confirm a multi-step plan completes and synthesizes.
- *
- * The primitive arm above proves the loop converges in isolation; this proves
- * the re-expression did not break the pattern built on it. Asserts the run
- * completed, that it actually went through the task-board substrate (the
- * `task-change` / `task-board-meta` components only that substrate emits), and
- * that a substantive answer came back.
- *
- * The pattern is built from its public subpath with the defaults a consumer
- * gets, plus `enableReplanning: true` so its LLM evaluator, the judge
- * `goalSeekLoop` gates on, is live. No app ships a plan-and-execute surface any
- * more (kitchen-sink's chat agent dropped its thinking style), so the pattern
- * runs directly through `runAction`, the way the primitive arm does.
- */
+/** Second arm. Replanning stays on: that evaluator is the judge the loop gates on. */
 async function runPlanAndExecuteArm(): Promise<string[]> {
   const pae = planAndExecute({
     name: "gsl-pae",
     model: MODEL,
     enableReplanning: true,
   });
-  const flow = defineFlow({
-    kind: "gsl-pae",
-    actions: { run: { block: pae as never, inputSchema: z.object({ goal: z.string() }) } },
-  })({ id: "gsl-pae" });
-
-  const res = await runAction({
-    orgId: DEFAULT_ORG_ID,
-    flow,
-    actionName: "run",
-    input: {
-      goal: `Write a short briefing on ${fx.subject} covering ${fx.coveredAspect} and ${fx.missingAspect}.`,
-    },
-    userId: "goal-user",
-    sessionId: goalSessionId("gsl-pae"),
-    stores: createInMemoryStores(),
-    runtimeConfig: { modelResolver: createModelResolver(), logger: silentLogger } as never,
-  });
+  const res = await drive("gsl-pae", pae, z.object({ goal: z.string() }), {
+    goal: `Write a short briefing on ${fx.subject} covering ${fx.coveredAspect} and ${fx.missingAspect}.`,
+  }, "gsl-pae");
 
   if (res.error) return [`plan-and-execute arm: run did not complete: ${res.error.message}`];
 
@@ -388,8 +366,6 @@ await runGoal(async (failures) => {
     }
 
     if (term.reason === "converged" && term.iterations >= 2 && last.finalTaskCount > SEEDED_TASK_COUNT) {
-      // The primitive converged. Now the second arm goal.md prescribes: the
-      // re-expressed planAndExecute built on this loop still completes.
       const paeFailures = await runPlanAndExecuteArm();
       if (paeFailures.length > 0) return { failures: paeFailures, evidence: "" };
       return {
