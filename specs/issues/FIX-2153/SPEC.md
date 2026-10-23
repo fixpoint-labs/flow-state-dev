@@ -2,15 +2,16 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **opens the app** | Has no app that works the way Claude Code does. Shift Manager is the only one, and it works in a new way | Sees Claude Code's layout in the Flow State theme: sessions on the left, the main thread in the center, background tasks on the right |
 | **asks the main session for something big** | n/a | Watches it do part of the work itself and start background tasks, each a row in the right pane with its status and its last progress note |
 | **is mid-turn when a background task finishes** | The result waits until the main session's reply ends | Sees the result as a card in the main thread while the turn is still running, and the rest of the turn uses it |
+| **is idle when a background task finishes** | The main session takes a new turn to report it | The same: a new turn shows the result card and what the main session makes of it |
 | **wants a background task stopped or steered** | n/a | Asks the main session, which stops or steers its own task. The pane is read only; a row opens to show the task's work ([D2](DECISIONS.md#d2)) |
-| **starts another session** | Gets one conversation per worker | Clicks *New session* and gets a fresh conversation with the same main worker, listed beside the others. Each session keeps the mode it started in ([D1](DECISIONS.md#d1)) |
+| **starts another session** | Gets one conversation per worker | Clicks *New session* and gets a fresh session with the same main worker, listed beside the others. Each session keeps the mode it started in ([D1](DECISIONS.md#d1)) |
 
 The scope is the brief's: core messaging and session management. No file diffs, no
 permission prompts, no harness picker.
@@ -45,9 +46,9 @@ never the lab's own state. With the mid-turn notice off, step 4 must fail.
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/session-mode-script/` · real model · Playwright, against `fsdev dev --app` · run by the implementer at wiring · verdict in the wiring PR. The epic's closure reruns it as leg a |
 | **Signal** | 1 your line shows · 2 the main session's own text shows before any task row · 3 two task rows show, both filed by this session · 4 a result card shows while the turn's working indicator is on, and text after it in the same turn names the result · 5 after you ask to stop the other task, its row reads `cancelled` through `listTasks` |
-| **Input** | "Compare two vendors and write a summary": one quick research task, one long one. A different ask with one quick and one long task must pass too |
+| **Input** | "Compare two vendors and write a summary": one quick research task and one long one. The skill tells the main session to keep working after it files them, so the turn outlasts the quick task. A different ask with one quick and one long task must pass too; a run where the turn ends before the quick task does is a bad input, not a FAIL |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't cancel through the public `updateTask` action from the test |
-| **Control that must fail** | `GOAL_CONTROL=notice-after-turn` (the gap's take is off): FAIL on signal 4. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab without FIX-2159's mid-turn delivery: today's `main`, or the lab's config not turning the delivery on if FIX-2159 makes it opt-in. FAIL on signal 4. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -74,13 +75,13 @@ result that arrived while the turn was still running.
 **The adapter, until wiring** ([ER-5](../../epics/FIX-2152/DECISIONS.md#who-owns-what)):
 
 ```diff
-+ // src/adapter.ts: each function names the package call it stands for
-+ listSessions(worker)        // workforce client list · gap FIX-XXX (more conversations)
-+ openSession(worker, mode)   // ensureWorkerSession({ worker, conversation }) · same gap
-+ respond(session, message)   // useSession(id).sendAction("respond", { message })
-+ interrupt(session)          // useSession(id).abortRequest()
-+ listTasks(session)          // listTasks_tasks · public task action
-+ taskWork(task)              // useSession(task.run.sessionId).items
++ // src/adapter.ts: verbs only; wiring binds each to the package
++ listSessions(mode)       // a person's sessions of the mode's main worker
++ openSession(mode)        // an ordinary new session on that worker's flow
++ send(session, message)   // the worker's door, respond
++ interrupt(session)       // abort the running request
++ watchTasks(session)      // the conversation's listTasks rows
++ watchTaskWork(task)      // the task's run session, read only
 ```
 
 **Docs:** the lab's README (what it is, how to run it, its inventory) and one row in
@@ -122,20 +123,20 @@ draws the item it emits.
 | FIX-2152 ER-1 to ER-7, D2 and D4 | **Kept.** This issue owns ER-1 to ER-5, so it builds the inventory check FIX-2154 copies |
 | FIX-1883 workstream sessions as "several sessions of one worker" | **Not used.** fsd-architect showed a workstream needs a project and caps a user at 25 ([#46](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6374763392)) |
 
-**Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)), for the epic thread to file:
+**Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)). The epic files them:
 
 | Gap | Blocks |
 |---|---|
-| **A user opens and lists more conversations with one worker.** An optional conversation key on `WorkerSessionCriteria`; the list returns each one's title and last activity. Amends "one conversation per worker per user", Jake's call | The sessions list · steps 1 to 5 |
-| **A settled notice reaches the filer's running request before its next model call**, and shows as an item in that request. A delivery mode on FIX-2078's one path, after FIX-2078 | Step 4 |
-| Check at wiring: **the user can read a task's run session** through `useSession` | Opening a row; a gap only if refused |
-| **`listTasks` rows carry when a task started and ended** | Nothing; without it the pane shows no elapsed time |
+| [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · **the workforce client lists a person's sessions of one worker.** A new session is an ordinary session on the worker's flow; the derived session stays the default conversation, where messages and routed tasks land ([epic D3, ER-7](../../epics/FIX-2152/DECISIONS.md#d3)). No new criteria key | The sessions list · steps 1 to 5 |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · **a settled notice is taken before the filer's next model call**, as a delivery mode on FIX-2078's one path, and the take shows as an item in the running request | Step 4 |
+| Checked at wiring: **the person can read a task's run session** | Opening a row; a gap only if refused |
+| **`listTasks` rows carry when a task started and ended** | Nothing; without it the pane shows no elapsed time. Filed in the project, not as a child |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
 | **Adds** | One private lab under `labs/` with its inventory check; the epic's evidence. The fixtures and their adapter bodies, deleted at wiring (the closure checks it) |
-| **Leaves** | The registry has no sessions list or tasks pane, so the lab writes both. Not a gap: they are UI |
+| **Leaves** | The same task-row-to-view shaping (status, note, worker, run session) lives in Shift Manager, here, and soon FIX-2154, and each lab carries its own inventory check. ER-3 forbids sharing between labs; the closure prices it ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3788#issuecomment-6375045433)). The registry has no sessions list or tasks pane, so the lab writes both |
 
 **Net: up, by one private lab.** It is what the epic exists to produce.
 
@@ -144,11 +145,12 @@ draws the item it emits.
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** five steps, a real model, a
 browser, and no *other* row. If wrong: a lab that looks right on fixtures and proves nothing.
 
-**[The debt](#whats-already-here-and-the-debt), net up:** one private lab, two package gaps.
+**[The debt](#whats-already-here-and-the-debt), net up:** one private lab; the epic files the gaps.
 If wrong: a lab nobody maintains.
 
 1. **[D1](DECISIONS.md#d1) · A session's mode is picked when it starts and stays with it.**
-   If wrong: switching modes needs a new session, and FIX-2157 builds on that.
+   Nothing stores it: the mode is which main worker the session is with. If wrong: switching
+   modes needs a new session, and FIX-2157 builds on that.
 2. **[D2](DECISIONS.md#d2) · You stop or steer a task by asking the main session; the pane is
    read only.** If wrong: a stop costs a turn, and the pane later gets buttons.
 
