@@ -129,10 +129,8 @@ describe("createTask replayed after the team changed (BR-15)", () => {
     const t = team(["eng.a"]);
     const out = await run(createTool(collection, t.roster), { goal: "Draft it", assignee: "eng.a", metadata: { filedByCall: "someone-elses-call", topic: "notes" } }, turnCtx(new Map(), "c7"));
     expect(out).toMatchObject({ ok: true });
-    const row = collection.get(out.taskId!)!;
-    expect(row.metadata).toMatchObject({ topic: "notes" });
-    expect(row.metadata?.filedByCall).not.toBe("someone-elses-call");
-    expect(row.metadata?.filedByCall).toEqual(expect.stringContaining("0%3Ac7"));
+    // A minted id is the call's alone, so the row names no call, and the forged one is dropped.
+    expect(collection.get(out.taskId!)!.metadata).toEqual({ topic: "notes" });
   });
 
   it("a different call is still checked against the team as it is now", async () => {

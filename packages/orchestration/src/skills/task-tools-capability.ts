@@ -469,9 +469,10 @@ const awaitingAnswerError = (taskId: string) => ({
  * same moment: the follow-up can simply be filed again, under the next id.
  */
 /**
- * The metadata key a row filed by a model's tool call names that call in
- * (its logical id), so a replay of the call finds its own row and no other.
- * Server-written: a caller's metadata never sets or changes it.
+ * The metadata key a row filed under an id picked from the board (a
+ * follow-up's) names the call that filed it in (its logical id), so a replay
+ * of the call finds its own row and no other. Server-written: a caller's
+ * metadata never sets or changes it.
  */
 const FILED_BY_CALL_KEY = "filedByCall";
 
@@ -1041,16 +1042,21 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // The board's own id shape: twenty hex characters, unique across processes.
       return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
     });
-    // A row with the id is this call's own only when it names this call: a
+    // An id minted here is this call's alone, so a row with it is its own. A
     // follow-up's id is picked from the board, so another call can have
-    // filed it, and then the add refuses it as taken. A row filed before rows
-    // named their call (BP-030) is this call's on a replay, as it was then.
+    // filed it: such a row names the call that filed it, and is this call's
+    // only when it names this one; otherwise the add refuses the id as taken.
+    // A row filed before rows named their call (BP-030) is this call's on a
+    // replay, as it was then.
+    const picked = init.id !== undefined;
     const existing = collection.get(id);
     const filedBy = existing?.metadata?.[FILED_BY_CALL_KEY];
-    if (existing !== undefined && (filedBy === call.logicalId || (filedBy === undefined && !recordedNow))) {
+    if (existing !== undefined && (!picked || filedBy === call.logicalId || (filedBy === undefined && !recordedNow))) {
       return { ok: true as const, taskId: id };
     }
-    const task = await collection.addTask({ ...init, id, metadata: { ...(init.metadata ?? {}), [FILED_BY_CALL_KEY]: call.logicalId } });
+    const task = await collection.addTask(
+      picked ? { ...init, id, metadata: { ...(init.metadata ?? {}), [FILED_BY_CALL_KEY]: call.logicalId } } : { ...init, id }
+    );
     return { ok: true as const, taskId: task.id };
   }
 
