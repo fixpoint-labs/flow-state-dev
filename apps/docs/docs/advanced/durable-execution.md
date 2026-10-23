@@ -37,7 +37,7 @@ The `durable` option on `createFlowState` is the host setting:
 
 In-memory stores are off by default because a suspension held there is lost, without a word, when the process ends. Tests that want suspensions held in memory set `durable: true`.
 
-`durable` on `createFlowState` is the host's setting. `durable` on a sequencer decides whether that sequencer checkpoints, and has no effect on a host without durable execution. An action doesn't need `durable: true` to suspend: on a durable host, any block can call `ctx.suspend()`.
+`durable` on a sequencer decides whether that sequencer checkpoints, and has no effect on a host without durable execution. An action doesn't need `durable: true` to suspend: on a durable host, any block can call `ctx.suspend()`.
 
 On a host without durable execution, `ctx.suspend()` throws an error that names the setting to change, and the request fails. Nothing is held.
 
@@ -328,7 +328,7 @@ A run started in the background, dispatched to a separate process with no browse
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a suspension's deadline falls due. It reads the deadlines in the store when it starts, so a suspension `fsdev run` left behind expires on time once a server runs. A suspension another process writes while the server runs is seen at the next tick.
+Retention is opt-in. With durability on, a server runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config and the sweeper also reclaims records that are safe to drop. It runs on `sweepIntervalMs`, or sooner when a [wake](#wakes) or a suspension's deadline falls due. It reads the deadlines in the store when it starts, so a suspension `fsdev run` left behind expires on time once a server runs. A suspension another process writes while the server runs is seen at the next tick.
 
 ```ts
 export const flowstate = createFlowState({

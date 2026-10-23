@@ -64,7 +64,7 @@ A run that ends waiting for a person ends with a `suspended` event instead of `f
 | `content_delta` | Incremental content chunk for a streaming item |
 | `state_change` | A scope state or resource was modified |
 | `flow_complete` | The action completed successfully |
-| `suspended` | The action stopped for a person and is waiting for an answer. The exit code is 0 |
+| `suspended` | The action paused for a person and is waiting for an answer. The exit code is 0 |
 | `error` | The action failed |
 
 #### When a run waits for a person
@@ -78,7 +78,7 @@ A flow that pauses for a person (`ctx.suspend()`, an approval, a question) doesn
 [fsdev]   Its deadline fires only while a server runs on this store.
 ```
 
-The same suspension is in `--capture` as `result.suspended`. Answer it from the DevTool's Suspensions tab in `fsdev dev`, started in the same folder, or through the resume route. `fsdev run` itself runs no sweeper, so a suspension's deadline passes unnoticed until a server runs on the same store. A server that starts after a deadline has passed expires that suspension as soon as it is up.
+The same suspension is in `--capture` as `result.suspended`. Answer it from the DevTool's Suspensions tab in `fsdev dev`, started in the same folder, or through the resume route. A suspension's deadline passes unnoticed until a server runs on the same store. A server that starts after a deadline has passed expires that suspension as soon as it is up.
 
 With an app config, the suspension is held in the app's stores and is answered by a server on them, such as `fsdev dev` with the same config.
 

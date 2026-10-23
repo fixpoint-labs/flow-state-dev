@@ -111,12 +111,12 @@ Event types:
 | `content_delta` | Incremental content chunk for an item |
 | `state_change` | Scope state or resource was modified |
 | `flow_complete` | Action completed successfully |
-| `suspended` | Action stopped for a person; exit code 0 |
+| `suspended` | Action paused for a person; exit code 0 |
 | `error` | Action failed |
 
 #### When a run waits for a person
 
-A request that pauses for a person is held, not failed. Without a config, the run writes to `.fsdev/data/fsdev.db` as `devuser`, the same file and user `fsdev dev` uses, so the suspension is listed and answered in the DevTool after the run exits. `fsdev run` exits 0 with a `suspended` event on stdout, `result.suspended` in `--capture`, and a waiting report on stderr naming the suspension's id and where to answer it. `fsdev run` runs no sweeper: the suspension's deadline fires only while a server runs on the same store.
+A request that pauses for a person is held, not failed. Without a config, the run writes to `.fsdev/data/fsdev.db` as `devuser`, the same file and user `fsdev dev` uses, so the suspension is listed and answered in the DevTool after the run exits. `fsdev run` exits 0 with a `suspended` event on stdout, `result.suspended` in `--capture`, and a waiting report on stderr naming the suspension's id and where to answer it. A suspension's deadline passes unnoticed until a server runs on the same store.
 
 #### Session reuse
 
