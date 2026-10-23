@@ -16,7 +16,7 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, isTraceObservabilityEnabled, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
 import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -1947,10 +1947,15 @@ async function runActionAttempt<
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems;
       replayLog = buildReplayLog(priorItems);
-      // Crash recovery with no durability provider restores no sequencer
-      // checkpoint, so it re-runs completed blocks rather than inject their
-      // outputs into a sequencer whose state starts from its defaults.
-      if (resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined) {
+      // Crash recovery with no durability provider keeps its behaviour from
+      // before completed blocks were recorded with trace observability off:
+      // with observability on it skips them from their full traces; with it
+      // off it re-runs them. It restores no sequencer checkpoint either way.
+      if (
+        resumeContextRaw === undefined &&
+        options.runtimeConfig.durabilityProvider === undefined &&
+        !isTraceObservabilityEnabled()
+      ) {
         replayLog = withoutCompletedOutputs(replayLog);
       }
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
