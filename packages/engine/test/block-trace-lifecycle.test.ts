@@ -318,8 +318,6 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       runtimeConfig: {}
     });
 
-    // Resume replay reads a completed block's output from its trace, so the
-    // record survives with observability off, without the input capture.
     const traces = getTraces(response.getItems());
     expect(traces.length).toBe(1);
     expect(traces[0]!.status).toBe("completed");
