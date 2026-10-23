@@ -1,0 +1,112 @@
+# FIX-2142 · Decisions
+
+[Spec](SPEC.md) · **Decisions**
+
+FIX-2141 built the store, its one writer and its one query, and left three things for the first
+run-time writer: the hook, the slot feed and the one-window write. This issue adds them, for the
+one source Claude Code sanctions: the `rate_limit_event` a run sends. What that event carries
+decides the rest, so the pinned CLI was read first ([POC](poc/rate-limit-event/NOTES.md)).
+
+## The tree
+
+```mermaid
+flowchart TD
+  I["FIX-2142"] --> O["Open · ship what Claude Code reports · recommended"]
+  O -.->|"rejected"| X1["hold for a full percent · nothing until Anthropic ships one"]
+  O -.->|"banned"| X2["api/oauth/usage, the credentials file, the SDK's experimental call"]
+  I --> D1["D1 · Error Reporter runs not recorded"]
+  D1 -.->|"rejected"| X3["a second writer path · Workforce on harness-manager"]
+```
+
+Solid edges are what you're signing. Dashed edges lost, and the label says why.
+
+<a name="open"></a>
+## Open · Ship Claude's view with what Claude Code reports, or hold it?
+
+**Recommended: ship it.**
+
+| | |
+|---|---|
+| **Plain terms** | Claude Code tells a run its limits only when they change. Below a warning line it says which window binds, "ok", and when it resets, with no percent. Near a limit it sends the percent. At the limit it says "reached" and when it resets. The issue asked for a percent on every window after every run; no allowed source gives that today |
+| **Ship it** | A person gets the warning the epic asks for (a percent as a window nears its limit, and "reached until 14:00"), and a reset time otherwise. The view says "under Claude's warning line", never a number it wasn't sent |
+| **Hold it** | Nothing for Claude until Anthropic stabilises a usage read. The SDK has one, named `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`, and it calls the endpoint the brief bans |
+| **Locks in** | `HarnessUsageWindow.usedPercent` may be `null`, and the window gains `level`: `ok`, `warning`, `reached`, or `null` (Codex, which always sends a percent). A missing percent is never stored or shown as 0 |
+| **What would change my mind** | Anthropic stabilising a usage read in the Agent SDK, or a headless run shown to run a status line (which gets both windows' percent on every response; one try did not run it). Either fills the percent through the same writer |
+| **What being wrong costs** | Someone below the line plans with a reset time and no number. Cheap to reverse: a fuller source writes the same window |
+
+![Open question: ship Claude's view with what Claude Code reports, recommended, beside holding for a full percent. Decides it: the warning before a pool runs out arrives now. The price: below the warning line, a reset time and no percent](figures/open-show-what-claude-reports.svg)
+
+It comes down to whether a warning now beats a full number later.
+
+<a name="d1"></a>
+## D1 · The Error Reporter's Claude runs are not recorded
+
+| | |
+|---|---|
+| **Instead of** | Giving the Error Reporter's harness feeds an `onUsage` and installing the usage collection on its flow |
+| **Because** | An event reports the whole pool, whatever used it, so the next coding run or the next look reports what a bug report used. Recording it would add a second flow that writes the collection and make Workforce depend on harness-manager for a rare, short run (tenet 3, *earn every addition*). Workforce stays a reader of the query |
+| **Locks in** | Claude usage is written by harness-manager's coding runs, by its session door's talks (the same harness, run as the person talking), and by a refresh. `ErrorReporterHarnessFeeds` gains nothing |
+
+![D1: whether the Error Reporter's Claude runs are recorded. Not recorded, chosen, beside recording them too. Decides it: the next run reports the same pool. The price: a host where only the Error Reporter runs Claude shows an older row](figures/d1-error-reporter-not-recorded.svg)
+
+It comes down to what the next run tells us: the same pool, so the reporter's own write adds little.
+
+**What would change my mind:** a host that runs Claude only for bug reports, or Workforce gaining
+coding runs of its own.
+
+## Decided, not asked
+
+- **The hook is the session hook's twin, in core.** `HarnessUsageHook` takes a report (the
+  harness's name, one `HarnessUsageWindow`, and when it was observed) and the run's context. It
+  names no vendor and no Workforce idea. The report names its harness, so the manager's feed
+  writes under `claude-code` without knowing which harness sits in its slot.
+- **Only the run owner's row.** The feed writes through the run's own context, so the
+  `user`-scoped row is the principal that drained the task (or, on the session door, the person
+  talking). It never lists or writes another person's row, as FIX-2141 D1 requires; another
+  person's copy ages, and its age says so.
+- **The one-window write goes through `recordHarnessUsage`,** still the collection's only writer.
+  It upserts one window by id with `origin: "run"`, keeps the others, and never goes backwards per
+  window (an event older than the stored window is refused). It leaves account and plan alone,
+  and lifts a no-number status to `windows`: a run that reports a window proves a subscription.
+- **A read keeps what runs wrote, while the account is unchanged.** A full reading replaces its
+  own windows and keeps `run` windows it doesn't name when the hashed account is the same. A new
+  account or a no-number status clears them, as FIX-2141's leg h requires. Codex has no `run`
+  windows, so nothing changes for it.
+- **Claude's account comes from the existing probe.** `readClaudeUsage` (in `claude-code`) maps
+  `probeClaudeAccount`: a key source is `api-key`; a sign-in or an OAuth token source is `windows`
+  with the email as the account id (hashed by the writer, never stored) and the plan, and no
+  windows; `none` is `signed-out`; `sdk-missing` is `unavailable`. FIX-2141's throttle and
+  timeout apply.
+- **What maps, and the units.** `rateLimitType` is the window id; `five_hour` is 300 minutes and
+  every `seven_day*` 10 080; others (`overage`) have none and are labelled by id. `utilization`, a
+  fraction, is multiplied by 100: a unit change, not a derivation. `resetsAt` (seconds) becomes
+  ms. `status` maps to level: `allowed` → `ok`, `allowed_warning` → `warning`, `rejected` →
+  `reached`. An event with no `rateLimitType` (an API-key run) writes nothing. Overage fields are
+  not shown.
+- **A usage write never touches the run.** The agent awaits `onUsage` like `onSession` (tracked,
+  so a late write can't land after the run ends), but a throw is logged and swallowed, and the
+  feed is not fenced: a replaced attempt's event is still a true reading of the pool.
+- **The view says why a number is missing.** `null` percent with `ok` reads "under Claude's
+  warning line"; with `reached`, "limit reached". The server's clock still decides `rolledOver`.
+- **Settled by POC: what an event carries.** [`poc/rate-limit-event/`](poc/rate-limit-event/NOTES.md)
+  read the pinned CLI (SDK 0.3.234): sent on change only, at least once per run on a subscription;
+  percent only on a warning; `utilization` a fraction; `resetsAt` in seconds; no window on an API
+  key. 8 of 8 found, and the control (`/bin/ls`) finds 0 and fails. A live event is goal leg g.
+
+## Considered and dropped
+
+| Option | Why it lost |
+|---|---|
+| The SDK's experimental usage call | It says not to rely on it, and it calls the banned endpoint |
+| A status-line command on each run | A terminal feature; one headless try did not run it. Named under *what would change my mind* |
+| Writing the event to every person's row | One pool on one machine, but a person's row is theirs (FIX-2141 D1). The age covers the gap |
+| Turning "ok" into a percent (say, under 90 %) | A guess, which the brief forbids |
+| A record per run, summed | Events report the pool, not the run's share. Per-worker tokens are FIX-2145 |
+
+## How it got here
+
+- **Draft** — framed as FIX-2141's reserved run-time half: the hook twin in core, the slot feed
+  and one-window write in harness-manager, and Claude's account from the existing probe. Reading
+  the pinned CLI first showed the event carries a percent only near a limit, so the issue's
+  "percent on every window" is put to Jake as an open question, recommended: ship what Claude
+  Code reports.
