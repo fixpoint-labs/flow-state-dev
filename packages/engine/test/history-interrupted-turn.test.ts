@@ -2,10 +2,10 @@
  * A turn the host died in still belongs to the conversation.
  *
  * When a host is killed mid-turn, the request it was running is left
- * `interrupted`, holding the items it had persisted: the person's ask, and the
+ * `interrupted`, holding the items it had persisted: the person's message, and the
  * tool calls that already ran (and whose side effects already happened). The
  * session's next request must see what that turn established, or the model
- * answers without the ask and re-runs work that was already done. A call still
+ * answers without that message and re-runs work that was already done. A call still
  * running at the kill never settled, so it has no result to show and is left
  * out.
  */
@@ -26,8 +26,8 @@ function chatFlow() {
   })();
 }
 
-function ask(requestId: string, text: string, ts: number): MessageItem {
-  return { id: `${requestId}_ask`, type: "message", role: "user", content: [{ type: "output_text", text }], status: "completed", requestId, itemIndex: 0, provenance, ts };
+function userMessage(requestId: string, text: string, ts: number): MessageItem {
+  return { id: `${requestId}_msg`, type: "message", role: "user", content: [{ type: "output_text", text }], status: "completed", requestId, itemIndex: 0, provenance, ts };
 }
 
 function toolCall(requestId: string, o: { callId: string; name: string; output: unknown; status: ToolOutputItem["status"]; ts: number; itemIndex: number }): ToolOutputItem {
@@ -71,7 +71,7 @@ describe("history across a turn the host died in", () => {
     await stores.request.set(
       "req_killed",
       turn("req_killed", "interrupted", 1000, [
-        ask("req_killed", "Draw a ticket, then ask me which region.", 1000) as unknown as OutputItem,
+        userMessage("req_killed", "Draw a ticket, then ask me which region.", 1000) as unknown as OutputItem,
         toolCall("req_killed", { callId: "call_draw", name: "drawTicket", output: { ticket: "TCK-1A2B3C" }, status: "completed", ts: 1001, itemIndex: 1 }) as unknown as OutputItem,
         toolCall("req_killed", { callId: "call_late", name: "lookUpRegion", output: undefined, status: "in_progress", ts: 1002, itemIndex: 2 }) as unknown as OutputItem
       ]),

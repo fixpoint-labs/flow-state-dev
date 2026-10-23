@@ -681,7 +681,7 @@ export async function createExecutionContext<
     // The N most-recently-started completed or interrupted requests. The
     // status filter excludes the current (in-progress) request and any
     // in-flight siblings; an `interrupted` request is a turn its host died in,
-    // and what it persisted (the ask, the calls that ran) is part of the
+    // and what it persisted (the message that started it, the calls that ran) is part of the
     // conversation. `orderBy:"startedAtMs"` makes the windowed selection
     // robust to out-of-order metadata writes. `items` reconstruct cross-turn
     // history.

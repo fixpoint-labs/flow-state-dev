@@ -340,7 +340,7 @@ await ctx.session.items.history({ limit: 20 })
 await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The history view converts the items of completed requests with `history: true` into `{ role, content }` message pairs for model context assembly. A request its host died in (`interrupted`) counts too, with only its settled items: the ask and the tool calls that finished are part of the conversation, a call the kill cut off is not.
+The history view converts the items of completed requests with `history: true` into `{ role, content }` message pairs for model context assembly. A request its host died in (`interrupted`) counts too, with only its settled items: the message that started it and the tool calls that finished are part of the conversation, a call the kill cut off is not.
 
 ## Session Journal
 
