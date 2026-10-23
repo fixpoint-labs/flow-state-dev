@@ -64,14 +64,25 @@ coding runs of its own.
   `user`-scoped row is the principal that drained the task (or, on the session door, the person
   talking). It never lists or writes another person's row, as FIX-2141 D1 requires; another
   person's copy ages, and its age says so.
-- **The one-window write goes through `recordHarnessUsage`,** still the collection's only writer.
-  It upserts one window by id with `origin: "run"`, keeps the others, and never goes backwards per
-  window (an event older than the stored window is refused). It leaves account and plan alone,
-  and lifts a no-number status to `windows`: a run that reports a window proves a subscription.
+- **The one-window write goes through `recordHarnessUsage`,** still the collection's only writer:
+  a second form inside the same function, under the same compare-and-swap. It upserts one window
+  by id with `origin: "run"` and keeps the others. It compares against that window's own
+  `checkedAt` (an older event is refused) and leaves the record's `checkedAt`, account and plan
+  alone: the record clock stays the reader's. It lifts a no-number status to `windows` only when
+  the event is newer than the record's `checkedAt`, so a stale event never undoes a fresher
+  `api-key` or `signed-out`. On a shared window id, the newer `checkedAt` wins, whichever wrote it.
+- **The collection is installed where the writes happen.** `harnessUsageCollection` joins the
+  manager's capability and the session door's, and `harness-usage` joins the manager's reserved
+  accessors, so a host can't claim it. Without that, the feed would throw on a missing collection
+  and the swallow would hide it. `HarnessFeeds` in harness-manager gains `onUsage` at both places
+  that build it (the manager and the door, which stubs `onSession` today); the Lab's own
+  `HarnessFeeds` is a superset of it. `onUsage` stays out of `claudeCodeAgent`'s in-session-only
+  guard: it owns no continuity, so it races nothing.
 - **A read keeps what runs wrote, while the account is unchanged.** A full reading replaces its
-  own windows and keeps `run` windows it doesn't name when the hashed account is the same. A new
-  account or a no-number status clears them, as FIX-2141's leg h requires. Codex has no `run`
-  windows, so nothing changes for it.
+  own windows and keeps `run` windows it doesn't name. "Unchanged" includes a stored account that
+  was never read (`null`) and a reading with no account id: both adopt and keep. Only a different
+  non-null hash, or a no-number status, clears them, as FIX-2141's leg h requires. Codex has no
+  `run` windows, so nothing changes for it.
 - **Claude's account comes from the existing probe.** `readClaudeUsage` (in `claude-code`) maps
   `probeClaudeAccount`: a key source is `api-key`; a sign-in or an OAuth token source is `windows`
   with the email as the account id (hashed by the writer, never stored) and the plan, and no
@@ -88,6 +99,8 @@ coding runs of its own.
   feed is not fenced: a replaced attempt's event is still a true reading of the pool.
 - **The view says why a number is missing.** `null` percent with `ok` reads "under Claude's
   warning line"; with `reached`, "limit reached". The server's clock still decides `rolledOver`.
+  `level` defaults to `null` so Codex rows stored by #3768 still parse; the Codex reader sets it
+  `null`, and the view (which assumes a number today) handles a missing one.
 - **Settled by POC: what an event carries.** [`poc/rate-limit-event/`](poc/rate-limit-event/NOTES.md)
   read the pinned CLI (SDK 0.3.234): sent on change only, at least once per run on a subscription;
   percent only on a warning; `utilization` a fraction; `resetsAt` in seconds; no window on an API
@@ -110,6 +123,12 @@ coding runs of its own.
   the pinned CLI first showed the event carries a percent only near a limit, so the issue's
   "percent on every window" is put to Jake as an open question, recommended: ship what Claude
   Code reports.
+
+- **Architect** — `fsd-architect` found the set coherent
+  ([agent-mailbox#45](https://github.com/fixpoint-labs/agent-mailbox/pull/45#issuecomment-6374320229))
+  and pinned five things now in *Decided, not asked*: the collection installed on the manager and
+  the door, the one-window form inside the one writer, the run write leaving the record clock
+  alone, a `null` account adopting rather than clearing, and the newer window winning a shared id.
 
 ## Notes from review
 
