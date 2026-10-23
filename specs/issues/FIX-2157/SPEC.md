@@ -133,7 +133,7 @@ status of its own.
 
 | Gap | Blocks |
 |---|---|
-| **A. A routed task can run in a new session of its delegate**, so several threads run on one delegate at once, each with its own history. Today the coordinator refuses anything but the delegate's one ongoing session (`routed_session_ongoing`) ([D1](DECISIONS.md#d1)) | Step 2 · a child |
+| **A. A routed task can run in a new session of its delegate**, so several threads run on one delegate at once, each with its own history. Today the coordinator refuses anything but the delegate's one ongoing session (`routed_session_ongoing`) ([D1](DECISIONS.md#d1)). Whatever form it takes, a thread's session is just another session of the same hired worker, the shape of [epic D3](../../epics/FIX-2152/DECISIONS.md#d3): no new key on `WorkerSessionCriteria`, no hired copy per thread, and one session still works one task at a time (FIX-2080). Once FIX-2160 lands, it is reachable as `{ session: id }` like any other | Step 2 · a child |
 | **B. An agent worker's task can end in a review**, a worker setting over FIX-2131's `waitForUser({ kind: "review" })`: accepted completes it, revision words are a steer the work takes next, and an unanswered review completes at its deadline ([D2](DECISIONS.md#d2)) | Steps 4 and 5 · a child |
 | **C. A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **a `coordinator-route` item names the task it filed** | The feed cards; a gap only if it doesn't |
