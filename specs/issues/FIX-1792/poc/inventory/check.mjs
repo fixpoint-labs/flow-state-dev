@@ -526,6 +526,7 @@ const GOALS = {
   "goals/shift-manager/one-person-runs-a-labs-projects-and-people": "CONVERT · after FIX-1793 retires its room legs, its MAILBOX.md key-list seam reads WORKER.md",
   "goals/task-run-link/it-names-the-run-working-each-task": "CONVERT · rows on a conversation's board",
   "goals/vocabulary/one-word-per-thing": "GUARD · FIX-1876's vocabulary sweep; it names post-to-mailbox only as a retired name it fails on",
+  "goals/workforce-coordination/runs-on-one-task": "GUARD · FIX-2087's closure; it names mailbox-left only as the control of this issue's goal check that it runs",
   "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains": "RETIRE · its subjects are gone (an unattended file board, a kind of its own, two boards on one mailbox); FIX-1791's and FIX-1794's goal checks and kitchen-sink-talk prove the rest",
   "goals/workforce-conventions/capabilities-come-from-files-alone": "EDIT · a generated module's empty mailboxKinds",
   "goals/workforce-conventions/code-comes-from-files-alone": "REWRITE · its flows/mailboxes leg goes with the slot",
