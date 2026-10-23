@@ -811,8 +811,9 @@ const WAIT_OVER_REASON = "The waiting request was stopped before the task finish
  * refused because the gate was already resolved. It stays when the resume or
  * the clear throws (never rethrown, so one row can't stop a touch), when the
  * gate cannot be found (the request has not parked yet, and clears it itself
- * on reaching the ended row) or another resume holds the request (`busy`); the
- * next touch tries again.
+ * on reaching the ended row) or the request is not resumable yet (`busy`:
+ * another resume holds it, or it has not finished parking); the next touch
+ * tries again.
  */
 export async function payOwedResumes(ctx: BlockContext, collection: TaskCollectionRef): Promise<ResumeOwedReport> {
   for (const row of collection.list({ cancelOwed: true })) {
