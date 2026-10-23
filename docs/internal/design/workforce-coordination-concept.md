@@ -228,7 +228,7 @@ so it is input, and suspends.
 the answer next, `kind` being an **approval** (every one, "go ahead with the plan?" included), a
 **review** or **input**, and `deadline` defaulting to the host's. A review is a verdict the code
 reads; a revision request is new direction, a steer into a held task. A waited-on task may still
-stop for a person. If the request works a task, the claim gate marks it waiting on a person; it
+suspend for a person. If the request works a task, the claim gate marks it waiting on a person; it
 keeps its claim, and the resume carries on the same attempt.
 
 | A suspension resumes once | When | The suspended block |
@@ -461,10 +461,10 @@ rest.
 | Shift Coordinator | The coordinator the Shift Manager app opens on: the user's point of contact, which hires workers, starts projects and hands out work. launch plays it |
 | Session, conversation | Where a worker works; where a user talks to one worker |
 | Request, sender, the engine, result | One run of a worker in a session; who it runs for; the sender of a request starting a task; what it produces |
-| Wait, condition, deadline | Holding a request until a task, call or condition ends; an external signal, such as a webhook; when a wait or stop resumes unanswered, which a block **handles** by acting on it |
-| Suspended, resume, check-in | Stored while waiting or stopped for a person; carrying on from the same step; a renewed deadline |
+| Wait, condition, deadline | Holding a request until a task, call or condition ends; an external signal, such as a webhook; when a wait or suspension resumes unanswered, which a block **handles** by acting on it |
+| Suspended, resume, check-in | Stored while waiting, or suspended for a person's approval, review or input; carrying on from the same step; a renewed deadline |
 | Stop (a request) | End it from a screen with no result, running or suspended; only the user does, apart from a cancel; unlike a stop for a person |
-| Busy, waiting, queue (a session) | Running a request; holding a suspended one, by a wait or a stop for a person; its requests waiting their turn, such as queued messages |
+| Busy, waiting, queue (a session) | Running a request; holding a suspended one, by a wait or a suspension for a person; its requests waiting their turn, such as queued messages |
 | Durable execution | A host that stores a waiting request and carries it on later |
 | Task, top task, filer, filer above, assignee, brief | Work on a board; one no task filed; the session that filed it; the filer of the task a request works; who does it; what it is |
 | Task's session, ongoing session | Where its assignee works it, outliving the task; a delegate's one session per conversation, for routed tasks |

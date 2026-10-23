@@ -31,7 +31,7 @@ less the message half of the last, now FIX-2070's.
 |---|---|
 | **The real need** | Six forms of stopping for a person ([the reduction check](https://claude.ai/artifact/QNetb3YFwTCAypMm1EkE4M)) become one. Goal 4: a person shouldn't hunt for what waits on them |
 | **Smaller, and rejected** | "Questions and reviews show in the Inbox." FIX-2131 alone meets it, while a coding run's question has no screen and a task can't ask before it starts |
-| **Not done if** | A park or the harness inbox still answers a stop · an answer to a stop starts a new attempt · a steer runs beside a waiting request · a cancelled task's item stays open · a local host refuses a stop · a closure bug is open |
+| **Not done if** | A park or the harness inbox still answers a stop · an answer to a stop starts a new attempt · a steer runs beside a waiting request · a cancelled task's item stays open · a local host refuses a suspension · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -57,7 +57,7 @@ the Inbox shows the item as unanswerable (`shift-manager/src/lib/reads.ts:834-83
 | **Goal check** | The closure issue's (FIX-2134), real model, in Shift Manager, on one `main` commit after every other child merges |
 | **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes an approval's or a review's same attempt with its claim, and a held question's answer restarts the work from its brief on the same attempt, a task held before it starts on its first. Leg c: cancelling the task closes its item. Leg d: a steer into a suspended task waits for the resume, and no request runs beside it; a steer naming a held question answers it, and one naming none answers nothing. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
 | **Anti-game** | Assert on what the Inbox shows and on rows read through public task actions |
-| **Control that must fail** | Today's `main`: leg a, leg b for a task's stop, and the sweep. Every other check names its control, and each is run red at least once: a control never seen failing proves nothing |
+| **Control that must fail** | Today's `main`: leg a, leg b for a task's suspension, and the sweep. Every other check names its control, and each is run red at least once: a control never seen failing proves nothing |
 
 **Lead measure:** the set's goal-proven children, named. **None today**, of FIX-2063, FIX-2129,
 FIX-2131 to FIX-2133 and FIX-2137.
@@ -77,11 +77,11 @@ it is retired. Questions hold their task on the row and don't need durable execu
 
 ## What's in the box
 
-![In the box: one call to stop for a person with three kinds and a deadline, a task held on questions, the task's person mark and its recorded stop, one Inbox listing every stop, and durable execution by default. Composed in by the app: what a block does at its deadline, which kind it asks, and the Inbox screen. Replaced in one line: the parks, answerTask and the harness inbox. Not built, below a fence: the Not doing list](figures/end-state.svg)
+![In the box: one call to suspend for a person with three kinds and a deadline, a task held on questions, the task's person mark and its recorded stop, one Inbox listing every stop, and durable execution by default. Composed in by the app: what a block does at its deadline, which kind it asks, and the Inbox screen. Replaced in one line: the parks, answerTask and the harness inbox. Not built, below a fence: the Not doing list](figures/end-state.svg)
 
 Inside the box is what a flow gets by calling one function; below the fence is the Not doing list.
 
-**Docs:** the durable-execution guide and the task-board page teach one way to stop for a person.
+**Docs:** the durable-execution guide and the task-board page teach one rule for stopping for a person: suspend when code reads the answer next, hold the task on a question.
 FIX-2131 publishes it; FIX-2063 documents the durable default. Each child documents its own specifics.
 
 ## The set · as of 2026-10-23
@@ -90,7 +90,7 @@ The reviewed snapshot; live state is in Linear. FIX-2056 blocks every child too.
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
-| [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a stop loudly. Stays in Developer Tools | FIX-2137, for the default flip |
+| [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a suspension loudly. Stays in Developer Tools | FIX-2137, for the default flip |
 | [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a stop holds its task and resumes once | `waitForUser`, kinds approval, review and input; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063; FIX-2137, for approval resumes |
 | [FIX-2131](https://linear.app/fixpoint-labs/issue/FIX-2131) · questions and reviews | A review suspends; a midway question holds its task ([ER-8](DECISIONS.md#who-owns-what)); retires both parks, `answerTask`, `unparkAndDrain`; a steer answers a question; the Inbox lists both | FIX-2063, FIX-2129, FIX-2133 |
 | [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The question holds its task; the answer, a steer, starts the next run in the same coding session; the harness inbox goes; LAB-162's park is superseded | FIX-2133; FIX-2137, which may drop ([ownership](DECISIONS.md#who-owns-what)) |
@@ -111,7 +111,7 @@ flowchart LR
   K["FIX-2137 · a durable resume runs completed steps again"] -->|"a resume that runs once"| A
   K -->|"a resume that runs once"| B
   K -.->|"may drop"| E
-  A["FIX-2063 · durable by default"] -->|"durable stops and the sweeper"| B["FIX-2129 · a stop holds its task and resumes once"]
+  A["FIX-2063 · durable by default"] -->|"durable suspensions and the sweeper"| B["FIX-2129 · a stop holds its task and resumes once"]
   B -->|"the person mark, the answer route"| D["FIX-2131 · questions and reviews"]
   I -.-> G["FIX-2133 · held on questions"]
   G -->|"the hold"| D
@@ -146,7 +146,7 @@ hold needs neither it nor FIX-2129, and comes before the two that ask a question
 | [FIX-2056 D2](../FIX-2056/DECISIONS.md#d2): marking the task and answering by steer are this epic's | **Kept and finished** by FIX-2129 and FIX-2131 |
 | [FIX-2056 (e)](../FIX-2056/DECISIONS.md#e): its closure sweep allows `answerTask` and `parkOnQuestion` until this epic (`rules.mjs`, on `fix/FIX-2087`; on `main` with FIX-2056's closure, before any child starts) | **Ended** by FIX-2131 |
 | [FIX-2056 D3](../FIX-2056/DECISIONS.md#d3): retired rows read through FIX-2080's one map | **Extended** to parked rows ([ER-5](DECISIONS.md#who-owns-what)) |
-| #3696: a parked request gives back the session's key | **Kept**; the row's mark holds a person's stop instead ([D2](DECISIONS.md#d2)) |
+| #3696: a parked request gives back the session's key | **Kept**; the row's mark holds a person's suspension instead ([D2](DECISIONS.md#d2)) |
 | Three copies of "is it a person's stop": the gate's `stopOf` (`task-request.ts`), `PERSON_REASONS` (`shift-manager/src/lib/reads.ts`) and the Lab send's own `stopOf` on it (`send.ts`) | **Replaced** by one predicate in `contracts` ([ER-1](DECISIONS.md#who-owns-what)) |
 | The Inbox can't answer a stop in a task's request: the public resume route refuses a `task` source, and opening it would re-enter a task's handler with caller data (BP-031) | **Replaced** by one trusted route per kind ([ER-7](DECISIONS.md#who-owns-what)), FIX-2129 |
 | [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612), closed unmerged as superseded): a coding run's question parks its task and is answered through the harness inbox; worker suspension is in its Not doing ([its D2](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/pi-harness/specs/epics/LAB-162/DECISIONS.md#d2), on FIX-1241 D-1) | **Superseded** by FIX-2132 and [D1](DECISIONS.md#d1); this epic keeps shared harness dispatch and a coding run continuing its saved session. LAB-164 closes as superseded on this epic's approval; LAB-163, the OMP slot, needs a fresh spec on `waitForUser` if still wanted ([decided in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
@@ -168,7 +168,7 @@ net down. If wrong: map entries nobody reads.
    fallback.** Questions hold their task instead and need neither. If wrong: a host we care about
    loses approvals and reviews.
 2. **[D2](DECISIONS.md#d2) · The row's person mark, not the session's key, keeps a task's requests
-   apart across a stop.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
+   apart across a suspension.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
    beside a waiting request.
 3. **[D3](DECISIONS.md#d3) · A person's stop has its own default deadline, 7 days,** a host
    setting overridable per call. The owner's, decided. If wrong: one host setting to change.

@@ -14,7 +14,7 @@ flowchart TD
   E["FIX-2058"] --> D1["D1 · durable by default first, no park kept as a fallback; a question holds its task"]
   D1 -.->|"rejected"| X1["parks kept for hosts without durable execution"]
   E --> D2["D2 · the row's person mark keeps a task's requests apart"]
-  D2 -.->|"rejected"| X2["hold the session's key across the stop"]
+  D2 -.->|"rejected"| X2["hold the session's key across the suspension"]
   E --> D3["D3 · a person's stop has its own default deadline, 7 days"]
   D3 -.->|"rejected"| X3["the 5-minute wait default, or none"]
 ```
@@ -37,7 +37,7 @@ fires and the review park stays.
 It comes down to two forms of one job: a fallback park keeps the thing the epic removes.
 
 <a name="d2"></a>
-## D2 · The task row's person mark keeps a task's requests apart across a stop, not the session's key
+## D2 · The task row's person mark keeps a task's requests apart across a suspension, not the session's key
 
 *An engineering call, decided under the epic's posture; recorded because three children touch it.*
 
@@ -53,7 +53,7 @@ It comes down to two forms of one job: a fallback park keeps the thing the epic 
 
 ![D2: the row's person mark, chosen, beside holding the session's key; decided by onTaskSettled requests that must still run while a task waits on a person](figures/d2-row-mark.svg)
 
-It comes down to `onTaskSettled`: holding the key across a stop keeps a task from hearing its filed work end.
+It comes down to `onTaskSettled`: holding the key across a suspension keeps a task from hearing its filed work end.
 
 <a name="d3"></a>
 ## D3 · A person's stop has a default deadline of its own, 7 days
@@ -84,7 +84,7 @@ holds with no suspension to resume, and FIX-2132's spec confirms or drops that e
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | One call stops a request for a person when its code reads the answer next: `waitForUser({ kind, prompt, deadline? })`, kind approval, review or input, never a question, which holds its task ([ER-8](#who-owns-what)); with no `deadline`, the host's default for a person's stop, 7 days ([D3](#d3)). It is built on the person suspensions, not the wait gate: a wait gate is resumed only from inside its own session, and a person answers from outside it. The two use the same words, answered and deadline, not the same shape: a wait returns `{ answered: false, deadline: true }`, where a person's stop at its deadline throws the existing `SuspensionTimeoutError` for a review or an input and reads as a no for an approval ([FIX-2129 D1](https://github.com/fixpoint-labs/flow-state-dev/pull/3735)), and FIX-2131's model-facing tool returns a deadline result instead of throwing, since a model can't catch. A person's stop resumes with `cancelled`, which the block reads and runs to its end, where a wait gate's `stopped` ends the request unread. One predicate, in `contracts` beside the suspension reasons, says whether a suspension is a person's; the claim gate, the Inbox and the Lab's send all read it, and no child keeps its own list of reasons | FIX-2129 | Every later spec review; the closure's leg a |
-| ER-2 | A task waiting on a person is marked on its row with the suspension that holds it. That mark, never the session's key, keeps its requests apart: while it waits, only `onTaskSettled` and the stop's own answer are admitted, a steer waits for the resume, and messages follow rule 10 ([D2](#d2)). The mark lands in the same write that drops the lease. A person's stop never holds back the notices of tasks its request filed: FIX-2123 holds them while a filing request is parked, and FIX-2129 exempts a person's stop from that hold | FIX-2129 | FIX-2131's spec review; the closure's leg d |
+| ER-2 | A task waiting on a person is marked on its row with the suspension that holds it. That mark, never the session's key, keeps its requests apart: while it waits, only `onTaskSettled` and the suspension's own answer are admitted, a steer waits for the resume, and messages follow rule 10 ([D2](#d2)). The mark lands in the same write that drops the lease. A person's stop never holds back the notices of tasks its request filed: FIX-2123 holds them while a filing request is parked, and FIX-2129 exempts a person's stop from that hold | FIX-2129 | FIX-2131's spec review; the closure's leg d |
 | ER-3 | A stop ends exactly once: a suspension resumes answered, deadline or cancelled, and a question's hold ends answered, deadline or cancelled ([ER-8](#who-owns-what)). Whichever comes first wins and the rest find it resolved, and every ending closes its item, an unhandled deadline included. A user's stop ends the request, closes its item and cancels its task | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; legs b and c |
 | ER-4 | No task tool answers a suspension for a person. The filer answers only a question its task asked midway, by a steer, and not on a routed task; approvals, reviews and questions asked at filing are the user's (rule 11) | FIX-2131 | Every later spec review; the closure sweep |
 | ER-5 | A row parked before the refactor is read through FIX-2080's one map ([FIX-2056 D3](../FIX-2056/DECISIONS.md#d3)), never a child's own read. One owner maps every parked question, harness rows included, onto the hold ([ER-8](#who-owns-what)): the rows share one shape (`awaitReview`, `parkPatch`), so no split by row is possible. Where a coding row needs its session back, FIX-2132 reads that from the harness manager's run record (`harness-manager/src/run-record.ts`), not from the row. States in flight between the refactor epics get no shim | FIX-2131 | FIX-2132's spec review |
@@ -142,7 +142,7 @@ In the first review round:
 
 In the second review round:
 
-- **A person's stop resumes with `cancelled`**, the concept's word, which the block reads and
+- **A person's suspension resumes with `cancelled`**, the concept's word, which the block reads and
   runs to its end; it shares only the words answered and deadline with the wait gate, whose `stopped` ends
   the request unread ([ER-1](#who-owns-what)).
 - **D2 doesn't decide messages:** rule 10 stands, a message to a session waiting on a person
