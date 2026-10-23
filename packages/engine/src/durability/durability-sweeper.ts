@@ -474,11 +474,9 @@ async function enforceSuspensionExpiry(
       }
       // Fenced: the gate is re-read under its request's lease, so a resume that
       // resolved it after the list above is never overwritten; a lease held
-      // elsewhere leaves it for the next tick. Step 2b continues the turn of an
-      // approval expired here (FIX-1846).
-      // A lease held elsewhere leaves the gate pending; it stays on the
-      // schedule, so the next tick retries it shortly rather than an
-      // interval later.
+      // elsewhere leaves it pending and on the schedule, so the next tick
+      // retries it shortly rather than an interval later. Step 2b continues
+      // the turn of an approval expired here (FIX-1846).
       if ((await expireUnderLease(provider, record, "durability-sweeper")) === "busy") stillPending.push(record);
     }
     if (waitGatesSkipped > 0) {
