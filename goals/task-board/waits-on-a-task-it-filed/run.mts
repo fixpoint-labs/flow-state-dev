@@ -27,7 +27,8 @@
  *      task whose request waits is cancelled, and that request ends with no
  *      further model call and no recorded return
  *   d  a step filed `session: "new"` is waited on through two deadlines, and the
- *      next step sees a value only it produced
+ *      next step sees a value only it produced; filed as the plan's last step,
+ *      the worker still answers once after it, told that value
  *   e  `dispatcher({ wait: true })` outputs the child's output
  *
  * Controls (a scratch patch to the code under test as it loads):
@@ -151,6 +152,8 @@ function gate(name: string) {
 }
 /** Each labelled answer's token: a value only that turn produced. */
 const PRODUCED = new Map<string, string>();
+/** How a plan's answering turn is told its steps ended (`plan.ts`). */
+const ANSWERING = "The steps you filed for yourself have ended";
 /** Every model call, by the label its script answers with: when it ran. */
 const CALLS: Array<{ label: string; at: number; last: string }> = [];
 
@@ -764,6 +767,35 @@ await runGoal(async (failures, tell) => {
         failures.push(`d:the step ran in a session of its own — it ran in ${ownSession?.sessionId}, its task in ${task?.run?.sessionId}`);
       }
       notes.push(`d: the drain parked ${parks} times while step 2 ran in ${ownSession?.sessionId}; step 3 read ${own}`);
+
+      // The step in its own session is the plan's last: when it ends nothing is left open, and
+      // the request that waited on it still owes the worker's answering turn, once (FIX-2110).
+      const lastPlan = scripted(word("d-last-plan"), [
+        { tool: "createTask", args: { goal: scripted(word("d-last-1"), [{ answer: "d-last-1" }]), assignee: "doer.a" } },
+        {
+          tool: "createTask",
+          args: { goal: scripted(word("d-last-2"), [{ hold: "d-last" }, { answer: "d-last-2" }]), assignee: "doer.a", session: "new", deps: ["$0"] }
+        },
+        { answer: "d-last-plan" }
+      ]);
+      await s.send("desk", conversation, "respond", {
+        message: scripted("d-last-file", [{ tool: "createTask", args: { goal: lastPlan, assignee: "doer.a" } }, { answer: "d-last-file" }])
+      });
+      const lastStep = () => s.steps().then((rows) => rows.find((row) => row.goal.startsWith(word("d-last-2"))));
+      await s.until(async () => (await lastStep())?.status === "in_progress", 15_000);
+      const answeredBefore = CALLS.filter((call) => call.last.startsWith(ANSWERING)).length;
+      gate("d-last").open();
+      await s.until(async () => (await s.byGoal(word("d-last-plan")))[0]?.status === "completed", 20_000);
+      await s.idle();
+      const lastOwn = PRODUCED.get("d-last-2") ?? "<none>";
+      const landed = String((await s.byGoal(word("d-last-plan")))[0]?.output ?? "");
+      const answered = CALLS.filter((call) => call.last.startsWith(ANSWERING)).length - answeredBefore;
+      if ((await lastStep())?.status !== "completed" || !landed.includes(`read=${ANSWERING}`) || !landed.includes(lastOwn) || answered !== 1) {
+        failures.push(
+          `d:with the step in its own session last, the worker answers once after it, told its result — step ${(await lastStep())?.status}; ${answered} answering turn(s); its task landed ${landed.slice(0, 300)}`
+        );
+      }
+      notes.push(`d: with that step last, ${answered} answering turn, its task landed the answer told ${lastOwn}`);
     });
   } finally {
     for (const host of hosts) await host.state.dispose().catch(() => undefined);
