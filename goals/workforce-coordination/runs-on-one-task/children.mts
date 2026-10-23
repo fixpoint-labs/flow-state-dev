@@ -100,6 +100,9 @@ export const CHECKS: Record<string, Check[]> = {
   "FIX-2136": [
     { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/cascade-notice-unseen-dependent.test.ts"] }, by: ["c:one-failure-notice", "task-board/runs-by-its-filing-settings"] },
   ],
+  // A failure heard through the filer's own getTask wait: no leg here walks it (j1's research
+  // succeeds; c hears its failure by notice), so its regression test is its whole check.
+  "FIX-2138": [{ vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/get-task-names-cascaded.test.ts"] } }],
 };
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */
