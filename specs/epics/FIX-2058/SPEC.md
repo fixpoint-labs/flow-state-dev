@@ -10,7 +10,7 @@
 | **builds a worker that files work** | Answers its task's question with `answerTask`, a second tool; can't ask before a task starts | Answers a midway question with a steer, first answer wins; files a task held on questions |
 | **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, prompt, deadline? })`, 7 days by default; the flow decides at the deadline; a cancel or a stop closes the item |
 | **runs flows locally or self-hosted** | `fsdev run` with no app config refuses to stop for a person | Durable execution by default on file-backed hosts |
-| **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one held start, one answer path |
+| **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one hold, one answer path |
 
 **Why now.** FIX-2056 is in its last PRs (#3701, and #3692, its closure). Its claim gate already records a person's
 stop on the row (FIX-2077), a steer exists (FIX-2086), and the renames (FIX-2071) wait for this.
@@ -55,24 +55,25 @@ the Inbox shows the item as unanswerable (`shift-manager/src/lib/reads.ts:834-83
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2134), real model, in Shift Manager, on one `main` commit after every other child merges |
-| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes a stop's same attempt with its claim, and a held task's last answer starts its first attempt. Leg c: cancelling the task closes its item. Leg d: a steer into a task waiting on a person answers it or waits; no request runs beside it. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes an approval's or a review's same attempt with its claim, and a held question's answer restarts the work from its brief on the same attempt, a task held before it starts on its first. Leg c: cancelling the task closes its item. Leg d: a steer into a task waiting on a person answers it or waits; no request runs beside it. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
 | **Anti-game** | Assert on what the Inbox shows and on rows read through public task actions |
 | **Control that must fail** | Today's `main`: leg a, leg b for a task's stop, and the sweep. Every other check names its control, and each is run red at least once: a control never seen failing proves nothing |
 
-**Lead measure:** the set's goal-proven children, named. **None today**, of FIX-2063, FIX-2129 and
-FIX-2131 to FIX-2133.
+**Lead measure:** the set's goal-proven children, named. **None today**, of FIX-2063, FIX-2129,
+FIX-2131 to FIX-2133 and FIX-2137.
 
 **Not doing:**
 
 - **Telling the filer its task's midway question** by a message to its `receive`: moved to
-  FIX-2070. The row still records the question, so `getTask` and `listTasks` show it (FIX-2129).
+  FIX-2070. The row still records the question, so `getTask` and `listTasks` show it (FIX-2133).
 - **The renames** (FIX-2071).
 - **Replaying a request suspended across a deploy:** a known risk, deferred.
 - **Serverless hosts without durable execution** ([D1](DECISIONS.md#d1)).
 - **An Inbox redesign** beyond listing every stop.
 
 **Kill line:** if FIX-2063 can't make durable execution the default on dev, local and self-hosted
-hosts, retiring the parks takes away stopping for a person there. We stop before any park is retired.
+hosts, retiring the review park takes away stopping for an approval or a review there. We stop before
+it is retired. Questions hold their task on the row and don't need durable execution.
 
 ## What's in the box
 
@@ -89,14 +90,16 @@ The reviewed snapshot; live state is in Linear. FIX-2056 blocks every child too.
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
-| [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a stop loudly. Stays in Developer Tools | — |
-| [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a stop holds its task and resumes once | `waitForUser`; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063 |
-| [FIX-2131](https://linear.app/fixpoint-labs/issue/FIX-2131) · questions and reviews | Retires both parks, `answerTask`, `unparkAndDrain`; a steer answers; the Inbox lists both | FIX-2063, FIX-2129 |
-| [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The coding flow's request suspends; the harness inbox goes; LAB-162's park is superseded | FIX-2063, FIX-2129 |
-| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | Asked at filing, one item, the last answer releases it | FIX-2063, FIX-2129 |
+| [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a stop loudly. Stays in Developer Tools | FIX-2137, for the default flip |
+| [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a stop holds its task and resumes once | `waitForUser`, kinds approval, review and input; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063; FIX-2137, for approval resumes |
+| [FIX-2131](https://linear.app/fixpoint-labs/issue/FIX-2131) · questions and reviews | A review suspends; a midway question holds its task ([ER-8](DECISIONS.md#who-owns-what)); retires both parks, `answerTask`, `unparkAndDrain`; a steer answers a question; the Inbox lists both | FIX-2063, FIX-2129, FIX-2133 |
+| [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The question holds its task; the answer, a steer, starts the next run in the same coding session; the harness inbox goes; LAB-162's park is superseded | FIX-2129, FIX-2133, FIX-2137 |
+| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | The hold, one row predicate before start and midway: the claim gate refuses the row, it can't settle, one item, the last answer or the deadline releases it | FIX-2063, FIX-2129 |
+| [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137) · a durable resume runs completed steps again · bug | A durable resume with trace observability off no longer runs its completed steps again. Direct route: no spec, a fix PR | — |
 | [FIX-2134](https://linear.app/fixpoint-labs/issue/FIX-2134) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
-Five and a closure. FIX-2130 folded into FIX-2129 in review: a `waitForUser` shipped without its
+Six and a closure. FIX-2137 is a bug on the direct route, so it has no spec PR; it joined after the
+merge (owner, 2026-10-23). FIX-2130 folded into FIX-2129 in review: a `waitForUser` shipped without its
 deadline, cancel and stop is no contract for the three children after it to test against, and
 FIX-2129 alone was thin. FIX-2133 the owner kept.
 
@@ -105,19 +108,25 @@ FIX-2129 alone was thin. FIX-2133 the owner kept.
 ```mermaid
 flowchart LR
   I["FIX-2056 · claim gate, steer, getTask · consumed"] -.-> B
+  K["FIX-2137 · a durable resume runs completed steps again"] -->|"a resume that runs once"| A
+  K -->|"a resume that runs once"| B
+  K -->|"a resume that runs once"| E
   A["FIX-2063 · durable by default"] -->|"durable stops and the sweeper"| B["FIX-2129 · a stop holds its task and resumes once"]
   B -->|"the person mark, the answer route"| D["FIX-2131 · questions and reviews"]
-  B -->|"waitForUser, the answer route"| E["FIX-2132 · a coding run's question"]
-  B -->|"the row's question, the answer route"| G["FIX-2133 · held on questions"]
+  B -->|"the answer route"| G["FIX-2133 · held on questions"]
+  G -->|"the hold"| D
+  G -->|"the hold"| E["FIX-2132 · a coding run's question"]
   A --> P["FIX-2134 · closure · required"]
   B --> P
   D --> P
   E --> P
+  K --> P
   G --> P
 ```
 
 An edge is what one issue hands the next; the dashed input is consumed, not owned. FIX-2063 and
-FIX-2056 block every child, drawn once through FIX-2129; after it, three run in parallel.
+FIX-2056 block every child, drawn once through FIX-2129; after it, FIX-2133's hold comes before the
+two that ask a question midway.
 
 ## What stays as it is
 
@@ -144,9 +153,9 @@ FIX-2056 block every child, drawn once through FIX-2129; after it, three run in 
 | The debt | |
 |---|---|
 | **Removes** | Both parks, the harness question inbox, `answerTask`, `unparkAndDrain`, `answerQuestion()`, two extra person-stop checks, the Inbox's unanswerable task stops |
-| **Adds** | `waitForUser`, held on questions, a default deadline for a person's stop ([D3](DECISIONS.md#d3)), one trusted answer route, retired-shape map entries for parked rows |
+| **Adds** | `waitForUser`, one hold on questions, a default deadline for a person's stop ([D3](DECISIONS.md#d3)), one trusted answer route, retired-shape map entries for parked rows |
 
-**Net: down.** Six forms and three answer paths become one suspension, one held start and one answer.
+**Net: down.** Six forms and three answer paths become one suspension, one hold and one answer.
 
 ## Sign off
 
@@ -155,14 +164,16 @@ If wrong: we wrap with a stop a person still can't find. **[The debt](#whats-alr
 net down. If wrong: map entries nobody reads.
 
 1. **[D1](DECISIONS.md#d1) · Durable execution by default comes first; no park survives as a
-   fallback.** If wrong: a host we care about loses stopping for a person.
+   fallback.** Questions hold their task instead and need neither. If wrong: a host we care about
+   loses approvals and reviews.
 2. **[D2](DECISIONS.md#d2) · The row's person mark, not the session's key, keeps a task's requests
    apart across a stop.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
    beside a waiting request.
 3. **[D3](DECISIONS.md#d3) · A person's stop has its own default deadline, 7 days,** a host
    setting overridable per call. The owner's, decided. If wrong: one host setting to change.
 
-**Decided by the owner:** the five objective lines; FIX-2133 kept; the filer's message to FIX-2070;
+**Decided by the owner:** the five objective lines; FIX-2133 kept;
+[questions hold their task, approvals, reviews and input suspend](DECISIONS.md#d1) (2026-10-23); the filer's message to FIX-2070;
 [no shim for in-flight states](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them);
 #1612 closed as superseded; D3.
 
@@ -170,6 +181,7 @@ net down. If wrong: map entries nobody reads.
 `waitForUser` on the person suspensions, not the wait gate, resuming with `cancelled`; one trusted
 answer route (ER-7).
 
-**Open:** none.
+**Open:** [what an unanswered question does at its deadline](DECISIONS.md#open); I recommend it goes
+ahead from its brief.
 
-Epic · 5 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest · Goal 2, differentiate on hard problems
+Epic · 6 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest · Goal 2, differentiate on hard problems
