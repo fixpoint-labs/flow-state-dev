@@ -25,6 +25,8 @@ export function Composer({
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter that confirms an IME composition is not a send (229: Safari's keydown for it).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       send();

@@ -90,6 +90,22 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
+  it("doesn't send when Enter only confirms an IME composition", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "日本" } });
+    // Dispatched natively: fireEvent drops isComposing on the way to React's nativeEvent.
+    act(() => {
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+    });
+    expect(box.value).toBe("日本");
+    // Safari reports the confirming Enter as keyCode 229 instead.
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect(box.value).toBe("日本");
+    expect(within(thread()).queryByText("日本", { ignore: "textarea" })).toBeNull();
+  });
+
   it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {
     render(<App adapter={fast()} />);
     await pick();
