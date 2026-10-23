@@ -159,7 +159,7 @@ await runGoal(async (failures) => {
 
     // ---- c. the filer files one task, through its own conversation ----------
     const goal = `wire the ${delegate.id} feature end to end`;
-    const filed = await act(filerKind, conversation, "dispatchTask_tasks", { goal, assignee: delegate.id });
+    const filed = await act(filerKind, conversation, "createTask_tasks", { goal, assignee: delegate.id });
     if (filed?.ok !== true) failures.push(`c: ${filer.id}'s conversation could not file a task: ${JSON.stringify(filed)}`);
     await untilIdle(runtime.stores);
 
@@ -200,7 +200,7 @@ await runGoal(async (failures) => {
       evidence:
         `one tree at ${TREE}: ${filer.id} (flow ${filerKind}) names ${delegate.id} (flow ${delegateKind}) as its ` +
         `delegate, and no file declares a board. Its conversation listed ${delegate.id} as taking ${entry?.takes}, ` +
-        `dispatched one task through its own dispatchTask_tasks, and the board handed it to ${delegate.id}'s task entry, ` +
+        `dispatched one task through its own createTask_tasks, and the board handed it to ${delegate.id}'s task entry, ` +
         `which ran it: proved by ${OUTBOX}, a side effect the board could not have produced by reporting. The task ` +
         `reads ${only?.row.status} out of ${USER_ID}'s own store at ${only?.key}, the conversation's partition, ` +
         `which no file names, and nothing of it is at org scope.`

@@ -278,7 +278,7 @@ await runGoal(async (failures) => {
 
     /** File `goal` for A from the desk, as the person does. Its task id. */
     const fileForA = async (goal: string): Promise<string> => {
-      const out = await http.act("desk", conv, "dispatchTask_tasks", { goal, assignee: A });
+      const out = await http.act("desk", conv, "createTask_tasks", { goal, assignee: A });
       if (out?.ok !== true) throw new Error(`filing for ${A} was refused: ${show(out)}`);
       filed.push(out.taskId);
       return out.taskId as string;
@@ -332,10 +332,10 @@ await runGoal(async (failures) => {
       const pieces = rows.filter((r) => pieceOf(r) === taskId);
       const toB = pieces.filter((r) => r.assignee === B);
       const own = sessionOf(top);
-      const tried = own === undefined ? [] : (await store.requests(own)).flatMap((r) => (r.items ?? []) as any[]).filter((i) => i.type === "tool_output" && i.toolCall?.name === "dispatchTask");
+      const tried = own === undefined ? [] : (await store.requests(own)).flatMap((r) => (r.items ?? []) as any[]).filter((i) => i.type === "tool_output" && i.toolCall?.name === "createTask");
       if (toB.length === 0) {
         failures.push(
-          `1:piece-to-delegate — wanted A's task session to file a piece for its delegate ${B}; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its dispatchTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
+          `1:piece-to-delegate — wanted A's task session to file a piece for its delegate ${B}; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its createTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
         );
       }
       if (during.bEndedFirst === true) {

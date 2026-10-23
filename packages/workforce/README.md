@@ -1879,8 +1879,8 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask`, `answerTask` and
-`dispatchTask`), and the conversation's session takes them as actions named for the board:
+Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask` and
+`answerTask`), and the conversation's session takes them as actions named for the board:
 `createTask_tasks`, `updateTask_tasks`, `listTasks_tasks` and so on. A turn working a task also
 has `reportProgress` (the `progress` entry of the session board), which is not an action.
 
@@ -1888,14 +1888,13 @@ An assignee must be one of the conversation's delegates whose flow takes tasks, 
 session too. Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
-`createTask` and `dispatchTask` start a task in its task session, which belongs to you.
+`createTask` starts a task in its task session, which belongs to you.
 Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. `createTask` with
-`held: true` files it held; it starts when `updateTask` releases it (`status: "pending"`) or
-`dispatchTask` names its `taskId`. Before a task starts, `updateTask` can change any of its
-fields, its assignee included; after, only a cancel lands.
-`dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
-given `wait: true`. Unless
-it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
+`held: true` files it held; it starts when `updateTask` releases it (`status: "pending"`). Before
+a task starts, `updateTask` can change any of its fields, its assignee included; after, only a
+cancel lands. `createTask` returns once the task is stored, without waiting for it to run. Unless
+a turn waits on it with `getTask({ id, wait: true })`, the conversation hears once when the task
+ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks). On a host
 with durable execution, an ending whose notice was lost (a crash right after the task ended) is
 heard within seconds, without anyone opening the conversation, through the session's wake.
@@ -1967,7 +1966,7 @@ the built-in `agent` worker in the task's own session (its `run` action) does th
 task, or the latest of its follow-ups, is unfinished: it answers `{ steered: <that task's id> }`
 and runs no reply of its own. Once the task has finished, a line there is an ordinary turn,
 answered from everything the session holds, and the task doesn't change. A finished task takes no
-message; to correct or build on it, use `dispatchTask`'s `followUpOf`, which runs in the same
+message; to correct or build on it, use `createTask`'s `followUpOf`, which runs in the same
 session with the same worker, and `getTask` on the original then shows the follow-up's output as
 `current`.
 A follow-up can be filed while that task still runs: a session works one task at a time, so it

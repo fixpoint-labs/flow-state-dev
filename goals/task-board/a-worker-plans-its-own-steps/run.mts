@@ -200,7 +200,7 @@ await runGoal(async (failures, tell) => {
         say(`${leg} attempt ${attempt}: ${count} steps about ${subject}`);
         const store = await storeOf(host);
         const stepsBefore = new Set((await store.steps()).map((row) => row.id));
-        const filed = await http.act("desk", conv, "dispatchTask_tasks", { goal, assignee: WRITER });
+        const filed = await http.act("desk", conv, "createTask_tasks", { goal, assignee: WRITER });
         if (filed?.ok !== true) {
           failures.push(`${leg}:filed — the desk's filing for ${WRITER} was refused: ${show(filed)}`);
           break;

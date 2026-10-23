@@ -14,7 +14,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -61,8 +61,8 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       script: [
         {
           toolCalls: [
-            { toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
-            { toolCallId: "a2", toolName: "dispatchTask", args: { goal: "Write more", assignee: "bobs.worker" } }
+            { toolCallId: "a1", toolName: "createTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
+            { toolCallId: "a2", toolName: "createTask", args: { goal: "Write more", assignee: "bobs.worker" } }
           ]
         },
         { text: "Filed it." },
@@ -236,9 +236,8 @@ describe("a task filed with no assignee", () => {
       await host.settled();
       // Assigning a held task names its owner and starts nothing.
       expect(host.runs).toEqual([]);
-      expect((await host.act("alice", conv, "dispatchTask_tasks", { taskId: filed.taskId })).output).toEqual({
-        ok: true,
-        taskId: filed.taskId
+      expect((await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, status: "pending" })).output).toEqual({
+        ok: true
       });
       await host.settled();
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
@@ -350,7 +349,7 @@ describe("each conversation's board is its own", () => {
       expect((await list(host, "bob", bobs)).map((task) => task.goal)).toEqual(["bob's"]);
       // Bob can't act on Alice's conversation at all (BR-12).
       await expect(host.act("bob", one, "listTasks_tasks", {})).rejects.toThrow(/belongs to another user/);
-      await expect(host.act("bob", one, "dispatchTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
+      await expect(host.act("bob", one, "createTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
       expect((await list(host, "alice", one)).map((task) => task.id)).toEqual([a.taskId]);
     } finally {
       await host.dispose();

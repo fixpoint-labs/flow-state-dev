@@ -65,7 +65,7 @@ const EM = "eng.em";
 const PROJECT_COORDINATOR = "project-coordinator";
 const COORDINATOR_FLOW = "coordinator";
 const STOREFRONT = { visibility: "shared" as const, id: "storefront" };
-const TASK_TOOLS = new Set(["dispatchTask", "createTask"]);
+const TASK_TOOLS = new Set(["createTask", "createTask"]);
 /** The line the board's task tools add naming the conversation's project; the control cuts it. */
 const PROJECT_LINE = /This conversation works in the \w+ project \\?"[^"\\]+\\?"\.[^.]*\./g;
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

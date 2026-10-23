@@ -30,7 +30,7 @@ const noticesAbout = async (host: BoardHost, conv: string, taskId: string) =>
 
 /** A row as a host before FIX-2078 stored it: its notice owed, with no due time and no wake. */
 async function storeLegacyOwed(host: BoardHost, conv: string): Promise<Task> {
-  await host.act("alice", conv, "dispatchTask_tasks", { goal: "done long ago", assignee: "eng.tasker" });
+  await host.act("alice", conv, "createTask_tasks", { goal: "done long ago", assignee: "eng.tasker" });
   await host.settled();
   const filing = await host.filingOf("alice", conv);
   const [done] = (await host.rows("alice")).filter((r) => r.status === "completed");
@@ -85,7 +85,7 @@ describe("the upgrade's backfill of wakes", () => {
     const host = bootBoardHost({ durable: true });
     open = host;
     const conv = await host.conversation("alice");
-    await host.act("alice", conv, "dispatchTask_tasks", { goal: "heard on time", assignee: "eng.tasker" });
+    await host.act("alice", conv, "createTask_tasks", { goal: "heard on time", assignee: "eng.tasker" });
     await host.settled();
     const runtime = await host.state.getRuntime();
     expect(await backfillBoardWakes(runtime.stores, { userCell })).toBe(0);

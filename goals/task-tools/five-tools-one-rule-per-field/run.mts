@@ -14,8 +14,8 @@
  *
  * Legs (each failure is tagged `<leg>:<assertion>`):
  *   a  the tools each worker's model is offered: a coordinator's and an agent
- *      worker's turn get the filer's four, `answerTask`, `dispatchTask` and
- *      `listDelegates`, and none of the removed six; only a coordinator set
+ *      worker's turn get the filer's four, `answerTask` and `listDelegates`,
+ *      and none of the removed six nor `dispatchTask`; only a coordinator set
  *      to `editsOwnDelegates` gets `addDelegate`, `removeDelegate`,
  *      `setFallback`; `reportProgress` and `parkOnQuestion` only on a task
  *      turn; an inline plan step that calls `reportProgress({ output })`
@@ -24,8 +24,8 @@
  *   b  every `updateTask` field in every state (pending, held, pending after a
  *      retry, running, finished), by the tool and by `updateTask_tasks` as
  *      the user: an allowed write reads back changed, a refused one leaves the
- *      row unchanged and names the field and the state; `dispatchTask`'s
- *      reassign and release obey the same table; a cancel with an edit is
+ *      row unchanged and names the field and the state; a release with a
+ *      reassign obeys the same table; a cancel with an edit is
  *      refused; a running task's reassign is refused and its first worker's
  *      result lands
  *   c  filing and delegates: a piece for a non-delegate is refused; under
@@ -340,7 +340,7 @@ await runGoal(async (failures) => {
             args: { goal: `#a-step# do the step ${stepCalls([{ toolName: "reportProgress", args: { statusNote: "Halfway", output: checkpoint } }])}`, title: "the step", assignee: "eng.a" }
           }
         ]);
-      const filed = await deskAct("dispatchTask_tasks", { goal, assignee: "eng.a" });
+      const filed = await deskAct("createTask_tasks", { goal, assignee: "eng.a" });
       if (filed?.ok !== true) throw new Error(`dispatching eng.a's task was refused: ${show(filed)}`);
       await until(async () => (await get(filed.taskId))?.status === "completed", 30_000);
       await idle();
@@ -359,7 +359,7 @@ await runGoal(async (failures) => {
           }
         }
       };
-      check("a-desk", [...FOUR, "answerTask", "dispatchTask", "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "parkOnQuestion"], "coordinator offered the four, not its own delegate tools");
+      check("a-desk", [...FOUR, "answerTask", "listDelegates"], [...REMOVED, ...OWN, "dispatchTask", "reportProgress", "parkOnQuestion"], "coordinator offered the four, not its own delegate tools");
       check("a-chief", [...FOUR, "listDelegates", ...OWN], [...REMOVED], "a coordinator set to manage its delegates gets addDelegate, removeDelegate, setFallback");
       check("a-conv", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "parkOnQuestion"], "no reportProgress off a task turn");
       check("a-task", [...FOUR, "listDelegates", "reportProgress", "parkOnQuestion"], [...REMOVED, ...OWN], "a task turn offered reportProgress and parkOnQuestion");
@@ -416,8 +416,8 @@ await runGoal(async (failures) => {
         } as never,
         "any" as never
       );
-      const running = (await deskAct("dispatchTask_tasks", { goal: `#b-running# ${word("running")} [slow:45000]`, assignee: "eng.b" })).taskId as string;
-      const finished = (await deskAct("dispatchTask_tasks", { goal: `#b-finished# ${word("finished")}`, assignee: "eng.b" })).taskId as string;
+      const running = (await deskAct("createTask_tasks", { goal: `#b-running# ${word("running")} [slow:45000]`, assignee: "eng.b" })).taskId as string;
+      const finished = (await deskAct("createTask_tasks", { goal: `#b-finished# ${word("finished")}`, assignee: "eng.b" })).taskId as string;
       await until(async () => (await get(running))?.status === "in_progress", 20_000);
       await until(async () => (await get(finished))?.status === "completed", 20_000);
 
@@ -518,23 +518,23 @@ await runGoal(async (failures) => {
             failures.push(`b:${name}:status ${status} by ${path} — wanted a refusal that writes nothing; answered ${show(out)}`);
           }
         }
-        // dispatchTask's reassign and release, while it stands: only a held row, before it starts.
+        // A release with a reassign, in one write: only a held row, before it starts.
         if (!allowed) {
           const before = await get(id);
-          const out = await deskAct("dispatchTask_tasks", { taskId: id, assignee: "eng.a" });
+          const out = await deskAct("updateTask_tasks", { id, assignee: "eng.a", status: "pending" });
           const after = await get(id);
           if (out?.ok !== false || stable(after) !== stable(before)) {
-            failures.push(`b:${name}:dispatchTask reassign — wanted a refusal that writes nothing; answered ${show(out)}, ${stable(before)} → ${stable(after)}`);
+            failures.push(`b:${name}:release with a reassign — wanted a refusal that writes nothing; answered ${show(out)}, ${stable(before)} → ${stable(after)}`);
           }
         }
       }
-      // A held row is released and reassigned by dispatchTask, before it starts.
-      const heldForDispatch = await file({ goal: `#b-dispatched# ${word("held for a dispatch")}`, assignee: "eng.b", held: true });
-      const dispatched = await deskAct("dispatchTask_tasks", { taskId: heldForDispatch, assignee: "eng.a" });
+      // A held row is released and reassigned in one write, before it starts.
+      const heldForDispatch = await file({ goal: `#b-dispatched# ${word("held for a release")}`, assignee: "eng.b", held: true });
+      const dispatched = await deskAct("updateTask_tasks", { id: heldForDispatch, assignee: "eng.a", status: "pending" });
       await until(async () => (await get(heldForDispatch))?.status === "completed", 20_000);
       const afterDispatch = await get(heldForDispatch);
       if (dispatched?.ok !== true || afterDispatch?.assignee !== "eng.a") {
-        failures.push(`b:held:dispatchTask reassign — wanted a held row released to eng.a; answered ${show(dispatched)}, read ${show(afterDispatch)}`);
+        failures.push(`b:held:release with a reassign — wanted a held row released to eng.a; answered ${show(dispatched)}, read ${show(afterDispatch)}`);
       }
 
       // A cancel with an edit is refused, by tool and by action, and writes nothing.
@@ -553,7 +553,7 @@ await runGoal(async (failures) => {
       }
 
       // A running task's reassign is refused, and its first worker's result lands.
-      const swap = (await deskAct("dispatchTask_tasks", { goal: `#b-swap# ${word("swap")} [slow:2500]`, assignee: "eng.b" })).taskId as string;
+      const swap = (await deskAct("createTask_tasks", { goal: `#b-swap# ${word("swap")} [slow:2500]`, assignee: "eng.b" })).taskId as string;
       await until(async () => (await get(swap))?.status === "in_progress", 20_000);
       await deskTurn(`#b-swap-tool# ${calls([{ toolName: "updateTask", args: { id: swap, assignee: "eng.a" } }])}`);
       const byTool = results("b-swap-tool", "updateTask")[0]?.result as any;
@@ -586,11 +586,11 @@ await runGoal(async (failures) => {
       const goal =
         `#c-piece# split it ` +
         calls([
-          { toolName: "dispatchTask", args: { goal: `#c-to-c# ${word("for a non-delegate")}`, assignee: "eng.c" } },
+          { toolName: "createTask", args: { goal: `#c-to-c# ${word("for a non-delegate")}`, assignee: "eng.c" } },
           { toolName: "createTask", args: { goal: `#c-to-c2# ${word("for a non-delegate, filed")}`, assignee: "eng.c" } },
-          { toolName: "dispatchTask", args: { goal: `#c-to-b# ${word("for a delegate")}`, assignee: "eng.b" } }
+          { toolName: "createTask", args: { goal: `#c-to-b# ${word("for a delegate")}`, assignee: "eng.b" } }
         ]);
-      const filed = await deskAct("dispatchTask_tasks", { goal, assignee: "eng.a" });
+      const filed = await deskAct("createTask_tasks", { goal, assignee: "eng.a" });
       await until(async () => (await get(filed.taskId))?.status === "completed", 40_000);
       await idle();
       const tried = results("c-piece");

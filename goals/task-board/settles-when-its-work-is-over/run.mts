@@ -408,7 +408,7 @@ const show = (value: unknown) => JSON.stringify(value);
 
 /** File `goal` for eng.doer from the desk, as the person does. Its task id. */
 async function file(run: Run, goal: string): Promise<string> {
-  const filed = await run.h.act(run.conversation, "dispatchTask_tasks", { goal, assignee: "eng.doer" });
+  const filed = await run.h.act(run.conversation, "createTask_tasks", { goal, assignee: "eng.doer" });
   if (filed?.ok !== true) throw new Error(`filing "${goal}" was refused: ${show(filed)}`);
   return filed.taskId as string;
 }

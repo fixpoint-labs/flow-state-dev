@@ -44,9 +44,6 @@ async function refusingBoard(): Promise<TaskCollectionRef> {
       if (patch.assignee === "me") throw new TaskWriteRefusedError("crossing", "cancel and file again", id);
       return inner.patchSettings(id, patch);
     },
-    dispatch: async (id) => {
-      throw new TaskWriteRefusedError("no_dispatch", "not by id", id);
-    },
   };
 }
 
@@ -60,14 +57,10 @@ const run = (t: GeneratorTool, input: Record<string, unknown>) =>
   runForTest(t as never, input as never, boardCtx()) as Promise<{ ok: boolean; error?: string; taskId?: string }>;
 
 describe("the task tools answer a ref's own refusal as a soft error", () => {
-  it("createTask and dispatchTask answer it by code and message, and file nothing", async () => {
+  it("createTask answers it by code and message, and files nothing", async () => {
     const board = await refusingBoard();
     const tools = taskToolsForTurn(async () => board, roster, { dispatches: true })({});
     expect(await run(tool(tools, "createTask"), { goal: "x", assignee: "me" })).toEqual({
-      ok: false,
-      error: "not_here: file it elsewhere",
-    });
-    expect(await run(tool(tools, "dispatchTask"), { goal: "x", assignee: "me" })).toEqual({
       ok: false,
       error: "not_here: file it elsewhere",
     });
@@ -81,17 +74,6 @@ describe("the task tools answer a ref's own refusal as a soft error", () => {
     const refused = await run(tool(tools, "updateTask"), { id: filed.taskId!, assignee: "me" });
     expect(refused).toEqual({ ok: false, error: "crossing: cancel and file again", taskId: filed.taskId });
     expect(board.get(filed.taskId!)!.assignee).toBe("ops");
-  });
-
-  it("dispatchTask by id answers it", async () => {
-    const board = await refusingBoard();
-    const tools = taskToolsForTurn(async () => board, roster, { dispatches: true })({});
-    const filed = await run(tool(tools, "createTask"), { goal: "x", assignee: "ops" });
-    expect(await run(tool(tools, "dispatchTask"), { taskId: filed.taskId! })).toEqual({
-      ok: false,
-      error: "no_dispatch: not by id",
-      taskId: filed.taskId,
-    });
   });
 
   it("still lets any other throw through", async () => {

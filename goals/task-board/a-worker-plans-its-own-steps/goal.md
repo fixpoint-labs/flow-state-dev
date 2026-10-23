@@ -7,7 +7,7 @@
 **Input:**
 
 - One in-process host on the real engine and a SQLite store, acted on over its HTTP router as one verified person (`goals/lib/http-actions`). The tree in `fixtures/workforce/`: `crew.desk` on a goal-local `desk` flow (the person's conversation; its turn runs no model), delegate `crew.writer`; `crew.writer` on the built-in `agent` flow and a real model, with no delegates. Its instructions say to file numbered steps for itself and to do one step when it comes.
-- The person files one task for the writer from the desk with `dispatchTask_tasks`: a product announcement in three steps (leg a1: outline, draft, tighten) or two (leg a2: outline, write). The first step invents a two-word codename.
+- The person files one task for the writer from the desk with `createTask_tasks`: a product announcement in three steps (leg a1: outline, draft, tighten) or two (leg a2: outline, write). The first step invents a two-word codename.
 - Held out, made at run time: the product, picked from `fixtures/briefs.json`, and the codename, which only the first step's turn invents.
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.

@@ -160,7 +160,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
   };
   /** File a task for the taker from `session`, and wait for its run. */
   const file = async (user: string, session: string, input: Record<string, unknown> = {}, flow = COORDINATOR_FLOW, org: Caller = ORG) => {
-    const filed = (await h.ok(user, flow, session, "dispatchTask_tasks", { goal: "Look at the repo", assignee: "eng.taker", ...input }, org)) as any;
+    const filed = (await h.ok(user, flow, session, "createTask_tasks", { goal: "Look at the repo", assignee: "eng.taker", ...input }, org)) as any;
     expect(filed).toMatchObject({ ok: true });
     await settled();
     expect(asked).toHaveLength(1);

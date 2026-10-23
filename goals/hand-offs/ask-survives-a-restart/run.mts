@@ -232,7 +232,7 @@ let LAB_ORG = "";
 
 /**
  * How the asking request waited, read from its own tool calls (see {@link WaitPath}).
- * A prefix match: a board's task tools can carry its suffix (`dispatchTask_<board>`).
+ * A prefix match: a board's task tools can carry its suffix (`getTask_<board>`).
  * A turn that waited both ways is `none`: no one path's assertion fits it.
  */
 function waitPath(store: string, O: Observed): WaitPath {

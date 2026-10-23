@@ -545,7 +545,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   if (runs("b4")) {
     o.say("b4: two of Alice's conversations with the chief of staff each add a task");
     r.via("b4", "action");
-    r.saw("b4", "surface: the app's `dispatchTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
+    r.saw("b4", "surface: the app's `createTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
     const delegate = "eng.coder";
     const before = sessionIds(o.store);
     const convs: Array<{ id: string; task?: string; word: string }> = [];
@@ -563,9 +563,9 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const t0 = Date.now();
     await Promise.all(
       convs.map(async (c) => {
-        const filed = await act(alice, COORDINATOR, c.id, "dispatchTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
+        const filed = await act(alice, COORDINATOR, c.id, "createTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
         c.task = (filed.output as any)?.taskId ?? (filed.output as any)?.task?.id;
-        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `dispatchTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
+        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `createTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
       }),
     );
     for (const until = Date.now() + 300_000; Date.now() < until; await sleep(2_000)) {
@@ -630,8 +630,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         await quiet(o.store, 420_000, 15_000);
         const filed = taskRows(o.store).filter((t) => t.partition.startsWith(ws!.sessionId!));
         const emItems = await alice.routes.items(ws.sessionId!, "");
-        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])dispatchTask$/.test(String(i.toolCall?.name ?? "")));
-        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`dispatchTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
+        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])createTask$/.test(String(i.toolCall?.name ?? "")));
+        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`createTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
         if (filed.length === 0) r.fail("b5", "no task row sits on the workstream session's board");
         const coderish = filed.filter((t) => t.assignee === "eng.coder" || t.assignee === "eng.reviewer");
         if (coderish.length !== filed.length) r.fail("b5", `a task's assignee isn't a DevTeam standard worker: ${show(filed.map((t) => t.assignee))}`);
@@ -696,11 +696,11 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       else r.saw("b6", `the turn offered ${offered.size === 0 ? "(unread)" : show([...offered])} and called ${show(called)}: none of the task tools`);
       r.via("b6", "action");
       const tasksBefore = taskRows(o.store).length;
-      const refused = await act(alice, COORDINATOR, s.id, "dispatchTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
+      const refused = await act(alice, COORDINATOR, s.id, "createTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
       const declined = (refused.output as { ok?: boolean } | undefined)?.ok === false;
-      if (refused.status === "completed" && declined) r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
-      else if (refused.status === "completed") r.fail("b6", `the app's dispatchTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
-      else r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
+      if (refused.status === "completed" && declined) r.saw("b6", `the app's createTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
+      else if (refused.status === "completed") r.fail("b6", `the app's createTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
+      else r.saw("b6", `the app's createTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
       if (taskRows(o.store).length !== tasksBefore) r.fail("b6", "a task row was stored");
     }
   }

@@ -18,7 +18,7 @@ correct implementation passes another report whose pick comes late.
 
 **Signal:** one leg on the DevTeam lab opened as its profile opens it, driven over its HTTP door as
 the lab's owner. A conversation with the chief of staff is opened; the scan is dispatched to
-`eng.coder` on its board through the `dispatchTask_tasks` action, as an app's screen would; the
+`eng.coder` on its board through the `createTask_tasks` action, as an app's screen would; the
 coder's run (the lab's stub) answers with the report, and the task completes. Once the lab is
 quiet, the ask is sent as one turn.
 

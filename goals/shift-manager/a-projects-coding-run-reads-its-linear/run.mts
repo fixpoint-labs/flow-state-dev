@@ -199,7 +199,7 @@ await runGoal(async (failures) => {
       inventory: true,
       projects: FSD_PROJECTS,
       mcpServers: FSD_MCP_SERVERS,
-      modelResolver: scriptedChief({ toolName: "dispatchTask", args: { goal, assignee: CODER, input: { project: FSD } } }),
+      modelResolver: scriptedChief({ toolName: "createTask", args: { goal, assignee: CODER, input: { project: FSD } } }),
       logger: silentLogger,
       log: (line) => console.log(line),
     });

@@ -16,7 +16,7 @@
  * Workforce's task entry (`workerTaskEntry`).
  *
  * At boot, after the inventory, the Lab opens one conversation with the lead
- * and files its tasks there through the conversation's own `dispatchTask_tasks`:
+ * and files its tasks there through the conversation's own `createTask_tasks`:
  *
  * - one **held** task for each worker named first on its flow: its run
  *   narrates a step about every second and holds until it is aborted (or
@@ -360,7 +360,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
   const conversation = RUN_LAB_LEAD_SESSION;
   const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
-    const out = (await act(flows[leadFlow]!, conversation, "dispatchTask_tasks", {
+    const out = (await act(flows[leadFlow]!, conversation, "createTask_tasks", {
       goal,
       assignee: worker.id,
       input: script,

@@ -1,6 +1,6 @@
 /**
  * The built-in `agent` flow plans its turns (FIX-2076 D1, D2): a worker with no
- * delegates is offered the task tools for its own steps, a `dispatchTask`
+ * delegates is offered the task tools for its own steps, a `createTask`
  * naming itself is a step worked after the turn in the same request, and the
  * worker answers once more, which is the turn's result.
  *
@@ -27,7 +27,7 @@ function script(): MockGeneratorScriptEntry[] {
         filed = true;
         return true;
       },
-      then: { toolCalls: [{ toolCallId: "call-outline", toolName: "dispatchTask", args: { goal: "Outline the post", assignee: "solo" } }] }
+      then: { toolCalls: [{ toolCallId: "call-outline", toolName: "createTask", args: { goal: "Outline the post", assignee: "solo" } }] }
     },
     { when: () => true, then: { text: "OK." } }
   ];

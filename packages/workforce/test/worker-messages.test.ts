@@ -298,7 +298,7 @@ describe("a message sent from a task's turn", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer });
     try {
       const chief = await h.conversation("alice", "chief");
-      const filed = await h.act("alice", chief, "dispatchTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
+      const filed = await h.act("alice", chief, "createTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       await h.settled();
 
@@ -482,7 +482,7 @@ describe("the hop count through a delegation", () => {
       agentAnswer: mockGenerator({
         script: [
           ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
-          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
+          ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
           ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
@@ -514,8 +514,7 @@ describe("the hop count through a delegation", () => {
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
-      // No post form is left to restart a chain through (FIX-2083): the call is refused by name.
-      expect(JSON.stringify(await toolOutputs(h, rows[0]!.toSession))).toMatch(/dispatch_takes_no_post/);
+      // No post form is left to restart a chain through (FIX-2083): no tool by that name, and nothing filed.
       expect(await h.rows("alice")).toEqual([]);
     } finally {
       await h.dispose();
@@ -528,7 +527,7 @@ describe("the hop count through a delegation", () => {
       agentAnswer: mockGenerator({
         script: [
           ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
-          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
+          ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
           ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]

@@ -50,7 +50,7 @@ function emTurn(): GeneratorModel {
       const said = JSON.stringify(call.messages ?? []);
       const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
       return {
-        toolCalls: [{ toolCallId: "em-1", toolName: "dispatchTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
+        toolCalls: [{ toolCallId: "em-1", toolName: "createTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
         finishReason: "tool-calls",
       };
     },

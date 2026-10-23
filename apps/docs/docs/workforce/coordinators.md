@@ -49,7 +49,7 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
 | `editsOwnDelegates` | `true` gives the coordinator's own turn `addDelegate`, `removeDelegate` and `setFallback`, so it can change its delegates when you ask it to. `false` by default: only you change them, from your app. See [Changing the delegates](#changing-the-delegates). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, the [task tools](../orchestration/task-board.md#one-task-five-tools) and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says, and so do `addDelegate`, `removeDelegate` and `setFallback` on a coordinator set to `editsOwnDelegates: true`. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a message the routing already handed to delegates is followed by a note saying where it went: `Handed this message to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates` and the [task tools](../orchestration/task-board.md#one-task-five-tools) come with the flow, whatever the coordinator's `tools:` line says, and so do `addDelegate`, `removeDelegate` and `setFallback` on a coordinator set to `editsOwnDelegates: true`. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a message the routing already handed to delegates is followed by a note saying where it went: `Handed this message to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -431,13 +431,13 @@ A routed task gets your message an answer. When work has to be done instead, a c
 
 ```ts
 await help.sendAction(
-  "dispatchTask_tasks",
+  "createTask_tasks",
   { goal: "Audit our dependencies' licenses", assignee: "licenses" },
   { sessionId: session.id },
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `createTask_tasks`, `getTask_tasks`, `listTasks_tasks`, `updateTask_tasks`, `answerTask_tasks` and `dispatchTask_tasks`. The coordinator has the same verbs as tools, so it hands out a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `createTask_tasks`, `getTask_tasks`, `listTasks_tasks`, `updateTask_tasks` and `answerTask_tasks`. The coordinator has the same verbs as tools, so it hands out a task itself when you ask it for one.
 
 From your app or from the coordinator's own tools, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
@@ -451,17 +451,17 @@ A delegate whose `takes` is `nothing` is refused the same way, and the error say
 { "ok": false, "error": "unknown_assignee: \"eng.coder\" is not on this board's team. Available: support.devices, licenses. Not taking tasks now: eng.coder: Worker \"eng.coder\" runs on flow \"coder\", which takes no task. …" }
 ```
 
-A task with no assignee goes to the conversation's only delegate that takes tasks. With several, `dispatchTask_tasks` answers `assignee_required` and stores nothing, so name one.
+A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board unassigned until you give it one with `updateTask_tasks`, so name one when you file it.
 
-`dispatchTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
+`createTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
 
-`createTask_tasks` starts a task the same way. Filed with `held: true`, it answers `{ ok: true, taskId, status: "held" }`, and the task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To release a held task, send `updateTask_tasks` with `status: "pending"`, and an `assignee` first if it has none:
+Filed with `held: true`, it answers `{ ok: true, taskId, status: "held" }`, and the task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To release a held task, send `updateTask_tasks` with `status: "pending"`, and an `assignee` first if it has none:
 
 ```ts
 await help.sendAction("updateTask_tasks", { id: taskId, status: "pending" }, { sessionId: session.id });
 ```
 
-`dispatchTask_tasks` with its `taskId` releases it too. `updateTask_tasks` with `status: "held"` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
+`updateTask_tasks` with `status: "held"` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
 
 A task's `deps` must name tasks on this conversation's board that haven't failed or been cancelled, and must not loop back to the task. Anything else is refused when you file it, and nothing is stored. When a task fails for good or is cancelled, every open task that depends on it is cancelled too, labelled `skipped`.
 
@@ -482,10 +482,9 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
-| `dispatchTask_tasks` | Starts a new task, or a held one, on a delegate now |
 | `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
 
-A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
+A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, file it again (`createTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 
@@ -542,17 +541,17 @@ await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, 
 
 A finished task's session stays open, and the task stays as it ended. A line in that session is an ordinary turn: the worker answers from everything the session holds, and the task, its output and its retries don't change. A worker flow you build yourself handles the line however its `run` action does.
 
-A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, dispatch a follow-up task that names it:
+A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, file a follow-up task that names it:
 
 ```ts
 await help.sendAction(
-  "dispatchTask_tasks",
+  "createTask_tasks",
   { goal: "Now write it up for the team", followUpOf: taskId },
   { sessionId: session.id },
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. Once it completes, `getTask_tasks` on the original shows the follow-up's output as `current`, beside the original's own output, which never changes. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `createTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. Once it completes, `getTask_tasks` on the original shows the follow-up's output as `current`, beside the original's own output, which never changes. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `createTask` refuses the follow-up, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
 
 ```json
 { "ok": false, "error": "follow_up_of_unrun: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
@@ -647,7 +646,7 @@ With `turn`, each task runs as one turn, in a task session of its own. The task 
 
 A coding worker built on the [harness manager](../orchestration/harness-manager.md) uses `block`: the manager takes the task, works it in its own checkout, and returns the answer. The conversation hears it the same way. The `claim` comes from the board, never from the task, so a task can't point its run at another board.
 
-A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, routing skips them, and `dispatchTask` and `createTask` refuse them.
+A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, routing skips them, and `createTask` refuses them.
 
 ## What it won't do
 

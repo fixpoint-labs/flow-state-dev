@@ -7,7 +7,7 @@
 **Input:**
 
 - One in-process host on the real engine and a SQLite store, acted on over its HTTP router as one verified person (`goals/lib/http-actions`). The tree in `fixtures/workforce/`: `crew.desk` on a goal-local `desk` flow, the person's conversation, whose turn runs no model and records every message it is handed, delegate `crew.reporter`; `crew.reporter` (A) on the built-in `agent` flow and a real model, delegates `crew.helper`, `crew.keeper` and `crew.broken`; `crew.keeper` (B), `crew.broken` and `crew.helper` on a goal-local `taker` flow. B answers with the round's codename after a 4 s hold; `crew.broken` fails every attempt; `crew.helper` holds no codename.
-- The person files each task for A from the desk with `dispatchTask_tasks`, naming the delegate that keeps the codename. The ask doesn't mention `wait`, pieces or the task tools.
+- The person files each task for A from the desk with `createTask_tasks`, naming the delegate that keeps the codename. The ask doesn't mention `wait`, pieces or the task tools.
 - Held out, made at run time: the codename, fresh per leg and held only in B's answer.
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.

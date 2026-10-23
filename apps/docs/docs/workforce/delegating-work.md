@@ -41,7 +41,7 @@ delegates: all
 
 The roster is read on every call, so a worker you hire partway through a conversation can be handed work on the next call, and a worker you fire drops off. Removing one delegate from such a session turns its list into the roster as it stands then, less that worker, and it stops following the roster. Only the worker's file sets `all`; no action or tool switches a list to it. `all` isn't bounded by the 25-delegate limit a written list has.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), `answerTask`, and `dispatchTask`, which starts work on a delegate now. `createTask` with `held: true` files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), and `answerTask`. `createTask` starts work on a delegate now; with `held: true` it files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
 A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, and `parkOnQuestion`. Neither is an action.
 
@@ -134,7 +134,7 @@ A flow that leaves the kit out gives its workers no task tools, whatever their d
 
 A worker can plan its own work. A task it files naming **itself** is a **step**: it isn't handed to anyone, and no new session opens for it. When the worker's turn ends, the same request works the steps, one at a time and in order, each as a turn of the worker in the same session. A step sees the conversation so far, the steps before it included, and the results of the steps listed in its `deps`. Then the worker answers once more, told how each step ended, and that answer is what the request returns: your reply in a conversation, or the task's result in a task session.
 
-```json title="Three dispatchTask calls: the steps the worker files for itself"
+```json title="Three createTask calls: the steps the worker files for itself"
 { "goal": "Outline the post", "assignee": "eng.writer" }
 { "goal": "Draft the post", "assignee": "eng.writer", "deps": ["<the outline's taskId>"] }
 { "goal": "Tighten the draft", "assignee": "eng.writer", "deps": ["<the draft's taskId>"] }

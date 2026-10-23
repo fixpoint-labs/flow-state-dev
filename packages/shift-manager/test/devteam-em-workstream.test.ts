@@ -91,7 +91,7 @@ function emModel(turns: string[], prompts: string[]): GeneratorModel {
         queue =
           turns.length === 1
             ? ISSUES.map((issue) => ({
-                toolName: "dispatchTask",
+                toolName: "createTask",
                 args: { goal: `Build ${issue}.`, assignee: CODER, input: { issue, phase: "implement" } },
               }))
             : [{ toolName: "updateWorkstream", args: { report: REPORT } }];

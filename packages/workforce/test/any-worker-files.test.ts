@@ -106,7 +106,7 @@ function fileScript(marker: string, goal: string, assignee: string): MockGenerat
   return [
     on("completed by", { text: "Heard it." }),
     on("failed for good", { text: "Heard it failed." }),
-    ...callOnce(marker, { toolName: "dispatchTask", args: { goal, assignee } }, "Filed."),
+    ...callOnce(marker, { toolName: "createTask", args: { goal, assignee } }, "Filed."),
     on("TASK:", { text: "Done the task." }),
     { when: () => true, then: { text: "OK." } }
   ];
@@ -137,7 +137,7 @@ async function agentSession(h: BoardHost, userId: string, workerId: string): Pro
 }
 
 const file = async (h: BoardHost, userId: string, sessionId: string, input: Record<string, unknown>, flow: string) => {
-  const result = await h.act(userId, sessionId, "dispatchTask_tasks", input, flow);
+  const result = await h.act(userId, sessionId, "createTask_tasks", input, flow);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -423,7 +423,7 @@ describe("the grant is server-written, never input (BR-6)", () => {
       const forged = await h.act(
         "alice",
         talk,
-        "dispatchTask_tasks",
+        "createTask_tasks",
         { goal: "sneak it in", assignee: "eng.writer", delegates: [{ worker: "eng.writer" }] },
         "agent"
       );

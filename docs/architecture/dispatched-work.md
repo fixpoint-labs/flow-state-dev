@@ -304,7 +304,7 @@ host can hold a wait (`canHoldWait`: `resumeWait`, `hasWaitSweeper` and
 `waits`) and the board opts in with `resumesWaits: true` (the filing
 session's `onTaskSettled` pass resumes an owed wait when its task ends).
 Waiting on a request this one dispatched is `dispatcher({ wait: true })`.
-`createTask` and `dispatchTask` never wait. A wait's deadline cancels
+`createTask` never waits. A wait's deadline cancels
 nothing: the work runs on. Identity is never a parameter to any of them.
 
 ## The rule that decides everything

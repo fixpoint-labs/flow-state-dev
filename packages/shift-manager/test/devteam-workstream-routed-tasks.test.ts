@@ -92,7 +92,7 @@ function emModel(seen: EmSeen, files = true): GeneratorModel {
       const last = options.messages.at(-1) as { role?: string } | undefined;
       if (last?.role !== "tool") {
         seen.turns.push(text);
-        queue = files && seen.turns.length === 1 ? [{ toolName: "dispatchTask", args: { goal: "Build the guest cart.", assignee: CODER } }] : [];
+        queue = files && seen.turns.length === 1 ? [{ toolName: "createTask", args: { goal: "Build the guest cart.", assignee: CODER } }] : [];
       }
       const call = queue.shift();
       step += 1;

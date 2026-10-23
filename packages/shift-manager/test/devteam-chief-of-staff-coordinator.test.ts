@@ -269,7 +269,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
-        toolName: "dispatchTask",
+        toolName: "createTask",
         args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } },
       },
     ]);
@@ -349,7 +349,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], undefined, [
-      { toolName: "dispatchTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
+      { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
     ]);
     expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
 

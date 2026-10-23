@@ -1,7 +1,7 @@
 /**
  * `RequestHost.hasWaitSweeper` (FIX-1816 BR-5): a turn is told a wait is
  * bounded only when this process runs a durability sweeper that times waits
- * out, so `dispatchTask` offers `wait` only where no wait can
+ * out, so `getTask` offers `wait` only where no wait can hang
  * forever. The resume verb is unaffected by it.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";

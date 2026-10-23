@@ -213,7 +213,7 @@ async function boot(options: { env?: Record<string, string>; failGithub?: boolea
   /** File a task for the taker from `session`, wait for its run, and return what it was relayed. */
   const file = async (user: string, session: string, input: Record<string, unknown> = {}, flow = COORDINATOR_FLOW) => {
     const before = runs.length;
-    const filed = (await h.ok(user, flow, session, "dispatchTask_tasks", { goal: "Look at the issue", assignee: "eng.taker", ...input })) as any;
+    const filed = (await h.ok(user, flow, session, "createTask_tasks", { goal: "Look at the issue", assignee: "eng.taker", ...input })) as any;
     expect(filed).toMatchObject({ ok: true });
     await settled();
     expect(runs).toHaveLength(before + 1);

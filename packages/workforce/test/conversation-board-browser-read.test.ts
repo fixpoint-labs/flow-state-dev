@@ -22,7 +22,7 @@ async function readTasks(host: BoardHost, userId: string, sessionId: string) {
 }
 
 async function file(host: BoardHost, userId: string, conv: string, goal: string): Promise<string> {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", { goal, assignee: "eng.tasker" });
+  const result = await host.act(userId, conv, "createTask_tasks", { goal, assignee: "eng.tasker" });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output.taskId as string;
 }

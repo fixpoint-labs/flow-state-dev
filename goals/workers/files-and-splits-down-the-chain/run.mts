@@ -169,8 +169,8 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
   return all.filter((s) => ids.has(s.id));
 }
 
-/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. Each leg reads exactly the tool it proves: `dispatchTask` starts work, `createTask` with `held` holds it. */
-function addTasks(tool: "createTask" | "dispatchTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
+/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. `createTask` starts work, and with `held` holds it. */
+function addTasks(tool: "createTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
     .filter((i) => i.toolCall?.name === tool && (requestId === undefined || i.requestId === requestId))
@@ -201,7 +201,7 @@ function gradeA(o: any, store: string): LegResult {
   const bob = o.people.bob.userId as string;
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
-  const filed = addTasks("dispatchTask", store, A.conv, A.turn.requestId);
+  const filed = addTasks("createTask", store, A.conv, A.turn.requestId);
   const topId = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const top = rows.find((x) => x.id === topId);
 
@@ -210,7 +210,7 @@ function gradeA(o: any, store: string): LegResult {
   }
   const plannerSessions = all.filter((s) => topId !== null && s.state.taskId === topId);
   const planner = plannerSessions[0];
-  const pieceCalls = addTasks("dispatchTask", store, planner?.id);
+  const pieceCalls = addTasks("createTask", store, planner?.id);
   const pieces = planner === undefined ? [] : onBoardOf(rows, planner.id);
   if (plannerSessions.length !== 1 || pieceCalls.filter((x) => x?.ok === true).length !== 2 || pieces.length !== 2 || show(pieces.map((p) => p.assignee).sort()) !== show(["crew.one", "crew.two"])) {
     r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own createTask; sessions ${plannerSessions.length}, its createTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
@@ -254,8 +254,8 @@ function gradeA(o: any, store: string): LegResult {
   }
   // Bob's worker of the same name: his own row, so it lists only his delegate.
   const bobRows = taskRows(store, bob, o.org);
-  const bobTried = addTasks("dispatchTask", store, A.bobConv, A.bobTurn.requestId);
-  const bobOwnId = addTasks("dispatchTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
+  const bobTried = addTasks("createTask", store, A.bobConv, A.bobTurn.requestId);
+  const bobOwnId = addTasks("createTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
   const bobOwn = bobRows.find((x) => x.id === bobOwnId);
   const bobOwnSessions = all.filter((s) => bobOwnId !== undefined && s.state.taskId === bobOwnId);
   const herRowsNamingIt = rows.filter((x) => x.assignee === A.lead);
@@ -287,7 +287,7 @@ function gradeB(o: any, store: string): LegResult {
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const conv = all.find((s) => s.id === B.conv);
-  const filed = addTasks("dispatchTask", store, B.conv, B.turn.requestId);
+  const filed = addTasks("createTask", store, B.conv, B.turn.requestId);
   const id = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const row = rows.find((x) => x.id === id);
   if (conv?.flowKind !== "foreman" || conv.state.workerId !== "shop.foreman" || row === undefined || row.assignee !== "crew.one" || !row.partition.startsWith(`${B.conv}~`)) {
@@ -343,7 +343,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const chain = chainUnder(all, D.conv);
-  const deepTried = addTasks("dispatchTask", store, D.d5);
+  const deepTried = addTasks("createTask", store, D.d5);
   const boards = chain.filter((s) => onBoardOf(rows, s.id).length > 0);
   const toD6 = allTaskRows(store).filter((x) => x.assignee === "deep.d6");
   if (
@@ -385,11 +385,11 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
-  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
+  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "createTask");
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
-    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with dispatchTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its dispatchTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with createTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its createTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   // A filing that waited for its answer hears the ending as the tool's result; any other hears it as one notice.

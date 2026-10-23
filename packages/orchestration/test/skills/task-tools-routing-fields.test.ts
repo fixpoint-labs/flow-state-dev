@@ -1,9 +1,8 @@
 /**
  * The task tools' routing fields (FIX-2083): `createTask` files `target` as a
  * filing setting, beside `session` and `resultTo`; `updateTask` refuses all
- * three by name, since none changes after filing; and `dispatchTask` has no
- * post form left, refusing `post` by name rather than filing a task the
- * caller thinks hands a message on (BP-030).
+ * three by name, since none changes after filing; and no tool takes the
+ * post form: `dispatchTask` is gone, and `createTask` has no `post` field.
  */
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
@@ -73,15 +72,11 @@ describe("the task tools' routing fields", () => {
     expect(collection.get(filed.taskId!)?.session).toBeUndefined();
   });
 
-  it("dispatchTask offers no post field, and refuses post by name, filing nothing", async () => {
-    const { tools, call, collection } = await toolsFor();
-    const dispatch = tools.find((tool) => (tool as { name?: string }).name === "dispatchTask") as GeneratorTool;
-    const shape = (dispatch as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
+  it("offers no post form: no dispatchTask, and no post field on createTask", async () => {
+    const { tools } = await toolsFor();
+    expect(tools.map((tool) => (tool as { name?: string }).name)).not.toContain("dispatchTask");
+    const create = tools.find((tool) => (tool as { name?: string }).name === "createTask") as GeneratorTool;
+    const shape = (create as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
     expect(Object.keys(shape)).not.toContain("post");
-    expect(await call("dispatchTask", { post: true, assignee: "eng.em" })).toEqual({
-      ok: false,
-      error: expect.stringMatching(/^dispatch_takes_no_post: /)
-    });
-    expect(collection.list()).toEqual([]);
   });
 });

@@ -130,7 +130,7 @@ type Step = { hold?: string; call?: { toolName: string; args: unknown }; text?: 
 /** What a turn does, by the tag its own message carries. Only the first turn carrying a tag acts on it. */
 const SCRIPT: Record<string, Step[]> = {
   a2: [{ hold: "a2", call: { toolName: "reportProgress", args: { statusNote: "halfway" } } }, { text: "a2 answer" }],
-  a4: [{ call: { toolName: "dispatchTask", args: { goal: "#a4p# check the dates", assignee: "helper" } } }, { text: "a4 filed the piece" }],
+  a4: [{ call: { toolName: "createTask", args: { goal: "#a4p# check the dates", assignee: "helper" } } }, { text: "a4 filed the piece" }],
   a4p: [{ hold: "a4p", text: "a4p piece done" }],
   b1: [{ hold: "b1", text: "b1 answer" }],
   b2: [{ call: { toolName: "reportProgress", args: { statusNote: "draft", output: "b2-first" } } }, { hold: "b2", text: "b2 answer" }],
@@ -354,7 +354,7 @@ await runGoal(async (failures) => {
     /** A row on the desk's board, through the public read action. */
     const get = async (id: string) => ((await deskAct("getTask_tasks", { id })) as { task?: Record<string, any> }).task;
     const dispatch = async (input: Record<string, unknown>) => {
-      const out = await deskAct("dispatchTask_tasks", input);
+      const out = await deskAct("createTask_tasks", input);
       if (out?.ok !== true) throw new Error(`dispatching ${show(input)} was refused: ${show(out)}`);
       return out.taskId as string;
     };
@@ -397,7 +397,8 @@ await runGoal(async (failures) => {
       const a1Before = await get(a1);
       await steer(a1, a1Words);
       await checkSteer("a", "before start", a1, a1Before);
-      await dispatch({ taskId: a1 });
+      const released = await deskAct("updateTask_tasks", { id: a1, status: "pending" });
+      if (released?.ok !== true) throw new Error(`releasing a1 was refused: ${show(released)}`);
       await completesOnce("a", "before start", a1);
       const a1First = calls.find((c) => c.tag === "a1");
       if (a1First?.sent.includes(a1Words) !== true) failures.push(`a:a steer before start is in the first model call's brief — first a1 call ${a1First === undefined ? "never ran" : "lacks it"}`);

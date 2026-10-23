@@ -193,7 +193,7 @@ function turnOf(options: StepOptions) {
 /** One routed hand-off, as this commit's judgment turn makes one. */
 const handTo = (assignee: string, extra: Record<string, unknown> = {}) =>
   POST_ERA
-    ? { toolName: "dispatchTask", args: { post: true, assignee } }
+    ? { toolName: "createTask", args: { post: true, assignee } }
     : { toolName: "createTask", args: { goal: "Answer this message", assignee, session: "ongoing", resultTo: "conversation", ...extra } };
 
 /** The judgment turn: a `[judge]` message goes to the first delegate twice; `[judge-3]` once, asking for three attempts. */
@@ -232,7 +232,7 @@ const writer = {
     if (result !== undefined) return { text: `Drafted: ${result}`, finishReason: "stop" };
     const piece = /\[write\] (\S+)/.exec(asked)?.[1];
     if (piece !== undefined) {
-      return { toolCalls: [{ toolCallId: "piece", toolName: "dispatchTask", args: { goal: `Draft the piece ${piece}`, assignee: first } }], finishReason: "tool-calls" };
+      return { toolCalls: [{ toolCallId: "piece", toolName: "createTask", args: { goal: `Draft the piece ${piece}`, assignee: first } }], finishReason: "tool-calls" };
     }
     return { text: "OK.", finishReason: "stop" };
   },

@@ -287,19 +287,6 @@ describe("the judgment turn's filing on a turn routing a message", () => {
     expect(row.metadata).not.toHaveProperty("pieceOf");
     expect(row.metadata).not.toHaveProperty("retryOf");
   });
-
-  it("refuses dispatchTask's retired post form by name, and files nothing", async () => {
-    const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "d1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }] }, { text: "Tried." }]
-    });
-    const host = bootHost({ judgment });
-    const id = await host.conversation("alice", "chief");
-    await post(host, id, "go");
-    const outputs = (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.output);
-    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^dispatch_takes_no_post: /) }]);
-    expect(await host.routedRows("alice")).toEqual([]);
-    expect(host.heard).toEqual([]);
-  });
 });
 
 describe("a post row stored before the upgrade", () => {

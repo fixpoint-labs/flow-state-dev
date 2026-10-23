@@ -47,7 +47,7 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
       const dispatch = /^dispatch\s+(\{[\s\S]*\})\s*$/.exec(said);
       if (dispatch !== null) {
         return {
-          toolCalls: [{ toolCallId: `t-${Date.now()}`, toolName: "dispatchTask", args: JSON.parse(dispatch[1]!) }],
+          toolCalls: [{ toolCallId: `t-${Date.now()}`, toolName: "createTask", args: JSON.parse(dispatch[1]!) }],
           finishReason: "tool-calls",
         };
       }
