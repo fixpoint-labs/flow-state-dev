@@ -19,4 +19,4 @@
 |------|--------|-------|---------|-------|
 | 2026-10-23 | 7d69c4068 (main) | n/a | FAIL (expected) | Control. a·traces-default, a·traces-default·input, a·traces-off, a·traces-off·input, c, e: `fsdev run exited 1` with "ctx.suspend() requires a DurabilityProvider", no `suspended` event, no capture stop; d: the error names neither the rule nor the setting |
 | 2026-10-23 | fix/FIX-2063 with main's sweeper | n/a | FAIL (expected) | Blast radius for c: only `[c] 5 s past its deadline the stop is "pending", not "expired"`; every other leg passed |
-| 2026-10-23 | fix/FIX-2063 | n/a | PASS | a and b under both trace settings (4 step lines each, 1 request per session, 2 sessions listed after restart); c expired 0.14 s after its deadline; d refused, 0 stops held; e held and answered |
+| 2026-10-23 | 9b6643092 (fix/FIX-2063) | n/a | PASS | a and b under both trace settings (4 step lines each, 1 request per session, 2 sessions listed after restart); c expired 0.14 s after its deadline; d refused, 0 stops held; e held and answered |
