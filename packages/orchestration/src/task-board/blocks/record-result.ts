@@ -81,6 +81,7 @@ import {
 } from "../../tasks/collection/advisory-write-back";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
+import { HandedOverRowError } from "./dispatch-row";
 import {
   reportRecorderFailure,
   TaskBoardRecorderFailureError,
@@ -534,6 +535,15 @@ export function createRecordError(options: RecordErrorOptions) {
       // for the drain's tail to find; when the emission itself failed there is
       // nothing there to find, so there is nothing to defer to.
       if (error instanceof TaskBoardReportFailureError) {
+        stopLeaseRenewal();
+        throw error;
+      }
+
+      // A plan drain that failed past its hand-over: the row is another
+      // session's, so there is nothing of this request's to record on it, and
+      // `skip` swallowing it would leave the drain waiting on nothing. The
+      // plan fails instead (see `dispatch-row.ts`).
+      if (error instanceof HandedOverRowError) {
         stopLeaseRenewal();
         throw error;
       }
