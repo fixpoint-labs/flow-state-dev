@@ -110,7 +110,7 @@ counts. Then the review gap blocks step 6, and a harness thread waits under *Rea
 
 ## Decided, not asked
 
-- **Where a thread works:** the session's project, by FIX-2153's rule; with none, the composer
+- **Where a thread works:** the session's project, a rule this spec states itself; with none, the composer
   asks you to choose one. No scratch directory: a run that writes somewhere you didn't pick is
   the failure the ask is about. Details in the [spec](SPEC.md#where-a-thread-works).
 

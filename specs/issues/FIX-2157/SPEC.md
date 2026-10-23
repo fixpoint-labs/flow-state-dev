@@ -104,8 +104,8 @@ worker.
 + watchPins() · pin(task) · unpin(task)   // the pins flow (D4)
 ```
 
-<a name="where-a-thread-works"></a>**Where a thread works.** Threads mode takes FIX-2153's session directory rule. A session is
-opened on a project, and *New session* asks which; a project with a repository the operator maps
+<a name="where-a-thread-works"></a>**Where a thread works.** The rule is stated here, and FIX-2153's session mode is being amended
+to the same one. A session is opened on a project, and *New session* asks which; a project with a repository the operator maps
 in `checkouts` is a directory on this machine. A thread inherits it: the hand-over copies the
 session's project to the task session (`filingProjectId`), and `projectWorkspace()` reads it
 there. A task may name another project the person is a member of. With no project, the run is
