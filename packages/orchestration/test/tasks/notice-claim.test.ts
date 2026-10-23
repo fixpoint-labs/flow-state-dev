@@ -23,7 +23,7 @@ import { dispatcher, handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import type { TaskSettledInput } from "../../src";
-import { defineTaskCollection, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import { defineTaskCollection, NOTICE_DUE_MS, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
 import { taskBoard } from "../../src/task-board";
 import {
   awaitApproval,
@@ -195,28 +195,58 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
   it("a notice held a while for its filing request is heard within seconds of that request's park, not at its resend's backoff", async () => {
     // The filer hears a task it filed as soon as its turn stops on a
     // person: the person may take hours, and the turn holds the notice no more.
+    // Timed against the row's own resend record, not a fixed sleep: the turn
+    // parks once two resends have been turned away for it, so its next resend
+    // is a known 8 s out, and the notice must be heard before that.
     const notices: TaskSettledInput[] = [];
+    const heardAt: number[] = [];
     let taskId = "";
+    let parkedAt = 0;
+    let backoffSendAt = 0;
     const { model } = stepModel([
       fileCall("f1"),
       async (opts) => {
         taskId = waitedTaskId([opts], 0);
-        // The turn runs on while its task's notice is held for it, past two
-        // resends: the next would go out 8 s after the last, about 7 s after
-        // the park below.
-        await settle(7_000);
+        // The turn runs on while its task's notice is held for it, until the
+        // pass has sent it again twice and the second copy was turned away
+        // for this running request too.
+        const resent = await heldAfterResends(2);
+        expect(notices).toEqual([]);
+        backoffSendAt = resent.at + NOTICE_DUE_MS * 2 ** resent.n;
+        parkedAt = Date.now();
         return awaitApproval("p1")(opts);
       },
       finalAnswer
     ]);
-    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices });
+    const flow = waitFlow(model, {
+      endsOnFiling: "already done",
+      heard: notices,
+      heardGate: async () => {
+        heardAt.push(Date.now());
+      }
+    });
     const state = runtimeFor(flow, await stores());
+    /** Wait until the row's notice has been resent `n` times and that copy was turned away for its running filer. */
+    const heldAfterResends = async (n: number): Promise<{ at: number; n: number }> => {
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        if (Date.now() > deadline) throw new Error(`the notice was not resent ${n} times and held within 20 s`);
+        const meta = (await rows(state, flow))[0]?.metadata ?? {};
+        const record = <T>(prefix: string) => Object.entries(meta).find(([key]) => key.startsWith(prefix))?.[1] as T | null | undefined;
+        const resent = record<{ at: number; n: number }>("noticeResent:");
+        const deferred = record<{ at: number; whileRunning?: string }>("noticeDeferred:");
+        if (resent != null && resent.n >= n && deferred?.whileRunning !== undefined && deferred.at >= resent.at) return resent;
+        await settle(50);
+      }
+    };
     try {
       const turn = await startTurn(state);
-      await until(state, turn, "suspended", 15_000);
-      expect(notices).toEqual([]);
-      await eventually(() => notices.length === 1, 3_000);
+      await until(state, turn, "suspended", 20_000);
+      await eventually(() => notices.length === 1, 15_000);
       expect(notices).toEqual([expect.objectContaining({ taskId, ending: "completed", output: "already done" })]);
+      // Heard after the park, and before the resend its backoff would have sent.
+      expect(heardAt[0]).toBeGreaterThanOrEqual(parkedAt);
+      expect(heardAt[0]).toBeLessThan(backoffSendAt);
 
       await approve(state, turn);
       await until(state, turn, "completed", 10_000);
