@@ -83,6 +83,16 @@ describe("readCodexUsage", () => {
     expect(readFileSync(LOG, "utf8")).not.toContain("account/rateLimits/read");
   });
 
+  it("reads a CODEX_API_KEY in the run's environment as an API key, over a saved sign-in, and starts no Codex", async () => {
+    writeFileSync(LOG, "");
+    const reading = await readCodexUsage({
+      program,
+      env: { PATH: process.env.PATH ?? "", CODEX_API_KEY: "sk-test", FAKE_APP_SERVER_MODE: "signed-in", FAKE_APP_SERVER_LOG: LOG },
+    });
+    expect(reading).toEqual({ status: "api-key", reason: "Codex uses an API key: no subscription limit" });
+    expect(readFileSync(LOG, "utf8")).toBe("");
+  });
+
   it("reads any other failure as unavailable, with a plain reason and never the CLI's words", async () => {
     expect(await read("bedrock")).toMatchObject({ status: "unavailable" });
     // A signed-in account whose limits are refused: the vendor's message stays out.
