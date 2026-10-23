@@ -175,7 +175,8 @@ size on this PR's successor, not worked around by skipping review.
   Product then overturned a draft that let harness threads skip review: a run with changes waits
   for yours, and that gap blocks step 6. A control that
   removed the checkout mapping was first said to give `no-project`; an unmapped project gets a
-  branch from its remote instead, so that control fails on step 6's directory check, and the
+  branch from its remote instead, so that control fails on step 6's directory check (Codex: a run
+  works in a worktree of the mapped repository, so the check is the worktree's repository), and the
   `no-project` control is a session opened on no project.
 
 ## Notes from review
