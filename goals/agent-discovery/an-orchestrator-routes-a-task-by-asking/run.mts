@@ -200,7 +200,7 @@ async function route(blankPurposes: boolean): Promise<{
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow: coordinator as never,
-    actionName: "run" as never,
+    actionName: "respond" as never,
     input: { message: fx.task },
     userId: "goal-user",
     sessionId: session,

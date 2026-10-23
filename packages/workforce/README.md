@@ -55,7 +55,7 @@ import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
 const workforce = createWorkforceClient({ userId, baseUrl });
 const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
-await createClient({ flowKind: session.flowKind, userId, baseUrl }).sendAction("run", { message }, { sessionId: session.id });
+await createClient({ flowKind: session.flowKind, userId, baseUrl }).sendAction("respond", { message }, { sessionId: session.id });
 ```
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
@@ -377,6 +377,28 @@ const flows = hireWorkforce(installation);
 flowRegistry.registerMany(flows); // agent, custom-agent, intake, workforce-roster
 ```
 
+A worker flow declares its **roles** where it is registered: `contributor` (takes tasks on `work`,
+from `workerTaskEntry`), `manager` (files tasks for its delegates and runs its board on `dispatch`,
+with `onTaskSettled`, from `defineSessionBoard`), and `coordinator` (the built-in coordinator's).
+Put them on the builder, `workerFlow(build, { roles: ["manager"] })`, or on the entry,
+`{ flow, roles: ["contributor"] }`. The built-in `agent` and `coordinator` declare their own. A flow
+that declares none takes no tasks and files none. Every hire path (`hireWorkforce`, a reload, a
+user's runtime hire) checks the roles before any worker runs: see
+[What a hireable worker flow must admit](#what-a-hireable-worker-flow-must-admit).
+
+**Upgrading a host.** A worker's door is `respond` and a board's pass is `dispatch`, on every
+worker flow. Call
+`upgradeWorkerEntryNames(runtime.stores, flows, { incarnationOf: resolveRequestIncarnation })`
+(the last from `@flow-state-dev/engine`) once at host start, with the copies `hireWorkforce`
+returned, after `getRuntime()` and before `getRouter()`, which starts the sweep that fires
+wakes: a request an earlier version left unfinished under `run` (or `message`) resumes as
+`respond`, and a request or wake under `runTaskBoard` as `dispatch`. It rewrites only what a
+registered worker flow has under the new name and not the old, so another flow's own `run` is
+untouched, and a second call finds nothing. Let a failure fail the start: a host that serves
+anyway keeps records it can't resume, so Shift Manager and Kitchen Sink refuse to serve when the
+call throws. Drain BullMQ queues (or let them empty) before deploying this version: a job queued
+under an old action name fails.
+
 The roster flow also keeps the user's schedules: `saveSchedule`, `deleteSchedule` and
 `listSchedules` (each with its next run), and a fire through the
 [scheduled-dispatch endpoint](../scheduled/README.md) files an ordinary task on the named worker's
@@ -450,7 +472,7 @@ const customAgentFlow = workerFlow((installation) =>
     resources: { board: boardResource, ...installation.resources, ...installation.documents },
     resourceVisibility: installation.resourceVisibility,
     request: { onStarted: loadWorker(installation) }, // installation.resolveWorker(ctx, "custom-agent")
-    actions: { run: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
   }),
 );
 
@@ -523,7 +545,7 @@ const triage = workerFlow((installation) =>
     session: installation.session(),
     resources: { ...installation.resources },
     actions: {
-      run: { inputSchema: z.object({ message: z.string() }), block: triageWork(installation), userMessage: (input) => input.message },
+      respond: { inputSchema: z.object({ message: z.string() }), block: triageWork(installation), userMessage: (input) => input.message },
     },
   }),
 );
@@ -546,12 +568,28 @@ these keys by hand hires just the same, as long as each key takes the value a hi
 composed flow picks it up, and a hand-rolled one refuses at boot naming the new key until you add
 it.
 
-The same check also requires one door, that the flow declares the installation's session, and
-that any resource with `writtenBy` comes from `sharedResource()`. The door is exactly one public action that declares `userMessage` and takes
-`{ message }`, so an app can talk to any worker without knowing its flow; none, or two, refuses. A
-resource with a `writtenBy` field is declared with `sharedResource()`, which adds the field; one
-defined by hand is refused, even with the right shape.
-`workerFlowProblems(name, flow)` runs the same check without an app, for a library's own
+The same check also requires a door named `respond`, the entries the flow's roles need, that the
+flow declares the installation's session, and that any resource with `writtenBy` comes from
+`sharedResource()`. The door is the one public action that declares `userMessage` and takes
+`{ message }`, named `respond` on every worker flow, so an app can talk to any worker without
+knowing its flow; a flow with none, with a second, or with its message action under another name
+refuses, the last naming the action to rename. A resource with a `writtenBy` field is declared with
+`sharedResource()`, which adds the field; one defined by hand is refused, even with the right shape.
+
+Each declared role's entries must be there, in their section, carrying their factory's mark, and
+take the input their caller sends:
+
+| Role | Entries | Built by |
+| --- | --- | --- |
+| `contributor` | `work` (task) | `workerTaskEntry` |
+| `manager` | `dispatch`, `onTaskSettled` (internal) | `defineSessionBoard`'s `entries(turn)` |
+| `coordinator` | a manager's, plus `routeOn`, `roundDeadline`, `changeWorkstreamDelegate` (internal) | `defineCoordinatorFlow` |
+
+The check runs the other way too: a piece of a role's factory (a `workerTaskEntry`; the board's
+entries, its task actions or its delegate actions) on a flow that doesn't declare the role is
+refused. An entry of the flow's own that only shares a name is its own, never a role's. Each
+problem names the flow, the role, the entry and the fix.
+`workerFlowProblems(name, flow, roles?)` runs the same check without an app, for a library's own
 tests. [Which flows can run workers](https://flow-state.dev/docs/workforce/workers-on-disk#which-flows-can-run-workers) has the whole contract.
 
 Only `instructions` is ever authored. A worker file that writes `workerSkills:`, `workerTools:`,
@@ -568,7 +606,7 @@ in, up to the session's history window (the last 50 by default), and nothing fro
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no flow — only an absent key means the built-in.
 
-A worker on `agent` is talked to through the flow's `run` action, which takes `{ message }`, in a
+A worker on `agent` is talked to through the flow's `respond` action, which takes `{ message }`, in a
 session that names the worker. A message that names a worker is refused: the session already does.
 The message is kept as the caller's turn in that conversation, so a conversation reads as both
 sides.
@@ -1579,7 +1617,7 @@ const researchFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),          // a readonly `workerId`, and the create check
   resources: { ...installation.resources }, // the user's workers, and the standard ones
-  actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
+  actions: { respond: { inputSchema, block: door, userMessage: (i) => i.message } },
 });
 
 // inside the door's block, which also declares `installation.resources`:
@@ -1674,7 +1712,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
 
   const research = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
-  const { status, request } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
+  const { status, request } = await research.sendAction("respond", { message: "Summarize the launch notes." }, {
     sessionId: session.id,
   });
   // status: "in_progress" | "completed" | "failed" | "incomplete"; use request.id to connect to its stream
@@ -1719,7 +1757,7 @@ const researchFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
+  actions: { respond: { inputSchema, block: door, userMessage: (i) => i.message } },
   task: { actions: { work: workerTaskEntry({ name: "research-task", turn: door }) } }, // takes tasks, routed ones included
 });
 
@@ -1966,7 +2004,7 @@ hasn't finished: the message is kept on the task and reaches its worker's next m
 first attempt's brief, without spending a retry. A task waiting on pieces it filed gets a turn with
 it at once, and one that lands after the worker's last model call gets one more turn before the
 task settles (`STEER_TURN_ENTRY`, an internal entry on the worker flow; see the table below). A line typed to
-the built-in `agent` worker in the task's own session (its `run` action) does the same while the
+the built-in `agent` worker in the task's own session (its `respond` action) does the same while the
 task, or the latest of its follow-ups, is unfinished: it answers `{ steered: <that task's id> }`
 and runs no reply of its own. Once the task has finished, a line there is an ordinary turn,
 answered from everything the session holds, and the task doesn't change. A finished task takes no
@@ -2097,10 +2135,12 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, workerBlocks?, packageBlocks?, documents?, references?, skills?, packages?, projectCoordinator? })` | The worker model's one module (see [Workers as data](#workers-as-data)). `projectCoordinator` names the standard worker on the `coordinator` flow every user's project coordinator runs as (see [Projects](#projects)); any other worker throws. Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
-| `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
+| `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and also delivers worker messages, `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
-| `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
+| `workerFlow(build, { standardOnly?, roles? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
+| `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
+| `upgradeWorkerEntryNames(stores, flows, { incarnationOf })` / `EntryNameUpgradeStores` / `EntryNameUpgradeOptions` / `EntryNameFlow` / `EntryNameRequest` | Run once at host start, before `getRouter()`, with `hireWorkforce`'s copies and the engine's `resolveRequestIncarnation` as `incarnationOf`: rewrites unfinished requests stored under a worker's old door (`run`, `message`) to `respond`, and requests and wakes under `runTaskBoard` to `dispatch`, on the registered worker flows only. Each rewrite is fenced on the record's incarnation, and the live-request registry's entries are renamed too. Returns `{ requests, wakes, leftover }`: how many writes applied, and how many wakes kept changing through every attempt to move them (each warned of, and moved by the next start). |
 | `inventoryWorkers(installation)` | The standard workers as `openInventory` takes workers: each worker's id, its flow and that flow's actions. |
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
@@ -2127,7 +2167,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { hopLimit?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
 | `MESSAGE_WORKER_TOOL` / `WORKER_MESSAGE_ENTRY` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `messageWorkerInputSchema` | [Worker messages](#worker-messages): the tool's name (`"messageWorker"`), the entry a message arrives on (`"onWorkerMessage"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), `takesWorkerMessages(flow)` (whether a flow declares the entry), and `sendWorkerMessage(ctx, installation, flowKind, { to, text, replyTo? }, from)`, the send the tool runs, answering a `SendOutcome`. |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |
-| `workerFlowProblems(name, flow)` | Every way `flow`, registered as `name`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no door or two, a resource with `writtenBy` that `sharedResource()` didn't build. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
+| `workerFlowProblems(name, flow, roles?)` | Every way `flow`, registered as `name` with `roles`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no `respond` door (or a second door, or its door under another name), a declared role's entry missing, not its factory's or refusing its input, a role's piece on a flow that doesn't declare the role, a resource with `writtenBy` that `sharedResource()` didn't build. `roles` defaults to a built-in flow's own, and none for any other. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |
 | `writeShared(ctx, accessor, key, data)` / `WrittenBy` | Write one entry of a shared resource, creating or replacing it, stamped with the session's user and, when the turn loaded the session's worker with `resolveWorker`, that worker's id. A `writtenBy` in `data` is ignored, and so are a `workerId` setting and a `workerId` in the session's state: a turn that loaded no worker records the user alone. Flow code that writes the resource directly can set its own value, so `writtenBy` is as trustworthy as the registered flow's code; it is for display and audit, never for deciding who may write. |
 | `workerConfigSchema()` | The admission contract every hireable worker flow composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?` and `workerId`. A worker flow whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
@@ -2173,7 +2213,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `InventoryRoster` / `InventoryWorker` / `InventoryWorkerWriter` | What `openInventory` takes: the roster (`{ workers }`), one worker (`{ id, kind, actions }`: its `door` action and `rules` read from `actions`, `{}` for a worker with none), and which flow writes the rows (`{ flowKind, sessionId? }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the request and must reach `runAction`), and what one boot of `openInventory` returns (`{ workers, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `workerWriter`, `userId`, `orgId`. |
-| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: the one public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the flow has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the worker's row. A worker flow with none or two is refused when hired, so a hired worker always has one. |
+| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `openInventory` writes it on the worker's row. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
 
 ## Error Semantics
 

@@ -161,7 +161,7 @@ await runGoal(async (failures) => {
     const again = await client.workforce.ensureWorkerSession({ worker: talk.worker });
     if (again.id !== session.id) failures.push(`${talk.leg} — a second ensureWorkerSession(${talk.worker}) opened another session`);
     // Every worker is asked for the skill only the standard worker and its fork hold.
-    const turn = await client.act(session.flowKind, session.id, "run", { message: "/refund-policy Who are you?" });
+    const turn = await client.act(session.flowKind, session.id, "respond", { message: "/refund-policy Who are you?" });
     if (turn.status !== "completed") {
       failures.push(`${talk.leg} — ${talk.worker}'s turn ended ${turn.status}: ${turn.error}`);
       continue;
@@ -205,7 +205,7 @@ await runGoal(async (failures) => {
     if (!(await refused(() => bob.sessions.getSession(hireSession.id)))) {
       failures.push(`b:open — Bob opened Alice's session ${hireSession.id}`);
     }
-    if (!(await refused(() => bob.act("agent", hireSession.id, "run", { message: "hello" })))) {
+    if (!(await refused(() => bob.act("agent", hireSession.id, "respond", { message: "hello" })))) {
       failures.push(`b:run — Bob ran a turn in Alice's session ${hireSession.id}`);
     }
   }
@@ -220,19 +220,19 @@ await runGoal(async (failures) => {
   }
   const deskSession = sessionOf.get(standard.onAgent);
   if (deskSession !== undefined) {
-    if (!(await refused(() => alice.act("agent", deskSession.id, "run", { message: "hello", workerId: hire.id })))) {
+    if (!(await refused(() => alice.act("agent", deskSession.id, "respond", { message: "hello", workerId: hire.id })))) {
       failures.push(`b:names-worker — a turn on agent whose message named ${hire.id} ran`);
     }
   }
   const researchSession = sessionOf.get(standard.onResearch);
   if (researchSession !== undefined) {
-    if (!(await refused(() => alice.act(RESEARCH, researchSession.id, "run", { message: "hello", workerId: hire.id })))) {
+    if (!(await refused(() => alice.act(RESEARCH, researchSession.id, "respond", { message: "hello", workerId: hire.id })))) {
       failures.push(`b:names-worker — a turn on ${RESEARCH} whose message named ${hire.id} ran`);
     }
     if (!(await refused(() => alice.act(RESEARCH, researchSession.id, "reassign", { to: hire.id })))) {
       failures.push(`b:reassign — a turn moved a ${RESEARCH} session to ${hire.id}`);
     }
-    const after = await alice.act(RESEARCH, researchSession.id, "run", { message: "Who are you now?" });
+    const after = await alice.act(RESEARCH, researchSession.id, "respond", { message: "Who are you now?" });
     if (!after.output.includes(markers.onResearch) || after.output.includes(hire.marker)) {
       failures.push(`b:reassign — after the refused move, the session answered as: ${after.output}`);
     }

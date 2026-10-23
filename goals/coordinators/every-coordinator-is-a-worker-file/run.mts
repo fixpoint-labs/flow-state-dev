@@ -181,7 +181,7 @@ await runGoal(async (failures) => {
         if (opened.status !== 201) throw new Error(`the conversation was not opened: ${opened.status} ${opened.text.slice(0, 300)}`);
         const conversation = (JSON.parse(opened.text) as { session: { id: string } }).session.id;
         const token = `desk-token-${randomUUID().replace(/-/g, "").slice(0, 10)}`;
-        const posted = await call("POST", ["coordinator", "actions", "run"], {
+        const posted = await call("POST", ["coordinator", "actions", "respond"], {
           userId: OWNER,
           sessionId: conversation,
           input: { message: `${token} can someone look at the refund queue?` },

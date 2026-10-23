@@ -60,7 +60,7 @@ function host() {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: input, block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { inputSchema: input, block: door, userMessage: (i: { message: string }) => i.message } }
   });
   flows = { research };
   const copy = research() as unknown as FlowInstance;
@@ -89,7 +89,7 @@ describe("a custom worker flow's data (D6)", () => {
         const result = await runAction({
           orgId: DEFAULT_ORG_ID,
           flow: copy,
-          actionName: "run",
+          actionName: "respond",
           input: { message },
           userId,
           sessionId,

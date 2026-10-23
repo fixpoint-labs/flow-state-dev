@@ -84,7 +84,7 @@ describe("a resumed turn on the shared agent copy", () => {
       const started = await runAction({
         orgId: DEFAULT_ORG_ID,
         flow: copy,
-        actionName: "run",
+        actionName: "respond",
         input: { message: "refund o-1" },
         userId: "alice",
         sessionId,

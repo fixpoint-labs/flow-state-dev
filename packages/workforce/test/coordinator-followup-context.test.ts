@@ -130,7 +130,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     session: installation.session(),
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
+    actions: { respond: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research-task", turn: door }) } }
   });
 }
@@ -181,7 +181,8 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   }
   const delegateFlow = flow === "agent" ? defineAgentWorkerFlow({ installation }) : researchFlow(installation);
   const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
-  flows = { [flow]: delegateFlow, coordinator };
+  // The built-in agent declares its own roles; the app's research flow takes tasks.
+  flows = { [flow]: flow === "agent" ? delegateFlow : { flow: delegateFlow, roles: ["contributor"] }, coordinator };
   const copies = hireWorkforce(installation);
   const route = scriptedRoute();
   const answer = scriptedAnswer();
@@ -223,7 +224,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const post = async (message: string, count: number, routed: () => void = () => {}) => {
     const posted = await runAction({
       flow: copies.find((copy) => copy.id === "coordinator")!,
-      actionName: "run",
+      actionName: "respond",
       input: { message },
       userId: "alice",
       orgId: "acme",

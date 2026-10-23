@@ -85,7 +85,7 @@ describe("a line in a finished task's session", () => {
       expect(done.status).toBe("completed");
       const before = JSON.stringify(done);
 
-      const said = await h.act("alice", done.run!.sessionId, "run", { message: "Which licence was the problem?" }, "agent");
+      const said = await h.act("alice", done.run!.sessionId, "respond", { message: "Which licence was the problem?" }, "agent");
       await h.settled();
 
       expect(said.error, messageOf(said.error)).toBeUndefined();
@@ -111,7 +111,7 @@ describe("a line in an open task's session", () => {
       // Otto's one model call has answered; its request has not ended.
       await hold.atHold;
 
-      const line = await h.act("alice", row.run!.sessionId, "run", { message: "Mention the new flag too." }, "agent");
+      const line = await h.act("alice", row.run!.sessionId, "respond", { message: "Mention the new flag too." }, "agent");
       expect(line.error, messageOf(line.error)).toBeUndefined();
       expect(line.output).toEqual({ steered: filed.taskId });
       // No turn of its own: the line wrote a steer and nothing else ran.
@@ -168,7 +168,7 @@ describe("a line in an open task's session", () => {
       const row = await running(h, filing, filed.taskId!);
       await atHold;
 
-      const line = await h.act("alice", row.run!.sessionId, "run", { message: "Mention the new flag too." }, "agent");
+      const line = await h.act("alice", row.run!.sessionId, "respond", { message: "Mention the new flag too." }, "agent");
       expect(line.output).toEqual({ steered: filed.taskId });
       release();
       await h.settled();
@@ -199,7 +199,7 @@ describe("a line in an open task's session", () => {
       const followUp = await file(h, conv, { goal: "Then a tweet about it", followUpOf: filed.taskId });
       expect(followUp.ok).toBe(true);
 
-      const line = await h.act("alice", row.run!.sessionId, "run", { message: "Mention the new flag too." }, "agent");
+      const line = await h.act("alice", row.run!.sessionId, "respond", { message: "Mention the new flag too." }, "agent");
 
       expect(line.output).toEqual({ steered: filed.taskId });
       hold.release();
@@ -218,7 +218,7 @@ describe("a line in an open task's session", () => {
     try {
       const created = await h.create("alice", "agent", { state: { workerId: "otto" } });
       expect(created.status, JSON.stringify(created.body)).toBeLessThan(300);
-      const said = await h.act("alice", created.body.session!.id, "run", { message: "hello" }, "agent");
+      const said = await h.act("alice", created.body.session!.id, "respond", { message: "hello" }, "agent");
       expect(said.error, messageOf(said.error)).toBeUndefined();
       expect(said.output).not.toHaveProperty("steered");
       expect(h.agentAnswer.calls).toHaveLength(1);

@@ -69,7 +69,7 @@ function researchFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     actions: {
-      run: {
+      respond: {
         inputSchema: door,
         userMessage: (input: { message: string }) => input.message,
         block: handler({

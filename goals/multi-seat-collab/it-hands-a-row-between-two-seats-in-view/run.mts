@@ -79,7 +79,7 @@ const TASK_STATUSES = ["pending", "in_progress", "held", "parked", "completed", 
 const SECOND_PRINCIPAL_WINDOW_MS = 3_000;
 
 /** The board run's own action on the filing conversation: where every claim is made. */
-const BOARD_RUN_ACTION = "runTaskBoard";
+const BOARD_RUN_ACTION = "dispatch";
 
 const failures: string[] = [];
 const notes: string[] = [];

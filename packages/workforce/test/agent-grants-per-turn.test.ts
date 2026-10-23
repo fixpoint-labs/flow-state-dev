@@ -106,7 +106,7 @@ describe("agent's document grants on one copy for every worker (BR-24)", () => {
         const turn = await runAction({
           orgId: DEFAULT_ORG_ID,
           flow: copy,
-          actionName: "run",
+          actionName: "respond",
           input: { message: `call ${tool} ${JSON.stringify(args)}` },
           userId: "alice",
           sessionId: `talk-${worker}`,

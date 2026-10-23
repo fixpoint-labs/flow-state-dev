@@ -164,7 +164,7 @@ export async function legE(o: {
   const goalWord = word();
   const ask = o.ask.replaceAll("{broken}", broken).replaceAll("{helper}", helper).replaceAll("{word}", goalWord);
   o.say(`leg e: "${ask}"`);
-  const turn = await act(alice, "coordinator", conv, "run", { message: ask }, 240_000);
+  const turn = await act(alice, "coordinator", conv, "respond", { message: ask }, 240_000);
   // The task's two attempts, its notice, the turn that notice wakes, and any
   // task that turn files: wait for all of it to go quiet, then a grace.
   await sleep(2_000);

@@ -120,7 +120,7 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
@@ -132,7 +132,7 @@ function quietFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } }
   });
 }
 
@@ -144,7 +144,7 @@ function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allroun
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
     task: { actions: { work: workerTaskEntry({ name: `${flow}-task`, turn: door }) } }
   });
@@ -212,7 +212,13 @@ export function bootHost(options: HostOptions = {}) {
     ...(options.agent === undefined ? {} : { agent: options.agent }),
     ...(options.roundDeadlineMs === undefined ? {} : { roundDeadlineMs: options.roundDeadlineMs })
   });
-  flows = { helper, quiet, tasker, allround, coordinator };
+  flows = {
+    helper: { flow: helper, roles: ["contributor"] },
+    quiet,
+    tasker: { flow: tasker, roles: ["contributor"] },
+    allround: { flow: allround, roles: ["contributor"] },
+    coordinator
+  };
 
   const blocks = createWorkerHireBlocks(installation);
   const rosterFlow = defineWorkerRosterFlow(installation, {

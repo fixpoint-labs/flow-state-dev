@@ -107,7 +107,7 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
       expect(taskSession).toBeDefined();
       expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("completed");
 
-      const posted = await host.act("alice", conv, "run", { message: "what's our refund policy?" });
+      const posted = await host.act("alice", conv, "respond", { message: "what's our refund policy?" });
       expect(posted.error, messageOf(posted.error)).toBeUndefined();
       await host.settled();
       const delegateSession = await app.findWorkerSession({ worker: "otto", filingSessionId: filing });
@@ -320,7 +320,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       // A row started as usual, for the revision one bare add leaves.
       const bare = await file(host, "alice", conv, { goal: "first, started as usual" });
       await host.settled();
-      const lost = await host.loseDispatches("runTaskBoard");
+      const lost = await host.loseDispatches("dispatch");
       const filed = await file(host, "alice", conv, { goal: "Audit licenses", assignee: "eng.tasker" });
       expect(filed.ok).toBe(true);
       expect(lost.lost()).toBe(1);
@@ -356,7 +356,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
    */
   const strandedRow = async (host: BoardHost, conv: string, goal: string, patch: Partial<Task>) => {
     const filing = await host.filingOf("alice", conv);
-    const lost = await host.loseDispatches("runTaskBoard");
+    const lost = await host.loseDispatches("dispatch");
     const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
     lost.restore();
     await host.settled();
@@ -406,7 +406,7 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const lost = await host.loseDispatches("runTaskBoard");
+      const lost = await host.loseDispatches("dispatch");
       const stranded = await file(host, "alice", conv, { goal: "stranded", assignee: "eng.tasker" });
       expect(lost.lost()).toBe(1);
       await host.settled();

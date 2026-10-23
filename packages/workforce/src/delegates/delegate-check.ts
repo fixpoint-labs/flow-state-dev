@@ -5,10 +5,12 @@
  *
  * A worker passes when it is on the session's user's roster now (one of
  * their own, read at their scope, or a standard one), its row can be read,
- * and its flow takes a conversation's tasks (FIX-1842): that is what makes a
- * worker a delegate, for an add, a routed message or a filing alike
- * (FIX-2083). Another user's worker is simply not on this user's roster, so
- * it gets exactly the answer a worker that doesn't exist gets.
+ * and its flow declares the `contributor` role: that is what makes a worker
+ * a delegate, for an add, a routed message or a filing alike (FIX-2083). The
+ * hire guarantees the entry behind the role, a `work` built by
+ * `workerTaskEntry` that takes a conversation's tasks (FIX-1842). Another
+ * user's worker is simply not on this user's roster, so it gets exactly the
+ * answer a worker that doesn't exist gets.
  *
  * Removing a delegate and naming the fallback ask only whether the record is
  * on the session's list, so a fired delegate can still be removed. That
@@ -21,9 +23,8 @@
  * `flowTakes` reads the same fact about a flow, for `listDelegates` to say
  * what each delegate takes.
  */
-import type { FlowType } from "@flow-state-dev/core/types";
 import type { RosterWorker, WorkerInstallation, WorkerTurnContext } from "../workers/installation";
-import { takesConversationTasks } from "../worker-task-entry";
+import { takesTasks } from "../worker-roles";
 
 /** What the check came to. */
 export type DelegateCheck =
@@ -37,11 +38,10 @@ export type DelegateTakes = (typeof DELEGATE_TAKES)[number];
 
 /**
  * What a worker on flow `flowKind` takes, read as the check below reads it: a
- * task when the flow declares a task entry that takes a conversation's tasks
- * (FIX-1842).
+ * task when the flow declares the `contributor` role.
  */
 export function flowTakes(installation: WorkerInstallation, flowKind: string): DelegateTakes {
-  return takesConversationTasks(installation.workerFlows()[flowKind]?.flow) ? "tasks" : "nothing";
+  return takesTasks(installation.workerFlows()[flowKind]) ? "tasks" : "nothing";
 }
 
 /**
@@ -63,8 +63,7 @@ export function createDelegateCheck(installation: WorkerInstallation) {
     if (worker.problem !== undefined) {
       return { ok: false, message: `Worker "${workerId}" can't be a delegate: ${worker.problem}.` };
     }
-    const flow = (installation.workerFlows()[worker.flow]?.flow ?? undefined) as FlowType<any, any> | undefined;
-    if (takesConversationTasks(flow)) return { ok: true, worker };
+    if (takesTasks(installation.workerFlows()[worker.flow])) return { ok: true, worker };
     return {
       ok: false,
       message:

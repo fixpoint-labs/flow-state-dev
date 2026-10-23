@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       throw new Error(`${seat.id}: a session on "${seat.kind}" naming it answered ${opened.status}: ${opened.text}`);
     }
     const address = seat.id;
-    const path = [seat.kind, sessionId, "actions", "run"];
+    const path = [seat.kind, sessionId, "actions", "respond"];
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",

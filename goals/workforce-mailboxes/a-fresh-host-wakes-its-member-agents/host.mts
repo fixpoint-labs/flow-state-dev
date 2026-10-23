@@ -42,7 +42,7 @@ const messageInput = workerConfigSchema().pick({}).extend({ message: workerConfi
 
 /** Every worker flow has one door: this fixture's answers by saying what it heard. */
 const workerDoor = {
-  message: {
+  respond: {
     inputSchema: messageInput,
     userMessage: (input: { message: string }) => input.message,
     block: handler({

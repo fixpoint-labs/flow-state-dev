@@ -161,7 +161,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
     inventory: declared,
   });
   workerFlows = {
-    [ASKER_FLOW]: asker,
+    [ASKER_FLOW]: { flow: asker, roles: ["contributor"] },
     [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
   };
   const copies = hireWorkforce(installation);

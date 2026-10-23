@@ -306,7 +306,7 @@ await runGoal(async (failures) => {
 
     const desk = await alice.open("coordinator", { workerId: "desk" });
     /** A desk turn: its message, scripted. */
-    const deskTurn = (message: string) => alice.act("coordinator", desk, "run", { message });
+    const deskTurn = (message: string) => alice.act("coordinator", desk, "respond", { message });
     /** A row on the desk's board, through the public read action. */
     const get = async (id: string) => ((await alice.act("coordinator", desk, "getTask_tasks", { id })) as { ok: boolean; task?: Record<string, any> }).task;
     const deskAct = (action: string, input: unknown) => alice.act("coordinator", desk, action, input);
@@ -326,9 +326,9 @@ await runGoal(async (failures) => {
 
       await deskTurn(`#a-desk# what is on the board?`);
       const chief = await alice.open("coordinator", { workerId: "chief" });
-      await alice.act("coordinator", chief, "run", { message: `#a-chief# who are my delegates?` });
+      await alice.act("coordinator", chief, "respond", { message: `#a-chief# who are my delegates?` });
       const conv = await alice.open("agent", { workerId: "eng.a" });
-      await alice.act("agent", conv, "run", { message: `#a-conv# hello` });
+      await alice.act("agent", conv, "respond", { message: `#a-conv# hello` });
 
       // A task for eng.a whose turn plans a step; the step checkpoints its own row.
       const checkpoint = `STEP-CHECKPOINT ${RUN_STAMP}`;
@@ -608,7 +608,7 @@ await runGoal(async (failures) => {
       // Under delegates: all, a worker hired mid-session is reachable at once.
       const fan = await alice.open("agent", { workerId: "fan" });
       const hireId = `my.new${RUN_STAMP.replace(/[^a-z0-9]/gi, "").slice(-6).toLowerCase()}`;
-      await alice.act("agent", fan, "run", { message: `#c-fan-before# ${calls([{ toolName: "createTask", args: { goal: word("before the hire"), assignee: hireId } }])}` });
+      await alice.act("agent", fan, "respond", { message: `#c-fan-before# ${calls([{ toolName: "createTask", args: { goal: word("before the hire"), assignee: hireId } }])}` });
       const before = results("c-fan-before", "createTask")[0]?.result as any;
       const hired = (await runAction({
         orgId: ORG,
@@ -621,7 +621,7 @@ await runGoal(async (failures) => {
         runtimeConfig: { ...runtime.runtimeConfig }
       } as never)) as { error?: unknown };
       if (hired.error !== undefined) throw new Error(`hiring ${hireId} failed: ${show(hired.error)}`);
-      await alice.act("agent", fan, "run", { message: `#c-fan-after# ${calls([{ toolName: "createTask", args: { goal: `#c-hired# ${word("after the hire")}`, assignee: hireId } }])}` });
+      await alice.act("agent", fan, "respond", { message: `#c-fan-after# ${calls([{ toolName: "createTask", args: { goal: `#c-hired# ${word("after the hire")}`, assignee: hireId } }])}` });
       const after = results("c-fan-after", "createTask")[0]?.result as any;
       await idle();
       const hiredRow = after?.taskId === undefined ? undefined : (await alice.act("agent", fan, "getTask_tasks", { id: after.taskId }))?.task;

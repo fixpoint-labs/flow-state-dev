@@ -80,6 +80,8 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import { RESPOND_ACTION } from "./worker-door";
+import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
@@ -1345,7 +1347,7 @@ function defineAgentFlowAround(
     actions: {
       // A reply: its notice waits for it to end. In a task session whose task
       // is open, the line steers the task instead (FIX-2086).
-      run: {
+      [RESPOND_ACTION]: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
         block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
@@ -1391,5 +1393,6 @@ function defineAgentFlowAround(
     if (problem !== undefined) throw new Error(problem);
     return worker;
   };
-  return Object.assign(mint, flow) as typeof flow;
+  // It takes tasks; on an installation it also runs its delegation board.
+  return declareBuiltInRoles(Object.assign(mint, flow), board === undefined ? ["contributor"] : ["contributor", "manager"]) as typeof flow;
 }

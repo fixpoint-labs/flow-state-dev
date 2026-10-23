@@ -168,7 +168,7 @@ function byId(workers: FlowInstance[], id: string): FlowInstance {
 async function contextFor(flow: FlowInstance, sessionId: string) {
   return createExecutionContext({
     flow,
-    actionName: "run",
+    actionName: "respond",
     requestId: `req_${sessionId}`,
     sessionId,
     userId: USER,

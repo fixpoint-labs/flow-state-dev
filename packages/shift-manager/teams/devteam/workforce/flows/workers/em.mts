@@ -77,9 +77,9 @@ export const DRAIN_ENTRY = "drain";
 
 /**
  * The worker's door: the action a user's own line in the EM's session
- * reaches. Every worker flow has exactly one. The turn answers it.
+ * reaches, `respond` on every worker flow. The turn answers it.
  */
-export const MESSAGE_ENTRY = "message";
+export const MESSAGE_ENTRY = "respond";
 
 /** The turn's generator name, which a scripted model resolves it by. */
 export const EM_TURN = "devforce-em-turn";

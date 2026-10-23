@@ -158,7 +158,7 @@ function startHost(db: string) {
     session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
     resources: { ...installation.resources, ...deskBoard.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
       ...deskBoard.actions
     },
     internal: { actions: deskBoard.entries(deskTurn) }
@@ -185,11 +185,15 @@ function startHost(db: string) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
+    actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
     task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
   } as never);
 
-  flows = { agent: defineAgentWorkerFlow({ installation }), desk, taker };
+  flows = {
+    agent: defineAgentWorkerFlow({ installation }),
+    desk: { flow: desk, roles: ["manager"] },
+    taker: { flow: taker, roles: ["contributor"] }
+  };
 
   const real = createModelResolver() as unknown as (id: string, block?: string) => unknown;
   const modelResolver = Object.assign((id: string, block?: string) => real(id === "goal/real" ? MODEL : id, block), {

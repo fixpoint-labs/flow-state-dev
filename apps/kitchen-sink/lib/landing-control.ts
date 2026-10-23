@@ -95,7 +95,7 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: {
-      run: {
+      respond: {
         inputSchema: turnInput.strict(),
         block: run,
         userMessage: (input: { message: string }) => input.message,

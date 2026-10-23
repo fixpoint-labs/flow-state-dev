@@ -48,7 +48,7 @@ function boardedFlow(installation: WorkerInstallation, flow: string, door: "othe
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work } }
   } as never);
 }
@@ -64,7 +64,7 @@ function boot(): BoardHost {
     ],
     flows: (installation) => ({
       boarded: boardedFlow(installation, "boarded", "other-board"),
-      conversational: boardedFlow(installation, "conversational", "conversation")
+      conversational: { flow: boardedFlow(installation, "conversational", "conversation"), roles: ["contributor"] }
     })
   });
 }

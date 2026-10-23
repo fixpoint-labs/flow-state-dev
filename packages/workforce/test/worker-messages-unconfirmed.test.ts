@@ -54,7 +54,7 @@ async function run(times: number) {
   });
   const created = await h.create("alice", "agent", { state: { workerId: "otto" } });
   const otto = created.body.session!.id;
-  await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+  await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
   await h.settled();
   const runtime = await h.state.getRuntime();
   const rows = Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", WORKER_MESSAGES_PATTERN.replace("*", ""))).map(

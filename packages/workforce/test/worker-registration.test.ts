@@ -22,7 +22,7 @@ function researchFlow(installation: WorkerInstallation | undefined) {
     configSchema: workerConfigSchema(),
     ...(installation !== undefined ? { session: installation.session(), resources: { ...installation.resources } } : {}),
     actions: {
-      run: {
+      respond: {
         inputSchema: door,
         userMessage: (input: { message: string }) => input.message,
         block: handler({ name: "research-run", inputSchema: door, execute: (input) => input })

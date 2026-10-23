@@ -197,7 +197,7 @@ await runGoal(async (failures) => {
 
     // ---- leg b · the built-in agent's own state stays in its user's scope ----
     for (const user of [fixture.alice, fixture.bob]) {
-      const result = await run(fixture.helper, "run", user, { message: fixture.question });
+      const result = await run(fixture.helper, "respond", user, { message: fixture.question });
       if (result.error !== undefined) fail("b", `${user}'s run on ${fixture.helper} failed: ${JSON.stringify(result.error)}`);
     }
     const drawer = accesses.filter((a) => a.key.startsWith("skills/") && a.user !== "");
@@ -277,7 +277,7 @@ await runGoal(async (failures) => {
       fail("c", `the refusal does not name the kept flow and say it is kept for declared workers: ${refusal}`);
     }
     if (JSON.stringify(await get("user", bobsCell, rowKey)) !== before) fail("c", "bob's stored worker was changed");
-    const standardRun = await run(fixture.coordinator, "run", fixture.alice, { message: "who takes this?" });
+    const standardRun = await run(fixture.coordinator, "respond", fixture.alice, { message: "who takes this?" });
     if (standardRun.error !== undefined) fail("c", `the declared worker on "${fixture.keptFlow}" did not run: ${JSON.stringify(standardRun.error)}`);
     if (refusal !== "" && standardRun.error === undefined) {
       evidence.push(`c: a session naming bob's own worker on "${fixture.keptFlow}" was refused and his row left as stored; ${fixture.coordinator} ran on it`);

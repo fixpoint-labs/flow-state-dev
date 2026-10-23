@@ -320,7 +320,7 @@ describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () =>
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      const turn = await host.act("alice", conv, "run", { message: "get the notes written" });
+      const turn = await host.act("alice", conv, "respond", { message: "get the notes written" });
       expect(turn.error, messageOf(turn.error)).toBeUndefined();
       await host.settled();
       const rows = await host.rows("alice");

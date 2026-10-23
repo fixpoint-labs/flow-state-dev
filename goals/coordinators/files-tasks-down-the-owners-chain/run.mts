@@ -287,7 +287,7 @@ function gradeC(o: any, store: string): LegResult {
   const t2Row = rows.find((x) => x.id === t2);
   const t2Run = reqs.filter((q) => q.actionName === "work" && sessionsOf(t2).some((s) => s.id === q.sessionId))[0];
   const t3FiledAt = C.filed.t3.startedAt as number;
-  const runs1 = reqs.filter((q) => q.sessionId === C.c1 && q.actionName === "runTaskBoard" && q.createdAt >= t3FiledAt);
+  const runs1 = reqs.filter((q) => q.sessionId === C.c1 && q.actionName === "dispatch" && q.createdAt >= t3FiledAt);
   const t2Running = t2Run !== undefined && t2Run.createdAt <= t3FiledAt && t2Row?.completedAt !== undefined && t2Row.completedAt > t3FiledAt;
   if (!t2Running || runs1.length === 0 || runs1.some((q) => q.updatedAt >= t2Row!.completedAt!)) {
     r.failures.push(

@@ -125,12 +125,12 @@ function startHost(db: string) {
     session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
     resources: { ...installation.resources, ...deskBoard.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
       ...deskBoard.actions
     },
     internal: { actions: deskBoard.entries(deskTurn) }
   } as never);
-  flows = { agent: defineAgentWorkerFlow({ installation }), desk };
+  flows = { agent: defineAgentWorkerFlow({ installation }), desk: { flow: desk, roles: ["manager"] } };
 
   const real = createModelResolver() as unknown as (id: string, block?: string) => unknown;
   const modelResolver = Object.assign((id: string, block?: string) => real(id === "goal/real" ? MODEL : id, block), {

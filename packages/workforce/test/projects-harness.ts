@@ -90,7 +90,7 @@ function workerFlow(
     session: installation.session(),
     resources: { ...installation.resources },
     actions: {
-      run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
       ...extra
     },
     ...(Object.keys(internal).length === 0 ? {} : { internal: { actions: internal } }),
@@ -117,7 +117,10 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const lead2 = workerFlow("lead2", installation, {}, extras.lead2Internal?.(installation));
   const quiet = workerFlow("quiet", installation);
   const more = extras.flows?.(installation) ?? {};
-  flows = { lead, lead2, quiet, ...more };
+  // A lead given a task entry takes tasks.
+  flows = { lead: { flow: lead, roles: extras.leadTask === undefined ? [] : ["contributor"] }, lead2, quiet, ...more };
+  const flowOf = (entry: unknown): (() => unknown) =>
+    (typeof entry === "function" ? entry : (entry as { flow: () => unknown }).flow) as () => unknown;
 
   const hireBlocks = createWorkerHireBlocks(installation);
   const roster = defineWorkerRosterFlow(installation, {
@@ -133,7 +136,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     quiet: quiet() as unknown as FlowInstance,
     [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
-      Object.entries(more).map(([name, flow]) => [name, (flow as () => unknown)() as unknown as FlowInstance])
+      Object.entries(more).map(([name, flow]) => [name, flowOf(flow)() as unknown as FlowInstance])
     )
   };
   const state = createFlowState({

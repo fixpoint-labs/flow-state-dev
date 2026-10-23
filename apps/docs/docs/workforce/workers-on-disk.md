@@ -324,7 +324,7 @@ export const customAgentFlow = workerFlow((installation) =>
     }),
     session: installation.session(),          // the session's worker, checked when it is created
     resources: { ...installation.resources }, // the user's workers, and the standard ones
-    actions: { run: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
   }),
 );
 
@@ -334,7 +334,7 @@ export const intakeFlow = workerFlow((installation) =>
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema, block: greet(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: greet(installation), userMessage: (input) => input.message } },
   }),
 );
 ```
@@ -405,8 +405,12 @@ A worker flow must:
   [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each must
   accept the value a worker brings and keep it as given: `workerId` is a string, for instance, and a
   transform that replaces it is refused.
-- **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
-  an app can talk to any worker without knowing which flow it runs on.
+- **Take a user's message on `respond`.** Exactly one public action declares `userMessage` and
+  takes `{ message }`, and it is named `respond`, so an app can talk to any worker without knowing
+  which flow it runs on. A flow whose message action has another name is refused, and the problem
+  names the action to rename.
+- **Have the entries its roles need.** A flow declares the [roles](#a-worker-flows-roles) it plays,
+  and each role's entries must be there, built by that role's factory.
 - **Declare the installation's session.** `session: installation.session()` gives every session a
   readonly `workerId`, checked when the session is created. A flow without it is refused. Load the worker with `installation.resolveWorker` on
   every turn: in the flow's `request.onStarted`, or in the block that reads it.
@@ -444,12 +448,52 @@ const installation = createWorkerInstallation({
 
 A user's own worker that names no flow is then refused, and the message names `agent`.
 
-Writing a library of worker flows? Check each one in your own tests, without an app:
+#### A worker flow's roles
+
+Every worker takes a user's message on `respond`. Beyond that, a flow says what else it does by
+declaring roles when you register it:
+
+| Role | What the flow does | The entries it needs | Where they come from |
+| --- | --- | --- | --- |
+| `contributor` | Takes tasks other workers file for it | `work`, a task entry | `workerTaskEntry` |
+| `manager` | Files tasks for its delegates and hears how each ended | `dispatch` and `onTaskSettled`, internal entries | `defineSessionBoard`'s `entries(turn)` |
+| `coordinator` | Routes each message to its delegates | A manager's, plus `routeOn`, `roundDeadline` and `changeWorkstreamDelegate` | `defineCoordinatorFlow` |
+
+Declare them on the builder, or on the entry you pass in `workerFlows`:
+
+```ts
+export const deskFlow = workerFlow(buildDesk, { roles: ["contributor", "manager"] });
+
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { research: { flow: researchFlow, roles: ["contributor"] } },
+});
+```
+
+The built-in `agent` and `coordinator` declare their own, so you register them as plain flows. A
+flow that declares no role takes no tasks and files none: a worker on it can't be a delegate.
+
+`hireWorkforce` checks the roles both ways before it registers anything. A declared role is
+refused when one of its entries is missing, wasn't built by the role's factory, or refuses the
+input its caller sends. A piece of a role's factory is refused on a flow that doesn't declare the
+role, such as a `workerTaskEntry` on a flow that isn't a `contributor`, or the board's
+`onTaskSettled` spread without `manager`. An entry of your own that only shares a name, such as
+your own `dispatch` action, is yours and isn't read as a role's. Each problem names the flow, the
+role, the entry and the fix:
+
+```
+hireWorkforce refused 1 worker flow ("desk"); nothing was hired:
+  - worker flow "desk" carries "work", built by `workerTaskEntry` for the "contributor" role,
+    but doesn't declare "contributor". Declare it in its registration's `roles` …
+```
+
+Writing a library of worker flows? Check each one in your own tests, without an app, passing the
+roles you register it with:
 
 ```ts
 import { workerFlowProblems } from "@flow-state-dev/workforce";
 
-expect(workerFlowProblems("triage", triageFlow)).toEqual([]);
+expect(workerFlowProblems("triage", triageFlow, ["contributor"])).toEqual([]);
 ```
 
 #### Where a worker's data lives
@@ -604,7 +648,7 @@ export const customAgentFlow = workerFlow((installation) => {
     resources: { ...installation.resources, ...installation.documents, board: boardResource },
     resourceVisibility: installation.resourceVisibility,
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema, block: runTurn(installation), userMessage: (input) => input.message } },
   });
 });
 ```
@@ -652,9 +696,10 @@ A worker is refused when it:
   is kept.
 
 `hireWorkforce` checks each flow in `workerFlows` too, before it registers anything. A flow is
-refused when it is passed under a key that is not its own `kind`, has no door or more than one,
-doesn't accept a worker's configuration, doesn't declare the installation's session, or has a
-resource with `writtenBy` that `sharedResource()` didn't build. One run names every problem with
+refused when it is passed under a key that is not its own `kind`, has no `respond` or more than
+one action that takes a user's message, misses an entry one of its roles needs or carries a role's
+piece it doesn't declare, doesn't accept a worker's configuration, doesn't declare the
+installation's session, or has a resource with `writtenBy` that `sharedResource()` didn't build. One run names every problem with
 every flow, and nothing is registered.
 
 A user's own worker that stops resolving after it was saved, because a tool it names was removed
@@ -701,7 +746,7 @@ export const requestTriageFlow = workerFlow((installation) => {
     }),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: requestSchema, block: triage, userMessage: (input) => input.message } },
+    actions: { respond: { inputSchema: requestSchema, block: triage, userMessage: (input) => input.message } },
   });
 });
 ```
@@ -793,7 +838,7 @@ a project does in [Example: one session per project](../fundamentals/state-and-s
 import { createClient } from "@flow-state-dev/client"
 
 const agent = createClient({ flowKind: session.flowKind, userId, baseUrl })
-await agent.sendAction("run", { message }, { sessionId: session.id })
+await agent.sendAction("respond", { message }, { sessionId: session.id })
 ```
 
 A message that names a worker is refused. So is a turn on a session whose worker was fired, or

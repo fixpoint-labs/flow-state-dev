@@ -62,7 +62,7 @@ describe("creating a session with a worker", () => {
     const id = created.body.session!.id;
     const ran = await runAction({
       flow: h.instances[FIXTURE],
-      actionName: "run",
+      actionName: "respond",
       input: { message: "hi", worker: "planner" },
       userId: "alice",
       orgId: ORG,
@@ -79,7 +79,7 @@ describe("creating a session with a worker", () => {
     const created = await h.create("alice", FIXTURE, {});
     expect(created.status).toBe(400);
     expect(created.body).toMatchObject({ field: "workerId" });
-    const res = await h.fetcherFor("alice")(`/api/flows/${FIXTURE}/fresh/actions/run`, {
+    const res = await h.fetcherFor("alice")(`/api/flows/${FIXTURE}/fresh/actions/respond`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", sessionId: "fresh", input: { message: "hi" } })

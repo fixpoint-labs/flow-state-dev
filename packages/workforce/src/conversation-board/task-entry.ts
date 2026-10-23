@@ -52,7 +52,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { RUN_BOARD_ENTRY } from "./board-entries";
+import { DISPATCH_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { PLAN_LEDGER_ID, planLedgerAt } from "./plan";
 import { noteRoutedSession, routedSessionResources } from "./routed-session";
@@ -251,7 +251,7 @@ export async function filingConversationBoard(
   const tasks = await conversationLedgerAt(ctx, partition);
   return tasks === undefined
     ? undefined
-    : { tasks, runEntry: RUN_BOARD_ENTRY, filingFlow, filingSession: sessionIdOfFiling(partition) };
+    : { tasks, runEntry: DISPATCH_ENTRY, filingFlow, filingSession: sessionIdOfFiling(partition) };
 }
 
 /**

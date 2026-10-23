@@ -321,7 +321,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     routeModel: model,
     agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
   });
-  workerFlows = { [COORDINATOR_FLOW]: coordinator, [BUILDER_KIND]: builder };
+  // The twin's `work` is gated elsewhere and takes no task, so it declares no role.
+  workerFlows = {
+    [COORDINATOR_FLOW]: coordinator,
+    [BUILDER_KIND]: options.builderTakesTasks === false ? builder : { flow: builder, roles: ["contributor"] },
+  };
 
   // Refuses the WHOLE roster when any worker would be refused on its turn,
   // naming the worker. Nothing is registered partially.
@@ -380,7 +384,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     say: async (message: string) => {
       // Sent and left to run: a model's turn may outlast `act`'s wait, so the
       // caller waits for the host to go idle instead.
-      const sent = await http.call("POST", [COORDINATOR_FLOW, conversation, "actions", "run"], {
+      const sent = await http.call("POST", [COORDINATOR_FLOW, conversation, "actions", "respond"], {
         userId: LAB_USER_ID,
         input: { message },
       });

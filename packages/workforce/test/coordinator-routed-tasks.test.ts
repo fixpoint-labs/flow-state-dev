@@ -21,7 +21,7 @@ import { ORG, SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinato
 type Host = ReturnType<typeof bootHost>;
 
 async function post(host: Host, sessionId: string, message: string) {
-  const result = await host.act("alice", sessionId, "run", { message });
+  const result = await host.act("alice", sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
 }
@@ -102,9 +102,9 @@ describe("a second message to a busy delegate", () => {
   it("waits in Alice's list, pending, then starts in the same session once the first ends", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "first [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "first [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
     await until(async () => host.heard.some((h) => h.message.includes("first")), "the first message reached eng.coder");
-    expect((await host.act("alice", id, "run", { message: "second [route:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "second [route:eng.coder]" })).error).toBeUndefined();
 
     // While the first runs, the second is filed and waits.
     await until(async () => (await host.routedRows("alice")).length === 2, "both messages were filed");
@@ -127,9 +127,9 @@ describe("a second message to a busy delegate", () => {
   it("ends unstarted when Alice cancels it while it waits", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "first [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "first [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
     await until(async () => host.heard.some((h) => h.message.includes("first")), "the first message reached eng.coder");
-    expect((await host.act("alice", id, "run", { message: "second [route:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "second [route:eng.coder]" })).error).toBeUndefined();
     await until(async () => (await host.routedRows("alice")).length === 2, "both messages were filed");
     const second = (await host.routedRows("alice"))[1]!;
     const cancelled = await host.act("alice", id, "updateTask_tasks", { id: second.id, status: "cancelled" });
@@ -150,7 +150,7 @@ describe("Alice's cancel of a routed task while its delegate works", () => {
       standard: standardWorkers({ chief: { routing: "everyone", rounds: 1, delegates: ["eng.em", "eng.coder"] } })
     });
     const id = await host.conversation("alice", "chief");
-    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
     let coder: any;
     await until(async () => {
       coder = (await host.routedRows("alice")).find((row) => row.assignee === "eng.coder");

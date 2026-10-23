@@ -220,7 +220,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     // The finished session's door, found as an app finds it.
     const found = taskId === undefined || filingSessionId === undefined ? undefined : await alice.app.findWorkerSession({ worker: "desk.ops", taskId, filingSessionId }).catch(() => undefined);
     calls.push("findWorkerSession");
-    const asked = found?.id === undefined ? null : await alice.act("agent", found.id, "run", { message: LEG_B_QUESTION });
+    const asked = found?.id === undefined ? null : await alice.act("agent", found.id, "respond", { message: LEG_B_QUESTION });
     if (asked !== null) calls.push(`run "${LEG_B_QUESTION}"`);
     // The question is talk in a finished task's session (FIX-2086): its reply is
     // the action's answer, and the task is left as it ended.

@@ -42,7 +42,7 @@ function blockFlow(installation: WorkerInstallation, seen: Seen[]) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...conversationLedgerResources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "blocker-task", block: run }) } }
   } as never);
 }
@@ -54,7 +54,7 @@ function boot(seen: Seen[]): BoardHost {
       { id: "eng.blocker", declared: { flow: "blocker", description: "Takes the task itself." }, body: "", skills: [] },
       { id: "intake", declared: { flow: "coordinator", delegates: ["eng.blocker"] }, body: "", skills: [] }
     ],
-    flows: (installation) => ({ blocker: blockFlow(installation, seen) })
+    flows: (installation) => ({ blocker: { flow: blockFlow(installation, seen), roles: ["contributor"] } })
   });
 }
 

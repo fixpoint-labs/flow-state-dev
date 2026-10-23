@@ -196,7 +196,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
       const lab = await open();
       const id = await conversation(lab);
       model = scripted([], route);
-      expect((await act(lab, id, "run", { message: "who works here?" })).error).toBeUndefined();
+      expect((await act(lab, id, "respond", { message: "who works here?" })).error).toBeUndefined();
       const items = await settledItems(lab, id);
       expect(routeCalls).toHaveLength(1);
       expect((model as any).judgmentSteps()).toBe(1);
@@ -249,7 +249,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
       { toolName: "addDelegate", args: { worker: "licenses" } },
       { toolName: "createTask", args: { goal: "Take this", assignee: "licenses", session: "ongoing", resultTo: "conversation" } },
     ]);
-    const turn = await act(lab, id, "run", { message: "audit our dependencies' licenses" });
+    const turn = await act(lab, id, "respond", { message: "audit our dependencies' licenses" });
     expect(turn.error).toBeUndefined();
     const items = await settledItems(lab, id);
     const answer = items.find((item) => item.type === "message" && item.agentName === "licenses");
@@ -274,7 +274,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
       },
     ]);
     const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
-    expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: post })).error).toBeUndefined();
     // The EM's routed task stays open while the coder's task it filed runs (FIX-2083, rule 6):
     // its answer lands once that work ends.
     let items = await settledItems(lab, id);
@@ -351,7 +351,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     model = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }], undefined, [
       { toolName: "createTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
     ]);
-    expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
+    expect((await act(lab, id, "respond", { message: `${issue}: the release notes` })).error).toBeUndefined();
 
     const runtime = await lab.state.getRuntime();
     let running: { id: string } | undefined;

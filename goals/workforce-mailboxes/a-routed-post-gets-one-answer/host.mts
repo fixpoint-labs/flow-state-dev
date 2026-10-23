@@ -151,9 +151,10 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   // The flows are handed to the installation lazily, so each can be built on it.
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  const agent = seams.agent?.(installation) ?? defineAgentWorkerFlow({ installation });
+  // A control's own agent takes tasks; the built-in declares its own roles.
+  const control = seams.agent?.(installation);
   flows = {
-    agent,
+    agent: control === undefined ? defineAgentWorkerFlow({ installation }) : { flow: control, roles: ["contributor"] },
     coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })
   };
   const copies = hireWorkforce(installation);

@@ -139,7 +139,7 @@ describe("a coordinator's panel", () => {
     await type("Post to this coordinator", "  a line  ");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
-    expect(sendAction.mock.calls[0]).toEqual(["run", { message: "a line" }]);
+    expect(sendAction.mock.calls[0]).toEqual(["respond", { message: "a line" }]);
   });
 
   it("will not send whitespace", async () => {
@@ -253,7 +253,7 @@ describe("switching picks", () => {
 
 describe("a worker's panel", () => {
   it.each([
-    ["agent", "run", { message: "where is my refund?" }],
+    ["agent", "respond", { message: "where is my refund?" }],
   ])("a %s worker sends its kind's own action", async (kind, action, input) => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     panel(kind, session({ sendAction }));

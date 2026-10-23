@@ -143,7 +143,7 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },
     actions: {
-      run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }
+      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }
     },
     // The gate lets every task through: what is under test is the child's
     // birth, which happens before any gate runs.
@@ -248,7 +248,7 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
   const turn = async (userId: string, sessionId: string, message = "hello", flow: string = FIXTURE, orgId = ORG) => {
     const result = await runAction({
       flow: instances[flow as keyof typeof instances],
-      actionName: "run",
+      actionName: "respond",
       input: { message },
       userId,
       orgId,

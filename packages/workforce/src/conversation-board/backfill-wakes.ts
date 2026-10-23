@@ -20,7 +20,7 @@
  * that finds nothing owed clears it.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, DISPATCH_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
 
@@ -88,7 +88,7 @@ function payerOf(row: StoredRow, partition: string): { session: string; entry: s
   if (checked) return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
   // A paid marker is kept as `null`.
   if (!Object.entries(row.metadata ?? {}).some(([key, value]) => value != null && OWED_MARKER.test(key))) return undefined;
-  return { session: typeof row.filer?.sessionId === "string" ? row.filer.sessionId : sessionIdOfFiling(partition), entry: RUN_BOARD_ENTRY };
+  return { session: typeof row.filer?.sessionId === "string" ? row.filer.sessionId : sessionIdOfFiling(partition), entry: DISPATCH_ENTRY };
 }
 
 /** The bare session id of a stored record, whose id carries its tenant. */

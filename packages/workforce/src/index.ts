@@ -48,6 +48,7 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
+export { WORKER_ROLES, type WorkerRole } from "./worker-roles";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
@@ -74,6 +75,13 @@ export {
   type BoardWakeBackfillOptions,
   type BoardWakeBackfillStores
 } from "./conversation-board/backfill-wakes";
+export {
+  upgradeWorkerEntryNames,
+  type EntryNameFlow,
+  type EntryNameRequest,
+  type EntryNameUpgradeOptions,
+  type EntryNameUpgradeStores
+} from "./workers/upgrade-entry-names";
 export {
   createWorkerLookup,
   type WorkerLookup,

@@ -37,11 +37,11 @@ export function coordinatorWorkersUnderControl(workers: WorkerManifest[]): Worke
 
 /**
  * The `agent` flow as registered: itself, or, under `no-delivery`, the same
- * flow read as declaring no task entry, so no worker on it is a delegate
- * (FIX-2083: a delegate is a worker whose flow takes a conversation's tasks).
+ * flow with no task entry, registered as a manager only, so no worker on it
+ * is a delegate (FIX-2083: a delegate is a worker whose flow takes tasks).
  */
-export function agentFlowUnderControl<T extends object>(agent: T): T {
+export function agentFlowUnderControl<T extends object>(agent: T): T | { flow: T; roles: ["manager"] } {
   if (goalControl() !== "no-delivery") return agent;
   const mint = (...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args);
-  return Object.assign(mint, agent, { task: { actions: {} } }) as unknown as T;
+  return { flow: Object.assign(mint, agent, { task: { actions: {} } }) as unknown as T, roles: ["manager"] };
 }

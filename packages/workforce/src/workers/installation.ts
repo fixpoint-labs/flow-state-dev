@@ -409,7 +409,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (!isWorkerFlowBuilder(entry)) return entry;
     let flow = built.get(entry);
     if (flow === undefined) {
-      flow = { flow: entry.build(installation) as never, standardOnly: entry.standardOnly };
+      flow = {
+        flow: entry.build(installation) as never,
+        standardOnly: entry.standardOnly,
+        ...(entry.roles === undefined ? {} : { roles: entry.roles })
+      };
       built.set(entry, flow);
     }
     return flow;

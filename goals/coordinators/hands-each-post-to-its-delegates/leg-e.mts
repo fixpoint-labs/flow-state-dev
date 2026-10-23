@@ -102,7 +102,7 @@ const helper = core.defineFlow({
   configSchema: wf.workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+  actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
   // A delegate is a worker whose flow takes tasks: a routed task arrives on `work` (FIX-2083).
   task: { actions: { [wf.WORKER_TASK_ENTRY ?? "work"]: wf.workerTaskEntry({ name: "goal-helper-task", turn: door }) } },
 } as never);
@@ -155,7 +155,7 @@ const modelResolver = Object.assign(
 );
 
 const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: route });
-flows = { helper, coordinator };
+flows = { helper: { flow: helper, roles: ["contributor"] }, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 const state = engine.createFlowState({
   flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -254,20 +254,20 @@ try {
   const calls = () => route.calls.length;
   const ladder: Record<string, unknown> = {};
   const c0 = calls();
-  const p1 = await fit.act("run", { message: `[route:desk.alpha] [conf:0.2] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
+  const p1 = await fit.act("respond", { message: `[route:desk.alpha] [conf:0.2] [slow:desk.alpha] ${words.p1} what ships in the alpha?` });
   const c1 = calls();
   // Sent while desk.alpha is still holding its answer to p1.
-  const p2 = await fit.act("run", { message: `${words.p2} and when does it ship?` });
+  const p2 = await fit.act("respond", { message: `${words.p2} and when does it ship?` });
   const c2 = calls();
   await quiet();
-  const p3 = await fit.act("run", { message: `${words.p3} who can tell me anything at all?` });
+  const p3 = await fit.act("respond", { message: `${words.p3} who can tell me anything at all?` });
   const c3 = calls();
   await quiet();
   const removed = await fit.act("removeDelegate", { worker: "desk.beta" });
   const afterRemove = await fit.read();
-  const p4 = await fit.act("run", { message: `[judge] ${words.p4} nobody's description fits this one.` });
+  const p4 = await fit.act("respond", { message: `[judge] ${words.p4} nobody's description fits this one.` });
   await quiet();
-  const p5 = await fit.act("run", { message: `[judge-fail] ${words.p5} nor this one.` });
+  const p5 = await fit.act("respond", { message: `[judge-fail] ${words.p5} nor this one.` });
   await quiet();
   const fitAfterQuiet = await fit.read();
   await sleep(GRACE_MS);
@@ -293,7 +293,7 @@ try {
     ["above", "[route:desk.alpha] [conf:0.9]", words.f[2]],
     ["self", "[route:desk.floor] [conf:0.3]", words.f[3]],
   ] as const) {
-    floorPosts[name] = await floor.act("run", { message: `${marks} ${w} what does the plan say?` });
+    floorPosts[name] = await floor.act("respond", { message: `${marks} ${w} what does the plan say?` });
     await quiet();
   }
   const floored = { posts: floorPosts, offered: offeredChoices().slice(floorFirstCall), read: await floor.read() };
@@ -302,14 +302,14 @@ try {
   const turns = await conversation("desk.turns");
   const rr: Array<{ requestId: string; status: string }> = [];
   for (const w of words.q) {
-    rr.push(await turns.act("run", { message: `${w} next question, please.` }));
+    rr.push(await turns.act("respond", { message: `${w} next question, please.` }));
     await quiet();
   }
   const roundRobin = { posts: rr, read: await turns.read() };
 
   // Everyone, with a limit of one round.
   const all = await conversation("desk.all");
-  const r1 = await all.act("run", { message: `${words.r} what does everyone think?` });
+  const r1 = await all.act("respond", { message: `${words.r} what does everyone think?` });
   await quiet();
   const allQuiet = await all.read();
   await sleep(GRACE_MS);

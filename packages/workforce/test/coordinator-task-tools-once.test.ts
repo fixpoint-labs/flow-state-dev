@@ -59,7 +59,7 @@ async function judgmentToolNames(options: { skill: boolean; secondInstance?: "pe
   });
   try {
     const conv = await host.conversation("alice", "lead");
-    const result = await host.act("alice", conv, "run", { message: "what's on the board?" });
+    const result = await host.act("alice", conv, "respond", { message: "what's on the board?" });
     await host.settled();
     return { seen, error: result.error, heard: JSON.stringify(host.judgment.calls.map((call) => call.input)) };
   } finally {
