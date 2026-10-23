@@ -929,6 +929,19 @@ A plan board may also hold dispatcher assignees, whose rows it waits on the same
 dispatcher there that says `wait: false` is refused, and so is a delegation board's that says
 `wait: true`, each naming the fix.
 
+If the drain fails after it has handed a row over, the plan fails, whatever `onError` says.
+The drain's request ends `failed` with an error that names the row, and no row that hasn't
+started yet runs, whether it depends on that row or not. That covers a dispatch that throws
+instead of refusing, a store write that fails while the drain waits, and a wait it can't hold
+any more because another request took the row's wait slot. A row has one waiter at a time:
+a `getTask({ id, wait: true })` on a plan row is refused while the drain holds the slot, but one
+that lands at a deadline, between the drain letting the slot go and taking it again, takes the
+slot and fails the plan.
+
+The drain writes nothing on the row it handed over. When the session it went to is running it,
+that session finishes it. When the dispatch itself threw, nothing may be running it: the row stays
+`in_progress` until its lease lapses, and then the next run of the plan claims it again.
+
 ## Concurrency and error handling
 
 - `concurrency` — max parallel workers. Default `4`.
