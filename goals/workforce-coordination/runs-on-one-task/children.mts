@@ -88,6 +88,18 @@ export const CHECKS: Record<string, Check[]> = {
   "FIX-2120": [{ by: ["goal-seek-loop/replans-until-done"] }],
   "FIX-2121": [{ by: ["hand-offs/ask-survives-a-restart", "hand-offs/survives-a-restart-and-runs-once"] }],
   "FIX-2122": [{ vitest: { filter: "@flow-state-dev/orchestration", files: ["test/collection/filing-settings.test.ts"] }, by: ["a:follow-up", "task-tools/steer-and-follow-up"] }],
+  "FIX-2123": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/collection/notice-take.test.ts", "test/tasks/notice-claim.test.ts", "test/tasks/delivery-after-ending.test.ts", "test/tasks/notice-defer.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/engine", files: ["test/wait-chain.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/workforce", files: ["test/conversation-board-wait.test.ts"] }, by: ["j1:read-once", "j1:heard-once", "task-board/waits-on-a-task-it-filed"] },
+  ],
+  "FIX-2135": [
+    { vitest: { filter: "@flow-state-dev/engine", files: ["test/wait-resume.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/resume-owed-isolation.test.ts"] }, by: ["j1:waits-in-request", "task-board/waits-on-a-task-it-filed"] },
+  ],
+  "FIX-2136": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/cascade-notice-unseen-dependent.test.ts"] }, by: ["c:one-failure-notice", "task-board/runs-by-its-filing-settings"] },
+  ],
 };
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */
@@ -169,8 +181,12 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
 /** Run row 3. `tags` are row 1's assertions, which a check's `by` may name. */
 export async function runChildren(failures: string[], report: string[], say: (s: string) => void, tags: readonly string[]): Promise<void> {
   const read = await childrenFromLinear().catch(() => undefined);
-  const set = read ?? Object.keys(CHECKS).map((id) => ({ id, title: "(not read: LINEAR_API_KEY unset)" }));
-  report.push(`row 3: ${set.length} children blocking FIX-2087${read === undefined ? ", the built-in set (Linear not read)" : ", read from Linear"}:`);
+  const blocking = read ?? Object.keys(CHECKS).map((id) => ({ id, title: "(not read: LINEAR_API_KEY unset)" }));
+  // A child with a check here that Linear doesn't list as blocking still runs: a closure fix
+  // filed without the blocking relation is still a fix the closure rests on.
+  const unlisted = Object.keys(CHECKS).filter((id) => !blocking.some((c) => c.id === id));
+  const set = [...blocking, ...unlisted.map((id) => ({ id, title: "(has a check here; not blocking FIX-2087 in Linear)" }))];
+  report.push(`row 3: ${blocking.length} children blocking FIX-2087${read === undefined ? ", the built-in set (Linear not read)" : ", read from Linear"}, and ${unlisted.length} more with a check here:`);
   for (const c of set) report.push(`  ${c.id} ${c.title}`);
   report.push(`row 3 skips: none (no child goal has every leg asserted by row 1)`);
   for (const c of set) {
