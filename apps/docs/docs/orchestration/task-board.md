@@ -796,9 +796,11 @@ When a task the board handed out ends, the session that filed it is told, once. 
 | `question` | On `parked`: what the worker asked. Answer it with [`answerTask`](#when-a-task-stops-on-a-question) |
 | `cancelled` | On `errored` or `cancelled`: the ids of the dependents this ending [cancelled](#when-a-dependency-fails) that the same session filed. Those dependents send no notice of their own |
 
+A notice is held until the request that filed the task has ended, including while that request is paused on a [`getTask` wait](#waiting-on-a-task), and it's sent as that request ends. A turn that files a task and never waits on it hears the ending once that turn ends.
+
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
-- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })` while it ended. The waiting call gets the result instead. An ending after the wait's deadline goes to the waiting request's next `getTask` while it runs, and comes here only if that request ends without reading it.
+- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })`, either while it ended or after it ended but before an `onTaskSettled` request started handling its notice. The waiting call gets the result instead. Once a request has started handling the notice, the ending comes from the notice, and a wait while that request is in progress gets [`arrivesAsNotice`](#waiting-on-a-task). An ending after the wait's deadline goes to the waiting request's next `getTask` while it runs, and comes here only if that request ends without reading it.
 - A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
 
 A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
@@ -846,9 +848,21 @@ getTask({ id: "task_8f2", wait: true })
 You can wait in the same turn or in a later one. Your turn pauses until the task ends, then
 carries on with the task as `getTask` always returns it: its status, and its output once it
 completed. Nothing holds a request open while it waits, so a server restart loses nothing.
-A task that already ended is returned at once, and no `onTaskSettled` follows for it, as long
-as your `onTaskSettled` waits behind the turn that filed the task. A Workforce conversation or
-task turn works that way. The request still runs, but your block isn't called.
+A task that already ended is returned at once. If no `onTaskSettled` request has started
+handling that ending's notice yet, the wait takes the ending and your block isn't called for it.
+A wait after your block has handled the notice returns the task the same way.
+
+If an `onTaskSettled` request has started handling the notice and hasn't finished, for example
+a second turn waits on the task while that request is in progress, `getTask` returns this
+instead of the task:
+
+```ts
+{ ok: true, taskId: "task_8f2", arrivesAsNotice: true, message: "…" }
+```
+
+`message` names the task, says its ending is arriving as a notice, and tells the model not to
+wait on it again.
+The session hears that ending once, from the notice.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
