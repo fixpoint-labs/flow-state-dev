@@ -34,7 +34,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import { inMemoryStores } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { runAction } from "../src/lib/action";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
@@ -237,7 +237,8 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
   root = mkdtempSync(join(tmpdir(), "sm-em-workstream-steer-"));
   lab = await openLab({
     modelResolver: scripted(lead),
-    stores: inMemoryStores(),
+    // Persisting stores, so the Lab is durable by default and its asks are held (FIX-2063).
+    stores: sqliteStores({ filename: join(mkdtempSync(join(tmpdir(), "sm-routed-")), "lab.db") }),
     harness: stub.slot,
     runTimeoutMs: 30_000,
     workspace: { root, remotes: { allow: ["file"] } },

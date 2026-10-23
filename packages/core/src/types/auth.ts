@@ -38,6 +38,14 @@ export type InboundSource = string;
 export const DEFAULT_ORG_ID = "__fsd_default_org__";
 
 /**
+ * The one local user the development tools act as when nobody names one: the
+ * DevTool's default and the default of `fsdev run` and `fsdev chat`. One value,
+ * so a stop a terminal run makes is listed for the DevTool that answers it.
+ * Like {@link DEFAULT_ORG_ID}, a development identity, not a security boundary.
+ */
+export const DEFAULT_LOCAL_USER_ID = "devuser";
+
+/**
  * Whether `value` is usable as an organization id.
  *
  * Organization ids are opaque strings: not empty, not whitespace-only, and

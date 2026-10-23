@@ -15,7 +15,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, filesystemStores, inMemoryStores, runAction } from "../src";
-import type { FlowStateOptions } from "../src/flowstate/types";
+import type { CreateFlowStateOptions as FlowStateOptions } from "../src/flowstate/types";
 
 const dirs: string[] = [];
 function dataDir(): string {

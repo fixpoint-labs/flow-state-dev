@@ -493,14 +493,9 @@ function askRepository(
       const project = projectOf(input, ctx);
       // No project to name: the write that follows refuses, so there is nothing to approve.
       if (project === undefined) return;
-      if (ctx.suspend === undefined) {
-        throw new Error(
-          `the repository of project "${project}" waits for a user's approval here, and this app ` +
-            `can't ask for one: it runs without durable execution. Nothing was changed.`,
-        );
-      }
       const repository = input.repository == null ? null : redactRemote(input.repository);
-      await ctx.suspend({
+      // A host without durable execution refuses at the stop itself (FIX-2063).
+      await ctx.suspend!({
         reason: "human_approval",
         message:
           repository === null
@@ -1037,13 +1032,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // coordinator names the writes to its own project. Hire and fire
   // write the roster of the user talking to it: a worker of their own, which
   // runs on that user's turns only. A fire, and a project's repository, wait
-  // for a user's Approve in Inbox, which needs durable execution (on
-  // whenever a worker holds a tool that asks first).
+  // for a user's Approve in Inbox, which needs durable execution: on by
+  // default wherever the Lab's stores persist (FIX-2063).
   const rosterTools = chiefOfStaffRosterTools(installation);
-  const asksFirst = new Set(["fire", ...(options.withoutProjectTools === true ? [] : ["createProject", "setRepository"])]);
-  const asksBeforeChanging = workers.some((worker) =>
-    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => asksFirst.has(tool)),
-  );
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the chief of staff runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -1190,9 +1181,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     models: { default: LAB_DEFAULT_MODEL },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // When something can wait for a user: the EM's ask, a worker holding a
-    // tool that asks first, or the Error Reporter. Trees with none run without it.
-    ...(options.ask === undefined && !asksBeforeChanging && reporter === undefined ? {} : { durable: true }),
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),

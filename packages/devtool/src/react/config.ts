@@ -18,8 +18,11 @@
  * against an admitted session read before anything renders under it — see
  * `context/devtool-context.tsx`.
  */
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
+
 const USER_ID_KEY = "fsd.devtool.userId";
-const DEFAULT_USER_ID = "devuser";
+/** The local user `fsdev run` and `fsdev chat` default to as well. */
+const DEFAULT_USER_ID = DEFAULT_LOCAL_USER_ID;
 const ACTIVE_SESSION_PREFIX = "fsd.devtool.activeSession.";
 const LAST_ACTION_PREFIX = "fsd.devtool.lastAction.";
 const TRACE_ITEMS_VISIBLE_KEY = "fsd.devtool.traceItemsVisible";

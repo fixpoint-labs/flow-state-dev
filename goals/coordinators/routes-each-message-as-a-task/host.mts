@@ -320,7 +320,6 @@ const copies = wf.hireWorkforce(installation) as Array<{ id: string; task?: { ac
 const state = engine.createFlowState({
   flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), lab: (lab as () => unknown)() },
   stores: { default: { primary: sqliteStores({ filename: storeFile }) } },
-  durable: true,
   modelResolver,
   resolvePrincipal: (context: any) => {
     const user = context.request?.headers.get("x-user");

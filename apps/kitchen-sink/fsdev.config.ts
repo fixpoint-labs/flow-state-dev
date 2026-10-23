@@ -181,11 +181,11 @@ const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: !databaseUrl,
-  // Durable execution (FIX-140/141). Builds the checkpoint durability provider
-  // from the active profile's stores, so actions marked `durable: true` (e.g.
-  // chat-agent's `requestApproval` HITL gate) get ctx.suspend() and
-  // checkpoint-based resume. The retention sweeper bounds checkpoint/suspension/
-  // lease growth; a 60s cadence here makes its effect observable in dev.
+  // Durable execution is on by default wherever stores persist (the Postgres
+  // and filesystem profiles). Set here because the default `dev` profile is
+  // in-memory, where it is off unless asked for: its stops are lost when the
+  // process ends, which is fine for local dev. The retention sweeper bounds
+  // checkpoint/suspension/lease growth; a 60s cadence makes it observable.
   durable: true,
   durabilityRetention: { sweepIntervalMs: 60_000 },
   // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for

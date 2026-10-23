@@ -321,7 +321,6 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
   const state = createFlowState({
     flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
     stores: { default: { primary: sqliteStores({ filename }) } },
-    durable: true,
     durabilityRetention: { sweepIntervalMs: 250 },
     ...(waitDeadlines !== undefined ? { waitDeadlines } : {}),
     logger: silentLogger,

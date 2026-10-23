@@ -22,13 +22,13 @@
  */
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { Command } from "commander";
 import {
   createFlowApiRouter,
   createFlowRegistry,
   createModelResolver,
+  resolveDurabilityProvider,
   type DevToolConnectionConfig,
   type FlowApiRouter,
   type FlowState,
@@ -40,7 +40,7 @@ import {
   serve,
   type ServeHandle,
 } from "@flow-state-dev/node";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { openLocalStores, parseStoreFlag, STORE_FLAG_HELP, type LocalStoreKind } from "../local-store";
 import { declaredDevtoolConfig } from "../devtool-config";
 import { resolveApp, type AppPages } from "../dev-app";
 import { createVitePages } from "../dev-vite";
@@ -100,6 +100,8 @@ export interface DevCommandOptions {
    * on any host, so never a secret.
    */
   pageMeta?: Record<string, string>;
+  /** `--store`: the local store without an app config (default SQLite). */
+  store?: LocalStoreKind;
 }
 
 /** Name of the meta tag that carries the DevTool's address to an app's pages. */
@@ -137,6 +139,7 @@ export function registerDevCommand(program: Command): void {
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("--no-open", "Don't open the browser automatically")
+    .option("--store <kind>", STORE_FLAG_HELP)
     .action(async (options: DevCommandOptions) => {
       try {
         await executeDevCommand(options);
@@ -310,6 +313,14 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
   // discovery path serves a bare router with no such config.
   let devtoolConfig: DevToolConnectionConfig | undefined;
 
+  let storeKind: LocalStoreKind | undefined;
+  try {
+    storeKind = parseStoreFlag(options.store, resolved.source === "config");
+  } catch (err) {
+    if (resolved.source === "config") await resolved.flowState.dispose().catch(() => {});
+    throw err;
+  }
+
   if (resolved.source === "config") {
     // --- config path: serve the app's own FlowState ---
     if (options.model !== undefined) {
@@ -392,10 +403,11 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
     registry.registerMany(resolved.flows);
 
     // SQLite is the default (FIX-406 6A) — the filesystem store's O(N²) event
-    // persistence can't hold real load. better-sqlite3 won't create parent dirs,
-    // so ensure the data dir exists first.
-    await mkdir(".fsdev/data", { recursive: true });
-    const stores = createSQLiteStores({ filename: ".fsdev/data/fsdev.db" });
+    // persistence can't hold real load. It is the file a no-config `fsdev run`
+    // writes too, so a stop the run left is answered here (FIX-2063 D1).
+    // `--store filesystem` opts back to the JSON files, single-process.
+    const local = await openLocalStores(storeKind);
+    const stores = local.stores;
 
     const modelResolver =
       options.model !== undefined
@@ -406,6 +418,9 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
       registry,
       stores,
       modelResolver,
+      // Durable by the one engine rule (FIX-2063 D2): on wherever the stores
+      // persist, so a stop is held and this router's sweeper fires its deadline.
+      durabilityProvider: resolveDurabilityProvider({ stores }),
       // fsdev dev is local-only by definition; opt in to the privileged debug
       // surface so the DevTool's Resources panel can read full server state.
       debugEndpointsEnabled: true,
@@ -420,10 +435,10 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
       },
     });
     flowNames = resolved.flows.map((f) => f.id);
-    dataLine = ".fsdev/data/fsdev.db (SQLite)";
+    dataLine = local.dataLine;
     // The router holds these stores directly (not via a FlowState), so serve()
     // can't dispose them — the dev command closes them in its teardown.
-    closeStores = () => stores.close();
+    closeStores = local.close;
   }
 
   // Release the resolved runtime when a server fails to bind: dispose the
