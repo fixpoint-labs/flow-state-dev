@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of six moments of a task that needs an answer before it starts, today and after. Filing it: today, nowhere to ask, held: true at most; the question goes in the goal, or nowhere; after, held on questions, createTask takes questions; the row reads held. The user&#x27;s inbox: today, nothing shows, a held task waits unseen until its filer releases it; after, one item at once, every question on it, read from the row on each refresh. The first answer: today, no answer to give, the filer can steer, but a steer only joins the brief; after, kept, still held, the user&#x27;s steer, tied to its question; nothing starts. The last answer: today, n/a, the filer releases it, answered or not; after, released, starts, in the same write; attempt 1, its brief holds every answer. The filer releases: today, starts unanswered, status: pending releases it, and the worker guesses; after, refused by name, held questions are the user&#x27;s; edit, steer or cancel. A cancel: today, row cancels, dependents cancel with it; nothing was ever listed; after, item goes too, the row no longer matches; dependents cancel, as today."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .good  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; letter-spacing:.06em; }
+    .t-row { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; font-weight:600; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <g id="headers">
+    <text class="t-lbl" x="104" y="30">FILING IT</text>
+    <text class="t-lbl" x="241" y="30">THE USER&#x27;S INBOX</text>
+    <text class="t-lbl" x="378" y="30">THE FIRST ANSWER</text>
+    <text class="t-lbl" x="515" y="30">THE LAST ANSWER</text>
+    <text class="t-lbl" x="652" y="30">THE FILER RELEASES</text>
+    <text class="t-lbl" x="789" y="30">A CANCEL</text>
+  </g>
+  <g id="today">
+    <rect class="lane" x="16" y="42" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="104">TODAY</text>
+    <rect class="cell" x="100" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="108" y="72">Nowhere to ask</text>
+    <text class="t-s" x="108" y="92">held: true at most;</text>
+    <text class="t-s" x="108" y="108">the question goes in</text>
+    <text class="t-s" x="108" y="124">the goal, or nowhere</text>
+    <rect class="cell" x="237" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="245" y="72">Nothing shows</text>
+    <text class="t-s" x="245" y="92">a held task waits</text>
+    <text class="t-s" x="245" y="108">unseen until its</text>
+    <text class="t-s" x="245" y="124">filer releases it</text>
+    <rect class="cell" x="374" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="382" y="72">No answer to give</text>
+    <text class="t-s" x="382" y="92">the filer can steer,</text>
+    <text class="t-s" x="382" y="108">but a steer only</text>
+    <text class="t-s" x="382" y="124">joins the brief</text>
+    <rect class="cell" x="511" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="519" y="72">n/a</text>
+    <text class="t-s" x="519" y="92">the filer releases it,</text>
+    <text class="t-s" x="519" y="108">answered or not</text>
+    <rect class="cell" x="648" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="656" y="72">Starts unanswered</text>
+    <text class="t-s" x="656" y="92">status: pending</text>
+    <text class="t-s" x="656" y="108">releases it, and</text>
+    <text class="t-s" x="656" y="124">the worker guesses</text>
+    <rect class="cell" x="785" y="50" width="131" height="100" rx="4"/>
+    <text class="t-bad" x="793" y="72">Row cancels</text>
+    <text class="t-s" x="793" y="92">dependents cancel</text>
+    <text class="t-s" x="793" y="108">with it; nothing</text>
+    <text class="t-s" x="793" y="124">was ever listed</text>
+  </g>
+  <g id="after">
+    <rect class="lane" x="16" y="170" width="908" height="116" rx="6"/>
+    <text class="t-row" x="28" y="232">AFTER</text>
+    <rect class="good" x="100" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="108" y="200">Held on questions</text>
+    <text class="t-s" x="108" y="220">createTask takes</text>
+    <text class="t-s" x="108" y="236">questions; the row</text>
+    <text class="t-s" x="108" y="252">reads held</text>
+    <rect class="good" x="237" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="245" y="200">One item at once</text>
+    <text class="t-s" x="245" y="220">every question on it,</text>
+    <text class="t-s" x="245" y="236">read from the row</text>
+    <text class="t-s" x="245" y="252">on each refresh</text>
+    <rect class="good" x="374" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="382" y="200">Kept, still held</text>
+    <text class="t-s" x="382" y="220">the user&#x27;s steer, tied</text>
+    <text class="t-s" x="382" y="236">to its question;</text>
+    <text class="t-s" x="382" y="252">nothing starts</text>
+    <rect class="good" x="511" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="519" y="200">Released, starts</text>
+    <text class="t-s" x="519" y="220">in the same write;</text>
+    <text class="t-s" x="519" y="236">attempt 1, its brief</text>
+    <text class="t-s" x="519" y="252">holds every answer</text>
+    <rect class="good" x="648" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="656" y="200">Refused by name</text>
+    <text class="t-s" x="656" y="220">held questions are</text>
+    <text class="t-s" x="656" y="236">the user&#x27;s; edit,</text>
+    <text class="t-s" x="656" y="252">steer or cancel</text>
+    <rect class="good" x="785" y="178" width="131" height="100" rx="4"/>
+    <text class="t-ok" x="793" y="200">Item goes too</text>
+    <text class="t-s" x="793" y="220">the row no longer</text>
+    <text class="t-s" x="793" y="236">matches; dependents</text>
+    <text class="t-s" x="793" y="252">cancel, as today</text>
+  </g>
+</svg>
