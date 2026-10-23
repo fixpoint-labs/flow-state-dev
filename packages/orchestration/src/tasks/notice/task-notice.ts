@@ -160,11 +160,8 @@ interface OwedMarker {
 }
 
 /**
- * Where the `onTaskSettled` request delivering an owed notice records that it
- * took it (FIX-2123), by its request id, server-written, and when. Kept beside
- * the marker, as a resend record is, and left when the marker clears: a wait
- * reads it to tell that the request delivering the ending still runs. Absent
- * for a notice no request has taken, and for every notice owed before FIX-2123.
+ * Beside the marker, and left when it clears, so a wait still sees who is
+ * delivering (FIX-2123). Absent before this.
  */
 const TAKEN_PREFIX = "noticeTaken:";
 
@@ -239,30 +236,21 @@ function isSendable(key: string, value: unknown): value is OwedMarker {
   return isMarker(key, value) && value.held !== true;
 }
 
-/**
- * The request that took a notice (FIX-2123), off its take record, read
- * tolerantly: anything but a well-formed record reads as none.
- */
+/** `by` off the take record, or `undefined` when the value isn't one. */
 function takerOf(row: Task, attempt: number, ending: NoticeEnding): string | undefined {
   const taken = (row.metadata ?? {})[`${TAKEN_PREFIX}${attempt}:${ending}`] as { by?: unknown } | null | undefined;
   return taken != null && typeof taken.by === "string" ? taken.by : undefined;
 }
 
-/**
- * The request that took `notice` to deliver it (FIX-2123), or `undefined` when
- * `row` no longer owes it, or owes it and no request has taken it.
- */
+/** Who took `notice`, or `undefined` when the row doesn't owe it or nobody has (FIX-2123). */
 export function noticeTakenBy(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
   const key = markerKey(notice.attempt, notice.ending);
   return isSendable(key, (row.metadata ?? {})[key]) ? takerOf(row, notice.attempt, notice.ending) : undefined;
 }
 
 /**
- * The metadata patch that takes `notice` for the request `take.by` (FIX-2123):
- * its take record, naming that request. Empty when `row` doesn't owe it, or
- * another request holds it: one other than `take.replacing`, the taker its
- * caller found had ended. Run inside the write that commits it, on the row as
- * stored.
+ * The take record for `take.by`, or empty when the row doesn't owe `notice`
+ * or another request holds it. `take.replacing` is a taker that has ended (FIX-2123).
  */
 export function takenNoticePatch(
   row: Task,
@@ -277,11 +265,8 @@ export function takenNoticePatch(
 }
 
 /**
- * Whether the ending `row` holds reaches its filer as a notice (FIX-2123): a
- * request other than `requestId` (the one asking) took the notice owed for
- * that ending, whether it is delivering it now, has delivered it, or failed
- * and leaves it to be sent again. A wait answers so, not with the ending: the
- * notice is the filer's one hearing of it.
+ * Another request took this ending's notice, marker still owed or already
+ * cleared (FIX-2123). The wait says so instead of returning the ending.
  */
 export function deliveredAsNotice(row: Task, requestId: string): boolean {
   if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return false;
@@ -289,10 +274,7 @@ export function deliveredAsNotice(row: Task, requestId: string): boolean {
   return by !== undefined && by !== requestId;
 }
 
-/**
- * Whether `row` owes a notice no request has taken (FIX-2123): one that a
- * send now would deliver. What the request that filed `row` sends as it ends.
- */
+/** An owed notice nobody has taken (FIX-2123): what the filing request sends as it ends. */
 export function owesUntakenNotice(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
     if (isSendable(key, value) && takerOf(row, value.attempt, value.ending) === undefined) return true;

@@ -1,16 +1,7 @@
 /**
  * A task's ending reaches the session that filed it once (FIX-2123): through
- * the filer's wait, or through `onTaskSettled`, never both.
- *
- * - The turn that filed the task is still running: its notice waits for it to
- *   end, so a wait in that turn reads the ending first and drops the notice.
- *   On a flow's defaults, where the turn holds no line.
- * - A turn that never waits hears it from `onTaskSettled`, sent as the turn ends.
- * - A notice already running (taken) when another turn waits on the task: the
- *   wait answers that the ending arrives as a notice, and the notice is the one
- *   delivery.
- *
- * Each runs on the in-memory stores and on SQLite.
+ * the filer's wait, or through `onTaskSettled`, never both. Each case runs on
+ * the in-memory stores and on SQLite.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

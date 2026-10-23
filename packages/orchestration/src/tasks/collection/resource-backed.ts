@@ -727,14 +727,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return { sessionId, ...(filing !== undefined ? { requestId: filing } : {}) };
   }
 
-  /**
-   * Note a row this request filed with itself as the filing request
-   * (FIX-2123), and ask to be called as the request ends: a notice turned
-   * away while it ran is sent then, past any backoff, rather than at the
-   * pass's next resend. The delivery registers once per request and board,
-   * so the call reads every row the request filed there, whichever
-   * resolution of the board filed it. At a park nothing runs: the pass sends.
-   */
+  /** Send this request's untaken notices when it ends, past backoff (FIX-2123). The hook reads every row it filed. */
   function noteFiled(row: Task): void {
     const own = delivery?.ownRequest;
     if (delivery === undefined || own === undefined || row.filer?.requestId !== own) return;
@@ -848,9 +841,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     ...(filed !== undefined ? { filed } : {}),
   };
 
-  // A request that runs again after a park (FIX-2123) is a new resolution of
-  // the board: its own rows are noted again, so it sends what it held when
-  // it ends.
+  // After a park the request-end seam is new, so register again from a row this request filed.
   if (delivery?.ownRequest !== undefined) {
     const own = listAll().find((row) => row.filer?.requestId === delivery.ownRequest);
     if (own !== undefined) noteFiled(own as Task);

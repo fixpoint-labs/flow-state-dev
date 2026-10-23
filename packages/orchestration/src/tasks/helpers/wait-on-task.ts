@@ -135,9 +135,7 @@ export type TaskWaitResult =
   /**
    * The task once it ended (`ended: true`), or as it stands at the deadline
    * (`ended: false`, still running). The caller returns it as `getTask` would,
-   * except with `arrivesAsNotice` (FIX-2123): the filer's `onTaskSettled`
-   * had already taken the ending's notice, which is the filer's one hearing of
-   * it, so the caller answers {@link arrivesAsNoticeAnswer} instead.
+   * except `arrivesAsNotice` (FIX-2123): answer {@link arrivesAsNoticeAnswer}.
    */
   | { readonly ok: true; readonly task: Task; readonly ended: boolean; readonly arrivesAsNotice?: true }
   | { readonly ok: false; readonly error: TaskWaitRefusal; readonly message: string }
@@ -491,7 +489,7 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
  * The waited-on row ended: clear what it owes the resume, and return it. An
  * ending that came before the wait owes its filer a notice; when the filer is
  * the one waiting, this answer delivers it, so it is dropped (FIX-2112). One
- * the filer's `onTaskSettled` already took is its delivery instead (FIX-2123).
+ * already taken is the notice's delivery instead (FIX-2123).
  */
 async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
   await clearMarker(collection, taskId);
@@ -506,9 +504,7 @@ async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: s
  * (FIX-2112). Never fails the call: a drop that fails leaves the notice owed,
  * and the filer hears the ending a second time.
  *
- * @returns Whether the filer's `onTaskSettled` took the notice first
- *   (FIX-2123), read off the row as stored after the drop: that notice is the
- *   delivery, whether it is under way or done, and the wait says so.
+ * @returns Whether another request already took the notice (FIX-2123).
  */
 async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
   const filer = collection.filerOf?.(task) ?? task.filer?.sessionId;
@@ -528,11 +524,7 @@ async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollect
   return deliveredAsNotice(row, ctx.request.identity.id);
 }
 
-/**
- * What a wait answers when the task's ending arrives as a notice (FIX-2123):
- * the task, by name, and that its ending reaches the conversation as a notice
- * in its own right, so a model doesn't read it as "no result" and wait again.
- */
+/** The wait's answer when the ending arrives as a notice, so the model doesn't wait again (FIX-2123). */
 export function arrivesAsNoticeAnswer(task: Pick<Task, "id" | "goal" | "title">): {
   ok: true;
   taskId: string;

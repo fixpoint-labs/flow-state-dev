@@ -193,12 +193,9 @@ export interface RequestWaits {
    */
   ended?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
   /**
-   * Whether each request is running its own work now (`in_progress`): neither
-   * parked (`suspended`) nor ended. `false` for one parked
-   * on a person or a wait, for one that ended or whose process died, for a
-   * request of another session, and for one with no record. A board reads it
-   * to hold a task's notice while the request that filed the task still runs
-   * (FIX-2123), and not while that request is parked.
+   * Whether each request of this session is `in_progress` (FIX-2123). `false`
+   * when parked, ended, dead, another session, or unread. A board holds a
+   * notice while the request that filed the task still runs.
    */
   running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
 }

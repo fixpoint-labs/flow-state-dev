@@ -1544,7 +1544,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           };
         }
         if (!waited.ok) return { ok: false as const, taskId: t.id, error: `${waited.error}: ${waited.message}` };
-        // The filer's onTaskSettled took its ending first: that notice is the one hearing of it.
         if (waited.arrivesAsNotice === true) return arrivesAsNoticeAnswer(waited.task);
         t = waited.task;
       } else {

@@ -296,12 +296,8 @@ export function noticeReadByWaitWrite(task: Task): { patch: Partial<Task> } | un
 }
 
 /**
- * The one rule for taking a notice to deliver it
- * (`TaskCollectionRef.takeNotice`, FIX-2123): decided on the row as stored, so
- * a wait's drop and a take can't both go through.
- *
- * @returns The patch to write, or `undefined` when the row doesn't owe the
- *   notice, or another request holds it.
+ * The patch that takes a notice (`TaskCollectionRef.takeNotice`, FIX-2123), or
+ * `undefined` when the row doesn't owe it or another request holds it.
  */
 export function noticeTakeWrite(
   task: Task,
