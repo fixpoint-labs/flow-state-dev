@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Opening a workstream for each lab session (`openWorkstream`, which already gives a roster worker's session a project through `workstreamId`), or a new session field beside `projectId` |
 | **Because** | A workstream is a piece of project work, not a chat. It needs a title and a lead that lists delegates (BR-42); only members open one; every member sees it on the project's list; and each is a delegate record on its owner's project coordinator, which holds at most 25 (`MAX_DELEGATES`), so the 26th *New session* in a project is refused `too-many-workstreams`. Epic D3 already rejected a workstream per session. A new field would be a fourth way to say "this session's project", beside `projectId`, `workstreamId` and `filingProjectId`, for a meaning `projectId` already has ([tenet 2](../../../docs/philosophy.md)) |
-| **Locks in** | The worker flow's create check accepts `projectId` on a session of any worker, at a caller's id that is not derived, when the creator can read the project: the coordinator's readability check, unchanged. The installation's project coordinator keeps its rule: `projectId` only at its derived id. A derived id naming `projectId` is refused for every other worker, so `ensureWorkerSession({ worker, projectId })` still means *the project coordinator*. `projectId` beside `workstreamId` is refused: a workstream already names its project |
+| **Locks in** | The worker flow's create check accepts `projectId` on a session of any worker, at a caller's id that is not derived, when the creator may work in the project: a member of a shared one, the owner of a private one, the predicate `runProjectOf` already refuses runs on. The installation's project coordinator keeps its rule: `projectId` only at its derived id. A derived id naming `projectId` is refused for every other worker, so `ensureWorkerSession({ worker, projectId })` still means *the project coordinator*. `projectId` beside `workstreamId` is refused: a workstream already names its project |
 
 **What would change my mind:** the labs needing what a workstream carries (a lead's goals, a due
 date, a place on the project's list). Then a lab session is a workstream, and the cap is the
@@ -57,8 +57,10 @@ It comes down to the readers: all but one already read `projectId` as where the 
 
 ## Decided, not asked
 
-- **Readability, not membership, at create**, as the issue, the directory rule and the
-  coordinator's link all say. Runs stay gated by membership at `projectWorkspace()`.
+- **Membership, not readability, at create**, as the directory rule now says: an ordinary session
+  exists to work in the project, and a reader who isn't a member would open one whose every run
+  is refused `not-a-member`. The coordinator keeps its readability check: it reads and routes, and
+  runs nothing itself.
 - **A random id only, for every worker but the coordinator.** A derived id would be a
   per-project default conversation for any worker, which nothing asks for.
 - **No `open` call on the workforce client.** Opening stays the session client's create with
