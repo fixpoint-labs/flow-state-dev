@@ -142,6 +142,10 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   in a new session, so D1 moved from "routed tasks plus a gap" to "ordinary tasks, no gap", and
   says what leg c no longer proves. Codex showed FIX-2131 already gives the model a review
   tool, so the review gap went too: D2 is now configuration.
+- **Review round 2:** Codex found the lead's `WORKER.md` had no body, so nothing told it to file
+  ordinary tasks while the routing turn's description says to route. The body now says so, and
+  whether it wins is a wiring check. The routed control was replaced: a routed message goes to a
+  delegate once per round, so it made one task, not three in one session.
 - **Product answers:** yes to D1 to D4, with one refinement: the mode comes from the view
   (*Sessions* or *Projects*), not a choice at session start.
 

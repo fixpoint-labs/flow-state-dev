@@ -47,7 +47,7 @@ the lab's own state.
 | **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` |
 | **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
-| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to hand the request on as routed tasks (`resultTo: "conversation"`): all three run in the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -66,6 +66,10 @@ review, and *Resolve* answers its review.
 + routing: judgment
 + delegates: [desk.thread]
 + ---
++ Split each request into pieces and start a thread for each: call createTask with
++ assignee desk.thread and a goal, and leave session and resultTo out, so each piece runs
++ in a new session of its own and its result comes back to you. Then tell the person what
++ you started. Don't hand the message on with resultTo "conversation".
 + # workforce/teams/desk/workers/thread/WORKER.md
 + ---
 + description: Works one request in its own session and hands it back for review.
@@ -140,6 +144,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 |---|---|
 | **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
+| Checked at wiring: **the lead's instructions win over the routing turn's own description**, which tells the model to hand a message on with `session: "ongoing"` and `resultTo: "conversation"` (`coordinator-flow.ts`, `routes.routing`) | Step 2; a gap only if the model follows the routing description instead: then a coordinator setting that turns routing off for a worker |
 | Checked at wiring: **three ordinary tasks for one delegate run side by side**, each in its own new session. Read from code (above), not yet run | Step 2; a gap only if it fails |
 | Checked at wiring: **the coordinator's `createTask` call item names the task it filed** | The feed cards; a gap only if it doesn't |
 
