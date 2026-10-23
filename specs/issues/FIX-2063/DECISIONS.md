@@ -42,7 +42,7 @@ this, as the opt-back.
 |---|---|
 | **Instead of** | Turning it on for every host, in-memory stores included |
 | **Because** | The epic's rule ([ER-6](../../epics/FIX-2058/DECISIONS.md#who-owns-what)): durable where stores persist, and a host without it refuses a stop loudly. A stop held in memory is lost silently when the process ends. One fact decides it, carried by the one adapter the engine ships that doesn't persist: the in-memory one says so. Every other adapter, third-party ones included, declares nothing and gets the default |
-| **Locks in** | The default of `durable` flips at upgrade for apps on persisting stores, and the cost is real: every sequencer (already `durable: true` by default, FIX-401) writes a checkpoint at each step, a crashed request resumes instead of rerunning, a raw `ctx.suspend()` is held, and the router's sweeper ticks on the store (a lease and a scan) even when nothing waits. A changeset says so, with the migration note. `durable: false` is the opt-out. On in-memory stores a stop refuses loudly unless `durable: true` is set, which is how tests opt in |
+| **Locks in** | The default of `durable` flips at upgrade for apps on persisting stores, and the cost is real: every sequencer (already `durable: true` by default, FIX-401) writes a checkpoint at each step, a crashed request resumes instead of rerunning, a raw `ctx.suspend()` is held, and the router's sweeper ticks on the store (a lease and a scan) even when nothing waits. A changeset says so, with the migration note. Crash-resume is only safe once a resume never reruns a finished step with traces off ([FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137)), so the flip ships after it. `durable: false` is the opt-out. On in-memory stores a stop refuses loudly unless `durable: true` is set, which is how tests opt in |
 
 ![D2: on wherever stores persist, chosen, beside on everywhere including in-memory stores. Decides it: the epic's rule, where a stop held in memory is lost silently. Price: an upgrade checkpoints sequencers and resumes crashed requests for apps that never set durable. Tie: a file-backed self-hosted app is durable either way](figures/d2-where-stores-persist.svg)
 
@@ -96,6 +96,9 @@ more than refusing it. Then that host's adapter sets the default, and D2 narrows
   memory is lost silently and the epic's ER-6 refuses it there. D1 gained the shared local user,
   because the DevTool lists sessions by user and would not have seen the run's stop. D2 priced
   the default's checkpoints, crash-resume and sweeper ticks instead of calling it free.
+- **Round 2** — FIX-2132's POC showed a resume reruns finished steps when traces are off, as
+  in production (FIX-2137). D2 now ships after FIX-2137, and the goal check runs with traces off
+  too, counting the step before the stop.
 
 ## Notes from review
 
@@ -126,5 +129,12 @@ From this spec's review (#3734), round 1:
 - "Keep leg c on an approval, since FIX-2129 changes a question's deadline." — architect. Kept
 - "Fixing the docs' nonexistent `durabilityProvider` option can be a separate one-line docs
   fix." — epic coordinator. Either is fine
+
+Round 2:
+
+- "Add an anti-game line so the goal check also runs with `FSDEV_TRACE_OBSERVABILITY=0`. Also
+  list FIX-2137 as a dependency." — epic coordinator (cross-spec, FIX-2132). Folded
+- "Make it a hard ordering, not a footnote … The spec can land now; the impl PR that flips the
+  default must not merge before FIX-2137." — architect. Folded into D2's Locks in and the debt
 
 **Open: none.**

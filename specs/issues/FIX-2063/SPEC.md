@@ -49,9 +49,9 @@ must fail it, at the stop.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/durable-by-default/a-local-stop-is-held-and-answered/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: `fsdev run` exits 0, printing the stop's id (in `--capture` too) and the answer hint; the request is `suspended`. b: after `fsdev dev` starts and restarts, the stop is listed in the DevTool's default session listing, under its default user; one approve completes that request id, once. c: an approval whose deadline passes while `fsdev dev` runs is `expired` within one sweep. d: under `durable: false` the request fails at the stop, the error names the rule and the setting, no suspension or checkpoint is stored, and the request stays recorded as failed, as today |
-| **Input** | A discovery folder with one flow: an approval stop, then a step. An input stop must pass too, and so must an app config that never mentions `durable` |
-| **Anti-game** | Real processes and SQLite file, public routes; no calls into the provider or sweeper |
+| **Signal** | a: `fsdev run` exits 0, printing the stop's id (in `--capture` too) and the answer hint; the request is `suspended`. b: after `fsdev dev` starts and restarts, the stop is listed in the DevTool's default session listing, under its default user; one approve completes that request id, once, and the step before the stop ran once in all. c: an approval whose deadline passes while `fsdev dev` runs is `expired` within one sweep. d: under `durable: false` the request fails at the stop, the error names the rule and the setting, no suspension or checkpoint is stored, and the request stays recorded as failed, as today |
+| **Input** | A discovery folder with one flow: a step that counts its runs, an approval stop, then a step. An input stop must pass too, and so must an app config that never mentions `durable` |
+| **Anti-game** | Real processes and SQLite file, public routes; no calls into the provider or sweeper. Legs a and b run a second time with `FSDEV_TRACE_OBSERVABILITY=0`, production's default, and the step before the stop still runs once |
 | **Control that must fail** | Today's `main`: leg a on *the request is `suspended`*, leg c on *`expired` within one sweep* |
 
 ## What changes
@@ -101,6 +101,7 @@ today. No new page. FIX-2131 owns the stop's story.
 | Sequencers default to `durable: true` (FIX-401), skipped today only for want of a provider | **Builds on.** They checkpoint wherever the default lands; the price of [D2](DECISIONS.md#d2) |
 | [FIX-406](https://linear.app/fixpoint-labs/issue/FIX-406) 6A: `fsdev run` on the filesystem store, acknowledged development-only | **Superseded in part,** for no-config runs. Configured runs keep the app's stores |
 | [FIX-2058 ER-6, D1](../../epics/FIX-2058/DECISIONS.md#d1) | **Kept.** This issue owns ER-6 |
+| A resume replays finished steps from their traces, which production doesn't keep: with traces off, a resumed request runs them again ([FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137)) | **Blocked by.** The default flip must not merge before FIX-2137 lands, or D2's crash-resume turns that bug on for every app that never opted in |
 
 | The debt | |
 |---|---|
@@ -129,5 +130,7 @@ old callers. If wrong: a host somewhere relied on durability being off.
    stop to it.** Engineering, decided. If wrong: a deadline waits for the next server start.
 
 **Open: none.** Number 1 is the one to weigh: it changes where a developer's local runs live.
+
+**Ordering:** the implementation that flips the default waits on [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137). Where FIX-2137 sits in the epic is the coordinator's call.
 
 Improvement · `engine` + `fsdev` + docs · small · epic [FIX-2058](../../epics/FIX-2058/SPEC.md)
