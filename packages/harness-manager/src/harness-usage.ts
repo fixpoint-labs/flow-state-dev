@@ -27,9 +27,12 @@
  *   plan and every window the new account didn't send. No account (a
  *   token-only sign-in) counts as an account of its own, so a move either way
  *   between it and a named one is a rebind too. Every write that is taken
- *   advances `accountAt`, and a rebind or a no-number reading observed before
- *   it is refused whole: a late event from the old account can't take the
- *   record back, and a late look can't clear a newer run's window.
+ *   advances `accountAt` (a look that got no answer excepted: it learned no
+ *   account), and a rebind or a no-number reading observed before it is
+ *   refused whole: a late event from the old account can't take the record
+ *   back, and a late look can't clear a newer run's window. A run that started
+ *   before a look confirmed no subscription stays refused after a newer run
+ *   fills the record again.
  * - **Latest only.** No history: a window's next reading overwrites it.
  *
  * ## Two forms of one write
@@ -103,6 +106,12 @@ export const harnessUsageStateSchema = z.object({
    * existed reads 0, so its first rebind wins.
    */
   accountAt: z.number().default(0),
+  /**
+   * When a look last confirmed no subscription (`api-key` or `signed-out`), in
+   * epoch ms, or `null`. A run that started by then belongs to the old sign-in,
+   * even after a newer run has filled the record again.
+   */
+  noSubscriptionAt: z.number().nullable().default(null),
   plan: z.string().nullable().default(null),
   windows: z.array(storedUsageWindowSchema).default([]),
   /** When the stored reading was made, in epoch ms. `null` until one was. */
@@ -206,12 +215,15 @@ export function applyReading(stored: HarnessUsageState, reading: HarnessUsageRea
     // No number: every window goes, run-written ones too, and so does the
     // account. Not over a write observed after this look was.
     if (checkedAt < stored.accountAt) return { state: {}, result: "refused-older" };
+    // A look that got no answer learned no account, so it sets no account clock.
+    const answered = reading.status !== "unavailable";
     return {
       state: {
         status: reading.status,
         reason: reading.reason,
         account: null,
-        accountAt: checkedAt,
+        accountAt: answered ? checkedAt : stored.accountAt,
+        ...(answered ? { noSubscriptionAt: checkedAt } : {}),
         plan: null,
         windows: [],
         checkedAt,
@@ -254,8 +266,7 @@ export function applyReading(stored: HarnessUsageState, reading: HarnessUsageRea
 export function applyRunWindow(stored: HarnessUsageState, report: HarnessUsageReport): Merged {
   // A run already going when a look found no subscription belongs to the old sign-in.
   // A look that failed (`unavailable`) found nothing, so it doesn't hold a run back.
-  const noSubscription = stored.status === "api-key" || stored.status === "signed-out";
-  if (noSubscription && stored.checkedAt !== null && report.runStartedAt <= stored.checkedAt) {
+  if (stored.noSubscriptionAt !== null && report.runStartedAt <= stored.noSubscriptionAt) {
     return { state: {}, result: "refused-older" };
   }
   const incoming = report.accountId === null ? null : hashKeySegment(report.accountId);

@@ -293,6 +293,21 @@ describe("applyRunWindow", () => {
     expect(after(failed, recovered)).toMatchObject({ status: "windows" });
   });
 
+  it("takes a named run's window observed before a failed look that landed first", () => {
+    // The run's account lookup can take seconds, so its event may land after a later look.
+    const failed = after(EMPTY, applyReading(EMPTY, { status: "unavailable", reason: "no answer" }, NOW));
+    const late = applyRunWindow(failed, runReport({ accountId: "a@example.com", runStartedAt: NOW - 100, observedAt: NOW - 50 }));
+    expect(late.result).toBe("recorded");
+  });
+
+  it("keeps holding back a run from before a sign-out after a newer run fills the record", () => {
+    const out = after(EMPTY, applyReading(EMPTY, { status: "signed-out", reason: "no sign-in" }, NOW));
+    const fresh = after(out, applyRunWindow(out, runReport({ accountId: "b@example.com", runStartedAt: NOW + 100, observedAt: NOW + 200 })));
+    const stale = applyRunWindow(fresh, runReport({ accountId: "a@example.com", runStartedAt: NOW - 100, observedAt: NOW + 300 }));
+    expect(stale.result).toBe("refused-older");
+    expect(fresh.windows).toHaveLength(1);
+  });
+
   it("rebinds to a new account whole: the old account's windows and plan go", () => {
     const a = after(EMPTY, applyReading(EMPTY, { status: "windows", accountId: "a@example.com", plan: "max", windows: [] }, NOW - 10_000));
     const aRun = after(a, applyRunWindow(a, runReport({ accountId: "a@example.com", window: { id: "seven_day", label: null, minutes: 10_080, usedPercent: 80, level: "warning", resetsAt: null }, observedAt: NOW - 5_000 })));
