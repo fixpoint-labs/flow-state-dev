@@ -12,11 +12,12 @@ Each rule has one owner: the epic that implements and proves it. The others inhe
 Both rules moved from FIX-1870, canceled Oct 21, to FIX-2056 at its approval
 ([#3588](https://github.com/fixpoint-labs/flow-state-dev/pull/3588)). FIX-1870's children already
 removed the coordinator's `handOff` and its delivery ledger; FIX-2083 removes the last exception,
-the post row kind, and FIX-2081 ships the four task tools PR-2 names.
+the post row kind, and FIX-2081 ships the four task tools PR-2 names plus the worker's fifth,
+`reportProgress`.
 
 PR-2 is [PD-3](DECISIONS.md), which amends FIX-1816's D3.
 
-**No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's four
+**No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's five
 task tools (`answerTask` stays until FIX-2058 retires it), or a model-facing tool for tells
 ([PD-3](DECISIONS.md)); add a second once-only check beside the claim ticket; add a task store or
 status vocabulary outside TaskCollection ([PD-1](DECISIONS.md)); or let a skill pick how its work

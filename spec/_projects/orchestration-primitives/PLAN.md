@@ -21,7 +21,7 @@ is today.
 | FIX-1320 · flow instances | — | A global address for each flow instance |
 | FIX-1312 · dispatch protocol | An address | `dispatcher()` with reply-to-sender, as transport for flow code |
 | FIX-1870 · dispatchTask, canceled Oct 21 | The honest board, reply-to-sender | `dispatchTask`; coordinator posts as task rows, with `handOff` and the delivery ledger gone. Superseded by FIX-2056 before it wrapped |
-| FIX-2056 · one task primitive | The honest board, reply-to-sender, FIX-1047's claim in task tools, FIX-1870's D2, the coordination model ([#3534](https://github.com/fixpoint-labs/flow-state-dev/pull/3534)) | One task with plan and delegation boards; one completion rule at the claim gate; four task tools, `createTask` and `getTask({ id, wait })` replacing `dispatchTask`; posts as routed tasks; every ending to its filer once |
+| FIX-2056 · one task primitive | The honest board, reply-to-sender, FIX-1047's claim in task tools, FIX-1870's D2, the coordination model ([#3534](https://github.com/fixpoint-labs/flow-state-dev/pull/3534)) | One task with plan and delegation boards; one completion rule at the claim gate; five task tools, `createTask` and `getTask({ id, wait })` replacing `dispatchTask`; posts as routed tasks; every ending to its filer once |
 | FIX-2058 · one Inbox | FIX-2056's claim gate and steer, durable execution by default (FIX-2063) | One Inbox item per stop for a person; the answer by steer; `answerTask` and the parks retired ([*decided once*](DECISIONS.md)) |
 | FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
 | FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing; FIX-2056's read for retired rows removed no earlier than here |
@@ -53,7 +53,7 @@ the project's next regression gate.
 - **A "question" task class shown differently in the UI, and a model-facing tool for tells.**
   The first is deferred until something needs it; the second is not added ([PD-3](DECISIONS.md)).
 - **Waiting on several tasks at once, and a row-less question tool for workers.** FIX-1870 ruled
-  both out and FIX-2056's four task tools add neither; neither has an epic.
+  both out and FIX-2056's five task tools add neither; neither has an epic.
 - **Spend caps on delegated work (FIX-933).** Filed under FIX-930, never started.
 - **Anything after the renames.** No epic is filed after FIX-2071. The project's remaining life
   is FIX-2056, then FIX-2058 and FIX-2070 side by side, then FIX-2071.
