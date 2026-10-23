@@ -1093,11 +1093,13 @@ finished task it answers `task_finished` and writes nothing. The collection side
 is a new task, with the same worker, that runs in that task's session. Its
 row carries that task's `session`, `target` and `targetSessionId`, so a
 follow-up of a task filed with `session: "ongoing"`, or filed for a
-workstream, runs in that same session. It also carries that task's
-`resultTo`, so its result goes where that task's went; a follow-up whose
-result goes to the conversation has one attempt. If that session no
+workstream, runs in that same session. If the session it runs in no
 longer exists, the follow-up runs nowhere else: its hand-over fails it with
-`session-not-found`, and its filer hears the failure. A follow-up takes no
+`session-not-found`, and its filer hears the failure. It also carries that
+task's `resultTo` (where the task's result is delivered), so its result goes
+to the same place. When that is `"conversation"` (a Workforce conversation),
+the follow-up gets one attempt, as every task whose result goes there does.
+A follow-up takes no
 `session`, `target` or `resultTo` of its own (`follow_up_takes_no_session`,
 `follow_up_takes_no_target`, `follow_up_takes_no_result_to`). It keeps that worker: `updateTask` won't move it
 (`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
