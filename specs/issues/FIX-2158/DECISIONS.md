@@ -12,7 +12,7 @@ model amendment. One call is left: which sessions the list holds.
 flowchart TD
   I["FIX-2158"] --> D1["D1 · a person's conversations with the worker · default first"]
   D1 -.->|"rejected"| X1["every session naming the worker · task runs and delegate sessions too"]
-  D1 -.->|"rejected"| X2["only sessions the person opened · default left to find"]
+  D1 -.->|"rejected"| X2["a flat list with no default mark · the app calls find too"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -22,7 +22,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | Every session that names the worker, task runs and delegate sessions included; or only the sessions the person opened, with the default conversation left to `findWorkerSession` |
+| **Instead of** | Every session that names the worker, task runs and delegate sessions included; or a flat list with no default mark, so the app calls `findWorkerSession` too to know where messages land |
 | **Because** | A task's session is reached through its task (Jake's note on the issue, from FIX-2157: threads-mode threads are ordinary tasks, each in a new session of the delegate). Listed beside chats, every thread would show twice. The default is the one that receives messages, so a person needs to see it in the same list, and know which it is. The rule is the one `find` already uses: a session carrying a criteria key the call didn't name is not this kind of session ([tenet 3](../../../docs/philosophy.md)) |
 | **Locks in** | `listWorkerSessions(worker)` on the workforce client. It returns the worker's top-level sessions on its current flow that carry no criteria key but `workerId`, each marked default or not, the default first and the rest by latest activity. It never creates the default conversation. Task-run, delegate, workstream-lead and project-coordinator sessions are not in it |
 
@@ -70,5 +70,17 @@ It comes down to threads mode: listing task runs shows every thread twice.
   (FIX-2160), and "the one a message lands in" is only true for a message addressed to the worker.
   Folded as a wording fix: this PR now carries #3789's paragraph verbatim, so the two merge as one
   rule. No direction change.
+- **Cursor (round 1, approved), for the implementer:** "extract/shared filter with `findWorkerSession`
+  in `client.ts` (criteria-key rule + filing top-level guard). That's the main code simplification;
+  without it, list and find will drift."
+- **Cursor (round 1), for the implementer:** "a footgun if the implementer pages with default
+  `orderBy: updatedAt` while sessions are mutating — rows can move between pages. Either document
+  single unbounded list when `limit` is omitted (today's store behavior), page on `createdAt` then
+  re-sort, or a follow-up keyset helper." And: a UI that calls both `findWorkerSession` and
+  `listWorkerSessions` on every refresh doubles the listing work; the lab should read the list's
+  default mark.
+- **Cursor (round 1), for the implementer:** an engine-side query ("workerId present, no other
+  criteria keys") is simpler at runtime but a bigger change; an optional follow-up if conversation
+  counts or polling hurt.
 
 **Open: none.**
