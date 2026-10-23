@@ -267,10 +267,10 @@ standard of a release, and the epic cannot wrap while it is open.
   runs against that same commit, and the report names it. Checks that passed on different
   commits prove nothing about the assembled set, unless nothing they assert changed in between
   (see *It stays open* below). **A run finishes on the commit it pinned**, and only a clean
-  verdict closes the closure issue. It never re-pins to chase merges from other epics: `main`
-  keeps moving, and a check another epic's merge made stale (a rename, a new lead, a new
-  surface) is that epic's concern. The report records it as stale, not as a finding against this
-  one.
+  verdict closes the closure issue. It never re-pins to chase merges from other epics. When a
+  check fails because another epic's merge changed what it asserts, the report says so: a goal
+  made stale (a rename, a new lead, a new surface) is recorded as stale, not filed, and a real
+  regression is filed normally, outside the epic.
 - **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
   as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
   wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
@@ -286,12 +286,12 @@ standard of a release, and the epic cannot wrap while it is open.
   no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
   line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
   implementation again and the next run, on the commit those fixes landed at, re-grades **the
-  failed checks and every check this epic's fixes since the last run touch** (they change the
-  code, docs or surface the check asserts on), not only the fixed bugs' repros, because a fix
-  can break a neighbour. The rest carry forward, each with the run it passed in. This repeats
-  until a run files nothing. This needs no `epic-wake` change: blocked-by, child discovery and
-  `mayWrap`'s every-row-terminal rule already carry it. `verify.mjs` covers those pieces one at
-  a time, but has no scenario yet for a closure run that files findings and is re-dispatched.
+  failed checks and every check whose code, docs or surface changed since the last run**,
+  whoever changed it, not only the fixed bugs' repros, because a fix can break a neighbour. The
+  rest carry forward, each with the run it passed in. This repeats until a run files nothing.
+  This needs no `epic-wake` change: blocked-by, child discovery and `mayWrap`'s
+  every-row-terminal rule already carry it. `verify.mjs` covers those pieces one at a time, but
+  has no scenario yet for a closure run that files findings and is re-dispatched.
 - **A clean run opens the closure PR.** It commits the end-to-end checks where they can live in
   the repo, so they keep running after the wrap, and its body is the QA report: the `main`
   commit, each check with the run it passed in, its PASS and its control's FAIL, and each
