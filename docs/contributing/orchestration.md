@@ -473,6 +473,14 @@ reviewer saw. Take a PR out of draft when its work is ready for review, not when
 ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
 review and the required checks have returned on its current head.
 
+**Codex is the automated reviewer; an agent never stands in for it.** Don't dispatch a
+Claude review agent to fill in for a missing bot review: it costs credits and duplicates
+what Codex does. Instead, make sure Codex has reviewed the current head. Grok usually asks
+for that review; if you notice a head with no Codex review first, comment `@codex review`
+on the PR yourself. Name what you're unsure of in the request ("pay special attention to:
+…" with the specific seams, races or invariants in doubt) rather than posting the bare
+command.
+
 **Green means CI ran on this head and passed.** Read the `Typecheck & Test` check run on
 the PR's current head, never the combined commit status: Vercel posts `success` there for
 builds its ignored-build step skipped, so a head whose tests failed can read green on that
