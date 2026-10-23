@@ -57,10 +57,11 @@ recorded here.*
 >
 > **What decides FIX-2159:** whether a public `exports` entry (ER-2) lets a flow take and acknowledge
 > a settled notice. On `main` none does: the take record (FIX-2123) and Workforce's handling are
-> internal. So FIX-2159 adds one public piece, the take, and it keeps the guarantees in the row
-> below. Answering again is composed, not added: the lab's flow reuses the answer-once-more step
-> that `Planning.planned` (FIX-2076) already runs, shared under one cap, so there is one way to
-> answer again (#3799 review). The loop itself stays in the lab.
+> internal. So FIX-2159 adds the take, and it keeps the guarantees in the row below. It also
+> extracts the answer-once-more step `Planning.planned` (FIX-2076) already runs into one shared
+> step with one exported cap, and adds an `answerAgain` source slot on `defineAgentWorkerFlow`
+> with no loop or cap of its own, so there is one way to answer again (#3799 review). The shared
+> step runs the loop; the lab passes only the source block that calls the take.
 
 | | |
 |---|---|
