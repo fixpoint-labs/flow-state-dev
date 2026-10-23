@@ -294,6 +294,18 @@ export type BlockTraceItem = OutputItemBase & {
   startedAt?: number;
   completedAt?: number;
   duration?: number;
+  /**
+   * `true` when the block threw and a `.rescue()` handler produced its output.
+   * Recorded whatever the trace-observability setting, so a resume that
+   * replays the block keeps `ctx.wasRescued()` unchanged. Absent otherwise.
+   */
+  rescued?: true;
+  /**
+   * `true` on the lean completion record the runtime writes when trace
+   * observability is off: identity, output and `rescued` only. Absent on full
+   * traces and on records written before lean records existed.
+   */
+  lean?: true;
   error?: {
     message: string;
     code?: string;

@@ -483,7 +483,7 @@ export async function executeBlock(
       // `_withExecutionScope` builds below (name/kind/instanceId/path/transient);
       // `getBlockOutput` keys on `parent.name`. No-op in unit contexts.
       const registerReplayed = (ctx as {
-        _registerReplayedChild?: (p: import("../types/block").ExecutionParent, o: unknown) => void;
+        _registerReplayedChild?: (p: import("../types/block").ExecutionParent, o: unknown, r?: boolean) => void;
       })._registerReplayedChild;
       registerReplayed?.(
         {
@@ -493,7 +493,8 @@ export async function executeBlock(
           path,
           transient: block.transient || undefined
         },
-        cached.value
+        cached.value,
+        replayLog.completedRescued(`${requestId}:${path}`)
       );
       return cached.value;
     }

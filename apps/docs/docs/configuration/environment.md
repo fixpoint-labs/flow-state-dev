@@ -61,7 +61,7 @@ Full rules: [Models → Environment overrides](/docs/fundamentals/models).
 | `FSDEV_DEBUG_ENDPOINTS` | `1` enables privileged debug routes (same as `debugEndpointsEnabled: true`). |
 | `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL` | `1` lets debug routes accept requests with no `Origin` header, such as curl, a script, or a same-origin browser GET (same as `debugAllowAnonymousLocal: true`). Unset, or any other value including `true`, and those requests get 403. An explicit `debugAllowAnonymousLocal` option, including `false`, overrides it. Only set it for a server bound to loopback. |
 | `FSDEV_TRACING_LEVEL` | Observability verbosity for the CLI/dev router. `fsdev dev` defaults this to `verbose`. |
-| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles `block_trace` capture. Defaults to on outside production. |
+| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles full `block_trace` capture: inputs, prompts and resource loads. Defaults to on outside production. When off, each completed block still records its output, so a resumed request picks up where it stopped instead of running finished steps again. |
 
 `createFlowState({ devtool: { userId, bearerToken } })` is not an env var. Put secrets you want DevTool to send in that object, reading them from the environment yourself.
 
