@@ -585,6 +585,67 @@ describe("the hop count through a delegation", () => {
     }
   });
 
+  it("counts a message from a routed task in the chain of the user's line it hands on, at 1", async () => {
+    const h = boot({
+      standard: teamWorkers(),
+      agentAnswer: mockGenerator({ script: [...callOnce("Ask helper-a about the colour", "messageWorker", { to: "helper-a", text: "What colour?" }, ""), fallback] })
+    });
+    try {
+      // front routes every line to otto, its one delegate, in otto's ongoing session for the conversation.
+      const front = await h.conversation("alice", "front");
+      await h.post("alice", front, "run", { message: "Ask helper-a about the colour" });
+      await h.settled();
+      expect((await h.rows("alice")).map((row) => [row.assignee, row.id.startsWith("routed:"), row.status])).toEqual([["otto", true, "completed"]]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>helper-a@1"]);
+      expect(rows[0]!.chain, "the chain the user's line started in front's conversation").toBe((await h.session(front)).state.workforceMessageChain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A user's line in the filer's conversation between the filing and the hand-over
+  // starts a new chain there, and the task is handed over in it: the filing's
+  // record is from a chain the user has since ended, so the task runs as it
+  // would with none, at its born-with count or its session's.
+  it.each([
+    ["in a session of its own", {}],
+    ['in the delegate\'s ongoing session (session: "ongoing")', { session: "ongoing" }]
+  ])("starts a task filed %s afresh when the user writes in its filer's conversation before it is handed over", async (_where, setting) => {
+    // helper-a's conversation holds the task's text, so its turns after the
+    // user's line say nothing: only the task's own turn messages otto.
+    const quietAfterUser: MockGeneratorScriptEntry = { when: (input) => textOf(input).includes("Go ahead whenever you like"), then: { text: "" } };
+    const h = boot({
+      standard: teamWorkers(),
+      agentAnswer: mockGenerator({ script: [quietAfterUser, ...relayThroughTask({ ...setting, held: true })] })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [held] = await h.rows("alice");
+      expect(held!.status).toBe("held");
+      expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      await h.post("alice", helperA.id, "run", { message: "Go ahead whenever you like." }, "agent");
+      await h.settled();
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      const first = rows.find((row) => row.from === "otto")!;
+      const fromTask = rows.find((row) => row.from === "helper-b")!;
+      expect(fromTask.chain, "a new chain, not the one the user's line ended").not.toBe(first.chain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("runs an ongoing-session task filed before rows recorded a count at its session's count, as it did", async () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true }) }) });
     try {

@@ -13,8 +13,12 @@
  *   chain fields the hand-over sets;
  * - a task's turn is at its filing turn's count, which the filing records on
  *   the row (FIX-2106), so a task run in an existing session (an ongoing one,
- *   or a follow-up's) counts on from its filer too; a row filed before rows
- *   recorded it reads the session's;
+ *   or a follow-up's) counts on from its filer too. The record stands only
+ *   while its chain is still the filer session's current chain when the
+ *   board claims the row: a user's line in the filer's conversation since the
+ *   filing ended that chain, so the claim clears the record and the turn runs
+ *   as a row with none. A row with none (one filed before rows recorded it)
+ *   reads its born-with count, or its session's;
  * - every other turn (a notice's, a post's) reads the session's.
  *
  * The limit is the whole exchange's, not one path's: everything descending

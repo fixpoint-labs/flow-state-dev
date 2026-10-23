@@ -114,7 +114,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import { carriedHopState, turnHopMark } from "../messages/hop";
+import { carriedHopState, hopMarkOf, sessionChainOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -472,18 +472,35 @@ async function takeTargetSessions(ctx: BlockContext, collection: TaskCollectionR
  * Claims only rows that may start: an unassigned row, or one whose session is
  * busy, on this board or (a session by id) on another, waits on the board. A
  * row for a session by id is claimed only once this board holds that session
- * for it.
+ * for it. A claimed row's filed hop count is kept only while its chain is
+ * still the filer's ({@link keepFiledHopInChain}).
  */
 const startableOnly: TaskDispatcher = {
   claim: async (collection, workerId, ctx) => {
     const taken = await takeTargetSessions(ctx, collection);
     noteHeldElsewhere(collection, new Set([...taken].filter(([, id]) => id === undefined).map(([target]) => target)));
-    return collection.claim(workerId, {
+    const claimed = await collection.claim(workerId, {
       eligibility: (task, rows) =>
         isStartable(task, rows) && (task.targetSessionId === undefined || taken.get(task.targetSessionId) === task.id)
     });
+    return claimed === null ? null : keepFiledHopInChain(ctx, collection, claimed);
   }
 };
+
+/**
+ * At the claim, in the filer's own pass (FIX-2106): a row's filed hop count
+ * (`FILED_HOP`) stands only while its chain is still the filer session's
+ * current chain. A user's line in the filer's conversation since the filing
+ * started a new chain there, so the record is cleared, server-side, and the
+ * task's turn runs as a row with none would: at its born-with count, which
+ * is the filer's now, or its session's.
+ */
+async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<Task> {
+  const mark = hopMarkOf(task.metadata?.[FILED_HOP]);
+  if (mark === undefined || mark.chain === (sessionChainOf(ctx.session.state) ?? null)) return task;
+  await collection.patchMetadata(task.id, { [FILED_HOP]: null });
+  return collection.get(task.id) ?? task;
+}
 
 /**
  * Whether a row this board can start is waiting: startable ({@link isStartable})
