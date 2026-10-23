@@ -82,9 +82,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["1:waiting-while-b-works"],
     patches: [
       {
-        // A `getTask` wait holds its request open past B's hold before it takes
-        // the piece's wait slot, so A's turn runs on in its session while B
-        // works, and reads B's ending without parking.
+        // Delay markWait past B's hold, so the request stays open while B works.
         module: "packages/orchestration/src/tasks/helpers/wait-on-task.ts",
         from: String.raw`\n    const marked = await collection\.markWait!\(taskId, \{`,
         to: `\n    await new Promise((resolve) => setTimeout(resolve, ${KEEPER_HOLD_MS + 2_000}));\n    const marked = await collection.markWait!(taskId, {`
@@ -313,16 +311,10 @@ await runGoal(async (failures) => {
       say(`leg 1: the codename is ${seen.codename}`);
       const taskId = await fileForA(ask("release", B));
       // While B works: A's task running, waiting on its piece, and nothing
-      // running in A's task session. Read the moment A's own turn has ended
-      // while B's piece is still running: an event, not a fixed delay. A turn
-      // ends one of two ways, each after its end-of-request check has run:
-      // its request finalized (the task waits on `filed`), or its request
-      // parked on the wait gate of B's piece, a `getTask` wait (`suspended`,
-      // and the piece's wait slot names it; the task waits on `wait`). A
-      // request still `in_progress` holds the session. Once the turn has
-      // ended, the read waits for nothing to run in the session (the board's
-      // own short pass may follow a park), still while B works. B finishing
-      // first, or while something still runs there, is a failure of its own.
+      // running in its session. Read once A's turn has ended (request
+      // finalized, or parked on this piece's live wait slot) and the session
+      // is quiet. The board's own short pass may follow a park. B finishing
+      // first, or while something still runs there, fails on its own.
       const store = await storeOf(host);
       let during: {
         ended?: "finished" | "parked";
@@ -332,7 +324,6 @@ await runGoal(async (failures) => {
         running?: number;
         at?: number;
         bEndedFirst?: boolean;
-        /** What still ran in A's task session when B ended, after A's turn had. */
         busy?: string[];
       } = {};
       let busy: string[] | undefined;
