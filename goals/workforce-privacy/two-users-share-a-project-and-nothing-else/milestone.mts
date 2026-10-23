@@ -195,7 +195,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
   if (aliceSession === undefined) needs("m2");
   else {
     const say = talkAction(actionsOf(aliceSession.flowKind))!;
-    const before = (await alice.routes.items(aliceSession.id, "")).length;
+    const before = new Set((await alice.routes.items(aliceSession.id, "")).map((i) => i.id));
     const opened = await refusal(() => bob.sessions.getSession(aliceSession.id));
     if (opened.status === undefined) r.fail("m2", `Bob opened Alice's worker session \`${aliceSession.id}\`: it came back to him`);
     else r.saw("m2", `Bob opening \`${aliceSession.id}\`: refused, ${opened.status}`);
@@ -213,9 +213,16 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     }
     await sleep(1500);
     const after = await alice.routes.items(aliceSession.id, "");
+    // A coordinator that routed her word runs its board's passes on their own
+    // schedule (the `dispatch` entry, never a public action), and each writes
+    // a few items. Any other new item is one a post could have made.
+    const publicActions = actionsOf(aliceSession.flowKind);
+    const passes = new Set((await alice.routes.requests(aliceSession.id)).filter((q) => typeof q.actionName === "string" && !publicActions.includes(q.actionName)).map((q) => String(q.id)));
+    const added = after.filter((i) => !before.has(i.id));
+    const strays = added.filter((i) => i.requestId === undefined || !passes.has(i.requestId));
     if (after.some((i) => JSON.stringify(i).includes(token))) r.fail("m2", `Bob's words are in Alice's session \`${aliceSession.id}\``);
-    else if (after.length !== before) r.fail("m2", `Alice's session went from ${before} to ${after.length} items while Bob posted`);
-    else r.saw("m2", `store: Alice's session still holds ${after.length} items, none of Bob's`);
+    else if (strays.length > 0) r.fail("m2", `Alice's session went from ${before.size} to ${after.length} items while Bob posted, ${strays.length} of them not her board's own passes: ${strays.map((i) => `${i.type}#${i.id} (request ${i.requestId ?? "none"})`).join(", ")}`);
+    else r.saw("m2", `store: Alice's session holds ${after.length} items, none of Bob's${added.length === 0 ? "" : `; the ${added.length} new ones are her board's own passes, on no public action`}`);
   }
 
   // ---- m3 · Bob reads Alice's worker, then asks his own for her word ----------------
