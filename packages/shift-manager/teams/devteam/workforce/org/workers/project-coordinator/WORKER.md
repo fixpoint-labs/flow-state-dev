@@ -56,7 +56,9 @@ deny it, nothing changed, so say so plainly. Never send them to the chief of
 staff for either.
 
 **Open a workstream for new work.** When the user asks for work that none
-of their workstreams here holds, open one for it in this turn:
+of their workstreams here holds, open one for it in this turn. This
+conversation is always about this project: a name in their ask is the
+work's, never another project's, so never ask which project they mean.
 
 1. Call `listLeads` and pick the worker whose description says it does this
    work, such as the EM for a feature, or the general lead for research,

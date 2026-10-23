@@ -102,6 +102,39 @@ describe("createTask replayed after the team changed (BR-15)", () => {
     expect(collection.list()[0]).toMatchObject({ id: replay.taskId, assignee: "eng.a" });
   });
 
+  it("a call that died after recording its id and before the add files its row on the replay, once", async () => {
+    const collection = await board();
+    let died = false;
+    const dying = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
+      addTask: async (...args: unknown[]) => {
+        if (!died) {
+          died = true;
+          throw new Error("the process died before the add");
+        }
+        return (collection.addTask as (...a: unknown[]) => Promise<unknown>)(...args);
+      }
+    }) as TaskCollectionRef;
+    const t = team(["eng.a"]);
+    const memo = new Map<string, unknown>();
+    const input = { goal: "Draft the release note", assignee: "eng.a" };
+    await expect(run(createTool(dying, t.roster), input, turnCtx(memo))).rejects.toThrow("the process died before the add");
+    expect(collection.list()).toHaveLength(0);
+    const replay = await run(createTool(dying, t.roster), input, turnCtx(memo));
+    expect(replay).toMatchObject({ ok: true, taskId: expect.any(String) });
+    expect(collection.list().map((task) => task.id)).toEqual([replay.taskId]);
+  });
+
+  it("keeps the call that filed a row out of a caller's reach: metadata naming another call is not written", async () => {
+    const collection = await board();
+    const t = team(["eng.a"]);
+    const out = await run(createTool(collection, t.roster), { goal: "Draft it", assignee: "eng.a", metadata: { filedByCall: "someone-elses-call", topic: "notes" } }, turnCtx(new Map(), "c7"));
+    expect(out).toMatchObject({ ok: true });
+    const row = collection.get(out.taskId!)!;
+    expect(row.metadata).toMatchObject({ topic: "notes" });
+    expect(row.metadata?.filedByCall).not.toBe("someone-elses-call");
+    expect(row.metadata?.filedByCall).toEqual(expect.stringContaining("0%3Ac7"));
+  });
+
   it("a different call is still checked against the team as it is now", async () => {
     const collection = await board();
     const t = team(["eng.a", "eng.b"]);

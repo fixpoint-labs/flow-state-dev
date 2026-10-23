@@ -118,7 +118,7 @@ import { carriedHopState } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import type { TaskDelegates } from "../delegates/worker-delegates";
+import { soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
 import { resolveWorkstreamTarget } from "../projects/project-coordinator";
 import { cancelIfParentEnded, stampFiledMarker } from "./cascade";
@@ -296,7 +296,7 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
     },
     // The same default the guarded `addTask` gives an unassigned row: the
     // conversation's only task-taking delegate, or none.
-    soleAssignee: () => (delegates.available.size === 1 ? [...delegates.available.keys()][0] : undefined)
+    soleAssignee: () => soleTaskDelegate(delegates)
   };
 }
 
@@ -988,8 +988,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
-      const delegates = await options.delegates(ctx);
-      return delegates.available.size === 1 ? [...delegates.available.keys()][0]! : undefined;
+      return soleTaskDelegate(await options.delegates(ctx));
     };
     /**
      * A reassign (`setAssignee`) keeps the row's workstream rule (FIX-2083): a row naming a
@@ -1009,8 +1008,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
         // none or several it waits on the board until it is assigned.
-        const delegates = await options.delegates(ctx);
-        if (delegates.available.size === 1) assignee = [...delegates.available.keys()][0]!;
+        assignee = soleTaskDelegate(await options.delegates(ctx));
       }
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.

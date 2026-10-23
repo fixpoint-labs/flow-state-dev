@@ -101,14 +101,19 @@ export async function holdRoutedSession(
 
 /**
  * Record, from the `work` entry, the routed task it just let into
- * `sessionId`, when no record names one yet: a task a board claimed before
- * the records existed. A record already there is left alone; the claim that
- * started this task took it.
+ * `sessionId`, when the record names no task that holds it: none yet, or one
+ * that has ended or was held (a task claimed by a host before claims took the
+ * record, as in a rolling deploy). A record naming a task still open there is
+ * left alone, in the same compare-and-swap write a claim takes.
  *
  * @throws when the running flow doesn't declare the records.
  */
 export async function noteRoutedSession(ctx: BlockContext, sessionId: string, holder: RoutedSessionHolder): Promise<void> {
-  await requireRecords(ctx).getOrCreate(keyOf(sessionId), holder);
+  const ref = await requireRecords(ctx).getOrCreate(keyOf(sessionId), holder);
+  await updateStateWith<RoutedSessionHolder, undefined>(ref, async (stored) => {
+    if (stored.partition === holder.partition && stored.taskId === holder.taskId) return { state: stored, result: undefined };
+    return { state: (await holds(ctx, stored, sessionId)) ? stored : holder, result: undefined };
+  });
 }
 
 /**

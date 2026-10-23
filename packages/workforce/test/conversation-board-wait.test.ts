@@ -90,17 +90,30 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
 const statusOf = async (host: BoardHost, requestId: string) =>
   (await (await host.state.getRuntime()).stores.request.get(requestId))?.status;
 
+/** The host's wait resume, as a test replaces it. */
+type WaitResume = (input: unknown) => Promise<unknown>;
+
 /**
  * A durable host whose router has built its durability sweeper, so `getTask`
  * offers the wait. A `[hold:g]` task waits on `held` until the test opens it.
+ *
+ * @param resume Replaces the host's wait resume, given the real one. Put on
+ *   the shared request host before the router is built: the router serves
+ *   HTTP requests from its own copy of the request host, made then, so a
+ *   resume replaced after it reaches only the requests run in process, and
+ *   an HTTP-started board pass would still resume with the real one.
  */
-async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel, held = gate()) {
+async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel, held = gate(), resume?: (real: WaitResume) => WaitResume) {
   const holds = new Map([["g", held.opened]]);
   const host = bootBoardHost(
     "generateStep" in judgment
       ? { judgmentModel: judgment as GeneratorModel, durable: true, holds }
       : { judgment, durable: true, holds }
   );
+  if (resume !== undefined) {
+    const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: WaitResume };
+    requestHost.waitResume = resume(requestHost.waitResume);
+  }
   await host.state.getRouter();
   return host;
 }
@@ -185,13 +198,10 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
       const held = gate();
-      const host = await waitingHost(judgment.model, held);
+      // The host's wait resume fails the first time it is called, then works.
+      let calls = 0;
+      const host = await waitingHost(judgment.model, held, (real) => (input) => (++calls === 1 ? failOnce() : real(input)));
       try {
-        // The host's wait resume fails the first time it is called, then works.
-        const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
-        const real = requestHost.waitResume;
-        let calls = 0;
-        requestHost.waitResume = (input) => (++calls === 1 ? failOnce() : real(input));
 
         const conv = await host.conversation("alice", "lead");
         const waiting = await host.act("alice", conv, "run", { message: "how many desks?" });
@@ -231,11 +241,9 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       }
     };
     const held = gate();
-    const host = await waitingHost(model, held);
+    // Every resume fails, on every request the host serves: the waited-on row keeps owing its turn.
+    const host = await waitingHost(model, held, () => () => Promise.reject(new Error("the store blinked")));
     try {
-      // Every resume fails: the waited-on row keeps owing its turn.
-      const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
-      requestHost.waitResume = () => Promise.reject(new Error("the store blinked"));
 
       const conv = await host.conversation("alice", "lead");
       const waiting = await host.act("alice", conv, "run", { message: "how many chairs?" });

@@ -326,7 +326,16 @@ describe("createTask's followUpOf (S4)", () => {
     // A replay of the accepted call finds its own row and files nothing more.
     const acceptedCall = accepted[0] === one ? ["first", "c1"] : ["second", "c2"];
     expect(await file(acceptedCall[0]!, acceptedCall[1]!)).toMatchObject({ ok: true, taskId: accepted[0].taskId });
+    // A replay of the refused call finds the id it recorded taken by the other
+    // call's row, and is refused again: never told that row is its own.
+    const refusedCall = accepted[0] === one ? ["second", "c2"] : ["first", "c1"];
+    expect(await file(refusedCall[0]!, refusedCall[1]!)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`))
+    });
     expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
+    // The row names the call that filed it, and a caller can't write that.
+    expect(ref.get(accepted[0].taskId)!.metadata?.filedByCall).toEqual(expect.stringContaining(`0%3A${acceptedCall[1]}`));
   });
 
   it("files a follow-up while the session has an unfinished task: it waits, never refused (FIX-2080)", async () => {

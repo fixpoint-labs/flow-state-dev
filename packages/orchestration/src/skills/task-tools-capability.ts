@@ -468,6 +468,19 @@ const awaitingAnswerError = (taskId: string) => ({
  * What a follow-up's add answers when its id was taken by a row filed at the
  * same moment: the follow-up can simply be filed again, under the next id.
  */
+/**
+ * The metadata key a row filed by a model's tool call names that call in
+ * (its logical id), so a replay of the call finds its own row and no other.
+ * Server-written: a caller's metadata never sets or changes it.
+ */
+const FILED_BY_CALL_KEY = "filedByCall";
+
+/** A caller's metadata, without the keys only the server writes: the notice markers and {@link FILED_BY_CALL_KEY}. */
+function callerMetadata(metadata: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const { [FILED_BY_CALL_KEY]: _filedBy, ...rest } = withoutNoticeMarkers(metadata) ?? {};
+  return rest;
+}
+
 function followUpTakenError(id: string) {
   return {
     ok: false as const,
@@ -923,8 +936,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.labels !== undefined ? { labels: input.labels } : {}),
-        // A caller's metadata never carries a notice marker (BP-031).
-        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
+        // A caller's metadata never carries a notice marker, nor the call that filed a row (BP-031).
+        ...(input.metadata !== undefined ? { metadata: callerMetadata(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
@@ -1028,11 +1041,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // The board's own id shape: twenty hex characters, unique across processes.
       return init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
     });
-    // A replay finds the row its first run filed. On a first run the row is
-    // never taken as this call's: a follow-up's id is picked from the board,
-    // so another call can have filed it, and the add refuses it as taken.
-    if (!recordedNow && collection.get(id) !== undefined) return { ok: true as const, taskId: id };
-    const task = await collection.addTask({ ...init, id });
+    // A row with the id is this call's own only when it names this call: a
+    // follow-up's id is picked from the board, so another call can have
+    // filed it, and then the add refuses it as taken. A row filed before rows
+    // named their call (BP-030) is this call's on a replay, as it was then.
+    const existing = collection.get(id);
+    const filedBy = existing?.metadata?.[FILED_BY_CALL_KEY];
+    if (existing !== undefined && (filedBy === call.logicalId || (filedBy === undefined && !recordedNow))) {
+      return { ok: true as const, taskId: id };
+    }
+    const task = await collection.addTask({ ...init, id, metadata: { ...(init.metadata ?? {}), [FILED_BY_CALL_KEY]: call.logicalId } });
     return { ok: true as const, taskId: task.id };
   }
 
@@ -1236,8 +1254,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(input.status === "held" ? { held: true } : {}),
           ...(input.status === "pending" ? { held: false } : {}),
           ...Object.fromEntries(fields.map((field) => [field, input[field]])),
-          // Nor can a patch forge, clear or settle a notice marker (BP-031, FIX-2078).
-          ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
+          // Nor can a patch forge, clear or settle a notice marker, or the call that filed the row (BP-031, FIX-2078).
+          ...(input.metadata !== undefined ? { metadata: callerMetadata(input.metadata) } : {}),
         };
         let outcome: TaskWriteOutcome | undefined;
         try {
