@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, what code holds to carry a request on after a crash. Chosen: a request object with its lifecycle. Instead of: id-taking methods on the client. It comes down to the first row: continuing is lost.continue() because the object carries its flow and session, against re-supplying both with a runtime mismatch when one is wrong. The price is the second row: two response fields added on the server. Storing a request is a tie: its id either way. Locks in: one public request type with seven methods. Flips if: callers hold requests without knowing their flow."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what code holds to carry a request on after a crash. Chosen: a request object with its lifecycle. Instead of: id-taking methods on the client. It comes down to the first row: continuing is lost.continue() because the object carries its flow and session, against re-supplying both with a runtime mismatch when one is wrong. The price is the second row: three server changes, a read of the interrupted requests, the session id on status and the instance id on the lists, against one, the read, with the caller holding the rest. Storing a request is a tie: its id either way. Locks in: one public request type with seven methods. Flips if: callers hold requests without knowing their flow."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -64,11 +64,11 @@
   <g id="row-2">
     <text class="t-lbl" x="32" y="216">THE SERVER</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Two response fields added</text>
-    <text class="t-s" x="248" y="241">session id on status, instance id on the list</text>
+    <text class="t-b" x="248" y="223">Three server changes</text>
+    <text class="t-s" x="248" y="241">interrupted read, session on status, instance on lists</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">No change</text>
-    <text class="t-s" x="612" y="241">the caller holds the address</text>
+    <text class="t-b" x="612" y="223">One server change</text>
+    <text class="t-s" x="612" y="241">the interrupted read; the caller holds the rest</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-3">

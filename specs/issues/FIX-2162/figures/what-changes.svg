@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Today, left: six separate ways to build a client, each binding the user and the flow in a different place. createClient binds a flow and a user; createTypedClient binds a flow definition and a user and builds two others inside; createSessionClient, createRecoveryClient and createResourceClient bind nothing and take the user, flow, session or request on each call; transcribe takes the transport and user on each call. After, right: one createClient that binds the transport and the user once. On it sit sessions, resources, the interrupted-requests list, the flow list and transcribe. Inside it, fsd.flow(kind) binds a flow and holds send, createSession and request(id). Inside that, a request object carries its flow and session and holds status, wait, abort, continue, retry, resume and stream."
+<svg viewBox="0 0 940 600" role="img" aria-label="Today, left: six separate ways to build a client, each binding the user and the flow in a different place. createClient binds a flow and a user; createTypedClient binds a flow definition and a user and builds two others inside; createSessionClient, createRecoveryClient and createResourceClient bind nothing and take the user, flow, session or request on each call; transcribe takes the transport and user on each call. The transport is a URL only: embedding FSD means a web server or a hand-made fetch, and React request streams ignore the fetcher. After, right: one createClient that binds the transport and the user once. On it sit sessions, resources, the interrupted-requests list, the flow list and transcribe. Inside it, fsd.flow(kind) binds a flow and holds send, createSession and request(id). Inside that, a request object carries its flow and session and holds status, wait, abort, continue, retry, resume and stream. Below, the one fetcher goes either to a host over HTTP from a baseUrl, or to the engine in the same process through createInProcessFetch, with no web server; both reach the same router with the same auth."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -21,7 +21,7 @@
     .t-a   { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
     .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="470"/>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
 
   <g id="today">
     <text class="t-lbl" x="16" y="26">TODAY · SIX WAYS TO BUILD ONE</text>
@@ -43,13 +43,13 @@
     <rect class="old" x="16" y="358" width="430" height="56" rx="5"/>
     <text class="t-b" x="30" y="380">transcribe(request, transport)</text>
     <text class="t-g" x="30" y="400">binds nothing · user and transport per call</text>
-    <text class="t-s" x="16" y="440">Request status and abort on one client; continue, retry, resume on another.</text>
+    <text class="t-s" x="16" y="434">Request status and abort on one client; continue, retry, resume on another.</text>
   </g>
 
   <g id="after">
     <text class="t-lbl" x="476" y="26">AFTER · ONE</text>
     <rect class="one" x="476" y="38" width="448" height="376" rx="6"/>
-    <text class="t-b" x="490" y="60">createClient({ userId, baseUrl, fetcher })</text>
+    <text class="t-b" x="490" y="60">createClient({ userId, baseUrl?, fetcher? })</text>
     <text class="t-c" x="490" y="80">binds the transport and the user, once</text>
     <text class="t-m" x="490" y="104">sessions · resources · requests.interrupted()</text>
     <text class="t-m" x="490" y="122">flow list · capabilities · user stream · transcribe</text>
@@ -66,6 +66,29 @@
     <text class="t-m" x="522" y="312">continue · retry · resume</text>
     <text class="t-m" x="522" y="332">stream</text>
     <text class="t-s" x="522" y="362">from send, request(id), or the interrupted list</text>
-    <text class="t-s" x="476" y="440">The user sits once on the client, the flow once on its handle.</text>
+    <text class="t-s" x="476" y="434">The user sits once on the client, the flow once on its handle.</text>
+  </g>
+
+  <g id="transport-today">
+    <text class="t-lbl" x="16" y="470">TODAY · THE TRANSPORT</text>
+    <rect class="old" x="16" y="482" width="430" height="100" rx="5"/>
+    <text class="t-b" x="30" y="504">baseUrl, over HTTP only</text>
+    <text class="t-g" x="30" y="526">embedded: start a web server,</text>
+    <text class="t-g" x="30" y="544">or hand-write a fetch to the engine</text>
+    <text class="t-g" x="30" y="566">React request streams ignore the fetcher</text>
+  </g>
+
+  <g id="transport-after">
+    <text class="t-lbl" x="476" y="470">AFTER · ONE FETCHER, TWO TRANSPORTS</text>
+    <rect class="one" x="476" y="482" width="218" height="100" rx="5"/>
+    <text class="t-b" x="490" y="504">baseUrl</text>
+    <text class="t-s" x="490" y="526">a host over HTTP</text>
+    <text class="t-s" x="490" y="544">fsdev serve · Next · node</text>
+    <rect class="one" x="706" y="482" width="218" height="100" rx="5"/>
+    <text class="t-b" x="720" y="504">createInProcessFetch</text>
+    <text class="t-s" x="720" y="526">the engine in this process</text>
+    <text class="t-s" x="720" y="544">no web server</text>
+    <text class="t-c" x="490" y="568">same router · same auth</text>
+    <text class="t-c" x="720" y="568">every call and stream</text>
   </g>
 </svg>

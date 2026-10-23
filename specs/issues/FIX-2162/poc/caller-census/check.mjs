@@ -9,12 +9,32 @@
 // reference, or a listed homonym (another library's `createClient`). A file
 // that is none of these fails the run, so a caller nobody listed can't hide.
 //
-// `--after` is the implementation's structural gate (goal leg a): outside
-// retained history, no file names the four removed factories or the four
-// removed types, no `createClient(...)` call passes `flowKind`, and no
-// placeholder flow kind survives. Today's tree must FAIL it.
+// `--after` is the implementation's structural gate (goal leg c): outside
+// retained history, nothing teaches or builds a second client. It fails on:
+//   - a removed factory: the four old ones, the three route-addressed SSE
+//     factories, the DevTool's `createDevTool*Client` builders;
+//   - an import or export of a removed client type;
+//   - a `createClient(...)` that passes `flowKind`, inline, through a spread, or
+//     through a variable declared in the same file;
+//   - a placeholder flow kind;
+//   - a `sessionClient` / `resourceClient` / `recoveryClient` prop, option key,
+//     or method call (a sub-client by name, in code or in a docs example);
+//   - `transcribe` imported from, or exported by, `@flow-state-dev/client` as
+//     a standalone function;
+//   - `createWorkforceClient({ ... })` with options instead of the client;
+//   - FACADE: a new `create*Client` factory defined in client-facing code
+//     (anything but `createClient` and `createWorkforceClient`);
+//   - FACADE: the fetcher called from more than one file in
+//     `packages/client/src` (the spec's one request helper; internal
+//     sub-clients each carry their own).
+// Today's tree must FAIL it.
 //
-// `--control` plants violations in memory and must report every one of them.
+// `--control` plants one of each violation in memory and must report every
+// one of them, and history alone must pass.
+//
+// The implementer copies this file into the goal check's directory as leg c
+// (goals are the durable home); the spec's copy stays as the evidence the
+// counts came from.
 //
 // Run from the repo root:
 //   node specs/issues/FIX-2162/poc/caller-census/check.mjs            # inventory + totality
@@ -35,6 +55,11 @@ const REMOVED_FACTORIES = FACTORIES.slice(1);
 const TYPES = ["Client", "SessionClient", "RecoveryClient", "ResourceClient", "FlowClient"];
 const REMOVED_TYPES = TYPES.slice(1);
 const PLACEHOLDERS = ['"flow-navigator"', '"unknown-flow"', '"__devtool__"'];
+// Route-addressed stream factories. The pure `createSSEClientFromResponse` stays.
+const SSE_FACTORIES = ["createSSEClient", "createSessionSSEClient", "createUserSSEClient"];
+// A sub-client by its usual name: a prop, an option key, or a method call on it.
+const PROP_RE = /\b(sessionClient|resourceClient|recoveryClient)(=\{|\??:|\.[a-zA-Z])/;
+const ALLOWED_FACTORY_DEFS = new Set(["createClient", "createWorkforceClient"]);
 /** A placeholder used AS a flow kind: within 60 chars after `flowKind`, `createClient(` or `.flow(`. */
 const usesPlaceholder = (text, p) =>
   [...text.matchAll(new RegExp(p, "g"))].some((m) => /(flowKind|createClient\s*\(|\.flow\s*\()/.test(text.slice(Math.max(0, m.index - 60), m.index)));
@@ -106,10 +131,39 @@ function oldShapeCalls(text) {
       else if (text[i] === ")") depth--;
       i++;
     }
-    if (/\bflowKind\b/.test(text.slice(start, i))) n++;
+    const args = text.slice(start, i - 1);
+    if (/\bflowKind\b/.test(args)) n++;
+    else if ([...args.matchAll(/(?:^\s*|\.\.\.)([A-Za-z_$][\w$]*)\s*(?=[,}]|$)/g)].some((v) => declaresFlowKind(text, v[1]))) n++;
   }
   return n;
 }
+
+/** Whether `name` is declared in this file as an object literal naming `flowKind`. */
+function declaresFlowKind(text, name) {
+  const m = new RegExp(`\\b(?:const|let|var)\\s+${name.replace(/\$/g, "\\$")}\\b[^=]*=\\s*\\{`).exec(text);
+  if (!m) return false;
+  let depth = 1;
+  let i = m.index + m[0].length;
+  const start = i;
+  while (i < text.length && depth > 0) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") depth--;
+    i++;
+  }
+  return /\bflowKind\b/.test(text.slice(start, i));
+}
+
+/** `transcribe` taken from the client package as a standalone value. */
+function standaloneTranscribe(f, text) {
+  const re = /import\s+\{([^}]*)\}\s*from\s*["']@flow-state-dev\/client["']/g;
+  for (const m of text.matchAll(re)) {
+    if (m[1].split(",").some((x) => x.trim() === "transcribe")) return true;
+  }
+  return f === "packages/client/src/index.ts" && /^\s*transcribe,?\s*$/m.test(text);
+}
+
+const clientFacing = (f, text) =>
+  f.startsWith("packages/client/") || importsClient(text) || loadsClient(text);
 
 function inventory(files) {
   const unclassified = [];
@@ -155,8 +209,36 @@ function after(files) {
     const old = oldShapeCalls(text);
     if (old > 0) violations.push(`${f}: ${old} createClient call(s) pass flowKind`);
     for (const p of PLACEHOLDERS) if (usesPlaceholder(text, p)) violations.push(`${f}: placeholder ${p}`);
+    for (const n of SSE_FACTORIES) if (new RegExp(`\\b${n}\\b`).test(text)) violations.push(`${f}: names ${n}`);
+    if (/\bcreateDevTool\w*Client\b/.test(text)) violations.push(`${f}: names a createDevTool*Client builder`);
+    if (PROP_RE.test(text)) violations.push(`${f}: passes, declares or calls a sub-client (sessionClient/resourceClient/recoveryClient)`);
+    if (standaloneTranscribe(f, text)) violations.push(`${f}: standalone transcribe from @flow-state-dev/client`);
+    if (/\bcreateWorkforceClient\s*\(\s*\{/.test(text)) violations.push(`${f}: createWorkforceClient takes options, not the client`);
+    if (clientFacing(f, text) && !isDoc(f)) {
+      for (const m of text.matchAll(/\b(?:function\s+|const\s+|let\s+)(create\w*Client)\b/g)) {
+        if (!ALLOWED_FACTORY_DEFS.has(m[1])) violations.push(`${f}: FACADE defines ${m[1]}`);
+      }
+    }
   }
+  const fetchers = Object.entries(files)
+    .filter(([f, text]) => f.startsWith("packages/client/src/") && /\bfetcher\s*\(/.test(text))
+    .map(([f]) => f);
+  if (fetchers.length > 1) violations.push(`FACADE: the fetcher is called from ${fetchers.length} files in packages/client/src, not one request helper: ${fetchers.join(", ")}`);
   return violations;
+}
+
+/** Files per extra removal the spec lists, outside history (inventory only). */
+function extras(files) {
+  const out = { sse: [], devtoolBuilders: [], props: [], transcribe: [], workforceOptions: [] };
+  for (const [f, text] of Object.entries(files)) {
+    if (isHistory(f)) continue;
+    if (SSE_FACTORIES.some((n) => new RegExp(`\\b${n}\\b`).test(text))) out.sse.push(f);
+    if (/\bcreateDevTool\w*Client\b/.test(text)) out.devtoolBuilders.push(f);
+    if (PROP_RE.test(text)) out.props.push(f);
+    if (standaloneTranscribe(f, text)) out.transcribe.push(f);
+    if (/\bcreateWorkforceClient\s*\(\s*\{/.test(text)) out.workforceOptions.push(f);
+  }
+  return out;
 }
 
 function printInventory(inv) {
@@ -184,6 +266,18 @@ function printInventory(inv) {
   for (const [f, t] of Object.entries(inv.typeFiles)) console.log(`  ${f}: ${t.join(", ")}`);
   console.log(`placeholder flow kinds: ${inv.placeholders.length}`);
   for (const p of inv.placeholders) console.log(`  ${p}`);
+  const x = extras(files);
+  console.log(`files naming a route-addressed SSE factory: ${x.sse.length}`);
+  console.log(`files naming a createDevTool*Client builder: ${x.devtoolBuilders.length}`);
+  console.log(`files with a sub-client prop, option or call: ${x.props.length}`);
+  console.log(`files taking transcribe standalone: ${x.transcribe.length}`);
+  console.log(`files calling createWorkforceClient with options: ${x.workforceOptions.length}`);
+  const all = new Set([...callerFiles, ...Object.keys(inv.typeFiles), ...x.sse, ...x.devtoolBuilders, ...x.props, ...x.transcribe, ...x.workforceOptions]);
+  const allCode = [...all].filter((f) => !isDoc(f));
+  console.log(`all files the change touches, by these rules: ${all.size} (code ${allCode.length}, of them tests ${allCode.filter((f) => /(^|\/)(test|stories)\/|\.test\.tsx?$|\.stories\.tsx$/.test(f)).length}; docs ${all.size - allCode.length})`);
+  const pk = {};
+  for (const f of all) pk[area(f)] = (pk[area(f)] ?? 0) + 1;
+  console.log(`  by area: ${Object.entries(pk).sort().map(([a, n]) => `${a} ${n}`).join(" · ")}`);
 }
 
 const files = corpus();
@@ -202,8 +296,8 @@ if (mode === "inventory") {
   const v = after(files);
   if (v.length > 0) {
     console.log(`FAIL: ${v.length} old-client reference(s) outside retained history`);
-    for (const x of v.slice(0, 40)) console.log(`  ${x}`);
-    if (v.length > 40) console.log(`  … and ${v.length - 40} more`);
+    for (const x of (process.argv.includes("--all") ? v : v.slice(0, 40))) console.log(`  ${x}`);
+    if (v.length > 40 && !process.argv.includes("--all")) console.log(`  … and ${v.length - 40} more`);
     process.exit(1);
   }
   console.log("PASS: one client; no removed factory, type, old-shape call or placeholder outside history");
@@ -217,16 +311,29 @@ if (mode === "inventory") {
     "packages/zz-plant/src/old-shape.ts":
       'import { createClient } from "@flow-state-dev/client";\nconst c = createClient({ baseUrl: f(x), flowKind: "chat", userId });\n',
     "packages/zz-plant/src/types.ts": 'import type { ResourceClient } from "@flow-state-dev/client";\n',
-    "packages/zz-plant/src/placeholder.ts": 'createClient({ userId }).flow("__devtool__");\nconst flowKind = 1;\n'
+    "packages/zz-plant/src/placeholder.ts": 'createClient({ userId }).flow("__devtool__");\nconst flowKind = 1;\n',
+    "packages/zz-plant/src/variable-shape.ts":
+      'import { createClient } from "@flow-state-dev/client";\nconst opts = { baseUrl, flowKind: "chat", userId };\nconst c = createClient(opts);\n',
+    "packages/zz-plant/src/sse.ts": 'import { createSessionSSEClient } from "@flow-state-dev/client";\n',
+    "packages/zz-plant/src/devtool.ts": "export const c = createDevToolSessionClient(url);\n",
+    "packages/zz-plant/src/prop.tsx": "<Roster resourceClient={resources} />\n",
+    "apps/docs/docs/zz-sub.md": "const all = await sessionClient.listSessions();\n",
+    "packages/zz-plant/src/transcribe.ts": 'import { transcribe } from "@flow-state-dev/client";\n',
+    "packages/zz-plant/src/workforce.ts": "const w = createWorkforceClient({ userId, baseUrl });\n",
+    "packages/zz-plant/src/facade.ts":
+      'import { createClient } from "@flow-state-dev/client";\nexport function createLabClient(o) { return { sessions: createClient(o).sessions }; }\n',
+    "packages/client/src/zz-sessions.ts": "export function sessionsApi(fetcher) { return () => fetcher(url); }\n",
+    "packages/client/src/zz-requests.ts": "export function requestsApi(fetcher) { return () => fetcher(url); }\n"
   };
   const planted = { ...clean, ...plants };
   const inv = inventory(planted);
   const v = after(planted);
   const misses = [];
   if (!inv.unclassified.includes("packages/zz-plant/src/homonym.ts")) misses.push("inventory missed the unclassified homonym");
-  for (const f of Object.keys(plants).filter((f) => !f.endsWith("homonym.ts"))) {
+  for (const f of Object.keys(plants).filter((f) => !f.endsWith("homonym.ts") && !f.startsWith("packages/client/src/"))) {
     if (!v.some((x) => x.startsWith(`${f}:`))) misses.push(`--after missed ${f}`);
   }
+  if (!v.some((x) => x.startsWith("FACADE: the fetcher is called from 2 files"))) misses.push("--after missed two request helpers in packages/client/src");
   // And the clean corpus (history only) must pass --after: the gate can go green.
   if (after(clean).length > 0) misses.push("--after fails on history alone: it can never pass");
   if (misses.length > 0) {
@@ -234,5 +341,5 @@ if (mode === "inventory") {
     for (const m of misses) console.log(`  ${m}`);
     process.exit(1);
   }
-  console.log(`CONTROL PASS: inventory flagged the unclassified homonym; --after named all ${Object.keys(plants).length - 1} planted violations; history alone passes --after`);
+  console.log(`CONTROL PASS: inventory flagged the unclassified homonym; --after named all ${Object.keys(plants).length - 2} planted violations (the last two plants are one violation: two request helpers); history alone passes --after`);
 }

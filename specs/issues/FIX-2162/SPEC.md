@@ -7,54 +7,56 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **starts a session, sends, and carries on after a crash, from a script or CLI** | Builds three clients; the flow and the user are bound on one and passed per call to the others | One client from an address and a user. `fsd.flow("support")` sends; the request it returns has `continue()` |
-| **stored a request id and comes back after a restart** | Must also have kept its flow and session | `support.request(id)` returns the same request object |
-| **wants typed actions** | `createTypedClient` pulls the flow definition into the bundle and refuses a collection flow | `fsd.flow<typeof supportFlow>("support")`: types only; any instance by its id |
+| **saved a request id, and comes back after a restart or an approval** | Must also have kept its flow and session. The interrupted list empties itself: it returns only what that call swept | `support.request(id)` gives the request back, with `continue()`, `retry()` and `resume()`. `fsd.requests.interrupted()` reads the same records every time |
+| **runs FSD inside their own process, with no web server** | Starts a web server, or hand-writes a fetch that routes to the engine. React's request streams ignore it and call the network | Passes `fetcher: createInProcessFetch(flowState)` to the same client. Every call and stream, React's included, stays in the process |
+| **wants typed actions** | `createTypedClient` pulls the flow definition into the bundle and refuses a collection flow | `fsd.flow<typeof supportFlow>("support")`: types only, and any instance by its id |
 | **lists their sessions** | Passes the same user again; leaving it out, without sign-in, lists everyone's | `fsd.sessions.list()` lists the client's user's ([D3](DECISIONS.md#d3)) |
-| **renders FSD in React** | `FlowNavigator` takes `client` and `sessionClient`; panels take `resourceClient` | Hooks unchanged; each component takes the one `client` |
-| **builds a workforce client** | `createWorkforceClient({ userId, baseUrl, fetcher })` builds its own | `createWorkforceClient(fsd)` |
+| **renders FSD in React, or builds a workforce client** | `FlowNavigator` takes `client` and `sessionClient`; panels take `resourceClient`; `createWorkforceClient` builds its own | Each takes the one client: `<FlowNavigator client={fsd} />`, `createWorkforceClient(fsd)`. Hooks unchanged |
 
 The case is [Pi Durable](https://earendil.com/posts/pi-durable/): "start, send, continue after a
-crash" is three lines there; ours needed three client objects. React hides it; servers and CLIs don't.
+crash" is three lines there; ours needed three client objects.
 
 ## The goal, and how we'll know it's met
 
-**Someone driving FSD from code can start a session, send to it, and carry on a request the host
-lost in a crash, holding one client, and nothing in the repo teaches another way to build one.**
+**Someone driving FSD from code, against a server or inside their own process, does every job
+with one client: send an action, typed or not; work with sessions and resources; check, stop,
+continue, retry or resume a request, one the host lost in a crash included. Nothing in the repo
+teaches another way to build a client.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The owner, on FIX-2162: one client replaces the five factories; no wrappers; every caller in the repo moves |
-| **Smaller, and rejected** | "A facade over the five factories." Met while the five stay exported and taught, and recovery still takes the flow and session per call |
-| **Bigger, and not this issue's** | "The client proves who the caller is." That is verified identity, FIX-1503. `userId` stays caller-supplied and untrusted (BP-031) |
-| **Not done if** | It runs in-process, not against a host that died · the request object is assembled from saved fields · a README or docs page still shows an old factory · an old name survives as an alias · a placeholder flow name survives |
+| **The real need** | The owner, on FIX-2162: one client replaces the five factories; no wrappers; every caller moves. Since the first draft, also the owner's: the same client runs embedded, with no web server |
+| **Smaller, and rejected** | "Start, send and continue with one client." Pi's three lines pass while resources, resume and typed actions still need a second client. And "a facade over the five factories": met while the five stay taught |
+| **Bigger, and not this issue's** | "The client proves who the caller is." Verified identity is FIX-1503. `userId` stays caller-supplied and untrusted (BP-031); an embedded caller gets no trusted shortcut |
+| **Not done if** | It continues only after an interruption set by hand · the request object is built from saved fields · `interrupted()` returns only what that call swept · the client builds sub-clients inside, or takes a per-call `userId` · a call or stream bypasses the fetcher · `flow<typeof X>` imports `X` at runtime or refuses a collection flow · `createWorkforceClient` or a component builds its own client · the stale threshold can't be set · a doc shows an old factory, an alias or a placeholder flow name survives |
 
 ```mermaid
 flowchart LR
-  H["fsdev serve · SQLite · its own process"] --> A["one client · create session · send · send again"]
-  A --> K["SIGKILL mid-send · restart"]
-  K --> C["a new process · one client · interrupted then continue"]
-  C -->|"same request id · step ran once · census --after clean"| P["PASS · goal met"]
-  X["control · retry instead of continue"] -.-> C
-  C -.->|"under the control"| F["must FAIL · same request id"]
+  H["two hosts · fsdev serve over HTTP · createInProcessFetch in a child process"] --> A["process 1 · one client · typed send · resource read · approval suspends · a send holds"]
+  A --> K["SIGKILL the host mid-send · restart · wait past the stale threshold"]
+  K --> C["process 2 · one client · interrupted then continue · request by id then resume"]
+  C -->|"same ids · steps ran once · every call through its fetcher · census clean"| P["PASS · goal met"]
+  X["controls · retry instead · a second client · a stream off the fetcher"] -.-> C
+  C -.->|"under any control"| F["must FAIL · on its named signal"]
 ```
 
-The check reads the request through the client a user holds, and the repo through the census; the
-dashed path carries on the wrong way and must fail.
+The check reads requests, sessions and resources through the client a user holds, on both
+transports, and the repo through the census; each dashed control must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/client/starts-sends-and-continues-with-one-client/` · model `n/a` · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: each client process builds exactly one client (counted at runtime). Session created, first send completes, host killed mid-second-send and restarted; a fresh process finds the request through `fsd.requests.interrupted()` and continues it. It completes under the same id, the step before the kill ran once (a counter row), and the session lists both turns. b: `poc/caller-census/check.mjs --after` reports zero; its `--control` names every plant |
-| **Input** | A two-turn exchange whose second action holds on a latch. A different flow, action or turn count must pass too |
-| **Anti-game** | No in-process engine and no mocked fetch: the host is a separate process, SIGKILLed. The continued request comes from `interrupted()` or `request(id)`. The census skips only retained history (`specs/`, `docs/internal/`, CHANGELOGs, changesets) |
-| **Control that must fail** | `GOAL_CONTROL=retry-instead` calls `retry()`: it must FAIL on *same request id* and *ran once*. Today's `main` fails leg a on *one client from an address and a user* (`createClient` without a flow throws) and leg b with 168 references |
+| **Goal check** | `goals/client/does-every-job-with-one-client/` · model `n/a` · run by the implementer at completion · verdict in the implementation PR. Leg c: the implementer copies `poc/caller-census/check.mjs` into it. Prior art: `goals/continue-interrupted-run/` sets `interrupted` by hand and avoids a real crash on purpose; this check adds the crash |
+| **Signal** | Legs a and b run on both transports: `fsdev serve` on SQLite in its own process, and `createInProcessFetch` in a child process over a file store. Process 1 creates a session, sends a typed turn, reads the resource it wrote, sends an action that suspends for approval, then one that holds on a latch. The host is SIGKILLed and restarted with a short configured stale threshold, or the check waits past the 30 s default (`DEFAULT_DETECTION_STALE_THRESHOLD_MS`); a passed `staleThresholdMs` only widens the host's floor. **a:** in process 2, two reads of `fsd.requests.interrupted()` list the held request; `continue()` completes it under the same id, and the step before the kill ran once (a counter row). **b:** `request(savedId).resume(…)` completes the approval under its id; the resource read equals the input; the session lists every turn; each process called `createClient` once, and every route served for it came through its fetcher. **c:** `check.mjs --after` reports zero; `--control` names all 13 plants |
+| **Input** | A support exchange: a typed reply, an approval, a latched action. Second input: a collection flow addressed by its instance id, three turns, a different approval. Both must pass |
+| **Anti-game** | The in-process leg uses the public `createInProcessFetch`, never engine internals or a mocked fetch. The HTTP host is a separate process, SIGKILLed. Requests come back from `interrupted()` or `request(id)`, never from saved fields. The census skips only retained history (`specs/`, `docs/internal/`, CHANGELOGs, changesets) |
+| **Control that must fail** | `GOAL_CONTROL=retry-instead` calls `retry()`: FAIL on *same request id* and *ran once*. `GOAL_CONTROL=two-clients` builds a second client for recovery: FAIL on *one client per process*. `GOAL_CONTROL=stream-off-fetcher` reads one stream with the global fetch: FAIL on *every call through its fetcher*. `--control` plants a facade and two request helpers: the census names both. Today's `main` fails leg a on *one client from an address and a user* and leg c with 320 references |
 
 ## What changes
 
-![Today: five factories and transcribe, each binding the user and the flow in a different place. After: one createClient holding the transport and the user, with sessions, resources and requests on it, flow handles for a flow's actions, and request handles for a request's lifecycle](figures/what-changes.svg)
+![Today: six ways to build a client, each binding the user and the flow in a different place, and a transport that is a URL only. After: one createClient holding the fetcher and the user, with sessions, resources and requests on it, flow handles for a flow's actions, request handles for a request's lifecycle, and a fetcher that is either a URL over HTTP or createInProcessFetch with no web server](figures/what-changes.svg)
 
-Read where the user and the flow sit: today each box binds them somewhere else; after, the user sits
-once on the client, the flow once on its handle, and a request carries both.
+Read where the user, the flow and the transport sit: today each box binds them somewhere else;
+after, the user sits once on the client, the flow on its handle, the transport in one fetcher.
 
 **The Pi case, as a server script writes it:**
 
@@ -67,19 +69,29 @@ once on the client, the flow once on its handle, and a request carries both.
 - const session = await sessions.createSession({ flowKind: "support", userId: "u1" });
 - await support.sendAction("reply", { text: "Hi" }, { sessionId: session.id });
 - // …the host crashed and restarted
-- const [lost] = await recovery.checkInterrupted({ userId: "u1" });
+- const [lost] = await recovery.checkInterrupted({ userId: "u1" }); // empty if a sweep got there first
 - await recovery.continue({ flowKind: lost.flowKind, sessionId: lost.sessionId!, requestId: lost.requestId });
 + import { createClient } from "@flow-state-dev/client";
 + const fsd = createClient({ baseUrl: "http://localhost:3000", userId: "u1" });
 + const support = fsd.flow("support");
 + const session = await support.createSession();
-+ await support.send("reply", { text: "Hi" }, { sessionId: session.id });
-+ // …the host crashed and restarted
-+ const [lost] = await fsd.requests.interrupted();
-+ await lost.continue();
++ const sent = await support.send("reply", { text: "Hi" }, { sessionId: session.id });
++ // …the host crashed and restarted. Saved the id? Use it:
++ await support.request(sent.id).continue();
++ // Saved nothing? Read the user's interrupted requests:
++ for (const lost of await fsd.requests.interrupted()) await lost.continue();
 ```
 
-**A typed flow, and a request found again by id in a webhook handler:**
+**The same client inside the process, with no web server:**
+
+```diff
++ import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
++ const flowState = createFlowState({ flows: { support }, stores: { default: { primary: stores } } });
++ const fsd = createClient({ userId: "u1", baseUrl: "http://in-process", fetcher: createInProcessFetch(flowState) });
++ // the same fsd.flow("support"), fsd.sessions, requests and streams as above
+```
+
+**A typed flow, and a request found again by id:**
 
 ```diff
 - import { createTypedClient, createClient } from "@flow-state-dev/client";
@@ -95,45 +107,57 @@ once on the client, the flow once on its handle, and a request carries both.
 + const { status } = await support.request(requestId).status();
 ```
 
-**React, where a component takes a client:**
+**React and Workforce, where a component or helper takes a client:**
 
 ```diff
 - <FlowNavigator client={client} sessionClient={sessionClient} userId={userId} />
 - <Roster resourceClient={resources} … />
+- const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
 + <FlowNavigator client={fsd} />
 + <Roster client={fsd} … />
++ const workforce = createWorkforceClient(fsd);
 ```
 
-**Docs:** rewrite `apps/docs/docs/client/overview.md` (a tour of the one client),
-`configuration/client.md` and `api/client.md`; update `resources/client-access.md` and the examples
-in `fundamentals/actions.md`, `fundamentals/state-and-scopes.md`, `persistence/overview.md`,
-`streaming/items.md`, `server/host-adapters.md`, `guides/background-work.md` and nine `workforce/`
-pages; re-check pages that show a client method (`advanced/durable-execution.md`,
-`server/connection-resilience.md`, `guides/human-in-the-loop.md`, `getting-started/quick-start.md`,
-`client/react.md`). Rewrite `docs/architecture/server-and-client.md` → *Client Setup*; update the
-`client`, `workforce`, `node` and root READMEs. No new page. Minor changesets: `client`, `react`,
-`workforce`; `core` and `engine` for the two fields.
+**Docs:** rewrite `apps/docs/docs/client/overview.md` (a tour of the one client, on both
+transports), `configuration/client.md` (the options, and `createInProcessFetch` for an embedded
+host) and `api/client.md`. Update `resources/client-access.md`; the examples in
+`fundamentals/actions.md`, `fundamentals/state-and-scopes.md`, `persistence/overview.md`,
+`streaming/items.md`, `server/host-adapters.md` (the in-process option beside the hosts),
+`server/background-work.md`, `patterns/utility-blocks/core.md` and ten `workforce/` pages
+(coordinators, delegating-work, durable-hire, inventory, messaging-workers, overview, projects,
+standing-rules, ui, workers-on-disk); `apps/docs/guides/background-work.md` and
+`apps/docs/guides/writing-ui-stories.md`. Re-check pages that show a client method:
+`advanced/durable-execution.md`, `server/connection-resilience.md`,
+`apps/docs/guides/human-in-the-loop.md`, `getting-started/quick-start.md`, `client/react.md`.
+Rewrite `docs/architecture/server-and-client.md` → *Client Setup*; update
+`docs/architecture/streaming.md`, `docs/architecture/state-and-scopes.md`,
+`docs/atlas/workforce.html` and `docs/atlas/framework.html`. Update the `client`, `react` (the
+props, around lines 419 and 503–537), `workforce`, `engine` (`createInProcessFetch`), `node` and
+root READMEs. No new page. Minor changesets: `client`, `react` (with `FlowNavigator`'s list
+change, [D3](DECISIONS.md#d3)), `workforce`, `engine`, `core`.
 
 ## How a call reaches the server
 
 ```mermaid
 flowchart LR
-  C["createClient · transport and userId"] -->|"/sessions · /users · /transcribe"| R["routes addressed by session or user"]
-  C --> F["flow kind handle"]
-  F -->|"/:flowKind/actions · /:flowKind/sessions"| A["routes addressed by flow"]
-  F --> Q["request handle"]
-  C -->|"requests.interrupted"| Q
-  Q -->|"/:flowKind/requests/:id/* · /:flowKind/sessions/:sid/requests/:id/*"| S["request lifecycle routes"]
+  C["createClient · userId · fetcher"] --> H["one route builder · one request helper"]
+  H -->|"baseUrl over HTTP"| S["a host · fsdev serve · Next · node"]
+  H -->|"createInProcessFetch"| E["the engine in this process"]
+  S --> R["the flow API router · source http"]
+  E --> R
+  R --> A["routes addressed by user · session · flow · request"]
 ```
 
-Each namespace sits where the server addresses it; a request object carries the flow and session
+Both transports reach the same router with the same caller source, so auth is the same; each
+namespace sits where its route is addressed, and a request object carries the flow and session
 its routes need.
 
 ## What stays as it is
 
-- **Every server route and its auth.** The only engine change is two additive response fields.
+- **Every route's auth.** In-process calls go through the router as `source: "http"`, like a real
+  request. The server changes are one read and two fields, below.
 - **`userId` is caller input:** set once, sent as today, never trusted. "Required caller input: `userId`" holds.
-- **React hooks' public API.** Inside, each builds one client instead of three.
+- **React hooks' public API.** Inside, each builds one client and passes its fetcher to every stream.
 - **Pure stream helpers:** `createSSEClientFromResponse`, `createRequestStreamStore`, `bindStoreToCallbacks`.
 - **Request semantics:** continue keeps the id, retry starts a new one, resume answers a suspension ([execution and errors](../../../docs/architecture/execution-and-errors.md#durable-execution-suspend-and-resume)).
 
@@ -141,44 +165,49 @@ its routes need.
 
 | Already here | What this does with it |
 |---|---|
-| The five factories and `transcribe` | **Replaces** with one `createClient`. 79 files name a factory, 14 import their types ([census](DECISIONS.md#settled)) |
+| The five factories and `transcribe` | **Replaces** with one `createClient`. 79 files name a factory; 153 files change by the census rules, 35 of them docs ([census](DECISIONS.md#settled)) |
 | Shift Manager's `LabClients`: sessions, resources, recovery and `actions(flowKind)` over one transport and user | **Replaces.** The closest thing already here: this client, built by hand. Searched `create*Client`, `bearerFetcher`, `transport` across `packages/`, `apps/`, `goals/` |
+| An in-process transport | **None shipped.** `node`'s `createServerApp(...).app.fetch` does it in one test; the Next and Vercel handlers take their path from the framework ([probe](DECISIONS.md#settled)) |
 | The DevTool's four `createDevTool*Client` and two copies of `bearerFetcher` | **Removes.** They only add a fetcher |
-| `createSSEClient({ url })`, `createSessionSSEClient`, `createUserSSEClient`; six hand-built stream URLs | **Replaces** with a stream on the request, the session and the client |
-| `RequestStatusSnapshot` and the interrupted list | **Extends** with the session id and the instance id ([D2](DECISIONS.md#d2)) |
+| `createSSEClient({ url })`, `createSessionSSEClient`, `createUserSSEClient`; six hand-built stream URLs | **Replaces** with a stream on the request, the session and the client, through the client's fetcher |
+| `POST /users/:userId/check-interrupted` | **Kept as the trigger.** It sweeps and returns what it changed. A new read lists the records ([D2](DECISIONS.md#d2)) |
+| `RequestStatusSnapshot`; the interrupted and active-request lists | **Extends:** the session id on status, with the tenant check that route lacks; the instance id on both lists ([D2](DECISIONS.md#d2)) |
 | [server-and-client.md → Client Setup](../../../docs/architecture/server-and-client.md#client-setup) | **Superseded**, rewritten in the same change (BP-034) |
 | [Locked Contracts](../../../docs/contributing/architecture-reference.md#locked-contracts-phase-1): "Required caller input: `userId`", "react wraps client" | **Kept.** `userId` is set once, not per call |
-| [authentication.md → Contract](../../../docs/architecture/authentication.md#contract): `body.userId` is not the principal | **Kept** |
+| [authentication.md → Contract](../../../docs/architecture/authentication.md#contract): `body.userId` is not the principal | **Kept**, in-process too |
 | [FIX-1788 → What changes](../FIX-1788/SPEC.md#what-changes): `createWorkforceClient` takes `createSessionClient`'s options | **Amended:** it takes the client |
 | The client README's "createClient vs createTypedClient" and its collection refusal | **Superseded** by `flow()`'s type parameter |
 
 | The debt | |
 |---|---|
-| **Removes** | Four factories; `transcribe`'s own transport; three placeholder flow names; three `*Stream` twins; `state.getSnapshot`; three copies of a required-id check; two `bearerFetcher`s; the DevTool's four builders; six hand-built stream URLs; plain `Error` failures |
-| **Adds** | Two server response fields. Permanent by design: an object found by id needs the address the server holds |
-| **Leaves** | `useFlow`'s `"devuser"` fallback user; a client with no `userId` once verified identity mints one (FIX-1503). Neither is this change's |
+| **Removes** | Four factories; three route-addressed SSE factories and six hand-built stream URLs; `transcribe`'s own transport; three placeholder flow names; the `sendActionStream`, `continueStream` and `resumeSuspensionStream` twins; `state.getSnapshot`; three copies of a required-id check; two `bearerFetcher`s; the DevTool's four builders; plain `Error` failures |
+| **Adds** | A read of the user's interrupted requests; two response fields, with a fallback to the flow kind for rows written before the instance id (BP-030); `createInProcessFetch`. Permanent by design: an object found by id needs the address the server holds, and the owner asked for the embedded transport |
+| **Leaves** | `useFlow`'s `"devuser"` fallback user, and a client with no `userId` once verified identity mints one (FIX-1503). `GET /active-requests` has no client method, before or after. An embedded caller that needs the `cli` principal uses `resolveInProcessPrincipal`, not the fetcher |
 
-**Net: down.** Six ways to build a client become one, and two fields are added.
+**Net: down.** Six ways to build a client become one; one read, two fields and one engine export are added.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** one client starts, sends and
-continues after a real crash, and nothing in the repo teaches the old five. If wrong: we ship a
-facade, and the docs teach two ways.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** one client does every job,
+over HTTP and in-process, after a real crash, and nothing in the repo teaches the old five. If
+wrong: we ship a facade, the docs teach two ways, and an embedded host still needs a web server.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** six builders to one, two server fields
-added. If wrong: the one client grows a namespace per feature and becomes the next grab-bag.
+**[The debt](#whats-already-here-and-the-debt), net down:** six builders to one; one read, two
+fields and `createInProcessFetch` added. If wrong: the one client grows a namespace per feature
+and becomes the next grab-bag.
 
 1. **[D1](DECISIONS.md#d1) · A flow is named only through `fsd.flow(kind)`; the client has no
    default flow.** If wrong: one more line in every single-flow app, forever.
 2. **[D2](DECISIONS.md#d2) · A request is an object you get back from a send, by id, or from the
    interrupted list, and its lifecycle lives on it.** If wrong: a public type every recovery path
-   writes against, plus two server fields.
+   writes against, plus a read and two fields on the server.
 3. **[D3](DECISIONS.md#d3) · A client lists its own user's sessions unless it asks for another.**
    If wrong: a tool that needs every user's sessions has to call the route itself.
 
 **Open: none.** D1 is the one to weigh: it decides how every call site in every app reads.
 
-Improvement · `client`, `react`, `workforce`, `devtool`, `shift-manager`, `core` + `engine` (two
-fields), apps and goals · large: 61 code files, 26 docs files; four factories and `transcribe` removed, `createClient` reshaped · no epic ·
-couples with FIX-2158 ([#3796](https://github.com/fixpoint-labs/flow-state-dev/pull/3796))
+Improvement · `client`, `react`, `workforce`, `devtool`, `shift-manager`, `ui`, `engine` (a read,
+two fields, `createInProcessFetch`), `core`, apps and goals · large: 118 code files (49 tests),
+35 docs files; seven factories removed, `createClient` reshaped · no epic · couples with FIX-2158
+([#3796](https://github.com/fixpoint-labs/flow-state-dev/pull/3796)); leg a needs FIX-2063
+([#3782](https://github.com/fixpoint-labs/flow-state-dev/pull/3782))
