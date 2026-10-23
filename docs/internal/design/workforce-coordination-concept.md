@@ -20,9 +20,10 @@ crosses rosters (rule 3). A **screen** is an app's UI, acting as the signed-in u
 **A worker belongs to one user and acts as them.** It runs on the flow it names. A user's
 **roster** is all their workers; adding one is a **hire**.
 
-**A session is where a worker works.** Only its user can open it. A **conversation** is the session
-where a user talks to one worker: one per worker per user, plus one per project a coordinator
-coordinates.
+**A session is where a worker works.** Only its user can open it. A **conversation** is a session
+where a user talks to one worker. Each worker has one **default conversation** per user, plus one
+per project a coordinator coordinates: the one a message lands in. It is not the only one: a user
+can open more conversations with the same worker, and lists them all, the default first.
 
 **A request is one run of a worker in a session.** The server sets its **sender**: a user, another
 worker's session, or **the engine**, starting a request for a task. It produces a **result**. A
@@ -190,7 +191,7 @@ whether it waits, and the budget. To answer a send, the recipient sends to its s
 `inReplyTo`; the reply lands in the session that sent the original, even if that session's task has
 ended.
 
-**Where it lands:** the recipient's conversation with this user, except that a message to the worker
+**Where it lands:** the recipient's default conversation with this user, except that a message to the worker
 that filed your task lands in the session that filed it, and one to a task in that task's session.
 It never changes the brief or stops the request working the task. To an open task, it's
 conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
