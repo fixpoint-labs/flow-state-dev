@@ -35,11 +35,12 @@ The runner prints one verdict per check, each with the commit's SHA. It exits no
 
 | Control | Must fail | Must go red with it |
 |---|---|---|
-| P1.a `no-run-once` | `one-row` | `b:once` |
 | P1.a `no-waker` | `a:completed` | `a:word` |
 | P1.b `new-session` | `a:names-ticket`, `c:names-ticket` | `a:same-session`, `b:names-ticket`, `c:same-session`, `c:one-draw` |
 | P1.b `drop-answer` | `a:names-region` | nothing |
 | J4 `fresh-store` | `j:answered` | every `j:*` after the answer; never `kill:parked` |
+
+The runner names only controls its children define. P1.a's `no-run-once` is retired (FIX-2082, see its `goal.md`), so P1.a runs under `no-waker` alone (FIX-2121).
 
 J4's own:
 
