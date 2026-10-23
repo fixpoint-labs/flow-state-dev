@@ -15,7 +15,7 @@ import { backfillBoardWakes, upgradeWorkerEntryNames, type EntryNameFlow } from 
 
 /**
  * `flowstate`, with the upgrades run before its first `getRouter()` or
- * `ready()`. Every other member is the flowstate's own.
+ * `ready()`. Every other property is the flowstate's own.
  *
  * @param flowstate The app's FlowState.
  * @param copies The workforce's registered copies (`hireWorkforce`'s answer).
