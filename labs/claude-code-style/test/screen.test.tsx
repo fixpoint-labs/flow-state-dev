@@ -5,6 +5,7 @@
  * session. The goal check proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFixtureLab } from "../src/fixtures";
@@ -34,6 +35,17 @@ describe("the session-mode screen", () => {
     expect(within(sessions).getByText("Draft the launch note")).toBeTruthy();
     expect(within(thread()).getByText("Session")).toBeTruthy();
     expect(within(pane()).getByText(/Background tasks · 0/)).toBeTruthy();
+  });
+
+  it("opens one new session on load, even when StrictMode replays the mount", async () => {
+    render(
+      <StrictMode>
+        <App adapter={fast()} />
+      </StrictMode>,
+    );
+    const sessions = screen.getByRole("navigation", { name: "Sessions" });
+    await waitFor(() => expect(within(sessions).getByRole("button", { current: true })).toBeTruthy());
+    expect(within(sessions).getAllByRole("listitem").filter((li) => /^New session/.test(li.textContent ?? ""))).toHaveLength(1);
   });
 
   it("offers threads mode on New session but keeps it disabled until it is built", async () => {

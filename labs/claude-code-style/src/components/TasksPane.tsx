@@ -25,7 +25,7 @@ export function TasksPane({ adapter, sessionId }: { adapter: LabAdapter; session
           None yet. The main session starts one when a piece of work would take a while.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2 px-3">
+        <ul className={cn("flex min-h-0 flex-col gap-2 overflow-y-auto px-3", open && "max-h-[45%] shrink-0")}>
           {tasks.map((task) => {
             const status = TASK_STATUS[task.status];
             return (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LabAdapter, SessionRow } from "./adapter";
 import { SessionsList } from "./components/SessionsList";
 import { TasksPane } from "./components/TasksPane";
@@ -18,7 +18,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const openNew = (mode: ModeId) => {
     void adapter.openSession(mode).then((row) => setSelectedId(row.id));
   };
+  // StrictMode replays this effect on mount; the ref keeps it to one new session per adapter.
+  const openedFor = useRef<LabAdapter>(undefined);
   useEffect(() => {
+    if (openedFor.current === adapter) return;
+    openedFor.current = adapter;
     openNew("session");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adapter]);
