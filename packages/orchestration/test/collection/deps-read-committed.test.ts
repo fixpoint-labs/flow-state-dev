@@ -32,7 +32,10 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: BOARD, collection });
 }
 
-/** `fileAfter` reads the board, lets `meanwhile` run as another request, then files a row depending on `dep`. */
+/**
+ * `fileAfter` reads the board, lets `meanwhile` run as another request, then
+ * files a row depending on `dep`: alone (`addTask`), or in a batch (`addTasks`).
+ */
 function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
   return defineFlow({
     kind: "deps-board",
@@ -62,7 +65,7 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
       fileAfter: {
         block: handler({
           name: "file-after",
-          inputSchema: z.object({ dep: z.string() }),
+          inputSchema: z.object({ dep: z.string(), batch: z.boolean().optional() }),
           outputSchema: z.any(),
           execute: async (input, ctx) => {
             const board = await boardOf(ctx as never);
@@ -70,7 +73,9 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
             const before = board.get(input.dep)?.status;
             await meanwhile.run?.();
             try {
-              await board.addTask({ id: "dependent", goal: "dependent", assignee: "w", deps: [input.dep] });
+              const dependent = { id: "dependent", goal: "dependent", assignee: "w", deps: [input.dep] };
+              if (input.batch === true) await board.addTasks([{ id: "sibling", goal: "sibling", assignee: "w" }, dependent]);
+              else await board.addTask(dependent);
               return { before, filed: true };
             } catch (error) {
               if (!(error instanceof TaskFilingRefusedError)) throw error;
@@ -93,7 +98,10 @@ function depsFlow(meanwhile: { run?: () => Promise<unknown> }): FlowInstance {
 }
 
 describe("a filing reads its dependencies as stored now", () => {
-  it("refuses a dependency that failed in another request while the filing ran, and stores nothing", async () => {
+  it.each([
+    ["one filing (addTask)", false],
+    ["a batch (addTasks)", true]
+  ])("refuses a dependency that failed in another request while %s ran, and stores nothing", async (_how, batch) => {
     const meanwhile: { run?: () => Promise<unknown> } = {};
     const flow = depsFlow(meanwhile);
     const state = createFlowState({ flows: { [flow.id]: flow }, stores: { default: { primary: inMemoryStores() } } } as never);
@@ -115,7 +123,7 @@ describe("a filing reads its dependencies as stored now", () => {
     try {
       await act("file", { id: "research" });
       meanwhile.run = () => act("fail");
-      const answer = await act("fileAfter", { dep: "research" });
+      const answer = await act("fileAfter", { dep: "research", batch });
       expect(answer).toEqual({ before: "pending", filed: false, rule: "dependency_ended" });
       expect(await act("list")).toEqual([{ id: "research", status: "errored" }]);
     } finally {

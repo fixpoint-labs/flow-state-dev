@@ -216,7 +216,6 @@ export interface RoutedFiling {
   file(ctx: BlockContext, init: TaskInit): Promise<Task>;
 }
 
-/** A new task's id, minted before its add so its place in the chain is reserved first. */
 /**
  * Bring each row a batch depends on, off the batch, up to its committed state
  * before its dependency check (FIX-2114): this request reads the board as the
@@ -230,6 +229,7 @@ async function refreshDeps(ref: TaskCollectionRef, batch: readonly { id: string;
   }
 }
 
+/** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 }
@@ -1358,7 +1358,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         }
         const stepInits = dependencyOrder(batch.filter(isStepFiling));
         for (const init of stepInits) assertFilingSettings(init, undefined, plan.collectionId);
-        await refreshDeps(plan, stepInits);
         assertDepsFileable(stepInits, (id) => plan.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, init.session === "new"));
