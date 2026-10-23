@@ -31,7 +31,9 @@
  *
  * A retry owes none: it is the row's start, not its ending. A waited-on row
  * owes none either: the request parked on it is resumed instead
- * (`Task.resumeOwed`), and no notice runs for it.
+ * (`Task.resumeOwed`), and no notice runs for it. A row that ended before its
+ * filer's wait on it was made owes one at its ending, and the wait that finds
+ * it ended drops it ({@link deliveredByWait}): the wait's answer delivered it.
  *
  * ## An ending held for the request that waited (FIX-2082)
  *
@@ -216,6 +218,19 @@ export function droppedHeldNotices(row: Task): Record<string, null> {
     if (isMarker(key, value) && value.held === true) patch[key] = null;
   }
   return patch;
+}
+
+/**
+ * The metadata patch that drops the notice `row`'s ending owes, when a wait on
+ * the row found it already ended (FIX-2112): the wait's answer is the
+ * ending's delivery, as it is for a wait the ending resumes. Empty when the
+ * row hasn't ended or owes nothing for it. A marker held for a request whose
+ * wait lapsed is that request's to deliver ({@link droppedHeldNotices}).
+ */
+export function deliveredByWait(row: Task): Record<string, null> {
+  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return {};
+  const key = markerKey(row.attempts, row.status);
+  return isSendable(key, (row.metadata ?? {})[key]) ? { [key]: null } : {};
 }
 
 /**

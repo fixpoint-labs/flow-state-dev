@@ -67,6 +67,7 @@ import {
   lapseWaitWrite,
   markWaitWrite,
   releaseWaitWrite,
+  noticeReadByWaitWrite,
   settingsWrite,
   settingsChangeKind,
   type EndingRecording,
@@ -1064,6 +1065,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     async releaseWait(id, release) {
       const dueAt = now() + NOTICE_DUE_MS;
       return patchOne(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async dropNoticeReadByWait(id) {
+      return patchOne(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
     },
 
     async payOwedCascades() {

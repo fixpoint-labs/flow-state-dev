@@ -135,6 +135,7 @@ import {
   lapseWaitWrite,
   markWaitWrite,
   releaseWaitWrite,
+  noticeReadByWaitWrite,
   settingsWrite,
   settingsChangeKind,
   type TaskSettingsPatch,
@@ -1382,6 +1383,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         await delivery.hooks.owePassAt(row, dueAt);
       }
       return patchRef(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async dropNoticeReadByWait(id) {
+      return patchRef(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
     },
 
     async refresh(id) {

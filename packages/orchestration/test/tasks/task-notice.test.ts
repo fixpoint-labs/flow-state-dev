@@ -17,6 +17,7 @@ import {
   cancelledDependents,
   clearNotice,
   decideNotice,
+  deliveredByWait,
   NOTICE_DUE_MS,
   noticeDueAt,
   isNoticeOwed,
@@ -158,6 +159,19 @@ describe("a notice delivered", () => {
     const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
     const cleared = { ...completed, metadata: { ...completed.metadata, ...clearNotice(first) } } as Task;
     expect(owedNotices(cleared, "tasks").map((n) => n.ending)).toEqual(["completed"]);
+  });
+
+  it("by a wait that found the row ended drops the ending's notice only (FIX-2112)", () => {
+    // An earlier attempt's question is not what the wait returned: it stays owed.
+    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
+    const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
+    const read = { ...completed, metadata: { ...completed.metadata, ...deliveredByWait(completed) } } as Task;
+    expect(owedNotices(read, "tasks").map((n) => n.ending)).toEqual(["parked"]);
+    // A row still running owes nothing a wait could have read.
+    expect(deliveredByWait(parked)).toEqual({});
+    // A notice held for the request whose wait lapsed is that request's read to deliver, not this one's.
+    const held = recordEnding(row({ wait: { gateId: "g", deadline: 1, requestId: "r", lapsed: true } } as Partial<Task>), { kind: "completed", output: 1 });
+    expect(deliveredByWait(held)).toEqual({});
   });
 });
 

@@ -16,7 +16,8 @@
  *    any already below the task it waits on, counted by the engine. A wait
  *    that waits again at its deadline counts again before each new park,
  *    except a drain on a row it handed over, whose wait already exists.
- *    A task already ended is returned at once.
+ *    A task already ended is returned at once, and the notice its ending
+ *    owes the filer is dropped: this answer delivered it (FIX-2112).
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
  * 3. **Park** on the one wait gate (`parkOnWait`), whose deadline the engine
@@ -66,7 +67,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
+import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
@@ -481,12 +482,33 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
   }
 }
 
-/** The waited-on row ended: clear what it owes the resume, and return it. */
+/**
+ * The waited-on row ended: clear what it owes the resume, and return it. An
+ * ending that came before the wait owes its filer a notice; when the filer is
+ * the one waiting, this answer delivers it, so it is dropped (FIX-2112).
+ */
 async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
   await clearMarker(collection, taskId);
   const task = collection.get(taskId)!;
   await deliverHeldEnding(ctx, collection, task);
+  await deliverEndedBeforeWait(ctx, collection, collection.get(taskId) ?? task);
   return { ok: true, task: collection.get(taskId) ?? task, ended: true };
+}
+
+/**
+ * Drop the notice an ending owes its filer, when the filer's own wait read it
+ * (FIX-2112). Never fails the call: a drop that fails leaves the notice owed,
+ * and the filer hears the ending a second time.
+ */
+async function deliverEndedBeforeWait(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<void> {
+  const filer = collection.filerOf?.(task) ?? task.filer?.sessionId;
+  if (filer === undefined || filer !== ctx.session.identity.id) return;
+  if (Object.keys(deliveredByWait(task)).length === 0) return;
+  try {
+    await collection.dropNoticeReadByWait?.(task.id);
+  } catch (error) {
+    console.warn(`[orchestration] wait "${task.id}": its ending's notice stays owed: ${(error as Error).message}`);
+  }
 }
 
 /**

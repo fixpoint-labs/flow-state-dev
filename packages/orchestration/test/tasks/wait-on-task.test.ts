@@ -327,6 +327,39 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
     }
   });
 
+  it("a row that ended before the wait is heard once, through the wait: no onTaskSettled runs for it", async () => {
+    // The filer waited on it, so the wait's answer is its delivery. A notice
+    // too would wake a second turn on the same ending, whose answer replaces
+    // the first. The notice waits for the turn to end, as in a Workforce session.
+    const notices: TaskSettledInput[] = [];
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices, noticeAfterTurn: true });
+    const state = runtimeFor(flow);
+    try {
+      // Through the host's dispatch, which keeps the turn's line (a direct run keeps none).
+      const router = await state.getRouter();
+      const path = ["wait-board", SESSION, "actions", "run"];
+      const sent = await router.POST(
+        new Request(`http://localhost/api/flows/${path.join("/")}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: USER, input: {} })
+        }),
+        { params: { path } }
+      );
+      expect(sent.status).toBe(202);
+      const requestId = ((await sent.json()) as { request: { id: string } }).request.id;
+      await until(state, requestId, "completed", 10_000);
+      expect(toolResults(seen[1]!.messages)).toContain("already done");
+      // Past the notice's due time: the fast path's copy and the pass's resend have both had their chance.
+      await new Promise((r) => setTimeout(r, 2_500));
+      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+      expect(notices).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("a row that ended after the slot was taken and before the park, with no touch after, answers at the deadline with its ending", async () => {
     const { model, seen } = stepModel([waitCall("c1", "q", 50), finalAnswer]);
     const flow = waitFlow(model, { endsAfterMark: "Yes, renewed 2026-08" });

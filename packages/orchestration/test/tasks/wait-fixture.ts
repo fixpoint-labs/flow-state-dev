@@ -109,6 +109,11 @@ export function waitFlow(
     endsAfterMark?: unknown;
     /** Declare `onTaskSettled`, recording each notice it hears in `heard`: the filer's pass then runs on its own. */
     heard?: TaskSettledInput[];
+    /**
+     * A notice waits for the running turn to end, as a Workforce session's
+     * does: `run` holds the session's line and `onTaskSettled` defers on it.
+     */
+    noticeAfterTurn?: boolean;
     /** The board's scope: `session` (the default), or `user`, which every session of the user reaches. */
     scope?: "session" | "user";
   } = {}
@@ -272,7 +277,8 @@ export function waitFlow(
         block: sequencer({ name: "turn" }).step(
           generator({ name: "agent", model, prompt: "p", tools: [wait, waitAgainTool, readTaskTool] })
         ),
-        inputSchema: z.object({}).passthrough()
+        inputSchema: z.object({}).passthrough(),
+        ...(options.noticeAfterTurn === true ? { concurrency: "hold" as const } : {})
       },
       settle: { block: settle },
       touch: { block: touch },
@@ -291,7 +297,8 @@ export function waitFlow(
                     options.heard!.push(notice);
                     return {};
                   }
-                })
+                }),
+                ...(options.noticeAfterTurn === true ? { concurrency: "defer" as const } : {})
               })
             }
           }

@@ -468,6 +468,57 @@ await runGoal(async (failures, tell) => {
       tell.over("a · onTaskSettled for a waited task", heard, { emptyIs: "the claim: the waiting request had the ending" });
       if (heard.length !== 0) failures.push(`a:the ending reached its waiter, not onTaskSettled — ${heard.length} onTaskSettled request(s)`);
       notes.push(`a: the later request read ${PRODUCED.get("a-work")}; another session: ${/"error":"([a-z_]+)/.exec(otherSaid)?.[1]}; the filing session's second request: wait_taken`);
+
+      // A task that ends between its filing and its filer's wait, in one request
+      // (a task's turn, which a notice waits behind): the wait returns it at
+      // once, and that is the filer's one hearing of it.
+      const quick = await h.http.open("desk", { workerId: "lead" });
+      const pieceGoal = word("a-quick-piece");
+      const topGoal = word("a-quick-top");
+      await h.send("desk", quick, "respond", {
+        message: scripted("a-quick-file", [
+          {
+            tool: "createTask",
+            args: {
+              goal: scripted(topGoal, [
+                { tool: "createTask", args: { goal: scripted(pieceGoal, [{ answer: "a-quick-piece" }]), assignee: "doer.b" } },
+                { hold: "a-quick" },
+                { tool: "getTask", args: { id: "$0", wait: true } },
+                { answer: "a-quick-waiter" }
+              ]),
+              assignee: "doer.a"
+            }
+          },
+          { answer: "a-quick-filer" }
+        ])
+      });
+      const endedFirst = await h.until(async () => (await h.byGoal(pieceGoal))[0]?.status === "completed", 20_000);
+      gate("a-quick").open();
+      await h.until(async () => (await h.byGoal(topGoal))[0]?.status === "completed", 20_000);
+      await h.idle();
+      // Past the notice's due time, so a resend by the filer's pass has had its chance too.
+      await sleep(2_500);
+      await h.idle();
+      const [top] = await h.byGoal(topGoal);
+      const [piece] = await h.byGoal(pieceGoal);
+      const quickRead = top?.run?.requestId === undefined ? "" : (await h.toolOutputs(top.run.requestId, "getTask")).join(" ");
+      const notices = top?.run?.sessionId === undefined ? [] : (await h.requestsOf(top.run.sessionId)).filter((r) => r.actionName === "onTaskSettled");
+      // A notice request that finds its notice no longer owed delivers nothing (the entry's admit): count the ones it admitted.
+      const delivered = tell.over(
+        "a · onTaskSettled requests that delivered the piece's ending",
+        notices.filter((r) => r.result?.output?.owed === true && r.result.output.notice?.taskId === piece?.id),
+        { emptyIs: "the claim: the wait's answer was the delivery" }
+      );
+      if (!endedFirst || !quickRead.includes('"status":"completed"') || !quickRead.includes(PRODUCED.get("a-quick-piece") ?? "<none>")) {
+        failures.push(`a:a task that ended before the wait is returned by it — ended first: ${endedFirst}; read ${quickRead.slice(0, 300)}`);
+      }
+      if (delivered.length !== 0) {
+        failures.push(`a:an ending read by the filer's wait starts no notice turn — ${delivered.length} onTaskSettled delivered it too`);
+      }
+      if (top?.status !== "completed" || !JSON.stringify(top.output ?? "").includes(PRODUCED.get("a-quick-waiter") ?? "<none>")) {
+        failures.push(`a:the waiting turn's answer is the task's result — task ${top?.status}, output ${JSON.stringify(top?.output ?? "").slice(0, 200)}`);
+      }
+      notes.push(`a: a piece that ended before its wait was read by it; ${notices.length} onTaskSettled request(s) in the task's session, ${delivered.length} delivering it`);
     });
 
     // ---- b. nested waits, and the depth ---------------------------------------------
