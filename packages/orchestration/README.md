@@ -1016,7 +1016,10 @@ reads the task (the filing request was parked, or another request waits), the wa
 `{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task, whether that notice is
 still being handled or done: the notice is how the session hears that ending. At the deadline the task runs on and nothing is cancelled. If it ends before the
 waiting request does, that request's next `getTask` on it returns the ending. If
-the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
+the request ends without reading it, the ending goes to `onTaskSettled`, once. When the answer
+is how the session hears that a task failed or was cancelled, in place of its notice, it carries
+`cancelled` beside `task`: the dependents that ending cancelled, as the notice would have named
+them. Any other `getTask` answer leaves them to the notice. Waits nest: a
 task's own turn may wait too. A wait is refused when it would make a chain of more than five
 waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
 on.
