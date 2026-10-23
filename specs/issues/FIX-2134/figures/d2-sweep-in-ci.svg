@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the no-old-path sweep keeps running. Chosen: one rule in the CI sweep FIX-2087 built. Instead of: a check this goal runs alone. It comes down to the first row, a later PR that brings a park or answerTask back: in CI it fails that PR; run only here, it is seen at the next closure, if ever. The price is the second row: a list to edit when a later PR reuses one of the five names, where the goal-only check costs nothing between closures. The third row is a tie: on the closure's commit both report the same lines. Locks in: a PR naming one of the five in package source fails CI until it edits the list. Flips if: FIX-2087's sweep never reaches main; then the rule runs here alone and its CI step is filed."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the no-old-path sweep keeps running. Chosen: one rule in the CI sweep FIX-2087 built. Instead of: a check this goal runs alone. It comes down to the first row, a later PR that brings a park or answerTask back: in CI it fails that PR; run only here, it is seen at the next closure, if ever. The price is the second row: a list to edit when a later PR reuses one of the five names, where the goal-only check costs nothing between closures. The third row is a tie: on the closure's commit both report the same lines. Locks in: a PR naming one of the five in package source fails CI until it edits the list. If FIX-2087's sweep isn't on main: the rule still runs in CI, as a standalone step this closure adds."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -93,8 +93,8 @@
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">FIX-2087's sweep never reaches main</text>
-    <text class="t-s" x="494" y="389">then the rule runs here alone; its CI step is filed</text>
+    <text class="t-lbl" x="494" y="351">IF FIX-2087'S ENGINE ISN'T ON MAIN</text>
+    <text class="t-b" x="494" y="371">The rule still runs in CI</text>
+    <text class="t-s" x="494" y="389">as a standalone step this closure adds</text>
   </g>
 </svg>

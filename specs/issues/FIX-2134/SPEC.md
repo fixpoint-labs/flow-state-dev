@@ -43,23 +43,34 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/every-stop-is-one-inbox-item/` · real model `openai/gpt-5.4-mini`, Claude Code through the devteam harness for the coding run · run by the closure worker on one `main` commit · the report is the closure PR's body |
-| **Signal** | Tagged `<leg>:<assertion>`; the six stops are [the figure's rows](#what-changes). **a**: six items, kind named; the three suspended rows read `waitingOn: "user"` and keep their claim; the three held rows carry an open question and no lease; no row `parked`. **b**: each answered once carries on as its row says, `attempts` never past 1, work counter 1; the item leaves the list; a second answer is told it is resolved. **c**: cancelling a suspended and a held task closes both items; nothing the resumed block writes is kept. **d**: a steer into a task waiting on a review starts no request beside it and is taken by one more turn after the answer. A held question is answered only by a steer carrying its question id: the board's `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or, in a coding session only, `harnessSessionDoor` writing the typed line as a steer naming the oldest open question ([FIX-2132](../FIX-2132/DECISIONS.md)). A plain message to a non-coding task's session (conversation outside the task, owner 2026-10-22) and a steer naming no question answer nothing. **Sweep**: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+| **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes |
 | **Input** | A goal-local Lab served by Shift Manager's command, no durability or store setting in its config; prompts and the coding run's held-out fact picked at run time |
 | **Anti-game** | Assert on the Inbox's pending read and `getTask` / `listTasks` as Alice; no fixture writes a row; `FSDEV_TRACE_OBSERVABILITY=0`, so a step run twice shows as a work counter of 2 |
-| **Control that must fail** | `public-resume` (FIX-2129's) **`b:approval-same-attempt`** · `new-attempt` (FIX-2132's) **`b:coding-same-attempt`** · `cancel-keeps-item` **`c:item-closes`** · `steer-ignores-mark` **`d:no-request-beside`** · the sweep's `--control` its plants · today's `main` **`a:six-items`** and the sweep |
+| **Control that must fail** | `public-resume` (FIX-2129's) **`b:approval-same-attempt`** · `new-attempt` (FIX-2132's) **`b:coding-same-attempt`** · `cancel-keeps-item`, the cancel written but neither the suspension nor the hold resolved, **`c:item-closes`** and **`c:held-cancel-closes-questions`** · `steer-ignores-mark` **`d:no-request-beside`** · the sweep's `--control` its plants · today's `main` **`a:six-items`** and the sweep |
 
-**The rest of the plan**, [in full in DECISIONS](DECISIONS.md#the-plan-in-full): a journey for each
-team the walk misses (j1 the filer's steer, j2 deadlines and a user's stop, j3 a host restart); every
-child's goal check again; the gap sweep of the epic's seams. A failure becomes a child of FIX-2058
-blocking this issue, and the whole plan runs again on a fresh commit.
+### The signal
 
-**At the deadline**, the run is written against "goes ahead", the epic's [open question](../../epics/FIX-2058/DECISIONS.md#open).
-If the owner picks "fail", **`j2:held-deadline-goes-ahead`** flips to a failed try, with the
-deadline legs of FIX-2132 and FIX-2133. Nothing else moves.
+| Assertion | Passes when |
+|---|---|
+| `a:six-items` | Every cell of the [six-stop figure](#what-changes) holds at once: six items, kind named, one per stop |
+| `a:rows-read` | The three suspended rows read `waitingOn: "user"` and keep their claim; the three held rows carry an open question and no lease; no row reads `parked` |
+| `b:<stop>-same-attempt` | Each stop, answered once in the Inbox, carries on as its figure row says: `attempts` never past 1, work counter 1 |
+| `b:answered-once` | The item leaves the list; a second answer is told the stop is resolved |
+| `c:item-closes` | Cancelling a suspended and a held task closes both items; nothing the resumed block writes is kept |
+| `c:held-cancel-closes-questions` | `getTask` on the cancelled held row shows no open question. The item would vanish on the status alone, so this reads the row |
+| `d:no-request-beside` | A steer into a task waiting on a review starts no request beside it; one more turn takes it after the answer |
+| `d:answer-by-id` | A held question is answered only by a steer carrying its question id: through `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or, in a coding session only, by `harnessSessionDoor` writing the typed line as that steer for the oldest open question ([FIX-2132](../FIX-2132/DECISIONS.md)) |
+| `d:plain-answers-nothing` | A plain message to a non-coding task's session (conversation outside the task, owner 2026-10-22), and a steer naming no question, answer nothing |
+| `sweep:no-old-path` | `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+
+**The rest of the plan** is [in DECISIONS](DECISIONS.md#the-plan-in-full): three team journeys,
+the children's checks under a skip map, and the gap sweep. A failure becomes a child of FIX-2058
+blocking this issue, and the whole plan runs again on a fresh commit. The run is written against
+the deadline going ahead; [one leg flips](DECISIONS.md#the-plan-in-full) if the owner picks "fail".
 
 ## What changes
 
-![A grid of the six stops a person can be waited on for, by what happens today and what the closure asserts after: how the Inbox lists it, which route answers it, and how the work carries on. Today four of the six never reach the Inbox or can't be answered there](figures/what-changes.svg)
+![A grid of the six stops a person can be waited on for, by what happens today and what the closure asserts after: how the Inbox lists it, which route answers it, and how the work carries on. Today four of the six never reach the Inbox or can't be answered there](figures/six-stops.svg)
 
 Red cells are today's six forms; the closure asserts every right half at once.
 
@@ -118,4 +129,4 @@ wrong: a CI rule that fails a later PR reusing one of five names.
 
 Improvement · closure (QA) · `goals/` and one CI rule · large, repeats per finding · epic
 [FIX-2058](../../epics/FIX-2058/SPEC.md), closure · required · runs after every other child merges
-(FIX-2063, FIX-2129, FIX-2131, FIX-2132, FIX-2133; FIX-2137 done) and #3692 · Linear [FIX-2134](https://linear.app/fixpoint-labs/issue/FIX-2134)
+(FIX-2063, FIX-2129, FIX-2131, FIX-2132, FIX-2133; FIX-2137 done) · the D2 rule runs in CI before it is done · Linear [FIX-2134](https://linear.app/fixpoint-labs/issue/FIX-2134)

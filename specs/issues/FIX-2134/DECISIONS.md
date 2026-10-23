@@ -47,76 +47,70 @@ session limit. Then two overlapping walks of three, each mixing a suspended and 
 
 It comes down to a later PR: run only here, a returned park is seen at the next closure, if ever.
 
-**What would change my mind:** FIX-2087's #3692 not reaching `main` before this run. Then the rule
-runs in this goal alone, and its CI step is filed as an ordinary issue, not built here.
+**If #3692 isn't on `main` when this runs:** the rule still runs in CI. This closure adds the
+smallest CI step that runs it standalone, and moves it into FIX-2087's engine once that lands. The
+closure is not done until the rule runs in CI (coordinator, 2026-10-23).
 
 ## The plan in full
 
 | # | What runs | PASS means |
 |---|---|---|
-| 1 | Legs a to d and the sweep ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)) | Each green; each control red where named |
-| 2 | **j1** *files work:* the filer's steer naming its task's midway question answers it, and a later Inbox answer is told so; its steer to a routed task's question, or to an approval, answers nothing. **j2** *writes a flow that asks:* with the person-stop default shortened, an approval reads as a no, an unhandled input fails try 1, a caught one goes on, a held question goes ahead from its brief told no answer came (`j2:held-deadline-goes-ahead`); a user's stop of a waiting run ends it, closes the item and cancels the task. **j3** *runs it locally:* the host is killed while leg a's six wait; after a restart all six are listed once and leg b passes on them | Each green |
-| 3 | Every child's goal check with its controls, read from Linear at run time and printed; FIX-2133's on both store backings. FIX-2137 is a bug with no goal; leg b's work counter is its check. One the walk covers only in part runs | Each PASS beside its documented FAIL |
-| 4 | The gap sweep: each [coordination seam](../../epics/FIX-2058/DECISIONS.md#coordination-seams) read from both sides; the human-in-the-loop guide and the task-board page followed as written; each epic *not done if* state absent; the Inbox's three reads judged (below) | Every seam two-sided |
+| 1 | Legs a to d and the sweep ([the signal](SPEC.md#the-signal)) | Each green; each control red where named |
+| 2 | **j1** *files work:* the filer's steer answers its own midway question, nothing else (`j1:filer-answers-own`, `j1:routed-answers-nothing`). **j2** *writes a flow that asks:* deadlines and a user's stop (`j2:approval-reads-no`, `j2:input-fails-try`, `j2:held-deadline-goes-ahead`, `j2:stop-cancels-task`). **j3** *runs it locally:* the host restarts while six wait (`j3:six-after-restart`). Detail lives in the goal tree | Each green |
+| 3 | Every child's goal check with its controls, read from Linear at run time and printed, **skipping any whose legs row 1 already walks in full**: each skip printed beside the leg that covers it, and a check walked only in part runs. FIX-2133's on both store backings. FIX-2137 is a bug with no goal; leg b's work counter is its check | Each PASS beside its documented FAIL |
+| 4 | The gap sweep: each [coordination seam](../../epics/FIX-2058/DECISIONS.md#coordination-seams) from both sides; the human-in-the-loop guide and task-board page followed as written; each epic *not done if* state absent; the Inbox's three reads judged | Every seam two-sided |
 
 **Must be green first:** every other child merged with its goal's PASS and control's FAIL in its PR;
-FIX-2087's #3692 for D2, or the rule runs in this goal alone.
+the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone step this closure adds.
+
+**The deadline flip.** The run is written against a held question going ahead at its deadline, the
+[epic's open question](../../epics/FIX-2058/DECISIONS.md#open). If the owner picks "fail",
+`j2:held-deadline-goes-ahead` becomes a failed try, with the deadline legs of FIX-2132 and FIX-2133
+in row 3. Nothing else moves.
 
 ## Decided, not asked
 
-- **A session line answers only by becoming an id-carrying steer.** ER-7 allows one route per kind:
-  a held question is answered by a steer carrying its question id through `updateTask`. The coding
-  session's `harnessSessionDoor` is the one place a typed line answers, and it does so by writing
-  that steer for the oldest open question (FIX-2132). Leg d fails if a plain message to a
-  non-coding task's session answers anything.
-
-- **Inherited from [FIX-2087 D1](../FIX-2087/DECISIONS.md#d1):** on a real model, a structural miss
-  (counts, attempts, which route answered, what a row reads) on any attempt is a finding; only a
-  judgment miss (what the model chose to write) earns another attempt.
-- **The stops are raised where the epic's rule puts them.** Approval, review and input come from
-  blocks in the Lab's worker flows that read the answer next, so they suspend with `waitForUser`.
-  The two questions come from a model: one files a task with `questions`, one calls `askQuestion`
-  midway. The coding run asks through its ask marker. The prompts force each; whether the model
-  asks is judgment, what the row then reads is structural.
-- **Six kinds, not the epic's five:** input is named on its own, since it suspends and is answered
-  through FIX-2129's route, and a task held before it starts is apart from a midway question, since
-  one starts its first attempt and the other takes one more turn on its same attempt.
-- **Both store backings.** Shift Manager's conversation boards are resource-backed, so the walk
-  runs there. FIX-2133's check, run in full in row 3, reads the state backing too, and the gap
-  sweep reads that both backings' direct and cascade cancels call the hold's one write. No row of
-  the plan is skipped for the state backing.
-- **The Inbox's three reads are judged by the walk.** Six kinds open at once, each listed exactly
-  once, is the evidence that they don't overlap. A double listing or a missed stop is a Bug under
-  FIX-2058. A fold with no failing case is a deepening, filed outside the epic's gate, not built here.
-- **The children are read from Linear at run time:** every child blocking this issue. A child that
-  joins later is in the plan with no amendment, and the set read is printed at the top of the report.
-- **The closure's two new controls** each swap one module, as the children's do, and the build fails
-  if the swap never fired. `cancel-keeps-item` writes the cancel and skips resolving the stop;
-  `steer-ignores-mark` admits a steer as if the row carried no person mark.
-- **No legacy leg.** Stores are reset (owner), so no stored parked row is read, and ER-5's map gets
-  no entry (FIX-2131).
-- **`waitingOn: "user"`,** FIX-2129's rename of `"person"`, is what leg a reads.
-- **No factual-base checker.** The spec counts nothing in today's code. Its one claim about `main`
-  was checked by hand on 2026-10-23: all five swept names have references in package source
-  (`answerTask` 3 files, `parkOnQuestion` 5, `awaitReview` 10, `unparkAndDrain` 4,
-  `answerQuestion` 2) and `waitForUser` has none, so the sweep and leg a fail there today.
+- **A session line answers only as an id-carrying steer.** ER-7 allows one route per kind. The coding
+  session's `harnessSessionDoor` is the one place a typed line answers, by writing that steer for
+  the oldest open question (FIX-2132); a plain message to any other task's session answers nothing.
+- **[FIX-2087 D1](../FIX-2087/DECISIONS.md#d1), inherited:** a structural miss on any attempt is a
+  finding; only a judgment miss (what the model chose to write) earns another attempt.
+- **Stops raised where the epic's rule puts them:** approval, review and input from blocks that read
+  the answer next; the two questions from a model (`questions` at filing, `askQuestion` midway); the
+  coding run through its ask marker.
+- **Six kinds, not five:** input suspends through FIX-2129's route; held-before-start starts its
+  first attempt where a midway question takes one more turn.
+- **Both store backings:** the walk runs on the resource backing Shift Manager's boards use;
+  FIX-2133's check, never skipped for this, reads the state backing; the gap sweep checks both
+  backings' cancels call the hold's one write.
+- **The Inbox's three reads:** six kinds open at once, each listed once, is the evidence they don't
+  overlap. A double listing or a missed stop is a Bug; a fold with no failing case is filed outside
+  the epic's gate.
+- **Two new controls**, each one module swap that fails the build if it never fired:
+  `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the hold's questions; `steer-ignores-mark` ignores the row's person mark.
+- **No legacy leg:** stores are reset (owner). Leg a reads `waitingOn: "user"`.
+- **Today's `main`:** the sweep and leg a fail there; no factual-base checker, since the spec counts
+  nothing in the code.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| Re-run the children's checks and stop there | The smaller goal, rejected in `SPEC.md`: none has six stops in one Inbox |
-| The walk model-free, on scripted turns | Cheaper and steadier, but the epic's goal check says real model, and a model filing and asking is how Alice meets these stops. The children's checks are the model-free half, in row 3 |
-| A browser walk through the Inbox screen | The Inbox's pending read is what the screen draws, and the children's Shift Manager checks cover the screen. A browser leg is added only if the gap sweep finds the screen and the read disagree |
-| Its own CI step | A second engine to keep in step with FIX-2087's. D2 adds a list to the one that exists |
+| Re-run the children's checks and stop there | Each kind alone is already proved by its own child; row 3 re-runs them. What none can show is kinds colliding, which needs them waiting at once (D1) |
+| Two overlapping walks of three | Kept only as D1's fallback, if a host can't hold six stops at once |
+| The walk model-free | The epic's goal says real model; the children's checks are the model-free half |
+| A browser walk | The children's Shift Manager checks cover the screen; added only if the gap sweep finds the screen and the read disagree |
+| Its own CI step, kept | A second engine beside FIX-2087's. It exists only as D2's stopgap while #3692 is open |
 
 ## How it got here
 
-- **Draft** — framed as the epic's goal check on the assembled set, with six kinds waiting at once
-  so the gaps between children show; FIX-2087's closure shape and D1 kept; the sweep added to its
-  CI engine.
-- **Review, the Architect's coherence read** — leg d's session line was reworded so it can't read as
-  a third answer route: a held question is answered only by a steer carrying its id (ER-7, ER-8).
+- **Draft** — the epic's goal check on the assembled set, six kinds waiting at once; FIX-2087's
+  shape and D1 kept; the sweep added to its CI engine.
+- **Review** — leg d reworded so a session line can't read as a third answer route (Architect);
+  row 3 gained FIX-2087's skip map (Cursor).
 
-**Open: none of its own.** What a held question does at its deadline is the
-[epic's](../../epics/FIX-2058/DECISIONS.md#open); `j2:held-deadline-goes-ahead` is the leg that flips.
+## Notes from review
+
+- "Hand-verified reference counts on `main` … belong in a Settled / review note." — Cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3778#discussion_r4364220505)). The 2026-10-23 counts: `answerTask` 3 files, `parkOnQuestion` 5, `awaitReview` 10, `unparkAndDrain` 4, `answerQuestion` 2, `waitForUser` 0.
+
+**Open: none of its own.** The deadline is the epic's; see [the deadline flip](#the-plan-in-full).
