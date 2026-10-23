@@ -9,7 +9,7 @@
  */
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import type { LoadedSnapshot } from "../lib/derive";
-import { ageLabel, harnessName, resetLabel, useHarnessUsage, windowName, type HarnessUsage, type UsageWindow } from "../lib/usage";
+import { ageLabel, harnessName, percentLabel, resetLabel, useHarnessUsage, windowName, type HarnessUsage, type UsageWindow } from "../lib/usage";
 
 function WindowLine({ window }: { window: UsageWindow }) {
   return (
@@ -29,7 +29,7 @@ function WindowLine({ window }: { window: UsageWindow }) {
       ) : (
         <span className="flex items-baseline gap-3">
           <Meta role="control" testId="usage-percent">
-            {`${Math.round(window.usedPercent)}% used`}
+            {percentLabel(window.usedPercent)}
           </Meta>
           {window.resetsAt === null ? null : (
             <Meta className="text-muted-foreground" testId="usage-reset">
@@ -94,12 +94,15 @@ export function Usage({ snapshot }: { snapshot: LoadedSnapshot }) {
         </Meta>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] py-1">
-        {failure !== undefined ? (
+        {failure === undefined ? null : (
           <SectionFailure what="Usage" failure={failure} onRetry={reread} testId="usage-failure" />
-        ) : rows === undefined ? (
-          <p className="py-3 text-sm text-muted-foreground" data-testid="usage-reading">
-            Reading usage…
-          </p>
+        )}
+        {rows === undefined ? (
+          failure === undefined ? (
+            <p className="py-3 text-sm text-muted-foreground" data-testid="usage-reading">
+              Reading usage…
+            </p>
+          ) : null
         ) : rows === null || rows.length === 0 ? (
           <EmptyState title="No usage to show" testId="usage-empty">
             This Lab reads no harness's subscription usage.

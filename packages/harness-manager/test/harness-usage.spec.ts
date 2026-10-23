@@ -138,6 +138,17 @@ describe("harnessUsage — the one query", () => {
       expect(rows[0]!.ageMs).toBeGreaterThanOrEqual(120_000);
     }
   });
+
+  it("answers with the stored row when a reader throws before it returns a promise", async () => {
+    const throws: HarnessUsageReader = () => {
+      throw new Error("no program");
+    };
+    const { act, usage } = lab({ codex: throws });
+    await act("write", { harness: "codex", reading: SIGNED_IN, checkedAt: Date.now() - 120_000 });
+    const rows = await usage(true);
+    expect(rows[0]).toMatchObject({ status: "windows", refreshError: "Codex's usage could not be read" });
+    expect(rows[0]!.windows[0]!.usedPercent).toBe(42);
+  });
 });
 
 describe("recordHarnessUsage — the one writer", () => {

@@ -3,7 +3,7 @@
  * The rows themselves are the Lab's; these only name them.
  */
 import { describe, expect, it } from "vitest";
-import { ageLabel, harnessName, toHarnessUsage, windowName } from "../src/lib/usage";
+import { ageLabel, harnessName, percentLabel, toHarnessUsage, windowName } from "../src/lib/usage";
 
 describe("Usage labels", () => {
   it("names a window by its length, after its limit's name when it has one", () => {
@@ -24,6 +24,11 @@ describe("Usage labels", () => {
     expect(ageLabel(3 * 60_000)).toBe("3 min ago");
     expect(ageLabel(3 * 3_600_000)).toBe("3 h ago");
     expect(ageLabel(3 * 86_400_000)).toBe("3 days ago");
+  });
+
+  it("shows a percent as the vendor gave it, fraction and all", () => {
+    expect(percentLabel(7.5)).toBe("7.5% used");
+    expect(percentLabel(42)).toBe("42% used");
   });
 
   it("names harnesses for the user, and keeps only rows that are rows", () => {

@@ -309,7 +309,9 @@ async function readWithin(reader: HarnessUsageReader, harness: string, timeoutMs
   });
   try {
     return await Promise.race([
-      reader({ signal: controller.signal }).catch(
+      Promise.resolve()
+        .then(() => reader({ signal: controller.signal }))
+        .catch(
         (): HarnessUsageReading => ({ status: "unavailable", reason: `${name}'s usage could not be read` }),
       ),
       late,

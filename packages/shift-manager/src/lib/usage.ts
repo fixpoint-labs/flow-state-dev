@@ -64,7 +64,9 @@ export function toHarnessUsage(output: unknown): HarnessUsage[] {
 
 /**
  * The usage rows, refreshed when the view opens and on each Lab read
- * (`readAt`). `rows` is `null` when this Lab answers no usage query.
+ * (`readAt`). `rows` is `null` when this Lab answers no usage query. A read
+ * that fails keeps the last rows and reports `failure` beside them, so stale
+ * rows never pass for fresh ones.
  */
 export function useHarnessUsage(readAt: number): {
   rows: HarnessUsage[] | null | undefined;
@@ -96,7 +98,12 @@ export function useHarnessUsage(readAt: number): {
     };
   }, [clients, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
-  return { rows, failure: rows === undefined ? failure : undefined, reread };
+  return { rows, failure, reread };
+}
+
+/** A window's percent as the vendor gave it, fractions kept: `7.5% used`. */
+export function percentLabel(usedPercent: number): string {
+  return `${usedPercent}% used`;
 }
 
 /** A harness's name as the user reads it: `codex` is Codex, `claude-code` is Claude Code. */

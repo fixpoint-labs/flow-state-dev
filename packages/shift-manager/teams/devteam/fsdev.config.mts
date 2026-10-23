@@ -147,6 +147,31 @@ await setAsideLegacyOrgStore(STORE);
 
 const harness = await startHarness("stub");
 
+/**
+ * What the Codex usage read is handed: what a Codex run gets, so the read sees
+ * the account the runs use (`CODEX_HOME`'s sign-in, or `CODEX_API_KEY`) over
+ * the same proxy and CA settings.
+ */
+const CODEX_USAGE_PASS = [
+  "PATH",
+  "HOME",
+  "CODEX_HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "CODEX_API_KEY",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "CODEX_CA_CERTIFICATE",
+  "SSL_CERT_FILE",
+] as const;
+
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
@@ -168,7 +193,7 @@ const lab = await openLab({
   // app-server sign-in in a hosted service.
   usage: {
     codex: ({ signal } = {}) =>
-      readCodexUsage({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }), ...(signal === undefined ? {} : { signal }) }),
+      readCodexUsage({ env: harnessEnv({ pass: CODEX_USAGE_PASS }), ...(signal === undefined ? {} : { signal }) }),
   },
 });
 
