@@ -92,7 +92,7 @@ Then the gate's backstop could go; the generation stays either way.
   once per row ([FIX-2131 D2](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md#d2)).
   A prompt-length cap is the implementer's (BP-042).
 - **One wait per turn, enforced in the writes** (FIX-2131 states the rule: a row holds an open
-  question or a person suspension, never both). The ask refuses a row marked `waitingOn: "person"`,
+  question or a person suspension, never both). The ask refuses a row marked `waitingOn: "user"` (renamed from `"person"` in FIX-2129, #3735, which reads a stored `"person"` as `"user"`),
   and this issue's addition to the claim gate's stop arm refuses to mark a row that has an open
   question.
 - **The deadline:** each question is due 7 days after it is asked: a 7-day constant until FIX-2129's
