@@ -46,7 +46,8 @@ const BASE_DESCRIPTION =
   "Send a short message to another worker on your team: a question, an FYI, a heads-up. It lands in that worker's " +
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed, and you don't wait for an " +
   "answer. If it answers, the answer arrives later as a line from that worker and wakes you. To answer a message " +
-  "you were sent, pass its id as replyTo.";
+  "you were sent, pass its id as replyTo. A message can't be waited on: to wait on a colleague's result before " +
+  "you answer, file a task for them with createTask, then call getTask({ id, wait: true }) where getTask takes wait.";
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {

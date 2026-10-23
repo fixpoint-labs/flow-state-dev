@@ -75,8 +75,8 @@ const CONTROLS: Record<string, Control> = {
       // The task entry's check that a task session works only its own conversation's partition.
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
-        from: String.raw`if \(filingPartitionOf\(ctx\) === partition\) return conversationLedgerAt\(ctx, partition\);`,
-        to: "return conversationLedgerAt(ctx, partition);",
+        from: String.raw`if \(filingPartitionOf\(ctx\) === partition\) return ledgerId === PLAN_LEDGER_ID \? planLedgerAt\(ctx, partition\) : conversationLedgerAt\(ctx, partition\);`,
+        to: "return ledgerId === PLAN_LEDGER_ID ? planLedgerAt(ctx, partition) : conversationLedgerAt(ctx, partition);",
       },
     ],
     does: "one ledger for all of a user's conversations: every conversation's board reads and writes one partition, and a task session takes its task from it whichever conversation opened it",

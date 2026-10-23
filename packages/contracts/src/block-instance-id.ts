@@ -159,3 +159,23 @@ export function parseBlockInstanceId(
 
   return { requestId, path, attempt };
 }
+
+/**
+ * A running block's logical id, `${requestId}:${path}`: its instance id
+ * without the attempt, so it is the same on every attempt of the block and on
+ * the replay after a resume, and distinct per loop pass (`iter[N]`). The
+ * runtime's `idempotencyKey` when the context carries one (the same value).
+ * Used to key what a block keeps with its request (`runOnce`).
+ *
+ * @returns `undefined` when the context has no block identity, or its
+ *   instance id doesn't parse; each caller decides what that means for it.
+ */
+export function logicalBlockIdOf(ctx: {
+  readonly idempotencyKey?: string;
+  readonly _blockIdentity?: { readonly blockInstanceId?: string };
+}): string | undefined {
+  if (ctx.idempotencyKey !== undefined) return ctx.idempotencyKey;
+  const instanceId = ctx._blockIdentity?.blockInstanceId;
+  const parsed = instanceId === undefined ? undefined : parseBlockInstanceId(instanceId);
+  return parsed === undefined ? undefined : `${parsed.requestId}:${parsed.path}`;
+}

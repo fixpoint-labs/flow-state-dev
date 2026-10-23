@@ -4,10 +4,8 @@
  * user.
  *
  * It runs the board's own filing, the one a screen uses: the block behind the
- * `dispatchTask_tasks` action, in its goal form, which files the row ready
- * and wakes the board, so the task starts now. No filing code is this entry's
- * own; when the board's filing moves (FIX-2081's `createTask`), the entry moves
- * with it.
+ * `createTask_tasks` action, which files the row ready and wakes the board,
+ * so the task starts now. No filing code is this entry's own.
  *
  * A filing the board refuses (no delegate takes a task, an assignee not among
  * the filer's delegates, a full chain) fails the entry's request, naming why:
@@ -18,7 +16,7 @@ import type { ActionConfig, InternalEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
- * The internal entry over `filing`, the board's `dispatchTask_tasks` action.
+ * The internal entry over `filing`, the board's `createTask_tasks` action.
  *
  * @param filing The action a screen files a task through on this board.
  */

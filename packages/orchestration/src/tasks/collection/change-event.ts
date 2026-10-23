@@ -46,7 +46,9 @@ export type TaskChangeKind =
   /** Words were sent into an open task: a steer, kept on the row for every later attempt (FIX-2086). */
   | "steered"
   /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
-  | "cancel_owed";
+  | "cancel_owed"
+  /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released (FIX-2082). */
+  | "wait_changed";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the

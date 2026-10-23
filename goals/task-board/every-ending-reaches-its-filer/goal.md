@@ -24,3 +24,4 @@
 | 2026-10-22 | `fix/FIX-2078` at 425215107 (merged with `main` after FIX-2081) | n/a (model-free) | PASS | Leg a's person-made cancel goes through `updateTask_tasks` (`{ id, status: "cancelled" }`), the cancel since FIX-2081; Workforce heard 3 endings and the plain flow 3. Legs b to e green as before. |
 
 > Against `main` before this issue the script does not load: it imports `NOTICE_DUE_MS` and the delivery entry this issue adds. The control above is the discriminating run.
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | PASS | The waiter files, then waits with `waitOnTask`. a: 3 endings each; the waiter got its answer. b: the notice fell due 1933 ms after the restart; the filer heard 417 ms and the parent settled 493 ms after that. c: the dependent started 39 ms after its dependency ended; 8 passes, none overlapping |

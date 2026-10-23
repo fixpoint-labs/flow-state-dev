@@ -132,7 +132,9 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
-  dispatchWrite,
+  lapseWaitWrite,
+  markWaitWrite,
+  releaseWaitWrite,
   settingsWrite,
   settingsChangeKind,
   type TaskSettingsPatch,
@@ -144,6 +146,7 @@ import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
 import type { DeliveryHooks } from "../notice/delivery";
+import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
@@ -481,7 +484,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // cancel owes none when its cause shares the filer (D2).
     ...(delivery !== undefined
       ? {
-          delivers: true,
+          // A ledger that owes no notices still resumes a parked wait (FIX-2082).
+          delivers: delivery.hooks.notices !== false,
           causeSharesFiler: (row: Task) => {
             const cause = row.causedBy === undefined ? undefined : lookupRow(row.causedBy);
             return cause !== undefined && delivery.hooks.filerOf(cause) === delivery.hooks.filerOf(row);
@@ -653,8 +657,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * it did (FIX-976).
    *
    * `declineOnTerminal` is the terminal guard for the writes that change a
-   * task's future (epic constraint A1): `setAssignee`, the settings write and
-   * `dispatch` pass it. The four sibling patch methods pass nothing and keep
+   * task's future (epic constraint A1): `setAssignee` and the settings write
+   * pass it. The four sibling patch methods pass nothing and keep
    * writing to terminal tasks, which a first-party block depends on (the
    * supervisor's failure-category audit). Making this helper-wide would break it.
    *
@@ -711,6 +715,23 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     const root = init.followUpOf === undefined ? undefined : lookupRow(init.followUpOf);
     const rootFiler = root === undefined ? undefined : delivery.hooks.filerOf(root);
     return { sessionId: rootFiler ?? delivery.ownSession };
+  }
+
+  /**
+   * Run a conditional write, and confirm a decline against the committed row
+   * before reporting it. A request reads a resource as the snapshot it first
+   * took, and a throw from the updater skips the store's check of that
+   * snapshot, so a row another request has moved on since (claimed,
+   * dispatched, its wait slot released) could be refused on a stale read. A
+   * `terminal` decline needs no second look: an ending is final.
+   */
+  async function confirmedDecline(id: string, write: () => Promise<TaskWriteOutcome>): Promise<TaskWriteOutcome> {
+    const outcome = await write();
+    if (outcome.outcome !== "declined" || outcome.reason === "terminal") return outcome;
+    const ref = mirror.get(id);
+    if (ref === undefined) return outcome;
+    await readCommitted(ref, () => undefined);
+    return write();
   }
 
   /** The board's committed row by id, read through the mirror. */
@@ -1322,34 +1343,50 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
-    async dispatch(id, dispatchOptions) {
-      const write = () =>
-        patchRef(
-          id,
-          // Every release of a held row publishes `released` (FIX-2080 D1).
-          "released",
-          (task) => {
-            const decided = dispatchWrite(task as Task, dispatchOptions);
-            if (decided === undefined) return undefined;
-            if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
-            return decided.patch as Partial<Task<TInput, TOutput>>;
-          },
-          { declineOnTerminal: true }
-        );
-      const outcome = await write();
-      // A request reads a resource as the snapshot it first took, and a throw
-      // from the updater skips the store's check of that snapshot. A row
-      // another request claimed or dispatched since moves on, so confirm the
-      // decline against the committed row before reporting it, as
-      // `setAssignee` does.
-      if (outcome.outcome === "declined" && outcome.reason !== "terminal") {
-        const ref = mirror.get(id);
-        if (ref !== undefined) {
-          await readCommitted(ref, () => undefined);
-          return write();
-        }
+    async markWait(id, slot) {
+      return confirmedDecline(id, () =>
+        patchRef(id, "wait_changed", (task) => {
+          const decided = markWaitWrite(task as Task, slot);
+          if (decided === undefined) return undefined;
+          if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+          return decided.patch as Partial<Task<TInput, TOutput>>;
+        })
+      );
+    },
+
+    async lapseWait(id, gateId, requestId) {
+      // A lapsed slot is released when its request ends; the filer's pass
+      // does it when nothing in this process will (a crash). The wake first,
+      // so a crash between leaves a wake that pays nothing, never a slot with none.
+      const row = lookupRow(id);
+      if (delivery !== undefined && row?.wait?.gateId === gateId && row.wait.lapsed !== true) {
+        // Read as lapsed: a ledger that owes no notices owes no pass for a lapsed slot either.
+        await delivery.hooks.owePassAt({ ...row, wait: { ...row.wait, lapsed: true } } as Task, now() + LAPSED_SLOT_CHECK_MS);
       }
-      return outcome;
+      return patchRef(id, "wait_changed", (task) => {
+        const decided = lapseWaitWrite(task as Task, gateId, requestId);
+        if (decided === undefined) return undefined;
+        if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+        return decided.patch as Partial<Task<TInput, TOutput>>;
+      });
+    },
+
+    async releaseWait(id, release) {
+      const dueAt = now() + NOTICE_DUE_MS;
+      // An ending held for the request is owed to the filer once released:
+      // the filer's wake first, so a crash between leaves a wake that pays
+      // nothing, never a debt with none. Read off the mirror, so it errs
+      // toward owing.
+      const row = lookupRow(id);
+      if (!release.read && delivery !== undefined && row?.wait?.lapsed === true && row.wait.requestId === release.requestId) {
+        await delivery.hooks.owePassAt(row, dueAt);
+      }
+      return patchRef(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async refresh(id) {
+      const taskRef = mirror.get(id);
+      if (taskRef !== undefined) await readCommitted(taskRef, () => undefined);
     },
 
     async payOwedCascades() {

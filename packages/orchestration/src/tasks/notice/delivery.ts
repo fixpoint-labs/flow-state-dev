@@ -60,6 +60,12 @@ export interface DeclaredDelivery {
   readonly legacyFiler?: (row: Task, partition: string | undefined) => string | undefined;
   /** A notice settled undeliverable: its filer's session is gone. */
   readonly onUndeliverable?: (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => Promise<void>;
+  /**
+   * `false`: an ending owes its filer no notice, only the resume of a request
+   * parked on it (FIX-2082). A plan board's ledger: its drain waits on every
+   * row, so nobody else is told how one ended. Default: every ending owes one.
+   */
+  readonly notices?: false;
 }
 
 /** The record of a notice settled undeliverable: when, and why. */
@@ -78,6 +84,8 @@ export function filerResolver(declared: DeclaredDelivery, partition: string | un
 
 /** What a backing runs around an ending's write, bound to the running request. */
 export interface DeliveryHooks {
+  /** `false` when an ending owes no notice, only a parked wait's resume ({@link DeclaredDelivery.notices}). */
+  readonly notices?: false;
   /** The session that filed `row`, or `undefined` when none is known. */
   filerOf(row: Task): string | undefined;
   /** Before a write that may end `row`: owe the wake. */
@@ -142,7 +150,12 @@ export function createDelivery(
     await declared.onUndeliverable?.(ctx, row, notice, detail);
   };
 
+  // A ledger that owes no notices owes its filer's pass only for a request
+  // parked on a row: a live wait slot.
+  const owesNothing = (row: Task): boolean => declared.notices === false && (row.wait == null || row.wait.lapsed === true);
+
   return {
+    ...(declared.notices === false ? { notices: false as const } : {}),
     filerOf,
     beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
     owePassAt,
@@ -150,6 +163,7 @@ export function createDelivery(
   };
 
   async function owePassAt(row: Task, dueAt: number): Promise<void> {
+    if (owesNothing(row)) return;
     const filer = filerOf(row);
     const wakes = ctx.requestHost?.wakes;
     if (filer === undefined || wakes === undefined) return;
@@ -215,10 +229,12 @@ type DelegatingLedger = { readonly __taskCollection: { delivery?: DeclaredDelive
  * Mark a ledger as one a board hands rows out from (FIX-2078): its delegated
  * rows owe their filer a notice of every ending, delivered by
  * {@link createDelivery}. A ledger that declares its own `delivery` keeps it.
- * Called by `taskBoard()` for a board with a task dispatcher.
+ * Called by `taskBoard()` for a board with a task dispatcher; a plan board
+ * passes `{ notices: false }`, since its drain waits on every row it hands
+ * out and is resumed by its ending (FIX-2082).
  */
-export function markDelegating(ledger: unknown): void {
+export function markDelegating(ledger: unknown, delivery: DeclaredDelivery = {}): void {
   const declared = (ledger as Partial<DelegatingLedger> | undefined)?.__taskCollection;
   if (declared === undefined) return;
-  declared.delivery ??= {};
+  declared.delivery ??= delivery;
 }

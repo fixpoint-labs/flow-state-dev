@@ -7,7 +7,7 @@
  * builds them over one installation and one worker flow:
  *
  * - **The model's tools**: `tools`, one capability for the model block's
- *   `uses`, carrying Orchestration's task tools, `dispatchTask` among them, while the session
+ *   `uses`, carrying Orchestration's task tools while the session
  *   files and none otherwise, read before each model call. Compose it once
  *   per turn: core refuses a turn with two tools of one name. Beside it,
  *   `questions` and `progress` (a task turn's own two) and `delegateTools`.
@@ -54,6 +54,7 @@ import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { ROUTED_FROM_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
+import { takesConversationTasks } from "../worker-task-entry";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
 import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
@@ -78,10 +79,10 @@ import {
 export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
 
 /**
- * The board action a screen files a task through, in its goal form: filed
- * ready, the board woken. A scheduled task files through it too.
+ * The board action a screen files a task through: filed ready, the board
+ * woken. A scheduled task files through it too.
  */
-const SCREEN_FILING_ACTION = "dispatchTask_tasks";
+const SCREEN_FILING_ACTION = "createTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
 export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
@@ -132,6 +133,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
+    // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
+    takesOwnTasks: () => takesConversationTasks(options.installation.workerFlows()[options.flowKind]?.flow),
     chainLimit: () => taskChainLimitOf(options.installation),
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
@@ -200,7 +203,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
      * (`onWorkerMessage`, FIX-1989), which always wakes the turn; and a
      * scheduled task's filing (`fileScheduledTask`, FIX-2085), through the
-     * board's own `dispatchTask_tasks`. Spread into `internal: { actions: ... }`.
+     * board's own `createTask_tasks`. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.

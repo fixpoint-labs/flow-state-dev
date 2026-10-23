@@ -50,11 +50,6 @@ export type TaskInit<TInput = unknown> = {
    */
   filedByTask?: string;
   /**
-   * Marks the row as a wait (see `Task.wait`). Set only by the wait path, which
-   * writes it in the same write that files the row; never from model input.
-   */
-  wait?: { gateId: string; deadline: number };
-  /**
    * File the row held (FIX-2080, the start setting): status `held`, so it
    * doesn't start until something releases it (`release`, or `dispatch` on a
    * board that dispatches). Omitted, it starts once its `deps` have finished.
@@ -85,11 +80,6 @@ export type TaskInit<TInput = unknown> = {
    * it out.
    */
   targetSessionId?: string;
-  /**
-   * The call that filed this row ready (see `Task.dispatchCall`), so the same
-   * call replayed finds its own row. Set only by the dispatch path.
-   */
-  dispatchCall?: string;
   /**
    * The row's server-written payload (see `Task.sealed`). Never from model
    * input: the task tools build a row's init field by field and leave it out.

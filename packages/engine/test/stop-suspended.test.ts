@@ -51,20 +51,18 @@ function parkingFlow(
     inputSchema: z.any(),
     outputSchema: z.any(),
     execute: async (_i, ctx) => {
-      try {
-        const answer = await parkOnWait(ctx, {
-          gateId: "gate_wait",
-          binding: { board: "b", taskId: "t1" },
-          ...(options.waitDeadline !== undefined ? { deadline: options.waitDeadline() } : {})
-        });
-        seen.push(`answer:${String(answer)}`);
-        return { answer };
-      } catch (error) {
-        // The park itself propagates; only an ending is the call's to handle.
-        if ((error as Error).name !== "WaitStoppedError" && (error as Error).name !== "WaitEndedError") throw error;
-        seen.push(`ended:${(error as Error).name}:${(error as Error).message}`);
-        return { ended: (error as Error).message };
+      const outcome = await parkOnWait(ctx, {
+        gateId: "gate_wait",
+        binding: { board: "b", taskId: "t1" },
+        deadline: options.waitDeadline !== undefined ? options.waitDeadline() : Date.now() + 3_600_000
+      });
+      if (outcome.answered) {
+        seen.push(`answer:${String(outcome.answer)}`);
+        return { answer: outcome.answer };
       }
+      const ended = "stopped" in outcome ? "stopped" : "deadline" in outcome ? "deadline" : `${outcome.error.code}: ${outcome.error.message}`;
+      seen.push(`ended:${ended}`);
+      return { ended };
     }
   });
   return defineFlow({
@@ -96,7 +94,8 @@ function harness(flow: FlowInstance) {
   const registry = createFlowRegistry();
   registry.register(flow as never);
   const finished: Promise<ExecutionResult>[] = [];
-  const runtimeConfig: RuntimeConfig = { durabilityProvider: provider, requestHost: {} };
+  // Wakes kept, so a wait's deadline is owed as one (FIX-2082 D1).
+  const runtimeConfig: RuntimeConfig = { durabilityProvider: provider, requestHost: { wakes: { maxDebtAgeMs: 86_400_000 } } };
   const cont = async (opts: Parameters<typeof continueRequest>[0]) => {
     const result = await continueRequest({ ...opts, stores, flowRegistry: registry, runtimeConfig });
     finished.push(result.finished);
@@ -295,7 +294,7 @@ describe("stop a parked turn", () => {
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
     // The parked call read a stop, not an answer and not a tool error.
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
     // Ending the turn is the parked call's (the wait's own tests show it
     // aborted); this bare handler simply returns.
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
@@ -332,7 +331,7 @@ describe("stop a parked turn", () => {
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(2);
     await h.finished[1];
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
   });
 
   it("a stop whose fenced abort finds another request under the id does not report it stopped", async () => {
@@ -384,7 +383,7 @@ describe("stop a parked turn", () => {
     expect(stopped).toBe(true);
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
     expect((await h.stores.request.get(result.requestId!))?.status).not.toBe("suspended");
     // The sweep sees the same recorded stop and finds it already carried.
     await runTick(tickArgs(h));
@@ -504,7 +503,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
   });
 
   it("a stranded request older than a full batch of handled gates is still reached", async () => {
@@ -679,7 +678,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
   });
 
   it("the re-drive of a stopped approval waits for a live stop holding the turn's lease", async () => {
@@ -726,7 +725,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["interrupted"], Date.now());
     await runTick(tickArgs(h));
     await drain(h);
-    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    expect(seen).toEqual(["ended:stopped"]);
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
@@ -1397,7 +1396,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       await vi.advanceTimersByTimeAsync(3_000);
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
       expect((await h.stores.request.get(requestId))?.status).toBe("completed");
     } finally {
       sweeper.dispose();
@@ -1433,7 +1432,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       await vi.advanceTimersByTimeAsync(3_000);
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
       expect((await h.stores.request.get(requestId))?.status).toBe("completed");
     } finally {
       sweeper.dispose();
@@ -1460,7 +1459,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       await vi.advanceTimersByTimeAsync(20_000); // the lease lapses at 40 s
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
     } finally {
       sweeper.dispose();
     }
@@ -1486,7 +1485,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       await vi.advanceTimersByTimeAsync(15_000);
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
       expect((await h.stores.request.get(requestId))?.status).toBe("completed");
     } finally {
       sweeper.dispose();
@@ -1519,7 +1518,7 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       await vi.advanceTimersByTimeAsync(15_000);
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
     } finally {
       sweeper.dispose();
     }
@@ -1620,7 +1619,7 @@ describe("a durable host with no retention policy still keeps its gates (BR-11a,
       const { runtime, requestId } = await parkOn(state, flow);
       await vi.advanceTimersByTimeAsync(32_000);
       expect(await settled(runtime as never, requestId)).toBe("completed");
-      expect(seen[0]).toContain("wait_timed_out");
+      expect(seen[0]).toBe("ended:deadline");
     } finally {
       await state.dispose();
     }

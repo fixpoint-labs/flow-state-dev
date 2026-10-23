@@ -95,9 +95,19 @@ describe("createTask starts a task as its start setting says", () => {
   });
 });
 
-describe("createTask refuses the fields a filing once waited with, by name (BR-21)", () => {
+describe("createTask only files: it refuses a wait field by name (BR-21, FIX-2082)", () => {
+  /** A request whose host can hold a wait. */
+  const canWait = {
+    requestHost: {
+      resumeWait: async () => undefined,
+      hasWaitSweeper: true,
+      waits: { deadlines: { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 }, depth: async () => 1 }
+    }
+  };
   // retired-name-refusal: the old field is sent on purpose, to be refused.
   for (const [label, fields] of [
+    ["wait", { wait: true }],
+    ["deadline", { deadline: 60_000 }],
     ["waitForResponse", { waitForResponse: true }], // retired-name-refusal
     ["timeoutMs", { timeoutMs: 60_000 }],
     ["waitForResponse: false", { waitForResponse: false }] // retired-name-refusal
@@ -109,22 +119,36 @@ describe("createTask refuses the fields a filing once waited with, by name (BR-2
         expect(result.ok).toBe(false);
         expect(result.error).toMatch(/^create_task_does_not_wait:/);
         expect(result.error).toContain(label.split(":")[0]);
-        if (dispatches) expect(result.error).toMatch(/dispatchTask/);
-        else expect(result.error).not.toMatch(/dispatchTask/);
+        // No wait is offered on this list, so none is pointed at.
+        expect(result.error).not.toMatch(/getTask/);
         expect(collection.list()).toEqual([]);
       });
     }
   }
 
-  it("offers neither field in createTask's schema, wherever a wait could be held", async () => {
+  it("points a filing that would wait at getTask, where a wait can be held", async () => {
     const collection = await board();
-    const canWait = { requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } };
     const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesWaits: true })(canWait);
-    const fields = Object.keys(((tool(tools, "createTask") as any).config.inputSchema as { shape: object }).shape);
-    expect(fields).not.toContain("timeoutMs");
-    expect(fields.some((f) => f.startsWith("wait"))).toBe(false);
-    // The wait lives on dispatchTask until FIX-2082.
-    const dispatchFields = Object.keys(((tool(tools, "dispatchTask") as any).config.inputSchema as { shape: object }).shape);
-    expect(dispatchFields).toEqual(expect.arrayContaining(["wait", "timeoutMs"]));
+    const result = await run(tool(tools, "createTask"), { goal: "Draft", assignee: "writer", wait: true });
+    expect(result.error).toMatch(/^create_task_does_not_wait:.*getTask\(\{ id, wait: true \}\)/);
+    expect(collection.list()).toEqual([]);
+  });
+
+  it("offers no wait field on createTask or dispatchTask, and wait and deadline on getTask, wherever a wait can be held", async () => {
+    const collection = await board();
+    const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesWaits: true })(canWait);
+    const fieldsOf = (name: string) => Object.keys(((tool(tools, name) as any).config.inputSchema as { shape: object }).shape);
+    for (const name of ["createTask", "dispatchTask"]) {
+      expect(fieldsOf(name)).not.toContain("timeoutMs");
+      expect(fieldsOf(name).some((f) => f.startsWith("wait"))).toBe(false);
+    }
+    expect(fieldsOf("getTask")).toEqual(expect.arrayContaining(["id", "wait", "deadline"]));
+  });
+
+  it("offers getTask no wait where the host can't hold one", async () => {
+    const collection = await board();
+    const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesWaits: true })({});
+    const fields = Object.keys(((tool(tools, "getTask") as any).config.inputSchema as { shape: object }).shape);
+    expect(fields).toEqual(["id"]);
   });
 });

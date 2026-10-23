@@ -65,7 +65,7 @@ import {
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { dispatchAndWait } from "../../../packages/orchestration/src/tasks/helpers/wait-for-response.ts";
+import { waitOnTask } from "../../../packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -179,7 +179,13 @@ function buildHost(filename: string) {
       const ref = await deskBoard.board.resolver(ctx as never);
       if (ref === undefined) return { ok: false, error: "no_delegation_board" };
       // The wait parks the turn by throwing its park; nothing here may catch it.
-      if (script.op === "wait") return dispatchAndWait(ctx as never, ref, { taskId: script.taskId });
+      // Start the held task, then wait on it, as `dispatchTask` then
+      // `getTask({ id, wait: true })` do (FIX-2082).
+      if (script.op === "wait") {
+        await ref.dispatch!(script.taskId, { call: `goal.dispatch:${script.taskId}` });
+        const waited = await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
+        return waited.ok ? { ok: true, status: waited.task.status, answer: waited.task.output } : waited;
+      }
       try {
         if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "two-passes") {

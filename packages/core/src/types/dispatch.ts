@@ -226,6 +226,12 @@ export type DispatchAddress =
        * that already exists keeps its own.
        */
       readonly state?: Readonly<Record<string, unknown>> | TaskStateTarget;
+      /**
+       * Whether the board's drain waits on a row it hands over (FIX-2082).
+       * Absent follows the board's mode: a plan board waits, a delegation
+       * board doesn't. A board refuses one that contradicts its mode.
+       */
+      readonly wait?: boolean;
     };
 
 /**
@@ -451,6 +457,13 @@ export type DispatchSpec = {
    * the wire as server truth, so only put here what the runtime produced.
    */
   readonly provenance?: Readonly<Record<string, unknown>>;
+  /**
+   * The sending request parks on the dispatched request at once, waiting for
+   * it (`dispatcher({ wait: true })`, FIX-2082). The seam stamps the child
+   * with who waits on it, from the sender's own server-derived facts, so the
+   * child's wait depth counts its sender before the sender's park is written.
+   */
+  readonly waits?: boolean;
 };
 
 /**
@@ -748,6 +761,17 @@ export type TaskBinding = {
    * refuses a flow that reaches the board and lacks one, by name.
    */
   readonly requiresInternal?: readonly string[];
+  /**
+   * The board hands its rows to an entry that declares where it takes tasks
+   * from (`TaskEntry.from`) through that entry's own gate, which reads the row
+   * off this board's ledger by id (FIX-2082: a worker's step filed
+   * `session: "new"`, handed to its own `work` entry). Without it, an entry
+   * with `from` that this board also dispatches to is refused. An entry
+   * without `from` still runs behind this board's gate, and a flow that
+   * declares no such entry is not refused: it files no row for it, and a
+   * dispatch to it is refused `no-entry`.
+   */
+  readonly viaEntrySource?: boolean;
 };
 
 /**

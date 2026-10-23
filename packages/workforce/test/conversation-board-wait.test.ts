@@ -1,13 +1,17 @@
 /**
- * A wait on a conversation's board (FIX-1816 S9, V7): the coordinator's turn
- * dispatches a task with `wait` and parks; the task's ending reaches the
- * conversation through the same notice every ending sends, and there it
- * resumes the parked turn with the answer, waking no judgment turn and landing
- * no line. A task filed without waiting still wakes a turn (FIX-1794's notices
- * are unchanged; their own suite is `conversation-board-notices.test.ts`).
+ * A wait on a conversation's board (FIX-1816 S9, V7; `getTask` since
+ * FIX-2082): the coordinator's turn files a task with `createTask`, then waits
+ * on it with `getTask({ id, wait: true })` and parks; the task's ending reaches
+ * the conversation through the same notice every ending sends, and there it
+ * resumes the parked turn with the task as it ended, waking no judgment turn
+ * and landing no line. A task filed without waiting still wakes a turn
+ * (FIX-1794's notices are unchanged; their own suite is
+ * `conversation-board-notices.test.ts`).
  *
- * Nothing here calls the waker: the task session's notice, or a later touch
- * of the board by the user, is what resumes the turn.
+ * The task is held open (`[hold:<name>]`) until the turn has parked, so every
+ * test here parks rather than reading an ending that won the race. Nothing
+ * calls the waker: the task session's notice, or a later touch of the board
+ * by the user, is what resumes the turn.
  */
 import { describe, expect, it } from "vitest";
 import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
@@ -28,10 +32,14 @@ function toolResults(messages: unknown): string {
   return out.join(" | ");
 }
 
+/** The id the turn's `createTask` returned, in the tool results so far. */
+const filedId = (results: string) => /"taskId":"([^"]+)"/.exec(results)?.[1];
+
 /**
- * The coordinator's judgment as a step model: its first step waits with a
- * waiting `dispatchTask` for `goal`, and the step after the answer replies with
- * `reply(answer)`. Every call is kept in `seen`.
+ * The coordinator's judgment as a step model: its first step files `goal`
+ * with `createTask`, its second waits on that task with `getTask`'s `wait`,
+ * and the step after the read replies with `reply(results)`. Every call is
+ * kept in `seen`.
  */
 function waitingJudgment(goal: string, reply: (results: string) => string) {
   const seen: GeneratorModelCallOptions[] = [];
@@ -45,7 +53,13 @@ function waitingJudgment(goal: string, reply: (results: string) => string) {
       const results = toolResults(options.messages);
       if (results === "") {
         return {
-          toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal, assignee: "eng.tasker", wait: true } }],
+          toolCalls: [{ toolCallId: "f1", toolName: "createTask", args: { goal, assignee: "eng.tasker" } }],
+          finishReason: "tool-calls"
+        };
+      }
+      if (!results.includes('"task":')) {
+        return {
+          toolCalls: [{ toolCallId: "w1", toolName: "getTask", args: { id: filedId(results), wait: true } }],
           finishReason: "tool-calls"
         };
       }
@@ -53,6 +67,15 @@ function waitingJudgment(goal: string, reply: (results: string) => string) {
     }
   };
   return { model, seen };
+}
+
+/** A gate a `[hold:<name>]` task waits on, and the call that opens it. */
+function gate() {
+  let release!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { opened, release };
 }
 
 /** Poll `check` until it holds, for at most `ms`. Whether it held. */
@@ -67,34 +90,50 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
 const statusOf = async (host: BoardHost, requestId: string) =>
   (await (await host.state.getRuntime()).stores.request.get(requestId))?.status;
 
-/** A durable host whose router has built its durability sweeper, so `dispatchTask` offers the wait. */
-async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel) {
+/**
+ * A durable host whose router has built its durability sweeper, so `getTask`
+ * offers the wait. A `[hold:g]` task waits on `held` until the test opens it.
+ */
+async function waitingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel, held = gate()) {
+  const holds = new Map([["g", held.opened]]);
   const host = bootBoardHost(
-    "generateStep" in judgment ? { judgmentModel: judgment as GeneratorModel, durable: true } : { judgment, durable: true }
+    "generateStep" in judgment
+      ? { judgmentModel: judgment as GeneratorModel, durable: true, holds }
+      : { judgment, durable: true, holds }
   );
   await host.state.getRouter();
   return host;
 }
 
+/** Until the request parks on its wait, then open the gate its task is held on. */
+async function parkThenRelease(host: BoardHost, requestId: string, held: ReturnType<typeof gate>) {
+  expect(await until(async () => (await statusOf(host, requestId)) === "suspended")).toBe(true);
+  held.release();
+}
+
 describe("a waited-on task's ending resumes the turn that waits on it (V7)", { timeout: 30_000 }, () => {
-  it("resumes the parked turn with the answer, and wakes no other turn and lands no line", async () => {
-    const judgment = waitingJudgment("Count licenses", (results) =>
-      results.includes("eng.tasker did: Count licenses") ? "There are twelve." : `unexpected: ${results}`
+  it("resumes the parked turn with the task as it ended, and wakes no other turn and lands no line", async () => {
+    const judgment = waitingJudgment("Count licenses [hold:g]", (results) =>
+      results.includes('"status":"completed"') && results.includes("eng.tasker did: Count licenses")
+        ? "There are twelve."
+        : `unexpected: ${results}`
     );
-    const host = await waitingHost(judgment.model);
+    const held = gate();
+    const host = await waitingHost(judgment.model, held);
     try {
       const conv = await host.conversation("alice", "lead");
       const waiting = await host.act("alice", conv, "run", { message: "how many licenses do we have?" });
       expect(waiting.error, messageOf(waiting.error)).toBeUndefined();
       expect(await statusOf(host, waiting.requestId!)).toBe("suspended");
+      held.release();
 
       // The task runs, its session tells the conversation, and the notice resumes the turn.
       expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed")).toBe(true);
       await host.settled();
 
-      // The same turn carried on with the answer as its tool's result: two steps, one turn.
-      expect(judgment.seen).toHaveLength(2);
-      expect(toolResults(judgment.seen[1]!.messages)).toContain('"answer":"eng.tasker did: Count licenses"');
+      // The same turn carried on with the ended task as its read's result: three steps, one turn.
+      expect(judgment.seen).toHaveLength(3);
+      expect(toolResults(judgment.seen[2]!.messages)).toContain('"output":"eng.tasker did: Count licenses');
       const replies = (await host.messages(conv)).map((m) => m.text);
       expect(replies.filter((text) => text === "There are twelve.")).toHaveLength(1);
       // No line: the answer was the call's result, not a post.
@@ -112,13 +151,15 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
   });
 
   it("a waited-on task's ending starts no onTaskSettled: the conversation's pass resumes the turn, once (FIX-2078)", async () => {
-    const judgment = waitingJudgment("Count workers", (results) =>
+    const judgment = waitingJudgment("Count workers [hold:g]", (results) =>
       results.includes("eng.tasker did: Count workers") ? "Forty workers." : `unexpected: ${results}`
     );
-    const host = await waitingHost(judgment.model);
+    const held = gate();
+    const host = await waitingHost(judgment.model, held);
     try {
       const conv = await host.conversation("alice", "lead");
       const waiting = await host.act("alice", conv, "run", { message: "how many workers?" });
+      await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed", 8_000)).toBe(true);
       await host.settled();
       // A touch after: nothing is owed, nothing resumes twice.
@@ -127,7 +168,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
 
       const settled = (await host.requestsOf(conv)).filter((r) => r.actionName === "onTaskSettled");
       expect(settled).toEqual([]);
-      expect(judgment.seen).toHaveLength(2);
+      expect(judgment.seen).toHaveLength(3);
       expect((await host.messages(conv)).filter((m) => m.text === "Forty workers.")).toHaveLength(1);
       expect((await host.rows("alice"))[0]!.resumeOwed ?? false).toBe(false);
     } finally {
@@ -140,10 +181,11 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     ["is turned away as busy", () => Promise.resolve({ ok: false as const, refused: "busy" as const, detail: "another resume holds the turn" })]
   ] as const) {
     it(`a resume that ${label} is retried at its due time, with no touch, once (BR-11, FIX-2078)`, async () => {
-      const judgment = waitingJudgment("Count desks", (results) =>
+      const judgment = waitingJudgment("Count desks [hold:g]", (results) =>
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
-      const host = await waitingHost(judgment.model);
+      const held = gate();
+      const host = await waitingHost(judgment.model, held);
       try {
         // The host's wait resume fails the first time it is called, then works.
         const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
@@ -153,6 +195,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
 
         const conv = await host.conversation("alice", "lead");
         const waiting = await host.act("alice", conv, "run", { message: "how many desks?" });
+        await parkThenRelease(host, waiting.requestId!, held);
         expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
         expect(await until(() => calls >= 1)).toBe(true);
 
@@ -163,7 +206,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         await host.settled();
 
-        expect(judgment.seen).toHaveLength(2);
+        expect(judgment.seen).toHaveLength(3);
         expect((await host.messages(conv)).filter((m) => m.text === "Thirty desks.")).toHaveLength(1);
         const [row] = await host.rows("alice");
         expect(row!.resumeOwed ?? false).toBe(false);
@@ -176,15 +219,17 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
   }
 
   it("a board run whose resume throws still delivers another row's owed notice", async () => {
-    const judgment = waitingJudgment("Count chairs", () => "unused");
-    const host = await waitingHost(judgment.model);
+    const judgment = waitingJudgment("Count chairs [hold:g]", () => "unused");
+    const held = gate();
+    const host = await waitingHost(judgment.model, held);
     try {
       // Every resume fails: the waited-on row keeps owing its turn.
       const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
       requestHost.waitResume = () => Promise.reject(new Error("the store blinked"));
 
       const conv = await host.conversation("alice", "lead");
-      await host.act("alice", conv, "run", { message: "how many chairs?" });
+      const waiting = await host.act("alice", conv, "run", { message: "how many chairs?" });
+      await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
       expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
@@ -251,8 +296,8 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
   });
 });
 
-describe("a task session's turn that asks to wait", { timeout: 30_000 }, () => {
-  it("is refused, and told how its task can wait: file without `wait` and end the turn", async () => {
+describe("a task session's turn that waits on a task it filed (FIX-2082)", { timeout: 30_000 }, () => {
+  it("waits, reads the task as it ended, and answers its own task from it", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const judgment: GeneratorModel = {
       modelId: "task-turn-judgment",
@@ -262,27 +307,37 @@ describe("a task session's turn that asks to wait", { timeout: 30_000 }, () => {
       async generateStep(options) {
         seen.push(options);
         const asked = JSON.stringify(options.messages ?? []);
-        if (toolResults(options.messages) === "" && asked.includes("Ship the release") && !asked.includes("completed by")) {
+        const results = toolResults(options.messages);
+        if (!asked.includes("Ship the release") || asked.includes("completed by")) return { text: "Done.", finishReason: "stop" };
+        if (results === "") {
           return {
-            toolCalls: [{ toolCallId: "w1", toolName: "dispatchTask", args: { goal: "Check the build", assignee: "eng.tasker", wait: true } }],
+            toolCalls: [{ toolCallId: "f1", toolName: "createTask", args: { goal: "Check the build", assignee: "eng.tasker" } }],
             finishReason: "tool-calls"
           };
         }
-        return { text: "Done.", finishReason: "stop" };
+        if (!results.includes('"task":')) {
+          return { toolCalls: [{ toolCallId: "w1", toolName: "getTask", args: { id: filedId(results), wait: true } }], finishReason: "tool-calls" };
+        }
+        return { text: results.includes("eng.tasker did: Check the build") ? "The build is green." : `unexpected: ${results}`, finishReason: "stop" };
       }
     };
     const host = await waitingHost(judgment);
     try {
-      // boss hands lead a task; lead's task turn, which files for its own delegate, asks to wait.
+      // boss hands lead a task; lead's task turn files for its own delegate and waits on it.
       const conv = await host.conversation("alice", "boss");
       const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Ship the release", assignee: "lead" });
       expect(filed.output).toMatchObject({ ok: true });
+      const shipped = async () => (await host.rows("alice")).find((row) => row.goal === "Ship the release")?.status === "completed";
+      expect(await until(shipped, 10_000)).toBe(true);
       await host.settled();
-      const refusal = seen.map((call) => toolResults(call.messages)).find((results) => results.includes("wait_unavailable"));
-      expect(refusal).toBeDefined();
-      expect(refusal).toContain("file it without `wait`, then end this turn");
-      expect(refusal).toContain("its ending wakes this task");
-      expect((await host.rows("alice")).filter((row) => row.goal === "Check the build")).toEqual([]);
+
+      const rows = await host.rows("alice");
+      expect(rows.find((row) => row.goal === "Check the build")).toMatchObject({ status: "completed" });
+      // lead answered its task from the task it waited on, in the turn that waited.
+      expect(rows.find((row) => row.goal === "Ship the release")).toMatchObject({ status: "completed", output: "The build is green." });
+      const read = seen.map((call) => toolResults(call.messages)).find((results) => results.includes('"task":'));
+      expect(read).toContain('"status":"completed"');
+      expect(read).not.toContain("wait_unavailable");
     } finally {
       await host.dispose();
     }

@@ -30,8 +30,9 @@ const board = taskBoard({
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Outer sequencer name and prefix for internal blocks. Unique inside a flow if you mount more than one board. |
-| `boardId` | `string` | omitted | Stable id. Required when any assignee holds a task dispatcher. Renaming orphans live work keyed on the old value. |
-| `mode` | `"plan"` \| `"delegation"` | `"plan"` | Whether the drain waits on its tasks. A plan board runs every task inline and waits on each; a delegation board hands every task to another session through a dispatcher assignee and waits on none. A board whose assignees contradict its mode throws when built. See [Task board](./task-board#plan-boards-and-delegation-boards-mode). |
+| `boardId` | `string` | omitted | Stable id. Required when any assignee, or `newSession`, holds a task dispatcher. Renaming orphans live work keyed on the old value. |
+| `mode` | `"plan"` \| `"delegation"` | `"plan"` | Whether the drain waits on its tasks. A plan board waits on each, inline or handed over; a delegation board hands every task to another session through a dispatcher assignee and waits on none. A board whose assignees contradict its mode throws when built. See [Task board](./task-board#plan-boards-and-delegation-boards-mode). |
+| `newSession` | task dispatcher | omitted | Plan boards only. Runs each row filed `session: "new"` in a session of its own, while the drain waits for it. See [A plan board that hands a row over](./task-board#a-plan-board-that-hands-a-row-over). |
 | `dispatch` | dispatch object | omitted (inline) | Dispatch mode for a **uniform** worker (a single block). Do not set this on a registry board; declare it per worker instead. |
 | `collection` | request spec, sequencer spec, `defineTaskCollection`, or factory | request-backed, `collectionId` = `name` | Where the task list lives. Omit it for the request default. |
 | `workers` | one block, or a name → worker map | required | A single worker runs every claimed task. A registry routes by `task.assignee`. |

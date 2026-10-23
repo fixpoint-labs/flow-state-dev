@@ -88,6 +88,7 @@ import {
   evaluator,
   generator,
   handler,
+  logicalBlockIdOf,
   router,
   sequencer
 } from "@flow-state-dev/core";
@@ -563,6 +564,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   ): Promise<{ routed: RoutedDelegate; taskId?: string }> => {
     const named = bare(request.delegate);
     const now = Date.now();
+    // The judgment turn's tool call: the same on its replay. A policy's filing has none.
+    const call = filing === undefined ? undefined : logicalBlockIdOf(ctx);
     // Owed before the write that sets the deadline, as the wake contract has
     // it: a crash between leaves a wake with nothing to close, never a
     // deadline with no wake. A routing that sets none after all leaves an
@@ -597,7 +600,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       postId: request.postId,
       round: request.round,
       delegate: named,
-      ...linesField(request.recent)
+      ...linesField(request.recent),
+      // The judgment turn's call, so a replay of it finds its own task (BR-15).
+      ...(call !== undefined ? { call } : {})
     };
     const id = routedTaskId(request.postId, request.round, named);
     const handedBefore = { routed: { ...named, outcome: "skipped" as const, reason: "it was already handed this message in this round" } };
@@ -622,14 +627,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         // A routed task has one attempt (FIX-2080's rule for a conversation-result task).
         maxAttempts: 1,
         ...(named.target !== undefined ? { target: named.target, targetSessionId } : {}),
-        // The tool call that filed it, so a replay of that call finds it (BR-15).
-        ...(filing?.dispatchCall !== undefined ? { dispatchCall: filing.dispatchCall } : {}),
         sealed: brief
       });
       if (filed === "exists") {
         // The same tool call replayed after a crash: its own task, filed the first time.
-        const same = filing?.dispatchCall !== undefined
-          && (await conversationLedgerAt(ctx, request.filingSessionId))?.get(id)?.dispatchCall === filing.dispatchCall;
+        const same = brief.call !== undefined
+          && routedBriefOf((await conversationLedgerAt(ctx, request.filingSessionId))?.get(id))?.call === brief.call;
         return same ? { routed: { ...named, outcome: "delivered" }, taskId: id } : { ...handedBefore, taskId: id };
       }
       return { routed: { ...named, outcome: "delivered" }, taskId: id };

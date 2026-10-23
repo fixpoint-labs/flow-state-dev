@@ -33,25 +33,37 @@ export type {
   RequestHost,
   ResumeWaitInput,
   ResumeWaitResult,
+  RequestWaits,
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  WaitDeadlines,
   WakeSettleResult,
   WakeView
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
-export type { WaitEndingErrorCode, WaitGateBinding, WaitOutcome, ParkOnWaitInput } from "./wait-gate";
+export type {
+  WaitEndingErrorCode,
+  WaitGateBinding,
+  WaitGateData,
+  WaitOutcome,
+  WaitRow,
+  ParkOnWaitInput
+} from "./wait-gate";
 export {
+  MAX_WAIT_DEPTH,
+  WAIT_DEADLINE_ENTRY,
+  WAIT_DEADLINE_OUTCOME,
   WAIT_GATE_REASON,
-  WaitEndedError,
-  WaitStoppedError,
   isWaitGate,
   isExpiredApproval,
   parkOnWait,
+  canHoldWait,
   parseWaitOutcome,
-  recordedWaitOutcome
+  recordedWaitOutcome,
+  waitGateDataOf
 } from "./wait-gate";
 
 export type {

@@ -9,7 +9,11 @@
  * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
  *    before any notice, so a resent notice names what its ending cancelled.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
- * 4. **Notices owed** past their due time, sent again to this session's notice
+ * 4. **Wait slots lapsed** for a request that has since ended (FIX-2082):
+ *    released, so an ending held for it is owed to the filer's notice. A slot
+ *    whose request still runs or is parked is looked at again less and less
+ *    often, and no more once it is past the maximum age.
+ * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed.
  *
  * Then it answers when the board's next debt falls due: the earliest due time
@@ -19,19 +23,20 @@
  *
  * A debt still outstanding past the host's maximum age (`maxDebtAgeMs`,
  * counted from its due time) ends: a notice is settled undeliverable, a marker
- * is cleared, and it is logged. So every wake clears.
+ * is cleared, a lapsed wait slot is no longer looked at (counted from its
+ * lapse), and it is logged. So every wake clears.
  */
 import type { BlockContext, WakeView } from "@flow-state-dev/core/types";
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
-import { payOwedResumes } from "../helpers/wait-for-response";
+import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { clearNotice, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
+import { clearNotice, LAPSED_SLOT_CHECK_MS, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
 import { TASK_SETTLED_ENTRY, undeliverableRecord, type DeclaredDelivery } from "./delivery";
 
 /** The default most a debt may stay outstanding past its due time, when the host names none: 24 hours. */
@@ -96,11 +101,21 @@ export async function payBoardDebts(
     log("a pass's cascades failed and stay owed", { error: (error as Error).message });
   }
 
+  // 4: slots lapsed for a request that has ended. Before the notices, so an
+  // ending a slot held is owed, then sent at its due time.
+  let lapsedCheck: number | undefined;
+  try {
+    lapsedCheck = await releaseEndedWaits(ctx, ref, now, maxAge);
+  } catch (error) {
+    log("a pass's lapsed wait slots stay for the next pass", { error: (error as Error).message });
+    lapsedCheck = now + LAPSED_SLOT_CHECK_MS;
+  }
+
   // A notice stored before FIX-2078 has no due time: it is due now, the
   // upgrade's, and its age counts from here (BP-030).
   await stampLegacyNotices(ref, now);
 
-  // 4: notices past due, sent again here; one too old ends.
+  // 5: notices past due, sent again here; one too old ends.
   const rows = ref.list();
   for (const row of rows) {
     const due = noticeDueAt(row);
@@ -138,6 +153,7 @@ export async function payBoardDebts(
   const owe = (at: number): void => {
     nextDue = nextDue === undefined ? at : Math.min(nextDue, at);
   };
+  if (lapsedCheck !== undefined) owe(lapsedCheck);
   for (const row of ref.list()) {
     const notice = noticeDueAt(row);
     // A notice the pass just sent again is outstanding until its entry clears it.
@@ -205,10 +221,11 @@ export async function settlePassWake(
 /**
  * The boards this flow hands rows out from, at this session's partition: every
  * declared task collection with a delivery (FIX-2078). What the plain
- * `onTaskSettled` entry pays on a wake.
+ * `onTaskSettled` entry pays on a wake. With `only`, just that ledger.
  */
 export async function delegatingBoardsOf(
-  ctx: BlockContext
+  ctx: BlockContext,
+  only?: string
 ): Promise<Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }>> {
   const registry = ctx.resources as { list?: () => unknown[] } | undefined;
   const found: Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }> = [];
@@ -216,6 +233,9 @@ export async function delegatingBoardsOf(
     const config = (entry as { config?: unknown }).config;
     if (!isDefinedTaskCollection(config) || config.__taskCollection.delivery === undefined) continue;
     const id = config.__taskCollection.id;
+    // Resolving a ledger reads it as this request's snapshot: resolve only
+    // the one asked for, so a later read of another sees its rows as they are then.
+    if (only !== undefined && id !== only) continue;
     const collection = resolveResourceCollection(ctx, id);
     if (collection === undefined) continue;
     const partitionBy = config.__taskCollection.partitionBy;

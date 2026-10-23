@@ -15,7 +15,7 @@
 - `steps-in-task-session` the writer filed as many steps as the brief has, all for itself, all `completed`, all on the plan ledger of the task's own session.
 - `in-order` each step started after the one before it ended.
 - `carries-forward` the codename the first step's output states is in every later step's output.
-- `no-child-session` the conversation ledger holds no row but the person's task: nothing was handed to a session, the writer's own included.
+- `no-child-session` the conversation ledger holds no row but the person's task: nothing was handed to a session, the writer's own included. Scoped to steps filed with no `session`, as this leg's are: since FIX-2082 a step filed `session: "new"` runs in a new session of the writer, by design (`goals/task-board/waits-on-a-task-it-filed/`, leg d).
 - `listed` the task session's `listTasks_tasks` lists its steps and no open delegation row.
 - `result-is-the-answer` the task is `completed` with one answer (a string, not `{ answer, pieces }`) that names the codename.
 

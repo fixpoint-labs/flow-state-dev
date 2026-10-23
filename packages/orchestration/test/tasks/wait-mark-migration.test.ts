@@ -12,7 +12,7 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-const MARK = { gateId: "ask:tasks:t#1", deadline: 9_000_000_000_000 };
+const MARK = { gateId: "ask:tasks:t#1", deadline: 9_000_000_000_000, requestId: "r1" };
 
 /** A board plus a way to put the old mark back on a stored row. */
 interface LegacyBacking {
@@ -58,7 +58,8 @@ describe("a row stored with its wait mark under the old name", () => {
     describe(name, () => {
       it("reads as waited on, with the same gate and deadline", async () => {
         const { collection, storeUnderOldName } = await backing();
-        await collection.addTask({ id: "t", goal: "find out", wait: MARK });
+        await collection.addTask({ id: "t", goal: "find out" });
+        await collection.markWait!("t", MARK);
         await storeUnderOldName("t");
 
         expect(collection.get("t")?.wait).toEqual(MARK);
@@ -67,7 +68,8 @@ describe("a row stored with its wait mark under the old name", () => {
 
       it("owes its waiting turn a resume when it ends, as a row written today does", async () => {
         const { collection, storeUnderOldName } = await backing();
-        await collection.addTask({ id: "t", goal: "find out", wait: MARK });
+        await collection.addTask({ id: "t", goal: "find out" });
+        await collection.markWait!("t", MARK);
         await storeUnderOldName("t");
         await collection.claim("w");
         await collection.complete("t", "yes");

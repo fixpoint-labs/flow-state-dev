@@ -724,6 +724,48 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumeItems.length).toBe(2);
   });
 
+  it("resolves only the gate it names when one block parks again with a new gate id (FIX-2082)", async () => {
+    // A wait that waits again at its deadline parks twice from one block, on
+    // two gates. The resolution of the first must not answer the second.
+    const twice = handler({
+      name: "twice",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const first = await ctx.suspend!({ reason: "human_approval", message: "first?", suspensionId: "gate-1" });
+        const second = await ctx.suspend!({ reason: "human_approval", message: "second?", suspensionId: "gate-2" });
+        return { first, second };
+      }
+    });
+    const flow = defineFlow({
+      kind: "fix2082-same-block-gates",
+      actions: { run: { block: sequencer({ name: "twiceSeq", durable: true }).step(twice), inputSchema: z.any() } }
+    })({ id: "fix2082-same-block-gates" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const [first] = await provider.listSuspended({ status: "pending" });
+    expect(first!.suspensionId).toBe("gate-1");
+    await (await resolve(flow, stores, provider, requestId, first!, "approve", "one"));
+    // Parked again, on the second gate: the first's answer did not answer it.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [second] = await provider.listSuspended({ status: "pending" });
+    expect(second!.suspensionId).toBe("gate-2");
+
+    const resumed = await (await resolve(flow, stores, provider, requestId, second!, "approve", "two"));
+    expect(resumed.output).toEqual({ first: "one", second: "two" });
+  });
+
   it("continues an interrupted request under its own id, replaying completed blocks (FIX-811 crash recovery)", async () => {
     // Crash recovery re-enters the SAME id with NO resumeContext: completed
     // blocks replay from the durable log (not re-run), the in-flight block

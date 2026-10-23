@@ -443,20 +443,32 @@ export const taskSchema = z.object({
   createdBy: z.string().optional(),
 
   /**
-   * Set when this row is **waited on**: a turn filed it and parked until it ends
-   * (FIX-1816). `gateId` names the gate the waiting turn parks on, derived from
-   * this row, so it is unique within the conversation; `deadline` is when the
-   * wait times out (epoch ms), the same instant the gate expires.
+   * The row's **wait slot**: a request is waiting on this row's ending
+   * (FIX-1816; one wait per row since FIX-2082). `gateId` names the gate the
+   * waiting request parks on, unique within its session; `deadline` is when
+   * the wait resumes with the row still running (epoch ms); `requestId` is the
+   * waiting request, server-written.
    *
-   * Written once, in the write that files the row, by the wait path only. Never
-   * a model-facing field: the task tools build a row's init field by field.
-   * **Absent** on every row nobody waits on (BP-030). A row stored before the
-   * rename carries it as `ask`; {@link withMigratedWait} reads that as this.
+   * Taken when a wait starts, in one conditional write that refuses a second
+   * taker (`TaskCollectionRef.markWait`), and never at filing. At the deadline
+   * the slot **lapses** (`lapsed`) rather than clears: an ending written while
+   * the request that waited still runs is held for it, and that request's next
+   * read of the row is its delivery (`releaseWait` hands one it never read to
+   * the filer's notice). Never a model-facing field.
+   *
+   * **Absent** on every row nobody waits on (BP-030). A slot written by a
+   * filing before FIX-2082 has no `requestId` and reads as live, as it did. A
+   * row stored before the rename carries it as `ask`; {@link withMigratedWait}
+   * reads that as this.
    */
   wait: z
     .object({
       gateId: z.string(),
       deadline: z.number(),
+      /** The waiting request (FIX-2082). Absent on a slot a filing wrote before it. */
+      requestId: z.string().optional(),
+      /** The deadline passed with the row still open (FIX-2082): nobody is parked on it now. */
+      lapsed: z.literal(true).optional(),
     })
     .optional(),
 
@@ -547,16 +559,6 @@ export const taskSchema = z.object({
    * **Absent** on every row no cascade cancelled (BP-030).
    */
   causedBy: z.string().optional(),
-
-  /**
-   * The call that dispatched this row: the logical id of the tool call or
-   * action (FIX-1875). Written by `dispatch` in the same write that releases
-   * a held row, or with the row when a dispatch files it ready, so the
-   * same call replayed after a crash finds its own write and answers as the
-   * first call did. **Absent** on every row no dispatch filed or readied
-   * (BP-030).
-   */
-  dispatchCall: z.string().optional(),
 
   /**
    * A payload the code that filed the row wrote with it, for whatever runs the

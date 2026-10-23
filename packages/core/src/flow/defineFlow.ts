@@ -866,6 +866,10 @@ function resolveDispatchTargets(
       // checked and gated exactly as a string `action` is.
       for (const action of addressEntries(address)) {
         const entry = tasks !== undefined && Object.hasOwn(tasks, action) ? tasks[action] : undefined;
+        // A board that hands rows to an entry's own gate (FIX-2082) reaches
+        // the entry only where the flow declares it: a flow without it files
+        // no such row, and a dispatch to it is refused `no-entry`.
+        if (entry === undefined && taskBindingOf(block)?.viaEntrySource === true) continue;
         if (entry === undefined) {
           throw new Error(
             `Flow "${kind}" reaches block "${block.name}", which dispatches to task:"${action}", but the ` +
@@ -893,6 +897,8 @@ function resolveDispatchTargets(
                   `ledger; declare a second entry for the second board.`
           );
         }
+        // The board hands this entry its rows through the entry's own gate.
+        if (entry.from !== undefined && binding.viaEntrySource === true) continue;
         if (entry.from !== undefined) {
           throw new Error(
             `Flow "${kind}" task entry "${action}" declares where it takes tasks from ` +

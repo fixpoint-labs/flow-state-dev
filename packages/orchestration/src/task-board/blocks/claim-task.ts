@@ -19,10 +19,10 @@
  * block surfaces the claim outcome to the pattern layer; it adds no
  * arbitration of its own.
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, logicalBlockIdOf } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { TaskCollectionRef, TaskDispatcher } from "../../tasks";
+import type { Task, TaskCollectionRef, TaskDispatcher } from "../../tasks";
 import {
   claimResultSchema,
   taskBoardWorkerStateSchema,
@@ -58,8 +58,20 @@ export function createClaimTask(options: ClaimTaskOptions) {
     outputSchema: claimResultSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<ClaimResult> => {
-      const collection = await collectionFactory(ctx);
-      const task = await dispatcher.claim(collection, workerId(ctx), ctx);
+      const claim = async () => dispatcher.claim(await collectionFactory(ctx), workerId(ctx), ctx);
+      // A request that parked mid-drain replays the drain from its top, and
+      // this block's trace is transient, so nothing records the claim it made
+      // (FIX-2082): the claim is kept with the request instead, and a replay
+      // reads it back rather than claiming again. Keyed by the block's
+      // logical path, which names this worker and this pass of its loop.
+      // Only the row's id and the attempt it was claimed on are kept (BP-042):
+      // the replay reads the rest off the row.
+      // No logical id (a context with no block identity): claimed afresh, kept nowhere.
+      const key = logicalBlockIdOf(ctx);
+      const task =
+        ctx.runOnce !== undefined && key !== undefined
+          ? await claimedOnce(ctx, `fsd.board.claim:${key}`, claim, collectionFactory)
+          : await claim();
       if (task === null) {
         await ctx.sequencer!.patchState({ lastClaimed: false });
         return { claimed: false };
@@ -72,4 +84,32 @@ export function createClaimTask(options: ClaimTaskOptions) {
       return { claimed: true, task };
     },
   });
+}
+
+/** What a claim keeps with the request: the row and the attempt, or that nothing was claimed. */
+type KeptClaim = { readonly claimedId: string; readonly attempts: number } | null;
+
+/**
+ * Claim once per logical block, kept with the request (`runOnce`). The first
+ * run claims and keeps the row's id and attempt; a replay reads the row again
+ * and shows it as it was claimed: running, on that attempt.
+ */
+async function claimedOnce(
+  ctx: BlockContext,
+  memoKey: string,
+  claim: () => Promise<Task | null>,
+  collectionFactory: (ctx: BlockContext) => Promise<TaskCollectionRef>
+): Promise<Task | null> {
+  let claimedNow: Task | null | undefined;
+  const kept = await ctx.runOnce!<KeptClaim>(memoKey, async () => {
+    claimedNow = await claim();
+    return claimedNow === null ? null : { claimedId: claimedNow.id, attempts: claimedNow.attempts };
+  });
+  if (claimedNow !== undefined) return claimedNow;
+  if (kept === null) return null;
+  const collection = await collectionFactory(ctx);
+  await collection.refresh?.(kept.claimedId);
+  const row = collection.get(kept.claimedId);
+  // A row gone since the claim has nothing left to work.
+  return row === undefined ? null : ({ ...row, status: "in_progress", attempts: kept.attempts } as Task);
 }

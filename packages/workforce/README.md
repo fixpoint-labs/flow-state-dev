@@ -1927,8 +1927,13 @@ result in a task session). A request with no step costs nothing more. On the bui
 own flow gets steps by wrapping its turn in the kit's `planned(turn)`. Only the worker's own turn
 files a step (an action naming the worker is refused), the turn that answers files none, a step
 isn't waited on, held or finished by a call, and `updateTask` doesn't move a step to a
-delegate or a delegate's task to the worker. Steps count toward the 100 tasks under a top task
-and add no depth. See
+delegate or a delegate's task to the worker. A step filed `session: "new"` runs in a new
+session of the same worker, through its own `work` entry. The request waits for it before the
+next step, which sees its result. `"ongoing"` is refused, and so is `"new"` on a flow that takes
+no task of its own. Steps count toward the 100 tasks under a top task and add no depth, except
+a step in its own session, which is one board deeper. Any worker's turn, a task's included, can
+wait on a task it filed with `getTask({ id, wait: true })`, up to five waits deep.
+See
 [Working in steps](https://flow-state.dev/docs/workforce/delegating-work#working-in-steps).
 
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is

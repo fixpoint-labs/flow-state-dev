@@ -54,6 +54,7 @@ import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
+import { PLAN_LEDGER_ID, planLedgerAt } from "./plan";
 import { noteRoutedSession, routedSessionResources } from "./routed-session";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
@@ -154,11 +155,13 @@ export type WorkerTaskEntryOptions = {
  * The ledger resolver a `work` entry's gate uses for a conversation's board,
  * and the one a harness manager takes for boards it resolves per claim: the
  * conversation ledger at `partition`, at the running user's scope, for the
- * conversation the running session was opened for; or, for another
- * conversation's, only when the row it names was filed for this very session
- * (a routed task for a workstream, whose filing resolved its session:
- * `Task.targetSessionId`, server-written). `undefined` for any other ledger, a
- * missing partition, or any other conversation's row.
+ * conversation the running session was opened for, or, for a worker's step
+ * filed `session: "new"` (FIX-2082 D2), the plan ledger at that same
+ * partition; or, for another conversation's ledger, only when the row it names
+ * was filed for this very session (a routed task for a workstream, whose
+ * filing resolved its session: `Task.targetSessionId`, server-written).
+ * `undefined` for any other ledger, a missing partition, or any other
+ * conversation's row.
  *
  * @param ledgerId The ledger the claim names.
  * @param ctx The running block's context. Its flow must declare the
@@ -172,11 +175,12 @@ export async function conversationLedgers(
   partition: string | undefined,
   taskId?: string
 ): Promise<TaskCollectionRef | undefined> {
-  if (ledgerId !== CONVERSATION_LEDGER_ID || partition === undefined) return undefined;
+  if (ledgerId !== CONVERSATION_LEDGER_ID && ledgerId !== PLAN_LEDGER_ID) return undefined;
+  if (partition === undefined) return undefined;
   // A task session works only the conversation it was opened for.
-  if (filingPartitionOf(ctx) === partition) return conversationLedgerAt(ctx, partition);
+  if (filingPartitionOf(ctx) === partition) return ledgerId === PLAN_LEDGER_ID ? planLedgerAt(ctx, partition) : conversationLedgerAt(ctx, partition);
   // A workstream's session works the routed tasks filed for it, and no other row there.
-  if (taskId === undefined) return undefined;
+  if (ledgerId !== CONVERSATION_LEDGER_ID || taskId === undefined) return undefined;
   const ref = await conversationLedgerAt(ctx, partition);
   const row = ref?.get(taskId);
   return row !== undefined && row.targetSessionId === ctx.session.identity.id ? ref : undefined;
@@ -267,6 +271,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: conversationLedgers,
+    // A step's own session reads the plan ledger its flow's planning declares (FIX-2082 D2).
     uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources, ...routedSessionResources } })],
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.

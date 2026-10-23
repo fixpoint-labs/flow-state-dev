@@ -111,6 +111,13 @@ export interface RuntimeConfig {
    * verb (`RequestHost.wakes.maxDebtAgeMs`). Absent → 24 hours.
    */
   maxDebtAgeMs?: number;
+  /**
+   * A wait's deadline bounds (FIX-2082), in milliseconds from the call: the
+   * deadline a wait that names none gets (default five minutes), and the
+   * shortest and longest one may name (default the sweep's resolution, one
+   * second, and 24 hours). Read by `RequestHost.waits.deadlines`.
+   */
+  waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
 }
 
 /**
@@ -140,7 +147,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     queuedGraceMs: options.queuedGraceMs,
     publicReentrySources: options.publicReentrySources,
     maxChildSessionListLimit: options.maxChildSessionListLimit,
-    maxDebtAgeMs: options.maxDebtAgeMs
+    maxDebtAgeMs: options.maxDebtAgeMs,
+    waitDeadlines: options.waitDeadlines
   };
 }
 

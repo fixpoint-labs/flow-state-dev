@@ -43,7 +43,12 @@ export const routedBriefSchema = z.object({
   /** The round it was routed in: 0 for a user's message. */
   round: z.number().int().min(0),
   /** The delegate record it went to. */
-  delegate: delegateRefSchema
+  delegate: delegateRefSchema,
+  /**
+   * The judgment turn's tool call that filed it, by its logical id, so a
+   * replay of that call finds its own task. Absent on a policy's filing.
+   */
+  call: z.string().optional()
 });
 
 export type RoutedBrief = z.infer<typeof routedBriefSchema>;

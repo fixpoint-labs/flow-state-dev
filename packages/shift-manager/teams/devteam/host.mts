@@ -315,7 +315,7 @@ const forCoding = handler({
     const [only] = coded;
     const next =
       coded.length === 1 && only !== undefined
-        ? `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with dispatchTask, without asking.`
+        ? `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with createTask, without asking.`
         : coded.length === 0
           ? "No project has a repository. Ask which project the user means."
           : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the user means, naming each.`;

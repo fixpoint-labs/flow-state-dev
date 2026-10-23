@@ -1,42 +1,38 @@
 /**
- * Wait deadlines noted as turns park, so the durability sweeper can bring its
- * next tick forward (FIX-1816, BR-14).
+ * Whether a durability sweeper that resumes waits at their deadline runs in
+ * this process (FIX-1816 BR-5): a wait is offered only where one does, so no
+ * request waits forever.
  *
- * Keyed on the durability provider: the runtime that parks a turn and the
- * sweeper that times it out share one provider object per host, even when the
+ * Keyed on the durability provider: the runtime that parks a request and the
+ * sweeper that resumes it share one provider object per host, even when the
  * router and a colocated worker hold different copies of the runtime config.
- * One sweeper per host listens; no timer per wait.
+ * A wait's deadline itself is a wake (FIX-2082 D1), which the sweeper hears
+ * through the wake store (`request-wakes.ts`).
  */
 import type { DurabilityProvider } from "./types";
 
-type Listener = (deadline: number) => void;
+const sweepers = new WeakMap<DurabilityProvider, Set<symbol>>();
 
-const listeners = new WeakMap<DurabilityProvider, Set<Listener>>();
-
-/** Listen for deadlines noted on `provider`. Returns the unsubscribe. */
-export function onWaitDeadline(provider: DurabilityProvider, listener: Listener): () => void {
-  let set = listeners.get(provider);
+/** Register a sweeper that resumes waits on `provider`. Returns the unregister. */
+export function registerWaitSweeper(provider: DurabilityProvider): () => void {
+  let set = sweepers.get(provider);
   if (set === undefined) {
     set = new Set();
-    listeners.set(provider, set);
+    sweepers.set(provider, set);
   }
-  set.add(listener);
+  const token = Symbol("wait-sweeper");
+  set.add(token);
   return () => {
-    set!.delete(listener);
+    set!.delete(token);
   };
 }
 
-/** Note that a turn parked on a wait that times out at `deadline` (epoch ms). */
-export function noteWaitDeadline(provider: DurabilityProvider, deadline: number): void {
-  for (const listener of listeners.get(provider) ?? []) listener(deadline);
-}
-
 /**
- * Whether a durability sweeper that times out waits listens on `provider` in
- * this process: one runs, so a wait parked here is bounded (FIX-1816 BR-5).
+ * Whether a durability sweeper that resumes waits is registered on `provider`
+ * in this process: one runs, so a wait parked here is bounded (FIX-1816 BR-5).
  */
 export function hasWaitSweeper(provider: DurabilityProvider): boolean {
-  return (listeners.get(provider)?.size ?? 0) > 0;
+  return (sweepers.get(provider)?.size ?? 0) > 0;
 }
 
 /**
