@@ -9,9 +9,13 @@
  * `payOwedResumes`, unless the flow declares `onTaskSettled`, whose pass then
  * pays the resume on its own.
  */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { z } from "zod";
 import { waitGateId } from "../../src/tasks/helpers/wait-on-task";
 import type { TaskSettledInput } from "../../src";
@@ -478,6 +482,68 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       expect(notices).toEqual([expect.objectContaining({ ending: "completed", output: "heard by the filer" })]);
       await new Promise((r) => setTimeout(r, 2_500));
       expect(notices).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
+const parkDirs: string[] = [];
+const STORES: ReadonlyArray<readonly [string, () => Promise<StoreAdapter>]> = [
+  ["in-memory", async () => inMemoryStores()],
+  [
+    "sqlite",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "fsd-wait-park-"));
+      parkDirs.push(dir);
+      return sqliteStores({ filename: join(dir, "store.db") });
+    }
+  ]
+];
+
+describe.each(STORES)("wait on a task: a deadline that passes while the request parks (%s)", (_name, stores) => {
+  afterEach(async () => {
+    for (const dir of parkDirs.splice(0)) await rm(dir, { recursive: true, force: true });
+  });
+
+  it("resumes the request with its deadline outcome soon after the park lands, not a retry interval later", async () => {
+    // A slow park (a request-end hook that takes its time) must not cost the
+    // agent its short deadline: once the request is recorded parked, a deadline
+    // that passed meanwhile is delivered within about a sweep.
+    const { model, seen } = stepModel([waitCall("c1", "q", 50), finalAnswer]);
+    const flow = waitFlow(model, { parkTakesMs: 300 });
+    const state = runtimeFor(flow, await stores(), true, 25, SHORT);
+    try {
+      const parked = await act(state, flow, "run");
+      // The park took longer than the deadline: it passed while the request parked.
+      expect(await statusOf(state, parked.requestId!)).toBe("suspended");
+      await until(state, parked.requestId!, "completed", 2_000);
+      expect(toolResults(seen[1]!.messages)).toContain('"status":"pending"');
+      expect((await rows(state, flow))[0]).toMatchObject({ status: "pending" });
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("a request that resumes and parks again on a second wait gets that deadline soon after its second park too", async () => {
+    // The second park is a resumed run's, which holds the request's resume
+    // lease until it has parked: the deadline must not wait out a retry for it.
+    let taskId = "";
+    const { model, seen } = stepModel([
+      waitCall("c1", "q", 50),
+      (opts) => {
+        taskId = waitedTaskId([opts], 0);
+        return waitAgain("c2", () => taskId, 50)(opts);
+      },
+      finalAnswer
+    ]);
+    const flow = waitFlow(model, { parkTakesMs: 300 });
+    const state = runtimeFor(flow, await stores(), true, 25, SHORT);
+    try {
+      const parked = await act(state, flow, "run");
+      await until(state, parked.requestId!, "completed", 3_000);
+      expect(seen).toHaveLength(3);
+      expect(toolResults(seen[2]!.messages)).toContain('"status":"pending"');
     } finally {
       await state.dispose();
     }

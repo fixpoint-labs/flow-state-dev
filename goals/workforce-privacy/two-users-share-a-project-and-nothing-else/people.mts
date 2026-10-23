@@ -143,6 +143,42 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
+/** The delegates a coordinator's routing record for post `postId` delivered it to, among a request's items. */
+function routedDelegates(items: readonly StoredItem[], postId: string): string[] {
+  return items
+    .filter((i) => i.type === "component" && (i as { component?: unknown }).component === "coordinator-route")
+    .map((i) => i.data as { postId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
+    .filter((d) => d?.postId === postId)
+    .flatMap((d) => (d?.delegates ?? []).filter((x) => x.outcome === "delivered").map((x) => String(x.worker)));
+}
+
+/**
+ * The answer one of `delegates` gave post `postId` in `sessionId`: the first
+ * assistant message after the post's own that names one of them as its
+ * `agentName` (a delegate's first message is the one graded), read once
+ * nothing runs in the session and its items stopped changing.
+ *
+ * At the `timeoutMs` cap it returns the answer it found even if the session
+ * never settled, and `undefined` when none landed. With `act`'s own 240 s
+ * wait before it, a routed turn can take up to about twice that. "Quiet" is
+ * not "the board is done": a board pass due later can still write items
+ * after this returns, which m2's exception for her board's own passes covers.
+ */
+async function delegateAnswer(who: Connected, sessionId: string, postId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
+  let answer: StoredItem | undefined;
+  let seen = -1;
+  for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
+    const items = await who.routes.items(sessionId, "");
+    const from = items.findIndex((i) => i.type === "message" && i.role === "user" && i.requestId === postId);
+    if (from < 0) continue;
+    answer = items.slice(from + 1).find((i) => i.type === "message" && i.role === "assistant" && delegates.includes(String((i as { agentName?: unknown }).agentName)));
+    const running = (await who.routes.requests(sessionId)).some((r) => RUNNING.has(String(r.status)));
+    if (answer !== undefined && !running && items.length === seen) return answer;
+    seen = running ? -1 : items.length;
+  }
+  return answer;
+}
+
 /** The text of a stored message item. */
 export function textOf(item: StoredItem | undefined): string {
   if (item === undefined) return "";
@@ -179,7 +215,15 @@ export async function talk(record: RunRecord, step: string, who: Connected, sess
     turn.tools = mine
       .filter((i) => i.type === "tool_output")
       .map((i) => ({ itemId: i.id, name: String(i.toolCall?.name ?? ""), args: String(i.toolCall?.arguments ?? "").slice(0, 300), output: JSON.stringify(i.output ?? i.error ?? null).slice(0, 300) }));
-    const reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
+    let reply = mine.filter((i) => i.type === "message" && i.role === "assistant").at(-1);
+    // A coordinator that routed the post answers through its delegate, in a
+    // request of its own once the delegate's turn ends (the coordinator
+    // contract): the turn is graded on that answer, read once the session is quiet.
+    const delegates = routedDelegates(mine, acted.requestId);
+    if (reply === undefined && delegates.length > 0) {
+      reply = await delegateAnswer(who, session.id, acted.requestId, delegates, 240_000);
+      if (reply !== undefined) turn.answeredBy = String((reply as { agentName?: unknown }).agentName);
+    }
     const error = mine.find((i) => i.type === "error");
     turn.reply = reply !== undefined ? textOf(reply) : error !== undefined ? `error: ${JSON.stringify(error.error ?? error).slice(0, 300)}` : (acted.error ?? "");
     if (reply === undefined) turn.items = mine.map((i) => `${i.type}${i.role === undefined ? "" : `/${i.role}`}#${i.id}`);

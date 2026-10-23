@@ -106,9 +106,11 @@ export interface DeliveryHooks {
   ): Promise<void>;
   /**
    * Run `send` once the running request has ended (FIX-2123), on the
-   * engine's request-end seam. Nothing runs when it parks: a parked request
-   * holds no notice, so the filer's pass sends what it held, and a hook at a
-   * park would delay the request's park record. A failure is logged, never
+   * engine's request-end seam. `send` doesn't run when it parks: a parked
+   * request holds no notice, so the filer's pass is owed one wake shortly
+   * after (FIX-2149) and sends what the request held, past its backoff. No
+   * row is read or written there: a hook at a park delays the request's park
+   * record. A failure is logged, never
    * thrown; what `send` didn't send stays owed for the filer's pass. Nothing
    * runs on a context with no seam, or on a host that doesn't record which
    * requests are running. Optional, so hooks built by hand keep compiling:
@@ -198,12 +200,16 @@ export function createDelivery(
     registered.add(boardKey);
     sendsAtStop.set(seam, registered);
     onRequestEnded(ctx, async (ending) => {
-      // Nothing at a park: a hook runs there before the request is recorded
-      // parked, and any time it takes delays that record, which a wait's
-      // resume reads. A parked request holds no notice, so the filer's pass
-      // sends what it held at the notice's next send. The request that runs
-      // again after the park registers anew (the board notes the rows it filed).
-      if (ending.status === "suspended") return;
+      // At a park, one wake and no row I/O (FIX-2149): a parked request holds
+      // no notice, so the filer's pass is owed shortly, once the park is
+      // recorded, and sends what it held then, past its backoff. A hook here
+      // runs before the request is recorded parked, so it stays small. The
+      // request that runs again after the park registers anew (the board
+      // notes the rows it filed).
+      if (ending.status === "suspended") {
+        if (declared.notices !== false) await owePassAtPark();
+        return;
+      }
       try {
         await send();
       } catch (error) {
@@ -213,6 +219,18 @@ export function createDelivery(
         });
       }
     });
+  }
+
+  /** The filing request parked: owe this (its filer's) session's pass one wake (FIX-2149). */
+  async function owePassAtPark(): Promise<void> {
+    try {
+      await ctx.requestHost?.wakes?.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS });
+    } catch (error) {
+      console.warn("[orchestration] a wake for the filer's pass at a park couldn't be written: a notice held for the request goes out at its next resend", {
+        boardId: board.collectionId,
+        error: (error as Error).message
+      });
+    }
   }
 
   async function owePassAt(row: Task, dueAt: number): Promise<void> {

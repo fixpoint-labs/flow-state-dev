@@ -853,6 +853,37 @@ describe("a wait's deadline is a wake on its session (FIX-2082 D1)", () => {
     expect(wake === null || wake.dueAt === wake.landBy).toBe(true);
   });
 
+  it("a deadline that passes while the turn is still parking is delivered by the first sweep after the park, not a retry interval later (FIX-2150)", async () => {
+    const { model, seen } = waitingModel();
+    let busySweeps = 0;
+    const flow = waitFlow(model, { count: 0 }, {
+      deadline: () => Date.now() + 5,
+      // A slow park: its request-end hook runs past the deadline, and a sweep
+      // lands inside it, while the request still reads `in_progress`.
+      beforePark: (ctx) => {
+        onRequestEnded(ctx, async (ending) => {
+          if (ending.status !== "suspended") return;
+          await new Promise((r) => setTimeout(r, 20));
+          await sweep(h);
+          busySweeps += 1;
+        });
+      }
+    });
+    const h = withWakes(flow);
+    const parked = await startTurn(h, flow);
+    expect(busySweeps).toBe(1);
+    expect(h.continued).toHaveLength(0);
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+
+    // Once parked, the deadline is due again now: the next sweep delivers it.
+    expect((await h.stores.wakes!.get(KEY))!.dueAt).toBeLessThanOrEqual(Date.now());
+    await sweep(h);
+    expect(h.continued).toHaveLength(1);
+    await h.continued[0];
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_deadline");
+  });
+
   it("a sweep before the deadline leaves the turn parked and the wake at the deadline", async () => {
     const { model } = waitingModel();
     const deadline = Date.now() + 600_000;

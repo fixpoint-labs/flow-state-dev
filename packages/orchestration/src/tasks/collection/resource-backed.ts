@@ -733,7 +733,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * away while it ran is sent then, past any backoff, rather than at the
    * pass's next resend. The delivery registers once per request and board,
    * so the call reads every row the request filed there, whichever
-   * resolution of the board filed it. At a park nothing runs: the pass sends.
+   * resolution of the board filed it. At a park `send` doesn't run: the
+   * delivery owes the filer's pass a wake, and the pass sends.
    */
   function noteFiled(row: Task): void {
     const own = delivery?.ownRequest;

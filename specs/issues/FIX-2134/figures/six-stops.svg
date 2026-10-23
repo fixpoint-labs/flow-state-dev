@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 486" role="img" aria-label="A grid of the six stops a person can be waited on for, one per row: an approval, a review, an input, a task held before it starts, a worker's midway question and a coding run's question. The left column is today on main: approval and input are listed but can't be answered in a task's run, a review and a midway question park off the Inbox, a held task can't be filed, and a coding run's question sits in the harness inbox with no screen. The right three columns are what the closure asserts, all six at once: how the Inbox lists each, which route answers it, the answer route for the three suspensions and updateTask as the user for the three held questions, and how the work carries on, the same try or the same attempt, a held task starting its first. Across the foot: a cancel closes each item, a steer never runs beside a waiting request, and a second answer is told the stop is resolved."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E3E1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .today { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1; }
+    .after { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .susp  { fill:var(--accent-soft); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .foot  { fill:var(--surface-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-hg  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-hc  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-k   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="486"/>
+
+  <g id="headers">
+    <text class="t-hg" x="212" y="30">TODAY ON MAIN</text>
+    <text class="t-hc" x="436" y="30">AFTER · WHAT THE CLOSURE ASSERTS, ALL SIX AT ONCE</text>
+    <text class="t-lbl" x="44" y="52">THE STOP</text>
+    <text class="t-lbl" x="436" y="52">THE INBOX LISTS</text>
+    <text class="t-lbl" x="566" y="52">ANSWERED THROUGH</text>
+    <text class="t-lbl" x="746" y="52">THE WORK CARRIES ON</text>
+  </g>
+
+  <g id="band-suspended">
+    <rect class="susp" x="16" y="62" width="190" height="168" rx="4"/>
+    <text class="t-lbl" transform="translate(30 146) rotate(-90)" text-anchor="middle">SUSPENDS</text>
+  </g>
+  <g id="band-held">
+    <rect class="foot" x="16" y="234" width="190" height="168" rx="4"/>
+    <text class="t-lbl" transform="translate(30 318) rotate(-90)" text-anchor="middle">HOLDS ITS TASK</text>
+  </g>
+
+  <g id="cells-today">
+    <rect class="today" x="212" y="64" width="214" height="50" rx="4"/>
+    <rect class="today" x="212" y="120" width="214" height="50" rx="4"/>
+    <rect class="today" x="212" y="176" width="214" height="50" rx="4"/>
+    <rect class="today" x="212" y="236" width="214" height="50" rx="4"/>
+    <rect class="today" x="212" y="292" width="214" height="50" rx="4"/>
+    <rect class="today" x="212" y="348" width="214" height="50" rx="4"/>
+  </g>
+  <g id="cells-after">
+    <rect class="after" x="432" y="64" width="492" height="50" rx="4"/>
+    <rect class="after" x="432" y="120" width="492" height="50" rx="4"/>
+    <rect class="after" x="432" y="176" width="492" height="50" rx="4"/>
+    <rect class="after" x="432" y="236" width="492" height="50" rx="4"/>
+    <rect class="after" x="432" y="292" width="492" height="50" rx="4"/>
+    <rect class="after" x="432" y="348" width="492" height="50" rx="4"/>
+  </g>
+
+  <g id="r1"><text class="t-k" x="44" y="94">An approval</text>
+    <text class="t-b" x="222" y="86">Listed, can't be answered</text><text class="t-s" x="222" y="103">when a task's run asked it</text>
+    <text class="t-b" x="442" y="94">approval</text>
+    <text class="t-b" x="566" y="86">the answer route</text><text class="t-s" x="566" y="103">FIX-2129, the user only</text>
+    <text class="t-b" x="746" y="86">the same try</text><text class="t-s" x="746" y="103">its claim kept, work ran once</text></g>
+  <g id="r2"><text class="t-k" x="44" y="150">A review</text>
+    <text class="t-b" x="222" y="142">Parks off the Inbox</text><text class="t-s" x="222" y="159">answered by an unpark</text>
+    <text class="t-b" x="442" y="150">review</text>
+    <text class="t-b" x="566" y="142">the answer route</text><text class="t-s" x="566" y="159">FIX-2129, FIX-2131</text>
+    <text class="t-b" x="746" y="142">the same try</text><text class="t-s" x="746" y="159">the block reads the verdict</text></g>
+  <g id="r3"><text class="t-k" x="44" y="206">An input</text>
+    <text class="t-b" x="222" y="198">Listed, can't be answered</text><text class="t-s" x="222" y="215">past its expiry, parked for good</text>
+    <text class="t-b" x="442" y="206">input</text>
+    <text class="t-b" x="566" y="198">the answer route</text><text class="t-s" x="566" y="215">FIX-2129</text>
+    <text class="t-b" x="746" y="198">the same try</text><text class="t-s" x="746" y="215">its claim kept, work ran once</text></g>
+  <g id="r4"><text class="t-k" x="44" y="258">Held before it starts</text><text class="t-s" x="44" y="274">filed on a question</text>
+    <text class="t-b" x="222" y="258">Can't be filed</text><text class="t-s" x="222" y="275">nowhere to put the question</text>
+    <text class="t-b" x="442" y="266">question</text>
+    <text class="t-b" x="566" y="258">updateTask, as the user</text><text class="t-s" x="566" y="275">FIX-2133, the question named</text>
+    <text class="t-b" x="746" y="258">its first attempt starts</text><text class="t-s" x="746" y="275">the answer in its brief</text></g>
+  <g id="r5"><text class="t-k" x="44" y="314">A midway question</text><text class="t-s" x="44" y="330">a worker's model asks</text>
+    <text class="t-b" x="222" y="314">Parks; answerTask</text><text class="t-s" x="222" y="331">a new turn from the queue</text>
+    <text class="t-b" x="442" y="322">question</text>
+    <text class="t-b" x="566" y="314">updateTask, as the user</text><text class="t-s" x="566" y="331">a steer naming its question id</text>
+    <text class="t-b" x="746" y="314">one more turn</text><text class="t-s" x="746" y="331">on the same attempt</text></g>
+  <g id="r6"><text class="t-k" x="44" y="370">A coding run's question</text><text class="t-s" x="44" y="386">through its ask marker</text>
+    <text class="t-b" x="222" y="370">Harness inbox, no screen</text><text class="t-s" x="222" y="387">the answer spends a retry</text>
+    <text class="t-b" x="442" y="378">question</text>
+    <text class="t-b" x="566" y="370">updateTask, as the user</text><text class="t-s" x="566" y="387">or the session door, as that steer</text>
+    <text class="t-b" x="746" y="370">the same coding session</text><text class="t-s" x="746" y="387">on the same try</text></g>
+
+  <g id="every-row">
+    <rect class="foot" x="16" y="414" width="908" height="56" rx="5"/>
+    <text class="t-lbl" x="32" y="435">EVERY ROW, ON ONE MAIN COMMIT</text>
+    <text class="t-b" x="32" y="456">One item each · a second answer is told it's resolved · a cancel closes the item · a steer never runs beside a waiting request</text>
+  </g>
+</svg>

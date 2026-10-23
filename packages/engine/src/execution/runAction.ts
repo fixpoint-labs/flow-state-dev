@@ -1933,7 +1933,14 @@ async function runActionAttempt<
       // every persist must preserve under the merge — assigned before any item
       // is emitted so incremental persists never truncate it.
       priorItemsForMerge = priorItems;
-      replayLog = buildReplayLog(priorItems);
+      // Crash recovery with no durability provider restores no sequencer
+      // checkpoint, so it keeps its behaviour from before lean records: it
+      // skips a completed block only from a full trace, whatever the trace
+      // setting is now.
+      replayLog = buildReplayLog(priorItems, {
+        skipLeanTraces:
+          resumeContextRaw === undefined && options.runtimeConfig.durabilityProvider === undefined,
+      });
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
       // the log, and re-runs the in-flight one — there is no gate to resolve, so
@@ -2284,6 +2291,8 @@ async function runActionAttempt<
         // field with the leaf id would break checkpoint restore.
         const suspendingBlockInstanceId =
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
+        // The deadline of the wait this request parks on, if it parks on one.
+        let parkedWaitDeadline: number | undefined;
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -2333,6 +2342,7 @@ async function runActionAttempt<
             if (own !== undefined) record.data = { ...record.data, own };
           }
           const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;
+          parkedWaitDeadline = waitDeadline;
           if (waitDeadline !== undefined) {
             const wakes = ctx.requestHost?.wakes;
             if (wakes === undefined) {
@@ -2438,6 +2448,22 @@ async function runActionAttempt<
           } catch (err) {
             logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
               requestId, leaseKey: reSuspendLeaseKey, error: String(err)
+            });
+          }
+        }
+
+        // A wait's deadline that passed while the request parked found it
+        // still `in_progress`, and the sweep put it off as busy for a retry
+        // interval (FIX-2150). Owed again now that it is parked and its resume
+        // lease is released (a re-park holds it until just above), so the
+        // sweep delivers it at its next tick. A failure leaves it to that retry.
+        if (parkedWaitDeadline !== undefined && parkedWaitDeadline <= Date.now()) {
+          try {
+            await ctx.requestHost?.wakes?.owe({ entry: WAIT_DEADLINE_ENTRY, dueAt: Date.now() });
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a wait's deadline that passed during its park wasn't owed again: the sweep retries it later", {
+              requestId,
+              error: err instanceof Error ? err.message : String(err)
             });
           }
         }

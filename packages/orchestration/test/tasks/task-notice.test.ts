@@ -19,6 +19,7 @@ import {
   decideNotice,
   deferredNoticePatch,
   deliveredByWait,
+  heldWhileRunning,
   NOTICE_DUE_MS,
   noticeDueAt,
   isNoticeOwed,
@@ -136,6 +137,28 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     // Still owed, and a row that owes nothing is left as it is.
     expect(isNoticeOwed(turnedAway, notice)).toBe(true);
     expect(deferredNoticePatch(row(), notice, 90_000)).toEqual({});
+  });
+
+  it("names the filing request a notice was last turned away for, until a copy is sent again (FIX-2149)", () => {
+    // The pass sends such a notice past its backoff once that request parks
+    // or ends: its backoff grew only while that request held it.
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    const notice = { attempt: 1, ending: "completed" } as const;
+    const withMeta = (base: Task, patch: Record<string, unknown>): Task => ({ ...base, metadata: { ...base.metadata, ...patch } });
+    const held = withMeta(written, deferredNoticePatch(written, notice, 20_000, "req_filing"));
+    expect(heldWhileRunning(held, notice)).toBe("req_filing");
+    // Its age still counts from the turn-away, as any other's.
+    expect(noticeTimes(held, notice)?.since).toBe(20_000);
+    // Sent again since: that copy's answer decides, with its backoff.
+    const resent = withMeta(held, resentRecord(held, notice, 25_000));
+    expect(heldWhileRunning(resent, notice)).toBeUndefined();
+    // Turned away for it again after that resend: named again.
+    expect(heldWhileRunning(withMeta(resent, deferredNoticePatch(resent, notice, 25_010, "req_filing")), notice)).toBe("req_filing");
+    // A busy session's turn-away (defer), and one recorded before FIX-2149 (BP-030), name none.
+    expect(heldWhileRunning(withMeta(written, deferredNoticePatch(written, notice, 20_000)), notice)).toBeUndefined();
+    expect(heldWhileRunning(withMeta(written, { "noticeDeferred:1:completed": { at: 20_000 } }), notice)).toBeUndefined();
+    // A notice no longer owed names none.
+    expect(heldWhileRunning(withMeta(held, clearNotice(notice)), notice)).toBeUndefined();
   });
 
   it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {

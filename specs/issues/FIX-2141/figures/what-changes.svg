@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today nothing reads Codex's subscription limits, so a person learns a window ran out when a run fails. After: the host registers a Codex reader. One usage collection per person holds one current record per harness. The one query reads it, refreshes Codex first when asked, at most once a minute, and returns each window with its age and whether it has rolled over. The Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same writer later."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .head  { fill:var(--ink-3); }
+    .heada { fill:var(--accent); }
+    .later { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .dash  { stroke:var(--accent); stroke-width:1.3; fill:none; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="16" width="908" height="90" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · NOTHING READS CODEX'S LIMITS</text>
+    <rect class="src" x="40" y="52" width="180" height="40" rx="4"/>
+    <text class="t-b" x="52" y="70">Codex sign-in</text>
+    <text class="t-s" x="52" y="85">5-hour and weekly windows</text>
+    <path class="arrow" d="M220 72 L300 72"/>
+    <text class="t-bad" x="310" y="76">a run fails when a window runs out · no warning, no plan</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="120" width="908" height="244" rx="6"/>
+    <text class="t-lbl" x="32" y="142">AFTER · ONE STORE PER PERSON, ONE QUERY IN FRONT OF IT</text>
+
+    <rect class="src" x="40" y="160" width="180" height="48" rx="4"/>
+    <text class="t-b" x="52" y="180">codex app-server</text>
+    <text class="t-s" x="52" y="196">account/rateLimits/read</text>
+
+    <rect class="new" x="40" y="228" width="180" height="48" rx="4"/>
+    <text class="t-b" x="52" y="248">readCodexUsage</text>
+    <text class="t-s" x="52" y="264">the host registers it</text>
+    <path class="arrow" d="M130 228 L130 208"/>
+
+    <rect class="new" x="270" y="228" width="190" height="48" rx="4"/>
+    <text class="t-b" x="282" y="248">recordHarnessUsage</text>
+    <text class="t-s" x="282" y="264">the only writer</text>
+    <path class="arrow" d="M220 252 L270 252"/>
+
+    <rect class="new" x="510" y="228" width="190" height="48" rx="4"/>
+    <text class="t-b" x="522" y="248">harness-usage/**</text>
+    <text class="t-s" x="522" y="264">user scope · one per harness</text>
+    <path class="arrow" d="M460 252 L510 252"/>
+
+    <rect class="new" x="510" y="160" width="190" height="48" rx="4"/>
+    <text class="t-b" x="522" y="180">harnessUsage query</text>
+    <text class="t-s" x="522" y="196">rows · ageMs · rolledOver</text>
+    <path class="arrow" d="M605 228 L605 208"/>
+    <path class="arrow" d="M510 176 L230 176"/>
+    <text class="t-s" x="260" y="170">refresh, at most once a minute</text>
+
+    <rect class="box" x="750" y="160" width="150" height="48" rx="4"/>
+    <text class="t-b" x="762" y="180">Usage view</text>
+    <text class="t-s" x="762" y="196">and any worker</text>
+    <path class="arrow" d="M700 184 L750 184"/>
+
+    <rect class="later" x="270" y="300" width="190" height="48" rx="4"/>
+    <text class="t-b" x="282" y="320">FIX-2142 · Claude Code</text>
+    <text class="t-s" x="282" y="336">rate_limit_event via onUsage</text>
+    <path class="dash" d="M365 300 L365 276"/>
+  </g>
+  <g id="arrowheads">
+    <path class="head" d="M300 72 L293 68 L293 76 z"/>
+    <path class="head" d="M130 208 L126 215 L134 215 z"/>
+    <path class="head" d="M270 252 L263 248 L263 256 z"/>
+    <path class="head" d="M510 252 L503 248 L503 256 z"/>
+    <path class="head" d="M605 208 L601 215 L609 215 z"/>
+    <path class="head" d="M230 176 L237 172 L237 180 z"/>
+    <path class="head" d="M750 184 L743 180 L743 188 z"/>
+    <path class="heada" d="M365 276 L361 283 L369 283 z"/>
+  </g>
+</svg>

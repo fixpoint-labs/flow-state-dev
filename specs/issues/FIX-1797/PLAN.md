@@ -2,6 +2,8 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md)
 
+> **Amended after merge.** Two later rules take precedence over any statement below that every check runs on one commit, or that a closure PR needs a clean run. [QR-19](BUSINESS-RULES.md) lets a re-run carry forward each check its fix didn't touch. [QR-22](BUSINESS-RULES.md) lets the owner close without a clean run, which the owner did on 2026-10-23 ([closed by the owner](DECISIONS.md#closed-by-the-owner)).
+
 Written for the closure worker, which owns the step definitions. It runs twice in shape: the
 milestone when FIX-1788 merges (QR-2), and the final run when QR-1 holds. It adds only the goal
 check. Names below are directional: read every name off the children's **merged** specs on
@@ -16,7 +18,7 @@ check. Names below are directional: read every name off the children's **merged*
 | S3 | `controls/` under S1 | The scratch patches: `org-scoped-workers`, `unpartitioned`, `no-follow-up`, `no-delegate-check`, `no-roster-check`, and `second-org` when the commit has no second-org principal. Applied to a copy of the commit, never committed, printed in full in the report |
 | S4 | Part 3's manifest, under S1 | Each child's goal path with the controls still owed, and P3.9's list, computed from the pre-epic baseline's tree and the run's commit together (see [Part 3](#part-3--every-childs-check-and-every-older-check-the-epic-touched)). Each runs as its own subprocess |
 | S5 | J1's scratch app | A fresh directory the writer builds in; deleted after the run |
-| S6 | The closure PR | Only after a final run that files nothing: S1 to S4 with the verdict log, the report as its body. No changeset |
+| S6 | The closure PR | Only after a final run that files nothing, or when the owner closes it (QR-22, *amended after merge*): S1 to S4 with the verdict log, the report as its body. No changeset |
 
 ## Sequence
 
@@ -37,6 +39,7 @@ flowchart TD
   J --> P3["part 3 · children's checks · older checks"]
   P3 --> P4["part 4 · scripted seam assertions"]
   P4 -->|"findings"| F["file each, blocking FIX-1797 · stop"]
+  F -.->|"owner closes · QR-22"| PR
   P4 -->|"none"| PR["closure PR with the report"]
 ```
 
@@ -222,7 +225,7 @@ Everything else is yours to name.
 | One graded turn per model step | A retry grades a coordinator nobody uses |
 | Part 4's required rows are executed, not read (BP-003) | A tired reader skips the row a script can't |
 | Scratch patches printed in full | A patch that changes more than it says is how a step passes hollow |
-| Every final check on the one commit; the pre-epic baseline only as a control | A pass elsewhere proves nothing about the set |
+| Every final check on the one commit, or carried forward under QR-19; the pre-epic baseline only as a control | A pass elsewhere proves nothing about the set |
 | Findings are filed, never fixed here | The closure rule |
 
 ## Docs

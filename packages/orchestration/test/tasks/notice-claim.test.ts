@@ -192,6 +192,41 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
     }
   });
 
+  it("a notice held a while for its filing request is heard within seconds of that request's park, not at its resend's backoff", async () => {
+    // The filer hears a task it filed as soon as its turn stops on a
+    // person: the person may take hours, and the turn holds the notice no more.
+    const notices: TaskSettledInput[] = [];
+    let taskId = "";
+    const { model } = stepModel([
+      fileCall("f1"),
+      async (opts) => {
+        taskId = waitedTaskId([opts], 0);
+        // The turn runs on while its task's notice is held for it, past two
+        // resends: the next would go out 8 s after the last, about 7 s after
+        // the park below.
+        await settle(7_000);
+        return awaitApproval("p1")(opts);
+      },
+      finalAnswer
+    ]);
+    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices });
+    const state = runtimeFor(flow, await stores());
+    try {
+      const turn = await startTurn(state);
+      await until(state, turn, "suspended", 15_000);
+      expect(notices).toEqual([]);
+      await eventually(() => notices.length === 1, 3_000);
+      expect(notices).toEqual([expect.objectContaining({ taskId, ending: "completed", output: "already done" })]);
+
+      await approve(state, turn);
+      await until(state, turn, "completed", 10_000);
+      await settle(500);
+      expect(notices).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("a request that runs again after its park sends the notice it held as it ends, not at the next resend", async () => {
     const notices: TaskSettledInput[] = [];
     let taskId = "";

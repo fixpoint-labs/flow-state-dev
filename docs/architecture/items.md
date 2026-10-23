@@ -79,7 +79,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 ### Devtool-only items — what the devtool sees
 
-**`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), and on failure the error. This is how the devtool builds its execution trace tree.
+**`block_trace`** is emitted for every block execution. The same row is added at block start, patched in place as more becomes known, and finalized when the block returns. It carries the block name, kind, input source, output, timing, model usage (for generators), `rescued: true` when a `.rescue()` handler produced the output, and on failure the error. With trace observability off, a completed block gets a lean record instead, marked `lean: true`, carrying only its identity, output and `rescued`. This is how the devtool builds its execution trace tree.
 
 `block_trace.error` (and `tool_output.error`, and the terminal `error` item) is `{ message: string; code?: string; details?: Record<string, unknown> }`. The runtime auto-populates `details` for known cases:
 
