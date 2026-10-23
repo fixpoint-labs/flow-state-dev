@@ -155,8 +155,14 @@ function routedDelegates(items: readonly StoredItem[], postId: string): string[]
 /**
  * The answer one of `delegates` gave post `postId` in `sessionId`: the first
  * assistant message after the post's own that names one of them as its
- * `agentName`, read once nothing runs in the session and its items stopped
- * changing. `undefined` when none lands within `timeoutMs`.
+ * `agentName` (a delegate's first message is the one graded), read once
+ * nothing runs in the session and its items stopped changing.
+ *
+ * At the `timeoutMs` cap it returns the answer it found even if the session
+ * never settled, and `undefined` when none landed. With `act`'s own 240 s
+ * wait before it, a routed turn can take up to about twice that. "Quiet" is
+ * not "the board is done": a board pass due later can still write items
+ * after this returns, which m2's exception for her board's own passes covers.
  */
 async function delegateAnswer(who: Connected, sessionId: string, postId: string, delegates: readonly string[], timeoutMs: number): Promise<StoredItem | undefined> {
   let answer: StoredItem | undefined;
@@ -164,6 +170,7 @@ async function delegateAnswer(who: Connected, sessionId: string, postId: string,
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
     const items = await who.routes.items(sessionId, "");
     const from = items.findIndex((i) => i.type === "message" && i.role === "user" && i.requestId === postId);
+    if (from < 0) continue;
     answer = items.slice(from + 1).find((i) => i.type === "message" && i.role === "assistant" && delegates.includes(String((i as { agentName?: unknown }).agentName)));
     const running = (await who.routes.requests(sessionId)).some((r) => RUNNING.has(String(r.status)));
     if (answer !== undefined && !running && items.length === seen) return answer;

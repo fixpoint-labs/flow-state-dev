@@ -109,12 +109,12 @@ const check = (name: string, ok: boolean, saw: string) => {
 };
 
 {
-  const turn: Turn & { answeredBy?: string } = await talk(new RunRecord("check", ""), "m1", connectedTo(routed), { id: "wks_alice", flowKind: "coordinator" }, "respond", "the post");
+  const turn: Turn = await talk(new RunRecord("check", ""), "m1", connectedTo(routed), { id: "wks_alice", flowKind: "coordinator" }, "respond", "the post");
   check("a routed post is graded on the delegate's answer", turn.reply === "noted" && turn.answeredBy === "eng.em", `reply "${turn.reply}", answered by ${turn.answeredBy ?? "the turn itself"}`);
   check("talk returns once the session is quiet", !routed.running() && routed.items.some((i) => i.id === "dispatch_change"), `${routed.items.length} items, ${routed.running() ? "a request still running" : "nothing running"}`);
 }
 {
-  const turn: Turn & { answeredBy?: string } = await talk(new RunRecord("check", ""), "m1", connectedTo(direct), { id: "wks_alice", flowKind: "agent" }, "respond", "the post");
+  const turn: Turn = await talk(new RunRecord("check", ""), "m1", connectedTo(direct), { id: "wks_alice", flowKind: "agent" }, "respond", "the post");
   check("a worker's own answer is read off its request", turn.reply === "noted" && turn.answeredBy === undefined && turn.replyItemId === `answer_${POST}`, `reply "${turn.reply}" (item ${turn.replyItemId})`);
 }
 

@@ -217,7 +217,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     // schedule (the `dispatch` entry, never a public action), and each writes
     // a few items. Any other new item is one a post could have made.
     const publicActions = actionsOf(aliceSession.flowKind);
-    const passes = new Set((await alice.routes.requests(aliceSession.id)).filter((q) => !publicActions.includes(String(q.actionName))).map((q) => String(q.id)));
+    const passes = new Set((await alice.routes.requests(aliceSession.id)).filter((q) => typeof q.actionName === "string" && !publicActions.includes(q.actionName)).map((q) => String(q.id)));
     const added = after.filter((i) => !before.has(i.id));
     const strays = added.filter((i) => i.requestId === undefined || !passes.has(i.requestId));
     if (after.some((i) => JSON.stringify(i).includes(token))) r.fail("m2", `Bob's words are in Alice's session \`${aliceSession.id}\``);
