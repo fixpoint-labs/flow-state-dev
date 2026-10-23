@@ -118,7 +118,9 @@ export interface TaskSettledOptions {
    * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
    * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
    * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
-   * here: it is heard as any task's the conversation filed.
+   * here: it is heard as any task's the conversation filed. A failure of a
+   * task the coordinator's own turn filed ({@link filedByTurn}) is handed here
+   * too, and then also lands as a line and wakes that turn (FIX-2115).
    */
   readonly onRouted?: BlockDefinition<any, any>;
 }
