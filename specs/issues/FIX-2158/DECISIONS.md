@@ -79,7 +79,8 @@ It comes down to threads mode: listing task runs shows every thread twice.
   project coordinator's exception (`conversationAddress` in `workforce/src/messages/send-message.ts`
   targets the per-project session from project work); D1 says outright that per-project
   conversations are left out; and the goal check lists before the first ensure, so a list that
-  secretly creates the default fails.
+  secretly creates the default fails. `three-sessions` also asserts the two non-default sessions'
+  order by latest activity, so a creation-order list fails.
 - **Cursor (round 1, approved), for the implementer:** "extract/shared filter with `findWorkerSession`
   in `client.ts` (criteria-key rule + filing top-level guard). That's the main code simplification;
   without it, list and find will drift."
