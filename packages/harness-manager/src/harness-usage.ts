@@ -253,7 +253,9 @@ export function applyReading(stored: HarnessUsageState, reading: HarnessUsageRea
 /** One window a run heard about, over the stored record. Pure. */
 export function applyRunWindow(stored: HarnessUsageState, report: HarnessUsageReport): Merged {
   // A run already going when a look found no subscription belongs to the old sign-in.
-  if (stored.status !== "windows" && stored.checkedAt !== null && report.runStartedAt <= stored.checkedAt) {
+  // A look that failed (`unavailable`) found nothing, so it doesn't hold a run back.
+  const noSubscription = stored.status === "api-key" || stored.status === "signed-out";
+  if (noSubscription && stored.checkedAt !== null && report.runStartedAt <= stored.checkedAt) {
     return { state: {}, result: "refused-older" };
   }
   const incoming = report.accountId === null ? null : hashKeySegment(report.accountId);

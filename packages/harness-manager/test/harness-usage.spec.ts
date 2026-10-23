@@ -285,6 +285,14 @@ describe("applyRunWindow", () => {
     expect(applyRunWindow(keyed, runReport({ runStartedAt: NOW + 1, observedAt: NOW + 10 })).result).toBe("recorded");
   });
 
+  it("lets a run that was already going fill a record a failed look left unavailable", () => {
+    // A failed look learned nothing about the sign-in, unlike one that found an API key.
+    const failed = after(EMPTY, applyReading(EMPTY, { status: "unavailable", reason: "no answer" }, NOW));
+    const recovered = applyRunWindow(failed, runReport({ runStartedAt: NOW - 1, observedAt: NOW + 10 }));
+    expect(recovered.result).toBe("recorded");
+    expect(after(failed, recovered)).toMatchObject({ status: "windows" });
+  });
+
   it("rebinds to a new account whole: the old account's windows and plan go", () => {
     const a = after(EMPTY, applyReading(EMPTY, { status: "windows", accountId: "a@example.com", plan: "max", windows: [] }, NOW - 10_000));
     const aRun = after(a, applyRunWindow(a, runReport({ accountId: "a@example.com", window: { id: "seven_day", label: null, minutes: 10_080, usedPercent: 80, level: "warning", resetsAt: null }, observedAt: NOW - 5_000 })));
