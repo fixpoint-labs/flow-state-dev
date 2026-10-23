@@ -21,7 +21,7 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createFlowState, createModelResolver } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createWorkerInstallation, defineAgentWorkerFlow, defineSessionBoard, hireWorkforce, workerConfigSchema } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, defineSessionBoard, hireWorkforce, sessionIdOfFiling, workerConfigSchema } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import {
   REPO_ROOT,
@@ -48,6 +48,8 @@ const SCRATCH = goalTmpDir("a-worker-plans-its-own-steps");
 const MODEL = gatewayModel(goalModel());
 const WRITER = "crew.writer";
 const DESK = "crew.desk";
+/** The ledger a worker's steps sit on, read by an app the way it reads `tasks`. */
+const PLAN_LEDGER = "plan";
 const QUIET_BUDGET_MS = 300_000;
 /** Tries per leg when the model files fewer steps than the brief has (`GOAL_ATTEMPTS` overrides). */
 const ATTEMPTS = goalAttempts();
@@ -240,13 +242,27 @@ await runGoal(async (failures, tell) => {
         if (delegated.length !== 0) {
           legFailures.push(`${leg}:no-child-session — wanted no row handed to a session but the person's tasks; read ${show(delegated.map((row) => [row.goal.slice(0, 40), row.assignee, row.status]))}`);
         }
-        // Through the task session's own task actions: the steps, and no open delegation row.
+        // What the person's app reads (delegating-work.md, "Working in steps"): a worker with no
+        // delegate has no delegation board, so its `<tool>_tasks` actions answer
+        // `no_delegation_board`, and its steps are read from the `plan` ledger over the router.
         if (taskSession !== undefined) {
-          const listed = (await http.act("agent", taskSession, "listTasks_tasks", {})) as { ok?: boolean; tasks?: Array<{ assignee?: string; status?: string }> };
-          const openDelegated = (listed?.tasks ?? []).filter((row) => row.assignee !== WRITER && !["completed", "errored", "cancelled"].includes(row.status ?? ""));
-          const listedSteps = (listed?.tasks ?? []).filter((row) => row.assignee === WRITER);
-          if (listed?.ok === false || openDelegated.length !== 0 || listedSteps.length !== steps.length) {
-            legFailures.push(`${leg}:listed — wanted the task session's listTasks to show its steps and no open delegation row; read ${show(listed)}`);
+          const listed = await http.act("agent", taskSession, "listTasks_tasks", {});
+          if (listed?.ok !== false || listed?.error !== "no_delegation_board" || Object.keys(listed).length !== 2) {
+            legFailures.push(`${leg}:listed — wanted the task session's listTasks_tasks to answer { ok: false, error: "no_delegation_board" }; read ${show(listed)}`);
+          }
+          const read = await http.call("GET", ["sessions", taskSession, "resources", PLAN_LEDGER], undefined, "?limit=200");
+          const page = read.status === 200 ? (JSON.parse(read.text) as { items?: Array<{ topic: string; clientData?: { id?: string; assignee?: string } }>; nextCursor?: string }) : undefined;
+          // The read covers every session this person filed from; keep this task session's rows.
+          const planned = tell.over(
+            `${leg} · the plan ledger, read over the router`,
+            (page?.items ?? []).filter((row) => sessionIdOfFiling(decodeURIComponent(row.topic.split("/")[0]!)) === taskSession)
+          );
+          const plannedIds = new Set(planned.map((row) => row.clientData?.id));
+          const exact = plannedIds.size === planned.length && planned.length === steps.length && steps.every((row) => plannedIds.has(row.id));
+          if (page === undefined || page.nextCursor !== undefined || planned.length === 0 || !exact || planned.some((row) => row.clientData?.assignee !== WRITER)) {
+            legFailures.push(
+              `${leg}:listed — wanted the task session's plan ledger to list exactly its new steps, each assigned to ${WRITER}; read ${read.status} ${show(planned.map((row) => [row.clientData?.id, row.clientData?.assignee]))}, filed ${show(steps.map((row) => row.id))}`
+            );
           }
         }
         // One answer, from the turn that saw every step end, as the task's result.

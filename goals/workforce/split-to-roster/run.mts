@@ -5,7 +5,7 @@
  * legs, the controls and what each must fail are in goal.md.
  *
  * Run: pnpm tsx goals/workforce/split-to-roster/run.mts
- * Controls: GOAL_CONTROL=first-answer | wake-coordinator
+ * Controls: GOAL_CONTROL=first-answer | hold-session | wake-coordinator
  * Legs: GOAL_LEGS=1,2,3,4 (default: all; leg 4 grades what 1 to 3 left)
  */
 import { spawnSync } from "node:child_process";
@@ -69,11 +69,29 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["1:report-is-output"],
     patches: [
       {
-        // The woken turn's answer is never noted, so the task completes with
-        // the answer A's first turn gave, before B answered (FIX-2077 D3).
-        module: "packages/workforce/src/conversation-board/task-settled.ts",
-        from: String.raw`\.step\(options\.turn\)\n    \.tap\(noteTaskAnswer\);`,
-        to: ".step(options.turn);"
+        // Only an answer given before the task first waited is noted: a turn
+        // woken by B's ending (admitted while the task waits on `filed`) and a
+        // `getTask` wait's resume (admitted while it waits on `wait`) give
+        // answers that never count. So a task whose turn ended completes with
+        // A's first answer, from before B answered (FIX-2077 D3), and one whose
+        // turn parked on the piece keeps waiting with no answer.
+        module: "packages/orchestration/src/task-board/task-request.ts",
+        from: String.raw`if \(record\.answerCounts\) record\.answer = \{ output \};`,
+        to: "if (record.answerCounts && record.prior === undefined) record.answer = { output };"
+      }
+    ]
+  },
+  "hold-session": {
+    legs: ["1"],
+    assertions: ["1:waiting-while-b-works"],
+    patches: [
+      {
+        // A `getTask` wait holds its request open past B's hold before it takes
+        // the piece's wait slot, so A's turn runs on in its session while B
+        // works, and reads B's ending without parking.
+        module: "packages/orchestration/src/tasks/helpers/wait-on-task.ts",
+        from: String.raw`\n    const marked = await collection\.markWait!\(taskId, \{`,
+        to: `\n    await new Promise((resolve) => setTimeout(resolve, ${KEEPER_HOLD_MS + 2_000}));\n    const marked = await collection.markWait!(taskId, {`
       }
     ]
   },
@@ -82,10 +100,21 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["4:desk-hears-tasks-only"],
     patches: [
       {
+        // A task session reaches the desk's board as its own, so A's pieces
+        // are filed on the desk's board...
         module: "packages/workforce/src/conversation-board/board.ts",
         // The resolver's line: the only one at this depth.
         from: String.raw`(?<! ) {4}const partition = await filingSessionIdOf\(ctx\.session\);`,
         to: "    const partition = (ctx.session.state ?? {}).filingSessionId ?? (await filingSessionIdOf(ctx.session));"
+      },
+      {
+        // ...and stamped with the desk as their filer, so their endings are
+        // delivered to the desk. A notice goes to a row's filer, not to the
+        // board's owner (FIX-2078), so the first patch alone leaves the desk
+        // hearing nothing.
+        module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
+        from: String.raw`ownSession: sessionId,`,
+        to: 'ownSession: typeof (ctx.session?.state ?? {}).filingSessionId === "string" ? ctx.session.state.filingSessionId.slice(0, ctx.session.state.filingSessionId.lastIndexOf("~")) : sessionId,'
       }
     ]
   }
@@ -300,11 +329,28 @@ await runGoal(async (failures) => {
       const taskId = await fileForA(ask("release", B));
       // While B works: A's task running, waiting on its piece, and nothing
       // running in A's task session. Read the moment A's own turn has ended
-      // (its request finalized, so its end-of-request check has run) while
-      // B's piece is still running: an event, not a fixed delay. B finishing
-      // first is a failure of its own.
+      // while B's piece is still running: an event, not a fixed delay. A turn
+      // ends one of two ways, each after its end-of-request check has run:
+      // its request finalized (the task waits on `filed`), or its request
+      // parked on the wait gate of B's piece, a `getTask` wait (`suspended`,
+      // and the piece's wait slot names it; the task waits on `wait`). A
+      // request still `in_progress` holds the session. Once the turn has
+      // ended, the read waits for nothing to run in the session (the board's
+      // own short pass may follow a park), still while B works. B finishing
+      // first, or while something still runs there, is a failure of its own.
       const store = await storeOf(host);
-      let during: { status?: string; waitingOn?: unknown; lease?: unknown; running?: number; at?: number; bEndedFirst?: boolean } = {};
+      let during: {
+        ended?: "finished" | "parked";
+        status?: string;
+        waitingOn?: unknown;
+        lease?: unknown;
+        running?: number;
+        at?: number;
+        bEndedFirst?: boolean;
+        /** What still ran in A's task session when B ended, after A's turn had. */
+        busy?: string[];
+      } = {};
+      let busy: string[] | undefined;
       for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(25)) {
         const rows = await store.rows();
         const piece = rows.find((r) => r.assignee === B && pieceOf(r) === taskId);
@@ -313,19 +359,32 @@ await runGoal(async (failures) => {
           const own = sessionOf(top);
           const runId = (top as { run?: { requestId?: string } } | undefined)?.run?.requestId;
           const turn = own === undefined || runId === undefined ? undefined : (await store.requests(own)).find((r) => r.id === runId);
-          if (turn?.finalizedAtMs == null) {
+          const slot = (piece as { wait?: { requestId?: string; lapsed?: true } }).wait;
+          const ended =
+            turn?.finalizedAtMs != null
+              ? "finished"
+              : turn?.status === "suspended" && slot?.requestId === runId && slot?.lapsed !== true
+                ? "parked"
+                : undefined;
+          if (ended === undefined) {
             if (["completed", "errored", "cancelled"].includes(piece.status)) {
               during = { bEndedFirst: true, at: Date.now() };
               break;
             }
             continue;
           }
+          const inSession = (await store.requests(own!)).filter((r) => r.status === "in_progress");
           const now = (await store.rows()).find((r) => r.id === taskId);
           const stillWorking = !["completed", "errored", "cancelled"].includes((await store.rows()).find((r) => r.id === piece.id)?.status ?? "");
-          const running = (await store.requests(own!)).filter((r) => r.status === "in_progress").length;
-          during = stillWorking
-            ? { status: now?.status, waitingOn: (now as { waitingOn?: unknown } | undefined)?.waitingOn, lease: now?.leaseUntil, running, at: Date.now() }
-            : { bEndedFirst: true, at: Date.now() };
+          if (!stillWorking) {
+            during = { bEndedFirst: true, busy, at: Date.now() };
+            break;
+          }
+          if (inSession.length > 0) {
+            busy = inSession.map((r) => `${r.actionName}:${r.id}`);
+            continue;
+          }
+          during = { ended, status: now?.status, waitingOn: (now as { waitingOn?: unknown } | undefined)?.waitingOn, lease: now?.leaseUntil, running: 0, at: Date.now() };
           break;
         }
         if (top !== undefined && ["completed", "errored", "cancelled"].includes(top.status)) break;
@@ -343,9 +402,20 @@ await runGoal(async (failures) => {
         );
       }
       if (during.bEndedFirst === true) {
-        failures.push(`1:waiting-while-b-works — wanted A's turn to end while ${B} still worked; ${B}'s piece ended before A's turn did, so the wait was never observed`);
-      } else if (during.status !== "in_progress" || during.waitingOn !== "filed" || during.lease != null || during.running !== 0) {
-        failures.push(`1:waiting-while-b-works — wanted A's task running, waiting on its piece with no lease, and no request running in its session once A's turn ended while ${B} worked; read ${show(during)}`);
+        failures.push(
+          during.busy === undefined
+            ? `1:waiting-while-b-works — wanted A's turn to end while ${B} still worked; ${B}'s piece ended before A's turn did, so the wait was never observed`
+            : `1:waiting-while-b-works — wanted nothing running in A's task session while ${B} still worked; A's turn ended, but ${show(during.busy)} still ran there until ${B}'s piece ended`
+        );
+      } else if (
+        during.status !== "in_progress" ||
+        during.waitingOn !== (during.ended === "parked" ? "wait" : "filed") ||
+        during.lease != null ||
+        during.running !== 0
+      ) {
+        failures.push(
+          `1:waiting-while-b-works — wanted A's task running, waiting on its piece (\`filed\` for a finished turn, \`wait\` for one parked on the piece) with no lease, and no request running in its session once A's turn ended while ${B} worked; read ${show(during)}`
+        );
       }
       const answer = answerText(top?.output);
       if (top?.status !== "completed" || answer === undefined || !answer.includes(seen.codename) || toB.some((p) => p.status !== "completed")) {

@@ -691,6 +691,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../packages/orchestration
+      '@flow-state-dev/patterns':
+        specifier: workspace:*
+        version: link:../packages/patterns
       '@flow-state-dev/scheduled':
         specifier: workspace:*
         version: link:../packages/scheduled

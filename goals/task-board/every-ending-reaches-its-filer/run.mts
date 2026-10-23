@@ -30,7 +30,7 @@
  *      with no touch, within the lease's end plus 2 s the row is reclaimed or
  *      settled
  *
- * Control: GOAL_CONTROL=no-sweeper-payment turns the sweeper's wake step off
+ * Control: GOAL_CONTROL=no-sweeper-payment stops the sweeper firing any due wake
  * (a scratch patch to the engine as it loads; `goals/lib/module-patch.mts`).
  * Must FAIL leg b on "the filer hears within due time" and leg e.
  *
@@ -91,12 +91,14 @@ const KILL_DB = join(SCRATCH, "kill.sqlite");
 const KILL_PLAN = join(SCRATCH, "kill-plan.json");
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // The sweeper fires no wake: only a fast path or a touch pays a debt.
+  // The sweeper fires no wake: only a fast path or a touch pays a debt. The
+  // patch skips the fire of each due wake. The wake step still resumes waits
+  // past their deadline (FIX-2082), a debt this goal does not grade.
   "no-sweeper-payment": [
     {
       module: "packages/engine/src/durability/durability-sweeper.ts",
-      from: String.raw`  if \(fireWake === undefined \|\| wakes === undefined\) return;`,
-      to: "  return;"
+      from: String.raw`      if \(fireWake === undefined\) continue;`,
+      to: "      continue;"
     }
   ]
 };

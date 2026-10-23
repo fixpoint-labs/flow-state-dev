@@ -91,14 +91,14 @@ Every rule is checked inside the write, so a task that starts between your read 
 
 - **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
 - **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
-- **Waiting on tasks it filed.** A turn starts now, with the message, while those tasks keep running.
+- **Waiting on tasks it filed.** A turn starts with the message while those tasks keep running. On a Workforce conversation's board, a session runs one turn of a task at a time. If another of the task's turns is waiting on a step it filed for itself in a session of its own, the message's turn waits until that turn answers. So does the turn that a finished task wakes.
 - **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
 
 The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
 
 The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
 
-`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). A message the work reads mid-run also shows in the task's session as a line from its sender.
+`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). Unless it arrived before the task started, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
 
@@ -846,6 +846,9 @@ getTask({ id: "task_8f2", wait: true })
 You can wait in the same turn or in a later one. Your turn pauses until the task ends, then
 carries on with the task as `getTask` always returns it: its status, and its output once it
 completed. Nothing holds a request open while it waits, so a server restart loses nothing.
+A task that already ended is returned at once, and no `onTaskSettled` follows for it, as long
+as your `onTaskSettled` waits behind the turn that filed the task. A Workforce conversation or
+task turn works that way. The request still runs, but your block isn't called.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
@@ -1009,9 +1012,9 @@ On an [assignee that dispatches](#assignees-that-dispatch) there is no batch to 
 
 Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
 
-A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
+A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
 
-`maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unblock` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
+`maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unpark` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
 
 ## Bounding how much work a board takes on
 
@@ -1024,7 +1027,7 @@ A task can also keep returning to `pending` without ever settling. `maxAttempts`
 
 Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
 
-The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
+The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, a `release`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
 ### Bounding the retries
 
@@ -1046,7 +1049,7 @@ worker timed out — not retried: collection "research" has spent its retry budg
 
 The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
 
-Only failure retries count. `reclaim()`, `unblock`, and `unpark` also return a task to `pending`, and none of them spends the budget.
+Only failure retries count. `reclaim()`, `release`, and `unpark` also return a task to `pending`, and none of them spends the budget.
 
 The budget is spent when a retry is granted, not when it runs. If a re-dispatched task is never picked up again because its worker died or its lease expired, the retry still counts.
 

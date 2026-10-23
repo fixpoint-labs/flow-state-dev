@@ -24,7 +24,10 @@
  *   its own `work` entry, and the drain waits on it until it ends, waiting
  *   again at each deadline; the next step sees its result. Its ending
  *   resumes the drain: the plan ledger owes no notice, only that resume,
- *   paid by the worker's board pass.
+ *   paid by the worker's board pass. Whether the request answers after its
+ *   plan is decided once, after the turn, and kept across that resume, so a
+ *   step in a session of its own that was the plan's last still gets its
+ *   answer (FIX-2110).
  *
  * A failed attempt's open steps stay open and the next attempt adopts them.
  * The task-ending cascade (FIX-2080) doesn't reach them: a request that
@@ -109,9 +112,83 @@ const PLAN_STEPPING_STATE = "planStepping";
 /** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
 const PLAN_SEEN_STATE = "planSeen";
 
+/**
+ * Request state: whether the turn left steps to work, decided once, right
+ * after the turn (FIX-2110). A drain that waits on a step in a session of its
+ * own suspends the request; on its resume the sequencer asks again whether to
+ * answer, and by then the plan ledger may hold no open step. The answer is
+ * this recorded decision, not a fresh read of the ledger.
+ */
+const PLAN_OWED_STATE = "planOwed";
+
 /** Whether the running request is in its answering turn. */
 export function isAnsweringTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_ANSWERING_STATE] === true;
+}
+
+/**
+ * Session state: the requests whose plan has a step in a session of its own
+ * to wait on (FIX-2113), each from its turn's end until it answers, keyed by
+ * request id. Each request writes and clears only its own key, so two that
+ * plan in one session never overwrite each other. A request that dies leaves
+ * its key, which then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether
+ * it ended), and the next plan in the session clears it.
+ */
+export const PLAN_WAITING_STATE = "planWaitingRequests";
+
+/** The session state a plan writes. */
+const planWaitingSessionState = z.object({ [PLAN_WAITING_STATE]: z.record(z.string(), z.literal(true)).optional() });
+
+/** The requests the session's state marks as waiting on a step of their own plan. */
+function markedRequests(ctx: BlockContext): string[] {
+  const marked = (ctx.session?.state as Record<string, unknown> | undefined)?.[PLAN_WAITING_STATE];
+  return marked !== null && typeof marked === "object" ? Object.keys(marked) : [];
+}
+
+/**
+ * Whether another request in this session is working a plan with a step in a
+ * session of its own, and hasn't answered (FIX-2113). That request's turn is
+ * not over while it waits on the step, and one turn of a task runs at a time
+ * in its session, so a notice's turn or a steer's turn waits until it ends.
+ * Read off the session's state, never the plan ledger: a request reads a
+ * ledger as the snapshot it first took, and its own plan reads it later.
+ */
+export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<boolean> {
+  const others = markedRequests(ctx).filter((requestId) => requestId !== ctx.request?.identity?.id);
+  if (others.length === 0) return false;
+  // A host with no record of ended requests holds no durable wait, and a step
+  // filed `session: "new"` is refused there, so no request marks the session;
+  // reading a mark anyway, take it as live.
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended === undefined) return true;
+  // A request that died holds nothing.
+  const answers = await ended(others);
+  return others.some((requestId) => answers[requestId] !== true);
+}
+
+/**
+ * Mark the session as waiting on the running request's plan (FIX-2113),
+ * under its own key; first, drop the keys of requests that have ended. A key
+ * of a request that is interrupted and not yet driven again reads as ended
+ * and is dropped too: if the sweeper drives it into its step's wait later, it
+ * waits unmarked. That needs a crash between this mark and the drain's park,
+ * with a second plan in the window between, and is accepted.
+ */
+export async function markPlanWaiting(ctx: BlockContext): Promise<void> {
+  const own = ctx.request.identity.id;
+  const others = markedRequests(ctx).filter((requestId) => requestId !== own);
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended !== undefined && others.length > 0) {
+    const answers = await ended(others);
+    for (const requestId of others) if (answers[requestId] === true) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, requestId);
+  }
+  await ctx.session.setStateRecord(PLAN_WAITING_STATE, own, true);
+}
+
+/** Clear the running request's own mark (FIX-2113): it answered. Another request's is left. */
+export async function clearPlanWaiting(ctx: BlockContext): Promise<void> {
+  const own = ctx.request.identity.id;
+  if (markedRequests(ctx).includes(own)) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, own);
 }
 
 /** Whether the running request is in a step's turn. */
@@ -182,6 +259,12 @@ export interface PlanningOptions {
    * every step runs inline.
    */
   readonly newSession?: BlockDefinition<any, any>;
+  /**
+   * Run as the last step of a request that worked its plan, once its turn
+   * answered: a `.tap()`. The conversation board's sends the notices that
+   * waited for this turn (FIX-2113).
+   */
+  readonly afterPlan?: BlockDefinition<any, any>;
 }
 
 /** Build one flow's planning. */
@@ -246,11 +329,38 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     }
   });
 
-  /** Whether the turn left steps to work: a workable row on the session's plan ledger. */
-  const owesPlan = async (_answer: unknown, ctx: unknown): Promise<boolean> => {
-    const own = await ownPlanLedger(ctx as never);
-    return (own?.list() ?? []).some(isWorkable);
-  };
+  /**
+   * Decide whether the turn left steps to work (a workable row on the
+   * session's plan ledger) and record it. Its record is replayed on a resume,
+   * so it runs once per request.
+   */
+  const decidePlan = handler({
+    name: "plan-decide",
+    inputSchema: z.unknown(),
+    resources: { ...planLedgerResources },
+    sessionStateSchema: planWaitingSessionState,
+    execute: async (_input, ctx) => {
+      const own = await ownPlanLedger(ctx as never);
+      const workable = (own?.list() ?? []).filter(isWorkable);
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0 } as never);
+      // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
+      if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx as never);
+    }
+  });
+
+  /** The request answered after its plan: its turn is over (FIX-2113). */
+  const endPlanWaiting = handler({
+    name: "plan-end-waiting",
+    inputSchema: z.unknown(),
+    sessionStateSchema: planWaitingSessionState,
+    execute: async (_input, ctx) => {
+      await clearPlanWaiting(ctx as never);
+    }
+  });
+
+  /** Whether the turn left steps to work, as {@link decidePlan} recorded it. */
+  const owesPlan = (_answer: unknown, ctx: unknown): boolean =>
+    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_OWED_STATE] === true;
 
   const planned = (turn: BlockDefinition<any, any>): BlockDefinition<any, any> => {
     if (plannedBlocks.has(turn)) return turn;
@@ -279,14 +389,17 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       // In order: each step sees the one before it end.
       concurrency: 1
     });
-    const answer = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
+    let answer = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
       .tap(notePlanStart)
       .tap(board.drain)
       .step(briefAnswer)
       .step(turn)
-      .tap(endAnswer);
+      .tap(endAnswer)
+      .tap(endPlanWaiting);
+    if (options.afterPlan !== undefined) answer = answer.tap(options.afterPlan);
     const block = sequencer({ name: `${turn.name}-planned`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
+      .tap(decidePlan)
       .stepIf(owesPlan, (value: unknown) => value, answer);
     byTurn.set(turn, block);
     plannedBlocks.add(block);

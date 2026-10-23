@@ -17,13 +17,18 @@ import {
   cancelledDependents,
   clearNotice,
   decideNotice,
+  deferredNoticePatch,
+  deliveredByWait,
   NOTICE_DUE_MS,
   noticeDueAt,
   isNoticeOwed,
   noticeKey,
+  noticeTimes,
   noticeText,
   owedNotices,
   recordEnding,
+  resendNowPatch,
+  resentRecord,
   withoutNoticeMarkers,
   type TaskNotice
 } from "../../src/tasks/notice/task-notice";
@@ -107,6 +112,32 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     expect(noticeDueAt(row({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } } }))).toBe(0);
   });
 
+  it("drops an owed notice's resend backoff, so the next pass sends it at once (FIX-2113)", () => {
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    const notice = { attempt: 1, ending: "completed" } as const;
+    // Sent again three times: the next send backs off well past its due time.
+    const backedOff = { ...written, metadata: { ...written.metadata, ...resentRecord({ ...written, metadata: { ...written.metadata, "noticeResent:1:completed": { at: 20_000, n: 2 } } }, notice, 30_000) } };
+    expect(noticeDueAt(backedOff)).toBeGreaterThan(30_000);
+    const patch = resendNowPatch(backedOff);
+    expect(patch).toEqual({ "noticeResent:1:completed": null });
+    const now = { ...backedOff, metadata: { ...backedOff.metadata, ...patch } };
+    expect(noticeDueAt(now)).toBe(10_000 + NOTICE_DUE_MS);
+    // The owed marker itself stays; a row with no resend record needs nothing.
+    expect(isNoticeOwed(now, notice)).toBe(true);
+    expect(resendNowPatch(written)).toEqual({});
+  });
+
+  it("counts a turned-away notice's age from when it was turned away, not from its due time (FIX-2113)", () => {
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    const notice = { attempt: 1, ending: "completed" } as const;
+    expect(noticeTimes(written, notice)?.since).toBe(10_000 + NOTICE_DUE_MS);
+    const turnedAway = { ...written, metadata: { ...written.metadata, ...deferredNoticePatch(written, notice, 90_000) } };
+    expect(noticeTimes(turnedAway, notice)).toMatchObject({ due: 10_000 + NOTICE_DUE_MS, since: 90_000 });
+    // Still owed, and a row that owes nothing is left as it is.
+    expect(isNoticeOwed(turnedAway, notice)).toBe(true);
+    expect(deferredNoticePatch(row(), notice, 90_000)).toEqual({});
+  });
+
   it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {
     const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
     const completed = recordEnding({ ...parked, status: "completed", attempts: 2, output: "eu" }, {
@@ -158,6 +189,19 @@ describe("a notice delivered", () => {
     const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
     const cleared = { ...completed, metadata: { ...completed.metadata, ...clearNotice(first) } } as Task;
     expect(owedNotices(cleared, "tasks").map((n) => n.ending)).toEqual(["completed"]);
+  });
+
+  it("by a wait that found the row ended drops the ending's notice only (FIX-2112)", () => {
+    // An earlier attempt's question is not what the wait returned: it stays owed.
+    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
+    const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
+    const read = { ...completed, metadata: { ...completed.metadata, ...deliveredByWait(completed) } } as Task;
+    expect(owedNotices(read, "tasks").map((n) => n.ending)).toEqual(["parked"]);
+    // A row still running owes nothing a wait could have read.
+    expect(deliveredByWait(parked)).toEqual({});
+    // A notice held for the request whose wait lapsed is that request's read to deliver, not this one's.
+    const held = recordEnding(row({ wait: { gateId: "g", deadline: 1, requestId: "r", lapsed: true } } as Partial<Task>), { kind: "completed", output: 1 });
+    expect(deliveredByWait(held)).toEqual({});
   });
 });
 

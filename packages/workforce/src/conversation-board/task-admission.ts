@@ -25,6 +25,7 @@ import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from
 import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
+import { anotherTurnWaitsOnItsPlan } from "./plan";
 
 /** The running row this session works, on the board above it (`./board-above`), or none. */
 async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
@@ -103,12 +104,16 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
  * the conversation ledger (the session kit's resources).
  *
  * @param answerCounts Whether the entry's turn answer can be the task's result (a woken turn's can; the check entry, which runs no turn, can't).
+ * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn, FIX-2113).
  */
-export function admitOwnTask(name: string, answerCounts: boolean) {
+export function admitOwnTask(name: string, answerCounts: boolean, options: { readonly unlessAnotherTurnWaits?: boolean } = {}) {
   return taskRequestAdmission({
     name,
     answerCounts,
-    find: ownTaskRow,
+    find: async (ctx) =>
+      // With `unlessAnotherTurnWaits`, nothing while another request here
+      // waits on a step of its own plan (FIX-2113): its turn isn't over.
+      options.unlessAnotherTurnWaits === true && (await anotherTurnWaitsOnItsPlan(ctx)) ? undefined : ownTaskRow(ctx),
     endRules: conversationEndRules
   });
 }

@@ -59,7 +59,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
+the re-entries that do not spend the budget (`release`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
 rather than parsing the error string.
@@ -496,7 +496,7 @@ export default defineFlow({
 ```
 
 **Hearing how a task ended.** The session that filed a row hears each of its endings once, as
-a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency? })`
+a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency?, defer? })`
 builds that entry; `defineFlow` refuses a flow that holds a board that dispatches without one,
 whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSettledInput`:
 `{ boardId, taskId, attempt, ending, output?, error?, question?, cancelled? }`, where `ending` is
@@ -506,6 +506,16 @@ the same session filed (they send no notice of their own). A retry sends nothing
 the filer waited on (`getTask` with `wait`), nor a cancel the filer's own model made with its
 task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
 sent again. The entry queues on the session unless `concurrency` says otherwise.
+
+**Holding a notice back.** Give `taskSettledEntry` a `defer(ctx, notice)` when the session can be
+busy with something a notice must not run beside, such as a turn that is still under way. When it
+answers `true`, the entry runs nothing and acknowledges nothing: the notice stays owed, and the
+session's pass (below) sends it again. Each resend waits longer than the last (2 s, doubling, at most
+5 minutes): that wait is the notice's *resend backoff*. A notice held back is not a failed delivery:
+its age, which ends it as undeliverable past `maxDebtAgeMs`, counts from the last time it was held
+back. Once the session is free, apply `resendNowPatch(row)` to each row that still owes a notice,
+with `ref.patchMetadata(row.id, resendNowPatch(row))`, and run the pass: the patch drops the resend
+backoff, so the pass sends the notice at once rather than at its next resend.
 
 A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
 about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
@@ -988,8 +998,11 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
 deadline is milliseconds from the call, five minutes by default, within the host's
-`waitDeadlines` bounds. At the deadline the task runs on and nothing is cancelled. If it ends
-before the waiting request does, that request's next `getTask` on it returns the ending. If
+`waitDeadlines` bounds. A task that already ended is returned at once, and no `onTaskSettled`
+follows for it when the flow's `onTaskSettled` waits behind the turn that filed the task, as
+Workforce's `respond` and `work` turns make it: the request still runs, but your block isn't
+called. At the deadline the task runs on and nothing is cancelled. If it ends before the
+waiting request does, that request's next `getTask` on it returns the ending. If
 the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
 task's own turn may wait too. A wait is refused when it would make a chain of more than five
 waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait

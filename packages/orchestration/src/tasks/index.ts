@@ -206,6 +206,7 @@ export {
   type NoticeDecision,
   NOTICE_DUE_MS,
   noticeDueAt,
+  resendNowPatch,
   cancelledDependents,
   type NoticeRecording,
 } from "./notice/task-notice";

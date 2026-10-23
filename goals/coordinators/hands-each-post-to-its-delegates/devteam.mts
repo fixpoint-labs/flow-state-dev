@@ -460,9 +460,29 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.notes.push(`second ask ${again.status}; tools: ${again.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
       const own3 = await ownWorkers(alice);
       if (!same(own3, own2)) r.failures.push(`c:no-second-hire — asked again, her own workers went from [${own2.join(", ")}] to [${own3.join(", ")}]`);
-      const againDeliveries = (await recordOf(o.store, alice, cos.id)).ledger.filter((d) => d.postId === again.requestId);
-      if (hire === undefined || !againDeliveries.some((d) => d.delegate.worker === hire && d.status === "delivered")) {
-        r.failures.push(`c:same-worker — asked again, wanted a delivery to ${hire ?? "the hire"}; the ledger holds ${show(againDeliveries)}`);
+      // A delegate works one routed task at a time (FIX-2083): asked again while
+      // the hire still works the first ask, the second waits in Alice's list,
+      // pending, for that same worker, and starts once the first ends. So the
+      // second counts as handed to the hire when it was delivered, or when it
+      // waits pending while the first is still open. One still pending after
+      // the first has ended has 60 s to start, then fails.
+      const firstTaskId = firstDeliveries[0]?.taskId;
+      const sameWorker = async () => {
+        const ledger = (await recordOf(o.store, alice, cos.id)).ledger;
+        const all = ledger.filter((d) => d.postId === again.requestId);
+        const toHire = all.filter((d) => d.delegate.worker === hire);
+        const first = ledger.find((d) => d.taskId === firstTaskId);
+        const firstOpen = first !== undefined && !["completed", "errored", "cancelled"].includes(first.rowStatus);
+        const delivered = toHire.some((d) => d.status === "delivered");
+        const queued = toHire.some((d) => d.status === "pending") && firstOpen;
+        return { ok: delivered || queued, delivered, pending: toHire.some((d) => d.status === "pending"), first, all };
+      };
+      let read = await sameWorker();
+      for (const until = Date.now() + 60_000; !read.ok && read.pending && Date.now() < until; await sleep(1_000)) read = await sameWorker();
+      if (hire === undefined || !read.ok) {
+        r.failures.push(`c:same-worker — asked again, wanted a routed task for ${hire ?? "the hire"}, delivered, or pending while its first is still open; the ledger holds ${show(read.all)}; the first ask's task: ${show(read.first)}`);
+      } else if (!read.delivered) {
+        r.notes.push(`asked again: a routed task for \`${hire}\`, pending behind its first (${read.first?.rowStatus}), as a delegate works one at a time`);
       }
     }
   }

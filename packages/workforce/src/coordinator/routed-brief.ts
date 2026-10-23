@@ -60,6 +60,16 @@ export function routedBriefOf(task: { readonly sealed?: Readonly<Record<string, 
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * Whether a routed task was filed by the judgment turn's own `createTask`
+ * (its brief names the call), so that turn is its filer and hears its failure
+ * (FIX-2115). A policy's filing, and a post row stored before FIX-2083, name
+ * none.
+ */
+export function filedByTurn(brief: RoutedBrief | undefined): boolean {
+  return brief?.call !== undefined;
+}
+
 /** The message as the brief says it: who wrote it, through whom, and what it says. */
 function said(brief: RoutedBrief): string {
   return `${brief.from}, through ${brief.coordinator}: ${brief.body}`;

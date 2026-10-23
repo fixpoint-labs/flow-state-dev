@@ -511,7 +511,7 @@ describe("a dependency that ends while its dependent is written (resource-backed
 
   async function slowBoard() {
     const collection: ResourceCollectionRef<JsonObject> = createFakeResourceCollection();
-    const gates: { create?: Gate; update?: { key: string; gate: Gate; computed: Gate } } = {};
+    const gates: { create?: Gate; createReached?: Gate; update?: { key: string; gate: Gate; computed: Gate } } = {};
     // Every ref the board holds holds its update open at the gate, after the
     // new state is computed and before it is stored.
     const slowRef = (ref: ResourceRef<JsonObject>): ResourceRef<JsonObject> =>
@@ -534,6 +534,7 @@ describe("a dependency that ends while its dependent is written (resource-backed
     const realList = collection.list.bind(collection);
     Object.assign(collection, {
       create: async (key: string, initial: JsonObject) => {
+        gates.createReached?.open();
         if (gates.create !== undefined) await gates.create.opened;
         return slowRef(await realCreate(key, initial));
       },
@@ -547,7 +548,10 @@ describe("a dependency that ends while its dependent is written (resource-backed
     const { tasks, gates } = await slowBoard();
     await tasks.addTask({ id: "a", goal: "a" });
     gates.create = gate();
+    gates.createReached = gate();
     const filing = tasks.addTask({ id: "b", goal: "b", deps: ["a"] });
+    // Past the filing's dependency check, at its write: the check saw "a" open.
+    await gates.createReached.opened;
     await tasks.cancel("a");
     gates.create.open();
     await filing;
