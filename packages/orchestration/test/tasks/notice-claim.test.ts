@@ -26,7 +26,7 @@ import type { TaskSettledInput } from "../../src";
 import { defineTaskCollection, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
 import { taskBoard } from "../../src/task-board";
 import {
-  askPerson,
+  awaitApproval,
   fileCall,
   finishTask,
   finalAnswer,
@@ -163,7 +163,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
         fileCall("f1"),
         (opts) => {
           taskId = waitedTaskId([opts], 0);
-          return askPerson("p1")(opts);
+          return awaitApproval("p1")(opts);
         },
         waitAgain("w1", () => taskId),
         finalAnswer
@@ -199,7 +199,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       fileCall("f1"),
       (opts) => {
         taskId = waitedTaskId([opts], 0);
-        return askPerson("p1")(opts);
+        return awaitApproval("p1")(opts);
       },
       // Back from the park, the turn runs while the task ends: its notice is held for it.
       finishTask("x1", () => taskId, "found it"),
