@@ -306,7 +306,7 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     expect((await h.sessionsWith("projectId", "shared/apollo")).length).toBe(0);
   });
 
-  it("no-other-kinds · is not one of her conversations with the coordinator: she reaches it through its project (FIX-2158)", async () => {
+  it("no-project-session · is not one of her conversations with the coordinator: she reaches it through its project (FIX-2158)", async () => {
     const h = await boot();
     const project = await h.coordinator("alice");
     const app = h.client("alice");

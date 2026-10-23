@@ -1,9 +1,9 @@
 /**
- * A person's conversations with one worker (FIX-2158): `listWorkerSessions`
- * lists every top-level session the person opened with the worker, the
+ * A user's conversations with one worker (FIX-2158): `listWorkerSessions`
+ * lists every top-level session the user opened with the worker, the
  * default conversation first and marked, and leaves out the sessions a task
  * runs in. A message another worker addresses to the worker still lands in
- * the default, however many sessions the person opens.
+ * the default, however many sessions the user opens.
  *
  * Real engine, real HTTP router, the caller a verified user. The tests read
  * what the client returns and where a request ran, never a stored key, and
@@ -60,7 +60,7 @@ async function use(h: BoardHost, userId: string, sessionId: string): Promise<voi
   await h.settled();
 }
 
-describe("a person's conversations with one worker", () => {
+describe("a user's conversations with one worker", () => {
   it("no-create · lists a session opened at a random id before the first ensure, marks none default, and creates nothing", async () => {
     const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
     try {
@@ -100,7 +100,7 @@ describe("a person's conversations with one worker", () => {
     }
   });
 
-  it("own-only · another person on the same worker id gets only their own session", async () => {
+  it("own-only · another user on the same worker id gets only their own session", async () => {
     const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
     try {
       await h.client("alice").ensureWorkerSession({ worker: "otto" });
@@ -157,7 +157,7 @@ describe("a person's conversations with one worker", () => {
     }
   });
 
-  it("throws when the worker isn't on the person's roster", async () => {
+  it("throws when the worker isn't on the user's roster", async () => {
     const h = bootBoardHost({ standard: workers() });
     try {
       await expect(h.client("alice").listWorkerSessions("nobody")).rejects.toThrow('No worker "nobody" on your roster.');
