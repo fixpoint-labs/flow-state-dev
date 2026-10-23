@@ -41,11 +41,15 @@ interface FixtureSession {
   running: boolean;
   turnStartedAt?: number;
   queue: string[];
+  /** The running turn's steps: Stop clears these. */
   timers: ReturnType<typeof setTimeout>[];
+  /** Background tasks' steps: they outlive the turn, and only asking the main session stops a task. */
+  taskTimers: ReturnType<typeof setTimeout>[];
   tasks: FixtureTask[];
 }
 
-type Step = [delayMs: number, run: () => void];
+/** A scripted step; `background` steps belong to a task, not to the turn. */
+type Step = [delayMs: number, run: () => void, background?: "background"];
 
 const MINUTE = 60_000;
 
@@ -91,9 +95,9 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const play = (s: FixtureSession, steps: Step[]) => {
     let at = 0;
-    for (const [delay, run] of steps) {
+    for (const [delay, run, background] of steps) {
       at += delay;
-      s.timers.push(setTimeout(run, at * speed));
+      (background ? s.taskTimers : s.timers).push(setTimeout(run, at * speed));
     }
   };
 
@@ -107,6 +111,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const endTurn = (s: FixtureSession) => {
     s.running = false;
     s.turnStartedAt = undefined;
+    // The turn's steps have all run; background steps stay in `taskTimers`.
     s.timers = [];
     touch(s);
     notify();
@@ -169,13 +174,13 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     [600, file(s, "Research Acme", "Find Acme's price, support hours and certifications.", "searching")],
     [400, file(s, "Research Globex", "Read Globex's pricing pages, support terms and audits.", "reading pricing pages")],
     [800, say(s, "Outline:\n1. Price\n2. Support\n3. Risks")],
-    [600, progress(s, "Research Acme", "summarizing")],
-    [1000, settle(s, "Research Acme", "Acme: $40 per user, 24-hour support, SOC 2 since 2024.")],
+    [600, progress(s, "Research Acme", "summarizing"), "background"],
+    [1000, settle(s, "Research Acme", "Acme: $40 per user, 24-hour support, SOC 2 since 2024."), "background"],
     [800, say(s, "Acme's research is in. Section 1 now reads: Acme costs $40 per user, with 24-hour support.")],
     [1200, say(s, "Globex is still running in the background. I'll fold it in when it lands.")],
     [200, () => endTurn(s)],
-    [2800, progress(s, "Research Globex", "reading support terms")],
-    [3000, progress(s, "Research Globex", "checking audit reports")],
+    [2800, progress(s, "Research Globex", "reading support terms"), "background"],
+    [3000, progress(s, "Research Globex", "checking audit reports"), "background"],
   ];
 
   const stopScript = (s: FixtureSession, task: FixtureTask): Step[] => [
@@ -210,6 +215,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       running: false,
       queue: [],
       timers: [],
+      taskTimers: [],
       tasks: [],
     });
   };
@@ -224,7 +230,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     async openSession(mode: ModeId) {
       const id = nextId("session");
       const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false };
-      sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], tasks: [] });
+      sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
     },

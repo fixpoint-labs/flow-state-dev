@@ -97,4 +97,14 @@ describe("the session-mode screen", () => {
     await within(thread()).findByText(/Interrupted/);
     expect(within(thread()).queryByRole("status")).toBeNull();
   });
+
+  it("keeps background tasks running when the turn that filed them is interrupted", async () => {
+    render(<App adapter={createFixtureLab({ speed: 0.1 })} />);
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
+    expect(row("Research Acme").dataset.taskStatus).toBe("in_progress");
+    fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
+    await within(thread()).findByText(/Background tasks keep running/);
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), { timeout: 2000 });
+  });
 });
