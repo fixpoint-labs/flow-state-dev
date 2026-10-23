@@ -1008,7 +1008,8 @@ step. So:
 - **The epic's goal is proven by its closure issue, and nothing else.** Every child passing its
   own goal check is not the epic passing. The closure issue's QA run on one pinned `main` commit
   is, and it stays open until every bug it found is fixed and retested by a later run, which
-  re-grades the failed checks and the checks whose subject changed and carries the rest forward
+  re-grades the failed checks, the checks whose subject changed and any check whose file was
+  rebuilt, and carries the rest forward
   ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
   Never wrap over an open closure issue, and never close it on a run that filed a finding.
 - **Stop before implementation merge**, per issue. Spec merge follows its separate approved-head/checks gate; implementation merges remain human-controlled.
