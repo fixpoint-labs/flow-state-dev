@@ -242,6 +242,8 @@ export function harnessUsageAction(options: HarnessUsageActionOptions) {
   );
   const timeoutMs = options.timeoutMs ?? USAGE_READ_TIMEOUT_MS;
   // One call in flight per person and harness, shared by every refresh that asks meanwhile.
+  // The map lives in this process: another host process keeps its own, and only the
+  // once-a-minute claim on the stored row holds across them.
   const inFlight = new Map<string, Promise<void>>();
 
   const refreshOne = (ctx: BlockContext, harness: string, reader: HarnessUsageReader): Promise<void> => {
