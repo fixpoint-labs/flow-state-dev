@@ -10,7 +10,7 @@
 | **asks worker A to check something with worker B** | Sees B's answer only on Shift Manager's Messages screen, away from the conversation | Sees a one-line card in A's conversation where A messaged B, and B's reply land in the same conversation under B's name |
 | **is mid-turn with A when B's reply arrives** | Nothing on screen says it came | Sees a pending line at once: "researcher replied · lead reads it after this turn". The reply lands as its own line right after A answers ([D2](DECISIONS.md#d2)) |
 | **keeps one conversation going for weeks** | Turns past the history window (50) fall out with no trace | Sees where the turns A reads word for word begin, and A still knows what was said before it ([gap G1](#package-gaps)) |
-| **points a worker at the repo it works in** | Kitchen Sink's harness modes fall back to the server's own checkout when none is set | Sets one directory per worker, as a project. With none set, the screen asks for one and nothing runs; there is no fallback ([D3](DECISIONS.md#d3)) |
+| **points a worker at the repo it works in** | Kitchen Sink's harness modes fall back to the server's own checkout when none is set | Talks to any worker with no project set. The first time a job needs files, the screen asks for a project and that run waits; the project then sticks to the worker. There is no fallback ([D3](DECISIONS.md#d3)) |
 | **hands lead a coding job** | A coding run is a DevTeam worker, hired only in Shift Manager | lead files it as a task for coder, which runs it through Claude Code in lead's directory. A task card shows in lead's conversation, and the result lands there as a line from coder ([D4](DECISIONS.md#d4)) |
 | **hardens the workforce package** | Has no second app on the same pieces | Gets a gap list from a way of working already known to be right |
 
@@ -48,7 +48,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/teammates-lab/a-worker-talks-to-another-while-you-talk/` · real model · run at wiring, re-run by the closure (FIX-2156) |
-| **Signal** | 1: you ask lead *"Ask researcher for our launch date, and help me outline the post"*; lead's answer is in its conversation. 2: a card *to researcher* shows in lead's conversation, a line *from lead* in researcher's, and lead's Talk panel lists the exchange under *with researcher*. 3: you send lead a second line before researcher answers; researcher's reply shows in lead's conversation under researcher's name, after lead's answer to you, and lead's next line uses the date. 4: the script sends 60 more turns (past the 50-turn window), then asks lead for a fact you gave on turn 1 and for the launch date; both answers are right, and the divider marks where the turns lead reads word for word begin, labelled *summarized* only when G1's summary is on. 5: lead's directory is the project `relay`, mapped to a scratch checkout; you ask lead *"Have coder fix the typo in the README's first line"*. A task card for coder shows in lead's conversation; coder's run goes through Claude Code with that checkout as its workspace (read from the run); the README there changes, and nothing else on disk; the result lands in lead's conversation as a line from coder, after lead's turn |
+| **Signal** | 1: you ask lead *"Ask researcher for our launch date, and help me outline the post"*; lead's answer is in its conversation. 2: a card *to researcher* shows in lead's conversation, a line *from lead* in researcher's, and lead's Talk panel lists the exchange under *with researcher*. 3: you send lead a second line before researcher answers; researcher's reply shows in lead's conversation under researcher's name, after lead's answer to you, and lead's next line uses the date. 4: the script sends 60 more turns (past the 50-turn window), then asks lead for a fact you gave on turn 1 and for the launch date; both answers are right, and the divider marks where the turns lead reads word for word begin, labelled *summarized* only when G1's summary is on. 5: lead has no project yet; you ask lead *"Have coder fix the typo in the README's first line"*. The screen asks for a project and no run starts; you pick `relay`, mapped to a scratch checkout. A task card for coder shows in lead's conversation; coder's run goes through Claude Code with that checkout as its workspace (read from the run); the README there changes, and nothing else on disk; the result lands in lead's conversation as a line from coder, after lead's turn |
 | **Anti-game** | Assert on what a person sees in the browser and on message rows read through the public log. Never on the lab's own state |
 | **Control that must fail** | `GOAL_CONTROL=no-reply-tool`: researcher's `sendMessage` dropped from its tools; step 3 must FAIL. `GOAL_CONTROL=no-memory`: memory removed from lead's flow and no summary kept; step 4 must FAIL. `GOAL_CONTROL=no-directory`: lead has no directory; the screen asks for one, no run starts, and the lab's own checkout is untouched; step 5 must FAIL |
 
@@ -151,9 +151,9 @@ If wrong: a lab that hides glue the package should own.
    Bot on the brief's second hard spot.
 2. **[D1](DECISIONS.md#d1) · Worker talk shows in both conversations as one-line cards, and in a
    Talk panel, not as its own session.** If wrong: talk is easy to miss, or too loud.
-3. **[D3](DECISIONS.md#d3) · Each worker has one directory, a project; with none set the screen
-   asks.** If wrong: a person has to set a directory before a coding job, or a run lands in the
-   wrong repo.
+3. **[D3](DECISIONS.md#d3) · Each worker has one directory, a project, asked for the first time a
+   job needs one.** If wrong: a coding job stalls on a prompt the person missed, or a run lands in
+   the wrong repo.
 4. **[D4](DECISIONS.md#d4) · Only a task-taking coder runs a harness; the workers you talk to stay
    on our generator.** If wrong: a person can't talk to Claude Code directly in this lab.
 

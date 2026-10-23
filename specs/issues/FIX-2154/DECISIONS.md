@@ -17,7 +17,7 @@ flowchart TD
   D1 -.->|"rejected"| X2["a separate Messages screen only · away from the conversation"]
   I --> D2["D2 · a message never interrupts your turn · pending, then after"]
   D2 -.->|"rejected"| X3["taken inside the running turn · a model amendment"]
-  I --> D3["D3 · one directory per worker, a project · ask when none is set"]
+  I --> D3["D3 · one directory per worker, a project · asked at the first job that needs one"]
   D3 -.->|"rejected"| X4["a scratch directory · work you can't find"]
   D3 -.->|"rejected"| X5["the server's own checkout · the silent default"]
   I --> D4["D4 · a harness on a task-taking coder only"]
@@ -65,22 +65,22 @@ Then a gap carries messages on the epic's ER-6 path (taken before the next model
 the pending line becomes a line inside the turn.
 
 <a name="d3"></a>
-## D3 · Each worker has one directory, a project, and with none set the screen asks
+## D3 · Each worker has one directory, a project, asked for the first time a job needs one
 
-*A product call fsd-product-lead raised on #46 ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6375993020)), with this pick as its lean.*
+*A product call fsd-product-lead raised on #46 ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6375993020)), and settled there as talk-first ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6376142695)). The epic's ER-8 lets each lab say when it asks.*
 
 | | |
 |---|---|
-| **Instead of** | A scratch directory when none is set, the server's own checkout (Kitchen Sink's fallback), or a raw path per message |
-| **Because** | A Grok Bot-style worker has one conversation, so it has one place it works: the directory is set on the worker, not per session. It is a project, never a raw path, because the box already turns a project into a checkout (`projectWorkspace()`, with the operator's `checkouts` map) and already refuses a task with none (`no-project`). The screen shows that refusal as a prompt to pick a project, before a coding job is sent. Work lead hands on inherits lead's directory through the task's project (`filingProjectId`), unless the task names another project. What is missing is a project on the worker's default conversation, which FIX-2161 is widened to carry |
-| **Locks in** | Nothing runs until a person has said where. A worker's directory is one of the user's projects, so a repo the person hasn't added as a project can't be picked |
+| **Instead of** | Asking up front before you can talk to a worker, a scratch directory when none is set, the server's own checkout (Kitchen Sink's fallback), or a raw path per message |
+| **Because** | A Grok Bot-style worker has one conversation, so it has one place it works: the directory is set on the worker, not per session. It is a project, never a raw path, because the box already turns a project into a checkout (`projectWorkspace()`, with the operator's `checkouts` map) and already refuses a task with none (`no-project`). The lab is talk-first: talking to a worker never needs a project. The first time a job needs one (lead hands coder a task, or anything else that touches files), the screen asks, and that run waits until you pick; the refusal is only the backstop. The pick sticks to the worker. Work lead hands on inherits lead's directory through the task's project (`filingProjectId`), unless the task names another project. What is missing is a project on the worker's default conversation, which FIX-2161 is widened to carry |
+| **Locks in** | No run touches files until a person has said where, and a job can wait on that prompt. A worker's directory is one of the user's projects, so a repo the person hasn't added as a project can't be picked |
 
-![D3: where a worker's work happens on disk. One directory per worker, a project, and ask when none is set, chosen, beside a scratch directory. Decides it: the box already refuses a task with no project. Locks in: nothing runs until a person says where](figures/d3-worker-directory.svg)
+![D3: where a worker's work happens on disk. One directory per worker, a project, asked at the first job that needs one, chosen, beside a scratch directory. Decides it: the box already refuses a task with no project. Locks in: no run touches files until a person says where](figures/d3-worker-directory.svg)
 
 It comes down to the box's own refusal: a task with no project doesn't run.
 
-**What would change my mind:** people using the lab mostly for talk, never for coding. Then asking
-up front is friction, and the prompt moves to the first coding job.
+**What would change my mind:** people missing the prompt, so coding jobs sit waiting. Then lead
+says in its conversation that it is waiting for a project, as well as the screen asking.
 
 <a name="d4"></a>
 ## D4 · Only a task-taking coder runs a harness; the workers you talk to stay on our generator
@@ -187,6 +187,8 @@ teammates. Then the harness gets the epic's mid-turn path (the Claude lab's D2),
   flow can't stay under 200 lines. G3 is FIX-2161, widened to a worker's default conversation.
   ER-9 then settled on one coding flow routed by the worker's `harness` setting, which the hire
   already passes through, so G4 was dropped.
+- **Amendment, talk-first** — fsd-product-lead settled when D3 asks ([comment](https://github.com/fixpoint-labs/agent-mailbox/pull/46#issuecomment-6376142695)):
+  at the first job that needs a project, never before talking. Step 5 now starts with lead unset.
 
 ## Notes from review
 
