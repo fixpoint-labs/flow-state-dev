@@ -84,6 +84,7 @@ export const TAGS: Record<string, Kind> = {
   "j1:answer": "judgment",
   "j1:tools": "structural",
   "j1:read-once": "structural",
+  "j1:heard-once": "structural",
   "j1:once": "structural",
   "j2:steered": "structural",
   "j2:steer-shows": "judgment",
@@ -232,11 +233,25 @@ function gradeJ1(store: string, j: Awaited<ReturnType<typeof journeyHandsOut>>, 
     f.push(`j1:waits-in-request — wanted editor's one work request to read the research's ending with getTask: task ${E.status}, ${works.length} work request(s), ${read.length} completed getTask read(s)`);
   }
   // That ending reaches editor once: read in the request, so no notice turn runs for it.
+  // An ending that lands before the getTask wait still starts one onTaskSettled request: at the
+  // ending nothing is waiting yet, so a notice is owed and sent. Once the wait has read the
+  // ending, that request finds the notice no longer owed and runs no turn: its output is
+  // `{ owed: false }` (FIX-2112). A request that runs no turn is not a second hearing, so only
+  // the requests that admitted the notice (`owed: true`) count against the read. The model-free
+  // case in goals/task-board/waits-on-a-task-it-filed counts the same way.
   const notices = settledRequests(store, editorSession);
-  if (research.length > 0 && read.length > 0 && notices.length > 0) {
+  const heardBy = notices.filter((r) => (r.output as { owed?: unknown } | undefined)?.owed === true);
+  if (research.length > 0 && read.length > 0 && heardBy.length > 0) {
     const ended = research[0]!.completedAt ?? 0;
     const asked = Math.min(...read.map((i) => Number(i.ts ?? Infinity)));
-    f.push(`j1:read-once — researcher's ending reached editor twice: its work request read it with getTask (${asked - ended} ms after the ending) and ${notices.length} onTaskSettled turn(s) ran for it too`);
+    f.push(`j1:read-once — researcher's ending reached editor twice: its work request read it with getTask (${asked - ended} ms after the ending) and ${heardBy.length} onTaskSettled turn(s) ran for it too (${notices.length} request(s) in all)`);
+  }
+  // And it is heard exactly once, by that read: in one request, with no notice that ran a turn.
+  // This holds the exclusion above to its claim: discounting the `owed: false` requests must not
+  // let a run where nothing delivered the ending, or two requests did, pass j1:read-once.
+  const readIn = new Set(read.map((i) => i.requestId)).size;
+  if (research.length > 0 && (readIn !== 1 || heardBy.length !== 0)) {
+    f.push(`j1:heard-once — wanted researcher's ending heard exactly once, by editor's getTask read: read in ${readIn} request(s), ${heardBy.length} notice turn(s); ${notices.length} onTaskSettled request(s), outputs ${show(notices.map((r) => r.output), 200)}`);
   }
   if (!outputText(E.output).includes(cast.factMark)) f.push(`j1:answer — editor's answer lacks researcher's fact: ${show(E.output, 160)}`);
   const offered = tell.over(
