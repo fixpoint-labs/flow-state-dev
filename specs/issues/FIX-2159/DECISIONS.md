@@ -47,7 +47,7 @@ directly. Then the take could be lab code, and the package adds only the hook.
 |---|---|
 | **Instead of** | A new "taken in request R" list on the conversation, kept like `steersTakenIn` on a task |
 | **Because** | `onTaskSettled` already takes a notice in one conditional write that names its request, keeps that record after the clear, and takes a notice over once its taker ended without clearing it (FIX-2123). A turn that takes in its own name gets all three for nothing. The [POC](poc/take-in-turn/README.md) runs it on the real engine: taken in the turn and skipped by the queued copy; refused when the copy took it first; taken over after a turn that failed before clearing it |
-| **Locks in** | A result taken in the turn has exactly the guarantees of one after the turn: never twice, and taken over if the turn dies before acknowledging it. The order is the queued handling's: take, report a failure, dedupe, free the session, acknowledge, then the line. A process death between the acknowledgement and the line drops the line, as it does today |
+| **Locks in** | A result taken in the turn has exactly the guarantees of one after the turn: never twice, and taken over if the turn dies before acknowledging it. The take goes only through `takeNotice` with `by:` the turn's request: no new metadata key, and no read or write of the running-filer hold (`heldFor`, `whileRunning`). The order is the queued handling's: take, report a failure, dedupe, free the session, acknowledge, then the line, with the part from report to acknowledge one function the queued `settle` shares. A process death between the acknowledgement and the line drops the line, as it does today |
 
 ![D1: the existing take record in the turn's name, chosen, beside a new taken-in-R list; decided by one mark that the queued entry already obeys](figures/d1-one-take-record.svg)
 
@@ -63,7 +63,7 @@ the turn needs its own list, and this card becomes the rejected one.
 |---|---|
 | **Instead of** | Any running request of the filer's session: a turn a notice woke, a message from another worker (`receive`), a task's turn |
 | **Because** | In a task session the queued handling also does the task's own ending work (`admitOwnTask`), and the entry refuses a notice once it is cleared, so a take there would skip it (epic D2). A `receive` is talk between workers, and its turn order is FIX-1989's. `isUserTurn` already marks exactly a person's turn in a conversation, and skips task and delegate sessions |
-| **Locks in** | The take hands over nothing outside a person's turn, whatever the app's hook asks. A coordinator's woken turn, a worker answering another worker, and a worker on a task hear results after the turn, as today. Widening it later is a new decision, not a flag |
+| **Locks in** | The take hands over nothing outside a person's turn, whatever the app's hook asks. A coordinator's woken turn, a worker answering another worker, and a worker on a task hear results after the turn, as today. Widening it later is a new decision, not a flag. Two edges: the coordinator's round-0 post carries the mark, so it passes the gate, but this issue adds no hook to the coordinator flow and its delegates' answers are routed, which the take never hands over. A person's request parked on a wait isn't running, so an ending during the park goes the queued way, as today |
 
 ![D2: a person's own turn only, chosen, beside any running request of the session; decided by never skipping the task's own ending work](figures/d2-person-turn-only.svg)
 
@@ -88,11 +88,16 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
   after it started (POC, case 1). It reads rows this conversation filed that still owe an
   eligible notice, finished rows included, never only open ones.
 - **The bound is the package's.** At most three answers again per request, so a hook that always
-  returns a message can't loop a turn forever.
+  returns a message can't loop a turn forever. One named, exported constant, apart from core's
+  `maxSteps` and the board's `MAX_PASS_ROUNDS`. After the last allowed answer the hook isn't run
+  and the take hands over nothing: endings stay owed for the queued `onTaskSettled`.
 - **Where the hook sits.** On the person's door (`agent-user-turn`), after `run`, so after the
   plan's own answer (FIX-2076): once per request, never in a task or notice turn, and an app's
   hook never runs where D2 says nothing changes. An answer again is one more turn of `run`, so
   a result can make the worker plan again.
+  So the hook runs outside `planned`; an answer again may file steps, as the person's own message
+  could, and those are drained and answered in the same request. The plan's own answer doesn't
+  count toward the three; only answers again do.
 - **At most once, as today.** The take acknowledges before it says the line, the queued
   handling's order. A death before the acknowledgement: the queued copy takes it over and says
   it after the turn. A death after it: the line is dropped. No idempotency key on the line.
@@ -128,6 +133,9 @@ Evidence for both is in [`poc/take-in-turn/`](poc/take-in-turn/README.md), on `m
 - **Review round 1** — the crash guarantee stated as at most once in the goal (it had read as
   no loss); the hook placed on the person's door after the plan's answer; one-flag shape named
   as dropped.
+- **Review round 2** — Architect's follow-up: the take touches only the take record, never the
+  hold; the shared handling named as one function with two callers; the bound exported and
+  closed after its last answer; `planned`, the round-0 post, a park and messages placed.
 
 ## Notes from review
 

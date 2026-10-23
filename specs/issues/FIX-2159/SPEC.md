@@ -66,7 +66,7 @@ bottom row is a second ending, which loops once more within the bound ([D3](DECI
   });
 ```
 
-The two names are working names; the implementer fixes them. The hook sits on the door a person's message comes through, after the whole turn, its plan's answer included, so it runs once per request and never in a task or notice turn. Each answer again is one more turn of the worker, plan and all; the bound of three counts only these, not the plan's own answer.
+The two names are working names; the implementer fixes them. The hook sits on the door a person's message comes through, after the whole turn, its plan's answer included, so it runs once per request and never in a task or notice turn. Each answer again is one more turn of the worker, plan and all; the bound of three counts only these, not the plan's own answer. The bound is one named, exported constant. After the last allowed answer the hook isn't run and the take hands over nothing, so later endings stay owed for the queued `onTaskSettled` rather than being taken with no answer to use them.
 
 **Docs:** rule 7 of `docs/internal/design/workforce-coordination-concept.md` gains the third
 destination. The workforce README documents the hook and the take, with the lab's lines as the
@@ -97,25 +97,29 @@ finds nothing owed ([POC](poc/take-in-turn/README.md)).
   no notice to take.
 - **Routed results.** A task whose result goes to the conversation stays with its routing.
 - **`afterAnswer`.** It stays a side step that can't change the answer.
+- **Messages.** A message from another worker, including FIX-2070's coming `{ session: id }` form, never goes through the take. It is not an ending (FIX-2103), so FIX-2070's spec doesn't widen it.
+- **A parked turn.** While the person's request is parked, the queued copy isn't held for it, so an ending during a park goes the queued way. The take runs only in a running request, after an answer.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| FIX-2123's take record: `takeNotice`, the `noticeTaken:` record, the takeover once a taker ended | **Builds on.** It is the durable "taken in R" mark. No new field ([D1](DECISIONS.md#d1)) |
-| FIX-2078's one ending path: `taskSettledEntry` and Workforce's handling in `task-settled.ts` | **Builds on.** The take runs the same handling; only where the line goes changes |
+| FIX-2123's take record: `takeNotice` / `noticeTakeWrite`, the `noticeTaken:` record, the takeover once a taker ended | **Builds on.** The take goes only through `takeNotice` with `by:` the turn's request. It is the durable "taken in R" mark: no new metadata key ([D1](DECISIONS.md#d1)) |
+| The hold on a running filer: `heldFor`, the deferred notice's `whileRunning` (FIX-2123, FIX-2149) | **Neither read nor written by the take**, so `held`, `noticeTaken` and `whileRunning` can later fold into one marker. The queued copy turned away with `whileRunning: R` while R runs comes back after R, finds the notice cleared, and does nothing |
+| FIX-2078's one ending path: `taskSettledEntry` and Workforce's handling in `task-settled.ts` | **Factors, then builds on.** The end, report, dedupe (`noteSeen`) and acknowledge part of the queued `settle` becomes one function that `settle` and the take both call. One handling, two callers: only where the line goes differs, said here and handed back, or a woken turn |
 | FIX-2086's steer entry (`steer-context.ts`, `steersTakenIn`) | **Leaves alone.** It stays task-only; nothing reads a result before each model call |
 | `isUserTurn` (FIX-1945) | **Builds on.** The gate inside the take ([D2](DECISIONS.md#d2)) |
 | The worker turn's answer-once-more after its plan (FIX-2076) | **Builds on.** The hook's answer is the same kind of step, in the same request |
 | `afterAnswer` on the agent flow | **Leaves alone.** A side step; the new hook is the one that may answer |
-| The hold on a running filer (FIX-2123, FIX-2149) and `AFTER_REPLY_CONCURRENCY` | **Leaves alone.** The queued copy still waits; with a hook set it usually finds nothing owed |
+| `AFTER_REPLY_CONCURRENCY` | **Leaves alone.** The queued copy still waits; with a hook set it usually finds nothing owed |
+| `maxSteps` (core, the tool loop) and `MAX_PASS_ROUNDS` (the board's drain rounds) | **Leaves alone.** The answer-again bound is a third, separate count, of answers again in one request |
 | Rule 7 | **Amended** by epic D2, approved at its merge |
 | Anything else that hands an ending to a running request | **None for a conversation.** Searched `prepareStep`, `takeNotice`, `takenIn`, `noticeTaken`, `afterAnswer` across `packages/`; only steers reach a running request, and only a task's |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One public take on the workforce package · one hook on the agent worker flow · a second caller of the take record, the person's turn |
+| **Adds** | One public take on the workforce package · one hook on the agent worker flow · one exported bound · a second caller of the take record and of the factored handling, the person's turn |
 | **Leaves** | The queued notice turn, as the path for every notice no turn took. Not debt: task sessions and worker-to-worker exchanges still need it |
 
 **Net: up, a little.** Two public entries; no new mark, no second path, no context entry.
