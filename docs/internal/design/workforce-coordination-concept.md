@@ -438,11 +438,11 @@ A behavior none of these rules explains is a bug in the model.
     user's own conversations (`{ session: id }`), or replies with `inReplyTo`. The server resolves
     the session and checks it: a `{ session }` target must be a conversation of the sender's user, in
     the sender's org, of a worker still on the roster and still on that session's flow, not a task
-    or delegate session (those are reached by `{ task }`), and anything
-    else is refused. A worker may message itself only through `{ session }` naming a different
-    session of its own; its own name as `to` is refused. In the first version the user supplies
-    the `{ session }` id by pasting it; a lookup comes later. A message never steers a task; to a
-    finished one it is talk in its session, which outlives the task.
+    or delegate session (those are reached by `{ task }`), and anything else is refused. A worker
+    may message itself only through `{ session }` naming a different session of its own; its own
+    name as `to` is refused. In the first version the user supplies the `{ session }` id by pasting
+    it; a lookup comes later. A message never steers a task; to a finished one it is talk in its
+    session, which outlives the task.
 22. Only a request holding a task's claim reports its progress, with `reportProgress`, until the
     task finishes; its `statusNote` never changes the task's status, and only a `work` or
     `onTaskSettled` request checkpoints `output`. A final result replaces the checkpoint unless it
