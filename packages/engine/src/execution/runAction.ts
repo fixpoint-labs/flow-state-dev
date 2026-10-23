@@ -2671,9 +2671,9 @@ async function runActionAttempt<
     // (suspension records + lease) when it completes.
     //
     // "Durable" here means the request actually exercised durability:
-    // `action.durable` is the documented action-level opt-in (it's what makes
-    // ctx.suspend() / crash recovery available and is the reliable signal even
-    // for this in-process path). `sawDurableFrame` additionally covers the
+    // `action.durable` is the documented action-level flag, a reliable signal
+    // even for this in-process path (suspending and crash recovery need only
+    // the host's durability provider). `sawDurableFrame` additionally covers the
     // route/streaming path where a `sequencer({ durable: true })` emits durable
     // state_snapshot frames through the checkpoint hook. Gating on real durable
     // activity avoids touching the stores for purely transient requests, where
