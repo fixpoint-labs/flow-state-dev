@@ -109,8 +109,8 @@ flowchart LR
 A held question's answers meet at ER-8's one write, and a review's at FIX-2129's pending state, so
 in both the first answer wins unless a cancel is already written. One loser rule: an answer that
 loses, to another answer, a cancel or the deadline, is told so, and a steer that loses stays a
-steer. The steer cap leaves room for every open question's answer
-([decided](DECISIONS.md#decided-not-asked)).
+steer. The steer cap leaves room for every open question's answer, by
+[FIX-2133's rule](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2133/specs/issues/FIX-2133/DECISIONS.md#decided-not-asked).
 
 ## What stays as it is
 

@@ -88,14 +88,10 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
   public action for any question, the filer's tool only for a midway question on a task not routed.
 - **One loser rule.** An answer that loses, to another answer, a cancel or the deadline, is told
   so; a steer that loses stays an ordinary steer, taken before the next model call (FIX-2086).
-- **The steer cap keeps room for answers.** An answer is a steer and counts against `MAX_STEERS`.
-  Every open question reserves its answer's place: an ask is refused when the row's steers plus
-  open questions reach the cap, and an ordinary steer at that same count. So a question is always
-  answerable, and a row never holds more than the cap. A refused ask tells the model it can't ask
-  more and to go on from its brief. The check sits inside ER-8's write, which is FIX-2133's; this
-  issue's tools and the composer call it. A question migrated from a park was never asked, so its
-  reservation couldn't be refused: the map lets it sit at most one place above the cap, once per
-  row, for that question's answer or deadline only, and a mapped answered row adds no steer (D2).
+- **The steer cap** follows FIX-2133's rule inside ER-8's write ([FIX-2133, *Decided, not asked*](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2133/specs/issues/FIX-2133/DECISIONS.md#decided-not-asked)); this issue's tools and the composer only call it.
+  This issue's map adds one bound of its own: a question migrated from a park was never asked,
+  so it may sit at most one place above `MAX_STEERS`, once per row, for that question's answer or
+  deadline only, and a mapped answered row adds no steer (D2).
 - **A retry keeps a question's answer and asks for a review again.** A question's answer is a
   steer on the row, so the next attempt's brief holds it, as it holds any steer. A review's verdict
   lives on its suspension, which ends with its attempt; a revision request's words are a steer, and stay.
@@ -120,8 +116,6 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
 |---|---|
 | Keep `answerTask` as a thin call onto the steer (simpler for callers) | A second way to answer, which ER-4 forbids |
 | One model tool, `waitForUser` with a `question` kind that holds instead of suspending | ER-1 keeps `question` out of `waitForUser`, and the two behave differently to the model: a suspension's result is the answer, a hold ends the turn |
-| An answer past the cap, appended anyway (this spec's round-1 rule) | Unbounded: a worker that asks again and again grows the row past FIX-2086's bound (Codex, round 2) |
-| Prune a taken steer at the cap to make room | A retry's brief reads every steer, so pruning loses direction a later attempt needs |
 | Merge before FIX-2132, leaving the shared park for the coding run; or land the new surface first and delete the shared park in a third PR | `main` carries both forms between the merges, and whichever PR lands last must remember the deletion. FIX-2132 builds in parallel, so the serial merge costs only the wait |
 | A line in the task's session answers as a message to the session | The session is waiting, so the line queues behind it (rule 10) and contradicts the owner's call that a steer is the only way to change open work |
 | Keep the `parked` status for app-written parks | The second form of stopping the epic's D1 removes |
