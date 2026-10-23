@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments, today and after. A worker asks: today parkOnQuestion parks the task and the answer is a new turn; after, the waitForUser tool waits and its result is the answer on the same attempt. A flow asks for review: today awaitReview parks the task, the app mounts unparkAndDrain, and the Inbox never shows it; after, ctx.waitForUser with kind review is listed in the Inbox as a review. The filer answers: today with answerTask, a fifth tool; after, with a steer, updateTask message, and the first answer wins. The user answers: today the Inbox lists approvals and input and parked questions sit in a separate list; after, the Inbox lists questions and reviews too, and a line typed in the task's session answers a question. A row parked before the upgrade: after, it runs again using no attempt and asks again in the Inbox."
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments, today and after. A worker asks: today parkOnQuestion parks the task and the answer is a new turn; after, askQuestion holds the task on its row and the answer takes one more turn on the same attempt. A flow asks for review: today awaitReview parks the task, the app mounts unparkAndDrain, and the Inbox never shows it; after, ctx.waitForUser with kind review is listed in the Inbox as a review. The filer answers: today with answerTask, a fifth tool; after, with a steer that names the question, and the first answer wins. The user answers: today the Inbox lists approvals and input and parked questions sit in a separate list; after, the Inbox lists held questions and reviews too, and a line typed in the task's session answers the open question. A row parked before the upgrade: after, it holds on its question, which shows in the Inbox as it was."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -63,10 +63,10 @@
     <rect class="lane" x="16" y="170" width="908" height="116" rx="6"/>
     <text class="t-row" x="28" y="232">AFTER</text>
     <rect class="good" x="140" y="178" width="150" height="100" rx="4"/>
-    <text class="t-ok" x="150" y="200">The turn waits</text>
-    <text class="t-s" x="150" y="220">the waitForUser tool's</text>
-    <text class="t-s" x="150" y="236">result is the answer,</text>
-    <text class="t-s" x="150" y="252">on the same attempt</text>
+    <text class="t-ok" x="150" y="200">The task holds</text>
+    <text class="t-s" x="150" y="220">askQuestion ends the</text>
+    <text class="t-s" x="150" y="236">turn; the answer takes</text>
+    <text class="t-s" x="150" y="252">a turn, same attempt</text>
     <rect class="good" x="296" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="306" y="200">A review item</text>
     <text class="t-s" x="306" y="220">ctx.waitForUser with</text>
@@ -74,18 +74,18 @@
     <text class="t-s" x="306" y="252">for the app to mount</text>
     <rect class="good" x="452" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="462" y="200">A steer answers</text>
-    <text class="t-s" x="462" y="220">updateTask message,</text>
-    <text class="t-s" x="462" y="236">a question only;</text>
+    <text class="t-s" x="462" y="220">a steer naming the</text>
+    <text class="t-s" x="462" y="236">question it answers;</text>
     <text class="t-s" x="462" y="252">first answer wins</text>
     <rect class="good" x="608" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="618" y="200">One Inbox</text>
-    <text class="t-s" x="618" y="220">questions and reviews</text>
+    <text class="t-s" x="618" y="220">held questions, reviews</text>
     <text class="t-s" x="618" y="236">too; a line typed in the</text>
-    <text class="t-s" x="618" y="252">session answers one</text>
+    <text class="t-s" x="618" y="252">session answers it</text>
     <rect class="good" x="764" y="178" width="150" height="100" rx="4"/>
-    <text class="t-ok" x="774" y="200">Runs and asks again</text>
-    <text class="t-s" x="774" y="220">using no attempt;</text>
-    <text class="t-s" x="774" y="236">the question lands</text>
-    <text class="t-s" x="774" y="252">in the Inbox</text>
+    <text class="t-ok" x="774" y="200">Holds on its question</text>
+    <text class="t-s" x="774" y="220">as it was asked;</text>
+    <text class="t-s" x="774" y="236">the answer carries</text>
+    <text class="t-s" x="774" y="252">on the same attempt</text>
   </g>
 </svg>

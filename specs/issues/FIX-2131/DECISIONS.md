@@ -4,31 +4,32 @@
 
 Most of this issue was decided above it: rule 11 of
 [the concept](../../../docs/internal/design/workforce-coordination-concept.md#the-rules), the
-epic's ER-4 and ER-5, and FIX-2129's `waitForUser`, its endings and its answer route. Two calls
-are left, both about what a person sees.
+epic's amended D1 (a question holds its task; approvals, reviews and input suspend), its ER-4,
+ER-5 and ER-8, FIX-2129's `waitForUser`, its endings and its answer route, and FIX-2133's hold.
+Two calls are left, both about what a person sees.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2131"] --> D1["D1 · a steer answers only a question"]
+  I["FIX-2131"] --> D1["D1 · a steer answers only a held question it names"]
   D1 -.->|"rejected · a typed line is no verdict, and approvals are the user's"| X1["a steer answers any kind"]
-  I --> D2["D2 · a task parked before the upgrade runs again and asks again"]
-  D2 -.->|"rejected · held waits on FIX-2133; cancelled loses the work"| X2["map it to held on questions, or cancel it"]
+  I --> D2["D2 · a task parked before the upgrade holds on its parked question"]
+  D2 -.->|"rejected · a parked row doesn't say which it was; a re-run redoes a coding run"| X2["run it again to ask again, or cancel it"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A steer answers only a question; approvals and reviews are answered in the Inbox
+## D1 · A steer answers only a held question it names; approvals and reviews are answered in the Inbox
 
 | | |
 |---|---|
 | **Instead of** | Letting any steer answer any kind of stop, so "looks good" typed in a task's session would answer its review, or "yes" its approval |
-| **Because** | Rule 11: only the user answers approvals and reviews, and the concept names the session line and the filer's steer as answers to a *question*. An approval is a yes or no and a review is a verdict; free text read as either is a guess about what the person meant, and a filer answering one would approve its own work. A question's answer is text, so a steer is a whole answer |
-| **Locks in** | A steer into a task waiting on an approval or a review is kept and the item stays open. The block's result is the Inbox's verdict alone; the steer reaches the work the way any steer does (FIX-2086): the next model call takes it, and a task does not complete with a steer untaken, so it takes one more turn whose brief holds it. The filer answers only a question asked midway, and not on a routed task, whose filer is the conversation (ER-4). The user answers a question from the Inbox, a line in the task's session (which the composer writes as a steer) or a screen's `updateTask`. Apps and screens write against this; widening it later changes what a typed line does to a waiting task |
+| **Because** | Rule 11: only the user answers approvals and reviews, and the concept names the session line and the filer's steer as answers to a *question*. An approval is a yes or no and a review is a verdict; free text read as either is a guess about what the person meant, and a filer answering one would approve its own work. A question's answer is text, so a steer is a whole answer. It names the question it answers, as ER-8 requires; one naming none answers nothing |
+| **Locks in** | A steer into a task waiting on an approval or a review is kept and the item stays open (ER-2). The block's result is the Inbox's verdict alone; the steer reaches the work the way any steer does (FIX-2086): the next model call takes it, and a task does not complete with a steer untaken, so it takes one more turn whose brief holds it. A revision request on a review is the same: the verdict resumes the block, and the request's words are the user's steer. The filer answers only a question asked midway, and not on a routed task, whose filer is the conversation (ER-4). The user answers a question from the Inbox, a line in the task's session (which the composer writes as a steer naming it) or a screen's `updateTask`. Apps and screens write against this; widening it later changes what a typed line does to a waiting task |
 
-![D1: a steer answers only a question, chosen, beside a steer answers any kind. Decides it: a typed line read as a verdict. Price: a user who types in the session still clicks in the Inbox for a review](figures/d1-steer-answers-a-question.svg)
+![D1: a steer answers only a held question it names, chosen, beside a steer answers any kind. Decides it: a typed line read as a verdict. Price: a user who types in the session still clicks in the Inbox for a review](figures/d1-steer-answers-a-question.svg)
 
 It comes down to a typed line read as a verdict: "looks good" would approve work nobody looked at.
 
@@ -36,71 +37,75 @@ It comes down to a typed line read as a verdict: "looks good" would approve work
 Then a review takes a typed line, and an approval still doesn't.
 
 <a name="d2"></a>
-## D2 · A task parked before the upgrade runs again and asks again, using no attempt
+## D2 · A task parked before the upgrade holds on its parked question, a review's park included
 
 | | |
 |---|---|
-| **Instead of** | Mapping a stored parked row onto *held on questions*, or cancelling it |
-| **Because** | A parked row has no suspended request to resume, so it can't become a waiting stop as it is. Held on questions is FIX-2133's and would make this issue wait on it (the epic's seam). Cancelling loses open work. Running it again is what answering it did anyway, a new attempt from the top, and FIX-2080's `parked-for-turn` entry already reads its parked rows this way. The run asks again through `waitForUser`, so the question lands in the Inbox |
-| **Locks in** | Three read-time entries in FIX-2080's map: a row parked on a question and a row parked for review read `pending`, one more turn re-entry, so no attempt is spent; a row answered but not yet run reads `pending` with the answer as one untaken steer. A person with an open question from before sees it again, perhaps in new words, after one more run. Nothing is written at upgrade |
+| **Instead of** | Running a stored parked row again so it asks again, the call this spec made before the epic's amendment; or cancelling it |
+| **Because** | The amended ER-5 maps every parked question onto the hold, harness rows included. A parked row doesn't say whether it asked a question or for a review: a coding run's question on a fixed board is written as a plain `awaitReview` park (`harness-manager/src/manager.ts`, `parkOnMismatch` and the question path), the same shape as a review park. So one entry must fit both, and only the hold fits a coding run: a re-run would redo its work, which is what Codex's round-2 finding warned of. A review park has no suspended request to resume, so it can't become a `waitForUser` review as it is; held on its parked text, its answer reaches the work as a steer, which is what a revision request now is. Cancelling loses open work |
+| **Locks in** | Two read-time entries in FIX-2080's map, onto ER-8's hold: a parked row reads running with no lease, its `feedback` as one open question, on its stored attempt; a row answered but not yet run reads the same with that question answered by its stored answer, a steer from the user, and the owed turn marked, so it runs one turn on that attempt. Nothing is written at upgrade. A person with an old review sees it as a question, worded as it was |
 
-![D2: run it again and ask again, chosen, beside held on questions or cancelled. Decides it: a parked row has no request to resume. Price: one more run, and the question may be worded anew](figures/d2-parked-runs-again.svg)
+![D2: hold it on its parked question, chosen, beside running it again to ask again, or cancelling. Decides it: a parked row doesn't say whether it was a question or a review. Price: an old review shows as a question, and its answer is a steer](figures/d2-parked-runs-again.svg)
 
-It comes down to a parked row having no request to resume: only a new run can ask again.
+It comes down to a parked row not saying which it was: one entry has to fit a coding run's question too.
 
-**What would change my mind:** stored parked rows whose work is expensive to redo, such as a long
-coding run. Then those are FIX-2132's own entry, read first.
+**What would change my mind:** stored review parks whose verdict code must read, such as an app's
+`onReview` handler. Then those run again and ask for review again, and need a mark to tell them apart.
 
 ## Decided, not asked
 
-- **This issue merges after FIX-2132.** A coding run's question on a conversation's board writes
-  the same question park and is answered by the same unpark `answerTask` uses (harness-manager's
-  `parkOnBoardQuestion`). Removing them first would leave that question no answer on `main`.
-  FIX-2131 builds in parallel and owns removing the shared park, its status and the map entries;
-  FIX-2132 moves every harness-manager park off it: the question, a held-work mismatch and a read
-  failure, all of which call `parkOnBoardQuestion` or `awaitReview` today, and the run record's
-  `parked`. Until this lands, FIX-2132's question lists are input to this issue's. A stored
-  harness park reads through this issue's map entries like any park; FIX-2132 adds none.
-- **"First answer wins, unless a cancel is already written"** (FIX-2129), at one convergence
-  point: the stop's pending state. Its writers are the answer route (the Inbox), the steer write
-  (`updateTask`'s `message`, from the model's tool, its action, a screen, and the task-session
-  composer), the sweeper at the deadline, the cancel and the user's stop. The steer write checks
-  the row's cancel as the Inbox answer does. A steer resolves nothing any other way.
-- **A line in the task's session is a steer the composer writes.** While the task is open, Shift
-  Manager's task-session composer calls `updateTask({ id, message })` as the user, instead of
-  sending a turn to the session. A `sendMessage` to a session waiting on a person still queues and
-  answers nothing (rule 10; the owner's call of 2026-10-22).
-- **Who may answer by steer** is read from server-set state (BP-031): the steer's sender, the
-  row's filer and `resultTo`, and the stop's kind on the row (`waitingFor`, FIX-2129).
-- **A steer that answers** is kept on the row like any steer, taken by the attempt it answered,
-  so it isn't handed over twice. The caller's result says whether it answered or was kept.
+- **This issue merges after FIX-2132.** A coding run's question on a board writes the same park
+  and is answered by the same unpark `answerTask` uses (harness-manager's `parkOnBoardQuestion`).
+  Removing them first would leave that question no answer on `main`. FIX-2131 builds in parallel
+  and owns removing the shared park, its status and the map entries; FIX-2132 moves every
+  harness-manager park off it: the question, a held-work mismatch and a read failure, all of which
+  call `parkOnBoardQuestion` or `awaitReview` today, and the run record's `parked`. A stored
+  harness park reads through this issue's map entries onto the hold, like any park; FIX-2132 adds
+  no entry and reads a coding row's session back from its run record (ER-5).
+- **The model's tools are `askQuestion({ question })` and `waitForUser({ kind, prompt })`,** kind
+  approval or review, in `parkOnQuestion`'s slot (`controlTools`), on every task turn, a waited-on
+  task's included. `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends
+  the turn unsettled. What the request did before asking stands, and the next turn starts from
+  the brief, the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133).
+  `waitForUser` takes the host's person-stop default and returns a no-answer result at it, since
+  a model can't catch (ER-1). `waitForUser` never takes `question` (ER-1), so a model never has
+  two ways to ask one. A turn with no task gets neither: its reply is already the question.
+- **First answer wins, unless a cancel is already written,** at one point per kind: a held
+  question's at ER-8's one write (FIX-2133), a review's at FIX-2129's pending state. This issue
+  adds writers to the first, never a second write: the filer's tool, the task-session composer and
+  the Inbox, all through `updateTask` with the question's id.
+- **A line in the task's session is a steer the composer writes.** For a task with one open
+  question, Shift Manager's task-session composer calls `updateTask({ id, question, message })` as
+  the user, instead of sending a turn to the session. Midway a task has at most one, since asking
+  ends the turn; with none, or several asked at filing, the line is an ordinary steer and the
+  Inbox answers each. A `sendMessage` to a session waiting on a person still queues and answers
+  nothing (rule 10; the owner's call of 2026-10-22).
+- **Who may answer by steer** is ER-8's acceptance, read from server-set state (BP-031): the
+  public action for any question, the filer's tool only for a midway question on a task not routed.
 - **One loser rule.** An answer that loses, to another answer, a cancel or the deadline, is told
-  `already-resolved` (FIX-2129); a steer that loses stays an ordinary steer, taken before the next
-  model call (FIX-2086).
-- **The steer cap doesn't refuse an answer.** The write checks the stop before `MAX_STEERS`: a
-  steer that answers is kept, taken, even at the cap, so a question is always answerable. A row
-  holds at most the cap plus one steer per answered question.
-- **A retry asks again.** An Inbox answer lives on the stop, which ends with its attempt; a steer
-  that answered is on the row, so the next attempt's brief holds it, as it holds any steer. Meant:
-  writing the Inbox answer as a steer too would be a second record of one answer.
-- **The model's tool is `waitForUser({ kind, prompt })`**, all three kinds, on every task turn,
-  a waited-on task's included (the concept: "A waited-on task may still stop for a person"). It
-  takes the host's person-stop default deadline and returns a no-answer result at it, since a
-  model can't catch (FIX-2129 D1). It takes `parkOnQuestion`'s slot (`controlTools`), so a
-  worker's tool list never has both. A turn with no task doesn't get it: its reply is already
-  the question.
-- **The Inbox** reads ER-1's predicate, names a review as a review, and takes a task's context
-  from the board snapshot it already loads, not a read per task. `reads.ts`'s `PERSON_REASONS`
-  and `send.ts`'s `stopOf` move onto the predicate. Chief of Staff's parked list goes: its
-  questions are asks now.
+  so; a steer that loses stays an ordinary steer, taken before the next model call (FIX-2086).
+- **The steer cap keeps room for answers.** An answer is a steer and counts against `MAX_STEERS`.
+  Every open question reserves its answer's place: an ask is refused when the row's steers plus
+  open questions reach the cap, and an ordinary steer at that same count. So a question is always
+  answerable, and a row never holds more than the cap. A refused ask tells the model it can't ask
+  more and to go on from its brief. The check sits inside ER-8's write, which is FIX-2133's; this
+  issue's tools and the composer call it.
+- **A retry keeps a question's answer and asks for a review again.** A question's answer is a
+  steer on the row, so the next attempt's brief holds it, as it holds any steer. A review's verdict
+  lives on its suspension, which ends with its attempt; a revision request's words are a steer, and stay.
+- **The Inbox** lists reviews through ER-1's predicate and names a review as a review; held
+  questions, before start and midway, are FIX-2133's items, read from task rows. Both take a
+  task's context from the board snapshot it already loads, not a read per task. `reads.ts`'s
+  `PERSON_REASONS` and `send.ts`'s `stopOf` move onto the predicate. Chief of Staff's parked
+  list goes: its questions are held questions now.
 - **The `parked` notice goes.** No ending `parked` is written. A stored one not yet delivered still
-  reads and is delivered; the filer's reply is a steer the re-run reads (D2). Until FIX-2070 the
-  filer is told nothing when its task asks, and finds the question through `getTask`.
+  reads and is delivered; the filer's reply is a steer (D2). Until FIX-2070 the filer is told
+  nothing when its task asks, and finds the question through `getTask`.
 - **Removed outright** ([FIX-2056 (e)](../../epics/FIX-2056/DECISIONS.md#e)): no deprecation
   release. A board built with `onReview` is refused by name (BP-030). The `parked` status is no
   longer written and is read only through the map; its board column and filters go.
 - **FIX-2087's sweep** drops `answerTask` and `parkOnQuestion` from its allow list and its
-  migration table, and lists `waitForUser` beside `reportProgress`.
+  migration table, and lists `askQuestion` and `waitForUser` beside `reportProgress`.
 - **FIX-1851** closes as superseded when this merges.
 
 ## Considered and dropped
@@ -108,18 +113,23 @@ coding run. Then those are FIX-2132's own entry, read first.
 | Alternative | Why not |
 |---|---|
 | Keep `answerTask` as a thin call onto the steer (simpler for callers) | A second way to answer, which ER-4 forbids |
+| One model tool, `waitForUser` with a `question` kind that holds instead of suspending | ER-1 keeps `question` out of `waitForUser`, and the two behave differently to the model: a suspension's result is the answer, a hold ends the turn |
+| An answer past the cap, appended anyway (this spec's round-1 rule) | Unbounded: a worker that asks again and again grows the row past FIX-2086's bound (Codex, round 2) |
+| Prune a taken steer at the cap to make room | A retry's brief reads every steer, so pruning loses direction a later attempt needs |
 | Merge before FIX-2132, leaving the shared park for the coding run; or land the new surface first and delete the shared park in a third PR | `main` carries both forms between the merges, and whichever PR lands last must remember the deletion. FIX-2132 builds in parallel, so the serial merge costs only the wait |
-| A line in the task's session answers as a message to the session | The session is waiting on the stop, so the line queues behind it (rule 10) and contradicts the owner's call that a steer is the only way to change open work |
+| A line in the task's session answers as a message to the session | The session is waiting, so the line queues behind it (rule 10) and contradicts the owner's call that a steer is the only way to change open work |
 | Keep the `parked` status for app-written parks | The second form of stopping the epic's D1 removes |
 | Rewrite stored parked rows at upgrade | A write pass over every store; the map reads them where they are (FIX-2056 D3) |
 
 ## Settled
 
-- **No POC.** The new parts sit on FIX-2129's pending state and FIX-2086's steer write, both
-  specced and tested there. The one fact the ordering rests on, that the coding run's board
-  question uses the same park and unpark, is read from the code
+- **No POC.** The new parts sit on FIX-2129's pending state, FIX-2133's hold and FIX-2086's steer
+  write, each specced and tested there. The facts the approach rests on are read from the code:
+  the coding run's board question uses the same park and unpark
   (`harness-manager/src/manager.ts`, `parkOnBoardQuestion`; `test/claim-host.ts`,
-  `unpark(..., { answer: true })`). No counted fact carries the approach, so no checker.
+  `unpark(..., { answer: true })`), and its fixed-board question writes a park with no question
+  mark, the shape of a review park (`parkOnMismatch`, `board.awaitReview(identity.taskId, question)`).
+  No counted fact carries the approach, so no checker.
 
 ## Notes from review
 
@@ -138,7 +148,7 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
 - **Cursor:** "Inbox construction must not call task tools per row; enrichment joins snapshot boards in memory."
 - **Cursor:** "Decided, not asked re-documents FIX-2129 / FIX-2086 mechanics … one paragraph pointing at FIX-2129 + FIX-2086 and listing only this issue's deltas." And: a leg → actor → pass table for the Signal.
 - **Second look, D1:** "the tool result should make 'answered by session line' visible to the block so it can't be mistaken for the Inbox answer."
-- **Second look, D2:** "the three new map entries must have disjoint predicates from `parked-for-turn` and `parked-split` … A parked row can carry `parkedForTurn` and a question. Please pin the precedence in a test."
+- **Second look, D2:** "the three new map entries must have disjoint predicates from `parked-for-turn` and `parked-split` … A parked row can carry `parkedForTurn` and a question. Please pin the precedence in a test." (Two entries now; the precedence test still applies.)
 - **Second look, tests:** "~40 files under `packages/orchestration/test`, plus `harness-manager/test` (3 files), `integration-tests/.../task-board-park-exit-across-requests.test.ts`, `devtool/test/task-actions.test.ts`, and `shift-manager/test/devteam-chief-of-staff-tasks.test.ts` … the `park-exit` drain tests … should be deleted, not migrated."
 - **Second look:** "I'd not widen beyond [the predicate move] (e.g. leave `goal-seek-loop.ts`/`quiescence.ts` park handling to the removal itself)."
 
@@ -150,5 +160,11 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   session, because a waiting session queues messages (rule 10). A steer into a review reaches the
   work through FIX-2086's owed turn, because a resumed block is handed only its verdict. Every
   `parked` surface got a named fate.
+- **Re-spec onto the epic's amendment** (#3748) — a midway question no longer suspends: it holds
+  its task through ER-8 (FIX-2133, now blocking this issue), and the answer, a steer naming the
+  question, owes one more turn on the same attempt. Reviews still suspend; a revision request is a
+  steer. D2 flipped from running a parked row again to holding it, since ER-5 maps every parked
+  question onto the hold. Round 2: the steer cap reserves an answer's place at the ask, replacing
+  the round-1 exception, which was unbounded.
 
-**Open: none.**
+**Open: none of this issue's.** The held question's deadline outcome is the epic's.
