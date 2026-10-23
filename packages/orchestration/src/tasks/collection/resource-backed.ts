@@ -741,6 +741,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return r === undefined ? undefined : (readTaskState(r) as Task);
   }
 
+  /** Each outside dependency as stored now, so one another request ended is refused here (FIX-2114). */
+  async function refreshDeps(batch: readonly Pick<Task, "id" | "deps">[]): Promise<void> {
+    const filed = new Set(batch.map((row) => row.id));
+    for (const depId of new Set(batch.flatMap((row) => row.deps ?? []))) {
+      if (!filed.has(depId)) await ref.refresh?.(depId);
+    }
+  }
+
   /**
    * The guarded settings write (FIX-2080, ER-4): `patchSettings`, and `hold`
    * and `release` under their own names, decided on the committed row inside
@@ -823,6 +831,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async addTask(init) {
       assertFilingSettings(init, options.settings, options.collectionId);
       const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init));
+      await refreshDeps([task as Task]);
       assertDepsFileable([task as Task], lookupRow);
       const created = await options.collection.create(
         task.id,
@@ -840,6 +849,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init))
       );
       // Every row is checked before any is written; ids in the batch count (FIX-2080).
+      await refreshDeps(built as Task[]);
       assertDepsFileable(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];
       for (const task of built) {
