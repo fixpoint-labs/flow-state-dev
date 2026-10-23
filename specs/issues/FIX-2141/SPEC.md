@@ -67,7 +67,7 @@ except leg f*.
 
 ## What changes
 
-![Before and after. Today nothing reads Codex's limits. After: the host registers a Codex reader; one usage collection per person holds a record per harness and account; the one query reads it, refreshes Codex first when asked, and returns each window with its age; the Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same collection](figures/what-changes.svg)
+![Before and after. Today nothing reads Codex's limits. After: the host registers a Codex reader; one usage collection per person holds one current record per harness; the one query reads it, refreshes Codex first when asked, and returns each window with its age; the Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same collection](figures/what-changes.svg)
 
 One store per person and one query in front of it. Codex fills it when someone looks; Claude Code
 will fill it as runs report.
