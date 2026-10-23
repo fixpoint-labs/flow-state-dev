@@ -64,12 +64,14 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
   no entry and reads a coding row's session back from its run record (ER-5).
 - **The model's tools are `askQuestion({ question })` and `waitForUser({ kind, prompt })`,** kind
   approval, review or input (ER-1), in `parkOnQuestion`'s slot (`controlTools`). **Which applies
-  when** is ER-1's test, who consumes the answer: `askQuestion` when the work can continue from its
-  brief once answered (it holds the task and ends the turn); `waitForUser` input when the model
-  needs the value as this call's result (it suspends, and its result, or no-answer at the
-  deadline, comes back to the call), on a task turn or not. The tool descriptions say which to
-  use. The two ways to ask are deliberate and map onto ER-1's two halves. An approval or review is
-  always `waitForUser`; a turn with no task row has nothing to hold, so it doesn't get `askQuestion`.
+  when:** on a task row, a question is `askQuestion` and an approval or review is `waitForUser`;
+  with no task row there is nothing to hold, so a question is `waitForUser` input. On a task turn,
+  a waited-on task's included, `waitForUser` refuses `input` by name and points at `askQuestion`,
+  so a model never has two ways to ask one; a turn with no task row doesn't get `askQuestion`.
+  This is the owner's decision on [agent-mailbox#44](https://github.com/fixpoint-labs/agent-mailbox/issues/44),
+  recorded in #3748: questions hold, before the start and midway; approvals, reviews and
+  code-consumed input suspend. Input stays for a block's own code (`human_input`, or an inline ask
+  the code reads next), not for a model's tool on a task turn.
   `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends the turn
   unsettled. What the request did before asking stands, and the next turn starts from the brief,
   the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133). `waitForUser`,
@@ -118,7 +120,7 @@ It comes down to a parked row not saying which it was: one entry has to fit a co
 |---|---|
 | Keep `answerTask` as a thin call onto the steer (simpler for callers) | A second way to answer, which ER-4 forbids |
 | One model tool, `waitForUser` with a `question` kind that holds instead of suspending | ER-1 keeps `question` out of `waitForUser`, and the two behave differently to the model: a suspension's result is the answer, a hold ends the turn |
-| Refuse `input` on a task turn, so a task's model asks only by `askQuestion` (this spec's round-3 rule) | ER-1's test is who consumes the answer, not whether a task row exists: a model that needs the value as this call's result is code reading the answer next (Codex, round 4) |
+| `waitForUser` input on a task turn whenever the model needs the value as the call's result, by ER-1's test of who consumes the answer (round 4, reverted) | The consumer of a model's tool result is the model, not code, so it is a question and holds ([agent-mailbox#44](https://github.com/fixpoint-labs/agent-mailbox/issues/44), recorded in #3748). Any model can say it needs the value now, which would reopen the mid-task suspension the decision retired |
 | Merge before FIX-2132, leaving the shared park for the coding run; or land the new surface first and delete the shared park in a third PR | `main` carries both forms between the merges, and whichever PR lands last must remember the deletion. FIX-2132 builds in parallel, so the serial merge costs only the wait |
 | A line in the task's session answers as a message to the session | The session is waiting, so the line queues behind it (rule 10) and contradicts the owner's call that a steer is the only way to change open work |
 | Keep the `parked` status for app-written parks | The second form of stopping the epic's D1 removes |
@@ -153,6 +155,7 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
 - **Second look, D1:** "the tool result should make 'answered by session line' visible to the block so it can't be mistaken for the Inbox answer."
 - **Second look, D2:** "the three new map entries must have disjoint predicates from `parked-for-turn` and `parked-split` … A parked row can carry `parkedForTurn` and a question. Please pin the precedence in a test." (Two entries now; the precedence is pinned in D2.)
 - **Second look, tests:** "~40 files under `packages/orchestration/test`, plus `harness-manager/test` (3 files), `integration-tests/.../task-board-park-exit-across-requests.test.ts`, `devtool/test/task-actions.test.ts`, and `shift-manager/test/devteam-chief-of-staff-tasks.test.ts` … the `park-exit` drain tests … should be deleted, not migrated."
+- **Codex, round 4** (at 5504374d, not adopted; the owner's #44 decision governs): "When a task model needs a free-form value as the current tool result, this guard redirects it to `askQuestion`, which ends the turn rather than returning the answer to the suspended call. That contradicts the governing distinction: ER-1 assigns approval, review, and input to `waitForUser` whenever code reads the answer next, and the concept explicitly says a request working a task may still suspend (`specs/epics/FIX-2058/DECISIONS.md:86`; `docs/internal/design/workforce-coordination-concept.md:227-232`). The fresh evidence beyond the earlier finding is this newly added task-row refusal, so leg g should cover task-row input result/deadline behavior instead of requiring the refusal."
 - **Second look:** "I'd not widen beyond [the predicate move] (e.g. leave `goal-seek-loop.ts`/`quiescence.ts` park handling to the removal itself)."
 
 ## How it got here
@@ -169,9 +172,10 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   steer. D2 flipped from running a parked row again to holding it, since ER-5 maps every parked
   question onto the hold. Round 2: the steer cap reserves an answer's place at the ask, replacing
   the round-1 exception, which was unbounded.
-- **Round 3** (Codex at 36853b4f) — `waitForUser` keeps `input` (round 4, Codex at 5504374d:
-  on a task turn too, whenever the model needs the value as the call's result);
+- **Round 3** (Codex at 36853b4f) — `waitForUser` keeps `input`, for a turn with no task row;
   a feedback-less park gets a fixed prompt; a migrated question may sit one place above the cap,
   once; a question park overlapping `parkedForTurn` is held until answered, then the turn wins.
+- **Round 4** — `input` on task turns was allowed, then reverted to round 3 (FSD Architect):
+  the owner's #44 decision governs, and a model's question on a task turn holds.
 
 **Open: none of this issue's.** The held question's deadline outcome is the epic's.
