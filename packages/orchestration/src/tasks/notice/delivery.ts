@@ -105,16 +105,16 @@ export interface DeliveryHooks {
     patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
   ): Promise<void>;
   /**
-   * Run `send` once the running request stops running (FIX-2123), on the
-   * engine's request-end seam: as it ends, or as it parks, since a parked
-   * request holds no notice; `send` is told which (`parked`). A failure is
-   * logged, never thrown; what `send`
-   * didn't send stays owed for the filer's pass. Nothing runs on a context
-   * with no seam, or on a host that doesn't record which requests are
-   * running. Optional, so hooks built by hand keep compiling: without it,
-   * the pass sends instead.
+   * Run `send` once the running request has ended (FIX-2123), on the
+   * engine's request-end seam. Nothing runs when it parks: a parked request
+   * holds no notice, so the filer's pass sends what it held, and a hook at a
+   * park would delay the request's park record. A failure is logged, never
+   * thrown; what `send` didn't send stays owed for the filer's pass. Nothing
+   * runs on a context with no seam, or on a host that doesn't record which
+   * requests are running. Optional, so hooks built by hand keep compiling:
+   * without it, the pass sends instead.
    */
-  whenRequestEnds?(send: (parked: boolean) => Promise<void>): void;
+  whenRequestEnds?(send: () => Promise<void>): void;
 }
 
 /**
@@ -181,7 +181,7 @@ export function createDelivery(
     whenRequestEnds
   };
 
-  function whenRequestEnds(send: (parked: boolean) => Promise<void>): void {
+  function whenRequestEnds(send: () => Promise<void>): void {
     // Only where a notice can be held for this request: a host that records
     // which requests are running. Anywhere else nothing is held for it, and a
     // hook would be owed for nothing: a context built outside a request's
@@ -197,11 +197,15 @@ export function createDelivery(
     if (registered.has(boardKey)) return;
     registered.add(boardKey);
     sendsAtStop.set(seam, registered);
-    // At a park too: a parked request holds no notice. The request that runs
-    // again after it registers anew (the board notes the rows it filed).
     onRequestEnded(ctx, async (ending) => {
+      // Nothing at a park: a hook runs there before the request is recorded
+      // parked, and any time it takes delays that record, which a wait's
+      // resume reads. A parked request holds no notice, so the filer's pass
+      // sends what it held at the notice's next send. The request that runs
+      // again after the park registers anew (the board notes the rows it filed).
+      if (ending.status === "suspended") return;
       try {
-        await send(ending.status === "suspended");
+        await send();
       } catch (error) {
         console.warn("[orchestration] a notice held for the request that filed its task wasn't sent as it ended: the filer's pass sends it", {
           boardId: board.collectionId,

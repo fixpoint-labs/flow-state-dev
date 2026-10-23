@@ -23,7 +23,7 @@
  * While the request that filed the task is running (not while it is parked),
  * its notice is turned away as `defer` turns one away (FIX-2123): a wait in
  * that request reads the ending first and drops it, and the request sends
- * what is still owed as it parks or ends.
+ * what is still owed as it ends; at a park, the filer's pass sends it.
  *
  * Woken with an empty input, by the wake a board's delivery owes when it
  * names this entry as its pass (the default): it pays what this session's
@@ -146,7 +146,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       // turned away, so its age (which ends it as undeliverable) counts from
       // then. Turned away while the request that filed the task is running
       // too (FIX-2123), not while it is parked: a wait in it reads the ending
-      // first, and that request sends what is still owed as it parks or ends.
+      // first, and that request sends what is still owed as it ends (at a park, the pass does).
       const own = ctx.request.identity.id;
       const filing = row.filer?.requestId;
       const turnedAway =
