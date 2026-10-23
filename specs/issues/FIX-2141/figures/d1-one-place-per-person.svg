@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a person's usage numbers are kept. Chosen: one user-scoped collection read through one query that returns age. Instead of: one org-wide collection. It comes down to the first row, whose numbers a reader sees: the chosen option shows each person their own plan and sign-in, while an org-wide row shows one person's plan and email to everyone. The price is the second row: two people on one machine hold two rows for one Codex pool, each as fresh as their own last look, where an org row has one. The third row is a tie: either way every screen reads one query. Locks in: the harnessUsage query and the harness-usage collection in harness-manager. Flips if: several people deliberately share one subscription and expect one number."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a person's usage numbers are kept. Chosen: one user-scoped collection read through one query that returns age. Instead of: one org-wide collection. It comes down to the first row, whose numbers a reader sees: the chosen option shows each person their own plan and sign-in, while an org-wide row shows one person's plan to everyone. The price is the second row: two people on one machine hold two rows for one Codex pool, each as fresh as their own last look, where an org row has one. The third row is a tie: either way every screen reads one query. Locks in: the harnessUsage query and the harness-usage collection in harness-manager. Flips if: several people deliberately share one subscription and expect one number."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-s" x="248" y="179">the brief: your own subscriptions</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">One person's plan, shown to all</text>
-    <text class="t-s" x="612" y="179">email and plan on every screen</text>
+    <text class="t-s" x="612" y="179">their plan on every screen</text>
   </g>
 
   <g id="row-price">

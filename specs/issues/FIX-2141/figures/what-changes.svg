@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today nothing reads Codex's subscription limits, so a person learns a window ran out when a run fails. After: the host registers a Codex reader. One usage collection per person holds a record per harness and account. The one query reads it, refreshes Codex first when asked and the row is older than a minute, and returns each window with its age and whether it has rolled over. The Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same writer later."
+<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today nothing reads Codex's subscription limits, so a person learns a window ran out when a run fails. After: the host registers a Codex reader. One usage collection per person holds a record per harness and account. The one query reads it, refreshes Codex first when asked, at most once a minute, and returns each window with its age and whether it has rolled over. The Usage view and any worker read only the query. Claude Code's writer, FIX-2142, plugs into the same writer later."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -63,7 +63,7 @@
     <text class="t-s" x="522" y="196">rows · ageMs · rolledOver</text>
     <path class="arrow" d="M605 228 L605 208"/>
     <path class="arrow" d="M510 176 L230 176"/>
-    <text class="t-s" x="260" y="170">refresh, if older than a minute</text>
+    <text class="t-s" x="260" y="170">refresh, at most once a minute</text>
 
     <rect class="box" x="750" y="160" width="150" height="48" rx="4"/>
     <text class="t-b" x="762" y="180">Usage view</text>

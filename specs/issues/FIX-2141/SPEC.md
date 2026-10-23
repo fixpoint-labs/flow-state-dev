@@ -33,15 +33,18 @@ flowchart LR
   A --> L4["leg d · a stored row past its reset"]
   A --> L5["leg e · read without refresh"]
   A --> L6["leg f · Jake's own sign-in · owed by a person"]
+  A --> L7["leg g · the reader times out · two looks in a minute"]
   L1 --> R["the query's rows · the Usage view in a browser"]
   L2 --> R
   L3 --> R
   L4 --> R
   L5 --> R
   L6 --> R
-  R -->|"a f windows with age · b c a reason, no percent · d rolled over · e no vendor call"| P["PASS · goal met"]
+  L7 --> R
+  R -->|"a f windows with age · b c a reason, no percent · d rolled over · e no vendor call · g one child"| P["PASS · goal met"]
   R -.->|"control · the query ignores reset and age"| F["must FAIL legs d e"]
   R -.->|"control · unavailable reads as zero"| F2["must FAIL legs b c"]
+  R -.->|"control · the throttle ignores failures"| F3["must FAIL leg g"]
 ```
 
 The check reads what the query returns and what the Usage view draws. Each control must fail,
@@ -50,13 +53,14 @@ or the check proves nothing.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-shows-codex-usage-left/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: two windows (300 and 10 080 minutes) with the scripted percents and resets, `checkedAt` within the run, and the view shows both with "from Codex"; a reading older than the stored one leaves the stored one. b: `signed-out`, the reason shown, no percent anywhere on the card. c: `api-key`, the same. d: a row whose `resetsAt` is past returns `rolledOver: true` and the view shows no percent for it. e: a row 3 hours old returns `ageMs` ≥ 3 h and the scripted app-server logs no read. f: Jake's real sign-in shows the same percents as `codex` `/status` within the same minute |
+| **Signal** | a: two windows (300 and 10 080 minutes) with the scripted percents and resets, `checkedAt` within the run, and the view shows both with "from Codex"; a reading older than the stored one leaves the stored one. b: `signed-out`, the reason shown, no percent anywhere on the card. c: `api-key`, the same. d: a row whose `resetsAt` is past returns `rolledOver: true` and the view shows no percent for it. e: a row 3 hours old returns `ageMs` ≥ 3 h and the scripted app-server logs no read. g: a reader that hangs past its 10 s timeout, looked at twice in a minute and from two tabs at once, starts one child, and both looks return the stored row with a plain `refreshError`. f: Jake's real sign-in shows the same percents as `codex` `/status` within the same minute |
 | **Input** | Legs b and c run the real `codex app-server` from the pinned `@openai/codex` (0.152.1) against an empty and an API-key `CODEX_HOME`. Leg a replays the protocol shape the pinned CLI's `generate-ts` publishes |
 | **Anti-game** | No assertions on the reader's input or on a stubbed query. Rows read through the query over HTTP, the view read in a browser |
-| **Control that must fail** | `GOAL_CONTROL=ignore-age` must FAIL d on *rolled over* and e on *no vendor call*. `GOAL_CONTROL=unavailable-as-zero` must FAIL b and c on *no percent*. `GOAL_CONTROL=last-write-wins` must FAIL a on *leaves the stored one* |
+| **Control that must fail** | `GOAL_CONTROL=ignore-age` must FAIL d on *rolled over* and e on *no vendor call*. `GOAL_CONTROL=unavailable-as-zero` must FAIL b and c on *no percent*. `GOAL_CONTROL=last-write-wins` must FAIL a on *leaves the stored one*. `GOAL_CONTROL=throttle-ignores-failures` must FAIL g on *one child* |
 
-Leg f needs a ChatGPT sign-in, which no CI has. The implementation PR stays marked *goal owed:
-leg f* until Jake or `fsd-qa` runs it.
+Leg f needs a ChatGPT sign-in, which no CI has. Until Jake or `fsd-qa` runs it, the signed-in
+parse is proven against the CLI's published type only, and the implementation PR says *goal met
+except leg f*.
 
 ## What changes
 
@@ -86,7 +90,7 @@ same `readers` to the capability directly.
 ```ts
 // any reader, server side or through the client
 const { harnesses } = await harnessUsage({ refresh: true });
-// [{ harness: "codex", status: "windows", account: "jake@…", plan: "pro",
+// [{ harness: "codex", status: "windows", plan: "pro",
 //    windows: [{ minutes: 300, usedPercent: 42, resetsAt, checkedAt, ageMs, rolledOver: false, origin: "read" }, …] }]
 ```
 
@@ -99,7 +103,7 @@ READMEs of `core`, `codex`, `harness-manager` and `shift-manager`. No new page.
 ```mermaid
 flowchart LR
   V["Usage view · a worker"] --> Q["harnessUsage query"]
-  Q -->|"refresh asked · row older than a minute"| R["registered reader · readCodexUsage"]
+  Q -->|"refresh asked · last attempt a minute old"| R["registered reader · readCodexUsage"]
   R --> S["codex app-server · account/read · account/rateLimits/read"]
   S --> W["recordHarnessUsage · the one writer"]
   W --> C["user-scoped collection · harness-usage"]
@@ -129,15 +133,16 @@ collection.
 | Ways to read a vendor's subscription usage | **None.** Searched `rateLimit`, `rate_limit`, `usedPercent`, `utilization`, `quota`, `usage` across `packages/` and `apps/`: hits are per-run token counts and provider error codes. This is the first |
 | Ways to hold host-wide harness facts per person | **One:** harness-manager's `user`-scoped run record (`runs/**`). **Builds on** its scope and principal; a second collection beside it, not a second mechanism |
 | `probeClaudeAccount` (claude-code), which asks the harness's own CLI with no model turn | **Builds on** its shape for `readCodexUsage` |
-| `HarnessSessionHook` in `core/types/harness.ts`, fired by a harness during a run | **Builds on.** A `HarnessUsageHook` twin is declared here for FIX-2142 |
-| The harness-manager slot feeds (`cwd`, `resume`, `onSession`) | **Extends** with `onUsage`, wired to the one writer. Codex fires nothing yet |
+| `HarnessSessionHook` in `core/types/harness.ts`, fired by a harness during a run | **Leaves alone.** Its usage twin is FIX-2142's |
+| The harness-manager slot feeds (`cwd`, `resume`, `onSession`) | **Leaves alone.** FIX-2142 adds `onUsage` with its first writer |
+| harness-manager's `inbox/**`, the other `user`-scoped neighbour, and its named limit that `user` scope is not tenant-qualified | **Builds on** its settings (`flowIsolation: false`, lazy prefetch) and **inherits** the limit, named on [D1](DECISIONS.md#d1) |
 | Shift Manager's gap for a task's harness, tokens and cost (FIX-1652) | **Leaves alone.** Per-task cost is that issue's; per-worker totals are FIX-2145's |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing. There was no usage read to replace |
-| **Adds** | One collection, one writer, one query, one Codex reader, one neutral type. A Codex app-server child process per refresh, at most once a minute ([D2](DECISIONS.md#d2)). Permanent by design |
-| **Leaves** | Workforce's Error Reporter runs Claude Code outside harness-manager, so its `rate_limit_event`s are not recorded until it is fed `onUsage`. FIX-2142 decides it |
+| **Adds** | One collection, one writer, one query, one Codex reader, one neutral type and reader signature. A Codex app-server child process per refresh, at most once a minute ([D2](DECISIONS.md#d2)). Permanent by design |
+| **Leaves** | Workforce's Error Reporter runs Claude Code outside harness-manager, so FIX-2142 decides whether its `rate_limit_event`s are recorded. `user` scope is not tenant-qualified, the limit harness-manager's inbox already names |
 
 **Net: up, small.** A new capability with one read and one write, and no second way to hold
 state.
@@ -153,9 +158,12 @@ beside the run record. If wrong: a store nothing reads but one screen.
 
 1. **[D1](DECISIONS.md#d1) · Usage is kept per person, in one collection, and read through one
    query that always returns its age.** The one to weigh. If wrong: two people on one machine see
-   different ages for one shared Codex pool.
+   different ages for one shared Codex pool, and where one user id spans two tenants both see its
+   plan (no email is stored).
 2. **[D2](DECISIONS.md#d2) · Codex is read when someone looks, at most once a minute, not kept
    live.** If wrong: a run eats the window between looks, and the view is a minute behind.
+
+D1 and D2 rest on Codex's signed-in answer as its CLI publishes it; leg f proves it live.
 
 **Open: none.** `fsd-architect` agreed with the collection's home on
 [agent-mailbox#45](https://github.com/fixpoint-labs/agent-mailbox/pull/45#issuecomment-6372035349);

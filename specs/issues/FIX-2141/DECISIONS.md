@@ -12,7 +12,7 @@ sources only, and a plain reason in place of a guess.
 ```mermaid
 flowchart TD
   I["FIX-2141"] --> D1["D1 · one user-scoped collection · one query that returns age"]
-  D1 -.->|"rejected"| X1["org scope · one person's plan and email shown to the whole org"]
+  D1 -.->|"rejected"| X1["org scope · one person's plan shown to the whole org"]
   D1 -.->|"rejected"| X2["each screen asks the vendor · two reads that can disagree"]
   I --> D2["D2 · Codex read when someone looks · at most once a minute"]
   D2 -.->|"rejected"| X3["a long-lived app-server listener · our runs never reach it"]
@@ -25,9 +25,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | An `org`-scoped collection, which would show one person's Codex plan and email to everyone in the org. Or no stored record, with each screen asking the vendor, which gives two reads that can disagree and a Claude number nobody can ask for (Claude reports only during a run) |
+| **Instead of** | An `org`-scoped collection, which would show one person's Codex plan to everyone in the org. Or no stored record, with each screen asking the vendor, which gives two reads that can disagree and a Claude number nobody can ask for (Claude reports only during a run) |
 | **Because** | The brief is "your own subscriptions", and a person's own sign-in is theirs to see. A `user`-scoped resource collection is the primitive harness-manager's run record already uses, at the same scope and for the same principal, so this adds no new way to hold state (FIX-2056 bar; tenet 3, *earn every addition*). One writer and one query mean the screen and a worker see the same row and the same age, and Claude Code's writer (FIX-2142) lands in the same place |
-| **Locks in** | The query name `harnessUsage` and the collection `harness-usage/**`, keyed by harness and account, owned by `@flow-state-dev/harness-manager`. Each row carries its windows, its status (`windows`, `api-key`, `signed-out`, `unavailable`), `checkedAt`, and the query adds `ageMs` and `rolledOver`. Two people on one machine share one Codex sign-in but hold two rows, each as fresh as that person's last look |
+| **Locks in** | The query name `harnessUsage` and the collection `harness-usage/**`, keyed by harness and a hash of the account id (no email is stored), owned by `@flow-state-dev/harness-manager`. Each row carries its plan, its windows, its status (`windows`, `api-key`, `signed-out`, `unavailable`), `checkedAt`, and the query adds `ageMs` and `rolledOver`. Two people on one machine share one Codex sign-in but hold two rows, each as fresh as that person's last look. `user` scope is keyed on the bare user id, not the tenant, so where one user id is reachable from two tenants both see the row: the limit harness-manager's inbox already names. It is acceptable here because the collection is filled only by a reader on the person's own machine (Codex's sign-in is local only) and the row holds no email |
 
 ![D1: where a person's usage numbers are kept. One user-scoped collection read through one query, chosen, beside an org-wide collection. Decides it: whose numbers a reader sees. The price: two people on one machine hold two rows for one pool](figures/d1-one-place-per-person.svg)
 
@@ -44,42 +44,57 @@ who may see that account.
 |---|---|
 | **Instead of** | Keeping one `codex app-server` running and recording each `account/rateLimits/updated` notification as it arrives |
 | **Because** | That notification is a sparse update the app-server sends while it runs turns (its schema says to merge it into the last read). Our Codex harness runs through `@openai/codex-sdk`, which starts `codex exec`, so a listener would sit idle while Codex work used the pool. A read on demand is one documented call (`account/rateLimits/read`) that sees the whole pool, whatever used it. A minimum age of one minute stops a screen that re-renders from starting a process per render |
-| **Locks in** | A Codex number is as old as the last look, and the view says how old. Opening Usage, or a worker calling `harnessUsage({ refresh: true })`, starts one short-lived app-server child when the row is older than a minute. `refresh` on a harness with no reader (Claude Code) returns its stored row unchanged |
+| **Locks in** | A Codex number is as old as the last look, and the view says how old. Opening Usage, or a worker calling `harnessUsage({ refresh: true })`, starts one short-lived app-server child when the last **attempt** is older than a minute; a failed attempt backs off for the same minute. Concurrent refreshes share one in-flight child. `refresh` on a harness with no reader (Claude Code) returns its stored row unchanged |
 
 ![D2: how fresh a Codex number is. Read when someone looks, chosen, beside a long-lived listener. Decides it: our Codex runs never reach a listener. The price: the number is as old as the last look](figures/d2-read-when-looked-at.svg)
 
 It comes down to where our runs go: they never pass through an app-server a listener could hear.
 
 **What would change my mind:** the Codex harness moving onto app-server (so its runs report there),
-or the Codex SDK surfacing rate limits on its own events. Then a run writes through `onUsage`, as
-Claude Code's will, and the on-demand read stays for screens.
+or the Codex SDK surfacing rate limits on its own events. Then a run writes through the run-time
+hook FIX-2142 adds for Claude Code, and the on-demand read stays for screens.
 
 ## Decided, not asked
 
 - **The neutral shape lives in core, beside the harness contract.** `core/types/harness.ts`
-  gains the window type and schema, `HarnessUsageHook` (a twin of `HarnessSessionHook`, fired by a
-  harness during a run) and `HarnessUsageReader` (an on-demand read with no run). No vendor word
-  and no Workforce word, as the file's own rule says. Layer 1 gets the shape; harness-manager holds
-  the store.
+  gains the window type and schema and `HarnessUsageReader` (an on-demand read with no run). No
+  vendor word and no Workforce word, as the file's own rule says. Layer 1 gets the shape;
+  harness-manager holds the store.
+- **The run-time hook waits for its first writer.** `HarnessUsageHook` (a twin of
+  `HarnessSessionHook`), the `onUsage` slot feed and the one-window write are FIX-2142's, where
+  Claude's sparse events show what they need. Nothing here fires them, and a type shipped before
+  its writer is the shape most likely to be wrong. The record's shape, windows inside a record,
+  leaves room for them.
 - **The convergence point.** `recordHarnessUsage` is the collection's only writer, and the
   `harnessUsage` query its only reader. Writers that pass through it: a registered reader's
-  result (Codex now), and the `onUsage` slot feed harness-manager hands every harness (Claude Code
-  in FIX-2142). The collection is not client-readable on its own: the Usage view reads the query,
+  result (Codex now), and FIX-2142's run-time hook later. The collection is not client-readable on its own: the Usage view reads the query,
   so it can never show a row without its age.
 - **One record per harness and account, windows inside it.** A Codex read returns every window
-  at once and replaces the record; a sparse event (Claude's) sets one window by id. Keying by
-  window too would make "this account is now on an API key" a write to every window.
+  at once and replaces the record. Keying by window too would make "this account is now on an API
+  key" a write to every window. The account segment is `hashKeySegment(accountId)` from
+  harness-manager's `workspace.ts`, the helper that already turns outside text into a key; the
+  collection mirrors `runs/**` and `inbox/**`: `flowIsolation: false`, `prefetchMode: "lazy"`, so it
+  never loads on a run that doesn't read it.
 - **Latest only, no history.** A record holds the last snapshot of each window. A window that
   rolls over is overwritten by its next reading, never appended. A time series is a different
   feature and gets its own issue if anyone asks for it.
-- **A write never goes backwards.** `recordHarnessUsage` refuses a window whose `checkedAt` is
-  older than the stored one for that window, so a slow refresh can't overwrite a fresher
-  `rate_limit_event` from FIX-2142. The goal check's leg a adds the case: a reading older than the
+- **A write never goes backwards.** `recordHarnessUsage` refuses a snapshot whose `checkedAt` is
+  older than the stored one, so a slow refresh can't overwrite a fresher reading, including a
+  `rate_limit_event` once FIX-2142 writes them. The goal check's leg a adds the case: a reading older than the
   stored one leaves the stored one.
 - **A read is a read.** `harnessUsage()` without `refresh` has no side effects and starts no
   process. `refresh: true` is the only path that starts a vendor process, with a 10 s timeout per
   reader (the default `probeClaudeAccount` uses). A refresh that fails or times out returns the
   stored rows with their `ageMs` and a per-harness `refreshError`; it never fails the whole query.
+  `refreshError` is a plain reason the view can show ("Codex did not answer within 10 s"), never
+  the CLI's stderr.
+- **The throttle counts attempts, not successes.** The record keeps `lastAttemptAt` beside
+  `checkedAt`. A refresh starts a reader only when the last attempt is a minute old or more, so a
+  missing binary or a hung CLI costs one child a minute, not one per render. Concurrent
+  refreshes of one reader share one in-flight call. Goal leg g covers it.
+- **One clock decides "rolled over": the server's.** The query computes `ageMs` and `rolledOver`
+  when it reads, and the view draws those fields as returned. The view does not compare
+  `resetsAt` with the browser's clock, so a browser whose clock is off draws what the query said.
 - **Readers are named once, where the host wires its harnesses.** The host hands the capability
   one `readers` map keyed by harness. There is no global registry, and no field on a harness
   block: a harness here is a block factory, and a person can have a Codex subscription Shift
@@ -88,9 +103,12 @@ Claude Code's will, and the on-demand read stays for screens.
 - **A window is its length in minutes plus the vendor's id for it.** Codex gives
   `windowDurationMins` (300, 10 080); Claude gives a type (`five_hour`, `seven_day_opus`). The view
   labels by minutes where known ("5-hour", "weekly") and by the vendor's name otherwise. Percent is
-  0 to 100 as the vendor sent it, never derived.
+  0 to 100 as the vendor sent it, never derived. Codex's read returns `rateLimitsByLimitId` beside
+  the single `rateLimits`: every limit id's `primary` and `secondary` window is shown, labelled by
+  its `limitName`, and the single view is used only when the map is null. A window with neither
+  minutes nor a vendor id is labelled by its limit name and slot ("codex · primary").
 - **Rolled over is the query's to compute, not the writer's.** `rolledOver` is `resetsAt < now`
-  at read time. A rolled-over window keeps its stored percent for the record, and the view shows
+  at read time, by the server's clock. A rolled-over window keeps its stored percent for the record, and the view shows
   "reset at …, not checked since" instead of it.
 - **What has no number says why.** Codex's `account/read` tells signed out (`account: null`)
   from an API key (`type: "apiKey"`); both refuse `account/rateLimits/read` with `-32600`. Any
@@ -101,6 +119,10 @@ Claude Code's will, and the on-demand read stays for screens.
   opt-in: a host passes it, and the Codex docs say when not to.
 - **The Codex CLI the reader starts is the harness's own pin** (`@openai/codex` 0.152.1, beside
   `@openai/codex-sdk`), found the way the SDK finds it, so the reader and a run read one sign-in.
+- **"Goal met" while leg f is owed means the parse is proven against the published type only.**
+  D1 and D2 rest on `GetAccountRateLimitsResponse` as the pinned CLI publishes it. Until Jake or
+  `fsd-qa` runs leg f on a real sign-in, the implementation PR says *goal met except leg f*, not
+  *goal met*.
 - **Settled by POC: the read works as documented, and the two no-number states are real.**
   [`poc/app-server-read/`](poc/app-server-read/NOTES.md) ran the pinned CLI. Signed out:
   `account/read` → `account: null`, the read → `-32600 "codex account authentication required to
@@ -135,3 +157,9 @@ Claude Code's will, and the on-demand read stays for screens.
   and asked for four rules. Three are in *Decided, not asked*: a write never goes backwards, a
   read is a read, latest only. The fourth, readers hung on the harness definition, was declined:
   there is no such object to hang them on, and it would hide a Codex pool the host doesn't run.
+- **Review round 1** — a second-look review ([#3759](https://github.com/fixpoint-labs/flow-state-dev/pull/3759#pullrequestreview-5632968894))
+  changed three things. The row stores no email, and the account is a hashed key, with the
+  user-scope tenant limit named on D1. The throttle counts failed attempts and refreshes share one
+  call (leg g). The run-time hook and the one-window write move to FIX-2142, so nothing ships
+  before its writer. It also pinned the clock, the limit-id map, the label fallback and what
+  "goal met" means while leg f is owed.
