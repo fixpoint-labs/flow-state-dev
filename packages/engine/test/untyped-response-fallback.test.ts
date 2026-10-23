@@ -8,12 +8,16 @@
  * the CLI's capture mapping) key updates on `itemId`, and `ResponseEmitter`
  * only routes an `item.updated` through its tracked-item path when `itemId`
  * is present. An update with any other key is invisible to both.
+ *
+ * A response that also exposes `getItems()` (but not `getItemCount()`) is the
+ * index cursor: items a block emits straight through it and the records the
+ * runtime reserves must not share an index.
  */
-import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
+import type { GeneratorModel, ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
@@ -93,5 +97,62 @@ describe("untyped response fallback", () => {
     expect(streamed).toHaveLength(rawUpdates.length);
     expect(streamed.every((e) => e.itemId === traceId)).toBe(true);
     expect(streamed.some((e) => e.patch.status === "completed")).toBe(true);
+  });
+
+  it("reads the item cursor from getItems() when the response has no getItemCount()", async () => {
+    // Observability off: the lean completion record is reserved after the
+    // generator's message went straight through the response.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const model: GeneratorModel = {
+      modelId: "stub",
+      generate: async () => ({
+        text: "the draft",
+        finishReason: "stop",
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      }),
+    };
+    const draft = generator({
+      name: "draft",
+      model,
+      prompt: "write it",
+      itemVisibility: { client: true, history: true },
+    });
+    const after = handler({
+      name: "after",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: (input: unknown) => ({ got: input }),
+    });
+    const block = sequencer({ name: "seq" }).step(draft).step(after);
+    const flow = defineFlow({
+      kind: "untyped-cursor-flow",
+      actions: { run: { inputSchema: z.any(), block } },
+    })();
+
+    const downstream = createResponseEmitter({ requestId: "req_cursor", now: () => 1 });
+    const partialResponse = {
+      emit: (event: unknown) => downstream.emit(event),
+      getItems: () => downstream.getItems(),
+    };
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_cursor",
+      sessionId: "sess_cursor",
+      userId: "user_cursor",
+      modelResolver: createMockModelResolver({}),
+      stores: createInMemoryStores(),
+      response: partialResponse as unknown as ResponseEmitterHandle
+    });
+
+    await executeBlock({ block, input: {}, ctx });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const items = downstream.getItems();
+    expect(items.some((i) => i.type === "message")).toBe(true);
+    expect(items.some((i) => i.type === "block_trace")).toBe(true);
+    const indexes = items.map((i) => i.itemIndex);
+    expect(new Set(indexes).size).toBe(indexes.length);
   });
 });
