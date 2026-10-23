@@ -33,7 +33,12 @@
  * - `desk.fails`, `everyone` with `rounds: 1`, over the first and third (leg b: a failed one);
  * - `desk.restart`, the same as `desk.late` (leg b: the restart);
  * - `desk.write`, `everyone`, over the writer (leg c);
- * - `desk.legacy`, `everyone`, over the fourth (leg e).
+ * - `desk.legacy`, `everyone`, over the fourth (leg e);
+ * - `desk.fit`, `best-fit` over the second and third, the third its fallback (leg d: the one fit check);
+ * - `desk.vet`, `judgment` over the first, with `openWorkstream`, whose lead `desk.lead` is checked (leg d).
+ *
+ * One scripted evaluation answers every fit judgment, best fit's and the lead
+ * vet's, and records each call: leg d grades that record.
  *
  * Scripts, by marks in the message, so they follow it wherever it goes: a
  * delegate answers `<worker> answers: <what it was handed>`, holds that answer
@@ -107,7 +112,11 @@ const names = JSON.parse(readFileSync(namesFile, "utf8")) as string[];
 const delegates = names.map((name) => `desk.${name}`);
 const [first, second, third, fourth] = delegates as [string, string, string, string];
 const WRITER = "desk.writer";
-const coordinators: Record<string, { routing: string; rounds?: number; delegates: string[] }> = {
+/** Leg d's lead: on the built-in `agent` flow, which can lead a workstream, its one delegate the first. */
+const LEAD = "desk.lead";
+/** Leg d's project, which Alice creates and opens workstreams in. */
+const PROJECT = { visibility: "shared", id: "goal-project" };
+const coordinators: Record<string, { routing: string; rounds?: number; delegates: string[]; fallback?: string; tools?: string[] }> = {
   all: { routing: "everyone", delegates },
   judge: { routing: "judgment", delegates: [first, second] },
   one: { routing: "everyone", delegates: [third] },
@@ -117,6 +126,8 @@ const coordinators: Record<string, { routing: string; rounds?: number; delegates
   restart: { routing: "everyone", rounds: 1, delegates: [first, second] },
   write: { routing: "everyone", delegates: [WRITER] },
   legacy: { routing: "everyone", delegates: [fourth] },
+  fit: { routing: "best-fit", delegates: [second, third], fallback: third },
+  vet: { routing: "judgment", delegates: [first], tools: ["openWorkstream"] },
 };
 const treeDir = join(SCRATCH, "workforce");
 const workerFile = (name: string, body: string) => {
@@ -128,11 +139,13 @@ for (const name of names) {
   workerFile(name, `---\ndescription: Answers what it is handed.\nflow: helper\n---\n\nYou answer what you are handed.\n`);
 }
 workerFile("writer", `---\ndescription: Writes pieces, with help.\nflow: agent\nmodel: scripted/writer\ndelegates: [${first}]\n---\n\nHave each piece drafted, then answer with the draft.\n`);
+workerFile("lead", `---\ndescription: Leads code review and release work.\nflow: agent\nmodel: scripted/writer\ndelegates: [${first}]\n---\n\nRun the workstream through your delegate.\n`);
 for (const [name, c] of Object.entries(coordinators)) {
   workerFile(
     name,
     `---\ndescription: Hands each message on.\nflow: coordinator\nmodel: scripted/judgment\nrouting: ${c.routing}\n` +
-      `delegates: [${c.delegates.join(", ")}]\n${c.rounds === undefined ? "" : `rounds: ${c.rounds}\n`}---\n\nHand each message on.\n`,
+      `delegates: [${c.delegates.join(", ")}]\n${c.rounds === undefined ? "" : `rounds: ${c.rounds}\n`}` +
+      `${c.fallback === undefined ? "" : `fallback: ${c.fallback}\n`}${c.tools === undefined ? "" : `tools: [${c.tools.join(", ")}]\n`}---\n\nHand each message on.\n`,
   );
 }
 const tree = await readWorkforce(treeDir);
@@ -205,6 +218,15 @@ const judgment = {
   async generateStep(options: StepOptions) {
     for (const tool of options.tools ?? []) offered.set(tool.name, tool.parameters);
     const { asked, after } = turnOf(options);
+    // Leg d: open a workstream under the lead, for research it doesn't lead, or for work that is only a name.
+    const vet = /\[vet-(misfit|bare)\] ([a-z]+-[0-9a-f]+)/.exec(asked);
+    if (vet !== null) {
+      if (after.length > 0) return { text: "Done.", finishReason: "stop" };
+      const [, kind, w] = vet;
+      const title = kind === "misfit" ? `Research what to build next, ${w}` : w!;
+      const args = { project: PROJECT, id: `${kind}-${w}`, title, lead: LEAD, ...(kind === "misfit" ? { objectives: ["Rank three ideas"] } : {}) };
+      return { toolCalls: [{ toolCallId: `vet-${kind}`, toolName: "openWorkstream", args }], finishReason: "tool-calls" };
+    }
     if (asked.includes("[judge-3]") && after.length < 1) {
       return { toolCalls: [{ toolCallId: "hand-3", ...handTo(first, { maxAttempts: 3 }) }], finishReason: "tool-calls" };
     }
@@ -238,31 +260,65 @@ const writer = {
   },
 };
 
+/** The model leg d's fit judgments run on, best fit's and the lead vet's alike. */
+const FIT_MODEL = "scripted/fit";
+
+/**
+ * Leg d's one scripted evaluation, which records every call it answers. Asked
+ * about a lead (its choices hold a none-fits one), it answers none fits for
+ * research and that the work doesn't say its sort for a bare name. Asked
+ * best fit's question, it picks the worker a `[fit:<worker>]` mark names, and
+ * fails a message with no mark.
+ */
+const fit = mockEvaluationModel({
+  answers: ({ state, questions }) => {
+    const choices = Object.keys((questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {});
+    const none = choices.find((choice) => choice.includes("none"));
+    if (none !== undefined) {
+      const title = String((state as { work?: { title?: string } }).work?.title ?? "");
+      const pick = title.startsWith("Research") ? none : !title.includes(" ") ? choices.find((choice) => choice.includes("sort"))! : LEAD;
+      return { worker: { type: "choice", choice: pick, confidence: 0.9 } };
+    }
+    const mark = /\[fit:([^\]]+)\]/.exec(String((state as { post?: { text?: string } }).post?.text ?? ""))?.[1];
+    if (mark === undefined) throw new Error("the scripted fit check has no answer for this message");
+    return { worker: { type: "choice", choice: mark, confidence: 0.9 } };
+  },
+});
+
+/** Every block the resolver was asked a language model for, and on which model id: leg d reads who judged fit. */
+const askedModels: Array<{ block: string | null; id: string }> = [];
+
 const modelResolver = Object.assign(
   (id: string, block?: string) => {
+    askedModels.push({ block: block ?? null, id });
     if (block?.startsWith(wf.COORDINATOR_JUDGMENT ?? "coordinator-judgment")) return judgment;
     if (id === "scripted/writer") return writer;
     throw new Error(`the goal scripts no model for block "${block}" (${id})`);
   },
-  { resolveId: (id: string) => id },
+  {
+    resolveId: (id: string) => id,
+    resolveEvaluationModel: (id: string, block?: string) => {
+      if (id === FIT_MODEL) return fit;
+      throw new Error(`the goal scripts no evaluation for block "${block}" (${id})`);
+    },
+  },
 );
 
-// No coordinator here routes by best fit, so its evaluation is never called.
-const route = mockEvaluationModel({
-  answers: () => {
-    throw new Error("no coordinator in this goal routes by best fit");
-  },
-});
+// Leg d: a worker's open checks its lead with the fit check, on the same model as best fit.
+const workstreams = wf.defineWorkstreamBlocks({ installation, leadFlows: [agent], leadFit: { model: FIT_MODEL } });
 const coordinator = wf.defineCoordinatorFlow({
   installation,
   ...(POST_ERA ? { delegateFlows: [helper, agent] } : {}),
-  routeModel: route,
+  routeModel: FIT_MODEL,
   roundDeadlineMs: DEADLINE_MS,
+  agent: { catalog: { openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." }) } },
 });
 flows = { helper, agent, coordinator };
+/** The app's own flow, where Alice creates leg d's project and reads its workstreams. */
+const lab = core.defineFlow({ kind: "lab", actions: { ...wf.defineProjectBlocks().actions, ...workstreams.actions } } as never);
 const copies = wf.hireWorkforce(installation) as Array<{ id: string; task?: { actions?: object }; internal?: { actions?: object } }>;
 const state = engine.createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), lab: (lab as () => unknown)() },
   stores: { default: { primary: sqliteStores({ filename: storeFile }) } },
   durable: true,
   modelResolver,
@@ -333,7 +389,7 @@ async function until<T>(read: () => Promise<T | undefined>, ms: number, every = 
   return undefined;
 }
 
-type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; toolCall?: { name?: string }; blockName?: string; output?: unknown };
+type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; toolCall?: { name?: string }; blockName?: string; output?: unknown; error?: unknown };
 
 /** A conversation as Alice reads it through the session route: its routing records, its lines, and its tool results. */
 async function itemsOf(sessionId: string) {
@@ -349,13 +405,30 @@ async function itemsOf(sessionId: string) {
   return {
     records: items.filter((i) => i.type === "component" && i.component === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.data),
     lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role ?? null, agentName: i.agentName ?? null, text: text(i) })),
-    tools: items.filter((i) => i.type === "tool_output").map((i) => ({ name: i.toolCall?.name ?? i.blockName ?? null, output: i.output })),
+    tools: items.filter((i) => i.type === "tool_output").map((i) => ({ name: i.toolCall?.name ?? i.blockName ?? null, output: i.output, ...(i.error === undefined ? {} : { error: i.error }) })),
   };
 }
 
 /** One conversation with a coordinator, opened as an app opens one. */
 async function conversation(worker: string) {
   const session = await people.ensureWorkerSession({ worker });
+  return sessionOf(session as { id: string; flowKind: string });
+}
+
+/** A session of the app's own `lab` flow, created as Alice. */
+async function labSession() {
+  const res = await fetcher("http://goal.local/api/flows/lab/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId: ALICE }),
+  });
+  const body = (await res.json()) as { session?: { id: string } };
+  if (body.session === undefined) throw new Error(`creating a lab session: ${res.status} ${JSON.stringify(body).slice(0, 300)}`);
+  return sessionOf({ id: body.session.id, flowKind: "lab" });
+}
+
+/** Send actions to one session as Alice, and read their answers back as an app does. */
+function sessionOf(session: { id: string; flowKind: string }) {
   const client = createClient({ flowKind: session.flowKind, userId: ALICE, ...transport });
   /** Send an action and return as soon as it is accepted. */
   const send = async (action: string, input: unknown): Promise<{ requestId: string; error?: string }> => {
@@ -452,7 +525,21 @@ if (PHASE === "restart") {
 
 try {
   await state.getRouter();
-  const words = { rows: word(), twice: word(), three: word(), busy: word(), cancel: word(), late: word(), fails: word(), write: word(), legacy: word() };
+  const words = {
+    rows: word(),
+    twice: word(),
+    three: word(),
+    busy: word(),
+    cancel: word(),
+    late: word(),
+    fails: word(),
+    write: word(),
+    legacy: word(),
+    pick: word(),
+    fallback: word(),
+    misfit: word(),
+    bare: word(),
+  };
 
   // Leg a. One message to everyone: a task per delegate. As soon as the first
   // ending is written, touch the board while the rest are owed.
@@ -594,6 +681,22 @@ try {
   await sleep(GRACE_MS);
   await quiet();
 
+  // Leg d. Best fit's pick and its fallback, and the lead vet on a misfit and on a bare name, each judged by the one fit check.
+  const fitDesk = await conversation("desk.fit");
+  const pickPost = await fitDesk.act("run", { message: `[fit:${second}] ${words.pick} who takes this?` });
+  await quiet();
+  const fallbackPost = await fitDesk.act("run", { message: `${words.fallback} who takes this?` });
+  await quiet();
+  const projectLab = await labSession();
+  const created = await projectLab.act("createProject", { id: PROJECT.id, title: "Goal project" });
+  const vet = await conversation("desk.vet");
+  const misfitPost = await vet.act("run", { message: `[vet-misfit] ${words.misfit}` });
+  await quiet();
+  const barePost = await vet.act("run", { message: `[vet-bare] ${words.bare}` });
+  await quiet();
+  const project = await projectLab.act("readProject", { project: PROJECT });
+  const opened = ((project.output?.workstreams ?? []) as Array<{ id: string }>).map((workstream) => workstream.id);
+
   // The sweep: what every flow declares, and the tool fields the judgment turn was offered.
   const declared = copies.map((copy) => ({
     id: copy.id,
@@ -613,6 +716,8 @@ try {
     late: await itemsOf(late.id),
     write: await itemsOf(write.id),
     legacy: await itemsOf(legacy.id),
+    fit: await itemsOf(fitDesk.id),
+    vet: await itemsOf(vet.id),
   };
 
   report({
@@ -641,6 +746,18 @@ try {
       late: { sessionId: late.id, post: latePost, deadlineAt: deadlineAt ?? null, atDeadline },
     },
     c: { sessionId: write.id, post: writePost },
+    d: {
+      lead: LEAD,
+      fit: { sessionId: fitDesk.id, pick: pickPost, fallback: fallbackPost },
+      vet: { sessionId: vet.id, created, misfit: misfitPost, bare: barePost, opened },
+      // The one evaluation's own record: what each call was asked about, and its choices.
+      fitCalls: fit.calls.map((call) => ({
+        about: (call.state as { post?: unknown; work?: unknown }).post ?? (call.state as { work?: unknown }).work ?? call.state,
+        questions: Object.keys(call.questions),
+        choices: Object.keys((call.questions as { worker?: { criteria?: object } }).worker?.criteria ?? {}),
+      })),
+      askedModels,
+    },
     e: { sessionId: legacy.id, seeded: seeded ?? null },
     sweep: { declared, toolFields },
   });
