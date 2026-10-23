@@ -110,7 +110,8 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   keeps its own `timeoutMs`, none meaning no deadline, so an approval that waits today doesn't start
   expiring. A held question keeps its own 7-day default, read from the same host setting: when the
   setting lands, this issue replaces FIX-2133's 7-day constant with it, so the two can't drift (ER-8,
-  [epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). An input's and a
+  [epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). This issue owns that proof: goal leg f sets a
+  non-7-day default and reads it on both, and a raw `ctx.suspend`'s own `timeoutMs` beside them. An input's and a
   review's expiry now resume the block, as an approval's already does (FIX-1846). Input that
   fails its try at the deadline is asked again on the next try, so it can stay open a deadline per
   try.
