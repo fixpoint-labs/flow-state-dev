@@ -407,7 +407,7 @@ export function outputItemToSessionItem(item: RuntimeItem): SessionItem {
  * Applies `itemVisibility` / `agentName` filters from a SessionItem query.
  * Returns true if the item passes the filter (or no filter applies).
  */
-export function matchesIdentityFilter(
+function matchesIdentityFilter(
   item: SessionItem,
   query: ItemQuery | undefined,
 ): boolean {

@@ -21,24 +21,10 @@
  *   no history read holds), nothing names the original, and history shows it
  *   again as a partial turn until it too is evicted.
  */
-import { parkedInterruptedIds as parkedIds } from "../durability/stop-suspended";
-import type { DurabilityProvider } from "../durability/types";
 import type { RequestRecord } from "../stores/types";
 
 /** The statuses a past turn reads in: finished, or cut short by its host dying. */
 export const PAST_TURN_STATUSES: readonly RequestRecord["status"][] = ["completed", "interrupted"];
-
-/**
- * The parked interrupted records among `records` (`parkedInterruptedIds` in
- * `durability/stop-suspended.ts`). Without a durability provider nothing can
- * suspend, so none are parked. A failed read rejects.
- */
-export async function parkedInterruptedIds(
-  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension"> | undefined,
-  records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
-): Promise<Set<string>> {
-  return provider === undefined ? new Set() : parkedIds(provider, records);
-}
 
 /**
  * The ids of requests a retry re-ran: each `metadata.retryOf` among `records`,

@@ -154,7 +154,8 @@ import {
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
-import { PAST_TURN_STATUSES, parkedInterruptedIds, retriedIds } from "../execution/past-turns";
+import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
+import { parkedInterruptedIds } from "../durability/stop-suspended";
 
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {

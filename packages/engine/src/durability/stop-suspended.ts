@@ -247,15 +247,16 @@ export async function drivenAgain(
  *
  * Each record must carry its item log. One pending-gate read per session, and
  * a gate read per interrupted record the pending gates do not already cover.
- * A failed read rejects: the caller decides what an unknown answer means.
+ * Without a durability provider nothing can suspend, so none are parked. A
+ * failed read rejects: the caller decides what an unknown answer means.
  */
 export async function parkedInterruptedIds(
-  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">,
+  provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension"> | undefined,
   records: readonly Pick<RequestRecord, "id" | "status" | "items" | "userId" | "sessionId">[]
 ): Promise<Set<string>> {
   const parked = new Set<string>();
   const interrupted = records.filter((r) => r.status === "interrupted");
-  if (interrupted.length === 0) return parked;
+  if (provider === undefined || interrupted.length === 0) return parked;
   const ids = new Set(interrupted.map((r) => r.id));
   const sessions = new Map<string, { userId: string; sessionId: string | undefined }>();
   for (const r of interrupted) sessions.set(`${r.userId}\u0000${r.sessionId ?? ""}`, { userId: r.userId, sessionId: r.sessionId });

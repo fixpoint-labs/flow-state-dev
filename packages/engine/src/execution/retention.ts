@@ -10,7 +10,8 @@ import { parseDuration } from "../utils/duration";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import type { DurabilityProvider } from "../durability/types";
-import { PAST_TURN_STATUSES, parkedInterruptedIds } from "./past-turns";
+import { PAST_TURN_STATUSES } from "./past-turns";
+import { parkedInterruptedIds } from "../durability/stop-suspended";
 
 const RETENTION_COUNT_BATCH_SIZE = 16;
 
