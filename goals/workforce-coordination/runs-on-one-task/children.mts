@@ -1,7 +1,7 @@
 /**
  * Plan row 3: every child's own goal or check, with its controls, on the closure's commit. The
  * set is every child of FIX-2056 blocking FIX-2087 when the run starts, read from Linear (with
- * `LINEAR_API_KEY`; without it, the set below, said so), and printed as read. A child with no
+ * `LINEAR_API_KEY`; when it can't be read, row 3 runs the set below and fails), and printed as read. A child with no
  * entry in {@link CHECKS} is a failure: the closure can't grade what it can't run.
  *
  * Plus every goal under `goals/coordinators/` and `goals/hand-offs/`, and FIX-2005's leg of
@@ -135,17 +135,21 @@ export const NAMED: Check[] = [
   { goal: "goal-seek-loop/replans-until-done", walked: "j3: a goal-seek loop that replans; refuses-a-board-built-wrong holds its delegation-board refusal" },
 ];
 
-/** The children blocking FIX-2087, read from Linear. */
-async function childrenFromLinear(): Promise<Array<{ id: string; title: string }> | undefined> {
+/** The children blocking FIX-2087, read from Linear. Throws when the set can't be read: no key, a failed request, or an answer without the issue's relations. */
+async function childrenFromLinear(): Promise<Array<{ id: string; title: string }>> {
   const key = process.env.LINEAR_API_KEY ?? "";
-  if (key === "") return undefined;
+  if (key === "") throw new Error("LINEAR_API_KEY is unset");
   const response = await fetch("https://api.linear.app/graphql", {
     method: "POST",
     headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({ query: 'query { issue(id: "FIX-2087") { inverseRelations(first: 100) { nodes { type issue { identifier title parent { identifier } } } } } }' }),
   });
+  if (!response.ok) throw new Error(`Linear answered HTTP ${response.status}`);
   const body = (await response.json()) as any;
-  return (body.data?.issue?.inverseRelations?.nodes ?? [])
+  if (body.errors !== undefined) throw new Error(`Linear answered with errors: ${JSON.stringify(body.errors).slice(0, 300)}`);
+  const nodes = body.data?.issue?.inverseRelations?.nodes;
+  if (!Array.isArray(nodes)) throw new Error("Linear's answer holds no relations for FIX-2087");
+  return nodes
     .filter((n: any) => n.type === "blocks" && n.issue.parent?.identifier === "FIX-2056")
     .map((n: any) => ({ id: n.issue.identifier, title: n.issue.title }));
 }
@@ -160,6 +164,14 @@ function checkBy(owner: string, check: Check, tags: readonly string[], failures:
   report.push(`  ${owner} graded by ${check.by.join(", ")}`);
   if (stale.length > 0) failures.push(`children:${owner} — graded by ${stale.join(", ")}, which no run in this closure holds`);
 }
+
+/**
+ * Each run row 3 made and whether it passed, for row 4: a goal by its path, a control as
+ * `<path> GOAL_CONTROL=<name>` (passed when it went red as documented), a test file as
+ * `<package> <file>`. A run made twice passes only if both did.
+ */
+export const RAN = new Map<string, boolean>();
+const record = (key: string, ok: boolean) => RAN.set(key, (RAN.get(key) ?? true) && ok);
 
 /** Run one check (and its controls); push a failure per red run or control that stayed green. */
 function runCheck(owner: string, check: Check, failures: string[], report: string[], say: (s: string) => void): void {
@@ -190,9 +202,13 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
     if (run.control === undefined) {
       report.push(`  ${out.status === 0 ? "PASS" : "FAIL"} ${label} (${secs}s)${check.walked ? ` · row 1 walks ${check.walked}` : ""}: ${verdict}`);
       if (out.status !== 0) failures.push(`children:${owner} — ${label} ${verdict}: ${(/FAIL —[\s\S]{0,1200}/.exec(text)?.[0] ?? text.slice(-1200)).replace(/\n/g, " | ")}`);
+      if (check.goal !== undefined) record(check.goal, out.status === 0);
+      else if (check.script !== undefined) record(check.script, out.status === 0);
+      else for (const file of check.vitest!.files) record(`${check.vitest!.filter} ${file}`, out.status === 0);
     } else {
       const tags = check.controls![run.control]!;
       const red = out.status === 1 && tags.some((t) => text.includes(t.endsWith(":") ? `- ${t}` : t) || text.includes(t));
+      record(`${check.goal} GOAL_CONTROL=${run.control}`, red);
       report.push(`  ${red ? "FAIL (expected)" : "CONTROL BROKEN"} ${label} (${secs}s): wanted one of ${tags.join(", ")} red; ${verdict}`);
       if (!red) failures.push(`children:${owner} — control ${run.control} of ${check.goal} did not fail as documented (exit ${out.status}): ${text.slice(-800).replace(/\n/g, " | ")}`);
     }
@@ -201,8 +217,13 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
 
 /** Run row 3. `tags` are row 1's assertions, which a check's `by` may name. */
 export async function runChildren(failures: string[], report: string[], say: (s: string) => void, tags: readonly string[]): Promise<void> {
-  const read = await childrenFromLinear().catch(() => undefined);
-  const blocking = read ?? Object.keys(CHECKS).map((id) => ({ id, title: "(not read: LINEAR_API_KEY unset)" }));
+  // Without the live set, row 3 can't tell a child it has no check for: it still runs the
+  // built-in set, and fails.
+  const read = await childrenFromLinear().catch((error: unknown) => {
+    failures.push(`children:cant-tell — the children blocking FIX-2087 weren't read from Linear (${error instanceof Error ? error.message : String(error)}), so a child with no check here would go unseen`);
+    return undefined;
+  });
+  const blocking = read ?? Object.keys(CHECKS).map((id) => ({ id, title: "(not read from Linear)" }));
   // A child with a check here that Linear doesn't list as blocking still runs: a closure fix
   // filed without the blocking relation is still a fix the closure rests on.
   const unlisted = Object.keys(CHECKS).filter((id) => !blocking.some((c) => c.id === id));

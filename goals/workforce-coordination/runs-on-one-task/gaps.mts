@@ -2,8 +2,13 @@
  * Plan row 4's map: each of the 31 in-scope rows of `docs/internal/design/workforce-coordination-gaps.md`
  * (every phase 1 and phase 3 row), the child whose Linear scope line cites it, and the checks
  * that read it. A row is matched by its target's opening words, so a row renamed or added on the
- * page is a row this map doesn't hold, and the run says so. The verdict of each check is in
- * rows 1 to 3; this prints the map and fails a row no check reads.
+ * page is a row this map doesn't hold, and the run says so. Each check names a run of this
+ * closure: `closure <tags>` row 1's assertions, `sweep: …` the sweep, `<package> <file>.test.ts`
+ * a regression test row 3 runs, or a goal path row 3 runs, then its legs and `(control …)`.
+ * A row passes only when every run it names ran in this closure run and passed (a goal and each
+ * control it names, as row 3 graded them; an assertion, as its leg's last attempt): a label
+ * naming no such run, or one not run here, fails, as a stale `by` does. Leg letters after a goal
+ * are where in it the row is read; the goal's own verdict covers them.
  *
  * Four rows hold a half other epics own (FIX-2056 D2, (f)); the carved half is printed beside
  * its row and does not gate the closure.
@@ -49,7 +54,7 @@ export const ROWS: Row[] = [
   { target: "Recurring work is a schedule that files an ordinary task", owners: "FIX-2085", checks: ["scheduled-work/recurring-work-files-a-task"] },
   { target: "A dependency stays within one board", owners: "FIX-2080", checks: ["task-board/runs-by-its-filing-settings"] },
   { target: "Cancelling, retrying or failing a task cancels its open tasks", owners: "FIX-2080", checks: ["task-board/runs-by-its-filing-settings d (control no-cascade)"] },
-  { target: "A failed or cancelled dependency cancels its dependents", owners: "FIX-2080", checks: ["task-board/runs-by-its-filing-settings d (control no-cascade)", "closure c:dependent-cancelled (control no-cascade)"] },
+  { target: "A failed or cancelled dependency cancels its dependents", owners: "FIX-2080", checks: ["task-board/runs-by-its-filing-settings d (control no-cascade)", "closure c:dependent-cancelled"] },
   { target: "Five task tools", owners: "FIX-2081, FIX-2083", checks: ["task-tools/five-tools-one-rule-per-field a", "coordinators/routes-each-message-as-a-task d:one-check", "sweep: the tools rule", "closure j1:tools"], carved: "`sendMessage` among the model's tools is FIX-2070's" },
   { target: "The task tools are public actions a screen calls as the user", owners: "FIX-2081", checks: ["task-tools/five-tools-one-rule-per-field", "closure a:routed-listed, j2:cancelled"], carved: "answering a question by public action is FIX-2058's" },
   { target: "A worker declares its roles", owners: "FIX-2084", checks: ["workers/roles-checked-at-hire a (control no-role-check)"] },
@@ -66,17 +71,72 @@ function pageRows(): string[] {
     .filter((target) => target !== "FIX-2056 (one epic)");
 }
 
-/** Print the map; a page row this map doesn't hold, or one with no check, is pushed as a failure. */
-export function printGaps(report: string[], failures?: string[]): void {
+/** What this closure run ran, and each run's verdict, for resolving a row's checks. */
+export interface Ran {
+  /** Row 1's assertion tags. */
+  tags: readonly string[];
+  /** Each walk leg run, and whether its last attempt passed (`j1:` and `j2:` are leg a's). */
+  legs: ReadonlyMap<string, boolean>;
+  /** The sweep's verdict, plain and `--control` both, if it ran. */
+  sweep: boolean | undefined;
+  /** Row 3's goals (`goals/<path>`), its controls (`<path> GOAL_CONTROL=<name>`) and its test files, each with whether it passed (a control: went red as documented). */
+  checks: ReadonlyMap<string, boolean>;
+}
+
+/** Why one check label isn't a run that passed here, or undefined when it is. */
+function unresolved(label: string, ran: Ran): string | undefined {
+  if (label.startsWith("closure ")) {
+    for (const tag of label.slice("closure ".length).split(/,\s*/)) {
+      if (!ran.tags.includes(tag)) return `${tag} is no row-1 assertion`;
+      const leg = /^j[12]:/.test(tag) ? "a" : tag.split(":")[0]!;
+      const passed = ran.legs.get(leg);
+      if (passed === undefined) return `leg ${leg}, which holds ${tag}, didn't run`;
+      if (!passed) return `leg ${leg}, which holds ${tag}, failed`;
+    }
+    return undefined;
+  }
+  if (label.startsWith("sweep:")) return ran.sweep === undefined ? "the sweep didn't run" : ran.sweep ? undefined : "the sweep failed";
+  const test = /^\S+ (\S+\.test\.ts)$/.exec(label)?.[1];
+  if (test !== undefined) {
+    const hits = [...ran.checks].filter(([k]) => k.endsWith(`/${test}`));
+    if (hits.length === 0) return `${test} didn't run`;
+    return hits.every(([, ok]) => ok) ? undefined : `${test} failed`;
+  }
+  const goal = label.split(" ")[0]!;
+  const passed = ran.checks.get(goal);
+  if (passed === undefined) return `${goal} didn't run`;
+  if (!passed) return `${goal} failed`;
+  for (const name of (/\(controls? ([^)]+)\)/.exec(label)?.[1] ?? "").split(/,\s*/).filter(Boolean)) {
+    const red = ran.checks.get(`${goal} GOAL_CONTROL=${name}`);
+    if (red === undefined) return `${goal}'s control ${name} didn't run`;
+    if (!red) return `${goal}'s control ${name} didn't go red as documented`;
+  }
+  return undefined;
+}
+
+/**
+ * Print the map, each check with whether it ran and passed here. A page row this map doesn't
+ * hold, one with no check, and a check naming no run that passed in this closure run are each
+ * pushed as a failure.
+ */
+export function printGaps(report: string[], failures: string[], ran: Ran): void {
   const page = pageRows();
   report.push(`row 4: ${page.length} in-scope gaps rows on the page, ${ROWS.length} mapped`);
+  let green = 0;
   for (const target of page) {
     const row = ROWS.find((r) => target.startsWith(r.target));
     if (row === undefined || row.checks.length === 0) {
-      failures?.push(`gaps — no check reads the row "${target.slice(0, 90)}"`);
+      failures.push(`gaps — no check reads the row "${target.slice(0, 90)}"`);
       report.push(`  UNMAPPED ${target.slice(0, 90)}`);
       continue;
     }
-    report.push(`  ${row.owners.padEnd(18)} ${row.target.slice(0, 60).padEnd(60)} ← ${row.checks.join(" · ")}${row.carved ? ` [carved: ${row.carved}]` : ""}`);
+    const misses = row.checks.flatMap((c) => {
+      const why = unresolved(c, ran);
+      return why === undefined ? [] : [`${c}: ${why}`];
+    });
+    if (misses.length === 0) green += 1;
+    else failures.push(`gaps — the row "${row.target.slice(0, 60)}" names checks that didn't pass in this run: ${misses.join("; ")}`);
+    report.push(`  ${misses.length === 0 ? "PASS" : "FAIL"} ${row.owners.padEnd(18)} ${row.target.slice(0, 60).padEnd(60)} ← ${row.checks.join(" · ")}${row.carved ? ` [carved: ${row.carved}]` : ""}`);
   }
+  report.push(`row 4: ${green} of ${page.length} rows with every check run and passed here`);
 }

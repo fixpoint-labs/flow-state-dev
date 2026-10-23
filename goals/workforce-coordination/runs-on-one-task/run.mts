@@ -17,7 +17,7 @@ import { KILL_AFTER_ENDING, PATCHES as ENDING_CONTROLS } from "../../task-board/
 import { PATCHES as FILING_CONTROLS } from "../../task-board/runs-by-its-filing-settings/controls.mts";
 import { CAST, pickCast, writeCast, type Cast } from "./cast.mts";
 import { journeyCoordinator, journeyHandsOut, planRows, walkA, walkFails, walkUntilKilled, type WalkA } from "./legs.mts";
-import { runChildren } from "./children.mts";
+import { RAN, runChildren } from "./children.mts";
 import { printGaps } from "./gaps.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -56,6 +56,7 @@ export const TAGS: Record<string, Kind> = {
   "a:lands-once": "structural",
   "a:draft-content": "judgment",
   "a:follow-up": "structural",
+  "a:follow-up-differs": "judgment",
   "a:original-unchanged": "structural",
   "a:once": "structural",
   "j1:routed": "structural",
@@ -182,14 +183,22 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
       f.push(`a:answers-after-steps — writer was given no turn after its dispatched step ended; its task completed with its earlier answer ${show(R.output, 120)}`);
     }
   }
-  const draftLines = linesBy(store, w.conv, CAST.writer).filter((m) => textOf(m) === outputText(R.output));
-  if (R.status !== "completed" || draftLines.length !== 1) f.push(`a:lands-once — writer's task ${R.status}; ${draftLines.length} line(s) of its result in Alice's conversation`);
   const draft = outputText(R.output);
-  if (!draft.includes(cast.word) || !draft.includes(cast.factMark)) f.push(`a:draft-content — the draft lacks ${!draft.includes(cast.word) ? `the word "${cast.word}"` : ""} ${!draft.includes(cast.factMark) ? `researcher's fact (${cast.factMark})` : ""}: ${show(draft, 200)}`);
   const fu = w.followUpRow;
+  // A line is matched to its ending by text. When the model writes the follow-up word for word
+  // like the original, the two lines read alike, so each is told apart by when it landed: the
+  // original's before the follow-up ended, the follow-up's after.
+  const fuEnded = fu?.status === "completed" && outputText(fu.output) === draft ? fu.completedAt : undefined;
+  const draftLines = linesBy(store, w.conv, CAST.writer).filter((m) => textOf(m) === draft && (fuEnded === undefined || Number(m.ts ?? 0) < fuEnded));
+  if (R.status !== "completed" || draftLines.length !== 1) f.push(`a:lands-once — writer's task ${R.status}; ${draftLines.length} line(s) of its result in Alice's conversation`);
+  if (!draft.includes(cast.word) || !draft.includes(cast.factMark)) f.push(`a:draft-content — the draft lacks ${!draft.includes(cast.word) ? `the word "${cast.word}"` : ""} ${!draft.includes(cast.factMark) ? `researcher's fact (${cast.factMark})` : ""}: ${show(draft, 200)}`);
+  // The follow-up's result is a turn of writer's after it was filed, not the original's answer handed back.
+  const fuAnswered = fu === undefined ? [] : lines(store, writerSession ?? "").filter((m) => m.agentName === "agent-answer" && Number(m.ts ?? 0) >= (fu.createdAt ?? Infinity) && textOf(m) === outputText(fu.output));
   if (w.followUp === undefined) f.push(`a:follow-up — not filed: writer's task never completed`);
-  else if (fu === undefined || fu.status !== "completed" || (fu as { followUpOf?: string }).followUpOf !== R.id || !fu.partition.startsWith(w.conv) || fu.run?.sessionId !== writerSession || outputText(fu.output) === draft) {
-    f.push(`a:follow-up — wanted a completed follow-up of ${R.id}, filed from Alice's conversation, run in writer's task session, with a new version: ${show(w.followUp.output)} ${show({ ...fu, output: outputText(fu?.output).slice(0, 80) })}`);
+  else if (fu === undefined || fu.status !== "completed" || (fu as { followUpOf?: string }).followUpOf !== R.id || !fu.partition.startsWith(w.conv) || fu.run?.sessionId !== writerSession || fuAnswered.length === 0) {
+    f.push(`a:follow-up — wanted a completed follow-up of ${R.id}, filed from Alice's conversation, run in writer's task session, answered by a turn of writer's after it was filed (${fuAnswered.length}): ${show(w.followUp.output)} ${show({ ...fu, output: outputText(fu?.output).slice(0, 80) })}`);
+  } else if (outputText(fu.output) === draft) {
+    f.push(`a:follow-up-differs — writer's follow-up turn wrote the original word for word: ${show(draft, 160)}`);
   }
   if (w.before !== undefined && JSON.stringify(taskOf(w.before)?.output) !== JSON.stringify(taskOf(w.after)?.output)) {
     f.push(`a:original-unchanged — the original's output changed: ${show(taskOf(w.before)?.output, 120)} then ${show(taskOf(w.after)?.output, 120)}`);
@@ -198,7 +207,7 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
     const heard = lines(store, writerSession ?? "").filter((m) => textOf(m).includes(`(${r.id})`));
     if (heard.length !== 1) f.push(`a:once — researcher's ending of ${r.id} reached writer ${heard.length} time(s)`);
   }
-  if (fu?.status === "completed" && linesBy(store, w.conv, CAST.writer).filter((m) => textOf(m) === outputText(fu.output)).length !== 1) f.push(`a:once — the follow-up's result did not land once in Alice's conversation`);
+  if (fu?.status === "completed" && linesBy(store, w.conv, CAST.writer).filter((m) => textOf(m) === outputText(fu.output) && (fuEnded === undefined || Number(m.ts ?? 0) >= fuEnded)).length !== 1) f.push(`a:once — the follow-up's result did not land once in Alice's conversation`);
   return f;
 }
 
@@ -263,8 +272,12 @@ function readNdjson<T>(file: string): T[] {
 
 // ---- the walk ---------------------------------------------------------------------------------
 
+/** Each walk leg run, and whether its last attempt passed: row 4 reads it. */
+const legPassed = new Map<string, boolean>();
+
 /** One leg's attempts under D1: retried only while every failure is a judgment miss. */
 async function attempts(leg: string, once: (attempt: number) => Promise<string[]>, report: string[], failures: string[]): Promise<void> {
+  legPassed.set(leg, false);
   const max = control === undefined ? goalAttempts() : 1;
   for (let attempt = 1; attempt <= max; attempt += 1) {
     let got: string[];
@@ -276,7 +289,10 @@ async function attempts(leg: string, once: (attempt: number) => Promise<string[]
     const structural = got.filter((g) => kindOf(g) === "structural");
     report.push(`${leg} attempt ${attempt}/${max}: ${got.length === 0 ? "PASS" : `FAIL ${[...new Set(got.map((g) => `${tagOf(g)} (${kindOf(g)})`))].join(", ")}`}`);
     for (const g of got) report.push(`  ${g}`);
-    if (got.length === 0) return;
+    if (got.length === 0) {
+      legPassed.set(leg, true);
+      return;
+    }
     if (structural.length > 0 || attempt === max) {
       failures.push(...got);
       return;
@@ -396,6 +412,7 @@ await runGoal(async (failures, tell) => {
   const head = spawnSync("git", ["-C", REPO_ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
   report.push(`commit ${head}${control === undefined ? "" : `, control ${controlName}:\n${describePatches(control.patches, REPO_ROOT)}`}`);
   if (parts.has("walk")) await walk(failures, tell, report);
+  let sweptOk: boolean | undefined;
   if (parts.has("sweep")) {
     const plain = (swept ??= sweepJson());
     tell.over("sweep · task tools the capability declares", plain.tools);
@@ -405,12 +422,15 @@ await runGoal(async (failures, tell) => {
     const ctl = spawnSync(process.execPath, [join(HERE, "sweep.mjs"), "--control"], { encoding: "utf8" });
     if (ctl.status !== 0) failures.push(`sweep:control — the plants were not reported exactly:\n${ctl.stdout.slice(-1500)}`);
     report.push(`sweep --control: ${/CONTROL (OK|BROKEN).*/.exec(ctl.stdout)?.[0] ?? "no verdict"}`);
+    sweptOk = plain.findings.length === 0 && plain.cantTell.length === 0 && ctl.status === 0;
   }
   if (parts.has("children")) await runChildren(failures, report, say, Object.keys(TAGS));
-  if (parts.has("gaps")) printGaps(report, failures);
+  if (parts.has("gaps")) printGaps(report, failures, { tags: Object.keys(TAGS), legs: legPassed, sweep: sweptOk, checks: RAN });
   if (control !== undefined) {
     const red = failures.filter((x) => tagOf(x) === control.mustFail);
     report.push(red.length > 0 ? `control ${controlName}: ${control.mustFail} FAILed, as it must` : `control ${controlName}: ${control.mustFail} stayed green: the control is broken`);
+    // A broken control must not read as a pass, even when nothing else went red.
+    if (red.length === 0) failures.push(`control:broken — ${controlName} left ${control.mustFail} green, so it shows nothing`);
   }
   for (const line of report) console.error(line);
   return { failures, evidence: `the closure's plan on ${head.slice(0, 9)}: ${[...parts].join(", ")}` };

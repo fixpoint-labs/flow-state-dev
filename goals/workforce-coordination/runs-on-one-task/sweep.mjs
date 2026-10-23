@@ -98,6 +98,36 @@ function plantsOf(root) {
       path: "packages/workforce/src/__planted_call__.ts",
       text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, id: string) {\n  await rows.complete.call(rows, id, 1);\n}\n",
     },
+    {
+      // A claim-passing cancel in each indirect shape: `.call`, `.apply`, `.bind`, destructured, element access.
+      rule: "endings",
+      path: "packages/workforce/src/__planted_cancel_shapes__.ts",
+      text:
+        COLLECTION +
+        "export async function giveUp(board: TaskCollectionRef, id: string, claim: TaskClaimTicket) {\n" +
+        '  await board.cancel.call(board, id, "done", { claim });\n' +
+        '  await board.cancel.apply(board, [id, "done", { claim }]);\n' +
+        "  const later = board.cancel.bind(board);\n" +
+        "  const { cancel: stop } = board;\n" +
+        '  await stop(id, "done", { claim });\n' +
+        '  await board["cancel"](id, "done", { claim });\n' +
+        "  return later;\n}\n",
+      expect: 5,
+    },
+    {
+      // The same shapes with no claim are a plain cancel, not an ending: nothing is reported.
+      rule: "endings",
+      path: "packages/workforce/src/__planted_cancel_unclaimed__.ts",
+      text:
+        COLLECTION +
+        "export async function dropIt(board: TaskCollectionRef, id: string) {\n" +
+        '  await board.cancel.call(board, id, "not needed");\n' +
+        '  await board.cancel.apply(board, [id, "not needed"]);\n' +
+        "  const { cancel: stop } = board;\n" +
+        '  await stop(id, "not needed");\n' +
+        '  await board["cancel"](id, "not needed");\n}\n',
+      expect: 0,
+    },
     forwarderPlant(root),
     {
       rule: "endings",

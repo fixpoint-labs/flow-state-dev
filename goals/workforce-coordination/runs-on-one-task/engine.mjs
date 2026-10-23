@@ -232,7 +232,8 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   // ---- endings · read by type ---------------------------------------------------------------
   // A task collection is any value whose type has the collection's lifecycle: claim, complete,
   // fail and cancel. Its `complete` or `fail` called, or its `cancel` called with the caller's
-  // own claim, is an ending; so is a call of a pass-through helper.
+  // own claim (in any shape: `.call`, `.apply`, element access, destructured), is an ending; so
+  // is a cancel handed on (`.bind`, passed as a value), and a call of a pass-through helper.
   const isCollection = (type) => {
     const t = checker.getApparentType(checker.getNonNullableType(type));
     return ["claim", "complete", "fail", "cancel"].every((p) => t.getProperty(p) !== undefined);
@@ -323,6 +324,51 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   };
   const ENDS = ["complete", "fail"];
   const onCollection = (receiver, name) => isCollection(checker.getTypeAtLocation(receiver)) || (name !== undefined && declaredOnCollection(name));
+  /**
+   * Whether `expr` is a task collection's `cancel` in a shape other than `x.cancel`: `x["cancel"]`,
+   * or a name destructured from a collection (`const { cancel: c } = x`). A cancel is an ending
+   * only under the caller's own claim, so the call's claim argument decides, as for `x.cancel(...)`.
+   */
+  const isCancelRef = (expr) => {
+    if (ts.isElementAccessExpression(expr)) return ts.isStringLiteralLike(expr.argumentExpression) && expr.argumentExpression.text === "cancel" && isCollection(checker.getTypeAtLocation(expr.expression));
+    if (!ts.isIdentifier(expr)) return false;
+    return (checker.getSymbolAtLocation(expr)?.declarations ?? []).some(
+      (d) => ts.isBindingElement(d) && ts.isObjectBindingPattern(d.parent) && (d.propertyName ?? d.name).getText() === "cancel" && isCollection(checker.getTypeAtLocation(d.parent)),
+    );
+  };
+  /** `x.cancel` or {@link isCancelRef}: any reference to a task collection's cancel. */
+  const isAnyCancel = (expr) => (ts.isPropertyAccessExpression(expr) && expr.name.text === "cancel" && onCollection(expr.expression, expr.name)) || isCancelRef(expr);
+  /**
+   * The ending a call of a collection's cancel makes, through `.call`/`.apply` or a shape
+   * {@link isCancelRef} reads (`x.cancel(...)` itself is read below, with the removed members).
+   * `.apply` with an argument list it can't read counts, since its claim can't be told apart.
+   */
+  const cancelCallEnding = (node, sf) => {
+    const callee = node.expression;
+    if (isCancelRef(callee)) return passesClaim(node.arguments[2]) ? `${callee.getText(sf)}() under the caller's own claim` : undefined;
+    if (!ts.isPropertyAccessExpression(callee) || !isAnyCancel(callee.expression)) return undefined;
+    const how = callee.name.text;
+    if (how === "call") return passesClaim(node.arguments[3]) ? `${callee.getText(sf)}() under the caller's own claim` : undefined;
+    if (how === "apply") {
+      const list = node.arguments[1];
+      if (list !== undefined && ts.isArrayLiteralExpression(list)) return passesClaim(list.elements[2]) ? `${callee.getText(sf)}() under the caller's own claim` : undefined;
+      return `${callee.getText(sf)}() with arguments it can't read`;
+    }
+    return undefined;
+  };
+  /**
+   * A collection's cancel handed on rather than called (`.bind`, passed as a value): what is
+   * done with it later can't be read, so it counts as an ending, as a handed-on complete or fail does.
+   */
+  const cancelHandedOn = (node) => {
+    if (!isAnyCancel(node)) return false;
+    const p = node.parent;
+    if (ts.isCallExpression(p) && p.expression === node) return false;
+    if (ts.isPropertyAccessExpression(p) && p.expression === node && ["call", "apply"].includes(p.name.text)) return false;
+    if (ts.isIdentifier(node) && ts.isPropertyAccessExpression(p) && p.name === node) return false;
+    if ((ts.isVariableDeclaration(p) && p.name === node) || ts.isBindingElement(p)) return false;
+    return true;
+  };
   const recorders = {};
   for (const sf of ownFiles) {
     const path = rel(sf);
@@ -343,6 +389,9 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
       } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
         const prop = (node.propertyName ?? node.name).getText(sf);
         if (ENDS.includes(prop) && isCollection(checker.getTypeAtLocation(node.parent))) ending = `${prop} destructured from a task collection`;
+      } else if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node) || ts.isIdentifier(node)) && cancelHandedOn(node)) {
+        ending = `${node.getText(sf)} (a task collection's cancel, handed on)`;
+        forwards = true;
       }
       if (ts.isCallExpression(node)) {
         if (ts.isPropertyAccessExpression(node.expression)) {
@@ -356,6 +405,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
             if (method === "cancel" && passesClaim(node.arguments[2])) ending = `${node.expression.getText(sf)}() under the caller's own claim`;
           }
         }
+        ending ??= cancelCallEnding(node, sf);
         const helper = passThroughOf(node.expression);
         if (helper !== undefined) {
           if (helper !== "advisoryCancel" || passesClaim(node.arguments[3])) ending = `${node.expression.getText(sf)}() (${helper})`;
