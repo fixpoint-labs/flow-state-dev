@@ -66,7 +66,7 @@ async function ask(worker: FlowInstance, sessionId: string): Promise<Turn> {
     }),
   });
   const router = await state.getRouter();
-  const path = [worker.id, sessionId, "actions", "run"];
+  const path = [worker.id, sessionId, "actions", "respond"];
   const body = { userId: USER_ID, input: { message: "/house-style" } };
   const response = await router.POST(
     new Request(`http://test/api/flows/${path.join("/")}`, {

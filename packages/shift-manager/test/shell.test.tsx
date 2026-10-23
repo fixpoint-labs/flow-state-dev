@@ -314,7 +314,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     const real = globalThis.fetch;
     let down = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
-      down && String(i instanceof Request ? i.url : i).includes("/actions/message")
+      down && String(i instanceof Request ? i.url : i).includes("/actions/respond")
         ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }))
         : real(i, init),
     );
@@ -723,7 +723,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await workerAction(clients, "ops.chief-of-staff", "message", { message: "earlier" }, COS_CONVERSATION);
+    await workerAction(clients, "ops.chief-of-staff", "respond", { message: "earlier" }, COS_CONVERSATION);
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let failing = false;

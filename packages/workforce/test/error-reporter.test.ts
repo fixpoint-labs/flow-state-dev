@@ -97,7 +97,7 @@ function breakerFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message } }
   });
 }
 
@@ -226,7 +226,7 @@ async function openLab(
   const breaks = async (message: string, userId = "alice") => {
     const sessionId = `breaker-${userId}`;
     await ensure("breaker", sessionId, userId, ORG, { workerId: "eng.breaker" });
-    const result = await host.act(userId, sessionId, "run", { message: `throw:${message}` }, "breaker");
+    const result = await host.act(userId, sessionId, "respond", { message: `throw:${message}` }, "breaker");
     expect(result.error, JSON.stringify(result).slice(0, 600)).toBeDefined();
     await reporter.idle();
   };
@@ -610,7 +610,7 @@ describe("a user reporting a problem", () => {
       ]
     });
     const lab = await openLab({ agentAnswer });
-    const turn = await lab.host.act(OPERATOR, CONVERSATION, "run", { message: "the board says done but nothing ran" }, ERROR_REPORTER_FLOW);
+    const turn = await lab.host.act(OPERATOR, CONVERSATION, "respond", { message: "the board says done but nothing ran" }, ERROR_REPORTER_FLOW);
     expect(turn.error, messageOf(turn.error)).toBeUndefined();
     await lab.reporter.idle();
     const rows = await lab.rows();

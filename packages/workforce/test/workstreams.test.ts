@@ -337,7 +337,7 @@ describe("opening a workstream", () => {
     const named = second.workstream.sessionId as string;
     expect(named).not.toBe(stalled);
     // The stalled session is the most recent: it took a turn after the entry named the other.
-    await h.ok("alice", "lead", stalled, "run", { message: "still here" });
+    await h.ok("alice", "lead", stalled, "respond", { message: "still here" });
     expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
 
     const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
@@ -530,7 +530,7 @@ describe("who reads an entry", () => {
 
     const session = await h.call("GET", "bob", ["sessions", out.workstream.sessionId]);
     expect(session.status).toBeGreaterThanOrEqual(400);
-    const run = await h.call("POST", "bob", ["lead", out.workstream.sessionId, "actions", "run"], { userId: "bob", input: { message: "hi" } });
+    const run = await h.call("POST", "bob", ["lead", out.workstream.sessionId, "actions", "respond"], { userId: "bob", input: { message: "hi" } });
     expect(run.status).toBeGreaterThanOrEqual(400);
   });
 });

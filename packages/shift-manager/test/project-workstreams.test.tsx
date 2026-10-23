@@ -187,7 +187,7 @@ async function askFor(user: User, setup: ProjectSetup, id: string, message: stri
     { toolName: "createTask", args: { goal: message, assignee: lead, target: `shared/apollo/${id}`, session: "ongoing", resultTo: "conversation" } },
   ];
   const pc = await projectCoordinator(user, setup);
-  await runAction(user.clients, "coordinator", pc, "run", { message });
+  await runAction(user.clients, "coordinator", pc, "respond", { message });
   return pc;
 }
 
@@ -229,7 +229,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     const alice = await as(ALICE);
     judgmentCalls = [{ toolName: "discover", args: { domain: "workers", detail: "full" } }];
     const pc = await projectCoordinator(alice, setup);
-    await runAction(alice.clients, "coordinator", pc, "run", { message: "Who can lead a research workstream?" });
+    await runAction(alice.clients, "coordinator", pc, "respond", { message: "Who can lead a research workstream?" });
     const { items } = await readSessionItems(alice.clients, pc);
     const found = (items as Array<{ type?: string; toolCall?: { name?: string }; output?: unknown }>).filter(
       (item) => item.type === "tool_output" && item.toolCall?.name === "discover",
@@ -326,7 +326,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       { toolName: "createTask", args: { goal: "Research what to build next", assignee: GENERAL_LEAD, target: "shared/apollo/research", session: "ongoing", resultTo: "conversation" } },
     ];
     const pc = await projectCoordinator(alice, setup);
-    await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next, SAFFRON-2207." });
+    await runAction(alice.clients, "coordinator", pc, "respond", { message: "Open a workstream to research what to build next, SAFFRON-2207." });
 
     const { items } = await readSessionItems(alice.clients, pc);
     const opens = (items as Array<{ type?: string; blockName?: string }>).filter(
@@ -547,7 +547,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
     ];
     const pc = await projectCoordinator(alice, setup);
-    await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next." });
+    await runAction(alice.clients, "coordinator", pc, "respond", { message: "Open a workstream to research what to build next." });
 
     openApp(alice.clients, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });

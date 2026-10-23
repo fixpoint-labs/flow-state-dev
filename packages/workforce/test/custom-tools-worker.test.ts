@@ -60,8 +60,8 @@ async function runWorker(worker: FlowInstance, toolName: string) {
     orgId: "test-org",
     org: { state: {} },
     sessionId: "test-session",
-    sequencerName: worker.actions.run!.block.name,
-    declaredResources: worker.actions.run!.block.declaredResources,
+    sequencerName: worker.actions.respond!.block.name,
+    declaredResources: worker.actions.respond!.block.declaredResources,
     generators: {
       "agent-answer": mockGenerator({
         name: "agent-answer",
@@ -73,7 +73,7 @@ async function runWorker(worker: FlowInstance, toolName: string) {
     },
   });
   return executeBlock({
-    block: worker.actions.run!.block,
+    block: worker.actions.respond!.block,
     input: { message: "use your tools" },
     ctx: runtime.ctx,
   });

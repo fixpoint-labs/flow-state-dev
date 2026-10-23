@@ -151,7 +151,7 @@ function reader(app: App) {
       return (JSON.parse(res.text) as { session: { id: string } }).session.id;
     },
     post: async (conversation: string, message: string) => {
-      const res = await call("POST", ["coordinator", "actions", "run"], { userId: OWNER, sessionId: conversation, input: { message } });
+      const res = await call("POST", ["coordinator", "actions", "respond"], { userId: OWNER, sessionId: conversation, input: { message } });
       if (res.status !== 200) throw new Error(`post "${message}" refused: ${res.status} ${res.text.slice(0, 300)}`);
     },
     /** The delegates' answers that landed in the conversation, oldest first. */

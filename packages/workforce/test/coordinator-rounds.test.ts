@@ -49,7 +49,7 @@ type Host = ReturnType<typeof bootHost>;
 const heardBy = (host: Host) => host.heard.map((h) => h.worker);
 
 async function post(host: Host, sessionId: string, message: string, userId = "alice") {
-  const result = await host.act(userId, sessionId, "run", { message });
+  const result = await host.act(userId, sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
   return result;
@@ -110,8 +110,8 @@ describe("round robin (V3)", () => {
       return read(ctx, workerId);
     };
     const [one, two] = await Promise.all([
-      host.act("alice", id, "run", { message: "one" }),
-      host.act("alice", id, "run", { message: "two" })
+      host.act("alice", id, "respond", { message: "one" }),
+      host.act("alice", id, "respond", { message: "two" })
     ]);
     expect(one.error, messageOf(one.error)).toBeUndefined();
     expect(two.error, messageOf(two.error)).toBeUndefined();
@@ -513,7 +513,7 @@ describe("rounds (V5)", () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
     // The coder answers late, so round 0 is still open when the post row is seeded.
-    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
     let em: any;
     for (let i = 0; i < 300 && em === undefined; i += 1) {
       em = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em" && row.status === "completed");
@@ -672,10 +672,10 @@ describe("rounds (V5)", () => {
     });
     const host = bootHost({ judgment, standard: standardWorkers({ chief: { rounds: 1 } }) });
     const id = await host.conversation("alice", "chief");
-    const forgedPost = await host.act("alice", id, "run", { message: "go", round: 2 });
+    const forgedPost = await host.act("alice", id, "respond", { message: "go", round: 2 });
     expect(messageOf(forgedPost.error)).toMatch(/round/);
     // The filing's extra field reaches nothing: the task is the turn's own round's, round 0.
-    const forgedFiling = await host.act("alice", id, "run", { message: "go" });
+    const forgedFiling = await host.act("alice", id, "respond", { message: "go" });
     expect(forgedFiling.error).toBeUndefined();
     await quiet(host);
     expect((await host.routedRows("alice")).map((row) => row.sealed.round)).toEqual([0]);
@@ -720,7 +720,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       roundDeadlineMs: 60_000
     });
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
     // The coder is working on it.
     for (let i = 0; i < 200 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -745,7 +745,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     it("closes an overdue round when the deadline wake wakes the conversation", async () => {
       const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
       const id = await host.conversation("alice", "desk");
-      expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+      expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
       expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
       await quiet(host);
       expect(passedToCoder(host, "status?")).toHaveLength(0);
@@ -768,7 +768,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     // A host that keeps wakes: the deadline is a due time the engine keeps, not a timer in a delegate's run.
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, durable: true });
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
     await quiet(host);
     const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
@@ -794,7 +794,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   it("closes the round at its deadline on an in-process timer, on a host that keeps no wakes (FIX-2083 D2)", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
     await quiet(host);
     const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
@@ -808,7 +808,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   it("closes an overdue round when the user's post is the only wake", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
     await quiet(host);
     const [stale] = (await host.sessionState(id)).openRounds;
@@ -830,7 +830,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     // The coder's run is cancelled and says nothing, as one whose process stopped would.
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
     await quiet(host);
     const [first] = (await host.sessionState(id)).openRounds;
@@ -881,7 +881,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
     // A live round: the coder is still working on it.
-    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
     const live = (await host.sessionState(id)).openRounds[0];
     expect(live).toMatchObject({ round: 0 });
     // Fill the rest of the conversation with rounds still within their deadline.
@@ -902,7 +902,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     }
 
     // The new post is delivered as usual, but nothing waits for its answers.
-    expect((await host.act("alice", id, "run", { message: "ship it?" })).error).toBeUndefined();
+    expect((await host.act("alice", id, "respond", { message: "ship it?" })).error).toBeUndefined();
     await quiet(host);
     const records = (await host.items(id)).records;
     const refused = records.filter((record: any) => record.postId !== live.postId);

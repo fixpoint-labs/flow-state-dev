@@ -134,7 +134,7 @@ function quietAgentFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
   } as never);
 }
@@ -166,7 +166,7 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
   } as never);
 }
@@ -230,7 +230,7 @@ function reader(app: RoutedHost, owner: string) {
       return (JSON.parse(res.text) as { session: { id: string } }).session.id;
     },
     post: async (conversation: string, message: string) => {
-      const res = await call("POST", ["coordinator", "actions", "run"], { userId: owner, sessionId: conversation, input: { message } });
+      const res = await call("POST", ["coordinator", "actions", "respond"], { userId: owner, sessionId: conversation, input: { message } });
       if (res.status !== 200) throw new Error(`post "${message}" refused: ${res.status} ${res.text.slice(0, 300)}`);
     },
     /** A delegate's conversations under one of the person's: the kept messages of each. */

@@ -189,12 +189,15 @@ export function hireLab(options: HireLabOptions): HiredLab {
     workerFlows: () => workerFlows as never,
   });
   workerFlows = {
-    [WORKER_FLOW]: defineWorkerFlow({
-      installation,
-      outbox: options.outbox,
-      ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
-    }),
-    [PLANNER_FLOW]: definePlannerFlow({ installation }),
+    [WORKER_FLOW]: {
+      flow: defineWorkerFlow({
+        installation,
+        outbox: options.outbox,
+        ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
+      }),
+      roles: ["contributor"],
+    },
+    [PLANNER_FLOW]: { flow: definePlannerFlow({ installation }), roles: ["manager"] },
     // The planner and the workers take no delegated post, so a post to the
     // queue reaches nobody; its rows are the planner's to file.
     [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),

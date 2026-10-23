@@ -111,7 +111,7 @@ async function run(lab: Lab, call: ToolCall, message: string, session?: string) 
   return await runAction({
     orgId: LAB_ORG_ID,
     flow: runtime.registry.get(COS_FLOW) as FlowInstance,
-    actionName: "run",
+    actionName: "respond",
     input: { message },
     userId: LAB_USER_ID,
     sessionId,

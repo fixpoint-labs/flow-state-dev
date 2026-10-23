@@ -53,7 +53,7 @@ const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.w
 const routed = (assignee: string) => ({ goal: "Take this", assignee, session: "ongoing", resultTo: "conversation" });
 
 async function post(host: ReturnType<typeof bootHost>, sessionId: string, message: string, userId = "alice") {
-  const result = await host.act(userId, sessionId, "run", { message });
+  const result = await host.act(userId, sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
   return result;

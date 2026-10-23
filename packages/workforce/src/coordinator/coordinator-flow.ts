@@ -128,6 +128,8 @@ import {
   type RoutedEnding
 } from "../conversation-board/task-settled";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { RESPOND_ACTION } from "../worker-door";
+import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { ROUTED_FROM_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -1237,7 +1239,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // The request completes on this answer, so no final failure is sent for it: the crash is reported here.
       await reportRescuedFailure(ctx as never, {
         flowKind: COORDINATOR_FLOW,
-        actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
+        actionName: post.round === 0 ? RESPOND_ACTION : ROUTE_ON_ACTION,
         blockName: COORDINATOR_JUDGMENT,
         error
       });
@@ -1754,7 +1756,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // the four delegate actions.
       ...sessionBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
-      run: {
+      [RESPOND_ACTION]: {
         inputSchema: doorInputSchema.strict(),
         block: door,
         userMessage: (input: DoorInput) => input.message,
@@ -1766,20 +1768,26 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       actions: {
         // The round-deadline wake (D2), or a host's in-process timer, with
         // nothing: it closes every overdue round.
-        [ROUND_DEADLINE_ACTION]: { inputSchema: z.object({}).strict(), block: deadlineEntry, concurrency: "queue" },
+        [ROUND_DEADLINE_ACTION]: markRolePiece(
+          { inputSchema: z.object({}).strict(), block: deadlineEntry, concurrency: "queue" as const },
+          "coordinator"
+        ),
         // Only this conversation's own code sends answers back out. A round's
         // routing can run the coordinator's turn, so it is a reply too.
-        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
+        [ROUTE_ON_ACTION]: markRolePiece({ inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY }, "coordinator"),
         // A filing's wake (one run of this conversation's board, as its
         // owner), and a task this conversation filed ended: its notice.
         ...boardEntries,
         // A workstream's entry path adds or removes its record, on a project's
         // coordinator only (FIX-1793). Never public: a record with a target
         // is written nowhere else.
-        [WORKSTREAM_DELEGATE_ACTION]: {
-          ...workstreamDelegateEntry({ check, defaults: async (ctx) => (await coordinatorOf(ctx)).defaults }),
-          concurrency: "queue"
-        }
+        [WORKSTREAM_DELEGATE_ACTION]: markRolePiece(
+          {
+            ...workstreamDelegateEntry({ check, defaults: async (ctx) => (await coordinatorOf(ctx)).defaults }),
+            concurrency: "queue" as const
+          },
+          "coordinator"
+        )
       }
     },
     // A coordinator worker can be a delegate that takes a task.
@@ -1800,5 +1808,5 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     if (problems.length > 0) throw new Error(`This coordinator ${problems.join(", and ")}.`);
     return instance;
   };
-  return Object.assign(mint, flow) as typeof flow;
+  return declareBuiltInRoles(Object.assign(mint, flow), ["contributor", "manager", "coordinator"]) as typeof flow;
 }

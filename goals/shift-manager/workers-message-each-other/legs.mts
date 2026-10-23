@@ -184,7 +184,7 @@ const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed
 /** Say `words` to `worker` in its conversation `session`. A provider error re-runs it once. */
 export async function talk(turns: Turn[], leg: string, who: Connected, worker: string, session: SessionSummary, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
-    const acted = await act(who, session.flowKind, session.id, "run", { message: words });
+    const acted = await act(who, session.flowKind, session.id, "respond", { message: words });
     const turn: Turn = { leg, worker, words, sessionId: session.id, requestId: acted.requestId, status: acted.status, reply: "", calls: [] };
     if (acted.requestId === null) {
       turn.reply = `refused: ${acted.error ?? ""}`;

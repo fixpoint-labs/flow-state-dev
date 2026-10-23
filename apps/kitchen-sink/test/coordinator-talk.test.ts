@@ -62,7 +62,7 @@ async function openConversation(router: Router): Promise<string> {
 
 /** Post the way the page's composer does: the coordinator's door, the post only. */
 async function post(router: Router, sessionId: string, message: string) {
-  const res = await call(router, "POST", ["coordinator", "actions", "run"], { userId: "devuser", sessionId, input: { message } });
+  const res = await call(router, "POST", ["coordinator", "actions", "respond"], { userId: "devuser", sessionId, input: { message } });
   expect(res.status, res.text).toBe(200);
   return res;
 }

@@ -93,7 +93,7 @@ await runGoal(async (failures) => {
     const freshReply = async (ask: string): Promise<string> => {
       const sessionId = `conv_goal_${Math.random().toString(16).slice(2, 14)}`;
       await sessions.createSession({ flowKind: researcher.flow, userId: alice.userId, sessionId, state: { [WORKER_ID_STATE_KEY]: researcher.id } });
-      const posted = await routes.call("POST", `/${researcher.flow}/${sessionId}/actions/run`, { userId: alice.userId, input: { message: ask } });
+      const posted = await routes.call("POST", `/${researcher.flow}/${sessionId}/actions/respond`, { userId: alice.userId, input: { message: ask } });
       if (posted.status !== 202) return `refused ${posted.status}`;
       const requestId = String(posted.body?.request?.id);
       for (const until = Date.now() + 240_000; Date.now() < until; await sleep(500)) {

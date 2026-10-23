@@ -75,7 +75,7 @@ function filerFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources, ...PROJECT_ROW_RESOURCES },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
     internal: { actions: { ...board.entries(door), [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() } }
   } as never);
 }
@@ -146,7 +146,7 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
   } as never);
 }
@@ -176,8 +176,8 @@ async function boot(options: { env?: Record<string, string>; failGithub?: boolea
       ...defineWorkstreamBlocks({ installation, leadFlows: [filerRef] }).actions
     }),
     flows: (installation) => ({
-      filer: filerFlow(installation),
-      taker: takerFlow(installation, runs, keys, resolve),
+      filer: { flow: filerFlow(installation), roles: ["manager"] },
+      taker: { roles: ["contributor"], flow: takerFlow(installation, runs, keys, resolve) },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
     models: { generators: { "coordinator-judgment": mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] }) } }

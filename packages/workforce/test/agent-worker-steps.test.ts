@@ -44,7 +44,7 @@ describe("an `agent` worker with no delegates works a step for itself", () => {
     try {
       const created = await h.create("alice", "agent", { state: { workerId: "solo" } });
       const talk = created.body.session!.id;
-      const result = await h.act("alice", talk, "run", { message: "write the post" }, "agent");
+      const result = await h.act("alice", talk, "respond", { message: "write the post" }, "agent");
       expect(result.error, messageOf(result.error)).toBeUndefined();
       await h.settled();
 
@@ -55,7 +55,7 @@ describe("an `agent` worker with no delegates works a step for itself", () => {
       expect(JSON.stringify(steps[0]!.output)).toContain("OUTLINE-ALPHA");
       // Nothing was handed to a delegate, and every turn was this conversation's.
       expect(await h.rows("alice")).toEqual([]);
-      expect((await h.requestsOf(talk)).map((request) => request.actionName)).toEqual(["run"]);
+      expect((await h.requestsOf(talk)).map((request) => request.actionName)).toEqual(["respond"]);
       // The turn's result is the answer that saw the step end.
       expect(JSON.stringify(result.output)).toContain("Final post, from the outline.");
     } finally {

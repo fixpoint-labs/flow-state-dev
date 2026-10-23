@@ -169,7 +169,7 @@ const helper = core.defineFlow({
   configSchema: wf.workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+  actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
   // A delegate is a worker whose flow takes tasks (FIX-2083). Before it, a post had an entry of its own.
   task: { actions: { [wf.WORKER_TASK_ENTRY ?? "work"]: work, ...(POST_ERA ? { onDelegatedPost: wf.delegatedPostEntry(door) } : {}) } },
 } as never);
@@ -259,7 +259,7 @@ const coordinator = wf.defineCoordinatorFlow({
   routeModel: route,
   roundDeadlineMs: DEADLINE_MS,
 });
-flows = { helper, agent, coordinator };
+flows = { helper: { flow: helper, roles: ["contributor"] }, agent, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string; task?: { actions?: object }; internal?: { actions?: object } }>;
 const state = engine.createFlowState({
   flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
@@ -396,7 +396,7 @@ if (PHASE === "kill") {
     await state.getRouter();
     const restart = await conversation("desk.restart");
     const w = word();
-    const sent = await restart.send("run", { message: `[slower:${first}] ${w} what do you both say?` });
+    const sent = await restart.send("respond", { message: `[slower:${first}] ${w} what do you both say?` });
     // The other delegate's answer has landed and its ending is acknowledged, and the first still works: the
     // round waits on it alone. An ending still owed would wake the conversation after the restart, and any
     // wake closes an overdue round, so the round's own deadline would go untested.
@@ -457,7 +457,7 @@ try {
   // Leg a. One message to everyone: a task per delegate. As soon as the first
   // ending is written, touch the board while the rest are owed.
   const all = await conversation("desk.all");
-  const rowsPost = await all.send("run", { message: `${words.rows} what does everyone think?` });
+  const rowsPost = await all.send("respond", { message: `${words.rows} what does everyone think?` });
   const firstEnded = await until(async () => ((await rowsNow(all.id)).some((r) => r.status === "completed") ? true : undefined), 15_000);
   const touches = await Promise.all(Array.from({ length: TOUCHES }, () => all.act("listTasks_tasks", {})));
   await quiet();
@@ -469,20 +469,20 @@ try {
 
   // Leg a and d. The judgment turn files one message for the first delegate twice, its own goal, no maxAttempts.
   const judge = await conversation("desk.judge");
-  const twicePost = await judge.act("run", { message: `[judge] ${words.twice} hand this on.` });
+  const twicePost = await judge.act("respond", { message: `[judge] ${words.twice} hand this on.` });
   await quiet();
   const judgedRows = (await rowsNow(judge.id)).filter((r) => r.sealed.postId === twicePost.requestId);
   const judgedReads = await Promise.all(judgedRows.map((r) => taskRead(judge, r.id)));
   // ... and one asking for three attempts.
-  const threePost = await judge.act("run", { message: `[judge-3] ${words.three} hand this on, and try hard.` });
+  const threePost = await judge.act("respond", { message: `[judge-3] ${words.three} hand this on, and try hard.` });
   await quiet();
 
   // Leg a. A busy delegate: a second message waits in Alice's list, then starts in the same session; a third is cancelled while it waits.
   const one = await conversation("desk.one");
-  const busyA = await one.send("run", { message: `[slow:${third}] ${words.busy} first` });
+  const busyA = await one.send("respond", { message: `[slow:${third}] ${words.busy} first` });
   const aWorking = await until(async () => (await rowsNow(one.id)).find((r) => r.sealed.postId === busyA.requestId && r.status === "in_progress"), 10_000);
-  const busyB = await one.send("run", { message: `${words.busy} second` });
-  const busyC = await one.send("run", { message: `${words.busy} third` });
+  const busyB = await one.send("respond", { message: `${words.busy} second` });
+  const busyC = await one.send("respond", { message: `${words.busy} third` });
   const waiting = await until(async () => {
     const rows = await rowsNow(one.id);
     const b = rows.find((r) => r.sealed.postId === busyB.requestId);
@@ -498,7 +498,7 @@ try {
   // Leg a. A cancel: Alice cancels the first delegate's task while it works; the round closes without waiting for its deadline.
   const rounds = await conversation("desk.rounds");
   // The first delegate holds its answer past the cancel, so it still finishes, and its late settle is refused.
-  const cancelPost = await rounds.send("run", { message: `[slow:${first}] ${words.cancel} what do you both say?` });
+  const cancelPost = await rounds.send("respond", { message: `[slow:${first}] ${words.cancel} what do you both say?` });
   const hung = await until(async () => (await rowsNow(rounds.id)).find((r) => r.sealed.postId === cancelPost.requestId && r.assignee === first && r.status === "in_progress"), 10_000);
   const otherLanded = await until(async () => ((await itemsOf(rounds.id)).lines.some((l) => l.agentName === second && l.text.includes(words.cancel)) ? true : undefined), 10_000);
   const cancelDeadline = await deadlineOf(rounds.id, cancelPost.requestId);
@@ -512,7 +512,7 @@ try {
 
   // Leg b. A failed delegate: its round closes as soon as both have ended.
   const fails = await conversation("desk.fails");
-  const failsPost = await fails.send("run", { message: `[fail:${third}] ${words.fails} what do you both say?` });
+  const failsPost = await fails.send("respond", { message: `[fail:${third}] ${words.fails} what do you both say?` });
   const failsDeadline = await until(() => deadlineOf(fails.id, failsPost.requestId), 10_000);
   const failsClosedAt = await until(
     async () => ((await openRoundsNow(fails.id)).some((r) => r.postId === failsPost.requestId && r.round === 0) ? undefined : Date.now()),
@@ -522,7 +522,7 @@ try {
 
   // Leg b. A late delegate: its round closes at the deadline, before its answer.
   const late = await conversation("desk.late");
-  const latePost = await late.send("run", { message: `[slow:${second}] ${words.late} what do you both say?` });
+  const latePost = await late.send("respond", { message: `[slow:${second}] ${words.late} what do you both say?` });
   const lateRow = await until(async () => (await rowsNow(late.id)).find((r) => r.sealed.postId === latePost.requestId && r.sealed.round === 0 && r.assignee === second), 10_000);
   const deadlineAt = await until(() => deadlineOf(late.id, latePost.requestId), 10_000);
   // Watched from the deadline: when the round closes, and whether the late delegate still works then.
@@ -539,7 +539,7 @@ try {
 
   // Leg c. The writer files a piece and ends its turn; its one answer lands once the piece ends.
   const write = await conversation("desk.write");
-  const writePost = await write.send("run", { message: `[write] ${words.write} please` });
+  const writePost = await write.send("respond", { message: `[write] ${words.write} please` });
   await until(async () => ((await itemsOf(write.id)).lines.some((l) => l.agentName === WRITER) ? true : undefined), 20_000);
   await quiet();
   await sleep(GRACE_MS);
@@ -547,7 +547,7 @@ try {
 
   // Leg e. A post row stored before the upgrade, on a board a warm-up message opened: the next message starts it.
   const legacy = await conversation("desk.legacy");
-  await legacy.act("run", { message: "warm up" });
+  await legacy.act("respond", { message: "warm up" });
   await quiet();
   const runtime = await state.getRuntime();
   const scope = `${ALICE}:~org:${ORG}`;
@@ -588,7 +588,7 @@ try {
     seeded = { id: legacyId, ok: (await runtime.stores.resourceState.set("user", scope, legacyKey, row, "any")).ok === true };
   }
   // The next message touches the board, which starts the stored row.
-  await legacy.act("run", { message: "next" });
+  await legacy.act("respond", { message: "next" });
   await until(async () => ((await itemsOf(legacy.id)).lines.some((l) => l.text.includes(words.legacy)) ? true : undefined), 15_000);
   await quiet();
   await sleep(GRACE_MS);

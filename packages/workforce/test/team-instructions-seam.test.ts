@@ -234,7 +234,7 @@ describe("the prompt seam", () => {
     const result = await testFlow({
       sessionId,
       flow: worker!,
-      action: "run",
+      action: "respond",
       userId: USER_ID,
       input: { message: "hello" },
       stores,

@@ -66,7 +66,7 @@
  *   {@link ConversationBoard.fileRouted} for a routing policy, and, on a turn
  *   routing a message, through any filing whose result goes to the
  *   conversation ({@link RoutedFiling}). Nothing else about it is special.
- * - **The pass** (FIX-2078). One run of the board, `runTaskBoard`, one at a
+ * - **The pass** (FIX-2078). One run of the board, `dispatch`, one at a
  *   time per session (`defer`: a second waits its turn): repairs first
  *   (orchestration's `payBoardDebts`: cancels, cascades, resumes, notices past
  *   due; reports stored before the upgrade; the settles owed down the chain),
@@ -132,7 +132,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
+import { PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -495,7 +495,7 @@ export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollect
  */
 async function owePass(ctx: BlockContext): Promise<void> {
   try {
-    await ctx.requestHost?.wakes?.owe({ entry: RUN_BOARD_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+    await ctx.requestHost?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {
     // The fast path still runs.
   }
@@ -541,7 +541,7 @@ const waitingPassKey = (ctx: BlockContext): string =>
   `${(ctx.session.identity as { tenantId?: string }).tenantId ?? ""}\u0000${ctx.session.identity.id}`;
 
 /**
- * Run the session's pass: dispatch `runTaskBoard` into the running session, as
+ * Run the session's pass: dispatch `dispatch` into the running session, as
  * a request of its own, owing its wake first. Never waits for it, and never
  * fails the caller: while a pass runs it waits its turn (one at a time), and
  * past the line's cap the wake covers what it would have done. Skipped while a
@@ -566,7 +566,7 @@ export async function triggerPass(ctx: BlockContext, options: { touch?: boolean 
   try {
     const outcome = await dispatchThroughSeam(ctx, {
       type: "internal",
-      action: RUN_BOARD_ENTRY,
+      action: DISPATCH_ENTRY,
       session: { id: ctx.session.identity.id },
       payload: {},
       from: "conversation-board-wake"
@@ -1435,7 +1435,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       notePassStarted(ctx as never);
-      const wake = await ctx.requestHost?.wakes?.read(RUN_BOARD_ENTRY);
+      const wake = await ctx.requestHost?.wakes?.read(DISPATCH_ENTRY);
       await ctx.request.patchState({ passWake: wake === undefined ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version }, passRounds: 0 });
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
@@ -1484,7 +1484,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
       notePassEnded(ctx as never);
-      await settlePassWake(ctx as never, RUN_BOARD_ENTRY, passStateOf(ctx as never).passWake, round.nextDue);
+      await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, round.nextDue);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
   });

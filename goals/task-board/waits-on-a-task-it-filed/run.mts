@@ -304,7 +304,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
       actions: {
-        run: { inputSchema: doorInput.strict(), block: planned, userMessage: (i: { message: string }) => i.message },
+        respond: { inputSchema: doorInput.strict(), block: planned, userMessage: (i: { message: string }) => i.message },
         // Leg e: an action that is a waited dispatch.
         askProbe: { inputSchema: doorInput.strict(), block: probeWait(`${kind}-ask-probe`) },
         ...board.actions
@@ -313,7 +313,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
       task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: planned }) } }
     } as never);
   };
-  workerFlows = { desk: flowOf("desk"), doer: flowOf("doer") };
+  workerFlows = { desk: { flow: flowOf("desk"), roles: ["contributor", "manager"] }, doer: { flow: flowOf("doer"), roles: ["contributor", "manager"] } };
 
   const state = createFlowState({
     flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
@@ -382,7 +382,7 @@ if (PHASE === "kill") {
   const host = buildHost(KILL_DB);
   const h = await host.connect();
   const conversation = await h.http.open("desk", { workerId: "lead" });
-  const asking = await h.send("desk", conversation, "run", {
+  const asking = await h.send("desk", conversation, "respond", {
     message: scripted("kill", [
       { tool: "createTask", args: { goal: scripted(word("kill-work"), [{ hold: "never" }, { answer: "kill-work" }]), assignee: "doer.a" } },
       { tool: "getTask", args: { id: "$0", wait: true, deadline: KILL_DEADLINE_MS } },
@@ -423,7 +423,7 @@ await runGoal(async (failures, tell) => {
       const other = await h.http.open("desk", { workerId: "lead" });
       const goal = word("a-work");
       // The first request files and ends.
-      const filing = await h.send("desk", conversation, "run", {
+      const filing = await h.send("desk", conversation, "respond", {
         message: scripted("a-file", [
           { tool: "createTask", args: { goal: scripted(goal, [{ hold: "a1" }, { answer: "a-work" }]), assignee: "doer.a" } },
           { answer: "a-filer" }
@@ -435,16 +435,16 @@ await runGoal(async (failures, tell) => {
         return;
       }
       // A later request waits on it, and parks.
-      const waiting = await h.send("desk", conversation, "run", {
+      const waiting = await h.send("desk", conversation, "respond", {
         message: scripted("a-wait", [{ tool: "getTask", args: { id: row.id, wait: true } }, { answer: "a-waiter" }])
       });
       const parkedFirst = await h.status(waiting);
       // A second session of the same user can't wait on it.
-      const elsewhere = await h.send("desk", other, "run", {
+      const elsewhere = await h.send("desk", other, "respond", {
         message: scripted("a-other", [{ tool: "getTask", args: { id: row.id, wait: true } }, { answer: "a-other" }])
       });
       // A second request of the filing session can't take the wait while the first holds it.
-      const second = await h.send("desk", conversation, "run", {
+      const second = await h.send("desk", conversation, "respond", {
         message: scripted("a-second", [{ tool: "getTask", args: { id: row.id, wait: true } }, { answer: "a-second" }])
       });
       const otherSaid = (await h.toolOutputs(elsewhere, "getTask")).join(" ");
@@ -486,7 +486,7 @@ await runGoal(async (failures, tell) => {
       const c = link("b-c", d, "doer.d");
       const bb = link("b-b", c, "doer.c");
       const a = link("b-a", bb, "doer.b");
-      const top = await h.send("desk", conversation, "run", {
+      const top = await h.send("desk", conversation, "respond", {
         message: scripted("b-desk", [
           { tool: "createTask", args: { goal: a, assignee: "doer.a" } },
           { tool: "getTask", args: { id: "$0", wait: true } },
@@ -518,12 +518,12 @@ await runGoal(async (failures, tell) => {
       const lateC = link("b-late-c", lateD, "doer.d");
       const lateB = link("b-late-b", lateC, "doer.c");
       const lateA = link("b-late-a", lateB, "doer.b");
-      await h.send("desk", late, "run", {
+      await h.send("desk", late, "respond", {
         message: scripted("b-late-file", [{ tool: "createTask", args: { goal: lateA, assignee: "doer.a" } }, { answer: "b-late-file" }])
       });
       const [lateRow] = await h.byGoal(word("b-late-a"));
       const builtBelow = await h.until(async () => (await h.parked()).filter((p) => p.reason === "wait").length >= 5, 20_000);
-      const lateWait = await h.send("desk", late, "run", {
+      const lateWait = await h.send("desk", late, "respond", {
         message: scripted("b-late-wait", [{ tool: "getTask", args: { id: lateRow?.id ?? "", wait: true } }, { answer: "b-late-wait" }])
       });
       const lateSaid = (await h.toolOutputs(lateWait, "getTask")).join(" ");
@@ -539,7 +539,7 @@ await runGoal(async (failures, tell) => {
         { repeat: 101, op: { tool: "createTask", args: { goal: scripted(`b-step {i} ${RUN_STAMP}`, [{ answer: "b-step" }]), assignee: "doer.a" } } },
         { answer: "b-steps" }
       ]);
-      await h.send("desk", plans, "run", {
+      await h.send("desk", plans, "respond", {
         message: scripted("b-plan-file", [{ tool: "createTask", args: { goal: steps, assignee: "doer.a" } }, { answer: "b-plan-file" }])
       });
       await h.until(async () => (await h.byGoal(word("b-steps")))[0]?.status === "completed", 60_000);
@@ -558,7 +558,7 @@ await runGoal(async (failures, tell) => {
     await leg("c", async () => {
       const conversation = await h.http.open("desk", { workerId: "lead" });
       // A deadline shorter than the work, then a second wait.
-      const first = await h.send("desk", conversation, "run", {
+      const first = await h.send("desk", conversation, "respond", {
         message: scripted("c-deadline", [
           { tool: "createTask", args: { goal: scripted(word("c-work"), [{ sleep: 3_500 }, { answer: "c-work" }]), assignee: "doer.a" } },
           { tool: "getTask", args: { id: "$0", wait: true, deadline: 1_500 } },
@@ -577,7 +577,7 @@ await runGoal(async (failures, tell) => {
       }
 
       // An ending after the deadline, while the request still runs: its next read.
-      const held = await h.send("desk", conversation, "run", {
+      const held = await h.send("desk", conversation, "respond", {
         message: scripted("c-held", [
           { tool: "createTask", args: { goal: scripted(word("c-held-work"), [{ sleep: 2_500 }, { answer: "c-held-work" }]), assignee: "doer.a" } },
           { tool: "getTask", args: { id: "$0", wait: true, deadline: 1_000 } },
@@ -605,7 +605,7 @@ await runGoal(async (failures, tell) => {
       }
 
       // A request that ends without waiting again: one onTaskSettled.
-      const quiet = await h.send("desk", conversation, "run", {
+      const quiet = await h.send("desk", conversation, "respond", {
         message: scripted("c-quiet", [
           { tool: "createTask", args: { goal: scripted(word("c-quiet-work"), [{ sleep: 2_500 }, { answer: "c-quiet-work" }]), assignee: "doer.a" } },
           { tool: "getTask", args: { id: "$0", wait: true, deadline: 1_000 } },
@@ -619,7 +619,7 @@ await runGoal(async (failures, tell) => {
       if ((await heardFor(quietWork?.id)) !== 1) failures.push(`c:a request that ended without reading it hears it once — onTaskSettled ran ${await heardFor(quietWork?.id)} time(s)`);
 
       // An ending and a deadline due together: one resume, one delivery.
-      const together = await h.send("desk", conversation, "run", {
+      const together = await h.send("desk", conversation, "respond", {
         message: scripted("c-together", [
           { tool: "createTask", args: { goal: scripted(word("c-together-work"), [{ hold: "c-together" }, { answer: "c-together-work" }]), assignee: "doer.a" } },
           { tool: "getTask", args: { id: "$0", wait: true, deadline: 1_500 } },
@@ -641,7 +641,7 @@ await runGoal(async (failures, tell) => {
 
       // The task whose request waits is cancelled: that request ends with no further model call.
       const cancelled = await h.http.open("desk", { workerId: "lead" });
-      await h.send("desk", cancelled, "run", {
+      await h.send("desk", cancelled, "respond", {
         message: scripted("c-cancel-file", [
           {
             tool: "createTask",
@@ -734,7 +734,7 @@ await runGoal(async (failures, tell) => {
         { tool: "createTask", args: { goal: scripted(word("d-step-3"), [{ answer: "d-3" }]), assignee: "doer.a", deps: ["$1"] } },
         { answer: "d-plan" }
       ]);
-      await s.send("desk", conversation, "run", {
+      await s.send("desk", conversation, "respond", {
         message: scripted("d-file", [{ tool: "createTask", args: { goal: plan, assignee: "doer.a" } }, { answer: "d-file" }])
       });
       const step = (n: number) => s.steps().then((rows) => rows.find((row) => row.goal.startsWith(word(`d-step-${n}`))));

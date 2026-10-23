@@ -115,7 +115,7 @@ async function postAndSettle(router: Router, mark: string): Promise<string> {
   const opened = await call(router, "POST", ["coordinator", "sessions"], { userId: USER, state: { workerId: COORDINATOR } });
   expect(opened.status, opened.text).toBe(201);
   const conversation = (JSON.parse(opened.text) as { session: { id: string } }).session.id;
-  const res = await call(router, "POST", ["coordinator", "actions", "run"], {
+  const res = await call(router, "POST", ["coordinator", "actions", "respond"], {
     userId: USER,
     sessionId: conversation,
     input: { message: postBody(mark) },

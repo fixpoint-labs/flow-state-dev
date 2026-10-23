@@ -144,7 +144,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
   if (o.legs.has("a")) {
     const conv = await conversation(alice, "desk.lead");
     const w = word();
-    const filing = await act(alice, "coordinator", conv, "run", { message: `[file:desk.alpha] [slow:${HOLD_MS}] Summarize the ${w} notes` });
+    const filing = await act(alice, "coordinator", conv, "respond", { message: `[file:desk.alpha] [slow:${HOLD_MS}] Summarize the ${w} notes` });
     const filed = await toolOutputs(alice, conv, filing.requestId);
     const taskId = filed.filter((t) => t.name === "createTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     const quietAt = await quiet();
@@ -153,7 +153,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
 
     // The split: desk.sub's task session files a piece for its own delegate, by its own tool and by the app.
     const w2 = word();
-    const splitting = await act(alice, "coordinator", conv, "run", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
+    const splitting = await act(alice, "coordinator", conv, "respond", { message: `[file:desk.sub] [split:desk.alpha] Plan the ${w2} rollout` });
     const subFiled = await toolOutputs(alice, conv, splitting.requestId);
     const subTaskId = subFiled.filter((t) => t.name === "createTask").map((t) => taskIdOf(t)).find((id) => id !== null) ?? null;
     await quiet();
@@ -229,7 +229,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const bobStartedAt = Date.now();
     const opened = await bob.get(`/sessions/${encodeURIComponent(dA)}`);
     const open = { status: opened.status, body: (await opened.text()).slice(0, 300) };
-    const post = await act(bob, "coordinator", dA, "run", { message: `[file:desk.alpha] Sort the ${w} receipts` });
+    const post = await act(bob, "coordinator", dA, "respond", { message: `[file:desk.alpha] Sort the ${w} receipts` });
     const file = await act(bob, "coordinator", dA, "createTask_tasks", { goal: `Sort the ${w} receipts`, assignee: "desk.alpha" });
     const dB = await conversation(bob, "desk.lead");
     const missingWorker = `nobody-${word()}`;

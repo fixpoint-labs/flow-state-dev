@@ -51,7 +51,7 @@ function loaded(snapshot: LabSnapshot): LoadedSnapshot {
 
 /** Post a line into the user's conversation with a coordinator, through the coordinator's own door. */
 async function post(clients: ReturnType<typeof createLabClients>, coordinatorId: string, message: string) {
-  await clients.actions(COORDINATOR_FLOW).sendAction("run", { message }, { sessionId: coordinatorId });
+  await clients.actions(COORDINATOR_FLOW).sendAction("respond", { message }, { sessionId: coordinatorId });
 }
 
 /** What a delegate is handed, and so what it asks about: the post as its coordinator delivers it. */

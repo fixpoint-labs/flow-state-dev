@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import { bootHost, messageOf } from "./coordinator-harness";
 
 async function post(host: ReturnType<typeof bootHost>, sessionId: string, message: string) {
-  const result = await host.act("alice", sessionId, "run", { message });
+  const result = await host.act("alice", sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
 }

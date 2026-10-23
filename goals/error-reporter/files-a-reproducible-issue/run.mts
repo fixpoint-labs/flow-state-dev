@@ -344,8 +344,8 @@ async function open(options: {
       return snapshot.asks.value.filter((ask) => ask.sessionId.startsWith("error-report~"));
     },
     answer: (ask, data) => reader.resume(ask, { action: "submit", data }),
-    tellChief: async (message) => told(await act(coordinator, chiefSession, "run", { message })),
-    tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "run", { message })),
+    tellChief: async (message) => told(await act(coordinator, chiefSession, "respond", { message })),
+    tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "respond", { message })),
     tasks: async () => ((await act(coordinator, chiefSession, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>,
     addDelegate: async (worker) => {
       const added = await act(coordinator, chiefSession, "addDelegate", { worker });
@@ -581,7 +581,7 @@ await runGoal(async (failures) => {
         const told = (await runAction({
           orgId: LAB_ORG_ID,
           flow: reporterFlow,
-          actionName: "run",
+          actionName: "respond",
           input: { message: "The storefront task shows as done in Tasks, but nothing ran and there's no branch for it. Can you look into it?" },
           userId: LAB_USER_ID,
           sessionId: workerSessionId(REPORTER),

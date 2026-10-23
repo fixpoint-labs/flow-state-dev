@@ -97,7 +97,7 @@ describe("an attempt that completes (BR-22)", () => {
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      expect((await host.act("alice", conv, "run", { message: "count our licenses" })).error).toBeUndefined();
+      expect((await host.act("alice", conv, "respond", { message: "count our licenses" })).error).toBeUndefined();
       await host.settled();
       await touch(host, "alice", conv);
       // One turn for the filing, one for the notice.
@@ -123,7 +123,7 @@ describe("an attempt that fails", () => {
     const host = bootBoardHost({ judgment });
     try {
       const conv = await host.conversation("alice", "lead");
-      expect((await host.act("alice", conv, "run", { message: "try it" })).error).toBeUndefined();
+      expect((await host.act("alice", conv, "respond", { message: "try it" })).error).toBeUndefined();
       await host.settled();
       await touch(host, "alice", conv);
       expect(host.runs.map((run) => run.attempt)).toEqual([1, 2]);
@@ -218,7 +218,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       held.conv = await held.host.conversation("alice", "lead");
-      held.replyId = await held.host.post("alice", held.conv, "run", { message: "count our licenses" });
+      held.replyId = await held.host.post("alice", held.conv, "respond", { message: "count our licenses" });
     } catch (error) {
       await held.host.dispose();
       throw error;
@@ -254,7 +254,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     let nextStartedMidReply = false;
     let landedMidReply = true;
     const { host, conv, seen } = await replyHeldOpen(judgment, async ({ host, conv }) => {
-      await host.post("alice", conv, "run", { message: "and our workers?" });
+      await host.post("alice", conv, "respond", { message: "and our workers?" });
       nextStartedMidReply = await until(() =>
         judgment.calls.some((call) => JSON.stringify(call.input).includes("and our workers"))
       );
@@ -298,7 +298,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     const lost = await host.loseDispatches("onTaskSettled");
     try {
       conv = await host.conversation("alice", "lead");
-      await host.post("alice", conv, "run", { message: "count our licenses" });
+      await host.post("alice", conv, "respond", { message: "count our licenses" });
       await host.settled();
       expect(seen.replayedMidReply).toBe(true);
       expect(seen.landedMidReply).toBe(false);
@@ -334,7 +334,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     });
     try {
       conv = await host.conversation("alice", "mixed");
-      await host.post("alice", conv, "run", { message: "who's on call?" });
+      await host.post("alice", conv, "respond", { message: "who's on call?" });
       await host.settled();
       expect((await host.requestsOf(conv)).some((request) => request.actionName === "routeOn")).toBe(true);
       expect(seen.noticeArrivedMidReply).toBe(true);
@@ -401,7 +401,7 @@ describe("a delegate's answer that arrives mid-reply", () => {
     });
     try {
       conv = await host.conversation("alice", "mixed");
-      await host.post("alice", conv, "run", { message: "who's on call?" });
+      await host.post("alice", conv, "respond", { message: "who's on call?" });
       await host.settled();
       expect(landedMidReply).toBe(false);
       const texts = (await host.messages(conv)).map((message) => message.text);

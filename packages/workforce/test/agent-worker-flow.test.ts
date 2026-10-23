@@ -151,8 +151,8 @@ describe("the built-in agent worker flow's tools — the runtime fence, not just
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker.actions.run!.block.name,
-      declaredResources: worker.actions.run!.block.declaredResources,
+      sequencerName: worker.actions.respond!.block.name,
+      declaredResources: worker.actions.respond!.block.declaredResources,
       generators
     });
   }
@@ -194,7 +194,7 @@ describe("the built-in agent worker flow's tools — the runtime fence, not just
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "use every tool you have" },
       ctx: runtime.ctx
     });
@@ -229,7 +229,7 @@ describe("the built-in agent worker flow's tools — the runtime fence, not just
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "use every tool you have" },
       ctx: runtime.ctx
     });
@@ -269,8 +269,8 @@ describe("the built-in agent worker flow's tools — a skill's `allowed-tools` v
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker.actions.run!.block.name,
-      declaredResources: worker.actions.run!.block.declaredResources,
+      sequencerName: worker.actions.respond!.block.name,
+      declaredResources: worker.actions.respond!.block.declaredResources,
       generators
     });
   }
@@ -315,7 +315,7 @@ describe("the built-in agent worker flow's tools — a skill's `allowed-tools` v
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "check the board" },
       ctx: runtime.ctx
     });
@@ -339,7 +339,7 @@ describe("the built-in agent worker flow's tools — a skill's `allowed-tools` v
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "check the board" },
       ctx: runtime.ctx
     });
@@ -377,7 +377,7 @@ describe("the built-in agent worker flow's tools — a skill's `allowed-tools` v
     // `/uses-board` activates the skill, so its body — and the note about its
     // `allowed-tools` — renders into this turn's system prompt.
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "/uses-board check the board" },
       ctx: runtime.ctx
     });
@@ -408,7 +408,7 @@ describe("replacing the built-in agent worker flow", () => {
     // the contract too — replacing the built-in does not exempt it.
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: {
-      run: {
+      respond: {
         inputSchema: z.object({ message: z.string() }),
         userMessage: (input: { message: string }) => input.message,
         block: handler({
@@ -503,8 +503,8 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker.actions.run!.block.name,
-      declaredResources: worker.actions.run!.block.declaredResources,
+      sequencerName: worker.actions.respond!.block.name,
+      declaredResources: worker.actions.respond!.block.declaredResources,
       generators
     });
   }
@@ -521,7 +521,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
     // ever let tier 3 run anyway, this throws "No mock for generator" and
     // `result.error` below catches it.
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "/known" },
       ctx: runtime.ctx
     });
@@ -559,7 +559,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
     // part of this flow's activator pipeline at all — so this falls straight
     // through to tier 3, which is ON here.
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "please help me with something" },
       ctx: runtime.ctx
     });
@@ -595,7 +595,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
     // mock is registered for "skill-classifier", so if tier 3 ever ran this
     // would throw — it must not, and neither may a keyword tier.
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "please do the known thing" },
       ctx: runtime.ctx
     });

@@ -267,7 +267,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: { ...hearingDoor, ...board.actions },
-    internal: { actions: board.entries(hearingDoor.message.block, () => "fixed") },
+    internal: { actions: board.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);
   // Each worker's flow takes tasks through Workforce's task entry; the one on
   // a flow of its own also declares the collections a recording harness writes.
@@ -287,9 +287,11 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });
 
   workerFlows = {
-    [leadFlow]: leadWorkerFlow,
+    [leadFlow]: { flow: leadWorkerFlow, roles: ["manager"] },
     [COORDINATOR_FLOW]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlowName(flow, flow === ownWorker?.flow)])),
+    ...Object.fromEntries(
+      flowsOfWorkers.map((flow) => [flow, { flow: workerFlowName(flow, flow === ownWorker?.flow), roles: ["contributor"] }]),
+    ),
   };
   const copies = hireWorkforce(installation);
   // The worker write takes caller-supplied rows, so it is internal only.

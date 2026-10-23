@@ -122,7 +122,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     const host = await waitingHost(judgment.model, held);
     try {
       const conv = await host.conversation("alice", "lead");
-      const waiting = await host.act("alice", conv, "run", { message: "how many licenses do we have?" });
+      const waiting = await host.act("alice", conv, "respond", { message: "how many licenses do we have?" });
       expect(waiting.error, messageOf(waiting.error)).toBeUndefined();
       expect(await statusOf(host, waiting.requestId!)).toBe("suspended");
       held.release();
@@ -139,7 +139,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       // No line: the answer was the call's result, not a post.
       expect(replies.filter((text) => text.includes("completed by eng.tasker"))).toEqual([]);
       // No second turn was woken.
-      const turns = (await host.requestsOf(conv)).filter((r) => r.actionName === "run");
+      const turns = (await host.requestsOf(conv)).filter((r) => r.actionName === "respond");
       expect(turns.map((r) => r.id)).toEqual([waiting.requestId]);
 
       const [row] = await host.rows("alice");
@@ -158,7 +158,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     const host = await waitingHost(judgment.model, held);
     try {
       const conv = await host.conversation("alice", "lead");
-      const waiting = await host.act("alice", conv, "run", { message: "how many workers?" });
+      const waiting = await host.act("alice", conv, "respond", { message: "how many workers?" });
       await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed", 8_000)).toBe(true);
       await host.settled();
@@ -194,7 +194,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         requestHost.waitResume = (input) => (++calls === 1 ? failOnce() : real(input));
 
         const conv = await host.conversation("alice", "lead");
-        const waiting = await host.act("alice", conv, "run", { message: "how many desks?" });
+        const waiting = await host.act("alice", conv, "respond", { message: "how many desks?" });
         await parkThenRelease(host, waiting.requestId!, held);
         expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
         expect(await until(() => calls >= 1)).toBe(true);
@@ -228,7 +228,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       requestHost.waitResume = () => Promise.reject(new Error("the store blinked"));
 
       const conv = await host.conversation("alice", "lead");
-      const waiting = await host.act("alice", conv, "run", { message: "how many chairs?" });
+      const waiting = await host.act("alice", conv, "respond", { message: "how many chairs?" });
       await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
@@ -254,7 +254,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       const runtime = await host.state.getRuntime();
       const run = await runAction({
         flow: host.instances.coordinator!,
-        actionName: "runTaskBoard",
+        actionName: "dispatch",
         input: {},
         userId: "alice",
         orgId: ORG,
@@ -283,7 +283,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     const host = await waitingHost(judgment);
     try {
       const conv = await host.conversation("alice", "lead");
-      const filed = await host.act("alice", conv, "run", { message: "count laptops" });
+      const filed = await host.act("alice", conv, "respond", { message: "count laptops" });
       expect(await statusOf(host, filed.requestId!)).toBe("completed");
       await host.settled();
       // The filing's turn, then a second turn the notice woke (the mock runs a turn's tool loop in one call).

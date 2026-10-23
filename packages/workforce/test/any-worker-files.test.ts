@@ -190,7 +190,7 @@ describe("a worker files for its delegates that take a task (BR-1)", () => {
     const h = host({ agentScript: fileScript("hand it to otto", "Draft the memo TASK: memo", "otto") });
     try {
       const talk = await agentSession(h, "alice", "pal");
-      const turn = await h.act("alice", talk, "run", { message: "hand it to otto" }, "agent");
+      const turn = await h.act("alice", talk, "respond", { message: "hand it to otto" }, "agent");
       expect(turn.error, messageOf(turn.error)).toBeUndefined();
       await h.settled();
       await list(h, "alice", talk, "agent");
@@ -219,7 +219,7 @@ describe("a worker files for its delegates that take a task (BR-1)", () => {
       const h = host({ standard });
       try {
         const talk = await agentSession(h, "alice", "ana");
-        const turn = await h.act("alice", talk, "run", { message: "what's on the board?" }, "agent");
+        const turn = await h.act("alice", talk, "respond", { message: "what's on the board?" }, "agent");
         expect(turn.error, messageOf(turn.error)).toBeUndefined();
         await h.settled();
         const turns = turnsAbout(h.seen, "what's on the board?");
@@ -239,7 +239,7 @@ describe("a worker files for its delegates that take a task (BR-1)", () => {
     const h = host({ agent: { uses: [() => [createTaskToolsCapability(async () => undefined)]] } });
     try {
       const talk = await agentSession(h, "alice", "ana");
-      const turn = await h.act("alice", talk, "run", { message: "what's on the board?" }, "agent");
+      const turn = await h.act("alice", talk, "respond", { message: "what's on the board?" }, "agent");
       expect(messageOf(turn.error)).toMatch(/has two tools named "createTask"/);
     } finally {
       await h.dispose();
@@ -256,7 +256,7 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
       const h = host();
       try {
         const sessionId = flow === "agent" ? await agentSession(h, "alice", workerId) : await h.conversation("alice", workerId);
-        const turn = await h.act("alice", sessionId, "run", { message: "anything to file?" }, flow);
+        const turn = await h.act("alice", sessionId, "respond", { message: "anything to file?" }, flow);
         expect(turn.error, messageOf(turn.error)).toBeUndefined();
         await h.settled();
         const turns = turnsAbout(h.seen, "anything to file?").filter((entry) => entry.block === block);
@@ -298,7 +298,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
 
       const added = await h.act("alice", talk, "addDelegate", { worker: "eng.tasker" }, "agent");
       expect(added.error, messageOf(added.error)).toBeUndefined();
-      expect((await h.act("alice", talk, "run", { message: "turn after the add" }, "agent")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "turn after the add" }, "agent")).error).toBeUndefined();
       const [after] = turnsAbout(h.seen, "turn after the add") as [Seen];
       expect(taskToolsIn(after.names).sort()).toEqual([...TASK_TOOLS].sort());
 
@@ -307,7 +307,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       const removed = await h.act("alice", talk, "removeDelegate", { worker: "eng.tasker" }, "agent");
       expect(removed.error, messageOf(removed.error)).toBeUndefined();
 
-      expect((await h.act("alice", talk, "run", { message: "turn after the remove" }, "agent")).error).toBeUndefined();
+      expect((await h.act("alice", talk, "respond", { message: "turn after the remove" }, "agent")).error).toBeUndefined();
       // The tools stay on the turn, for its own steps (FIX-2076 D1); the actions file for no delegate.
       const gone = turnsAbout(h.seen, "turn after the remove").at(-1)!;
       expect(taskToolsIn(gone.names).sort()).toEqual([...TASK_TOOLS].sort());
@@ -345,7 +345,7 @@ describe("a notice to an `agent` worker that arrives mid-reply", () => {
     });
     try {
       talk = await agentSession(h, "alice", "ana");
-      await h.post("alice", talk, "run", { message: "count the chairs" }, "agent");
+      await h.post("alice", talk, "respond", { message: "count the chairs" }, "agent");
       await h.settled();
       expect(seen.noticeArrivedMidReply).toBe(true);
       expect(seen.heardMidReply).toBe(false);
@@ -430,7 +430,7 @@ describe("the grant is server-written, never input (BR-6)", () => {
       const output = forged.output as { ok?: boolean; error?: string } | undefined;
       // Refused either by the input schema or by the roster: nothing stored.
       if (forged.error === undefined) expect(output?.error).toMatch(/^unknown_assignee: "eng\.writer"/);
-      const run = await h.act("alice", talk, "run", { message: "hi", delegates: ["eng.writer"] }, "agent");
+      const run = await h.act("alice", talk, "respond", { message: "hi", delegates: ["eng.writer"] }, "agent");
       expect(run.error).toBeDefined();
       expect(await h.rows("alice")).toEqual([]);
     } finally {
@@ -512,7 +512,7 @@ describe("who it files for, and which board (V2)", () => {
     });
     try {
       const conv = await h.conversation("alice", "chief");
-      expect((await h.act("alice", conv, "run", { message: "plan the launch" })).error).toBeUndefined();
+      expect((await h.act("alice", conv, "respond", { message: "plan the launch" })).error).toBeUndefined();
       await h.settled();
       // The routed task to ana is a task on the conversation's board; her filing is the other.
       const all = await h.rows("alice");

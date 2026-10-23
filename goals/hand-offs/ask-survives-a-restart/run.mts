@@ -190,7 +190,7 @@ async function attempt(o: {
   const ask = (ASK_RECORDED ? fixture.askRecorded : fixture.ask).replaceAll("{colleague}", colleague);
   say(`${o.label}: "${ask}" (the word is ${secret})`);
   const client = alice.flow("agent");
-  const asked = (await client.sendAction("run", { message: ask }, { sessionId: conv })).request.id;
+  const asked = (await client.sendAction("respond", { message: ask }, { sessionId: conv })).request.id;
   const sentAt = Date.now();
   let killedAfterMs = -1;
   for (const until = Date.now() + 180_000; Date.now() < until; await sleep(40)) {

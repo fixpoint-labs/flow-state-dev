@@ -315,7 +315,7 @@ function buildHost(filename: string) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
     resources: { ...installation.resources, ...deskBoard.resources },
-    actions: { run: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
+    actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
     internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
     task: { actions: { work: workerTaskEntry({ name: "settles-desk-task", turn: deskTurn }) } }
   } as never);
@@ -324,13 +324,13 @@ function buildHost(filename: string) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
     resources: { ...installation.resources, ...doerBoard.resources },
-    actions: { run: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
+    actions: { respond: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
     // A piece's notice wakes the doer's turn (judgment), so its answer can be the task's result.
     internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
     task: { actions: { work: { ...workerTaskEntry({ name: "settles-doer-task", turn: doerWork }), durable: true } } },
     request: { onFinished }
   } as never);
-  workerFlows = { desk: deskFlow, doer: doerFlow };
+  workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] } };
 
   const state = createFlowState({
     flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),

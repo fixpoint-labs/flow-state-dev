@@ -79,7 +79,7 @@ describe("V1 · the task session keeps its prompt (S5)", () => {
       const row = (await h.row("alice", filing, filed.taskId!)) as Task;
       expect(row.status).toBe("completed");
 
-      const later = await h.act("alice", row.run!.sessionId, "run", { message: "Which licence was the problem?" }, "agent");
+      const later = await h.act("alice", row.run!.sessionId, "respond", { message: "Which licence was the problem?" }, "agent");
       expect(later.error, messageOf(later.error)).toBeUndefined();
       await h.settled();
       // Talk: the task, its output and its attempts are as they were.
@@ -291,7 +291,7 @@ describe("V3 · the conversation answers (S2, S3)", () => {
       await h.settled();
       const asked = (await h.row("alice", filing, filed.taskId!))!.run!.sessionId;
       // The answer lands, and its start is held back, so the row waits pending.
-      const lost = await h.loseDispatches("runTaskBoard");
+      const lost = await h.loseDispatches("dispatch");
       await answer(h, conv, filed.taskId!, "eu-west");
       await h.settled();
       const moved = await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" });
@@ -315,7 +315,7 @@ describe("V3 · the conversation answers (S2, S3)", () => {
       const filing = await h.filingOf("alice", conv);
       const filed = await file(h, conv, { goal: "[park:Which region?] deploy", assignee: "eng.tasker" });
       await h.settled();
-      const lost = await h.loseDispatches("runTaskBoard");
+      const lost = await h.loseDispatches("dispatch");
       await answer(h, conv, filed.taskId!, "eu-west");
       await h.settled();
       expect(lost.lost()).toBeGreaterThan(0);
@@ -402,7 +402,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       // a finished one's is talk, a turn of its own: the case graded here.
       expect(done.status).toBe("completed");
       seen.length = 0;
-      await h.act("alice", sessionId, "run", { message: "USER-asks what you did" }, "agent");
+      await h.act("alice", sessionId, "respond", { message: "USER-asks what you did" }, "agent");
       const turn = seen.filter((s) => s.input.includes("USER-asks"));
       expect(turn.length).toBeGreaterThan(0);
       for (const t of turn) expect(t.names).not.toContain("parkOnQuestion");
@@ -449,7 +449,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
     });
     try {
       const conv = await h.conversation("alice", "chief");
-      await h.act("alice", conv, "run", { message: "TOOLS-check" });
+      await h.act("alice", conv, "respond", { message: "TOOLS-check" });
       const turn = seen.filter((s) => s.input.includes("TOOLS-check"));
       expect(turn.length).toBeGreaterThan(0);
       const tools = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"];

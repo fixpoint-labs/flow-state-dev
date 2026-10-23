@@ -196,7 +196,7 @@ describe("a conversation's delegates (V2)", () => {
       { worker: "temp", description: null, takes: "nothing" }
     ]);
 
-    const turn = await host.act("alice", id, "run", { message: "hand this to each of them" });
+    const turn = await host.act("alice", id, "respond", { message: "hand this to each of them" });
     expect(turn.error, messageOf(turn.error)).toBeUndefined();
     await host.settled();
     const [record] = (await host.items(id)).records;
@@ -362,7 +362,7 @@ describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", (
     });
     const host = bootHost({ judgment });
     const id = await host.conversation("alice", "chief");
-    await host.act("alice", id, "run", { message: "bring in a coder" });
+    await host.act("alice", id, "respond", { message: "bring in a coder" });
     const results = await toolResults(host, id);
     // listDelegates is every worker's; addDelegate isn't offered, so nothing it would add lands.
     expect(results.listDelegates[0].delegates.map((d: any) => d.worker)).toEqual(["eng.em"]);
@@ -387,7 +387,7 @@ describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", (
     const host = bootHost({ judgment, standard: standardWorkers({ chief: { editsOwnDelegates: true } }) });
     expect((await host.hire("bob", { id: "bobs-helper", flow: "helper" })).error).toBeUndefined();
     const id = await host.conversation("alice", "chief");
-    const turn = await host.act("alice", id, "run", { message: "bring in a coder" });
+    const turn = await host.act("alice", id, "respond", { message: "bring in a coder" });
     expect(turn.error, messageOf(turn.error)).toBeUndefined();
 
     const results = await toolResults(host, id);

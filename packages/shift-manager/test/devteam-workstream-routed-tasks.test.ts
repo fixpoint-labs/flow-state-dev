@@ -255,7 +255,7 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
   const workstream = (await readProject(clients, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
     .sessionId!;
   const pc = (await workforceClientFor(clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-  await runAction(clients, "coordinator", pc, "run", { message: FIRST_ASK });
+  await runAction(clients, "coordinator", pc, "respond", { message: FIRST_ASK });
   const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as Row[];
   const routedRow = async (body?: string) =>
     (await rows()).find((r) => r.sealed?.postId !== undefined && (body === undefined || r.sealed.body === body));
@@ -346,7 +346,7 @@ describe("a routed task to a workstream from another conversation's board", () =
     const runtime = await lab!.state.getRuntime();
     await runtime.stores.session.delete(host.pc);
     const again = (await workforceClientFor(host.clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-    await runAction(host.clients, "coordinator", again, "run", { message: SECOND_ASK });
+    await runAction(host.clients, "coordinator", again, "respond", { message: SECOND_ASK });
     const waiting = await eventually(async () => host.routedRow(SECOND_ASK), "the second routed task filed", 30_000);
     expect(waiting.targetSessionId).toBe(host.workstream);
 
@@ -420,7 +420,7 @@ describe("a routed task to the DevTeam's EM", () => {
     release.push(coderRuns.open);
     const host = await handOn({ id: EM, em: emModel(seen, false) }, coderRuns);
     await eventually(async () => ((await host.routedRow(FIRST_ASK))?.status === "completed" ? true : undefined), "the first routed task completed", 30_000);
-    await runAction(host.clients, "coordinator", host.pc, "run", { message: SECOND_ASK });
+    await runAction(host.clients, "coordinator", host.pc, "respond", { message: SECOND_ASK });
     await eventually(async () => ((await host.routedRow(SECOND_ASK))?.status === "completed" ? true : undefined), "the second routed task completed", 30_000);
     expect(seen.turns).toHaveLength(2);
     expect(seen.turns[1]).toContain("Recent lines in the conversation with project-coordinator before this message, oldest first:");

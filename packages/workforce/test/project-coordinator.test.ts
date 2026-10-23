@@ -245,7 +245,7 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const his = await h.coordinator("bob");
     expect(his).not.toBe(hers);
     expect((await h.sessionRecord(his))!.userId).toBe("bob");
-    const reached = await h.act("bob", COORDINATOR_FLOW, hers, "run", { message: "what's going on?" });
+    const reached = await h.act("bob", COORDINATOR_FLOW, hers, "respond", { message: "what's going on?" });
     expect(reached.settled).not.toBe("completed");
     expect(reached.http).toBeGreaterThanOrEqual(400);
   });
@@ -378,7 +378,7 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     const opened = await h.open("alice", "checkout", "alice-lead");
     await h.open("alice", "search", "alice-lead");
     const id = await h.coordinator("alice");
-    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
     expect(h.heard).toEqual([
@@ -402,9 +402,9 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     const h = await boot({ judgment });
     const opened = await h.open("alice", "checkout", "alice-lead");
     const id = await h.coordinator("alice");
-    expect((await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." })).settled).toBe("completed");
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." })).settled).toBe("completed");
     await h.settled();
-    expect((await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "And a gift note." })).settled).toBe("completed");
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "And a gift note." })).settled).toBe("completed");
     await h.settled();
     expect(h.heard.map((heard) => [heard.message.includes("gift") ? "second" : "first", heard.sessionId])).toEqual([
       ["first", opened.workstream.sessionId],
@@ -428,7 +428,7 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     await h.open("alice", "checkout", "alice-lead");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Get billing to fix the invoice." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Get billing to fix the invoice." });
     await h.settled();
     expect(h.heard).toEqual([]);
     const [record] = (await h.items(id)).records;
@@ -446,7 +446,7 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     await h.mark("bob", "billing", "PERIWINKLE-7319");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "How is Apollo going?" });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "How is Apollo going?" });
     await h.settled();
     expect(await h.delegates("alice", id)).toEqual([]);
     // The tool's answer reached the model: Bob's held-out status word with it.
@@ -466,7 +466,7 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     await h.open("alice", "checkout", "alice-lead");
     await h.open("bob", "billing", "bob-lead");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Which of these workstreams is mine?" });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Which of these workstreams is mine?" });
     await h.settled();
     const requests = await h.runtime.stores.request.list({ sessionId: id, withItems: true });
     const read = requests
@@ -488,7 +488,7 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     await h.open("bob", "billing", "bob-lead");
     const id = await h.coordinator("alice");
     h.counting!.reads.length = 0;
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Status, then hand checkout the copy." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Status, then hand checkout the copy." });
     await h.settled();
     expect(h.heard).toHaveLength(1);
     const lists = h.counting!.reads.filter((read) => read.includes("prefix") && read.includes("workstreams/"));
@@ -528,7 +528,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     const roster = (await h.client("alice").roster()).map((worker) => worker.id).sort();
     const id = await h.coordinator("alice");
     h.counting!.reads.length = 0;
-    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
     // The whole open turn lists the project's entries at most once (V5's budget).
@@ -567,7 +567,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     const h = await boot({ judgment });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Make search fuzzy." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Make search fuzzy." });
     await h.settled();
     const sessions = await h.sessionsWith("workerId", "alice-lead");
     expect(sessions).toHaveLength(2);
@@ -586,7 +586,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     const h = await boot({ judgment });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Start a journal." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Start a journal." });
     await h.settled();
     const outputs = (await h.runtime.stores.request.list({ sessionId: id, withItems: true }))
       .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
@@ -605,7 +605,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     const h = await boot({ judgment });
     await hireOn(h, "alice", "alice-solo", "lead", []);
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." });
     await h.settled();
     expect(await leadsOffered(h, id)).toEqual([[]]);
     expect(await h.delegates("alice", id)).toEqual([]);
@@ -633,7 +633,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
     await hireOn(h, "alice", "alice-quiet", "quiet", ["alice-quiet.helper"]);
     const id = await h.coordinator("alice");
-    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
     // Her roster still reaches the coordinator beside the workstream's record. Today the open's own
@@ -674,7 +674,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
 
       expect(await opens(h, id)).toContain("lead-doesnt-fit");
@@ -692,7 +692,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: fit(true) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       expect(await workstreams(h)).toEqual(["research"]);
       expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
@@ -704,7 +704,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(false, false) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream for garnet delta 6965." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream for garnet delta 6965." });
       await h.settled();
       expect(await opens(h, id)).not.toContain("lead-doesnt-fit");
       expect(await workstreams(h)).toEqual(["garnet"]);
@@ -714,7 +714,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       expect(await workstreams(h)).toEqual(["research"]);
       // The open's record says the check didn't run, and why: a dead check shows up here, not nowhere.
@@ -726,7 +726,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: { ...research, id: "two/segments" } }]), leadFit });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       const answered = await opens(h, id);
       expect(answered).toContain("invalid-workstream-id");
@@ -746,7 +746,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
       const id = await h.coordinator("alice");
-      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream: research what to build next." });
+      await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Open a workstream: research what to build next." });
       await h.settled();
       const answered = await opens(h, id);
       expect(answered).not.toContain("lead-doesnt-fit");
@@ -790,7 +790,7 @@ describe("changing her workstreams from the coordinator", () => {
     await h.open("alice", "search", "alice-lead");
     const id = await h.coordinator("alice");
     expect(await h.delegates("alice", id)).toHaveLength(2);
-    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Rename checkout to Guest checkout, due Nov 30, then close it." });
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Rename checkout to Guest checkout, due Nov 30, then close it." });
     expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
     await h.settled();
     expect((await entries(h)).find((entry) => entry.id === "checkout")).toMatchObject({
@@ -812,7 +812,7 @@ describe("changing her workstreams from the coordinator", () => {
     await h.mark("alice", "checkout", "done");
     await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
     await h.ok("alice", ROSTER_FLOW, await h.openSession("alice", ROSTER_FLOW), "fire", { id: "alice-lead" });
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Reopen checkout." });
     await h.settled();
     expect((await entries(h)).find((entry) => entry.id === "checkout")).toMatchObject({ status: "on-track" });
     // The record add ran the delegate check, which refuses a lead no longer on her roster.
@@ -826,7 +826,7 @@ describe("changing her workstreams from the coordinator", () => {
     const id = await h.coordinator("alice");
     await h.mark("alice", "checkout", "done");
     await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Reopen checkout." });
     await h.settled();
     await h.eventually(async () =>
       expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/checkout" }])
@@ -842,7 +842,7 @@ describe("changing her workstreams from the coordinator", () => {
     await h.open("alice", "drafts", "alice-lead", notes);
     const bobsBefore = await entries(h, "bob");
     const id = await h.coordinator("alice");
-    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Close it." });
+    await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Close it." });
     await h.settled();
     expect(await edits(h, id)).toContain(refused);
     expect(await entries(h, "bob")).toEqual(bobsBefore);

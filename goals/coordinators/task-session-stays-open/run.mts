@@ -165,7 +165,7 @@ async function drive(origin: string, store: string) {
 
   // Leg b: the door into the finished task's session, found as an app finds it.
   const found = taskId === undefined || filingSessionId === undefined ? undefined : await app.findWorkerSession({ worker: "desk.ops", taskId, filingSessionId });
-  const asked = found?.id === undefined ? null : await act("agent", found.id, "run", { message: LEG_B });
+  const asked = found?.id === undefined ? null : await act("agent", found.id, "respond", { message: LEG_B });
   await quiet();
 
   // Leg c: a follow-up task naming the finished one.

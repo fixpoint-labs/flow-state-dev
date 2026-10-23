@@ -121,7 +121,7 @@ await runGoal(async (failures) => {
         failures.push(`(b) ${worker.id}: its session was not created: ${created.status} ${await created.text()}`);
         continue;
       }
-      const res = await call(router, "POST", [AGENT_FLOW, sessionId, "actions", "run"], {
+      const res = await call(router, "POST", [AGENT_FLOW, sessionId, "actions", "respond"], {
         userId: fixture.userId,
         input: { note: fixture.note }
       });

@@ -83,10 +83,10 @@ describe("a notice that has waited out its patience", () => {
       }
     });
     conv = await host.conversation("alice", "lead");
-    await host.post("alice", conv, "run", { message: "count our licenses" });
+    await host.post("alice", conv, "respond", { message: "count our licenses" });
     expect(await until(async () => (await noticeRequests(host, conv)).length > 0)).toBe(true);
     await sleep(nextAfterMs);
-    await host.post("alice", conv, "run", { message: "and our workers?" });
+    await host.post("alice", conv, "respond", { message: "and our workers?" });
     expect(await until(() => calls === 2)).toBe(true);
     // The filing reply ends; the user's next reply is still running.
     first.open();
@@ -154,7 +154,7 @@ describe("more notices than may wait on a conversation", () => {
     try {
       await host.state.getRouter();
       conv = await host.conversation("alice", "lead");
-      await host.post("alice", conv, "run", { message: "count them" });
+      await host.post("alice", conv, "respond", { message: "count them" });
       await host.settled();
       expect(waitingWhenHeld).toBe(2);
       // Nothing touches the board after the reply: the third notice, refused

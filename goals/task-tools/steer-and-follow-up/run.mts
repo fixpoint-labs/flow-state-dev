@@ -306,7 +306,7 @@ function buildHost(filename: string, repo: string, checkouts: string) {
   const agent = defineAgentWorkerFlow({ installation });
   const coder = defineCoderFlow(installation, repo, checkouts);
   const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
-  flows = { agent, coordinator, coder };
+  flows = { agent, coordinator, coder: { flow: coder, roles: ["contributor"] } };
   const instances = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
   const state = createFlowState({
     flows: instances,
@@ -455,7 +455,7 @@ await runGoal(async (failures) => {
       await within(gate("b1").reached, 30_000, "b1's last model call");
       const b1Before = await get(b1);
       const before = calls.length;
-      const line = await alice.act("agent", b1Before!.run.sessionId, "run", { message: b1Words });
+      const line = await alice.act("agent", b1Before!.run.sessionId, "respond", { message: b1Words });
       if (line?.steered !== b1 || calls.length !== before) {
         failures.push(`e:a line in an open task's session is a steer, and no reply runs beside it — answered ${show(line)}, ${calls.length - before} model call(s) beside it`);
       }
@@ -544,7 +544,7 @@ await runGoal(async (failures) => {
       await completesOnce("e", "the audited task", e2);
       const before = show(await get(e2));
       const session = (await get(e2))!.run.sessionId as string;
-      const reply = await alice.act("agent", session, "run", { message: "#e2t# which licence was it?" });
+      const reply = await alice.act("agent", session, "respond", { message: "#e2t# which licence was it?" });
       await idle();
       if (!show(reply).includes("KESTREL-41") || show(reply).includes("steered")) {
         failures.push(`e:in a finished task's session, a reply that names what the task did — answered ${show(reply)}`);

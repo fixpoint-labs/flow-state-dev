@@ -29,7 +29,7 @@ describe("a coordinator's failures reach the Error Reporter", () => {
     const taken: Array<Record<string, unknown>> = [];
     const host = bootHost({ flows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) } });
     const id = await host.conversation("alice", "desk");
-    const turn = await host.act("alice", id, "run", { message: "[route:eng.em] [conf:0.9] [fail:eng.em] plan the release" });
+    const turn = await host.act("alice", id, "respond", { message: "[route:eng.em] [conf:0.9] [fail:eng.em] plan the release" });
     expect(turn.error).toBeUndefined();
     await host.settled();
     const [row] = await host.routedRows("alice");
@@ -44,7 +44,7 @@ describe("a coordinator's failures reach the Error Reporter", () => {
     const taken: Array<Record<string, unknown>> = [];
     const host = bootHost({ flows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) }, roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
-    const turn = await host.act("alice", id, "run", { message: "[route:eng.coder] [conf:0.9] [slow:eng.coder] status?" });
+    const turn = await host.act("alice", id, "respond", { message: "[route:eng.coder] [conf:0.9] [slow:eng.coder] status?" });
     expect(turn.error).toBeUndefined();
     for (let i = 0; i < 300 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -65,7 +65,7 @@ describe("a coordinator's failures reach the Error Reporter", () => {
     const host = bootHost({ flows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) } });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "setFallback", { worker: null })).error).toBeUndefined();
-    const turn = (await host.act("alice", id, "run", { message: "no mark, and no judgment script" })) as { error?: unknown; requestId?: string };
+    const turn = (await host.act("alice", id, "respond", { message: "no mark, and no judgment script" })) as { error?: unknown; requestId?: string };
     // The request completes on "Nobody took this message", so the engine sends no final event for it.
     expect(turn.error).toBeUndefined();
     const said = (await host.items(id)).messages.at(-1)!.text;
@@ -75,7 +75,7 @@ describe("a coordinator's failures reach the Error Reporter", () => {
         kind: "request",
         requestId: turn.requestId,
         flowKind: "coordinator",
-        actionName: "run",
+        actionName: "respond",
         blockName: "coordinator-judgment",
         sessionId: id,
         userId: "alice",

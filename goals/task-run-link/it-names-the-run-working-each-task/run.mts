@@ -220,7 +220,7 @@ await runGoal(async (failures) => {
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
     internal: { actions: board.entries(filerTurn, () => "fixed") }
@@ -234,11 +234,14 @@ await runGoal(async (failures) => {
       configSchema: workerConfigSchema(),
       session: installation.session(),
       resources: { ...installation.resources },
-      actions: { run: { inputSchema: doorInput, block: turn, userMessage: (input: { message: string }) => input.message } },
+      actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (input: { message: string }) => input.message } },
       task: { actions: { work: workerTaskEntry({ name: `run-link-goal-${kind}-task`, turn }) } }
     } as never);
   };
-  workerFlows = { [filerKind]: filerFlow, ...Object.fromEntries(kinds.map((kind) => [kind, takerFlow(kind)])) };
+  workerFlows = {
+    [filerKind]: { flow: filerFlow, roles: ["manager"] },
+    ...Object.fromEntries(kinds.map((kind) => [kind, { flow: takerFlow(kind), roles: ["contributor"] }]))
+  };
 
   const hired = hireWorkforce(installation);
   const state = createFlowState({

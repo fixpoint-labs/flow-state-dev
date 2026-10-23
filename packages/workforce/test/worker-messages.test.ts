@@ -103,7 +103,7 @@ describe("a worker messages another worker", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
 
       const lead = await h.client("alice").findWorkerSession({ worker: "lead" });
@@ -138,7 +138,7 @@ describe("what a worker knows of who it can message", () => {
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Hello" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Hello" }, "agent");
       await h.settled();
       expect(descriptions).toHaveLength(1);
       const listed = descriptions[0]!.split("\n").filter((line) => line.startsWith("- ")).map((line) => line.slice(2).split(":")[0]);
@@ -162,7 +162,7 @@ describe("the log, read by an app", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       const list = async (userId: string) => {
         const roster = await h.create(userId, "workforce-roster", {});
@@ -198,7 +198,7 @@ describe("an answer", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
@@ -232,9 +232,9 @@ describe("an answer", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the first" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the first" }, "agent");
       await h.settled();
-      await h.post("alice", otto, "run", { message: "Please ask the second" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the second" }, "agent");
       await h.settled();
       const fromLead = (await logRows(h, "alice")).filter((row) => row.from === "lead").map((row) => row.text);
       expect(fromLead).toEqual(["Answered by tool."]);
@@ -257,7 +257,7 @@ describe("an answer", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
 
       const lines = await h.messages(otto);
@@ -361,7 +361,7 @@ describe("the hop limit", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
       await h.settled();
 
       let rows = (await logRows(h, "alice")).sort((a, b) => a.hop - b.hop);
@@ -378,7 +378,7 @@ describe("the hop limit", () => {
       expect(refusals).toHaveLength(1);
 
       // One more line from the user: one more round.
-      await h.post("alice", otto.id, "run", { message: "Please start the ring again" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please start the ring again" }, "agent");
       await h.settled();
       rows = await logRows(h, "alice");
       expect(rows).toHaveLength(12);
@@ -419,7 +419,7 @@ describe("the hop limit across a branching exchange", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript("Passed it on.") }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
       await h.settled();
 
       const rows = await logRows(h, "alice");
@@ -437,7 +437,7 @@ describe("a Lab's own limits", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { hopLimit: 2 } } });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
       await h.settled();
       expect((await logRows(h, "alice")).map((row) => row.hop).sort()).toEqual([1, 2]);
     } finally {
@@ -446,7 +446,7 @@ describe("a Lab's own limits", () => {
     const fan = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }), hire: { messages: { perTurn: 2 } } });
     try {
       const otto = await fan.client("alice").ensureWorkerSession({ worker: "otto" });
-      await fan.post("alice", otto.id, "run", { message: "Please message every worker on the roster" }, "agent");
+      await fan.post("alice", otto.id, "respond", { message: "Please message every worker on the roster" }, "agent");
       await fan.settled();
       expect((await logRows(fan, "alice")).filter((row) => row.from === "otto")).toHaveLength(2);
     } finally {
@@ -461,7 +461,7 @@ describe("the per-turn limit", () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please message every worker on the roster" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please message every worker on the roster" }, "agent");
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.filter((row) => row.from === "otto")).toHaveLength(3);
@@ -490,7 +490,7 @@ describe("the hop count through a delegation", () => {
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
@@ -510,7 +510,7 @@ describe("the hop count through a delegation", () => {
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please ask chief" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask chief" }, "agent");
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
@@ -544,7 +544,7 @@ describe("the hop count through a delegation", () => {
       await sessions.set(helperA.id, { ...stored, state: legacy, version: stored.version + 1 }, stored.version);
       expect((await sessions.get(helperA.id))!.state).not.toHaveProperty("workforceMessageHop");
 
-      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
@@ -583,7 +583,7 @@ describe("who can be messaged", () => {
     try {
       expect((await h.hire("bob", { id: "bob.friend", flow: "agent", instructions: "Bob's." })).error).toBeUndefined();
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
-      await h.post("alice", otto.id, "run", { message: "Please try everyone" }, "agent");
+      await h.post("alice", otto.id, "respond", { message: "Please try everyone" }, "agent");
       await h.settled();
       const outputs = (await toolOutputs(h, otto.id)).map((output) => JSON.stringify(output));
       expect(outputs).toHaveLength(5);
@@ -650,10 +650,10 @@ describe("a busy recipient", () => {
     });
     try {
       const lead = await h.client("alice").ensureWorkerSession({ worker: "lead" });
-      await h.post("alice", lead.id, "run", { message: "A long question" }, "coordinator");
+      await h.post("alice", lead.id, "respond", { message: "A long question" }, "coordinator");
       for (let i = 0; i < 200 && judgment.calls.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       // The message is sent while the lead's turn is still running.
       for (let i = 0; i < 300 && (await logRows(h, "alice")).length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
       expect((await h.messages(lead.id)).some((line) => line.text.startsWith("From otto"))).toBe(false);
@@ -697,7 +697,7 @@ describe("delivery", () => {
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
       const [row] = await logRows(h, "alice");
@@ -722,7 +722,7 @@ describe("delivery", () => {
     try {
       const lost = await h.loseDispatches("onWorkerMessage");
       const otto = await agentSession(h, "alice", "otto");
-      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       lost.restore();
       const [row] = await logRows(h, "alice");

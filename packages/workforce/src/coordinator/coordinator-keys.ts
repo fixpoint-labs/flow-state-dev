@@ -40,6 +40,13 @@ export const ROUND_DEADLINE_ACTION = "roundDeadline";
  */
 export const ROUTE_ON_ACTION = "routeOn";
 
+/**
+ * The coordinator's internal entry an entry path dispatches into the user's
+ * coordinator session, to add or remove one workstream's record. **Pinned**:
+ * the workstream writes name it.
+ */
+export const WORKSTREAM_DELEGATE_ACTION = "changeWorkstreamDelegate";
+
 /** The highest `rounds:` a coordinator may set. */
 export const MAX_ROUNDS = 3;
 

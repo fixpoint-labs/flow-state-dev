@@ -165,7 +165,7 @@ function posterFlow(installation: any) {
     configSchema: wf.workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
   } as never);
 }
 
@@ -197,7 +197,7 @@ function foremanFlow(installation: any) {
     resources: { ...installation.resources, ...(board?.resources ?? {}) },
     request: { onStarted: resolveWorker },
     actions: {
-      run: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
+      respond: { inputSchema: doorInput.strict(), block: answer, userMessage: (input: { message: string }) => input.message },
       ...(board?.actions ?? {}),
     },
     internal: { actions: board === undefined ? {} : board.entries(answer) },
@@ -211,7 +211,8 @@ function hire(workers: unknown[]): Array<{ id: string }> {
   const agent = wf.defineAgentWorkerFlow({ installation });
   const poster = posterFlow(installation);
   const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
-  flows = { agent, coordinator, poster, foreman: foremanFlow(installation) };
+  // The foreman files its delegates' tasks.
+  flows = { agent, coordinator, poster, foreman: { flow: foremanFlow(installation), roles: ["manager"] } };
   return wf.hireWorkforce(installation, CHAIN_LIMIT === undefined ? {} : { taskChainLimit: CHAIN_LIMIT }) as Array<{ id: string }>;
 }
 

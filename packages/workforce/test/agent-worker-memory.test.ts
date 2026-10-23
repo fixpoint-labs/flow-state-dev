@@ -166,7 +166,7 @@ async function turn(
   const result = await testFlow({
     sessionId,
     flow: worker,
-    action: "run",
+    action: "respond",
     userId: USER_ID,
     input: { message },
     stores,
@@ -237,7 +237,7 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     // routed-session record is which routed task a workstream's session works (FIX-2083).
     expect(Object.keys(plain!.resources ?? {}).sort()).toEqual(["skills", "standing-rules", "tasks", "workforceRoutedSessions"]);
     // Nothing runs after the answer — the sequence is what it was.
-    const children = stepNames(plain!.actions.run!.block);
+    const children = stepNames(plain!.actions.respond!.block);
     expect(children.some((name) => name.startsWith("memory/"))).toBe(false);
     // And every worker on the roster shares one user-scoped cell.
     expect(plain!.isolateUserState).toBe(false);
@@ -258,7 +258,7 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     // The door's block reaches the turn through its finished-task router (FIX-1764).
     type Named = { name: string; childBlocks?: readonly Named[] };
     const names = (block: Named): string[] => [block.name, ...(block.childBlocks ?? []).flatMap(names)];
-    const children = names(worker!.actions.run!.block as Named);
+    const children = names(worker!.actions.respond!.block as Named);
     expect(children.some((name) => name.startsWith("memory/"))).toBe(true);
     expect(worker!.isolateUserState).toBe(true);
   });
@@ -286,13 +286,13 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker!.actions.run!.block.name,
-      declaredResources: worker!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.respond!.block.name,
+      declaredResources: worker!.actions.respond!.block.declaredResources,
       generators: { "agent-answer": answer }
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "hello" },
       ctx: runtime.ctx
     });
@@ -347,14 +347,14 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker!.actions.run!.block.name,
-      declaredResources: worker!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.respond!.block.name,
+      declaredResources: worker!.actions.respond!.block.declaredResources,
       modelResolver: recording,
       unmockedGeneratorPolicy: "allow"
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "what do you remember?" },
       ctx: runtime.ctx
     });
@@ -457,14 +457,14 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: worker!.actions.run!.block.name,
-      declaredResources: worker!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.respond!.block.name,
+      declaredResources: worker!.actions.respond!.block.declaredResources,
       generators: { "agent-answer": answer },
       unmockedGeneratorPolicy: "allow"
     });
 
     const result = await executeBlock({
-      block: worker!.actions.run.block,
+      block: worker!.actions.respond.block,
       input: { message: "/shipping" },
       ctx: runtime.ctx
     });

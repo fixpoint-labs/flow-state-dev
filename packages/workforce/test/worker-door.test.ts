@@ -3,8 +3,8 @@
  *
  * An app sends a user's line into a worker's session through the door the
  * worker's inventory row names, without knowing the worker's flow. So the hire
- * reads it off the worker flow once: the one public action with `userMessage` and a
- * `{ message }` input.
+ * reads it off the worker flow once: `respond`, the public action with
+ * `userMessage` and a `{ message }` input every worker flow declares.
  *
  * A worker flow with none, or with two, is refused when it is registered
  * (FIX-1789), so every hired worker has exactly one.
@@ -48,13 +48,23 @@ const twoDoorFlow = defineFlow({
   },
 });
 
-/** A worker flow with one door, under a name other than the built-in's. */
+/** A worker flow with one door, `respond`, beside an action of its own. */
 const deskFlow = defineFlow({
   kind: "desk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   actions: {
-    run: { inputSchema: note, block: work },
+    note: { inputSchema: note, block: work },
+    respond: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+  },
+});
+
+/** A worker flow whose one user-message action is named something other than `respond`. */
+const askFlow = defineFlow({
+  kind: "asker",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  actions: {
     ask: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
   },
 });
@@ -77,15 +87,24 @@ function refusalOf(run: () => unknown): string {
 }
 
 describe("a worker's door (BR-1, BR-2)", () => {
-  it("is the built-in agent worker flow's `run`", () => {
+  it("is `respond` on the built-in agent worker flow", () => {
     const [worker] = mintWorkers([record("eng.lead")], { workerFlows: flows });
     expect(worker!.kind).toBe("agent");
-    expect(workerDoorOf(worker!)).toEqual({ door: "run" });
+    expect(workerDoorOf(worker!)).toEqual({ door: "respond" });
   });
 
-  it("is the one public action a worker flow declares for a user's message", () => {
+  it("is `respond` on a worker flow of an app's own", () => {
     const [worker] = mintWorkers([record("eng.desk", "desk")], { workerFlows: flows });
-    expect(workerDoorOf(worker!)).toEqual({ door: "ask" });
+    expect(workerDoorOf(worker!)).toEqual({ door: "respond" });
+  });
+
+  // An app sends a user's line to `respond` on any worker without reading
+  // anything first, so a door under another name is one it can't reach.
+  it("refuses a worker flow whose user-message action has another name, naming the action to rename", () => {
+    const message = refusalOf(() => mintWorkers([record("eng.ask", "asker")], { workerFlows: { asker: askFlow } }));
+    expect(message).toContain('worker flow "asker"');
+    expect(message).toContain('rename "ask" to "respond"');
+    expect(message).toContain("nothing was hired");
   });
 
   it("refuses a worker flow with no door when it is registered, and hires nothing", () => {
@@ -120,8 +139,8 @@ describe("a worker's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         workers: [
-          { id: "eng.desk", kind: "desk", door: "ask", rules: false, hired: false, incarnation: null, name: null, teamName: null },
-          { id: "eng.lead", kind: "agent", door: "run", rules: true, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.desk", kind: "desk", door: "respond", rules: false, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.lead", kind: "agent", door: "respond", rules: true, hired: false, incarnation: null, name: null, teamName: null },
         ],
       },
     ]);
@@ -135,7 +154,7 @@ describe("a worker's door (BR-1, BR-2)", () => {
       kind: "agent",
       cardinality: "collection",
       configSchema: workerConfigSchema(),
-      actions: { ask: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message } },
+      actions: { respond: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message } },
     });
     const workers = mintWorkers([record("eng.lead")], { workerFlows: { agent: theirAgent } });
     const sent: { workers: { rules: boolean }[] }[] = [];

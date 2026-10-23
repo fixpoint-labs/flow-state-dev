@@ -200,7 +200,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
       hold: [(input: { message: string }) => input, (input: { message: string }) => !input.message.includes(PARK), holdRun],
     });
     return {
-      [LEAD_KIND]: defineFlow({
+      [LEAD_KIND]: { roles: ["manager"], flow: defineFlow({
         kind: LEAD_KIND,
         cardinality: "collection",
         configSchema: workerConfigSchema(),
@@ -209,8 +209,8 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         actions: { ...workerDoor, ...leadBoard.actions },
         // A task's notice lands as a line; it wakes no turn.
         internal: { actions: leadBoard.entries(leadTurn, () => "fixed") },
-      } as never),
-      [SEAT_KIND]: defineFlow({
+      } as never) },
+      [SEAT_KIND]: { roles: ["contributor"], flow: defineFlow({
         kind: SEAT_KIND,
         cardinality: "collection",
         configSchema: workerConfigSchema(),
@@ -218,7 +218,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         resources: { ...installation.resources },
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
-      } as never),
+      } as never) },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
     };
   });
