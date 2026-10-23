@@ -78,7 +78,7 @@
     <text class="t-lbl" x="32" y="280">NEW PACKAGE</text>
     <text class="t-lbl" x="32" y="293">CODE</text>
     <text class="mark minus" x="226" y="286">−</text>
-    <text class="t-b" x="244" y="285">A public take and an answer-again hook</text>
+    <text class="t-b" x="244" y="285">A public take; the answer-again step is shared</text>
     <text class="t-s" x="244" y="303">the loop stays in the lab flow</text>
     <text class="mark plus" x="586" y="286">+</text>
     <text class="t-b" x="604" y="285">None</text>

@@ -56,11 +56,11 @@ recorded here.*
 > stays as the row below says.
 >
 > **What decides FIX-2159:** whether a public `exports` entry (ER-2) lets a flow take and acknowledge
-> a settled notice, and answer again in the same request. On `main` none does: the take record
-> (FIX-2123) and Workforce's handling are internal, and the agent flow's `afterAnswer` can't answer
-> again. So FIX-2159 is narrowed to those two public pieces, a take-and-acknowledge for a settled
-> notice and an answer-again hook. The take keeps the guarantees in the row below. The loop itself
-> stays in the lab.
+> a settled notice. On `main` none does: the take record (FIX-2123) and Workforce's handling are
+> internal. So FIX-2159 adds one public piece, the take, and it keeps the guarantees in the row
+> below. Answering again is composed, not added: the lab's flow reuses the answer-once-more step
+> that `Planning.planned` (FIX-2076) already runs, shared under one cap, so there is one way to
+> answer again (#3799 review). The loop itself stays in the lab.
 
 | | |
 |---|---|
@@ -116,13 +116,9 @@ It comes down to finishing the UI first: the adapter is the only file that chang
 ## Who owns what
 
 > **Amended 2026-10-23, after the merge of #3783.** ER-8 and ER-9 come from the owner, relayed by
-> fsd-product-lead (agent-mailbox #46, comment 6375993020): a lab works in the directory you point it
-> at, never its own repository, and only delegated workers run on a coding harness. The calls made on
-> that thread are recorded in the rows: *ask* when no project is set, and *one worker flow per
-> harness*, chosen in each worker's `WORKER.md`. A harness run that changed code waits for the person's review
-> (comment 6376058630; FIX-2157's spec owns how). The scripted steps grew with them, so the lead measure is now of 18:
-> FIX-2153 picks a project and runs a harness leg, FIX-2157 adds a harness thread, and FIX-2154
-> adds a coding worker.
+> fsd-product-lead (agent-mailbox #46): a lab works where you point it, never in its own repository,
+> and only delegated workers run on a coding harness. The rows are canonical. The lead measure grew
+> to 18 with the steps the labs added for them.
 
 ![Who owns what: nine rules by FIX-2153, FIX-2157, FIX-2154, three gaps and the closure FIX-2156, each rule with one owner](figures/ownership.svg)
 
@@ -136,17 +132,17 @@ goes first; the gap issues own their mechanisms.
 | ER-3 | One way to set up a lab: under `labs/`, private, launched with `fsdev dev --app` as Shift Manager is; the theme from `@flow-state-dev/design-system` and components from the `packages/ui` registry (`fsdev ui add`). A lab defines no color tokens of its own. The two labs share no code: a piece both need that isn't UI is a package gap ([ER-4](#who-owns-what)), and a piece of UI both need is copied, so each inventory shows what that app adds. FIX-2157 is a mode of FIX-2153's app, not a third lab, so it shares that app's code | FIX-2153 | Every lab's spec review |
 | ER-4 | Any need beyond ER-1's three kinds goes to the package: filed against workforce or orchestration (or react, for a hook), named in the lab's spec, and never worked around in the lab, not even for a while. A gap that blocks a script is a child of this epic ([D1](#d1)) | FIX-2153 | Every lab's spec review; the closure |
 | ER-5 | Until wiring, a lab reads and writes through one adapter whose functions each name the package call they stand for, by post-refactor names ([D4](#d4)); a fixture carries a plain `fixture:` marker, and the README maps each to its gap (BP-006); at wiring the fixtures are deleted. FIX-2153's spec sets the adapter's layout (file names, one function per package call), and FIX-2154 copies the layout, not the code | FIX-2153 | Each lab's wiring PR; the closure |
-| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in. FIX-2153's lab flow runs the loop and consumes the notice through FIX-2159's public take, so the queued `onTaskSettled` skips it | FIX-2153 (the loop), FIX-2159 (the public take and the answer-again hook) | FIX-2153's wiring; the closure's leg a |
+| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in. FIX-2153's lab flow runs the loop and consumes the notice through FIX-2159's public take, so the queued `onTaskSettled` skips it | FIX-2153 (the loop), FIX-2159 (the public take) | FIX-2153's wiring; the closure's leg a |
 | ER-7 | A lab session is an ordinary session of the worker on its flow; a person lists only their own, through the workforce client; the derived session stays the default conversation, where messages and routed tasks land ([D3](#d3)) | FIX-2158 | FIX-2153's wiring; the closure's legs a and c |
-| ER-8 | A lab works in a **project**, and the project's checkout is its directory. In FIX-2153 and FIX-2157 a person picks it at New session; in FIX-2154 each worker is configured with one. Tasks a session files inherit it through `filingProjectId`, and `projectWorkspace()` runs them there. With no project set, the lab asks (the `no-project` refusal, shown as a question). It never falls back to the lab's own checkout or a scratch directory, and a raw path outside any project is not offered. Today only the project coordinator's session can carry a project, so [FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161) opens that to an ordinary session of any worker, and to a worker's default conversation with a project set in config | FIX-2153 | Every lab's spec review; each lab's wiring; the closure |
-| ER-9 | Only delegated workers run on a coding harness (Claude Code or Codex); a main session stays on the lab's generator, because its loop owns the turn ([D2](#d2)). The harness path is the one `harness-manager` already gives, as DevTeam's `coder` flow uses it, and no new mechanism. A lab has **one** coding worker flow, whatever the number of harnesses: it builds one `harnessManager` per harness (the slot is fixed when a manager is built) and routes each task by the worker's own `harness` setting, a key in its `WORKER.md` that the hire passes to the flow as settings, as DevTeam's `coder` routes by task and reads its worker's settings. So a harness is chosen in config and the flow count stays flat as harnesses are added. If that flow can't stay under ER-1's 200 lines, FIX-2153's spec raises the cap once and says why; a harness flow is never left out of the count. A harness run shows as an ordinary task row, tagged with its harness | FIX-2153 | Every lab's spec review; the closure |
+| ER-8 | Every run a lab starts works in a **project's** checkout, never the lab's own and never a scratch directory. A session or worker holds its project, and tasks it files inherit it through `filingProjectId`, which `projectWorkspace()` reads. When a job needs a project and none is set, the lab's screen asks before anything runs; `projectWorkspace()`'s `no-project` refusal is only the backstop. Each lab's spec says when it asks: FIX-2153 and FIX-2157 at New session, FIX-2154 (talk-first) at the first job that touches files. A raw path outside any project is not offered. [FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161) lets an ordinary session, or a worker's default conversation, carry a project | FIX-2153 | Every lab's spec review; each lab's wiring; the closure |
+| ER-9 | Only delegated workers run on a coding harness (Claude Code or Codex); a main session stays on the lab's generator, because its loop owns the turn ([D2](#d2)). The harness path is the one `harness-manager` already gives, as DevTeam's `coder` flow uses it, and no new mechanism. A lab has **one** coding worker flow, whatever the number of harnesses: it builds one `harnessManager` per harness (the slot is fixed when a manager is built) and routes each task by the worker's own `harness` setting, a key in its `WORKER.md` that the hire passes to the flow as settings, as DevTeam's `coder` routes by task and reads its worker's settings. So a harness is chosen in config and the flow count stays flat as harnesses are added. If that flow can't stay under ER-1's 200 lines, FIX-2153's spec raises the cap once and says why; a harness flow is never left out of the count. A harness run shows as an ordinary task row, tagged from the worker's `harness` setting; the task row gains no field | FIX-2153 | Every lab's spec review; the closure |
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
 | The workforce client (`workforce/src/workers/client.ts`) | FIX-2158 adds the list of a person's sessions of one worker; FIX-2153 and FIX-2157 call it through their adapters |
-| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the agent flow's turn (`defineAgentWorkerFlow`) | FIX-2159 adds a public take-and-acknowledge for a settled notice and an answer-again hook; FIX-2153's lab flow runs the loop at turn end and shows the result in the main thread |
+| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the answer-once-more step `Planning.planned` runs (FIX-2076) | FIX-2159 adds a public take-and-acknowledge for a settled notice and shares that step under one cap; FIX-2153's lab flow runs the loop at turn end and shows the result in the main thread |
 | Messages (`workforce/src/messages/`, the user-scoped `workerMessagesCollection`) | FIX-2070 owns the rename to `sendMessage` and `receive`, where a message lands, and the row it ships (call ids, `{ task }` addresses). FIX-2154 is blocked by FIX-2070 and keys its worker-talk view to that row; a pair filter is UI, and a gap is filed only if paging by pair needs a server index |
 | Routed tasks, task statuses and the hold on questions (`workforce/src/coordinator/`, FIX-2058's hold and `waitForUser`) | FIX-2083 and FIX-2058 own them. FIX-2157's status board reads them and adds no status of its own; a column the statuses can't fill is a gap |
 | The app's mode switch (FIX-2153's host and UI) | FIX-2153 plans for it in its spec; FIX-2157 adds threads mode behind it |
