@@ -398,7 +398,7 @@ async function waitChecked(
       // The replay after a resume reaches here once the row has ended: the
       // request's own task may have ended first (a cancel that cascaded to it).
       if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
-      return ended(ctx, collection, taskId);
+      return ended(ctx, collection, taskId, planned.gateId);
     }
 
     const outcome: WaitOutcome = await parkOnWait(ctx, park);
@@ -406,11 +406,11 @@ async function waitChecked(
     if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
     // The ending, an error naming one, or (on a gate parked before FIX-2082,
     // replayed) the old timeout: read the row, whichever it was.
-    if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId);
+    if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId, planned.gateId);
 
     // The deadline. The slot lapses, unless the ending already won.
     const lapsed = await collection.lapseWait!(taskId, planned.gateId, requestId);
-    if (lapsed.outcome === "declined") return ended(ctx, collection, taskId);
+    if (lapsed.outcome === "declined") return ended(ctx, collection, taskId, planned.gateId);
     // Released at the request's end, waiting again or not: a drain that fails
     // before its next mark leaves no lapsed slot, nor its `drain` mark, behind.
     // One it marks again is live by then, and the release passes it by.
@@ -500,18 +500,22 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
  * the one waiting, this answer delivers it, so it is dropped (FIX-2112). One
  * the filer's `onTaskSettled` already took is its delivery instead (FIX-2123).
  * `delivered` says this answer is the filer's one hearing of the ending
- * (FIX-2138): the ending resumed this request's own wait, which owes no
- * notice, or this wait dropped the notice, or it read an ending held for it.
+ * (FIX-2138): the ending resumed this wait, which owes no notice, or this
+ * wait dropped the notice, or it read an ending held for it.
+ *
+ * @param gateId This round's gate, the same on the replay after the resume.
  */
-async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
+async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: string, gateId: string): Promise<TaskWaitResult> {
   const before = collection.get(taskId);
-  // Ended onto this request's live slot: the ending resumed this wait, and owes no notice.
+  // Ended onto this wait's own live slot: the ending resumed it, and owes no
+  // notice. A later wait on the row finds the slot still there (a terminal
+  // row keeps it) under another gate, and delivers nothing.
   const resumedHere =
     before !== undefined &&
     isTerminalStatus(before.status) &&
     before.wait != null &&
     before.wait.lapsed !== true &&
-    before.wait.requestId === ctx.request.identity.id;
+    before.wait.gateId === gateId;
   await clearMarker(collection, taskId);
   const task = collection.get(taskId)!;
   const heldHere = await deliverHeldEnding(ctx, collection, task);
@@ -782,9 +786,11 @@ export async function deliverHeldEnding(ctx: BlockContext, collection: TaskColle
   const requestId = ctx.request?.identity?.id;
   if (requestId === undefined || task.wait?.lapsed !== true || task.wait.requestId !== requestId) return false;
   if (!isTerminalStatus(task.status) && !holdsAnEnding(task)) return false;
-  await collection.releaseWait?.(task.id, { requestId, read: true });
+  const released = await collection.releaseWait?.(task.id, { requestId, read: true });
   forgetLapsed(requestId, task.id);
-  return isTerminalStatus(task.status) && holdsAnEnding(task);
+  // Delivered only by this write: a slot released by someone else meanwhile
+  // turned the held ending into an owed notice, which delivers it instead.
+  return released?.outcome === "recorded" && isTerminalStatus(task.status) && holdsAnEnding(task);
 }
 
 /**

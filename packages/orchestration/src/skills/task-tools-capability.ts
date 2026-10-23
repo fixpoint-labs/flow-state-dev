@@ -1406,8 +1406,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "parked. current is the latest follow-up in its chain that completed, with its output: " +
       "the version that stands now; output stays the task's own. steers are the messages sent " +
       "into it, oldest first, each marked taken once its work read it. When this read is how you " +
-      "hear the task failed or was cancelled, cancelled lists the tasks that depended on it, " +
-      "which that ending cancelled. Use it to answer from what " +
+      "hear the task failed or was cancelled, cancelled lists the tasks you filed that depended " +
+      "on it, which that ending cancelled. Use it to answer from what " +
       "a task found, rather than from a line about it. " +
       "Don't poll a task you filed to see it end: end your turn, and its ending wakes you." +
       (wait ? getTaskWaitDescription : ""),
@@ -1491,7 +1491,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         }),
         /**
          * When this answer is how you hear the task failed or was cancelled: the
-         * tasks that depended on it, which that ending cancelled (FIX-2138).
+         * tasks you filed that depended on it, which that ending cancelled (FIX-2138).
          */
         cancelled: z.array(z.string()).optional(),
       }),
