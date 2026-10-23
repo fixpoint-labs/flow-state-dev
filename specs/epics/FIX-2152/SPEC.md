@@ -45,8 +45,8 @@ flowchart LR
 |---|---|
 | **Goal check** | The closure issue's (FIX-2156), on one `main` commit after every other child merges |
 | **Signal** | Leg a, FIX-2153's script: you ask the main session; it does part of the work; it starts 2 background tasks; one result shows in the main thread while that turn is still running; you stop the other task by asking the main session. Leg b, FIX-2154's script: you talk to worker A; A messages worker B; B's reply reaches A while you are still talking to A; the conversation stays coherent over a long session. Leg c, FIX-2157's script: you ask the main session; it starts 3 threads; one waits on you for a decision; one becomes ready for review; you resolve it. Plus each lab's inventory |
-| **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state |
-| **Control that must fail** | Leg a with the mid-turn notice off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
+| **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state. Leg a also asserts each ending is heard once: no second notice turn answers a result the running turn already took |
+| **Control that must fail** | Leg a with the lab flow's loop-back off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
 
 **Lead measure:** scripted steps that pass on `main` with a real model, of 14 (5, 5 and 4). **0 today.**
 
@@ -70,7 +70,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | A filer's running request takes a settled notice before its next model call, as a delivery mode of the one ending path ([D2](DECISIONS.md#d2)) | Jake's amendment (D2) |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | Two public pieces for FIX-2153's lab flow: a take-and-acknowledge for a settled notice on the one ending path, and an answer-again hook. The loop itself stays in the lab ([D2](DECISIONS.md#d2), amended) | — |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
 Two labs, one with two modes, two gaps known before review, and a closure. fsd-architect checked
@@ -85,7 +85,7 @@ flowchart LR
   N["FIX-2070 · Messages · consumed"] -.-> B
   G1["FIX-2158 · list a person's sessions of one worker"] -->|"the session list"| A["FIX-2153 · Claude Code-style lab"]
   G1 -->|"the session list"| T
-  G2["FIX-2159 · a result reaches a running turn"] -->|"step 4"| A
+  G2["FIX-2159 · a flow can take a settled notice and answer again"] -->|"the public take for step 4's lab flow"| A
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
   A -->|"the inventory check and the setup pattern"| B["FIX-2154 · Grok Bot-style lab"]
@@ -128,7 +128,7 @@ code.
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one list call on the workforce client · one delivery mode on the ending path |
+| **Adds** | Two private labs under `labs/` · one list call on the workforce client · a public take and an answer-again hook on the ending path (D2) |
 | **Removes** | Nothing |
 
 **Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to

@@ -14,7 +14,7 @@ worker-talk view against `main` ([agent-mailbox#46](https://github.com/fixpoint-
 flowchart TD
   E["FIX-2152"] --> D1["D1 · a gap that blocks a lab's script is a child, built here"]
   D1 -.->|"rejected"| X1["another epic builds it later · a workaround in the lab"]
-  E --> D2["D2 · a background result reaches the running turn, before its next model call"]
+  E --> D2["D2 · a background result reaches the running turn, at turn end in the same request"]
   D2 -.->|"rejected"| X2["the main session hears it after the turn, as today"]
   E --> D3["D3 · a lab session is an ordinary session of one worker"]
   D3 -.->|"rejected"| X3["one hired copy per session · a workstream per session · a new criteria key"]
@@ -46,17 +46,33 @@ It comes down to whether the epic can finish on its own work.
 *A product call the brief makes (step 4 of FIX-2153's script); the cost is engineering, so it is
 recorded here.*
 
+> **Amended 2026-10-23, after the merge of #3783.** The outcome is unchanged. The owner's direction,
+> relayed by fsd-product-lead (agent-mailbox #46, comment 6375479737), is that the loop belongs to the
+> lab, as a showcase of customizing a flow. FIX-2153's main worker runs on one small lab flow. At turn
+> end, in the same request, it takes each settled notice for that session, acknowledges it, and loops
+> back to the generator with the results. It *consumes* the notice, so the queued `onTaskSettled`
+> finds it cleared and skips it. That keeps the one ending path, with no second path that reads task
+> rows. Only the main session does this, since it is not backed by a task; the task-backed case
+> stays as the row below says.
+>
+> **What decides FIX-2159:** whether a public `exports` entry (ER-2) lets a flow take and acknowledge
+> a settled notice, and answer again in the same request. On `main` none does: the take record
+> (FIX-2123) and Workforce's handling are internal, and the agent flow's `afterAnswer` can't answer
+> again. So FIX-2159 is narrowed to those two public pieces, a take-and-acknowledge for a settled
+> notice and an answer-again hook. The take keeps the guarantees in the row below. The loop itself
+> stays in the lab.
+
 | | |
 |---|---|
 | **Instead of** | The main session hearing the result only after its turn ends, which is what happens on `main` today: a settled notice waits for the reply (`AFTER_REPLY_CONCURRENCY`, `workforce/src/conversation-board/task-settled.ts`) |
-| **Because** | Claude Code shows a background result inside the running turn, and the brief's script asks for it. The package already delivers a steer to a running assignee before its next model call (`orchestration/src/skills/steer-context.ts`, over the generator's `prepareStep`), so a filer's notice can take the same path |
-| **Locks in** | [ER-6](#who-owns-what), built by [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159): a delivery mode on FIX-2078's one ending path, not a second path, with one durable "taken in request R" mark like `steersTakenIn`; the deferred notice skips once R has completed. The take, the notice's handling and its acknowledgement move as one transaction from the queued `onTaskSettled` request to the running one, so the ending is never handled twice or skipped. Only a conversation request in a session that is not backed by a task takes it, never a `receive`. In a task-backed session the notice stays on the queued `onTaskSettled`, because that handler also does the task's own work at an ending (`admitOwnTask`, `workforce/src/conversation-board/task-settled.ts`) and acknowledging a taken notice would skip it (`orchestration/src/tasks/notice/task-settled-entry.ts` refuses a cleared notice). Today the context entry reads only a task turn (`steer-context.ts`), so FIX-2159 extends it to a conversation request. A request waiting on the task with `getTask` resumes with the result instead. Rules 5 and 6 (FIX-2077) are untouched: a take records no ending. No change in core or engine |
+| **Because** | Claude Code shows a background result inside the running turn, and the brief's script asks for it. A flow can already loop back to its generator within one request, so a small lab flow can take the result in at turn end |
+| **Locks in** | *As amended above: FIX-2153's lab flow runs the loop; this row is the guarantee FIX-2159's public take keeps.* [ER-6](#who-owns-what), built by [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159): a delivery mode on FIX-2078's one ending path, not a second path, with one durable "taken in request R" mark like `steersTakenIn`; the deferred notice skips once R has completed. The take, the notice's handling and its acknowledgement move as one transaction from the queued `onTaskSettled` request to the running one, so the ending is never handled twice or skipped. Only a conversation request in a session that is not backed by a task takes it, never a `receive`. In a task-backed session the notice stays on the queued `onTaskSettled`, because that handler also does the task's own work at an ending (`admitOwnTask`, `workforce/src/conversation-board/task-settled.ts`) and acknowledging a taken notice would skip it (`orchestration/src/tasks/notice/task-settled-entry.ts` refuses a cleared notice). The lab flow takes the notice through FIX-2159's public take at its turn end; the steer entry (`steer-context.ts`) doesn't change and stays task-only. A request waiting on the task with `getTask` resumes with the result instead. Rules 5 and 6 (FIX-2077) are untouched: a take records no ending. No change in core or engine |
 | **Amends** | Rule 7 of [`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md) gains a third destination for an ending's notice: the filer's running request. It stays consistent with FIX-2103's call that an ending is not a message and changes no open work |
 
 **What would change my mind:** a take that can't be made crash-safe the way `steersTakenIn` is.
 Then the lab shows the result after the turn and step 4 changes, which is a product call.
 
-![D2: a background result is taken before the main session's next model call, chosen, beside after the turn ends as today; decided by working the way Claude Code does](figures/d2-result-in-turn.svg)
+![D2: a background result is taken at turn end in the same request, chosen, beside after the turn ends as today; decided by working the way Claude Code does](figures/d2-result-in-turn.svg)
 
 It comes down to working the way Claude Code does: the turn uses the result while it runs.
 
@@ -111,7 +127,7 @@ goes first; the gap issues own their mechanisms.
 | ER-3 | One way to set up a lab: under `labs/`, private, launched with `fsdev dev --app` as Shift Manager is; the theme from `@flow-state-dev/design-system` and components from the `packages/ui` registry (`fsdev ui add`). A lab defines no color tokens of its own. The two labs share no code: a piece both need that isn't UI is a package gap ([ER-4](#who-owns-what)), and a piece of UI both need is copied, so each inventory shows what that app adds. FIX-2157 is a mode of FIX-2153's app, not a third lab, so it shares that app's code | FIX-2153 | Every lab's spec review |
 | ER-4 | Any need beyond ER-1's three kinds goes to the package: filed against workforce or orchestration (or react, for a hook), named in the lab's spec, and never worked around in the lab, not even for a while. A gap that blocks a script is a child of this epic ([D1](#d1)) | FIX-2153 | Every lab's spec review; the closure |
 | ER-5 | Until wiring, a lab reads and writes through one adapter whose functions each name the package call they stand for, by post-refactor names ([D4](#d4)); a fixture carries a plain `fixture:` marker, and the README maps each to its gap (BP-006); at wiring the fixtures are deleted. FIX-2153's spec sets the adapter's layout (file names, one function per package call), and FIX-2154 copies the layout, not the code | FIX-2153 | Each lab's wiring PR; the closure |
-| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in; the mechanism is FIX-2159's spec | FIX-2159 | FIX-2153's wiring; the closure's leg a |
+| ER-6 | A settled notice reaches a filer's running request once, as [D2](#d2) locks in. FIX-2153's lab flow runs the loop and consumes the notice through FIX-2159's public take, so the queued `onTaskSettled` skips it | FIX-2153 (the loop), FIX-2159 (the public take and the answer-again hook) | FIX-2153's wiring; the closure's leg a |
 | ER-7 | A lab session is an ordinary session of the worker on its flow; a person lists only their own, through the workforce client; the derived session stays the default conversation, where messages and routed tasks land ([D3](#d3)) | FIX-2158 | FIX-2153's wiring; the closure's legs a and c |
 
 ## Coordination seams
@@ -119,7 +135,7 @@ goes first; the gap issues own their mechanisms.
 | Seam | Owner, then who else touches it |
 |---|---|
 | The workforce client (`workforce/src/workers/client.ts`) | FIX-2158 adds the list of a person's sessions of one worker; FIX-2153 and FIX-2157 call it through their adapters |
-| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the context the generator re-reads before each model call (`orchestration/src/skills/steer-context.ts`) | FIX-2159 adds the take and its mark; FIX-2153 shows the result in the main thread |
+| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the agent flow's turn (`defineAgentWorkerFlow`) | FIX-2159 adds a public take-and-acknowledge for a settled notice and an answer-again hook; FIX-2153's lab flow runs the loop at turn end and shows the result in the main thread |
 | Messages (`workforce/src/messages/`, the user-scoped `workerMessagesCollection`) | FIX-2070 owns the rename to `sendMessage` and `receive`, where a message lands, and the row it ships (call ids, `{ task }` addresses). FIX-2154 is blocked by FIX-2070 and keys its worker-talk view to that row; a pair filter is UI, and a gap is filed only if paging by pair needs a server index |
 | Routed tasks, task statuses and the hold on questions (`workforce/src/coordinator/`, FIX-2058's hold and `waitForUser`) | FIX-2083 and FIX-2058 own them. FIX-2157's status board reads them and adds no status of its own; a column the statuses can't fill is a gap |
 | The app's mode switch (FIX-2153's host and UI) | FIX-2153 plans for it in its spec; FIX-2157 adds threads mode behind it |
