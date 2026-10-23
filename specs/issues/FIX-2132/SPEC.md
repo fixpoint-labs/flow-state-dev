@@ -24,7 +24,7 @@ carries the run on in the same coding session, on the same try, with no finished
 |---|---|
 | **The real need** | The concept's *Inbox items*, last paragraph: "Its question ends the run, and the coding flow's request suspends with `waitForUser`. The answer starts the next run in the same coding session, using no attempt." The epic's leg a and b for this kind ([FIX-2058](../../epics/FIX-2058/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "The harness inbox is deleted and the question parks on the board." Met while the answer still spends a try, and the Inbox still can't show the question |
-| **Bigger, and not this issue's** | Questions and reviews from every other flow (FIX-2131); the filer told of the question (FIX-2070); the five kinds together (FIX-2134) |
+| **Bigger, and not this issue's** | Questions and reviews from every other flow, and removing the board's `awaitReview` itself (FIX-2131; this issue moves harness-manager's own `awaitReview` calls); the filer told of the question (FIX-2070); the five kinds together (FIX-2134) |
 | **Not done if** | The check ran with trace observability on only · the answer starts a new try · the next run starts a fresh coding session · a line starts a run beside the waiting request · the harness inbox still answers a question |
 
 ```mermaid
@@ -44,7 +44,7 @@ The check reads the Inbox, the task through `getTask`, and what each harness run
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/` · real model, Claude Code through the devteam harness, for legs a and b; legs c and d on the devteam harness stub · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows `waitingOn: "person"`, `attempts` 1; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; each pass ran once; the task completes and the item closes. c: a line typed while it waits starts no harness run until the answer, and the run after it has the line; a line while a run works ends that run, not the request (`stopsOnAbort`). d: a cancel closes the item, and no harness run starts after it. Sweep: `answerQuestion`, `askQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source |
+| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows `waitingOn: "person"`, `attempts` 1; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; each pass ran once; the task completes and the item closes. c: a line typed while it waits starts no harness run until the answer, and the run after it has the line; a line while a run works ends that run, not the request (`stopsOnAbort`). d: a cancel closes the item, and no harness run starts after it. Sweep: `answerQuestion`, `askQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source, and `awaitReview` and `HarnessRunParked` none in `harness-manager` |
 | **Input** | A coding task whose brief forces one question. A second question in the same try must pass too |
 | **Anti-game** | Don't assert on the suspension store or the run record. Run with `FSDEV_TRACE_OBSERVABILITY=0`: with traces on, a resume that would run the work again in production passes |
 | **Control that must fail** | `GOAL_CONTROL=new-attempt` fails leg b on *`attempts` stays 1*. Today's `main` fails leg a (no Inbox item) and the sweep. FIX-2137's POC case fails *each pass ran once* until that issue lands |
@@ -116,6 +116,7 @@ back is the one the steer step already uses (FIX-2086).
 | [FIX-1766 D2](../FIX-1766/DECISIONS.md#d2): a saved-work mismatch parks the row for the run's owner | **Amended**: the owner is asked with `waitForUser`; the answer continues the same request from the base |
 | [FIX-1666 D1](../FIX-1666/DECISIONS.md#d1): the coder's question isn't an Inbox item, because it parks with no suspension | **Resolved**: it is one now; its EM approval is kept |
 | [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612)), superseded by the epic | **Not revived**; shared harness dispatch is kept |
+| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133): a coding task whose questions are known up front is held before any run starts | **Leaves**: this ask step is only for a question that comes up mid-run |
 | FIX-2131's map entries for parked questions and reviews | **Uses**: a coding row parked before the upgrade runs again, resumes its coding session, and asks again. No harness entry |
 
 | The debt | |

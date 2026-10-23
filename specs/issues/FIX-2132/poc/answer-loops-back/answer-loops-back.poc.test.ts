@@ -182,6 +182,8 @@ describe("FIX-2132 POC · a person's stop after the run step, looping back with 
     expect(r.second.suspension.message).toBe("question 2");
     expect(r.afterSecond.status).toBe("completed");
     expect(r.afterSecond.runs).toEqual(["pass 1: brief", "pass 2: answer: A1", "pass 3: answer: A2"]);
+    // A characterization: the guard holds the run, not the state later steps append.
+    expect(r.second.output).toMatchObject({ pass: 3, answers: ["A1", "A1", "A2"] });
   });
 });
 

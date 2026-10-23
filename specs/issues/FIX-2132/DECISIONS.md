@@ -24,7 +24,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Catching the deadline and telling the run to go ahead on its best judgment |
-| **Because** | The run asked because it could not decide. Going ahead builds on the guess it flagged, and a person later unpicks a branch they never saw coming. Unhandled is the concept's default for a question: it errors and uses a try (*Inbox items*, the deadline row), so the manager adds nothing |
+| **Because** | The run asked because it could not decide. Going ahead builds on the guess it flagged, and a person later unpicks a branch they never saw coming. Unhandled is the epic's signed rule for a question ([ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what), merged in #3740): at its deadline it throws `SuspensionTimeoutError` and uses a try. D1 follows that rule rather than deciding it here, and the manager adds nothing; if ER-1 changes, D1 changes with it |
 | **Locks in** | An unanswered coding question costs a try, after the host's person-stop deadline (7 days, [epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). The retry resumes the coding session and may ask again; after the last try the task fails for good, and its filer hears why |
 
 ![D1: what happens to a coding run's question nobody answers by its deadline. Chosen: the try fails and the next one resumes. Instead of: the run goes ahead without it. Decides it: work built on a guess. Price: a person who is away costs a retry. Locks in: an unanswered coding question costs a try. Flips if: teams want coding runs to keep moving](figures/d1-deadline-fails-the-try.svg)
@@ -59,7 +59,10 @@ guards its run step as the POC's third case did, and FIX-2137 stays open for eve
 - **The ask step sits after the verdict and the saves**, so the run's work is held and its kept
   files saved before the request suspends, and the checkout lease is already free.
 - **The answer is one more step through the steer loop** (FIX-2086), under its cap: answers and
-  steers together take at most `MAX_STEERS` steps in a try; past that the try fails.
+  steers together take at most `MAX_STEERS` steps in a try; past that the try fails, and the
+  failure names the cap. One cap because it bounds runs in one try whatever starts them: a run
+  that has asked and been steered twenty times in one try is not converging, and a second
+  number for answers alone would be one more bound to tune with no case that needs it.
 - **The next run resumes the confirmed coding session.** With none confirmed, it starts fresh,
   told the brief, the question and the answer, as a retry does today.
 - **The prompt after an answer is the phase's `buildPrompt`**, with the answer in `answers`, so
@@ -75,8 +78,11 @@ guards its run step as the POC's third case did, and FIX-2137 stays open for eve
   kept files stay.
 - **Removed outright** (epic, *no shim*; [FIX-2056 (e)](../../epics/FIX-2056/DECISIONS.md#e)):
   the inbox collection and its ten exports, `announce` (refused by name, BP-030),
-  `parkOnBoardQuestion`, `HarnessRunParked` where only the park used it. A stored inbox row is
-  left unread: only the conductor lab wrote them, and its next try asks again.
+  `parkOnBoardQuestion` (the epic moves every park onto `waitForUser`,
+  [FIX-2058, who owns what](../../epics/FIX-2058/DECISIONS.md#who-owns-what)), `HarnessRunParked`
+  where only the park used it. A stored inbox row is left unread, an answered one not yet taken
+  included: only the conductor lab wrote them, and its next try asks again. That costs a lab user
+  one question answered twice, against a dual-read of a removed store the epic rules out (ER-5).
 - **The conductor lab** answers through the answer route and its `status` reads waiting tasks from
   the board. Its `answer` action goes. LAB-154's goal check moves to the same route and keeps its
   generated-fact proof.
@@ -106,6 +112,18 @@ guards its run step as the POC's third case did, and FIX-2137 stays open for eve
   holds; where the fix lives is D2, and FIX-2137 carries it.
 - **No counted facts carry the approach**, so no checker. The ten exports are one `index.ts`
   block.
+
+## Notes from review
+
+For the implementer; none of these changes the approach. Recorded verbatim from #3743.
+
+- **Second look, 4 (D1 re-ask):** "The retry resumes the session and 'may ask again', so a person who is away for a week sees the same question as a new item and spends a try each time (3 tries is 3 weeks). D1 itself is sound, since going ahead on a guess is worse. Consider saying that the re-ask is the same question, shown once, so the second try does not surface a duplicate item."
+- **Second look, 5 (persisted fields):** "Read it with a `== null` guard (BP-030, BP-035). The marker path change (`<attempt>.md` to `<attempt>-<step>.md`) also needs `isAskMarkerPath` to accept the old shape. A pre-upgrade run that wrote `<attempt>.md` and is then resumed should be read, not treated as a stray file. Note too that `run.askMarkerPath` is exposed to phase authors, so changing its shape is a public-contract change and belongs in the changeset's migration note, which the spec already plans."
+- **Second look, 6 (module):** "Put the ask step in its own module, not as another closure in `manager.ts`. [...] a file with a small interface (verdict + saves in, question or none out). It also makes the 'no other path parks' claim checkable by import, not just by grep, and it makes the ask step unit-testable without the whole sequencer. [...] I'd not do a wider split of `manager.ts` in this PR."
+- **Second look, checks (goal check):** "Keep the real model for the session-resume proof (the part only Claude Code can show), but run the two-question and cap cases (see 2) on the devteam stub, so a model that doesn't ask doesn't read as a spec failure."
+- **Second look, checks (FIX-2129 head):** "Since `FIX-2129` is still at review head (`6188b938`), say what happens to this spec if `waitForUser`'s shape moves before it merges." Build on `waitForUser` as FIX-2129 merges it; a change to its call shape is a rename here, a change to what an unanswered question does is a change to ER-1 and so to D1.
+- **Cursor, reuse:** "prefer **extending the existing steer connector** (`again: true` + `loopBack` to the harness step) so answers and steers share one cap and one loop predicate — avoid a parallel 'ask loop' beside `stepForSteer`."
+- **Cursor, two stores:** "`run.answers` on the run record vs steer text on the task row means two mid-attempt human-text stores. If implementer can fold Q&A into the same persistence/ordering path steer already uses (without breaking 'same try' semantics), that would reduce replay/prompt bugs."
 
 ## How it got here
 
