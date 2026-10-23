@@ -81,6 +81,20 @@ describe.each(BACKINGS)("a row's wait slot (%s)", (_name, makeBacking) => {
     expect((tasks.get("t") as Task).wait).toEqual({ gateId: "g3", deadline: 9_000, requestId: "r2" });
   });
 
+  it("keeps a drain's mark while lapsed, so a filer's wait can tell the plan still waits; a plain wait writes none", async () => {
+    const { tasks } = await makeBacking();
+    await tasks.addTask({ id: "t", goal: "g", assignee: "ops" });
+    await tasks.markWait!("t", { ...slot("g1", "r1"), drain: true });
+    expect(await tasks.lapseWait!("t", "g1", "r1")).toEqual({ outcome: "recorded" });
+    expect((tasks.get("t") as Task).wait).toEqual({ gateId: "g1", deadline: 9_000, requestId: "r1", lapsed: true, drain: true });
+    // The drain waiting again marks it again; a plain wait's slot carries no mark.
+    await tasks.markWait!("t", { ...slot("g2", "r1"), drain: true });
+    expect((tasks.get("t") as Task).wait).toEqual({ gateId: "g2", deadline: 9_000, requestId: "r1", drain: true });
+    await tasks.addTask({ id: "u", goal: "g", assignee: "ops" });
+    await tasks.markWait!("u", slot("g3", "r2"));
+    expect((tasks.get("u") as Task).wait).toEqual({ gateId: "g3", deadline: 9_000, requestId: "r2" });
+  });
+
   it("lapses only its own gate's slot, and loses to an ending already written", async () => {
     const { tasks } = await makeBacking();
     await tasks.addTask({ id: "t", goal: "g", assignee: "ops" });

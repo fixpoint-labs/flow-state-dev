@@ -470,6 +470,15 @@ export const taskSchema = z.object({
       requestId: z.string().optional(),
       /** The deadline passed with the row still open (FIX-2082): nobody is parked on it now. */
       lapsed: z.literal(true).optional(),
+      /**
+       * The waiting request is a plan's drain, on a row it handed to another
+       * session: written by the drain's own wait, never from
+       * input, and kept while the slot is lapsed, so `getTask`'s wait refuses
+       * the row (`wait_on_plan_step`) rather than take the slot the drain
+       * waits with. **Absent** on every other slot, and on a drain's slot
+       * written before it, which its next round marks (BP-030).
+       */
+      drain: z.literal(true).optional(),
     })
     .optional(),
 

@@ -226,7 +226,11 @@ export function markWaitWrite(
   const held = task.wait;
   if (held != null && held.gateId === slot.gateId && held.lapsed !== true) return undefined;
   if (held != null && held.lapsed !== true && held.requestId !== slot.requestId) return { decline: "disallowed" };
-  return { patch: { wait: { gateId: slot.gateId, deadline: slot.deadline, requestId: slot.requestId } } };
+  return {
+    patch: {
+      wait: { gateId: slot.gateId, deadline: slot.deadline, requestId: slot.requestId, ...(slot.drain === true ? { drain: true } : {}) },
+    },
+  };
 }
 
 /**

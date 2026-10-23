@@ -874,6 +874,7 @@ on.
 | `wait_not_filer` | Your session didn't file the task. Only the session that filed a task can wait on it |
 | `wait_on_conversation_result` | The task's result goes to the conversation, which hears it when it ends |
 | `wait_taken` | Another request already waits on this task. A task has one waiter at a time |
+| `wait_on_plan_step` | The task is a step a [plan board](#a-plan-board-that-hands-a-row-over) handed to another session, and the plan waits on it. Wait on the plan instead |
 | `wait_already_pending` | This step already waits on something. One wait per step |
 | `wait_too_deep` | The wait would make a chain of more than five |
 | `wait_deadline_out_of_range` | `deadline` is outside the server's bounds. It is never clamped |
@@ -933,10 +934,13 @@ If the drain fails after it has handed a row over, the plan fails, whatever `onE
 The drain's request ends `failed` with an error that names the row, and no row that hasn't
 started yet runs, whether it depends on that row or not. That covers a dispatch that throws
 instead of refusing, a store write that fails while the drain waits, and a wait it can't hold
-any more because another request took the row's wait slot. A row has one waiter at a time:
-a `getTask({ id, wait: true })` on a plan row is refused while the drain holds the slot, but one
-that lands at a deadline, between the drain letting the slot go and taking it again, takes the
-slot and fails the plan.
+any more because another request took the row's wait slot.
+
+A row has one waiter at a time, and a row the drain handed over is the drain's to wait on. So
+a `getTask({ id, wait: true })` on it is refused with `wait_on_plan_step` for as long as the
+drain waits, including the moment at each deadline when the drain lets the slot go and takes it
+again. Nothing is written, and the plan runs on. The refusal tells the agent to wait on the plan
+instead, which goes on once the row ends. A plain `getTask` read of the row still works.
 
 The drain writes nothing on the row it handed over. When the session it went to is running it,
 that session finishes it. When the dispatch itself threw, nothing may be running it: the row stays
