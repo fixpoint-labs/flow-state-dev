@@ -124,7 +124,7 @@ twice. A host's own harness block may still suspend, and that path needs FIX-213
 | [FIX-1766 D2](../FIX-1766/DECISIONS.md#d2): a saved-work mismatch parks the row for the run's owner | **Amended**: the owner is asked through the same hold; the answer's turn continues from the base |
 | [FIX-1666 D1](../FIX-1666/DECISIONS.md#d1): the coder's question isn't an Inbox item, because it parks off the Inbox | **Resolved**: it is one now; its EM approval is kept |
 | [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612)), superseded by the epic | **Not revived**; shared harness dispatch is kept |
-| FIX-2131's map entries for every parked question, harness rows included ([ER-5](../../epics/FIX-2058/DECISIONS.md#who-owns-what)) | **Uses**: a coding row parked before the upgrade reads as held; its answer's turn resumes the session the run record kept for that attempt, spending no try. No harness entry |
+| FIX-2131's map entries for every parked question, harness rows included ([ER-5](../../epics/FIX-2058/DECISIONS.md#who-owns-what)) | **Not needed**: stores are reset (owner, 2026-10-23), so no coding row parked before this work is ever read. No harness entry |
 
 | The debt | |
 |---|---|

@@ -60,19 +60,7 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
   steer does.
 - **The marker's path names the attempt and the run** (`<attempt>-<run>.md`), the run counted on
   the run record so the count survives the answer's turn: a run must never read a question an
-  earlier turn already asked. `isAskMarkerPath` matches both shapes, so neither is ever committed.
-- **The legacy marker is read at most once, behind a guard.** A `<attempt>.md` from before the
-  upgrade usually already put its question on the row when its run parked, and FIX-2131's map
-  reads that row as held. But today the manager reads the marker and parks later in the same
-  step, so a crash or an upgrade between the two leaves only the file. So: when the row holds no
-  question this attempt has ever asked, whatever its end (open, answered, deadline or cancelled),
-  and `<attempt>.md` exists, the ask step records it once through ER-8's ask. After that the row
-  always holds a question from this attempt, so the guard never reads that path again, and the
-  marker can't bring back an answered or expired question. A transition test covers the
-  crash-between-read-and-park state. Given the file and no question on the row, recovery is
-  injected right after the fallback's ask write, while the question is still open, and the row and
-  the Inbox still hold exactly one question. Then, after an answer, and separately after the
-  deadline, the next run doesn't ask it again.
+  earlier turn already asked. `isAskMarkerPath` matches that shape, so a marker is never committed.
 - **A line typed in the run's session answers its question.** This issue makes
   `harnessSessionDoor` write the line as a steer naming the task's open question (the oldest, if
   more than one), as `updateTask({ id, question, message })` does, per the concept ("the user
@@ -134,14 +122,14 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
 For the implementer; none of these changes the approach. Recorded verbatim from #3743.
 
 - **Second look, 4 (D1 re-ask):** "The retry resumes the session and 'may ask again', so a person who is away for a week sees the same question as a new item and spends a try each time (3 tries is 3 weeks). D1 itself is sound, since going ahead on a guess is worse. Consider saying that the re-ask is the same question, shown once, so the second try does not surface a duplicate item."
-- **Second look, 5 (persisted fields):** "Read it with a `== null` guard (BP-030, BP-035). The marker path change (`<attempt>.md` to `<attempt>-<step>.md`) also needs `isAskMarkerPath` to accept the old shape. A pre-upgrade run that wrote `<attempt>.md` and is then resumed should be read, not treated as a stray file. Note too that `run.askMarkerPath` is exposed to phase authors, so changing its shape is a public-contract change and belongs in the changeset's migration note, which the spec already plans."
+- **Second look, 5 (persisted fields):** "Read it with a `== null` guard (BP-030, BP-035). The marker path change (`<attempt>.md` to `<attempt>-<step>.md`) also needs `isAskMarkerPath` to accept the old shape. A pre-upgrade run that wrote `<attempt>.md` and is then resumed should be read, not treated as a stray file. Note too that `run.askMarkerPath` is exposed to phase authors, so changing its shape is a public-contract change and belongs in the changeset's migration note, which the spec already plans." *The `== null` guard and the old-shape handling: moot, owner reset decision, 2026-10-23; new code always writes the run count, and no `<attempt>.md` exists. The migration note for `askMarkerPath`'s shape stays: that is callers' code.*
 - **Second look, 6 (module):** "Put the ask step in its own module, not as another closure in `manager.ts`. [...] a file with a small interface (verdict + saves in, question or none out). It also makes the 'no other path parks' claim checkable by import, not just by grep, and it makes the ask step unit-testable without the whole sequencer. [...] I'd not do a wider split of `manager.ts` in this PR."
 - **Second look, checks (goal check):** "Keep the real model for the session-resume proof (the part only Claude Code can show), but run the two-question and cap cases (see 2) on the devteam stub, so a model that doesn't ask doesn't read as a spec failure."
 - **Second look, checks (FIX-2129 head):** "Since `FIX-2129` is still at review head (`6188b938`), say what happens to this spec if `waitForUser`'s shape moves before it merges." Build on `waitForUser` as FIX-2129 merges it; a change to its call shape is a rename here, a change to what an unanswered question does is a change to ER-1 and so to D1.
 - **Cursor, reuse:** "prefer **extending the existing steer connector** (`again: true` + `loopBack` to the harness step) so answers and steers share one cap and one loop predicate — avoid a parallel 'ask loop' beside `stepForSteer`." *Superseded by the re-spec on #3748: the manager has no cap of its own on answers; the only bound is ER-8's write (FIX-2133), where each open question reserves room for its answer under `MAX_STEERS`; FIX-2133 owns that reservation. Don't build a shared manager cap.*
 - **Cursor, two stores:** "`run.answers` on the run record vs steer text on the task row means two mid-attempt human-text stores. If implementer can fold Q&A into the same persistence/ordering path steer already uses (without breaking 'same try' semantics), that would reduce replay/prompt bugs."
 
-- **Codex, delete/recreate (required, #3743 at `05a197b4`):** "When a durable task is deleted and recreated under the same ID, its attempt count and question history reset while its checkout remains keyed by principal/epic/issue/phase (`packages/harness-manager/src/manager.ts:1903-1936`). The supported delete/requeue lifecycle mints a new `incarnationId`, but this guard checks only attempt-local question history, so the replacement's first attempt can read the old checkout's surviving `.fsdev/ask/1.md` and recreate a stale question. Consume the legacy marker after its ask is durably recorded, or bind fallback eligibility to the task incarnation, and cover delete/recreate in the transition test." *Required: scope the fallback to the task's `incarnationId`, or consume the marker once its ask is durably recorded, and cover delete/recreate in the transition test.*
+- **Codex, delete/recreate (required, #3743 at `05a197b4`):** "When a durable task is deleted and recreated under the same ID, its attempt count and question history reset while its checkout remains keyed by principal/epic/issue/phase (`packages/harness-manager/src/manager.ts:1903-1936`). The supported delete/requeue lifecycle mints a new `incarnationId`, but this guard checks only attempt-local question history, so the replacement's first attempt can read the old checkout's surviving `.fsdev/ask/1.md` and recreate a stale question. Consume the legacy marker after its ask is durably recorded, or bind fallback eligibility to the task incarnation, and cover delete/recreate in the transition test." *Required, now for the live marker: the legacy fallback is gone (owner reset decision, 2026-10-23), but the same hazard holds for `<attempt>-<run>.md`, since a recreated task restarts its attempt and run counts in the surviving checkout and its first run could meet the old incarnation's `1-1.md`. Bind the marker to the task's `incarnationId`, or consume it once its ask is durably recorded, and cover delete/recreate in a test.*
 
 ## How it got here
 
@@ -155,8 +143,10 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
   deadline that fails the try, gave way to the epic's open call; the old D2, waiting on FIX-2137,
   became this D1, which first dropped the edge; Codex on `c2aa9f5` found a host's harness block
   may still suspend, so the edge stays. Folded from Codex on `2db22ea`: the cancel leg asserts the
-  work survives, a deadline leg, the legacy marker read once. Codex on `c2aa9f5`: the edge stays (D1); the legacy marker gets a
-  guarded fallback for a crash between its read and its park. Cursor's two-stores note is folded:
+  work survives, a deadline leg. Codex on `c2aa9f5`: the edge stays (D1). Cursor's two-stores note is folded:
   `answers` reads the row.
+- **Owner, 2026-10-23** — no old data: stores and attempt files are reset, so no legacy marker
+  read (BP-030 waived for this epic's persisted shapes). The guarded `<attempt>.md` fallback and
+  its transition test went with it.
 
 **Open: none of its own.**
