@@ -563,7 +563,10 @@ export function createPostgresRequestStore(
       // `setFieldsIfStatus` gives. The executor has no transaction, and one
       // statement is what makes the check, the child deletes and the record
       // delete land together or not at all: `delete`'s children-first order
-      // is not needed when nothing can fail in between.
+      // is not needed when nothing can fail in between. "Together" covers
+      // the child rows that existed when the statement started: the child
+      // deletes read its snapshot, so a child row committed after that is
+      // not deleted, the same window plain `delete` has.
       const result = await executor.query(
         `WITH locked AS (
            SELECT id, status FROM requests WHERE id = $1 FOR UPDATE

@@ -728,6 +728,17 @@ How you store the flag is yours. The shipped adapters differ: in-memory and the 
 
 **A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
 
+**`deleteIfStatus`** is the conditional form of `delete`, and is required too:
+
+```ts
+deleteIfStatus(
+  id: string,
+  allowedStatuses: readonly RequestStatus[]
+): Promise<ConditionalWriteResult>;
+```
+
+It deletes what `delete` deletes (the record, its items, stream events and runOnce results), but only while the record's status is one of `allowedStatuses`. Check the status and delete in one atomic step, as `setFieldsIfStatus` does. Session retention deletes through it with the status it judged each record in, so a request that started running in between, such as an `interrupted` one the durability sweep re-drives, keeps everything under its id. The outcomes match `setFieldsIfStatus`: `{ applied: true, status }` when deleted, `{ applied: false, status }` when a record exists outside the predicate, and `{ applied: false, status: undefined }` when no record exists. Wait for item and event writes already in flight for the id to finish, but don't drop them first the way `delete` does: when the predicate fails, they belong to a run that is still going.
+
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
 ## Custom model resolution
