@@ -48,7 +48,7 @@ flowchart LR
 | **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state. Leg a also asserts each ending is heard once: no second notice turn answers a result the running turn already took |
 | **Control that must fail** | Leg a with the lab flow's loop-back off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
 
-**Lead measure:** scripted steps that pass on `main` with a real model, of 14 (5, 5 and 4). **0 today.**
+**Lead measure:** scripted steps that pass on `main` with a real model, of 18 (7, 6 and 5). **0 today.**
 
 ## What's in the box
 
@@ -71,7 +71,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | Two public pieces for FIX-2153's lab flow: a take-and-acknowledge for a settled notice on the one ending path, and an answer-again hook. The loop itself stays in the lab ([D2](DECISIONS.md#d2), amended) | — |
-| [FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161) · a session opens on a project | An ordinary session of any worker can open on a project the person can read, so a lab's runs work in that project's checkout ([ER-8](DECISIONS.md#who-owns-what)). Today only the project coordinator's session can | — |
+| [FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161) · a session opens on a project | An ordinary session of any worker can open on a project the person can read, and a worker's default conversation can carry a project set in config, so a lab's runs work in that project's checkout ([ER-8](DECISIONS.md#who-owns-what)). Today only the project coordinator's session can | — |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
 Two labs, one with two modes, three gaps, and a closure. fsd-architect checked the first two
@@ -90,6 +90,7 @@ flowchart LR
   G2["FIX-2159 · a flow can take a settled notice and answer again"] -->|"the public take for step 4's lab flow"| A
   G3["FIX-2161 · a session opens on a project"] -->|"the session's project"| A
   G3 -->|"the session's project"| T
+  G3 -->|"each worker's project"| B
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
   A -->|"the inventory check and the setup pattern"| B["FIX-2154 · Grok Bot-style lab"]
@@ -141,7 +142,7 @@ produce. Each package entry is a gap the labs proved, and the next app gets it f
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 14 steps, with a real model,
+**[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 18 steps, with a real model,
 and an inventory with no *other* row. **[The debt](#whats-already-here-and-the-debt):** up, by
 two labs and three package entries.
 
