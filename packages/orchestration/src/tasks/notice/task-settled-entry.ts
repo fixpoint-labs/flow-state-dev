@@ -28,7 +28,8 @@
  * While the request that filed the task is running (not while it is parked),
  * its notice is turned away as `defer` turns one away (FIX-2123): a wait in
  * that request reads the ending first and drops it, and the request sends
- * what is still owed as it ends; at a park, the filer's pass sends it.
+ * what is still owed as it ends; at a park, the filer's pass sends it shortly
+ * after, past its backoff (FIX-2149).
  *
  * Woken with an empty input, by the wake a board's delivery owes when it
  * names this entry as its pass (the default): it pays what this session's
@@ -185,14 +186,15 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       // first, and that request sends what is still owed as it ends (at a park, the pass does).
       const own = ctx.request.identity.id;
       const filing = row.filer?.requestId;
-      const turnedAway =
-        (options.defer !== undefined && (await options.defer(ctx, notice))) ||
-        (filing !== undefined && filing !== own && (await isRunning(ctx, filing)));
-      const notNow = async () => {
-        await board!.ref.patchMetadata(row.id, deferredNoticePatch(row, notice, board!.ref.now()));
+      const busy = options.defer !== undefined && (await options.defer(ctx, notice));
+      // Turned away for the filing request is recorded as such (FIX-2149): its
+      // pass sends the notice past its backoff once that request parks or ends.
+      const heldFor = !busy && filing !== undefined && filing !== own && (await isRunning(ctx, filing)) ? filing : undefined;
+      const notNow = async (whileRunning?: string) => {
+        await board!.ref.patchMetadata(row.id, deferredNoticePatch(row, notice, board!.ref.now(), whileRunning));
         return { owed: false };
       };
-      if (turnedAway) return notNow();
+      if (busy || heldFor !== undefined) return notNow(heldFor);
       // Taken in one conditional write before the block runs (FIX-2123), so a
       // wait's drop and this delivery can't both go through. Taken by a request
       // that hasn't ended, running or parked: it is delivering it, and this

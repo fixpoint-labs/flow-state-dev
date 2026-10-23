@@ -14,7 +14,9 @@
  *    whose request still runs or is parked is looked at again less and less
  *    often, and no more once it is past the maximum age.
  * 5. **Notices owed** past their due time, sent again to this session's notice
- *    entry. A send turned away (the 32-notice cap among them) stays owed.
+ *    entry. A send turned away (the 32-notice cap among them) stays owed. One
+ *    last turned away for the request that filed its task, which has since
+ *    parked or ended, is sent at once, past its backoff (FIX-2149).
  *
  * Then it answers when the board's next debt falls due: the earliest due time
  * over the debts still outstanding, a claimed row's lease end among them (a
@@ -36,7 +38,17 @@ import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { clearNotice, LAPSED_SLOT_CHECK_MS, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
+import {
+  clearNotice,
+  heldWhileRunning,
+  LAPSED_SLOT_CHECK_MS,
+  NOTICE_DUE_MS,
+  noticeDueAt,
+  noticeTimes,
+  owedNotices,
+  resentRecord,
+  type TaskNotice
+} from "./task-notice";
 import { TASK_SETTLED_ENTRY, undeliverableRecord, type DeclaredDelivery } from "./delivery";
 
 /** The default most a debt may stay outstanding past its due time, when the host names none: 24 hours. */
@@ -115,12 +127,21 @@ export async function payBoardDebts(
   // upgrade's, and its age counts from here (BP-030).
   await stampLegacyNotices(ref, now);
 
-  // 5: notices past due, sent again here; one too old ends.
+  // 5: notices past due, sent again here; one too old ends. A notice last
+  // turned away for its filing request, which has since parked or ended, is
+  // due now, past its backoff (FIX-2149).
   const rows = ref.list();
+  const released = options.resend === false ? new Set<string>() : await stoppedFilingRequests(ctx, ref, rows);
   for (const row of rows) {
     const due = noticeDueAt(row);
-    if (due === undefined || due > now || options.resend === false) continue;
-    for (const notice of owedNotices(row, ref.collectionId, rows, options.filerOf)) {
+    if (due === undefined || options.resend === false) continue;
+    const owed = owedNotices(row, ref.collectionId, rows, options.filerOf);
+    const sendsNow = (notice: TaskNotice): boolean => {
+      const heldFor = heldWhileRunning(row, notice);
+      return heldFor !== undefined && released.has(heldFor);
+    };
+    if (due > now && !owed.some(sendsNow)) continue;
+    for (const notice of owed) {
       const times = noticeTimes(row, notice);
       if (times === undefined) continue;
       // Its age counts from its due time, or from the last time a busy session
@@ -133,7 +154,7 @@ export async function payBoardDebts(
         continue;
       }
       // Sent again lately: that copy is taken to be on its way.
-      if (times.next > now) continue;
+      if (times.next > now && !sendsNow(notice)) continue;
       try {
         // Recorded before the send, so a send that hangs still backs off.
         await ref.patchMetadata(row.id, resentRecord(row, notice, now));
@@ -175,6 +196,34 @@ export async function payBoardDebts(
     if (row.status === "in_progress" && row.leaseUntil != null && !isTerminalStatus(row.status)) owe(row.leaseUntil);
   }
   return { nextDue };
+}
+
+/**
+ * The filing requests that notices on `rows` were last turned away for and
+ * that no longer run (FIX-2149): parked or ended. One read of those requests,
+ * made only when such a notice is owed; empty on a host that doesn't record
+ * which requests are running, where no notice is held for one.
+ */
+async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, rows: readonly Task[]): Promise<Set<string>> {
+  const running = ctx.requestHost?.waits?.running;
+  const held = new Set<string>();
+  if (running === undefined) return held;
+  for (const row of rows) {
+    for (const notice of owedNotices(row, ref.collectionId)) {
+      const heldFor = heldWhileRunning(row, notice);
+      if (heldFor !== undefined) held.add(heldFor);
+    }
+  }
+  if (held.size === 0) return held;
+  try {
+    const stillRunning = await running([...held]);
+    return new Set([...held].filter((id) => stillRunning[id] !== true));
+  } catch (error) {
+    log("a pass couldn't read whether the requests its notices were held for still run: they wait for their next resend", {
+      error: (error as Error).message
+    });
+    return new Set();
+  }
 }
 
 /** Give each owed-notice marker that carries no due time (stored before FIX-2078) one: `now`. */
