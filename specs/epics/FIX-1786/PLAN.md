@@ -2,6 +2,8 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
+> **Amended after merge (2026-10-23).** The product owner closed FIX-1797 without a final run that files nothing ([QR-22](../../issues/FIX-1797/BUSINESS-RULES.md), [closed by the owner](../../issues/FIX-1797/DECISIONS.md#closed-by-the-owner)). That close-out meets ER-28 and the wrap condition below. The last graded commit was `e2ee2c18`, and every finding was fixed as a child of this epic.
+
 Sequencing, not building: what order the work runs in, what each issue entails, and what each
 hands the next. How to build any piece is that issue's own plan. IDs cross-reference
 [DECISIONS.md](DECISIONS.md) (D-n) and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
