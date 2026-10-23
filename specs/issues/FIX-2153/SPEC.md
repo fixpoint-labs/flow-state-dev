@@ -125,7 +125,7 @@ The lab supplies only the source block; the package, not the lab, goes back to t
 
 ## What stays as it is
 
-- **The worker model.** The main worker is a `manager`, on the lab's small flow built from the agent worker flow's pieces and named by its `WORKER.md`'s `flow:`. No new role, no coordinator. It has no file or bash tools: it works in text and hands code to the coding worker, so no sandbox directory is set for it.
+- **The worker model.** The main worker is a `manager`, on the agent worker flow with the lab's `answerAgain` source block in its slot. No new kind of worker, no coordinator. It has no file or bash tools: it works in text and hands code to the coding worker, so no sandbox directory is set for it.
 - **Skills don't start workers.** A skill tells the model to `createTask` for a delegate.
 - **Shift Manager**, its shell and its app contract. This lab copies the setup; it changes neither.
 - **Core and engine.** Nothing here goes below workforce and orchestration.
