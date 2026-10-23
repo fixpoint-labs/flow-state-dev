@@ -10,7 +10,7 @@
  * |-----------------|---------------------------------------------------------------------------|
  * | `watchSessions` | the workforce client's list of a user's sessions of one worker          |
  * | `listProjects`  | the projects the person may work in: member or owner (FIX-2161)           |
- * | `openSession`   | an ordinary new session on the mode's main worker's flow, on a project    |
+ * | `openSession`   | a new session on the mode's main worker, then `setWorkProject` (FIX-2161) |
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
  * | `watchThread`   | the session's items, live                                                  |
