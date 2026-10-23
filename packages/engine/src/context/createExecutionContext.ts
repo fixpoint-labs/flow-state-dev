@@ -2240,10 +2240,15 @@ export async function createExecutionContext<
   // so this reads back exactly that base (0 on a fresh run). Both block-emitted
   // items and runtime items reserved via `_reserveItemIndex` draw from this one
   // counter so their indices stay distinct and monotonic across the resume.
-  // Same fallback as core's `getEmitterItemCount`, so both read one cursor
-  // from a response that tracks items but has no `getItemCount()`.
-  const responseItemCursor = (): number =>
-    options.response?.getItemCount?.() ?? options.response?.getItems?.().length ?? 0;
+  // A response that tracks items but has no `getItemCount()` may hold items
+  // that don't start at 0 (a seeded log), so its next free index is the
+  // highest one it holds plus 1; its length only when no item carries one.
+  const responseItemCursor = (): number => {
+    if (options.response?.getItemCount !== undefined) return options.response.getItemCount();
+    const items = options.response?.getItems?.() ?? [];
+    const next = items.reduce((m, i) => (typeof i.itemIndex === "number" ? Math.max(m, i.itemIndex + 1) : m), -1);
+    return next === -1 ? items.length : next;
+  };
   let emittedItemCount = responseItemCursor();
   // Every index this context hands out comes from here. A block that emits
   // straight through `ctx.response` (a generator's message, a tool output)

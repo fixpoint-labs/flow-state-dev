@@ -155,4 +155,51 @@ describe("untyped response fallback", () => {
     const indexes = items.map((i) => i.itemIndex);
     expect(new Set(indexes).size).toBe(indexes.length);
   });
+
+  it("reserves past the highest seeded index, not the item count, when the response has no getItemCount()", async () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const step = (name: string) =>
+      handler({ name, inputSchema: z.any(), outputSchema: z.any(), execute: () => ({ name }) });
+    const block = sequencer({ name: "seq" }).step(step("first")).step(step("second"));
+    const flow = defineFlow({
+      kind: "untyped-seeded-flow",
+      actions: { run: { inputSchema: z.any(), block } },
+    })();
+
+    // One prior item, at index 5: the count (1) is not the next free index (6).
+    const downstream = createResponseEmitter({ requestId: "req_seeded", now: () => 1 });
+    const prior = {
+      id: "item_prior",
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      requestId: "req_seeded",
+      itemIndex: 5,
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+      ts: 1,
+      content: [{ type: "output_text", text: "earlier" }],
+    };
+    await downstream.emitItemAdded(prior as never);
+    const partialResponse = {
+      emit: (event: unknown) => downstream.emit(event),
+      getItems: () => downstream.getItems(),
+    };
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_seeded",
+      sessionId: "sess_seeded",
+      userId: "user_seeded",
+      modelResolver: createMockModelResolver({}),
+      stores: createInMemoryStores(),
+      response: partialResponse as unknown as ResponseEmitterHandle
+    });
+
+    await executeBlock({ block, input: {}, ctx });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const added = downstream.getItems().filter((i) => i.id !== "item_prior").map((i) => i.itemIndex);
+    expect(added).toEqual([6, 7, 8]);
+  });
 });
