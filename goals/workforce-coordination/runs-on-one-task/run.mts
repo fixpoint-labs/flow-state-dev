@@ -2,26 +2,6 @@
  * Goal check, FIX-2087: Workforce coordination runs on one task primitive. The closure of epic
  * FIX-2056, run on one `main` commit with every other child merged. See goal.md.
  *
- * Parts (`GOAL_PARTS`, default all, in this order):
- *
- * - `walk`: legs a to c on the closure's Lab (`lab/`, the cast written by `cast.mts`) served by
- *   Shift Manager's command, on a real model. a is the concept's walk less the call and the
- *   Inbox, with the journeys j1 (a worker hands out work and waits on it) and j2 (Alice steers
- *   one routed task and cancels another) on the same Lab; b kills the server after researcher's
- *   ending is written and before it is sent; c has researcher fail out.
- * - `sweep`: the task-surface sweep (`engine.mjs`, the same engine CI runs), and its plants.
- * - `children`: every child goal and check with its controls (`children.mts`), the set of
- *   children read from Linear at run time when `LINEAR_API_KEY` is set.
- * - `gaps`: the 31 in-scope gaps rows, each mapped to the checks that read it (`gaps.mts`).
- *
- * D1: every assertion is tagged structural or judgment (`TAGS`). A structural FAIL on any
- * attempt ends that leg's attempts and is a finding; only a judgment FAIL earns another attempt
- * (`GOAL_ATTEMPTS`, default 3). Every attempt is printed.
- *
- * Controls (each runs only the leg it targets): `GOAL_CONTROL=no-sweeper-payment` (FIX-2078's,
- * reused from its goal) must FAIL `b:hears-in-due-time`; `GOAL_CONTROL=no-cascade` (FIX-2080's)
- * must FAIL `c:dependent-cancelled`.
- *
  * Run: pnpm tsx goals/workforce-coordination/runs-on-one-task/run.mts
  */
 import { spawnSync } from "node:child_process";
@@ -186,7 +166,6 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
   if (research.length > 0 && !(work !== undefined && work.status === "completed" && (R.completedAt ?? Infinity) > Math.max(work.updatedAt, lastEnd))) {
     f.push(`a:ends-running — wanted writer's task to stay running past its first request and its research: work ${show(work)}, research ended ${lastEnd}, task ${R.status} at ${R.completedAt}`);
   }
-  // One notice per research ending starts writer again: exactly one admitted request per ending.
   const settled = settledRequests(store, writerSession);
   const admitted = admittedRequests(store, writerSession);
   if (research.length > 0 && admitted.length !== research.length) {
@@ -207,7 +186,6 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
   if (R.status !== "completed" || draftLines.length !== 1) f.push(`a:lands-once — writer's task ${R.status}; ${draftLines.length} line(s) of its result in Alice's conversation`);
   const draft = outputText(R.output);
   if (!draft.includes(cast.word) || !draft.includes(cast.factMark)) f.push(`a:draft-content — the draft lacks ${!draft.includes(cast.word) ? `the word "${cast.word}"` : ""} ${!draft.includes(cast.factMark) ? `researcher's fact (${cast.factMark})` : ""}: ${show(draft, 200)}`);
-  // The follow-up, from the finished task: a new version, and the original untouched.
   const fu = w.followUpRow;
   if (w.followUp === undefined) f.push(`a:follow-up — not filed: writer's task never completed`);
   else if (fu === undefined || fu.status !== "completed" || (fu as { followUpOf?: string }).followUpOf !== R.id || !fu.partition.startsWith(w.conv) || fu.run?.sessionId !== writerSession || outputText(fu.output) === draft) {
@@ -216,7 +194,6 @@ function gradeA(store: string, w: WalkA, cast: Cast, tell: Tell): string[] {
   if (w.before !== undefined && JSON.stringify(taskOf(w.before)?.output) !== JSON.stringify(taskOf(w.after)?.output)) {
     f.push(`a:original-unchanged — the original's output changed: ${show(taskOf(w.before)?.output, 120)} then ${show(taskOf(w.after)?.output, 120)}`);
   }
-  // Every ending reaches its filer once.
   for (const r of research) {
     const heard = lines(store, writerSession ?? "").filter((m) => textOf(m).includes(`(${r.id})`));
     if (heard.length !== 1) f.push(`a:once — researcher's ending of ${r.id} reached writer ${heard.length} time(s)`);
@@ -233,30 +210,24 @@ function gradeJ1(store: string, j: Awaited<ReturnType<typeof journeyHandsOut>>, 
   const research = filedBy(store, E.id).filter((r) => r.assignee === CAST.researcher);
   if (research.length === 0) f.push(`j1:files — editor filed nothing for desk.researcher`);
   const works = requests(store).filter((r) => r.sessionId === editorSession && r.actionName === "work");
-  // The work request read the research's ending with getTask, in the same request.
   const read = items(store, editorSession ?? "", "tool_output").filter(
     (i) => i.toolCall?.name === "getTask" && works.some((w) => w.id === i.requestId) && JSON.stringify(i.output ?? "").includes('"status":"completed"'),
   );
   if (research.length > 0 && (E.status !== "completed" || works.length !== 1 || read.length === 0)) {
     f.push(`j1:waits-in-request — wanted editor's one work request to read the research's ending with getTask: task ${E.status}, ${works.length} work request(s), ${read.length} completed getTask read(s)`);
   }
-  // That ending reaches editor once: read in the request, so no notice turn runs for it.
-  // An ending that lands before the getTask wait still starts one onTaskSettled request: at the
-  // ending nothing is waiting yet, so a notice is owed and sent. Once the wait has read the
-  // ending, that request finds the notice no longer owed and runs no turn: its output is
-  // `{ owed: false }` (FIX-2112). A request that runs no turn is not a second hearing, so only
-  // the requests that admitted the notice (`owed: true`) count against the read. The model-free
-  // case in goals/task-board/waits-on-a-task-it-filed counts the same way.
+  // An ending that lands before the getTask wait still starts an onTaskSettled request: nothing
+  // is waiting yet, so a notice is owed. After the wait reads it, that request finds the notice
+  // taken and returns `{ owed: false }` with no turn (FIX-2112). Only `owed: true` counts.
+  // goals/task-board/waits-on-a-task-it-filed counts the same way.
   const notices = settledRequests(store, editorSession);
-  const heardBy = notices.filter((r) => (r.output as { owed?: unknown } | undefined)?.owed === true);
+  const heardBy = admittedRequests(store, editorSession);
   if (research.length > 0 && read.length > 0 && heardBy.length > 0) {
     const ended = research[0]!.completedAt ?? 0;
     const asked = Math.min(...read.map((i) => Number(i.ts ?? Infinity)));
     f.push(`j1:read-once — researcher's ending reached editor twice: its work request read it with getTask (${asked - ended} ms after the ending) and ${heardBy.length} onTaskSettled turn(s) ran for it too (${notices.length} request(s) in all)`);
   }
-  // And it is heard exactly once, by that read: in one request, with no notice that ran a turn.
-  // This holds the exclusion above to its claim: discounting the `owed: false` requests must not
-  // let a run where nothing delivered the ending, or two requests did, pass j1:read-once.
+  // Discounting `{ owed: false }` must not pass a run that never read the ending, or one that admitted it twice.
   const readIn = new Set(read.map((i) => i.requestId)).size;
   if (research.length > 0 && (readIn !== 1 || heardBy.length !== 0)) {
     f.push(`j1:heard-once — wanted researcher's ending heard exactly once, by editor's getTask read: read in ${readIn} request(s), ${heardBy.length} notice turn(s); ${notices.length} onTaskSettled request(s), outputs ${show(notices.map((r) => r.output), 200)}`);

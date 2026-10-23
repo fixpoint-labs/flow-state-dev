@@ -160,7 +160,7 @@ const floor = control ? sweepTaskSurface({ repo: root, tracked, table, plants: f
 const secs = ((Date.now() - started) / 1000).toFixed(1);
 if (args.has("--json")) {
   const { findings, cantTell, tools, scanned, rows } = result;
-  console.log(JSON.stringify({ findings, cantTell, tools, scanned, rows, allowed: Object.keys(TOOLS_ALLOWED) }));
+  console.log(JSON.stringify({ findings, cantTell, tools, scanned, rows, allowed: [...TOOLS_ALLOWED] }));
   process.exit(0);
 }
 
@@ -176,7 +176,6 @@ if (args.has("--rows")) for (const r of result.rows) console.log(`  ${r.by.padEn
 
 const byRule = (rule) => result.findings.filter((f) => f.rule === rule);
 if (control) {
-  // Exactly the plants: each reported, and nothing else changed against the plain run.
   const key = (f) => `${f.rule} ${f.where} ${f.what}`;
   const before = new Set(plain.findings.map(key));
   const added = result.findings.filter((f) => !before.has(key(f)));

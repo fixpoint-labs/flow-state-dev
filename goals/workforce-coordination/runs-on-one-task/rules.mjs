@@ -1,28 +1,14 @@
 /**
- * FIX-2087 task-surface rules: what the task surface may offer, what it no longer has, and who
- * may record a task's ending. One engine (`engine.mjs`) reads these for the goal and for CI, so
- * the two give one answer on one commit (D2).
+ * FIX-2087 task-surface rules. `engine.mjs` reads these for the goal and for CI, so the two
+ * give one answer on one commit (D2).
  *
- * Three rules:
- *
- * - **tools**: every task tool the task-tools capability declares (a call of core's
- *   `handler`, read by symbol), by literal name or `named()`, is on {@link TOOLS_ALLOWED}. A name
- *   not on it fails, deprecated ones included; an allowed name not read can't be told.
- * - **removed**: no surface the epic's migration table removes is live in the swept files.
- *   Each name row of the table is matched by a scoped matcher where its name means that
- *   surface ({@link REMOVED}); a behaviour row has no name and is proved by its owning child's
- *   goal ({@link BEHAVIOUR_ROWS}). The engine reads the table as it stands on the commit and
- *   fails when a row has neither.
- * - **endings**: every caller of a task collection's `complete` or `fail`, read by type through
- *   the TypeScript program, and every `cancel` that passes the caller's own claim, sits in a
- *   recorder function on {@link RECORDERS}. A write helper on {@link PASS_THROUGHS}, and a
- *   collection wrapper on {@link FORWARDERS}, is not a recorder: its own callers are read in
- *   its place. Each key names exactly one function, or the sweep can't tell.
- *
- * A line that names a removed surface on purpose (a BP-030 legacy read, a refusal) carries
- * the `retired-name-refusal` marker, FIX-1875's and FIX-1876's spelling. The allow lists change
- * only with a reason a reviewer can read; FIX-2058, retiring `answerTask`, edits
- * {@link TOOLS_ALLOWED}.
+ * {@link TOOLS_ALLOWED}: task tools the capability may declare. {@link REMOVED}: one matcher per
+ * name row of {@link MIGRATION_TABLE}. {@link BEHAVIOUR_ROWS}: the goal for a row with no name.
+ * A row with neither fails. {@link RECORDERS} may write an ending; {@link PASS_THROUGHS} and
+ * {@link FORWARDERS} are not recorders, and their callers are read instead. Each of those keys
+ * names exactly one function, or the sweep can't tell. A line that names a removed surface on
+ * purpose carries the `retired-name-refusal` marker. The lists change only with a reason a
+ * reviewer can read; FIX-2058, retiring `answerTask`, edits {@link TOOLS_ALLOWED}.
  */
 import { REFUSAL_MARKER, ROOTS } from "../../vocabulary/one-word-per-thing/rules.mjs";
 
@@ -31,16 +17,13 @@ export { REFUSAL_MARKER, ROOTS };
 /** The epic's migration table, read as it stands on the swept commit. */
 export const MIGRATION_TABLE = "specs/epics/FIX-2056/migration.md";
 
-/** The task tools a turn may be offered, each with why. Anything else the capability declares fails. */
-export const TOOLS_ALLOWED = {
-  createTask: "FIX-2081: the filer's five",
-  getTask: "FIX-2081: the filer's five",
-  listTasks: "FIX-2081: the filer's five",
-  updateTask: "FIX-2081: the filer's five",
-  reportProgress: "FIX-2081: the worker's progress checkpoint, one of the five",
-  answerTask: "FIX-2056 D2: kept until FIX-2058 retires it",
-  parkOnQuestion: "FIX-2056 D2: the worker's question park, kept until FIX-2058",
-};
+/** The task tools a turn may be offered. Anything else the capability declares fails. */
+export const TOOLS_ALLOWED = new Set([
+  "createTask", "getTask", "listTasks", "updateTask", // FIX-2081: the filer's five
+  "reportProgress", // FIX-2081: the worker's progress checkpoint, one of the five
+  "answerTask", // FIX-2056 D2: kept until FIX-2058 retires it
+  "parkOnQuestion", // FIX-2056 D2: the worker's question park, kept until FIX-2058
+]);
 
 /** Code under the swept roots: the files the AST rules (tools, members, endings) read. */
 export const CODE = /^(packages|apps)\/.*\.(ts|tsx|mts|cts)$/;
@@ -104,7 +87,6 @@ export const REMOVED = [
     row: "`addTask",
     kind: "text",
     files: SWEPT_TEXT,
-    // Only where the name is a tool's or an action's: the collection's `addTask` method stays.
     pattern: /named\(\s*["']addTask["']|\b(name|toolName)\s*(:|===)\s*["'`]addTask["'`]|\baddTask_\w+|`addTask`\s+(tool|action)\b|\btool\s+`addTask`/,
     owner: "FIX-2081",
   },
