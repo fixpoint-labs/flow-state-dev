@@ -101,8 +101,8 @@ export interface RunFsdevOptions {
    * Set this true only for a goal that shells out to an app expected to run
    * ladder-free. And note the inverse hazard: if the goal ALSO called
    * `stripIntentOverrides()` in-process, the child inherits that stripped parent
-   * env regardless of this flag — snapshot with `captureIntentOverrides()` and
-   * pass it back through `env`.
+   * env regardless of this flag — copy the overrides before the strip and pass
+   * them back through `env`.
    */
   stripIntents?: boolean;
 }
