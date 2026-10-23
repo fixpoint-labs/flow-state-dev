@@ -784,7 +784,7 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 | `status` | When | Also carries |
 |----------|------|--------------|
 | `"account"` | Claude Code named where its credential comes from | `apiKeySource` and/or `tokenSource`, as the SDK reports them; a subscription sign-in names neither and comes back as `email` and `subscriptionType` |
-| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user |
+| `"none"` | No credential, no answer within `timeoutMs` (default 10 000 ms), or Claude Code couldn't be asked | `reason`, a sentence you can show the user, and `unanswered: true` when Claude Code gave no answer |
 | `"sdk-missing"` | `@anthropic-ai/claude-agent-sdk` couldn't be loaded | `reason`, with the load error |
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
@@ -824,8 +824,8 @@ To show who is signed in before any run, `readClaudeUsage({ env })` is a [usage 
 |---|---|
 | `windows` | Signed in, or running on an OAuth token. Carries `plan` and `accountId`, and **no windows**: those arrive from runs. |
 | `api-key` | Claude Code runs on an API key, which has no subscription limit. |
-| `signed-out` | Nobody is signed in, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. |
-| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed. |
+| `signed-out` | Nobody is signed in. |
+| `unavailable` | `@anthropic-ai/claude-agent-sdk` isn't installed, or Claude Code couldn't be asked or didn't answer within `timeoutMs` (10 seconds by default) or before `signal` aborted. The usage query keeps the last good reading and shows why the refresh failed. |
 
 Pass the same `env` as your runs. To keep run windows and readings together and serve them to a page or a worker, register `readClaudeUsage` as the `claude-code` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage) and pass `onUsage` through from the manager's harness slot.
 

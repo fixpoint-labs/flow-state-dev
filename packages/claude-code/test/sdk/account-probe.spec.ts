@@ -95,7 +95,7 @@ describe("probeClaudeAccount, scripted", () => {
   it("says none when Claude Code does not answer within timeoutMs", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
     const result = await probeClaudeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
-    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms" });
+    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms", unanswered: true });
     expect(sdk.seen.closed).toBe(true);
   });
 
@@ -118,6 +118,7 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
       status: "none",
       reason: "Claude Code could not be asked for its account: spawn claude ENOENT",
+      unanswered: true,
     });
   });
 

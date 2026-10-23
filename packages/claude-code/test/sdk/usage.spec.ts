@@ -90,6 +90,22 @@ describe("claudeCodeAgent — onUsage", () => {
     expect(reports[0]!.accountId).toBeNull();
   });
 
+  it("drops a window whose account can't be read, rather than record it as a different account", async () => {
+    // A failed lookup read as "no account" would rebind the row and clear the real account's windows.
+    const reports: HarnessUsageReport[] = [];
+    let asked = 0;
+    const { block } = run([ALLOWED, WARNING], {
+      account: async () => {
+        asked += 1;
+        if (asked === 1) throw new Error("not ready");
+        return { email: "alice@example.com" };
+      },
+      onUsage: (r) => reports.push(r),
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+    expect(reports.map((r) => [r.window.level, r.accountId])).toEqual([["warning", "alice@example.com"]]);
+  });
+
   it("finishes the run when the host's write throws", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { block } = run([REJECTED], {
@@ -127,5 +143,12 @@ describe("readClaudeUsage", () => {
     expect(await read({ status: "account", apiKeySource: "ANTHROPIC_API_KEY" })).toEqual({ status: "api-key", reason: "Claude Code uses an API key: no subscription limit" });
     expect(await read({ status: "none", reason: "x" })).toEqual({ status: "signed-out", reason: "Claude Code is not signed in: not available automatically" });
     expect((await read({ status: "sdk-missing", reason: "x" })).status).toBe("unavailable");
+  });
+
+  it("says unavailable, not signed out, when the probe got no answer, so the stored reading stays", async () => {
+    expect(await read({ status: "none", reason: "Claude Code did not report an account within 10000 ms", unanswered: true })).toEqual({
+      status: "unavailable",
+      reason: "Claude Code did not report an account within 10000 ms",
+    });
   });
 });

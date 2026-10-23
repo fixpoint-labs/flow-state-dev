@@ -1031,7 +1031,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const inFlightRef: { current: Promise<unknown> | null } = { current: null };
       // The account the run is signed in as, asked of the running query once,
       // at its first usage event, so its windows are bound to it.
-      let runAccount: Promise<string | null> | undefined;
+      let runAccount: Promise<string | null | undefined> | undefined;
 
       // The vendor loop, hoisted so the abort branch can wait on it (bounded)
       // after the race below has been lost to the signal.
@@ -1147,9 +1147,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   const observedAt = Date.now();
                   runAccount ??= accountOf(running);
                   inFlightRef.current = runAccount
-                    .then((accountId) =>
-                      onUsage({ harness: CLAUDE_CODE_HARNESS, window, observedAt, runStartedAt: dispatchedAt, accountId }, ctx),
-                    )
+                    .then((accountId) => {
+                      // Whose window this is isn't known: drop it rather than guess, and ask again on the next event.
+                      if (accountId === undefined) {
+                        runAccount = undefined;
+                        return;
+                      }
+                      return onUsage({ harness: CLAUDE_CODE_HARNESS, window, observedAt, runStartedAt: dispatchedAt, accountId }, ctx);
+                    })
                     .catch((error: unknown) => {
                       console.warn(`[claude-code] recording a usage window failed: ${error instanceof Error ? error.message : String(error)}`);
                     });
@@ -1406,13 +1411,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 const ACCOUNT_TIMEOUT_MS = 5_000;
 
 /**
- * The email of the account a running query is signed in as, or `null` when
- * it names none (an OAuth token), can't be asked, or doesn't answer in time.
+ * The email of the account a running query is signed in as, `null` when it
+ * names none (an OAuth token), or `undefined` when it can't be asked or
+ * doesn't answer in time, so a failed lookup never reads as an account change.
  * Asks the query the run already holds, so no second process starts.
  */
-async function accountOf(running: unknown): Promise<string | null> {
+async function accountOf(running: unknown): Promise<string | null | undefined> {
   const ask = (running as { accountInfo?: () => Promise<{ email?: unknown }> }).accountInfo;
-  if (typeof ask !== "function") return null;
+  if (typeof ask !== "function") return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const info = await Promise.race([
@@ -1421,9 +1427,10 @@ async function accountOf(running: unknown): Promise<string | null> {
         timer = setTimeout(() => resolve(undefined), ACCOUNT_TIMEOUT_MS);
       }),
     ]);
-    return typeof info?.email === "string" && info.email !== "" ? info.email : null;
+    if (info === undefined) return undefined;
+    return typeof info.email === "string" && info.email !== "" ? info.email : null;
   } catch {
-    return null;
+    return undefined;
   } finally {
     clearTimeout(timer);
   }

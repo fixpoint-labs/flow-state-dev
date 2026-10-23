@@ -25,8 +25,12 @@ export type ClaudeAccountProbe =
    * keychain or `~/.claude`) is reported by the last pair alone.
    */
   | { status: "account"; apiKeySource?: string; tokenSource?: string; email?: string; subscriptionType?: string }
-  /** No credential source, or no answer in time. `reason` says which, for a message to a person. */
-  | { status: "none"; reason: string }
+  /**
+   * No credential source, or no answer. `reason` says which, for a message to
+   * a person; `unanswered` is set when Claude Code timed out, was stopped, or
+   * failed, so nothing is known about the credential.
+   */
+  | { status: "none"; reason: string; unanswered?: true }
   /** `@anthropic-ai/claude-agent-sdk` could not be loaded. `reason` carries the load error. */
   | { status: "sdk-missing"; reason: string };
 
@@ -74,8 +78,8 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
     (handle) => handle.accountInfo(),
   );
   if (asked.status === "sdk-missing") return { status: "sdk-missing", reason: asked.reason };
-  if (asked.status === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms` };
-  if (asked.status === "error") return { status: "none", reason: `Claude Code could not be asked for its account: ${asked.reason}` };
+  if (asked.status === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms`, unanswered: true };
+  if (asked.status === "error") return { status: "none", reason: `Claude Code could not be asked for its account: ${asked.reason}`, unanswered: true };
   const info = asked.value;
   const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
   const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;

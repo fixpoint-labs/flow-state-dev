@@ -78,7 +78,8 @@ export type ReadClaudeUsageOptions = ProbeClaudeAccountOptions & {
  * An API key is `api-key`. A sign-in or an OAuth token is `windows`, with the
  * email as the account id when there is one (the store keeps a hash) and the
  * plan, and **no windows**: the windows come from runs. Nobody signed in is
- * `signed-out`, and an SDK that won't load is `unavailable`. Never throws.
+ * `signed-out`. An SDK that won't load, or a probe that got no answer, is
+ * `unavailable`, which leaves a stored reading in place. Never throws.
  */
 export async function readClaudeUsage(options: ReadClaudeUsageOptions): Promise<HarnessUsageReading> {
   const { probe = probeClaudeAccount, ...probeOptions } = options;
@@ -89,6 +90,8 @@ export async function readClaudeUsage(options: ReadClaudeUsageOptions): Promise<
     return { status: "unavailable", reason: "Claude Code's account could not be read" };
   }
   if (found.status === "sdk-missing") return { status: "unavailable", reason: "Claude Code's Agent SDK is not installed" };
+  // A probe that got no answer knows nothing: `unavailable` keeps the stored reading.
+  if (found.status === "none" && found.unanswered) return { status: "unavailable", reason: found.reason };
   if (found.status === "none") return { status: "signed-out", reason: "Claude Code is not signed in: not available automatically" };
   if (found.apiKeySource !== undefined) return { status: "api-key", reason: "Claude Code uses an API key: no subscription limit" };
   return { status: "windows", accountId: found.email ?? null, plan: found.subscriptionType ?? null, windows: [] };
