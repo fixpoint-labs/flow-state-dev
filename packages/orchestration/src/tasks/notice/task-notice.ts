@@ -471,11 +471,40 @@ export function noticeTimes(
 /**
  * The metadata patch that records a busy session turning `notice` away at
  * `now` (FIX-2113): a record beside its marker, which it leaves as it is.
- * `{}` when `row` no longer owes it.
+ * `{}` when `row` no longer owes it. With `whileRunning`, the request that
+ * filed the task, which was running (FIX-2149): once that request stops
+ * running, the filer's pass sends the notice past its backoff
+ * ({@link heldWhileRunning}).
  */
-export function deferredNoticePatch(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, { at: number }> {
+export function deferredNoticePatch(
+  row: Task,
+  notice: Pick<TaskNotice, "attempt" | "ending">,
+  now: number,
+  whileRunning?: string
+): Record<string, { at: number; whileRunning?: string }> {
   if (!isSendable(markerKey(notice.attempt, notice.ending), (row.metadata ?? {})[markerKey(notice.attempt, notice.ending)])) return {};
-  return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now } };
+  return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now, ...(whileRunning !== undefined ? { whileRunning } : {}) } };
+}
+
+/**
+ * The request `notice` was last turned away for (FIX-2149): the filing
+ * request, which was running then, when no copy has been sent again since.
+ * Once that request parks or ends, the notice is due at once, past its
+ * backoff: its backoff grew only while that request held it. `undefined` for
+ * a notice `row` no longer owes, one a busy session turned away
+ * (`taskSettledEntry`'s `defer`), one sent again since, and a record written
+ * before FIX-2149 (BP-030).
+ */
+export function heldWhileRunning(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
+  const key = markerKey(notice.attempt, notice.ending);
+  if (!isSendable(key, (row.metadata ?? {})[key])) return undefined;
+  const deferred = (row.metadata ?? {})[`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`] as
+    | { at?: unknown; whileRunning?: unknown }
+    | null
+    | undefined;
+  if (deferred == null || typeof deferred.at !== "number" || typeof deferred.whileRunning !== "string") return undefined;
+  const resent = resentOf(row, notice.attempt, notice.ending);
+  return resent === undefined || deferred.at >= resent.at ? deferred.whileRunning : undefined;
 }
 
 /** The metadata patch that records one more resend of `notice` at `now`. */

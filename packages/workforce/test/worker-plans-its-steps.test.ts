@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, defineFlow } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { onRequestEnded, type BlockContext } from "@flow-state-dev/core/types";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { defineSessionBoard, workerConfigSchema, type WorkerManifest } from "../src";
@@ -43,6 +43,8 @@ type Controls = {
   refusals: Array<{ worker: string; error: string }>;
   /** Goals a turn handed as its whole message does as a step in a session of its own (FIX-2082 D2). */
   ownSession: Set<string>;
+  /** How long a planning turn's request takes to park once it has parked its drain, as a slow store would. */
+  parkDelayMs?: number;
   turns: Array<{ worker: string; sessionId: string; kind: "turn" | "step" | "answer"; message: string }>;
 };
 
@@ -89,6 +91,14 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
       // A step handed to a session of its own arrives as the task it is: a value only that session produced.
       if (controls.ownSession.has(input.message.trim())) return `${input.message.trim()}#own@${ctx.session.identity.id}`;
+      const parkDelayMs = controls.parkDelayMs;
+      if (parkDelayMs !== undefined) {
+        // A request-end hook runs after the drain's wait gate is written and
+        // before the request is recorded parked: the window a step's ending can land in.
+        onRequestEnded(ctx, async (ending) => {
+          if (ending.status === "suspended") await new Promise((r) => setTimeout(r, parkDelayMs));
+        });
+      }
       const asInit = (step: Step) => ({
         id: step.id,
         goal: step.goal,
@@ -611,6 +621,39 @@ describe("a step filed session: \"new\" runs in a session of its own, and its dr
       const respond = requests.find((r) => r.actionName === "respond");
       expect(respond?.status).toBe("completed");
       expect(String(respond?.result?.output)).toMatch(/^answered: The steps you filed for yourself have ended/);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  // A step in its own session can end while the drain that waits on it is still parking: its resume
+  // is refused busy and stays owed. The session's pass retries it at its due time, so the request
+  // answers in seconds, not at the wait's deadline five minutes on.
+  it("still resumes the drain promptly when the step ends while the drain is parking", async () => {
+    const h = host({ durable: true });
+    try {
+      await h.state.getRouter();
+      h.controls.plans.writer = plan.slice(0, 2);
+      h.controls.ownSession.add("Fact-check the outline");
+      h.controls.parkDelayMs = 100;
+      const talk = await h.open("alice", "writer");
+      const run = await h.act("alice", talk, "respond", { message: "write a post" }, "stepper");
+      expect(run.error, messageOf(run.error)).toBeUndefined();
+
+      const runtime = await h.state.getRuntime();
+      const deadline = Date.now() + 10_000;
+      let respond: { status: string } | undefined;
+      for (;;) {
+        respond = (await runtime.stores.request.list({ sessionId: talk })).find((r) => r.actionName === "respond");
+        if (respond?.status === "completed" || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(respond?.status).toBe("completed");
+      expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([
+        ["s-outline", "completed"],
+        ["s-check", "completed"]
+      ]);
+      expect(h.controls.turns.filter((t) => t.sessionId === talk && t.kind === "answer")).toHaveLength(1);
     } finally {
       await h.dispose();
     }

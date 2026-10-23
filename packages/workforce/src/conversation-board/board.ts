@@ -697,13 +697,16 @@ const HELD_ELSEWHERE_RETRY_MS = 5_000;
  * What one pass keeps between its steps, in its own request's state (so a
  * failed or aborted pass leaves nothing behind, and a pass resumed elsewhere
  * reads it back): the wake as read at its start, settled at its end against
- * that version, and the rounds run so far. Correctness rests on this. The
+ * that version, the rounds run so far, and when the plan ledger's next debt
+ * falls due (a resume owed to a drain parked on a step in its own session),
+ * which the settle keeps. Correctness rests on this. The
  * process-wide record of passes sent and running ({@link notePassStarted})
  * is only a saving, and lives in module state for that reason.
  */
 const passStateSchema = z.object({
   passWake: z.object({ dueAt: z.number(), landBy: z.number(), version: z.number() }).optional(),
-  passRounds: z.number().optional()
+  passRounds: z.number().optional(),
+  passPlanDue: z.number().optional()
 });
 type PassState = z.infer<typeof passStateSchema>;
 const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) as PassState;
@@ -1523,7 +1526,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // A step handed to a session of its own resumes the drain that waits on
       // it from here (FIX-2082 D2): the plan ledger owes no notice, only that.
       const plan = planning.wired() ? await planLedgerAt(ctx as never, partition) : undefined;
-      if (plan !== undefined) await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
+      // A resume it couldn't pay (the drain still parking reads `busy`) stays
+      // owed: the settle keeps its due time, or nothing would retry it before
+      // the wait's deadline.
+      if (plan !== undefined) {
+        const planDebts = await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
+        if (planDebts.nextDue !== undefined) await ctx.request.patchState({ passPlanDue: planDebts.nextDue });
+      }
       return {};
     }
   });
@@ -1564,7 +1573,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
       notePassEnded(ctx as never);
-      await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, round.nextDue);
+      const planDue = passStateOf(ctx as never).passPlanDue;
+      const due = planDue === undefined ? round.nextDue : round.nextDue === undefined ? planDue : Math.min(round.nextDue, planDue);
+      await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, due);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
   });

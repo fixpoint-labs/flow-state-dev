@@ -509,8 +509,8 @@ sent again. The entry queues on the session unless `concurrency` says otherwise.
 
 A notice waits for the request that filed its task while that request is running, not while it is
 parked on a person or a wait. The entry holds the notice back the way `defer` does (below). The
-request sends what it held as it ends; once it parks, the session's pass sends it at the notice's
-next resend. A wait in the filing request therefore reads the ending
+request sends what it held as it ends; once it parks, the session's pass runs about two seconds
+later and sends it then, past its resend backoff. A wait in the filing request therefore reads the ending
 first. Before it runs `block`, the entry takes the notice in one conditional write (the board's
 optional `takeNotice`, which both built-in backings implement), so a wait that reads the task and
 the notice never both deliver the same ending. A notice whose `block` threw stays owed, and the
