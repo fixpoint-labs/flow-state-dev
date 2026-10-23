@@ -15,7 +15,7 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, TaskCard, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
+import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
 
 /** How the fixtures keep time, and what they stand in for. */
 export interface FixtureOptions {
@@ -46,10 +46,10 @@ const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
 const CODER = "teammates.coder";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: TaskCard };
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
 
 /** A board row, and the conversation that filed it. */
-type FixtureTask = TaskCard & { sessionId: string };
+type FixtureTask = BoardTask & { sessionId: string };
 
 interface FixtureWorker {
   row: WorkerRow;
@@ -124,7 +124,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     startNext(recipient);
   };
 
-  const updateTask = (id: string, patch: Partial<TaskCard>) => {
+  const updateTask = (id: string, patch: Partial<BoardTask>) => {
     tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
     notify();
   };

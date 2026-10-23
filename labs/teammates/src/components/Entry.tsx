@@ -40,7 +40,8 @@ export function Entry({ entry, workerName, nameOf }: { entry: ConversationEntry;
           </div>
           <p className="mt-0.5 text-sm whitespace-pre-wrap">{entry.text}</p>
         </section>
-      );    case "result":
+      );
+    case "result":
       return (
         <section aria-label={`From ${nameOf(entry.from)}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
           <div className="font-mono text-[10px] tracking-widest text-success uppercase">← {nameOf(entry.from)} · task done</div>

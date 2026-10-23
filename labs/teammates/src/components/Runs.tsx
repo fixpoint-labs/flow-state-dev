@@ -23,7 +23,7 @@ export function Runs({
   nameOf: (id: string) => string;
 }) {
   return (
-    <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
+    <main aria-label="Runs" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
         <h1 className="text-sm font-semibold">{worker.name}</h1>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>

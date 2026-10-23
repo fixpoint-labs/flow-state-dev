@@ -51,7 +51,7 @@ export interface ProjectRow {
  * A task a conversation filed for a worker that takes tasks, from the board's
  * row. `needs-project` is a run refused `no-project` before any file existed.
  */
-export interface TaskCard {
+export interface BoardTask {
   id: string;
   /** The worker it was filed for. */
   to: string;
@@ -134,7 +134,7 @@ export interface LabAdapter {
   watchWorkProject(worker: string, onChange: (project: string | undefined) => void): Unsubscribe;
   setWorkProject(worker: string, project: string): Promise<void>;
   /** The tasks a conversation filed, oldest first. */
-  watchTasks(sessionId: string, onChange: (tasks: TaskCard[]) => void): Unsubscribe;
+  watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
   /** A task's run, read only: the worker that runs it takes no messages. */
   watchRun(taskId: string, onChange: (steps: RunStep[]) => void): Unsubscribe;
 }

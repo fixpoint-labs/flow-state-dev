@@ -167,9 +167,10 @@ describe("the teammates screen", () => {
     await within(conversation()).findByRole("button", { name: /Task for coder/ });
 
     fireEvent.click(workerRow("coder"));
-    expect(await within(conversation()).findByRole("heading", { name: "coder" })).toBeTruthy();
+    const runs = await screen.findByRole("main", { name: "Runs" });
+    expect(within(runs).getByRole("heading", { name: "coder" })).toBeTruthy();
     expect(screen.queryByLabelText("Message coder")).toBeNull();
-    const run = await within(conversation()).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
+    const run = await within(runs).findByRole("list", { name: "Run of Fix the typo in the README's first line" });
     await waitFor(() => expect(run.textContent).toMatch(/Edited line 1/), { timeout: 2000 });
   });
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { LabAdapter, ProjectRow, TaskCard as Task } from "../adapter";
+import type { LabAdapter, ProjectRow, BoardTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 
@@ -20,7 +20,7 @@ export function TaskCard({
   defaultOpen = false,
 }: {
   adapter: LabAdapter;
-  task: Task;
+  task: BoardTask;
   /** The worker whose conversation filed it. */
   filer: string;
   /** The filer's project, once picked. */
