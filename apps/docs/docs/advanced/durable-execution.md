@@ -59,7 +59,7 @@ const router = createFlowApiRouter({
 });
 ```
 
-`createCheckpointDurabilityProvider(stores)` builds the provider directly, whatever the stores.
+Given `runtimeConfig`, the router takes its runtime options (the model resolver, tracing level and the rest) from it alone, so put them there too. `createCheckpointDurabilityProvider(stores)` builds the provider directly, whatever the stores.
 
 To opt a specific sequencer out of checkpointing:
 

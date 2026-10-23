@@ -60,7 +60,7 @@ const events = () => stdoutLines.map((line) => JSON.parse(line) as { type: strin
 async function readBack(stores: StoreRegistry & { close?: () => void }, requestId: string) {
   try {
     const request = await stores.request.get(requestId);
-    const stops = await stores.suspensions.list({ requestId });
+    const stops = (await stores.suspensions.list({})).filter((s) => s.requestId === requestId);
     return { request, stops };
   } finally {
     stores.close?.();

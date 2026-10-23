@@ -417,19 +417,23 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
     serveApp = createFlowApiRouter({
       registry,
       stores,
-      modelResolver,
-      // Durable by the one engine rule (FIX-2063 D2): on wherever the stores
-      // persist, so a stop is held and this router's sweeper fires its deadline.
-      durabilityProvider: resolveDurabilityProvider({ stores }),
+      // The runtime options travel as one bundle: given `runtimeConfig`, the
+      // router reads none of its flat runtime options.
+      runtimeConfig: {
+        modelResolver,
+        // The DevTool observes per-step state snapshots, so the dev server runs
+        // at the most verbose tracing level (FIX-406 6H).
+        tracingLevel: "verbose",
+        // Durable by the one engine rule (FIX-2063 D2): on wherever the stores
+        // persist, so a stop is held and this router's sweeper fires its deadline.
+        durabilityProvider: resolveDurabilityProvider({ stores }),
+      },
       // fsdev dev is local-only by definition; opt in to the privileged debug
       // surface so the DevTool's Resources panel can read full server state.
       debugEndpointsEnabled: true,
       // The DevTool's same-origin GETs carry no Origin header; this server
       // binds 127.0.0.1, so admitting them is safe.
       debugAllowAnonymousLocal: true,
-      // The DevTool observes per-step state snapshots, so the dev server runs at
-      // the most verbose tracing level (FIX-406 6H).
-      tracingLevel: "verbose",
       onError: (error: Error, context: { method: string; path: string }) => {
         process.stderr.write(`[API error] ${context.method} ${context.path}: ${error.message}\n`);
       },

@@ -16,7 +16,7 @@
 // throws, so `logActivity`/`listInbox` are unreachable over any HTTP transport
 // (MCP or the generic action routes) until the secret is provided. The CLI is
 // unaffected: `fsdev run` invokes the action in-process as its built-in
-// `cli-user` principal and never goes through a transport resolver.
+// default principal (`devuser`) and never goes through a transport resolver.
 // ---------------------------------------------------------------------------
 
 import { defineFlow, handler } from "@flow-state-dev/core";
