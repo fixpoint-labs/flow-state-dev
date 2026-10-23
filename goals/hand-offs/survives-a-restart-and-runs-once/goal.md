@@ -4,6 +4,8 @@
 
 **Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session parks on a question, carries on when answered, and once finished is picked up again by a question in its session and takes a follow-up. A server restart during either wait loses nothing, and the work runs once.
 
+**Not proved by a control:** for the ask (P1.a), "runs once" is graded only on the plain run, by `one-row` and `b:once`. Since FIX-2082 retired `no-run-once`, no control shows that those two can go red, so a P1.a PASS shows the work ran once on that run, not that the check would catch it running twice.
+
 **Input:** one clean checkout. The runner composes checks it does not own, each run unchanged as its own process, plus one journey of its own:
 
 - **P1.a**, leg a: `goals/hand-offs/ask-survives-a-restart/` (Shift Manager's DevTeam install, SQLite, SIGKILL while the asker waits).
