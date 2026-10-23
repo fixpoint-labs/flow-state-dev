@@ -327,6 +327,8 @@ A conversation keeps at most 50 rounds open. A message past that is still delive
 
 Each delegate a message goes to gets a routed task for it on the conversation's [task board](./delegating-work.md), one per delegate per round. It is an ordinary task, in your list next to the tasks you filed yourself, with three settings: `session: "ongoing"`, so it runs in the delegate's one session for this conversation; `resultTo: "conversation"`, so its answer lands here under the delegate's name; and one attempt. `getTask_tasks` shows them. It ends like any task: completed with the delegate's answer, which lands as the delegate's line, failed, or cancelled.
 
+When a task the coordinator's own turn filed fails, the failure lands once as the delegate's line, naming the task and its error, and wakes that turn, so it can tell you or file the work again. The coordinator's own turn is the one that files under `judgment`, and under `best-fit` for a message best fit picks the coordinator for. When the routing filed the task with no coordinator turn behind it, a failure ends that delegate's part with no line.
+
 Each delegate's answer to a message lands once, even across a restart or a dropped connection. A delegate handed the same message twice in one round gets one task, and the record says the second was skipped.
 
 The delegate's session for this conversation is the same one every message from this conversation to that delegate runs in, so the delegate keeps what it was told before. It works one routed task at a time: a message to a delegate still busy with your last one waits in your list, pending, and starts in the same session once that one ends. A message to a [workstream](./projects.md#talking-to-a-project) runs in the workstream's own session.
