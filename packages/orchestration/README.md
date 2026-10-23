@@ -1039,7 +1039,9 @@ dispatcher with `wait: false` and a delegation board's with `wait: true` are ref
 that fails after it handed a row over fails its request, naming the row, whatever `onError`
 says, and no row that hasn't started runs. It writes nothing on the handed-over row: when the
 dispatch itself threw, nothing may be running it, so it stays `in_progress` until its lease
-lapses and the plan's next run claims it again. Declare
+lapses and the plan's next run claims it again. A `getTask({ id, wait: true })` on a row the
+drain handed over is refused `wait_on_plan_step` for as long as the drain waits on it, deadlines
+included, so no other wait can take the slot the plan waits with. Declare
 the board's pass entry on the flow: without it, the board still builds, and the drain hears a
 row's ending at its next check-in, up to the host's default wait deadline later.
 
