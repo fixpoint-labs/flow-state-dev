@@ -136,7 +136,7 @@ goes first; the gap issues own their mechanisms.
 | Seam | Owner, then who else touches it |
 |---|---|
 | The workforce client (`workforce/src/workers/client.ts`) | FIX-2158 adds the list of a person's sessions of one worker; FIX-2153 and FIX-2157 call it through their adapters |
-| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the context the generator re-reads before each model call (`orchestration/src/skills/steer-context.ts`) | FIX-2159 adds a public take-and-acknowledge for a settled notice and an answer-again hook; FIX-2153's lab flow runs the loop at turn end and shows the result in the main thread |
+| The settled notice (`workforce/src/conversation-board/task-settled.ts`, its deferred entry) and the agent flow's turn (`defineAgentWorkerFlow`) | FIX-2159 adds a public take-and-acknowledge for a settled notice and an answer-again hook; FIX-2153's lab flow runs the loop at turn end and shows the result in the main thread |
 | Messages (`workforce/src/messages/`, the user-scoped `workerMessagesCollection`) | FIX-2070 owns the rename to `sendMessage` and `receive`, where a message lands, and the row it ships (call ids, `{ task }` addresses). FIX-2154 is blocked by FIX-2070 and keys its worker-talk view to that row; a pair filter is UI, and a gap is filed only if paging by pair needs a server index |
 | Routed tasks, task statuses and the hold on questions (`workforce/src/coordinator/`, FIX-2058's hold and `waitForUser`) | FIX-2083 and FIX-2058 own them. FIX-2157's status board reads them and adds no status of its own; a column the statuses can't fill is a gap |
 | The app's mode switch (FIX-2153's host and UI) | FIX-2153 plans for it in its spec; FIX-2157 adds threads mode behind it |
