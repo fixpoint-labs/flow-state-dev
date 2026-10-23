@@ -57,8 +57,8 @@ coding runs of its own.
 ## Decided, not asked
 
 - **The hook is the session hook's twin, in core.** `HarnessUsageHook` takes a report (the
-  harness's name, one `HarnessUsageWindow`, when it was observed, and the account id the run is
-  signed in as, or `null`) and the run's context. It names no vendor and no Workforce idea. The
+  harness's name, one `HarnessUsageWindow`, when it was observed, when the run started, and the
+  account id the run is signed in as, or `null`) and the run's context. It names no vendor and no Workforce idea. The
   report names its harness, so the manager's feed writes under `claude-code` without knowing which
   harness sits in its slot. `claudeCodeAgent` asks its own running query for `accountInfo()` once,
   at the first event (no extra process), so a run's windows are bound to the account that sent them.
@@ -71,8 +71,9 @@ coding runs of its own.
   by id with `origin: "run"` and keeps the others. It compares against that window's own
   `checkedAt` (an older event is refused) and leaves the record's `checkedAt`, account and plan
   alone: the record clock stays the reader's. It lifts a no-number status to `windows` only when
-  the event is newer than the record's `checkedAt`, so a stale event never undoes a fresher
-  `api-key` or `signed-out`. On a shared window id, the newer `checkedAt` wins, whichever wrote it.
+  the *run started* after the record's `checkedAt`. A run that was already going when a look found
+  `api-key` or `signed-out` belongs to the old sign-in, so its later events don't undo the look.
+  On a shared window id, the newer `checkedAt` wins, whichever wrote it.
 - **The collection is installed where the writes happen.** `harnessUsageCollection` joins the
   manager's capability and the session door's, and `harness-usage` joins the manager's reserved
   accessors, so a host can't claim it. Without that, the feed would throw on a missing collection
@@ -80,11 +81,15 @@ coding runs of its own.
   that build it (the manager and the door, which stubs `onSession` today); the Lab's own
   `HarnessFeeds` is a superset of it. `onUsage` stays out of `claudeCodeAgent`'s in-session-only
   guard: it owns no continuity, so it races nothing.
-- **Windows belong to one account at a time.** A run write or a full reading whose account hash
-  differs from the stored non-null one replaces the record's account and clears every window the
-  new account didn't send; so a sign-in change shows no old account's percent, whether a run or a
-  look notices it first. A stored account that was never read (`null`) adopts the incoming one and
-  keeps its windows. A reading with no account keeps the stored one. A full reading replaces its
+- **Windows belong to one account at a time, and a change of account is one step.** The record
+  keeps `accountAt`, when its account was last set. A run write or a full reading whose account
+  differs from the stored one is a rebind. It wins only if it was observed after `accountAt`, and
+  then it replaces the account and `accountAt`, clears the plan and every window the new account
+  didn't send. An older rebind is refused whole, so a retried event from account A can't land in a
+  record that account B already took, and it can't wipe B's windows either. A move from a `null`
+  account to a named one is a rebind too. A `null` account may be a real token-only sign-in, so its
+  windows are never handed to a named account. A sign-in change shows no old account's percent or
+  plan, whether a run or a look notices it first. A reading with no account keeps the stored one. A full reading replaces its
   own windows and keeps `run` windows it doesn't name while the account matches; a no-number status
   clears them all, as FIX-2141's leg h requires. Codex has no `run` windows, so nothing changes for
   it.
@@ -143,6 +148,13 @@ coding runs of its own.
   before the next look left one account's percent beside another's; the hook now carries the
   run's account from its own `accountInfo()`, and the token-only case is a named limit. It also
   added the session door's talk to the goal check's ownership leg. Cursor's notes are below.
+
+- **Review round 2** — Codex found four ways the account rules could still mix accounts. A run
+  that started before a look found `api-key` could reopen the windows. A token-only account's
+  windows could pass to a named one, which reverses the Architect's "a `null` account adopts".
+  A retried event could rebind a newer account. And the old plan was kept on a switch. All four
+  close with one change: an account change is a whole-record step, ordered by `accountAt`, and a
+  no-number status is lifted only by a run that started after it. Leg f covers the retried event.
 
 ## Notes from review
 
