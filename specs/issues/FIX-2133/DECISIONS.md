@@ -79,17 +79,24 @@ Then the gate's backstop could go; the generation stays either way.
   keyed to its question. The same words from the same user again return `unchanged`, reported as
   done, so a retry after a lost response succeeds. Different words, or another user, are refused as
   already answered; an answer to a finished row is refused as finished.
-- **The steer cap.** Answer and deadline steers don't count toward the 20 (`MAX_STEERS`), so an
-  open question is always answerable. They are bounded instead by a cap on questions a row is asked
-  over its life, an ask past it refused by name, so a row's steers stay finite and FIX-2086's turn
-  bound becomes 20 plus that cap. The numbers, and a prompt-length cap, are the implementer's (BP-042).
+- **The steer cap keeps room for answers** (the rule in FIX-2131's
+  [DECISIONS](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2131/specs/issues/FIX-2131/DECISIONS.md),
+  "The steer cap keeps room for answers", owned here). An answer is a steer and counts against
+  `MAX_STEERS`. Every open question reserves its answer's place: an ask is refused when the row's
+  steers plus open questions reach the cap, and an ordinary steer at that same count. So a question
+  is always answerable, and a row never holds more than the cap. A refused ask tells the model it
+  can't ask more and to go on from its brief. The check sits inside the one question write: the ask
+  takes the reservation, and the answer or the deadline's "no answer came" steer fills it. FIX-2086's
+  turn bound stays 20. A prompt-length cap is the implementer's (BP-042).
 - **The deadline:** each question is due 7 days after it is asked (FIX-2129's host setting once it
   lands, a constant until then), paid by the board's debt pass on a touch past due (rule 8). It
   closes the question with a "no answer came" steer from a new server-written sender, the board,
   and the last close lets the work go on as an answer would. A board nobody touches pays late.
   If the owner picks "fail" in the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open), this
   write fails the try instead.
-- **Who asks.** The filer, at filing; midway, only the turn holding the current ticket. Nobody adds,
+- **Who asks.** The filer, at filing; midway, only the turn holding the current ticket, through the
+  collection's ask, which FIX-2131's `askQuestion({ question })` tool calls. Answers arrive as
+  `updateTask({ id, question, message })` (D1). Nobody adds,
   changes or removes a question afterwards. At filing, questions are refused where `held` is (a
   step for a worker's own turn), since nothing waits; midway, any claimed task can ask.
 - **Midway, what stands:** the turn's writes, messages and last checkpoint; the next turn starts from
@@ -111,7 +118,8 @@ Then the gate's backstop could go; the generation stays either way.
 | `status: "held"` for the pre-start hold | D2 |
 | The wake alone; tickets fenced by attempt | D3 |
 | An `answered` flag beside the keyed steer | Two sources for one fact, and an "answered with no steer" state |
-| Answers inside the 20-steer cap | An answer refused at 20. Bypassing the cap with no bound grows the row without limit |
+| Answers outside the cap, under a question cap of their own | A second bound beside the steer cap. Bypassing the cap with no bound grows the row without limit |
+| Pruning taken steers at the cap | A retry's brief reads every steer |
 | One Inbox item per question | Rule 11: the questions show as one item |
 
 ## Notes from review, for the implementer

@@ -48,7 +48,7 @@ way the Inbox does, never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/holds-a-task-on-questions/` · model-free (`n/a`, scripted turns call the real tools) · both store backings · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: right after `createTask` with two questions, one item for t1 with both prompts; `getTask` shows `pending`, `attempts: 0`; a claim, a drain, a dispatching board and the ready preview all leave it. b: after one answer, one open question, the start counter still 0. c: after the second, t1 runs once, attempt 1, its brief holding both answers from the user; the item is gone; t2 runs after t1 completes. d: t4's scripted turn asks one question; the row is `in_progress` with no lease, `attempts: 1`; a renewal and a reclaim are refused; the user answers; exactly one more turn runs, attempt 1, the answer in its message. Run with the host's wake and with none. e: the same answer twice is one steer and a success; a different second answer is refused as answered; two at once start one turn; a cancel closes t3's item and a later answer is refused as finished; t5's question, 7 days on and a board touch later, closes "no answer came" and t5 starts; an answer from another user, tenant or org is answered as not found and writes nothing |
+| **Signal** | a: right after `createTask` with two questions, one item for t1 with both prompts; `getTask` shows `pending`, `attempts: 0`; a claim, a drain, a dispatching board and the ready preview all leave it. b: after one answer, one open question, the start counter still 0. c: after the second, t1 runs once, attempt 1, its brief holding both answers from the user; the item is gone; t2 runs after t1 completes. d: t4's scripted turn asks one question; the row is `in_progress` with no lease, `attempts: 1`; a renewal and a reclaim are refused; the user answers; exactly one more turn runs, attempt 1, the answer in its message. Run with the host's wake and with none. e: the same answer twice is one steer and a success; a different second answer is refused as answered; two at once start one turn; a cancel closes t3's item and a later answer is refused as finished; t5's question, 7 days on and a board touch later, closes "no answer came" and t5 starts; an answer from another user, tenant or org is answered as not found and writes nothing; with the steers plus open questions at 20, an ask is refused and so is an ordinary steer, while an open question still takes its answer |
 | **Input** | "Which CSV export should the script read?" and "Which date column?" Any two prompts pass the same way |
 | **Anti-game** | Assert on the snapshot, `getTask` and the brief the worker received, never on rows written by hand. The start and turn counters are the real worker's |
 | **Control that must fail** | `GOAL_CONTROL=release-on-first` fails b. `answer-off-brief` fails c. `wake-only` (the claim gate ignores the owed mark) fails d's no-wake run: t4 is stranded. `no-turn-fence` (claim tickets fenced by attempt only) fails d: the asking turn's late write lands after the answer's claim. Today's `main` fails a: `createTask` has no questions |
@@ -68,7 +68,7 @@ or nothing.
 -   held: true,   // held until the filer releases it; nowhere to put the question
 +   questions: ["Which CSV export should the script read?"],   // held until the user answers
   })
-+ board.ask(ticket, ["Which date column?"])   // midway: drops the lease, ends the turn unsettled
++ askQuestion({ question: "Which date column?" })   // midway, FIX-2131's tool on the collection's ask: drops the lease, ends the turn unsettled
 ```
 
 **What a reader sees, before and after the answer:**
@@ -124,7 +124,7 @@ read from the row each refresh, so nothing else closes it.
 | Already here | What this does with it |
 |---|---|
 | Ways to keep a row from starting: `held` (FIX-2080), and the one admission predicate `isClaimable` the claim path, wake probe and preview share (FIX-1005) | **Extended.** The open-questions predicate joins the admission helper once, not a new status ([D2](DECISIONS.md#d2)) |
-| Steers on the brief, kept on the row (FIX-2086), capped at 20 | **Builds on:** an answer is a keyed user steer; answers sit outside the 20 under their own question cap |
+| Steers on the brief, kept on the row (FIX-2086), capped at 20 | **Builds on:** an answer is a keyed user steer; each open question reserves its answer's place under the 20 (FIX-2131's rule, owned here) |
 | FIX-2086's owed steer turn: `waitingOn: "steer"`, no lease, started only by FIX-2078's wake, which is absent without `RequestWakes` (`request-host.ts`) | **Extended:** the claim gate can claim it on its same attempt ([D3](DECISIONS.md#d3)); FIX-2086's own late-steer turn gets the same backstop |
 | Claim tickets fenced by row, status and attempt (`internal.ts`, `attemptOwnsTask`) | **Extended** with a turn generation, since two turns now share an attempt (D3) |
 | The board's task actions as the signed-in user; the resume route's `callerReachesRequest` (`route-utils.ts`) | **Builds on** the first, scoped the way the second scopes ([D1](DECISIONS.md#d1)) |
