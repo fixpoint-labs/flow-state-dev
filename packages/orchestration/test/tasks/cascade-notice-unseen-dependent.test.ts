@@ -24,7 +24,8 @@ import { createFlowState, inMemoryStores, runAction, type StoreAdapter } from "@
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { z } from "zod";
 import { taskSettledEntry, type TaskSettledInput } from "../../src";
-import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection, type TaskCollectionRef } from "../../src/tasks";
+import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { withCascadeNamed } from "../../src/tasks/notice/task-settled-entry";
 
 const USER = "u_filer";
 /** The session that files both tasks: the one that must hear the failure. */
@@ -132,6 +133,29 @@ function cascadeFlow(heard: TaskSettledInput[], gate: { wait: Promise<void>; cla
     }
   })({ id: "cascade-board" });
 }
+
+describe("a touch that fails part way", () => {
+  it("still names the dependent it cancelled before failing, read off the board, not the notice as sent", async () => {
+    const filer = { sessionId: FILER };
+    const research = { id: "t_research", status: "errored", filer } as unknown as Task;
+    const rows: Task[] = [
+      research,
+      { id: "t_post", status: "pending", deps: [research.id], filer } as unknown as Task
+    ];
+    const ref = {
+      partition: undefined,
+      list: () => rows,
+      // Cancels the dependent, then the rest of the touch fails.
+      payOwedCascades: async () => {
+        rows[1] = { ...rows[1]!, status: "cancelled", causedBy: research.id };
+        throw new Error("store unavailable");
+      }
+    } as unknown as TaskCollectionRef;
+    const sent: TaskSettledInput = { boardId: BOARD, taskId: research.id, attempt: 1, ending: "errored", error: "down", cancelled: ["t_stale"] };
+    const notice = await withCascadeNamed({ ref, delivery: {} }, research, sent);
+    expect(notice.cancelled).toEqual(["t_post"]);
+  });
+});
 
 describe.each(STORES)("a failure-cascaded dependent is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {
   it("when the request that wrote the failure never saw the dependent", async () => {

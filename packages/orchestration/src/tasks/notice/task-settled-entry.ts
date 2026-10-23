@@ -123,9 +123,12 @@ async function boardOf(ctx: BlockContext, boardId: string) {
  * board after the ending: a touch here cancels such a dependent, and the
  * notice names it before the flow's block runs. A cascaded cancel owes no
  * notice of its own (FIX-2080 D2), so this notice is the filer's one hearing
- * of it. A touch that fails leaves the notice as it was sent.
+ * of it. The names are read off this request's board even when the touch
+ * fails part way, so a dependent it cancelled before failing is named too.
+ *
+ * @internal Exported for its tests.
  */
-async function withCascadeNamed(
+export async function withCascadeNamed(
   board: { ref: TaskCollectionRef; delivery: DeclaredDelivery },
   row: Task,
   notice: TaskSettledInput
@@ -134,11 +137,11 @@ async function withCascadeNamed(
   try {
     await board.ref.payOwedCascades?.();
   } catch {
-    return notice;
+    // What it cancelled before failing is named below; the rest waits for the next touch.
   }
+  const { cancelled: _sent, ...rest } = notice;
   const named = cancelledDependents(row, board.ref.list(), filerResolver(board.delivery, board.ref.partition));
-  for (const id of notice.cancelled ?? []) if (!named.includes(id)) named.push(id);
-  return named.length > 0 ? { ...notice, cancelled: named } : notice;
+  return named.length > 0 ? { ...rest, cancelled: named } : rest;
 }
 
 /**
