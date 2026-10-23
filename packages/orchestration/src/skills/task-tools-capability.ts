@@ -822,7 +822,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .optional()
       .describe(
         "The id of a task this one follows up. It runs in that task's session, with its " +
-          "worker, so leave assignee unset; if that session is still working a task, it starts " +
+          "worker, so leave assignee and target unset; if that session is still working a task, it starts " +
           "once that task ends.",
       ),
     held: z

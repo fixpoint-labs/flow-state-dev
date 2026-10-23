@@ -990,8 +990,11 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
 deadline is milliseconds from the call, five minutes by default, within the host's
-`waitDeadlines` bounds. At the deadline the task runs on and nothing is cancelled. If it ends
-before the waiting request does, that request's next `getTask` on it returns the ending. If
+`waitDeadlines` bounds. A task that already ended is returned at once, and no `onTaskSettled`
+follows for it when the flow's `onTaskSettled` waits behind the turn that filed the task, as
+Workforce's `respond` and `work` turns make it: the request still runs, but your block isn't
+called. At the deadline the task runs on and nothing is cancelled. If it ends before the
+waiting request does, that request's next `getTask` on it returns the ending. If
 the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
 task's own turn may wait too. A wait is refused when it would make a chain of more than five
 waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
@@ -1092,8 +1095,14 @@ finished task it answers `task_finished` and writes nothing. The collection side
 #### Following up on a finished task
 
 `createTask` takes `followUpOf` to file new work on a task: the follow-up
-is a new task, with the same worker, that runs in that task's session. It
-keeps that worker: `updateTask` won't move it
+is a new task, with the same worker, that runs in that task's session. Its
+row carries that task's `session`, `target` and `targetSessionId`, so a
+follow-up of a task filed with `session: "ongoing"`, or filed for a
+workstream, runs in that same session. If that session no
+longer exists, the follow-up runs nowhere else: its hand-over fails it with
+`session-not-found`, and its filer hears the failure. A follow-up takes no
+`session` or `target` of its own (`follow_up_takes_no_session`,
+`follow_up_takes_no_target`). It keeps that worker: `updateTask` won't move it
 (`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
 (`follow_up_takes_no_assignee`) and a task that never ran with a worker
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running

@@ -279,6 +279,30 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", session: "new" }));
       expect(refused.rule).toBe("follow_up_takes_no_session");
     });
+
+    it("refuses a follow-up that names a workstream target, and files nothing: it runs where its root ran", async () => {
+      const { tasks } = await makeBacking();
+      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", target: "launch" }));
+      expect(refused.rule).toBe("follow_up_takes_no_target");
+      expect(tasks.get("f")).toBeUndefined();
+    });
+
+    it("runs a follow-up where its root ran: the root's session and workstream are written on the row", async () => {
+      // A routed root (FIX-2083) ran in the delegate's ongoing session, or in a
+      // workstream's. A follow-up keyed by the root task alone would open a new
+      // session, without the root's history (FIX-2111).
+      const { seed } = await makeBacking();
+      const base = { attempts: 1, createdAt: 1_000, updatedAt: 1_000, revision: 2 } as const;
+      const routed = { session: "ongoing", target: "launch", targetSessionId: "dsx_workstream" } as const;
+      const tasks = await seed({ ...base, ...routed, id: "root", goal: "root", status: "completed", assignee: "writer", run: { sessionId: "dsx_workstream" } } as Task);
+      await tasks.addTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root" });
+      expect(tasks.get("root-f1")).toMatchObject({ session: "ongoing", target: "launch", targetSessionId: "dsx_workstream" });
+      // A follow-up of a root filed with no setting stays unset.
+      await tasks.addTask({ id: "plain", goal: "plain", assignee: "writer" });
+      await tasks.addTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain" });
+      expect(tasks.get("plain-f1")?.session).toBeUndefined();
+      expect(tasks.get("plain-f1")?.targetSessionId).toBeUndefined();
+    });
   });
 
   describe("the dependents cascade", () => {
