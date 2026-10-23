@@ -9,9 +9,8 @@
  *    the rule: the host can hold a wait (durable execution, wakes, a sweeper);
  *    the deadline is within the host's bounds; this session filed the task
  *    (its server-written filer, never input, BP-031); its result doesn't go
- *    to the conversation; it isn't a step a plan's drain handed over and
- *    waits on (the mark the drain's own wait writes on the slot, which
- *    stays while the slot is lapsed); one wait per model step; and the chain of waits it
+ *    to the conversation; it isn't an open step a plan's drain waits on;
+ *    one wait per model step; and the chain of waits it
  *    joins stays within `MAX_WAIT_DEPTH`: the waits above this request and
  *    any already below the task it waits on, counted by the engine. A wait
  *    that waits again at its deadline counts again before each new park,
@@ -248,9 +247,8 @@ async function check(
         "when it ends. Nothing was written."
     );
   }
-  // A step a plan's drain handed over and waits on. Read off the slot, which
-  // keeps the mark while it is lapsed: a wait that took it then would leave
-  // the drain nothing to wait with, and fail the plan.
+  // The drain mark stays on a lapsed slot. Taking it would leave the plan
+  // nothing to wait with.
   if (options.ownBoard !== true && row.wait?.drain === true && !isTerminalStatus(row.status)) {
     return refused(
       "wait_on_plan_step",
@@ -398,9 +396,8 @@ async function waitChecked(
     // The deadline. The slot lapses, unless the ending already won.
     const lapsed = await collection.lapseWait!(taskId, planned.gateId, requestId);
     if (lapsed.outcome === "declined") return ended(ctx, collection, taskId);
-    // Released at the request's end, waiting again or not: a drain that fails
-    // before its next mark leaves no lapsed slot, nor its `drain` mark, behind.
-    // One it marks again is live by then, and the release passes it by.
+    // Arm the release even when this request waits again: a throw before the
+    // next mark must not leave the lapsed slot.
     releaseAtRequestEnd(ctx, collection, taskId);
     if (options.waitAgain === true) continue;
     return { ok: true, task: collection.get(taskId) ?? row, ended: false };

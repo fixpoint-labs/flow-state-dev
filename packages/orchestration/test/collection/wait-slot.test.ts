@@ -87,7 +87,6 @@ describe.each(BACKINGS)("a row's wait slot (%s)", (_name, makeBacking) => {
     await tasks.markWait!("t", { ...slot("g1", "r1"), drain: true });
     expect(await tasks.lapseWait!("t", "g1", "r1")).toEqual({ outcome: "recorded" });
     expect((tasks.get("t") as Task).wait).toEqual({ gateId: "g1", deadline: 9_000, requestId: "r1", lapsed: true, drain: true });
-    // The drain waiting again marks it again; a plain wait's slot carries no mark.
     await tasks.markWait!("t", { ...slot("g2", "r1"), drain: true });
     expect((tasks.get("t") as Task).wait).toEqual({ gateId: "g2", deadline: 9_000, requestId: "r1", drain: true });
     await tasks.addTask({ id: "u", goal: "g", assignee: "ops" });
