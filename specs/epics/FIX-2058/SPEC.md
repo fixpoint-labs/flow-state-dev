@@ -10,7 +10,7 @@
 | **builds a worker that files work** | Answers its task's question with `answerTask`, a second tool; can't ask before a task starts | Answers a midway question with a steer, first answer wins; files a task held on questions |
 | **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, prompt, deadline? })`, 7 days by default; the flow decides at the deadline; a cancel or a stop closes the item |
 | **runs flows locally or self-hosted** | `fsdev run` with no app config refuses to stop for a person | Durable execution by default on file-backed hosts |
-| **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one hold, one answer path |
+| **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one hold, one trusted route per kind ([ER-7](DECISIONS.md#who-owns-what)) |
 
 **Why now.** FIX-2056 is in its last PRs (#3701, and #3692, its closure). Its claim gate already records a person's
 stop on the row (FIX-2077), a steer exists (FIX-2086), and the renames (FIX-2071) wait for this.
@@ -55,7 +55,7 @@ the Inbox shows the item as unanswerable (`shift-manager/src/lib/reads.ts:834-83
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2134), real model, in Shift Manager, on one `main` commit after every other child merges |
-| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes an approval's or a review's same attempt with its claim, and a held question's answer restarts the work from its brief on the same attempt, a task held before it starts on its first. Leg c: cancelling the task closes its item. Leg d: a steer into a task waiting on a person answers it or waits; no request runs beside it. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+| **Signal** | Leg a: each of the five kinds shows as one item. Leg b: an Inbox answer resumes an approval's or a review's same attempt with its claim, and a held question's answer restarts the work from its brief on the same attempt, a task held before it starts on its first. Leg c: cancelling the task closes its item. Leg d: a steer into a suspended task waits for the resume, and no request runs beside it; a steer naming a held question answers it, and one naming none answers nothing. A sweep: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
 | **Anti-game** | Assert on what the Inbox shows and on rows read through public task actions |
 | **Control that must fail** | Today's `main`: leg a, leg b for a task's stop, and the sweep. Every other check names its control, and each is run red at least once: a control never seen failing proves nothing |
 
@@ -110,7 +110,7 @@ flowchart LR
   I["FIX-2056 · claim gate, steer, getTask · consumed"] -.-> B
   K["FIX-2137 · a durable resume runs completed steps again"] -->|"a resume that runs once"| A
   K -->|"a resume that runs once"| B
-  K -->|"a resume that runs once"| E
+  K -.->|"may drop"| E
   A["FIX-2063 · durable by default"] -->|"durable stops and the sweeper"| B["FIX-2129 · a stop holds its task and resumes once"]
   B -->|"the person mark, the answer route"| D["FIX-2131 · questions and reviews"]
   I -.-> G["FIX-2133 · held on questions"]
@@ -124,7 +124,8 @@ flowchart LR
   G --> P
 ```
 
-An edge is what one issue hands the next; the dashed input is consumed, not owned. FIX-2056 blocks
+An edge is what one issue hands the next; the dashed input is consumed, not owned, and FIX-2137's
+dashed edge into FIX-2132 may drop. FIX-2056 blocks
 every child, drawn into the two that start first. FIX-2063 blocks the two that suspend; FIX-2133's
 hold needs neither it nor FIX-2129, and comes before the two that ask a question midway.
 
@@ -147,7 +148,7 @@ hold needs neither it nor FIX-2129, and comes before the two that ask a question
 | [FIX-2056 D3](../FIX-2056/DECISIONS.md#d3): retired rows read through FIX-2080's one map | **Extended** to parked rows ([ER-5](DECISIONS.md#who-owns-what)) |
 | #3696: a parked request gives back the session's key | **Kept**; the row's mark holds a person's stop instead ([D2](DECISIONS.md#d2)) |
 | Three copies of "is it a person's stop": the gate's `stopOf` (`task-request.ts`), `PERSON_REASONS` (`shift-manager/src/lib/reads.ts`) and the Lab send's own `stopOf` on it (`send.ts`) | **Replaced** by one predicate in `contracts` ([ER-1](DECISIONS.md#who-owns-what)) |
-| The Inbox can't answer a stop in a task's request: the public resume route refuses a `task` source, and opening it would re-enter a task's handler with caller data (BP-031) | **Replaced** by one answer route the server trusts ([ER-7](DECISIONS.md#who-owns-what)), FIX-2129 |
+| The Inbox can't answer a stop in a task's request: the public resume route refuses a `task` source, and opening it would re-enter a task's handler with caller data (BP-031) | **Replaced** by one trusted route per kind ([ER-7](DECISIONS.md#who-owns-what)), FIX-2129 |
 | [LAB-162](https://linear.app/fixpoint-labs/issue/LAB-162) ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612), closed unmerged as superseded): a coding run's question parks its task and is answered through the harness inbox; worker suspension is in its Not doing ([its D2](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/pi-harness/specs/epics/LAB-162/DECISIONS.md#d2), on FIX-1241 D-1) | **Superseded** by FIX-2132 and [D1](DECISIONS.md#d1); this epic keeps shared harness dispatch and a coding run continuing its saved session. LAB-164 closes as superseded on this epic's approval; LAB-163, the OMP slot, needs a fresh spec on `waitForUser` if still wanted ([decided in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
 
 | The debt | |
@@ -155,7 +156,7 @@ hold needs neither it nor FIX-2129, and comes before the two that ask a question
 | **Removes** | Both parks, the harness question inbox, `answerTask`, `unparkAndDrain`, `answerQuestion()`, two extra person-stop checks, the Inbox's unanswerable task stops |
 | **Adds** | `waitForUser`, one hold on questions with one pure answer-and-release write both store backings call ([ER-8](DECISIONS.md#who-owns-what)), a default deadline for a person's stop ([D3](DECISIONS.md#d3)), one trusted answer route, retired-shape map entries for parked rows |
 
-**Net: down.** Six forms and three answer paths become one suspension, one hold and one answer.
+**Net: down.** Six forms and three answer paths become one suspension, one hold and one trusted route per kind (ER-7).
 
 ## Sign off
 

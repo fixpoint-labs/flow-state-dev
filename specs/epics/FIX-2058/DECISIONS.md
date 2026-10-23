@@ -4,15 +4,15 @@
 
 The calls above any one issue. The owner decided the model in
 [`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md#inbox-items)
-(rules 11 and 12); D1 and D2 carry it out, and the owner decided D3, the one question it left.
+(rules 11 and 12); D1 and D2 carry it out, and the owner decided D3. Two things are open: renewed
+approval of the post-merge amendment, and what an unanswered question does at its deadline ([Open](#open)).
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  E["FIX-2058"] --> D1["D1 · durable by default first, no park kept as a fallback"]
+  E["FIX-2058"] --> D1["D1 · durable by default first, no park kept as a fallback; a question holds its task"]
   D1 -.->|"rejected"| X1["parks kept for hosts without durable execution"]
-  D1 --> Q["a question holds its task on the row; code-consumed answers suspend"]
   E --> D2["D2 · the row's person mark keeps a task's requests apart"]
   D2 -.->|"rejected"| X2["hold the session's key across the stop"]
   E --> D3["D3 · a person's stop has its own default deadline, 7 days"]
@@ -89,21 +89,21 @@ holds with no suspension to resume, and FIX-2132's spec confirms or drops that e
 | ER-4 | No task tool answers a stop for a person. The filer answers only a question its task asked midway, by a steer, and not on a routed task; approvals, reviews and questions asked at filing are the user's (rule 11) | FIX-2131 | Every later spec review; the closure sweep |
 | ER-5 | A row parked before the refactor is read through FIX-2080's one map ([FIX-2056 D3](../FIX-2056/DECISIONS.md#d3)), never a child's own read; a parked question maps to the hold ([ER-8](#who-owns-what)). States in flight between the refactor epics get no shim | FIX-2131 | FIX-2132's spec review |
 | ER-6 | Stopping for a person needs durable execution, on by default wherever stores persist. No child builds a path for a host without it; such a host refuses a suspension loudly. A question's hold needs none | FIX-2063 | Every spec review |
-| ER-7 | The Inbox answers each kind of item through one route the server trusts, and the server sets who answered. A suspension resumes through FIX-2129's route, without opening the public resume route to a `task` source (BP-031); a held question is answered by a steer from the user through the board's own `updateTask` action, which already acts as the signed-in user ([FIX-2133 D1](https://github.com/fixpoint-labs/flow-state-dev/pull/3747)). No child builds a third route | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; leg b |
-| ER-8 | One hold for a question. Open questions are a predicate on the task's row, whatever its status, and the claim gate refuses to claim a row that has any. The predicate is the one source of truth: a midway question on a running row has no `held` transition, so a status may at most be derived from it, never gate on its own. On a `pending` row it is the hold before start: no attempt yet, and a fresh budget on release. On an `in_progress` row with no lease it is the midway hold: the attempt and budget carry on, and re-entry is [FIX-2086](../../issues/FIX-2086/DECISIONS.md#d2)'s owed steer turn. Both share one write: answering, marking the question, the steer and the release when it was the last are one collection write, a single pure function both store backings call. Both share one Inbox item shape; one answer path, a steer, where the first answer wins unless a cancel is already written; one settle guard, a task never settling while a question is open; and one deadline, a sweeper on the row's question deadline, 7 days by default ([D3](#d3)), paid as a board debt (rule 8) so it needs no durable execution. It is never the `parked` status, nor `held`: the filer's hold stays a status, and the question's hold is the predicate on either status, and there is no `answerTask` | FIX-2133 | FIX-2131's and FIX-2132's spec review; legs a and b |
+| ER-7 | The Inbox answers each kind of item through one route the server trusts, and the server sets who answered. A suspension resumes through FIX-2129's route, without opening the public resume route to a `task` source (BP-031) ([FIX-2129's spec](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2129/specs/issues/FIX-2129/DECISIONS.md), #3735, pending merge); a held question is answered by a steer from the user through the board's own `updateTask` action, which already acts as the signed-in user ([FIX-2133 D1](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2133/specs/issues/FIX-2133/DECISIONS.md#d1), #3747, pending merge). No child builds a third route | FIX-2129; FIX-2133 builds the question leg | FIX-2131's, FIX-2132's and FIX-2133's spec review; leg b |
+| ER-8 | One hold for a question. Open questions are a predicate on the task's row, whatever its status, and the one source of truth: the claim gate never claims a row that has one and the settle guard never settles it; a status is at most derived from it. Before start it sits on a `pending` row; midway, on an `in_progress` row with no lease, re-entered by [FIX-2086](../../issues/FIX-2086/DECISIONS.md#d2)'s owed steer turn. Every change to it is one pure write both store backings call, beside the predicate in `orchestration/src/tasks/collection/` (where `field-rules.ts` already serves both): asking midway adds the question, drops the lease and ends the turn unsettled; a steer answers only the question it names, marks it, and releases the hold on the last, while a steer naming none answers nothing; the deadline closes the question, adds a "no answer came" steer and releases ([Open](#open)). One deadline: the board's debt pass (rule 8) on the row's question deadline, 7 days by default ([D3](#d3)), not `durability-sweeper.ts`. The word stays *hold*, the concept's *held on questions*: the filer's `held` status and a suspension's person mark keep their own names, and renames are FIX-2071's. The detail is [FIX-2133's](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2133/specs/issues/FIX-2133/DECISIONS.md) (#3747, pending merge) | FIX-2133 | FIX-2131's and FIX-2132's spec review; legs a and b |
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
 | The claim gate's stop arm (`orchestration/src/task-board/task-request.ts`, `stopOf`) | FIX-2129 keys it on ER-1's predicate, records the suspension on the row, and adds the cancel and the user's stop; FIX-2133 adds the refusal of a row with an open question and the settle guard (ER-8) |
-| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2137 makes a resume skip its completed steps with trace observability off; FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind, the person-stop default deadline ([D3](#d3)), which FIX-2133's question deadline reads too (whichever merges first adds the host setting), the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) stays for waits on work: `waitForUser` shares its words answered and deadline, not their shape or its mechanism, and adds `cancelled` (ER-1) |
+| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2137 makes a resume skip its completed steps with trace observability off; FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind, the person-stop default deadline ([D3](#d3)) and its host setting, which FIX-2133's question deadline reads (a 7-day constant until it lands), the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) stays for waits on work: `waitForUser` shares its words answered and deadline, not their shape or its mechanism, and adds `cancelled` (ER-1) |
 | The answer route (`engine/src/routes/resume-routes.ts`, its public re-entry check; `shift-manager/src/lib/reads.ts`, `REOPENED_SOURCES`) | FIX-2129 builds ER-7's route for suspensions, and FIX-2131's reviews answer through it. FIX-2133 answers a held question through the board's `updateTask` action, and FIX-2131 and FIX-2132 reuse it |
 | Steer admission (`workforce/src/conversation-board/steer.ts`, `task-admission.ts`) | FIX-2113's gate stays for plan waits. FIX-2131 makes a steer into a task waiting on a person wait (ER-2) and a steer into a held question answer it (ER-8); FIX-2132 makes that answer start the next coding run in the same coding session |
 | The Inbox read (`shift-manager/src/lib/reads.ts`, `send.ts`, `surfaces/Inbox.tsx`) | FIX-2131 lists reviews through ER-1's predicate and moves `reads.ts` and `send.ts` onto it; FIX-2133 lists held questions, before start and midway, read from task rows; FIX-2131 and FIX-2132 add nothing a held question doesn't |
-| The task tools and the closure sweep (`orchestration/src/skills/task-tools-capability.ts`; `rules.mjs` on `fix/FIX-2087`) | FIX-2131 removes `answerTask` and `parkOnQuestion` and their allowances in the sweep |
+| The task tools and the closure sweep (`orchestration/src/skills/task-tools-capability.ts`; `rules.mjs` on `fix/FIX-2087`) | FIX-2131 removes `answerTask` and `parkOnQuestion` and their allowances in the sweep. Its midway ask calls ER-8's write; what the request did before asking stands (its writes, messages and last checkpoint), and the next turn starts from the brief, that checkpoint and the answer |
 | FIX-2080's retired-shape map (`orchestration/src/tasks/collection/`) | FIX-2131 adds the parked question and review entries (ER-5); FIX-2132 the harness's. A parked question maps onto the hold, so both wait on FIX-2133, as the graph shows |
-| The hold (`updateTask` `status: "held"`, FIX-2080, and the row's open questions) | FIX-2133 owns the hold on questions (ER-8): the row predicate on `pending` and `in_progress` rows, the deadline sweeper, released by its last answer, never by `status`. FIX-2131 and FIX-2132 ask on it |
+| The hold (`updateTask` `status: "held"`, FIX-2080, and the row's open questions) | FIX-2133 owns the hold on questions (ER-8) and its one write. FIX-2131 and FIX-2132 ask through it |
 
 ## Decided in review, recorded so no child reopens them
 
@@ -161,8 +161,8 @@ After the merge (owner, 2026-10-23):
   on `pending` and `in_progress` rows alike, and a status for the pre-start case would make it
   two. Its midway case is the owner's, and joins it.
 - **FIX-2137 joins the set** as a direct-route bug, no spec: a durable resume with trace
-  observability off runs completed steps again. It blocks FIX-2063's default flip, FIX-2129's
-  approval resumes and FIX-2132.
+  observability off runs completed steps again. It blocks FIX-2063's default flip and FIX-2129's
+  approval resumes; its edge to FIX-2132 may drop ([who owns what](#who-owns-what)).
 
 ## What the end-state POC showed
 

@@ -220,8 +220,8 @@ with no request on it, its attempt and budget carrying on. Each answer is a stee
 answer to a question wins unless a cancel is already written. The last answer releases the hold: a
 held task starts, a running one takes one more turn on the same attempt, picking up from its brief.
 Its dependents wait until then, and a task with an open question never settles. At the question's
-deadline, 7 days by default, the hold releases and the work goes on, its brief saying no answer
-came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
+deadline, 7 days by default, the hold releases; proposed, not yet decided: the work goes on, its
+brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
 so it is input, and suspends.
 
 **Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })` when its code reads
@@ -231,14 +231,15 @@ reads; a revision request is new direction, a steer into a held task. A waited-o
 stop for a person. If the request works a task, the claim gate marks it waiting on a person; it
 keeps its claim, and the resume carries on the same attempt.
 
-| A stop for a person resumes once | When | The suspended block |
+| A suspension resumes once | When | The suspended block |
 | -- | -- | -- |
 | Answered | The first answer, in the Inbox or the task's session | Carries on with it |
 | Deadline | No answer by then | **Handles** it: goes ahead without the answer, ends, or suspends again with a new deadline (a **check-in**), perhaps messaging its filer first. Unhandled, an approval counts as rejected and a review or input errors, using an attempt |
 | Cancelled | Its task is cancelled; the item closes | Resumes at once with `cancelled` and runs to its end: it may clean up and send messages, its writes to the task are refused, anything it creates is cancelled with it, and nothing it returns is recorded |
 
 **The filer hears its task's questions.** A question asked midway reaches the task's filer as a
-message from the task's session, for its `receive`. The filer may answer it by a steer (rule 11) or
+message from the task's session, for its `receive` (delivered by FIX-2070; until then the filer reads
+it with `getTask`). The filer may answer it by a steer (rule 11) or
 leave it to the user; the first answer closes the item. The task's row holds its open questions, and
 records which suspension holds it, so `getTask` and `listTasks` show what the task waits on.
 
@@ -413,7 +414,7 @@ A behavior none of these rules explains is a bug in the model.
 11. Every stop for a person is one Inbox item: a request suspended by `waitForUser` for an approval,
     a review or input its code reads next, or a task held on questions, before it starts or midway.
     Only the user answers approvals, reviews and questions asked at filing; a question asked midway
-    is also messaged to the filer, which may answer it by a steer unless the task is routed.
+    is also messaged to the filer (FIX-2070), which may answer it by a steer unless the task is routed.
 12. A stop for a person ends once: answered, deadline or cancelled; a user stopping its request
     instead ends it and cancels its task. A suspended task keeps its claim. A task with an open
     question is never claimed and never settles; its last answer releases it.
@@ -474,7 +475,7 @@ rest.
 | Dispatch, `dispatch`, dispatcher | Start work in another session; the pass that drains a delegation board; the block that does it, waiting for the result when its `wait` is true, set or followed from a plan board (a waited dispatch) |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; not started until the filer releases it; not claimed while it has an open question, asked at filing or midway, and never waiting on a person |
-| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, or with filed tasks open; its request suspended by `waitForUser` |
+| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, with filed tasks open, or held midway on a question with no lease; its request suspended by `waitForUser` |
 | Ending: done, failed, cancelled | Rule 6 met; out of attempts; cancelled |
 | Finished, open, settle | Ended; not ended; record a row's ending |
 | Attempt | One try at a task: every request working it in that try, resumes included; `maxAttempts` caps them |
@@ -486,7 +487,8 @@ rest.
 | Debt, due time, durability sweeper | What a row owes; when it's due, a few seconds out; the engine's pass that pays it |
 | Send, call, call id, budget | A message returning nothing; one whose sender waits; the call's message id, which its result is kept under; how many messages a request may still send |
 | Inbox, Inbox item | The user's screen of open Inbox items; one stop for a person: a request suspended by `waitForUser`, or a task held on questions, before it starts or midway |
-| Approval, review, input, question | `waitForUser`'s kinds: yes or no; the user accepts work or sends it back; a value its code reads next. A question is an answer in words its task holds on |
+| Approval, review, input | `waitForUser`'s kinds: yes or no; the user accepts work or sends it back; a value its code reads next |
+| Question | An answer in words its task holds on, on the row, never a `waitForUser` kind |
 | Delegate, coordinator | A worker a session may file tasks with; a worker that routes a user's messages |
 | Routed task, fit check, fallback, rounds | A task with routing's settings, which a judgment coordinator chooses per task; the model call that picks a delegate for best fit, or vets the lead a worker picked when opening a workstream; the delegate the coordinator names to take a weak pick; up to 3 passes sending answers back out |
 | Project, workstream, lead, evaluator | A body of a user's work a coordinator runs, with its own conversation; a piece of a project; the worker that runs it; a block that judges input |
