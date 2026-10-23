@@ -870,7 +870,7 @@ belongs under the epic: the closure worker files it through `issue-manager` with
 parent and a blocks relation to the closure issue, and it is admitted like any other row (over
 the cap it queues, it is never left out). Its merge is what lets the next closure run start.
 A check another epic's merge only made stale is not one: the closure worker updates it and
-re-runs it in the same run.
+re-grades it in the same run.
 **Every other admitted child blocks the closure issue too.** On the wake that first sees a new
 child (from intake or discovery), write its blocks relation to the closure issue: one Linear call,
 like a status mirror. When the owner drops a closure finding, remove that relation in the same
