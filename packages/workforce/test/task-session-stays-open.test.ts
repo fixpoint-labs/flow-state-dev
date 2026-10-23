@@ -191,6 +191,20 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
+  it("refuses a follow-up that names a target, and files nothing: it runs where its root ran (FIX-2111)", async () => {
+    const h = plain();
+    try {
+      const conv = await h.conversation("alice", "lead");
+      const root = await file(h, conv, { goal: "Draft the plan", assignee: "eng.tasker" });
+      await h.settled();
+      const refused = await file(h, conv, { goal: "Now open the PR", followUpOf: root.taskId, target: "nope/none" });
+      expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_target: /) });
+      expect((await h.rows("alice")).some((r) => r.goal === "Now open the PR")).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("keeps two conversations apart: each follows up its own task, in its own session (BR-23)", async () => {
     const h = plain();
     try {

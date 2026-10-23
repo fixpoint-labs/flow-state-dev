@@ -451,6 +451,29 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     ]);
   });
 
+  it("fails a follow-up whose workstream session is gone, and the conversation hears it (FIX-2111)", async () => {
+    const judgment = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } }]);
+    const h = await boot({ judgment });
+    const opened = await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." })).settled).toBe("completed");
+    await h.settled();
+    const listed = (await h.ok("alice", COORDINATOR_FLOW, id, "listTasks_tasks", {})) as { tasks: Array<{ id: string }> };
+    // The session the routed task ran in, and its follow-up would run in, no longer exists.
+    await h.runtime.stores.session.delete(opened.workstream.sessionId);
+    const followUp = await h.act("alice", COORDINATOR_FLOW, id, "createTask_tasks", { goal: "Now a shorter version", followUpOf: listed.tasks[0]!.id });
+    const filed = followUp.output as { ok: boolean; taskId?: string };
+    expect(filed).toMatchObject({ ok: true });
+    await h.settled();
+    // It never runs anywhere else: the hand-over fails it, naming the missing session.
+    const row = (await h.ok("alice", COORDINATOR_FLOW, id, "getTask_tasks", { id: filed.taskId })) as { task: { status: string; error?: string } };
+    expect(row.task).toMatchObject({ status: "errored", error: expect.stringContaining("session-not-found") });
+    expect(h.heard).toHaveLength(1);
+    // The conversation hears it, once.
+    const { messages } = await h.items(id);
+    expect(messages.filter((m) => m.text.includes(filed.taskId!) && m.text.includes("failed for good"))).toHaveLength(1);
+  });
+
   it("refuses a task with no assignee and no target when her only delegate is a workstream's lead, rather than run it outside the workstream (FIX-2083)", async () => {
     const h = await boot();
     await h.open("alice", "checkout", "alice-lead");

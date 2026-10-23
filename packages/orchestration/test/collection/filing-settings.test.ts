@@ -280,6 +280,13 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       expect(refused.rule).toBe("follow_up_takes_no_session");
     });
 
+    it("refuses a follow-up that names a workstream target, and files nothing: it runs where its root ran", async () => {
+      const { tasks } = await makeBacking();
+      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", target: "launch" }));
+      expect(refused.rule).toBe("follow_up_takes_no_target");
+      expect(tasks.get("f")).toBeUndefined();
+    });
+
     it("runs a follow-up where its root ran: the root's session and workstream are written on the row", async () => {
       // A routed root (FIX-2083) ran in the delegate's ongoing session, or in a
       // workstream's. A follow-up keyed by the root task alone would open a new
