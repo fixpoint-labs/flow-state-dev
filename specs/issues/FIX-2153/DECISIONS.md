@@ -83,13 +83,14 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   the view that lists it, never stored. FIX-2157 adds threads mode as the *Projects* entry
   and a status-board pane that reads the same `listTasks` rows. The *Projects* view shows
   disabled until then.
-- **Session mode has one small flow: the main worker's loop-back.** At the end of a turn it
-  checks for tasks that settled while the turn ran and, if any, loops back to the generator in
-  the same request (epic D2, the product owner's call). It is built at wiring and must stay
+- **Session mode adds one block, not a flow: the main worker's `answerAgain` source.** When the
+  answer ends, the package's answer-again step asks it; it calls `takeFinishedTasks` for tasks
+  that settled while the turn ran and returns a message or nothing, and the package answers
+  again in the same request under its one cap (epic D2, the product owner's call; FIX-2159's shape). It is built at wiring and must stay
   under 200 lines. `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
   The take it calls is FIX-2159's, on FIX-2078's one path with the "taken in request R" mark, so
   the deferred notice skips and each ending is heard once (ER-6). The lab owns only the
-  decision to loop. The front end needs no change for it: the card reads the item the take emits.
+  source block. The front end needs no change for it: the card reads the item the take emits.
 - **The inventory check is owned here** (ER-1). It classifies every tracked file under the lab
   as config, UI or flow by path, counts lines, writes the README table, and fails on any file
   it can't classify and on a flow over 200 lines. Its negative control plants `src/glue.ts`
@@ -101,7 +102,7 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   `fixture:` marker, not an issue id (BP-006); the README lists which gap each one stands for, and
   the closure greps for the marker. This is how ER-5's "carries the gap's issue id" is met.
 - **A coding harness runs only on delegated workers.** The main session stays on our generator,
-  because the loop-back owns its turn. `desk.coder` runs on the lab's one `coder` flow (epic
+  because the answer-again step owns its turn. `desk.coder` runs on the lab's one `coder` flow (epic
   ER-9). It builds one `harnessManager({ harness, workspace, ledgers })` per harness, each with
   `localWorkspaceHost({ source: projectWorkspace() })`, and runs each task through the one the
   worker's own `harness:` setting names. The hire passes that line to the flow as a setting
@@ -140,7 +141,8 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   Signal 4 now names the first request, and a late settle must still get a model step.
 - **Product owner's answers:** the mode comes from the view you're in (*Sessions* or
   *Projects*), not from a choice at *New session*. A result reaches the running turn through
-  the lab's own flow looping back at turn end. The take stays FIX-2159's, on FIX-2078's one
+  a turn that answers again at its end. It was first written as the lab's own flow looping back;
+  FIX-2159's spec moved the loop into the package, so the lab supplies only the source block. The take stays FIX-2159's, on FIX-2078's one
   path, so an ending is heard once; the epic's D2 is amended to match.
 - **Product lead's second ask:** a working directory per session (D3, with the gap that lets
   an ordinary session open on a project) and a coding harness on delegated workers only. The
