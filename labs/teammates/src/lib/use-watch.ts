@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import type { Unsubscribe } from "../adapter";
 
 /**
- * The latest value a `watch*` function reports, re-subscribing when `deps`
- * change. `undefined` until the first report.
+ * The latest value a keyed `watch*` reports. `undefined` until the first
+ * report, and while `key` is missing.
  */
-export function useWatch<T>(subscribe: (onChange: (value: T) => void) => Unsubscribe, deps: readonly unknown[]): T | undefined {
+export function useWatch<T>(watch: (key: string, onChange: (value: T) => void) => Unsubscribe, key: string | undefined): T | undefined {
   const [value, setValue] = useState<T>();
   useEffect(() => {
     setValue(undefined);
-    return subscribe(setValue);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+    if (key === undefined) return;
+    return watch(key, setValue);
+  }, [watch, key]);
   return value;
 }
 

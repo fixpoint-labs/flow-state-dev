@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { LabAdapter, WorkerRow } from "../adapter";
 import { waitingOn } from "../lib/talk";
+import { useSeen } from "../lib/unread";
 import { age, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 
@@ -17,18 +18,17 @@ export function WorkersList({
   workers,
   sessions,
   selected,
-  seen,
+  nameOf,
   onSelect,
-  onSeen,
 }: {
   adapter: LabAdapter;
   workers: WorkerRow[];
   sessions: Record<string, string>;
   selected: string | undefined;
-  seen: Record<string, number>;
+  nameOf: (id: string) => string;
   onSelect: (worker: string) => void;
-  onSeen: (worker: string, count: number) => void;
 }) {
+  const [seen, markSeen] = useSeen();
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
@@ -38,12 +38,12 @@ export function WorkersList({
             <WorkerItem
               adapter={adapter}
               worker={w}
-              names={workers}
+              nameOf={nameOf}
               sessionId={sessions[w.id]}
               selected={w.id === selected}
               seen={seen[w.id]}
               onSelect={() => onSelect(w.id)}
-              onSeen={(count) => onSeen(w.id, count)}
+              onSeen={(count) => markSeen(w.id, count)}
             />
           </li>
         ))}
@@ -56,7 +56,7 @@ export function WorkersList({
 function WorkerItem({
   adapter,
   worker,
-  names,
+  nameOf,
   sessionId,
   selected,
   seen,
@@ -65,7 +65,7 @@ function WorkerItem({
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
-  names: WorkerRow[];
+  nameOf: (id: string) => string;
   sessionId: string | undefined;
   selected: boolean;
   seen: number | undefined;
@@ -73,12 +73,9 @@ function WorkerItem({
   onSeen: (count: number) => void;
 }) {
   const now = useNow();
-  const activity = useWatch((emit: Parameters<LabAdapter["watchActivity"]>[1]) => adapter.watchActivity(worker.id, emit), [adapter, worker.id]);
-  const talk = useWatch((emit: Parameters<LabAdapter["watchTalk"]>[1]) => adapter.watchTalk(worker.id, emit), [adapter, worker.id]) ?? [];
-  const view = useWatch(
-    (emit: Parameters<LabAdapter["watchConversation"]>[1]) => (sessionId ? adapter.watchConversation(sessionId, emit) : () => {}),
-    [adapter, sessionId],
-  );
+  const activity = useWatch(adapter.watchActivity, worker.id);
+  const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
+  const view = useWatch(adapter.watchConversation, sessionId);
   const count = view ? unreadable(view.entries) : undefined;
   // The open conversation is seen as it grows; a worker never seen starts with nothing unread.
   useEffect(() => {
@@ -86,7 +83,6 @@ function WorkerItem({
   }, [count, selected, seen, onSeen]);
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
-  const nameOf = (id: string) => names.find((n) => n.id === id)?.name ?? id;
   const waiting = waitingOn(worker.id, talk);
   const status = activity?.running
     ? "working"

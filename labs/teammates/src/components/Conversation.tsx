@@ -26,9 +26,9 @@ export function Conversation({
   talkOpen: boolean;
   onToggleTalk: () => void;
 }) {
-  const view = useWatch((emit: Parameters<LabAdapter["watchConversation"]>[1]) => adapter.watchConversation(sessionId, emit), [adapter, sessionId]);
-  const mark = useWatch((emit: Parameters<LabAdapter["watchWindow"]>[1]) => adapter.watchWindow(sessionId, emit), [adapter, sessionId]);
-  const talk = useWatch((emit: Parameters<LabAdapter["watchTalk"]>[1]) => adapter.watchTalk(worker.id, emit), [adapter, worker.id]) ?? [];
+  const view = useWatch(adapter.watchConversation, sessionId);
+  const mark = useWatch(adapter.watchWindow, sessionId);
+  const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries);

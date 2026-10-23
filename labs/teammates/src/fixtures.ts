@@ -12,16 +12,7 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
  */
-import type {
-  Activity,
-  ConversationEntry,
-  ConversationView,
-  LabAdapter,
-  TalkRow,
-  Unsubscribe,
-  WindowMark,
-  WorkerRow,
-} from "./adapter";
+import type { ConversationEntry, LabAdapter, TalkRow, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
 
 /** How the fixtures keep time, and what they stand in for. */
 export interface FixtureOptions {
@@ -247,8 +238,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return watch(() => {
         const w = bySession(sessionId);
         if (!w) return;
-        const view: ConversationView = { entries: w.entries, running: w.running };
-        onChange(view);
+        onChange({ entries: w.entries, running: w.running });
       });
     },
 
@@ -259,8 +249,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     watchActivity(workerId, onChange) {
       return watch(() => {
         const w = worker(workerId);
-        const activity: Activity = { running: w.running, lastActiveAt: w.lastActiveAt };
-        onChange(activity);
+        onChange({ running: w.running, lastActiveAt: w.lastActiveAt });
       });
     },
 

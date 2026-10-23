@@ -3,7 +3,6 @@ import type { LabAdapter, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
-import { useSeen } from "./lib/unread";
 
 /**
  * The screen: the workers on the left, the chosen worker's one conversation
@@ -15,7 +14,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
   const [talkOpen, setTalkOpen] = useState(true);
-  const [seen, markSeen] = useSeen();
 
   useEffect(() => {
     let live = true;
@@ -40,7 +38,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
       style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
-      <WorkersList adapter={adapter} workers={workers} sessions={sessions} selected={selected} seen={seen} onSelect={setSelected} onSeen={markSeen} />
+      <WorkersList adapter={adapter} workers={workers} sessions={sessions} selected={selected} nameOf={nameOf} onSelect={setSelected} />
       {worker && sessionId ? (
         <Conversation
           adapter={adapter}

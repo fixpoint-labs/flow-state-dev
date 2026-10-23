@@ -9,7 +9,7 @@ import { useWatch } from "../lib/use-watch";
  * an exchange, talk to either worker.
  */
 export function TalkPanel({ adapter, worker, nameOf, onClose }: { adapter: LabAdapter; worker: WorkerRow; nameOf: (id: string) => string; onClose: () => void }) {
-  const rows = useWatch((emit: Parameters<LabAdapter["watchTalk"]>[1]) => adapter.watchTalk(worker.id, emit), [adapter, worker.id]) ?? [];
+  const rows = useWatch(adapter.watchTalk, worker.id) ?? [];
   const groups = groupTalk(worker.id, rows);
   // The most recent group starts open; a toggle overrides it.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
