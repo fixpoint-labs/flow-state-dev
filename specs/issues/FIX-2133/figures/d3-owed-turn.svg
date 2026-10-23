@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, what must land before a task can be held on questions. Chosen: FIX-2056 alone. Instead of: FIX-2063 and FIX-2129 as well, as the epic&#x27;s set table has them. It comes down to the first row, what the held start uses: only row writes on a durable board, while the two blockers deliver suspension, deadlines and an answer route it never uses. The price is the second row: its Inbox change lands beside FIX-2131&#x27;s in the same files, merged separately. The third row is a tie: FIX-2134&#x27;s closure proves it either way. Locks in: an epic amendment dropping two edges, so it ships even if FIX-2063&#x27;s kill line fires. Flips if a held question must expire at a deadline."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, how a midway task gets its turn back after the last answer. Chosen: an owed-turn mark on the row that the claim gate can claim for the same attempt, with a turn generation on every claim. Instead of: the wake alone, with claim tickets fenced by attempt. It comes down to the first row, a host with no wake: the claim gate claims the row, where the wake alone leaves it stranded. The price is the second row: two starters for one turn, made safe by the generation fence, where the wake alone has one starter. The third row is a tie: the same attempt and no budget spent either way. Locks in: the mark, the lease fences and the generation checked by every claim-ticket write. Flips if the wake became one write with the row on every host."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -32,69 +32,62 @@
     .c-acc  { fill:var(--accent); }
   </style>
   <rect class="bg" x="0" y="0" width="940" height="420"/>
-
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">What must land before a task can be held on questions?</text>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a midway task get its turn back after the last answer?</text>
   </g>
-
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">FIX-2056 alone</text>
+    <text class="t-h c-code" x="228" y="112">An owed mark the claim gate claims</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">FIX-2063 and FIX-2129 as well</text>
+    <text class="t-h c-lost" x="592" y="112">The wake alone, fenced by attempt</text>
   </g>
-
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT THE</text>
-    <text class="t-lbl" x="32" y="169">HELD START USES</text>
+    <text class="t-lbl" x="32" y="156">A HOST WITH</text>
+    <text class="t-lbl" x="32" y="169">NO WAKE</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Only what it touches</text>
-    <text class="t-s" x="248" y="179">row writes on a durable board</text>
+    <text class="t-b" x="248" y="161">The claim gate claims it</text>
+    <text class="t-s" x="248" y="179">the debt is on the row</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Parts it never uses</text>
-    <text class="t-s" x="612" y="179">nothing suspends, nothing expires</text>
+    <text class="t-b" x="612" y="161">The row is stranded</text>
+    <text class="t-s" x="612" y="179">in progress, no lease, nothing owed</text>
   </g>
-
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">MERGE ORDER</text>
+    <text class="t-lbl" x="32" y="222">WHO STARTS IT</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Lands beside FIX-2131</text>
-    <text class="t-s" x="248" y="241">same Inbox files, merged separately</text>
+    <text class="t-b" x="248" y="223">Two starters, one turn</text>
+    <text class="t-s" x="248" y="241">the generation fence picks one</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Lands after its neighbours</text>
-    <text class="t-s" x="612" y="241">one Inbox change at a time</text>
+    <text class="t-b" x="612" y="223">One starter</text>
+    <text class="t-s" x="612" y="241">the wake</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
-
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">PROVED BY</text>
+    <text class="t-lbl" x="32" y="280">THE ATTEMPT</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">FIX-2134&#x27;s closure</text>
-    <text class="t-s" x="248" y="299">on one main commit</text>
+    <text class="t-b" x="248" y="281">Same attempt, uncharged</text>
+    <text class="t-s" x="248" y="299">FIX-2086&#x27;s turn</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">FIX-2134&#x27;s closure</text>
+    <text class="t-b" x="612" y="281">Same attempt, uncharged</text>
     <text class="t-s" x="612" y="299">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
-
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">An epic amendment: two edges go</text>
-    <text class="t-s" x="32" y="389">it ships even if FIX-2063&#x27;s kill line fires</text>
+    <text class="t-b" x="32" y="371">the mark, two lease fences, a turn generation</text>
+    <text class="t-s" x="32" y="389">checked by ask, renew, complete, fail, settle</text>
   </g>
-
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A held question must expire</text>
-    <text class="t-s" x="494" y="389">then it needs the sweeper and the deadline</text>
+    <text class="t-b" x="494" y="371">The wake lands in the row&#x27;s own write</text>
+    <text class="t-s" x="494" y="389">on every host; the generation stays</text>
   </g>
 </svg>

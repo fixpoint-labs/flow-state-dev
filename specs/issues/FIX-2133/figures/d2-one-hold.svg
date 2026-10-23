@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, what a task held on questions reads as its status. Chosen: held, with its questions on the row. Instead of: pending, skipped by every start path while a question is open. It comes down to the first row, how many places must refuse to start it: with held, one, the release write, since every start path already skips held; with pending, every start path needs a new guard. The price is the second row: a reader of held must read the questions to know who releases it, where pending reads as the concept&#x27;s glossary words it. The third row is a tie: the board counts it as outstanding either way. Locks in: status held plus questions, and the glossary amended to held. Flips if a filer must be able to release it unanswered."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what the hold is on the row. Chosen: the open-questions predicate, on any status. Instead of: a held status for a task held before its start. It comes down to the first row, how many gates cover both cases: one predicate covers a pending row and a running one; a status covers only the pre-start case and needs a second gate for midway. The price is the second row: every start path reads the predicate, through one shared admission helper, where held is already skipped. The third row is a tie: dependents wait either way. Locks in: questions on the row, open while no steer carries the key. Flips if a start path can&#x27;t go through the shared helper."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -32,69 +32,62 @@
     .c-acc  { fill:var(--accent); }
   </style>
   <rect class="bg" x="0" y="0" width="940" height="420"/>
-
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">What does a task held on questions read as its status?</text>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What holds a task on questions, before its start and midway?</text>
   </g>
-
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">held, with its questions on the row</text>
+    <text class="t-h c-code" x="228" y="112">Open questions on the row, any status</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">pending, skipped while a question is open</text>
+    <text class="t-h c-lost" x="592" y="112">status held for the pre-start hold</text>
   </g>
-
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">PLACES THAT</text>
-    <text class="t-lbl" x="32" y="169">MUST REFUSE A START</text>
+    <text class="t-lbl" x="32" y="156">GATES FOR</text>
+    <text class="t-lbl" x="32" y="169">BOTH CASES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">One: the release write</text>
-    <text class="t-s" x="248" y="179">every start path already skips held</text>
+    <text class="t-b" x="248" y="161">One predicate</text>
+    <text class="t-s" x="248" y="179">pending and in_progress alike</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Every start path</text>
-    <text class="t-s" x="612" y="179">claim, drain, dispatch, a dependent</text>
+    <text class="t-b" x="612" y="161">A status, plus a second gate</text>
+    <text class="t-s" x="612" y="179">a running row can&#x27;t read held</text>
   </g>
-
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">WHAT A READER SEES</text>
+    <text class="t-lbl" x="32" y="222">START PATHS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">held: read questions to know</text>
-    <text class="t-s" x="248" y="241">who releases it</text>
+    <text class="t-b" x="248" y="223">Each reads the predicate</text>
+    <text class="t-s" x="248" y="241">through one shared admission helper</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">pending, as the glossary words it</text>
-    <text class="t-s" x="612" y="241">the concept, as written</text>
+    <text class="t-b" x="612" y="223">Already skip held</text>
+    <text class="t-s" x="612" y="241">claim, drain, dispatch, preview</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
-
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">THE BOARD&#x27;S COUNT</text>
+    <text class="t-lbl" x="32" y="280">DEPENDENTS</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">counts.held</text>
-    <text class="t-s" x="248" y="299">outstanding, holds the board</text>
+    <text class="t-b" x="248" y="281">Wait for completed</text>
+    <text class="t-s" x="248" y="299">no new rule</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">counts.pending</text>
-    <text class="t-s" x="612" y="299">outstanding, holds the board</text>
+    <text class="t-b" x="612" y="281">Wait for completed</text>
+    <text class="t-s" x="612" y="299">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
-
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">status held plus questions</text>
-    <text class="t-s" x="32" y="389">the concept&#x27;s glossary is amended to held</text>
+    <text class="t-b" x="32" y="371">questions on the row, open while unanswered</text>
+    <text class="t-s" x="32" y="389">no stored answered flag; held derived only</text>
   </g>
-
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A filer must release it unanswered</text>
-    <text class="t-s" x="494" y="389">then it is a different hold</text>
+    <text class="t-b" x="494" y="371">A start path can&#x27;t read the helper</text>
+    <text class="t-s" x="494" y="389">then it needs its own guard</text>
   </g>
 </svg>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="A grid of six moments of a task that needs an answer before it starts, today and after. Filing it: today, nowhere to ask, held: true at most; the question goes in the goal, or nowhere; after, held on questions, createTask takes questions; the row reads held. The user&#x27;s inbox: today, nothing shows, a held task waits unseen until its filer releases it; after, one item at once, every question on it, read from the row on each refresh. The first answer: today, no answer to give, the filer can steer, but a steer only joins the brief; after, kept, still held, the user&#x27;s steer, tied to its question; nothing starts. The last answer: today, n/a, the filer releases it, answered or not; after, released, starts, in the same write; attempt 1, its brief holds every answer. The filer releases: today, starts unanswered, status: pending releases it, and the worker guesses; after, refused by name, held questions are the user&#x27;s; edit, steer or cancel. A cancel: today, row cancels, dependents cancel with it; nothing was ever listed; after, item goes too, the row no longer matches; dependents cancel, as today."
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of six moments of a task that needs an answer, today and after. Filing it: today, Nowhere to ask, held: true at most; the question goes in the goal, or nowhere; after, Held on questions, createTask takes questions; the row stays pending. Asked midway: today, Parked, or a guess, the park until FIX-2131; answered by answerTask; after, Held midway, the turn ends, no lease; the attempt waits for the answer. The user&#x27;s inbox: today, Nothing shows, a held task waits unseen until its filer releases it; after, One item per row, every open question, read from the row on each refresh. The last answer: today, n/a, the filer releases it, answered or not; after, The work goes on, a first attempt, or one more turn; the brief has each answer. No answer, 7 days: today, Waits forever, a held task has no deadline; after, Goes on, told so, a board debt closes it: no answer came. A cancel: today, Row cancels, dependents cancel with it; nothing was ever listed; after, Item goes too, every question closes with the row; dependents, as today."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -21,10 +21,10 @@
   <rect class="bg" x="0" y="0" width="940" height="300"/>
   <g id="headers">
     <text class="t-lbl" x="104" y="30">FILING IT</text>
-    <text class="t-lbl" x="241" y="30">THE USER&#x27;S INBOX</text>
-    <text class="t-lbl" x="378" y="30">THE FIRST ANSWER</text>
+    <text class="t-lbl" x="241" y="30">ASKED MIDWAY</text>
+    <text class="t-lbl" x="378" y="30">THE USER&#x27;S INBOX</text>
     <text class="t-lbl" x="515" y="30">THE LAST ANSWER</text>
-    <text class="t-lbl" x="652" y="30">THE FILER RELEASES</text>
+    <text class="t-lbl" x="652" y="30">NO ANSWER, 7 DAYS</text>
     <text class="t-lbl" x="789" y="30">A CANCEL</text>
   </g>
   <g id="today">
@@ -36,24 +36,23 @@
     <text class="t-s" x="108" y="108">the question goes in</text>
     <text class="t-s" x="108" y="124">the goal, or nowhere</text>
     <rect class="cell" x="237" y="50" width="131" height="100" rx="4"/>
-    <text class="t-bad" x="245" y="72">Nothing shows</text>
-    <text class="t-s" x="245" y="92">a held task waits</text>
-    <text class="t-s" x="245" y="108">unseen until its</text>
-    <text class="t-s" x="245" y="124">filer releases it</text>
+    <text class="t-bad" x="245" y="72">Parked, or a guess</text>
+    <text class="t-s" x="245" y="92">the park until</text>
+    <text class="t-s" x="245" y="108">FIX-2131; answered</text>
+    <text class="t-s" x="245" y="124">by answerTask</text>
     <rect class="cell" x="374" y="50" width="131" height="100" rx="4"/>
-    <text class="t-bad" x="382" y="72">No answer to give</text>
-    <text class="t-s" x="382" y="92">the filer can steer,</text>
-    <text class="t-s" x="382" y="108">but a steer only</text>
-    <text class="t-s" x="382" y="124">joins the brief</text>
+    <text class="t-bad" x="382" y="72">Nothing shows</text>
+    <text class="t-s" x="382" y="92">a held task waits</text>
+    <text class="t-s" x="382" y="108">unseen until its</text>
+    <text class="t-s" x="382" y="124">filer releases it</text>
     <rect class="cell" x="511" y="50" width="131" height="100" rx="4"/>
     <text class="t-bad" x="519" y="72">n/a</text>
     <text class="t-s" x="519" y="92">the filer releases it,</text>
     <text class="t-s" x="519" y="108">answered or not</text>
     <rect class="cell" x="648" y="50" width="131" height="100" rx="4"/>
-    <text class="t-bad" x="656" y="72">Starts unanswered</text>
-    <text class="t-s" x="656" y="92">status: pending</text>
-    <text class="t-s" x="656" y="108">releases it, and</text>
-    <text class="t-s" x="656" y="124">the worker guesses</text>
+    <text class="t-bad" x="656" y="72">Waits forever</text>
+    <text class="t-s" x="656" y="92">a held task has</text>
+    <text class="t-s" x="656" y="108">no deadline</text>
     <rect class="cell" x="785" y="50" width="131" height="100" rx="4"/>
     <text class="t-bad" x="793" y="72">Row cancels</text>
     <text class="t-s" x="793" y="92">dependents cancel</text>
@@ -67,31 +66,30 @@
     <text class="t-ok" x="108" y="200">Held on questions</text>
     <text class="t-s" x="108" y="220">createTask takes</text>
     <text class="t-s" x="108" y="236">questions; the row</text>
-    <text class="t-s" x="108" y="252">reads held</text>
+    <text class="t-s" x="108" y="252">stays pending</text>
     <rect class="good" x="237" y="178" width="131" height="100" rx="4"/>
-    <text class="t-ok" x="245" y="200">One item at once</text>
-    <text class="t-s" x="245" y="220">every question on it,</text>
-    <text class="t-s" x="245" y="236">read from the row</text>
-    <text class="t-s" x="245" y="252">on each refresh</text>
+    <text class="t-ok" x="245" y="200">Held midway</text>
+    <text class="t-s" x="245" y="220">the turn ends, no</text>
+    <text class="t-s" x="245" y="236">lease; the attempt</text>
+    <text class="t-s" x="245" y="252">waits for the answer</text>
     <rect class="good" x="374" y="178" width="131" height="100" rx="4"/>
-    <text class="t-ok" x="382" y="200">Kept, still held</text>
-    <text class="t-s" x="382" y="220">the user&#x27;s steer, tied</text>
-    <text class="t-s" x="382" y="236">to its question;</text>
-    <text class="t-s" x="382" y="252">nothing starts</text>
+    <text class="t-ok" x="382" y="200">One item per row</text>
+    <text class="t-s" x="382" y="220">every open question,</text>
+    <text class="t-s" x="382" y="236">read from the row</text>
+    <text class="t-s" x="382" y="252">on each refresh</text>
     <rect class="good" x="511" y="178" width="131" height="100" rx="4"/>
-    <text class="t-ok" x="519" y="200">Released, starts</text>
-    <text class="t-s" x="519" y="220">in the same write;</text>
-    <text class="t-s" x="519" y="236">attempt 1, its brief</text>
-    <text class="t-s" x="519" y="252">holds every answer</text>
+    <text class="t-ok" x="519" y="200">The work goes on</text>
+    <text class="t-s" x="519" y="220">a first attempt, or</text>
+    <text class="t-s" x="519" y="236">one more turn; the</text>
+    <text class="t-s" x="519" y="252">brief has each answer</text>
     <rect class="good" x="648" y="178" width="131" height="100" rx="4"/>
-    <text class="t-ok" x="656" y="200">Refused by name</text>
-    <text class="t-s" x="656" y="220">held questions are</text>
-    <text class="t-s" x="656" y="236">the user&#x27;s; edit,</text>
-    <text class="t-s" x="656" y="252">steer or cancel</text>
+    <text class="t-ok" x="656" y="200">Goes on, told so</text>
+    <text class="t-s" x="656" y="220">a board debt closes</text>
+    <text class="t-s" x="656" y="236">it: no answer came</text>
     <rect class="good" x="785" y="178" width="131" height="100" rx="4"/>
     <text class="t-ok" x="793" y="200">Item goes too</text>
-    <text class="t-s" x="793" y="220">the row no longer</text>
-    <text class="t-s" x="793" y="236">matches; dependents</text>
-    <text class="t-s" x="793" y="252">cancel, as today</text>
+    <text class="t-s" x="793" y="220">every question</text>
+    <text class="t-s" x="793" y="236">closes with the row;</text>
+    <text class="t-s" x="793" y="252">dependents, as today</text>
   </g>
 </svg>
