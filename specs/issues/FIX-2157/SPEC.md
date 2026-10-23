@@ -49,7 +49,7 @@ the lab's own state.
 | **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` · 6 you ask for a code change in the session's project; one card and row show tagged *Claude Code*, the run's working directory is that project's checkout, and the row reaches *Ready for review* with the judge's verdict shown (*Waiting on you* first if the run asks), and *Resolve* moves it under *Resolved* |
 | **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too. Step 6: "Add a CHANGELOG line for the vendor pick", in a session opened on a scratch project whose checkout the operator maps |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
-| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. Step 6 in a session opened on no project: the run is refused `no-project`, the composer shows *Choose a project*, and nothing is written in the lab's repository, FAIL on step 6. The checkout mapping removed: the run works on a branch cut from the project's remote, not the mapped path, FAIL on step 6's directory check. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. Step 6 in a session created with no project, the project question bypassed: the run is refused `no-project`, the composer shows *Choose a project*, and nothing is written in the lab's repository, FAIL on step 6. The checkout mapping removed: the run works on a branch cut from the project's remote, not the mapped path, FAIL on step 6's directory check. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -104,15 +104,17 @@ worker.
 + watchPins() · pin(task) · unpin(task)   // the pins flow (D4)
 ```
 
-<a name="where-a-thread-works"></a>**Where a thread works.** The rule is stated here, and FIX-2153's session mode is being amended
-to the same one. A session is opened on a project, and *New session* asks which; a project with a repository the operator maps
+<a name="where-a-thread-works"></a>**Where a thread works.** The same rule as FIX-2153's session mode (its D3), stated here too. A
+session works in a project you pick when you create it: *New session* asks before the composer
+opens, and needs [FIX-2161](#gaps) to open an ordinary session on a project. A project with a repository the operator maps
 in `checkouts` is a directory on this machine. A thread inherits it: the hand-over copies the
 session's project to the task session (`filingProjectId`), and `projectWorkspace()` reads it
-there. A task may name another project the person is a member of. With no project, the run is
-refused `no-project` and the session shows *Choose a project* in the composer; there is no
+there. A task may name another project the person is a member of. With none picked, it asks: the run's
+`no-project` refusal shows as *Choose a project*. There is no
 scratch directory and no fallback to the lab's own repository, so the lab doesn't copy Kitchen
 Sink's `KITCHEN_SINK_HARNESS_WORKSPACE` default. If the lead has file or shell tools, their
-sandbox's directory is set from the same project, never `process.cwd()`.
+sandbox's directory is set from the same project, never `process.cwd()`. A raw path outside any
+project is not offered.
 
 **A harness thread** ([D5](DECISIONS.md#d5)). `thread-claude-code` and `thread-codex` are two
 small worker flows in the lab, each wrapping `harnessManager({ harness, workspace })` with
@@ -175,6 +177,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | Gap | Blocks |
 |---|---|
 | **A harness run that produced changes waits on a person's review before it completes**: in `harnessManager`'s settle step, where a judge's `ask` already parks a run today, a run with commits parks on a review wait (FIX-2129's kind `review`), with the verdict in its prompt; an accepted answer completes it without running the harness again, and a revision is a steer the next attempt takes (FIX-2086's door). Medium: one issue in harness-manager, a few days with tests, after FIX-2129 lands | **Step 6** ([D5](DECISIONS.md#d5)). Filed when this spec merges |
+| **[FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161): an ordinary session of any worker can open on a project.** Today only the project coordinator's session carries a `projectId`, at its derived id (`projectLinkCheck`, `workforce/src/workers/installation.ts`) | **The whole script**: every session opens on a project. Filed; blocks FIX-2153 too |
 | Checked at wiring: **a session opened on a project passes it to the tasks its coordinator files** (`filingProjectId`) | Step 6; a gap only if it doesn't |
 | **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
@@ -188,8 +191,9 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, two harness worker flows, and their fixtures until wiring. No package entry |
 | **Leaves** | Shift Manager's empty *In review* column. A review wait gives it a source; wiring it there is Shift Manager's issue |
 
-**Net: up, by one mode of a private lab.** It is the epic's evidence. One package change
-blocks a step: a harness run's review wait, step 6; the other gaps block nothing.
+**Net: up, by one mode of a private lab.** It is the epic's evidence. Two package changes
+block steps: FIX-2161, a session on a project, blocks the script; a harness run's review wait
+blocks step 6. The other gaps block nothing.
 
 ## Sign off
 
@@ -213,4 +217,4 @@ wrong: a mode nobody maintains.
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).
 
-Feature · a mode of a private lab, one gap blocking step 6 · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)
+Feature · a mode of a private lab, two blocking gaps · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)

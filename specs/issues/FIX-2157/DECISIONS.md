@@ -110,7 +110,8 @@ size on this PR's successor, not worked around by skipping review.
 
 ## Decided, not asked
 
-- **Where a thread works:** the session's project, a rule this spec states itself; with none, the composer
+- **Where a thread works:** the session's project, the same rule as FIX-2153's D3, stated in this
+  spec too; opening an ordinary session on a project is FIX-2161; with none, the composer
   asks you to choose one. No scratch directory: a run that writes somewhere you didn't pick is
   the failure the ask is about. Details in the [spec](SPEC.md#where-a-thread-works).
 
