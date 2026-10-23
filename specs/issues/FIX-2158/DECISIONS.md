@@ -23,8 +23,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Every session that names the worker, task runs and delegate sessions included; or a flat list with no default mark, so the app calls `findWorkerSession` too to know where messages land |
-| **Because** | A task's session is reached through its task (Jake's note on the issue, from FIX-2157: threads-mode threads are ordinary tasks, each in a new session of the delegate). Listed beside chats, every thread would show twice. The default is the one that receives messages, so a person needs to see it in the same list, and know which it is. The rule is the one `find` already uses: a session carrying a criteria key the call didn't name is not this kind of session ([tenet 3](../../../docs/philosophy.md)) |
-| **Locks in** | `listWorkerSessions(worker)` on the workforce client. It returns the worker's top-level sessions on its current flow that carry no criteria key but `workerId`, each marked default or not, the default first and the rest by latest activity. It never creates the default conversation. Task-run, delegate and workstream-lead sessions are not in it, and neither are the project coordinator's per-project conversations, which a person reaches through their project. So the list is a person's own conversations with the worker: the default and the ones they opened |
+| **Because** | A task's session is reached through its task (Jake's note on the issue, from FIX-2157: threads-mode threads are ordinary tasks, each in a new session of the delegate). Listed beside chats, every thread would show twice. The default is the one that receives messages, so a person needs to see it in the same list, and know which it is. Each excluded kind is already marked by the key that makes it that kind (`taskId`, `filingSessionId`, `workstreamId`, and the project coordinator's `projectId`), so the list reads the existing state and adds none ([tenet 3](../../../docs/philosophy.md)) |
+| **Locks in** | `listWorkerSessions(worker)` on the workforce client. It returns the worker's top-level sessions on its current flow that are not task-run, delegate or workstream-lead sessions (`taskId`, `filingSessionId`, `workstreamId`), nor the project coordinator's per-project conversations, picked out by its worker. An ordinary session that carries `projectId` is listed. Each is marked default or not, the default first and the rest by latest activity. It never creates the default conversation. A person reaches the project coordinator's per-project conversations through their project. So the list is a person's own conversations with the worker: the default and the ones they opened |
 
 **What would change my mind:** an app that needs a worker's task runs in the same list as its
 chats. Then that is an option on the list, not a second list.
@@ -39,8 +39,9 @@ It comes down to threads mode: listing task runs shows every thread twice.
   with the worker named in `workerId`, which the create check accepts and the docs already show.
   A workforce `open` would be a third way to start a session with a worker, differing from the
   session client's create only on the caller's side (issue-spec question 7).
-- **The argument is a worker id, not `WorkerSessionCriteria`.** The criteria's other keys each
-  name a session kind the list leaves out; taking them would invite a filter that returns nothing.
+- **The argument is a worker id, not `WorkerSessionCriteria`.** `filingSessionId`,
+  `workstreamId` and `taskId` name session kinds the list leaves out, so taking them would invite a
+  filter that returns nothing. Filtering ordinary sessions by `projectId` is not asked for here.
 - **The default is found by its derived id**, the one `ensureWorkerSession` creates, so a session a
   person opened at a random id before the derived address existed is listed, not default.
 - **Current flow only**, as `find` does. A session on a worker's former flow refuses new turns.
@@ -54,14 +55,14 @@ It comes down to threads mode: listing task runs shows every thread twice.
 | Alternative | Why not |
 |---|---|
 | A new criteria key per extra session | Rejected by the epic's D3: the create check already accepts these sessions, so a key adds model surface for nothing |
-| The lab filters the session client's listing itself | Glue in the lab (epic ER-4), and the criteria-key rule would be copied into every app |
+| The lab filters the session client's listing itself | Glue in the lab (epic ER-4), and the exclusion rule would be copied into every app |
 | A flat list with no default mark | The app then calls `findWorkerSession` too, to know where messages land |
 
 ## How it got here
 
 - **Draft** — the Claude Code-style lab needs a person's sessions with one main worker; one read
   on the workforce client lists the person's conversations, default first, without task runs,
-  built on the session listing and `find`'s criteria-key rule. The concept's base terms now say
+  built on the session listing and the keys that mark the other session kinds. The concept's base terms now say
   the derived conversation is the default, not the only one.
 
 ## Notes from review
@@ -81,6 +82,13 @@ It comes down to threads mode: listing task runs shows every thread twice.
   conversations are left out; and the goal check lists before the first ensure, so a list that
   secretly creates the default fails. `three-sessions` also asserts the two non-default sessions'
   order by latest activity, so a creation-order list fails.
+- **FSD Architect (after round 3), coherence with FIX-2161 (#3805) and epic ER-8, folded as wording:**
+  `projectId` is a criteria key, and FIX-2161 lets an ordinary session carry it, so "drop rows
+  carrying any other criteria key" would hide every lab session that works in a project. D1 now names
+  the excluded kinds (`taskId`, `filingSessionId`, `workstreamId`, and the project coordinator's
+  per-project conversations, picked out by its worker); an ordinary session with `projectId` is listed.
+  The control is now "the coordinator exclusion removed". The listed-project-session test belongs in
+  FIX-2161's PR, which can create one. No direction change: today the two rules list the same sessions.
 - **Cursor (round 1, approved), for the implementer:** "extract/shared filter with `findWorkerSession`
   in `client.ts` (criteria-key rule + filing top-level guard). That's the main code simplification;
   without it, list and find will drift."

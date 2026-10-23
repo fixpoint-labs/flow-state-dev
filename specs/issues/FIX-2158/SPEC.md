@@ -44,7 +44,7 @@ The check reads what the client returns and where the message's request ran, nev
 | **Signal** | `no-create`: listed before Alice's first `ensureWorkerSession`, after one create at a random id, the list holds only that session, none is marked default, and `findWorkerSession` still returns nothing. `three-sessions`: Alice's list holds exactly her derived conversation and the two she created, the derived one first and marked default, then the two in order of latest activity (the one used last first, with distinct activity times so a creation-order list fails). `own-only`: Bob's list holds only his session. `no-task-runs`: the task's session is absent. `no-other-kinds`: on the installation's project coordinator, listed after `ensureWorkerSession({ worker, projectId })`, the top-level project session is absent and only its default conversation is listed. `message-in-default`: a message another worker addresses to Alice's worker (`to` the worker id, not a task) starts its `receive` in the derived conversation, after the other two were used more recently |
 | **Input** | Two sessions created at random ids. Created before the first `ensureWorkerSession` must pass too |
 | **Anti-game** | Assert on the client's answer and on where the `receive` request ran. Don't seed sessions in the store by hand |
-| **Control that must fail** | `listWorkerSessions` returning `findWorkerSession`'s answer fails `three-sessions`. A list that ensures the default first fails `no-create`. The listing asked with `include: "dispatch-runs"` and no criteria filter fails `no-task-runs`. The top-level listing by `workerId` with the criteria-key filter removed fails `no-other-kinds`. The PR shows all three FAILs before the PASS |
+| **Control that must fail** | `listWorkerSessions` returning `findWorkerSession`'s answer fails `three-sessions`. A list that ensures the default first fails `no-create`. The listing asked with `include: "dispatch-runs"` and no criteria filter fails `no-task-runs`. The top-level listing by `workerId` with the coordinator exclusion removed fails `no-other-kinds`. The PR shows each control's FAIL before the PASS |
 
 ## What changes
 
@@ -88,12 +88,12 @@ PR: the derived conversation is the default and the message inbox, not the only 
 flowchart LR
   C["listWorkerSessions · worker"] --> R["roster · the worker's current flow"]
   R --> S["session listing · flow, user, workerId · top-level only"]
-  S --> K["drop rows carrying any other criteria key"]
+  S --> K["drop task-run, workstream-lead and project-coordinator sessions"]
   K --> O["derived id first and marked · rest by latest activity"]
 ```
 
 The server already scopes the listing to the caller's user and organization, and leaves dispatch
-runs out unless asked. The client adds the worker and the criteria-key rule `find` uses.
+runs out unless asked. The client adds the worker and drops task-run, workstream-lead and project-coordinator sessions.
 
 ## What stays as it is
 
@@ -107,7 +107,7 @@ runs out unless asked. The client adds the worker and the criteria-key rule `fin
 
 | Already here | What this does with it |
 |---|---|
-| `findWorkerSession` (`workforce/src/workers/client.ts`), the closest entry: one session by criteria. A list differs in what it returns (many, plus which one is the default), not by a flag, so it is a sibling read. Searches for another list of a worker's sessions (`listSessions` callers in `workforce/src`, `shift-manager/src`) found only the roster's own lookup. This is the **first** way to list a person's conversations with one worker | **Builds on.** The same roster lookup, flow and criteria-key rule |
+| `findWorkerSession` (`workforce/src/workers/client.ts`), the closest entry: one session by criteria. A list differs in what it returns (many, plus which one is the default), not by a flag, so it is a sibling read. Searches for another list of a worker's sessions (`listSessions` callers in `workforce/src`, `shift-manager/src`) found only the roster's own lookup. This is the **first** way to list a person's conversations with one worker | **Builds on.** The same roster lookup and flow |
 | The session listing (`engine/src/routes/session-routes.ts`): scoped to the caller, top-level unless `include: "dispatch-runs"` | **Builds on.** No engine change |
 | The create check (`workforce/src/workers/installation.ts`): any non-derived id is accepted; derived ids are reserved to their owner | **Kept.** Opening needs nothing new |
 | Epic FIX-2152 [D3](../../epics/FIX-2152/DECISIONS.md#d3) and [ER-7](../../epics/FIX-2152/DECISIONS.md#who-owns-what) | **Built** as decided: no criteria key, no model amendment |
