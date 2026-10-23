@@ -64,4 +64,11 @@ It comes down to threads mode: listing task runs shows every thread twice.
   built on the session listing and `find`'s criteria-key rule. The concept's base terms now say
   the derived conversation is the default, not the only one.
 
+## Notes from review
+
+- **FSD Architect (round 1):** the concept's base-terms paragraph is also rewritten by #3789
+  (FIX-2160), and "the one a message lands in" is only true for a message addressed to the worker.
+  Folded as a wording fix: this PR now carries #3789's paragraph verbatim, so the two merge as one
+  rule. No direction change.
+
 **Open: none.**

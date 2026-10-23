@@ -20,10 +20,9 @@ crosses rosters (rule 3). A **screen** is an app's UI, acting as the signed-in u
 **A worker belongs to one user and acts as them.** It runs on the flow it names. A user's
 **roster** is all their workers; adding one is a **hire**.
 
-**A session is where a worker works.** Only its user can open it. A **conversation** is a session
-where a user talks to one worker. Each worker has one **default conversation** per user, plus one
-per project a coordinator coordinates: the one a message lands in. It is not the only one: a user
-can open more conversations with the same worker, and lists them all, the default first.
+**A session is where a worker works.** Only its user can open it. A **conversation** is the session
+where a user talks to one worker. Each worker has one default conversation per user, its message
+inbox, plus one per project a coordinator coordinates; the user may open more.
 
 **A request is one run of a worker in a session.** The server sets its **sender**: a user, another
 worker's session, or **the engine**, starting a request for a task. It produces a **result**. A
