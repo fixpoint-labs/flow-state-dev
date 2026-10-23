@@ -31,7 +31,7 @@ lab's flow. Tested against the lab bar before it was drafted.*
 |---|---|
 | **Instead of** | (a) All of it in the lab, on public entries only. (b) The package reading results before every model call, through a context entry like the steer one, and answering once more itself |
 | **Because** | (a) fails on public entries: nothing public takes a notice, and the agent flow has no step that may answer again (`afterAnswer` is a side step that can't change the answer). A lab that only *reads* finished rows leaves the notice owed, so the queued `onTaskSettled` says the line and wakes a second turn after the reply: heard twice ([POC](poc/take-in-turn/README.md), control). A lab that takes them itself must also report a failure, dedupe and free the delegate's session, which is package work in the lab (ER-4). (b) works, but the loop is package code no app can see or change, and the before-each-call read is a second mechanism step 4 doesn't need |
-| **Locks in** | Two public entries: a hook on the agent worker flow that runs after each answer in the same request and may hand the worker a message to answer again, at most three times per request; and a take on the workforce package that hands over what finished, once. An app that sets no hook behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
+| **Locks in** | Two public entries: a hook on the agent worker flow, on the door a person's message comes through, that runs after the whole turn (its plan's answer included) in the same request and may hand the worker a message to answer again, at most three times per request; and a take on the workforce package that hands over what finished, once. An app that sets no hook behaves as today. A result that lands during a long tool loop waits for that answer to end, and one that lands after the last look waits for the turn to end, as today |
 
 ![D3: the app's flow answers again through a hook and the package takes, chosen, beside all in the lab and the package reading before every call; decided by hearing each result once](figures/d3-app-flow-answers-again.svg)
 
@@ -88,6 +88,13 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
   after it started (POC, case 1). Only open rows this conversation filed are read.
 - **The bound is the package's.** At most three answers again per request, so a hook that always
   returns a message can't loop a turn forever.
+- **Where the hook sits.** On the person's door (`agent-user-turn`), after `run`, so after the
+  plan's own answer (FIX-2076): once per request, never in a task or notice turn, and an app's
+  hook never runs where D2 says nothing changes. An answer again is one more turn of `run`, so
+  a result can make the worker plan again.
+- **At most once, as today.** The take acknowledges before it says the line, the queued
+  handling's order. A death before the acknowledgement: the queued copy takes it over and says
+  it after the turn. A death after it: the line is dropped. No idempotency key on the line.
 
 ## Considered and dropped
 
@@ -96,6 +103,7 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 | Condition 2 in the issue text: a request holding the filer task's claim may take | Superseded by epic D2 at `a070af58`: the queued handling's `admitOwnTask` would be skipped |
 | Run the queued `onTaskSettled` block from inside the turn | A handler doesn't call blocks (BP-011), and the woken-turn half has no place in a running turn |
 | Stop the model loop from ending while a notice is owed | Needs a core change; the epic keeps this out of core and engine |
+| One flag on the flow that turns the behaviour on: the package owns the take and the answer again, the app only opts in | The smallest public surface, one option instead of a hook and a take. It loses on where the loop lives: the app can't see or change it, and Jake asked for the loop in the lab's flow as a showcase |
 
 ## Settled
 
@@ -115,5 +123,18 @@ mid-turn. Then a task session's take has to carry `admitOwnTask` with it, which 
 - **Before review** — Jake's preferred build (relayed on the epic's handle) put the end-of-turn
   loop in the lab's flow. Tested against the lab bar: the loop fits, the take doesn't. D3 replaced
   a package-run answer and a before-each-call context entry with a hook and a public take.
+- **Review round 1** — the crash guarantee stated as at most once in the goal (it had read as
+  no loss); the hook placed on the person's door after the plan's answer; one-flag shape named
+  as dropped.
+
+## Notes from review
+
+- "Have the implementer look at whether `planned`'s loop and the new hook can share one bounded
+  'answer again' step (hook supplies the message, `planned` supplies its own). If they can't
+  share, say why." — second-look review ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3799#pullrequestreview-5634917017))
+- "The implementer's tests should own the interaction with `planned` explicitly, with the
+  Error Reporter stop-before-ack and the answer-again bound." — same review
+
+These are inputs, not instructions. Adopt, adapt, or discard.
 
 **Open: none.**
