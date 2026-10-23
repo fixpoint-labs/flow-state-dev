@@ -383,10 +383,12 @@ describe("FIX-701: per-block resource-load tracing", () => {
       runtimeConfig: { modelResolver: createStubModelResolver() }
     });
     expect(result.error).toBeUndefined();
-    // With observability off the trace-capture hook is undefined, so no
-    // block_trace items are emitted at all — which means neither `resourceLoads`
-    // nor `declaredResources` can leak onto the items stream.
-    const traceItems = response.getItems().filter((i) => i.type === "block_trace");
-    expect(traceItems).toHaveLength(0);
+    // With observability off, a completed block keeps only the lean record
+    // resume replay reads (identity + output), so neither `resourceLoads` nor
+    // `declaredResources` can leak onto the items stream.
+    const traceItems = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
+    expect(traceItems).toHaveLength(1);
+    expect(traceItems[0]!.resourceLoads).toBeUndefined();
+    expect(traceItems[0]!.declaredResources).toBeUndefined();
   });
 });

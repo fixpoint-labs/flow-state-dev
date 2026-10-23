@@ -3138,6 +3138,12 @@ export async function createExecutionContext<
     // in place on `input` / `generator` / `output` phases. Item.added fires
     // immediately at `added`; subsequent phases emit item.updated; the
     // `output` phase additionally emits item.done.
+    //
+    // With trace observability off (production), the hook still records each
+    // completed block as a lean `block_trace` (identity + output, nothing
+    // else), because that record is what resume replay reads to skip a block
+    // that already finished. Without it, a resumed or continued request runs
+    // every completed step again (FIX-2137).
     onBlockTraceCapture: isTraceObservabilityEnabled()
       ? (payload, firingCtx) => {
           const identity = firingCtx._blockIdentity;
@@ -3241,7 +3247,41 @@ export async function createExecutionContext<
             blockTraceMap.delete(instanceId);
           }
         }
-      : undefined,
+      : (payload, firingCtx) => {
+          // Replay record only: one item per completed block, written at its
+          // `output` phase. A failed or suspended block has no output to
+          // replay, and a transient block's trace is never retained.
+          if (payload.phase !== "output" || payload.data.status !== "completed") return;
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined || identity.transient === true) return;
+          const completedAt = payload.data.completedAt ?? Date.now();
+          const itemIndex = emittedItemCount++;
+          const item: BlockTraceItem = {
+            id: `item_block_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+            type: "block_trace",
+            status: "completed",
+            requestId: requestRef.current.id,
+            itemIndex,
+            provenance: {
+              blockName: identity.blockName,
+              blockInstanceId: identity.blockInstanceId,
+              parentBlockInstanceId: identity.parentBlockInstanceId,
+              phase: identity.phase ?? "main",
+            },
+            ts: completedAt,
+            ownedBy: identity.ownedBy,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "handler") as BlockTraceItem["blockKind"],
+            blockInstanceId: identity.blockInstanceId,
+            output: payload.data.output,
+            completedAt,
+            duration: payload.data.duration,
+          };
+          void emissionResponse
+            .emitItemAdded(item)
+            .then(() => emissionResponse.emitItemDone(item))
+            .catch(() => { /* best-effort */ });
+        },
   };
 
   // Per-request trace map. Keyed by blockInstanceId; entries are removed
