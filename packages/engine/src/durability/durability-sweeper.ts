@@ -51,19 +51,11 @@
  * skip the others, and a tick failure is logged but NEVER thrown (it would
  * surface as an unhandled rejection from the interval callback).
  *
- * Scheduling is deadline-aware, and derived from the store. After every tick,
- * whatever it came to, the timer is re-armed from the pending wait gates: those
- * step 2 read and left pending when the tick ran, or a fresh read when it did
- * not (the sweep lease held by another host, or a failure). It is re-armed for
- * the earlier of `sweepIntervalMs`, the earliest wake (FIX-2078; a wait's
- * deadline is one since FIX-2082), and the earliest expiry among the wait
- * gates parked before FIX-2082, never sooner than `MIN_TICK_DELAY_MS`. A wait
- * still pending past its deadline (its turn was busy, still being written
- * parked, or the resume failed) is retried after `OVERDUE_WAIT_RETRY_MS`; an
- * idle host keeps its interval. A wake owed in this process brings the armed
- * tick forward (`request-wakes.ts`, keyed on the wake store), an optimization
- * the re-arm does not depend on, and a host that starts with a wake already
- * due reads it at once. One timer per host, never one per wait or wake.
+ * Scheduling is deadline-aware: one timer per host, re-armed after each tick
+ * by `nextDelay` (the interval, the earliest wake, or the earliest pending
+ * `expiresAt`), never sooner than `MIN_TICK_DELAY_MS`. A wake owed here, or a
+ * suspension parked here, brings that tick forward. A host that starts with
+ * either already in the store reads it at once.
  *
  * Otherwise mirrors `execution/stale-request-sweeper.ts`: `unref()` on the
  * timer, an `inFlight` re-entrancy guard (a tick due while one runs is pushed

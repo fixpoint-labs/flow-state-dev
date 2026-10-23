@@ -402,10 +402,8 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
     const registry = createFlowRegistry();
     registry.registerMany(resolved.flows);
 
-    // SQLite is the default (FIX-406 6A) — the filesystem store's O(N²) event
-    // persistence can't hold real load. It is the file a no-config `fsdev run`
-    // writes too, so a stop the run left is answered here (FIX-2063 D1).
-    // `--store filesystem` opts back to the JSON files, single-process.
+    // SQLite by default: the filesystem store's event writes don't hold real
+    // load (FIX-406 6A). The file a no-config `fsdev run` writes (FIX-2063 D1).
     const local = await openLocalStores(storeKind);
     const stores = local.stores;
 

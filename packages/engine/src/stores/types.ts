@@ -1473,12 +1473,7 @@ export interface ResourceStateStore {
  * `stepHistory` — those are explicitly out of scope (see FIX-401 spec).
  */
 export interface CheckpointStore {
-  /**
-   * `false` when this store keeps nothing past the process (FIX-2063 D2): the
-   * in-memory adapter says so. Absent means it persists. Durable execution is
-   * on by default only where both the checkpoint and the suspension store
-   * persist, since a stop held in memory is lost silently when the process ends.
-   */
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
   readonly persists?: boolean;
 
   /** Overwrite the latest checkpoint for this sequencer instance. */
@@ -1534,12 +1529,7 @@ export interface TraceStore {
  * created by ctx.suspend() for later resolution via the resume endpoint.
  */
 export interface SuspensionStore {
-  /**
-   * `false` when this store keeps nothing past the process (FIX-2063 D2): the
-   * in-memory adapter says so. Absent means it persists. Durable execution is
-   * on by default only where both the checkpoint and the suspension store
-   * persist, since a stop held in memory is lost silently when the process ends.
-   */
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
   readonly persists?: boolean;
 
   /** Create or update a suspension record. */

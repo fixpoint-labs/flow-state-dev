@@ -1,12 +1,4 @@
-/**
- * Durable execution is on by default wherever stores persist (FIX-2063 D2).
- *
- * A stop for a person is held only where it survives the process. So a host
- * on persisting stores gets the checkpoint provider without asking, a host on
- * in-memory stores gets none unless it asks with `durable: true`, and
- * `durable: false` turns it off everywhere. A host with none refuses the stop
- * itself, by an error that names the rule and the setting to change.
- */
+/** `createFlowState` follows `resolveDurabilityProvider` (FIX-2063 D2). */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,10 +115,8 @@ describe("a host without durable execution refuses at the stop", () => {
       });
       expect(runsBefore()).toBe(1);
       const message = result.error?.message ?? "";
-      // The rule: where durable execution is on, and why this host has none.
       expect(message).toMatch(/durable execution/);
       expect(message).toMatch(/wherever stores persist/);
-      // The settings to change.
       expect(message).toMatch(/durable: false/);
       expect(message).toMatch(/durable: true/);
       const request = await runtime.stores.request.get(result.requestId!);

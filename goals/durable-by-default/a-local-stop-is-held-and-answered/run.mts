@@ -1,31 +1,7 @@
 /**
- * Goal check: on a local machine, with no configuration about durability, a
- * flow that stops for a person is held until that person answers or its
- * deadline passes, across a restart, and is answered from the same place
- * whichever command started it (FIX-2063).
- *
- * Real path, no model, out of CI. See goal.md for the contract. Every process
- * is a real `fsdev` over a real SQLite file in a scratch directory; the check
- * reads what the CLI printed and the records through the dev server's public
- * routes, never the provider or the sweeper.
- *
- * Legs (every failure line is tagged with its leg):
- *
- *   a   `fsdev run` with no config ends on a stop: exit 0, the stop's id on
- *       stdout, in --capture and on stderr with the answer hint; the request
- *       is `suspended`. An input stop is held the same way.
- *   b   `fsdev dev` starts, restarts, lists both stops' sessions under its
- *       default user, and one answer each completes those request ids, once;
- *       the step before each stop ran once in all.
- *   c   an approval whose deadline passes while `fsdev dev` runs is `expired`
- *       within one sweep.
- *   d   under an app config with `durable: false`, the request fails at the
- *       stop, the error names the rule and the setting, and nothing is held.
- *   e   an app config that never mentions `durable` holds the stop, and
- *       `fsdev dev` on that config answers it.
- *
- * Legs a and b run twice: with trace observability as the CLI sets it, and
- * with FSDEV_TRACE_OBSERVABILITY=0, production's default.
+ * Goal check for FIX-2063. Legs, signal, and the control are in goal.md.
+ * Real `fsdev` processes over a scratch SQLite file, graded from the CLI
+ * output and the dev server's routes.
  *
  * Run: pnpm tsx goals/durable-by-default/a-local-stop-is-held-and-answered/run.mts
  */

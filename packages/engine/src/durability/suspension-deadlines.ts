@@ -1,15 +1,7 @@
 /**
- * A suspension's deadline written in this process, heard by the durability
- * sweeper on the same provider (FIX-2063 D3).
- *
- * The sweeper reads the store's deadlines when it starts and after each tick.
- * A gate this process parks between ticks tells it here, so its `expiresAt`
- * brings the armed tick forward rather than wait for the interval, as a wake
- * owed in-process does (`onWakeOwed`). A gate another process writes is seen
- * at the next tick.
- *
- * Keyed on the durability provider, which the runtime that parks a request and
- * the sweeper that expires it share per host (as `wait-deadlines.ts` is).
+ * A suspension deadline written in this process, heard by the sweeper on the
+ * same provider (FIX-2063 D3). A gate another process writes is seen at the
+ * next tick.
  */
 import type { DurabilityProvider } from "./types";
 
