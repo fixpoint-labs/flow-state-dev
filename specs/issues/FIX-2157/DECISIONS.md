@@ -21,6 +21,8 @@ flowchart TD
   D3 -.->|"rejected: not how the original works"| X3["only through the main session"]
   I --> D4["D4 · Pinned is your choice, in your own state"]
   D4 -.->|"rejected: no rule picks a thread a person cares about"| X4["pinned by a rule, such as long-running"]
+  I --> D5["D5 · a harness per thread worker, chosen by its flow"]
+  D5 -.->|"rejected: the loop must own the turn"| X5["a harness on the main session"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -92,7 +94,25 @@ session mode. Then the thread view is read only and step 3 is answered through t
 **What would change my mind:** product wanting the coordinator to pin, for example a thread it
 expects to run for days. Then the coordinator gets a tool, and that is a gap.
 
+<a name="d5"></a>
+## D5 · A thread may run through a harness, chosen per worker by its flow; the main session never does
+
+*Product's ask (fsd-product-lead on #46, relaying the owner), with the engineering calls it left open.*
+
+| | |
+|---|---|
+| **Instead of** | (a) A harness setting on each worker in config, read when a run starts. (b) A harness on the main session too |
+| **Because** | The harness is a slot fixed when a flow is built, and one flow copy serves every worker on it (DevTeam's `coder.mts`); a per-worker setting is FIX-1652's, not in the box. One small worker flow per harness gets the same choice with config only: a hire names `thread-claude-code` or `thread-codex` in its `flow:` line. (b) breaks the epic's D2 loop, which owns the main session's turn |
+| **Locks in** | No new mechanism: each flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. It has no review step: harness-manager settles on its own check, so it goes from *Working* to *Resolved*; a review it waits on is a gap, filed in the project, blocking nothing. Not needed: FIX-1990, since a run asks the person, never a teammate |
+
+**What would change my mind:** product wanting your review on every code change before it
+counts. Then the review gap blocks step 6, and a harness thread waits under *Ready for review*.
+
 ## Decided, not asked
+
+- **Where a thread works:** the session's project, by FIX-2153's rule; with none, the composer
+  asks you to choose one. No scratch directory: a run that writes somewhere you didn't pick is
+  the failure the ask is about. Details in the [spec](SPEC.md#where-a-thread-works).
 
 - <a name="columns"></a>**The board's columns, from the task row only.** The one table; the
   spec's signals read from it.
@@ -148,6 +168,9 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   delegate once per round, so it made one task, not three in one session.
 - **Product answers:** yes to D1 to D4, with one refinement: the mode comes from the view
   (*Sessions* or *Projects*), not a choice at session start.
+
+- **Product additions:** a working directory per session that threads inherit, and a harness on
+  threads only. Folded as the session's project and D5; step 6 and its control were added.
 
 ## Notes from review
 

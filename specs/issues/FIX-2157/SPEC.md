@@ -2,18 +2,20 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
-| **starts a session** | Gets the *Sessions* view only, which is session mode ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)) | Opens the *Projects* view and starts a session there. The view is the mode: a session in *Projects* is with the threads-mode main worker, a coordinator, and the right pane is a status board |
+| **starts a session** | Gets the *Sessions* view only, which is session mode ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)) | Opens the *Projects* view and starts a session there, picking the project it works in. The view is the mode: a session in *Projects* is with the threads-mode main worker, a coordinator, and the right pane is a status board |
 | **asks the main session for something** | n/a | Sees the main session hand it to background threads, each in a session of its own. Each thread is a compact card in the feed and a row on the board: *Pinned*, *Working*, *Waiting on you*, *Ready for review*, *Resolved* |
 | **is asked a question by a thread** | n/a | Sees the thread under *Waiting on you*, opens it, and types the answer there. You can talk inside a thread directly, as well as through the main session ([D3](DECISIONS.md#d3)) |
 | **gets a thread's finished work** | n/a | Sees it under *Ready for review*. *Resolve* accepts it and moves it to *Resolved*; *Request changes* sends it back to work with your words ([D2](DECISIONS.md#d2)) |
+| **asks for a code change** | n/a | Sees the thread run through Claude Code or Codex, tagged so on its card and row, in the session's project and never in the lab's own repository ([D5](DECISIONS.md#d5), [where it works](#where-a-thread-works)) |
 | **has a thread they keep coming back to** | n/a | Pins it. It stays at the top of the board under *Pinned* whatever its status ([D4](DECISIONS.md#d4)) |
 
 The scope is the epic's: core messaging and session management. No linked PRs on a card, no
-file diffs, no permission requests.
+file diffs, no permission requests. The main session stays on our generator; only threads may run
+through a harness.
 
 ## The goal, and how we'll know it's met
 
@@ -44,10 +46,10 @@ the lab's own state.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/threads-mode-script/` · real model · Playwright, against `fsdev dev --app` · run by the implementer at wiring · verdict in the wiring PR. The epic's closure reruns it as leg c |
-| **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` |
-| **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too |
+| **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` · 6 you ask for a code change in the session's project; one card and row show tagged *Claude Code*, the run's working directory is that project's checkout, and the row reaches *Resolved*, or *Waiting on you* first if the run asks |
+| **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too. Step 6: "Add a CHANGELOG line for the vendor pick", in a session opened on a scratch project whose checkout the operator maps |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
-| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to file each thread with `session: "ongoing"`: the three share the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. The project's checkout mapping removed: the run is refused `no-project` and nothing is written in the lab's repository, FAIL on step 6. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -64,12 +66,13 @@ review, and *Resolve* answers its review.
 + description: Hands each request to background threads and keeps you posted.
 + flow: coordinator
 + routing: judgment
-+ delegates: [desk.thread]
++ delegates: [desk.thread, desk.coder]
 + ---
 + Split each request into pieces and start a thread for each: call createTask with
 + assignee desk.thread and a goal, and leave session and resultTo out, so each piece runs
 + in a new session of its own and its result comes back to you. Then tell the person what
 + you started. Don't hand the message on with resultTo "conversation".
++ A piece that changes code goes to desk.coder; everything else to desk.thread.
 + # workforce/teams/desk/workers/thread/WORKER.md
 + ---
 + description: Works one request in its own session and hands it back for review.
@@ -77,6 +80,11 @@ review, and *Resolve* answers its review.
 + Work the request. Ask which region matters before you start (askQuestion).
 + When the work is ready, call waitForUser({ kind: "review", prompt }) with a summary.
 + On "changes", take the words and work again; on no answer, finish as you are.
++ # workforce/teams/desk/workers/coder/WORKER.md
++ ---
++ description: Makes a code change in the session's project, through Claude Code.
++ flow: thread-claude-code
++ ---
 ```
 
 **The modes config, its second entry** ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)): `threads: {
@@ -95,6 +103,26 @@ worker.
 + requestChanges(task, words)    // answers the thread's review: revise, with words
 + watchPins() · pin(task) · unpin(task)   // the pins flow (D4)
 ```
+
+<a name="where-a-thread-works"></a>**Where a thread works.** Threads mode takes FIX-2153's session directory rule. A session is
+opened on a project, and *New session* asks which; a project with a repository the operator maps
+in `checkouts` is a directory on this machine. A thread inherits it: the hand-over copies the
+session's project to the task session (`filingProjectId`), and `projectWorkspace()` reads it
+there. A task may name another project the person is a member of. With no project, the run is
+refused `no-project` and the session shows *Choose a project* in the composer; there is no
+scratch directory and no fallback to the lab's own repository, so the lab doesn't copy Kitchen
+Sink's `KITCHEN_SINK_HARNESS_WORKSPACE` default. If the lead has file or shell tools, their
+sandbox's directory is set from the same project, never `process.cwd()`.
+
+**A harness thread** ([D5](DECISIONS.md#d5)). `thread-claude-code` and `thread-codex` are two
+small worker flows in the lab, each wrapping `harnessManager({ harness, workspace })` with
+`projectWorkspace()` as its source, the way DevTeam's `coder` does. A hire picks its harness by
+naming one in its `flow:` line. On the board a harness thread is an ordinary row: the same
+columns, from the same task row, plus a tag naming its harness, read from the assignee's flow in
+the lab's config (the row doesn't carry it until FIX-1652). Its note is the run's last progress
+line, or *Working* when the harness records none; a question it asks holds the task and puts it
+under *Waiting on you*, answered in the thread view as in step 3. It skips *Ready for review*:
+harness-manager settles a run on its own check, so it lands in *Resolved*.
 
 **Docs:** threads mode joins the lab's README (how to start it, the board's columns, its rows in
 the inventory). No `apps/docs` page, per the epic.
@@ -142,6 +170,8 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 
 | Gap | Blocks |
 |---|---|
+| **A harness run ends in a review a person answers** | Nothing; a harness thread lands in *Resolved* without one ([D5](DECISIONS.md#d5)). Filed in the project |
+| Checked at wiring: **a session opened on a project passes it to the tasks its coordinator files** (`filingProjectId`) | Step 6; a gap only if it doesn't |
 | **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
 | Checked at wiring: **the lead's instructions win over the routing turn's own description**, which tells the model to hand a message on with `session: "ongoing"` and `resultTo: "conversation"` (`coordinator-flow.ts`, `routes.routing`) | Step 2; a gap only if the model follows the routing description instead: then a coordinator setting that turns routing off for a worker |
@@ -151,15 +181,15 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, and their fixtures until wiring. No package entry |
+| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, two harness worker flows, and their fixtures until wiring. No package entry |
 | **Leaves** | Shift Manager's empty *In review* column. A review wait gives it a source; wiring it there is Shift Manager's issue |
 
 **Net: up, by one mode of a private lab.** It is the epic's evidence, and it needs no
-package change: the one gap it lists blocks nothing.
+package change: the gaps it lists block nothing.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** five steps, a real model, a
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** six steps, a real model, a
 browser, and no *other* row. If wrong: a board that looks right on fixtures and proves nothing.
 
 **[The debt](#whats-already-here-and-the-debt), net up:** one mode of a private lab. If
@@ -171,6 +201,9 @@ wrong: a mode nobody maintains.
 2. **[D2](DECISIONS.md#d2) · *Ready for review* is a review the thread's task waits on, and
    *Resolve* answers it.** No gap: the thread worker's model asks for review with FIX-2131's tool.
    If wrong: a thread's state lives on the task when a mark in the lab would have done.
+3. **[D5](DECISIONS.md#d5) · A thread may run through a harness, chosen per worker by its flow;
+   the main session never does.** No blocking gap. If wrong: a harness thread lands in *Resolved*
+   without your review until its gap ships.
 
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).
