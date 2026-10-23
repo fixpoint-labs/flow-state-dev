@@ -16,7 +16,7 @@ check. Names below are directional: read every name off the children's **merged*
 | S3 | `controls/` under S1 | The scratch patches: `org-scoped-workers`, `unpartitioned`, `no-follow-up`, `no-delegate-check`, `no-roster-check`, and `second-org` when the commit has no second-org principal. Applied to a copy of the commit, never committed, printed in full in the report |
 | S4 | Part 3's manifest, under S1 | Each child's goal path with the controls still owed, and P3.9's list, computed from the pre-epic baseline's tree and the run's commit together (see [Part 3](#part-3--every-childs-check-and-every-older-check-the-epic-touched)). Each runs as its own subprocess |
 | S5 | J1's scratch app | A fresh directory the writer builds in; deleted after the run |
-| S6 | The closure PR | Only after a final run that files nothing: S1 to S4 with the verdict log, the report as its body. No changeset |
+| S6 | The closure PR | Only after a final run that files nothing, or when the owner closes it (QR-22, *amended after merge*): S1 to S4 with the verdict log, the report as its body. No changeset |
 
 ## Sequence
 
