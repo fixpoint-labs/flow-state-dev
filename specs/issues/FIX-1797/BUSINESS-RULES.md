@@ -39,7 +39,7 @@ step or report line that shows the rule held.
 | QR-16 | An older check is red, or deleted with no line naming what replaced it ([D3](DECISIONS.md#d3)) | A finding against the child whose PR touched what the check asserts | P3.9 |
 | QR-17 | A promised screen is missing or broken | A finding against the child that promised it; an unpromised one is an observation ([D2](DECISIONS.md#d2)) | Report |
 | QR-18 | J1 hits a step the docs don't cover | A failed step, reason *doc silent*: QR-13 | J1 |
-| QR-19 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, **the whole plan** runs again on a fresh commit | The epic wake |
+| QR-19 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, the failed checks and every check the diff since the run touches run again on a fresh commit; the rest carry forward (*amended after merge*, [How it got here](DECISIONS.md#how-it-got-here)) | The epic wake |
 | QR-20 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
 | QR-21 | A final run files nothing | The closure PR opens with the goal check and its verdict log; its body is the report | The closure PR |
 

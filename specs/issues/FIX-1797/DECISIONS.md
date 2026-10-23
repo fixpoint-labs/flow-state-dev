@@ -197,3 +197,22 @@ anything rests on.
   refuses settles b4; any other error still fails it. Serving the closure without the judge was
   rejected, because the served install has no switch for it and adding one is product surface for
   a test.
+- **Amended after merge (re-check failures, 2026-10-13)**: after a full run that files findings,
+  the next run on the fixed `main` re-grades only the failed checks and every check the diff
+  since the run touches. The rest carry forward, each with the run it passed in. The product
+  owner chose this over re-running the whole plan each time (QR-19).
+- **Amended after merge (closed by the owner, 2026-10-23)**: the product owner closed FIX-1797
+  without a clean final run, and this is recorded as the closure's verdict. The last graded
+  run was r6d, first at `54f2793b`, then at `e2ee2c18`, where it stalled on a full disk partway
+  through P3.9. Every finding r6c and r6d filed was fixed and measured on its own before merge:
+  FIX-1987 #3368, FIX-2000 #3402, FIX-2001 #3399, FIX-2002 #3396, FIX-2003 #3394, FIX-2004 #3404,
+  FIX-2005 #3450, FIX-2011 #3421, FIX-2019 #3460, FIX-2020 #3461. At `e2ee2c18`, J1, Part 4's
+  layer fence and every child check passed except P3.7, which FIX-2011 fixed. P3.11 leg d
+  failed once as model variance and was not filed. No run graded all of these fixes together.
+  The reason for closing: by 2026-10-23 `main` was about 840 commits past `e2ee2c18`. FIX-2056
+  (one task primitive) and FIX-2058 (one "waiting on a person") were rewriting the coordinator
+  and task surfaces this plan grades. A re-grade would have measured that refactor rather than
+  this epic, and those epics carry closures of their own. Lesson for the next closure: run it on
+  one pinned commit and close on that commit's verdict, rather than re-pinning to chase merges
+  from other epics. Most findings across r5 to r6d were goals made stale by those merges or
+  judge variance, not product bugs. Two were product bugs: FIX-2000 and FIX-2005.
