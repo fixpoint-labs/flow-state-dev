@@ -1,6 +1,7 @@
 /**
  * This goal's named control, as scratch patches (`goals/lib/module-patch.mts`). Exported so a
  * goal that composes this one (FIX-2087's closure walk) reuses it rather than copying it.
+ * FIX-2087's closure imports these `from`/`to` anchors for its `GOAL_CONTROL` legs: renaming one breaks that run too.
  */
 import type { ModulePatch } from "../../lib/index.mts";
 

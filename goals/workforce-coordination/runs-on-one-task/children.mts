@@ -15,10 +15,11 @@
 import { spawnSync } from "node:child_process";
 import { REPO_ROOT } from "../../lib/index.mts";
 
-/** One run: a goal (`goals/<path>/run.mts`) or a package's vitest files. */
+/** One run: a goal (`goals/<path>/run.mts`), a package's vitest files, or a goal's model-free check script (`goals/<path>`). */
 export interface Check {
   goal?: string;
   vitest?: { filter: string; files: string[] };
+  script?: string;
   env?: Record<string, string>;
   /** Each control by name, and the tags (or `<leg>:` prefixes) one of which must go red. */
   controls?: Record<string, string[]>;
@@ -103,6 +104,21 @@ export const CHECKS: Record<string, Check[]> = {
   // A failure heard through the filer's own getTask wait: no leg here walks it (j1's research
   // succeeds; c hears its failure by notice), so its regression test is its whole check.
   "FIX-2138": [{ vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/get-task-names-cascaded.test.ts"] } }],
+  // Not a product bug: the privacy goal misread a routing coordinator, whose delegate answers in a
+  // request of its own after the post's. Its fix is in that goal, which NAMED runs.
+  "FIX-2147": [{ script: "workforce-privacy/two-users-share-a-project-and-nothing-else/check-talk.mts", by: ["workforce-privacy/two-users-share-a-project-and-nothing-else"] }],
+  // FIX-2149 and FIX-2150 are races inside the park window: a notice held or a step ended, or a
+  // wait's deadline passing, in the milliseconds while a request parks. A real model's turns take
+  // seconds, so no leg or goal here lands in that window: their regression tests, which inject the
+  // timing, are their whole check.
+  "FIX-2149": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/delivery-after-ending.test.ts", "test/tasks/notice-claim.test.ts", "test/tasks/task-notice.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/workforce", files: ["test/worker-plans-its-steps.test.ts"] } },
+  ],
+  "FIX-2150": [
+    { vitest: { filter: "@flow-state-dev/engine", files: ["test/wait-resume.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/wait-on-task.test.ts"] } },
+  ],
 };
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */
@@ -154,9 +170,11 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
     for (const name of Object.keys(check.controls ?? {})) runs.push({ control: name, args, cmd: "pnpm" });
   } else if (check.vitest !== undefined) {
     runs.push({ cmd: "pnpm", args: ["--filter", check.vitest.filter, "exec", "vitest", "run", ...check.vitest.files] });
+  } else if (check.script !== undefined) {
+    runs.push({ cmd: "pnpm", args: ["tsx", `goals/${check.script}`] });
   }
   for (const run of runs) {
-    const label = `${owner} ${check.goal ?? `${check.vitest!.filter} ${check.vitest!.files.join(" ")}`}${run.control === undefined ? "" : ` GOAL_CONTROL=${run.control}`}`;
+    const label = `${owner} ${check.goal ?? check.script ?? `${check.vitest!.filter} ${check.vitest!.files.join(" ")}`}${run.control === undefined ? "" : ` GOAL_CONTROL=${run.control}`}`;
     say(`row 3: ${label}`);
     const started = Date.now();
     const out = spawnSync(run.cmd, run.args, {
