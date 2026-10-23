@@ -21,6 +21,13 @@
  * running again, and the stop reports `already-resolved`. A second stop reaches
  * the running turn as any stop does.
  *
+ * Unless the turn never ran again: a person resolved its gate (approved it,
+ * say) and the process died before the turn continued, so it waits on the
+ * sweep's re-drive (FIX-2108). The stop wins over that resolution. The gate is
+ * re-recorded `stopped`, under the request's lease and fenced on the
+ * resolution read, and the turn continues as a stop of a pending gate
+ * continues it: it ends `aborted`, and the approved step never runs.
+ *
  * The gate's resolved record, `stopped`, is the obligation. If the process dies
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
  * it ({@link redriveResolvedGate}).
@@ -108,6 +115,10 @@ export async function stopSuspendedRequest(
       };
       return (await continueWithStop(deps, record, resumeContext)) ? "stopped" : "already-resolved";
     }
+    // Resolved by a person (or already stopped), and the turn never ran
+    // again: it waits on the re-drive, so the stop wins over the resolution.
+    const owed = await owedNonWaitLatestGate(deps, record);
+    if (owed !== undefined) return (await stopAtNonWaitGate(deps, record, owed)) ? "stopped" : "already-resolved";
     // No pending gate: an answer resolved it first, and the turn runs again.
     return "already-resolved";
   }
@@ -143,6 +154,22 @@ async function expiredLatestGate(
 }
 
 /**
+ * The turn's last logged gate, when it is not a wait and is resolved but owed
+ * a re-drive (a person's resolution, or a stop): nothing has continued the
+ * turn past it yet. An expired approval is {@link expiredLatestGate}'s.
+ */
+async function owedNonWaitLatestGate(
+  deps: SuspendedStopDeps,
+  record: RequestRecord
+): Promise<SuspensionRecord | undefined> {
+  const suspensionId = latestGateIdOf(record);
+  if (suspensionId === undefined) return undefined;
+  const gate = await deps.provider.loadSuspension(record.id, suspensionId);
+  if (gate === null || isWaitGate(gate) || isExpiredApproval(gate) || !owesRedrive(gate)) return undefined;
+  return gate;
+}
+
+/**
  * Record the stop on the parked turn itself (`abortRequested`), fenced on it
  * still being parked under the incarnation that was checked. `false` when
  * another request took the id, or the turn moved on.
@@ -162,9 +189,13 @@ async function recordStop(
 }
 
 /**
- * Resolve a non-wait gate `stopped`, through the gate's single pending state,
- * and continue the turn with the stop recorded on it: it ends `aborted`
- * through its own lifecycle without running on. Under the request's lease.
+ * Resolve a non-wait gate `stopped` and continue the turn with the stop
+ * recorded on it: it ends `aborted` through its own lifecycle without running
+ * on. Under the request's lease, fenced on the gate still holding the status
+ * read (`pending`, or a resolution owed a re-drive): one that moved on since
+ * was resolved by someone else. A lease held elsewhere over a gate already
+ * `stopped` is a stop that got there first: the turn ends `aborted` all the
+ * same, so this stop is reported done too.
  */
 async function stopAtNonWaitGate(
   deps: SuspendedStopDeps,
@@ -176,7 +207,7 @@ async function stopAtNonWaitGate(
     holder: "stop",
     admit: async () => {
       const current = await deps.provider.loadSuspension(record.id, gate.suspensionId);
-      if (current === null || current.status !== "pending") return { refusal: "refused" };
+      if (current === null || current.status !== gate.status) return { refusal: "refused" };
       // Fenced on the incarnation checked: if another request took the id in
       // between, nothing is stopped, and the caller hears `already-resolved`.
       if (!(await recordStop(deps, record))) return { refusal: "refused" };
@@ -188,7 +219,9 @@ async function stopAtNonWaitGate(
     resumedBy: "stop",
     status: "stopped"
   });
-  return result.ok;
+  if (result.ok) return true;
+  // Busy: someone holds the turn's lease. If it is a stop, the gate says so.
+  return "busy" in result && (await deps.provider.loadSuspension(record.id, gate.suspensionId))?.status === "stopped";
 }
 
 /**
