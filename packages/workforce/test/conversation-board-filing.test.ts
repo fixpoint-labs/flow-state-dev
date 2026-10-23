@@ -14,7 +14,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -61,8 +61,8 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       script: [
         {
           toolCalls: [
-            { toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
-            { toolCallId: "a2", toolName: "dispatchTask", args: { goal: "Write more", assignee: "bobs.worker" } }
+            { toolCallId: "a1", toolName: "createTask", args: { goal: "Write the notes", assignee: "eng.tasker" } },
+            { toolCallId: "a2", toolName: "createTask", args: { goal: "Write more", assignee: "bobs.worker" } }
           ]
         },
         { text: "Filed it." },
@@ -106,7 +106,7 @@ describe("an assignee this conversation can't hand a task to", () => {
     }
   });
 
-  it("is refused, naming why, when it's on the list but can't take a task now: fired, or on a flow that takes none (BR-3)", async () => {
+  it("is refused, naming why, when it's on the list but can't take a task now: fired (BR-3)", async () => {
     const host = bootBoardHost();
     try {
       expect((await host.hire("alice", { id: "my.tasker", flow: "tasker", instructions: "Mine." })).error).toBeUndefined();
@@ -116,8 +116,6 @@ describe("an assignee this conversation can't hand a task to", () => {
 
       const fired = await file(host, "alice", conv, { goal: "do it", assignee: "my.tasker" });
       expect(fired).toMatchObject({ ok: false, error: expect.stringContaining('my.tasker: No worker "my.tasker" on your roster') });
-      const postsOnly = await file(host, "alice", conv, { goal: "do it", assignee: "eng.helper" });
-      expect(postsOnly).toMatchObject({ ok: false, error: expect.stringContaining("which takes no task") });
       expect(await host.rows("alice")).toEqual([]);
     } finally {
       await host.dispose();
@@ -152,7 +150,7 @@ describe("an assignee this conversation can't hand a task to", () => {
     }
   });
 
-  it("is refused, saying a workstream takes posts, not tasks, when its record carries a target (BR-4)", async () => {
+  it("names a workstream record by its target, and is refused without one, or with one no record names (BR-4, FIX-2083)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -172,8 +170,16 @@ describe("an assignee this conversation can't hand a task to", () => {
         } as never,
         "any"
       );
-      const refused = await file(host, "alice", conv, { goal: "do it", assignee: "eng.tasker" });
-      expect(refused).toMatchObject({ ok: false, error: expect.stringContaining("a workstream takes posts, not tasks") });
+      // eng.tasker is only a workstream here: a task for it names that workstream.
+      const untargeted = await file(host, "alice", conv, { goal: "do it", assignee: "eng.tasker" });
+      expect(untargeted).toMatchObject({ ok: false, error: expect.stringMatching(/^target_required: "eng\.tasker" leads a workstream here \(ws-billing\)/) });
+      const elsewhere = await file(host, "alice", conv, { goal: "do it", assignee: "eng.tasker", target: "ws-other" });
+      expect(elsewhere).toMatchObject({ ok: false, error: expect.stringMatching(/^target_not_a_delegate: /) });
+      const plain = await file(host, "alice", conv, { goal: "do it", assignee: "eng.writer", target: "ws-billing" });
+      expect(plain).toMatchObject({ ok: false, error: expect.stringMatching(/^target_not_a_delegate: /) });
+      // Named right, the workstream's session is resolved at filing: this one has none to run in.
+      const unresolved = await file(host, "alice", conv, { goal: "do it", assignee: "eng.tasker", target: "ws-billing" });
+      expect(unresolved).toMatchObject({ ok: false, error: expect.stringMatching(/^target_unreachable: workstream "ws-billing" can't take it now/) });
       expect(await host.rows("alice")).toEqual([]);
     } finally {
       await host.dispose();
@@ -230,9 +236,8 @@ describe("a task filed with no assignee", () => {
       await host.settled();
       // Assigning a held task names its owner and starts nothing.
       expect(host.runs).toEqual([]);
-      expect((await host.act("alice", conv, "dispatchTask_tasks", { taskId: filed.taskId })).output).toEqual({
-        ok: true,
-        taskId: filed.taskId
+      expect((await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, status: "pending" })).output).toEqual({
+        ok: true
       });
       await host.settled();
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
@@ -344,7 +349,7 @@ describe("each conversation's board is its own", () => {
       expect((await list(host, "bob", bobs)).map((task) => task.goal)).toEqual(["bob's"]);
       // Bob can't act on Alice's conversation at all (BR-12).
       await expect(host.act("bob", one, "listTasks_tasks", {})).rejects.toThrow(/belongs to another user/);
-      await expect(host.act("bob", one, "dispatchTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
+      await expect(host.act("bob", one, "createTask_tasks", { goal: "sneak in" })).rejects.toThrow(/belongs to another user/);
       expect((await list(host, "alice", one)).map((task) => task.id)).toEqual([a.taskId]);
     } finally {
       await host.dispose();

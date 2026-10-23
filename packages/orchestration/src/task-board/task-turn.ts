@@ -2,17 +2,15 @@
  * The one test of whether a turn is a task turn: a turn the receiving gate
  * serves, working the row a dispatch claimed (FIX-1816 BR-5a, FIX-1817 S1).
  *
- * Defined here once, and imported wherever a rule depends on it: a wait
- * (`dispatchTask({ wait })`) is refused on a task turn, so waits never
- * nest, and FIX-1817's question park is offered only on one.
+ * Defined here once, and imported wherever a rule depends on it: a task
+ * turn's own waits (`getTask({ wait })`) are bounded in depth, and FIX-1817's
+ * question park is offered only on one.
  *
  * Read from server-set state only, never from input (BP-031):
  *
  * - **The claim.** The gate (and an inline drain's worker body) stamps the
  *   claim it holds into the turn's async scope before the turn runs
- *   (`currentWorkerClaim`). Nothing else stamps it. An entry declared
- *   `taskTurn: false` (a delegated post) stamps it without making the turn a
- *   task turn.
+ *   (`currentWorkerClaim`). Nothing else stamps it.
  * - **The task session.** A board's hand-over opens a task session born
  *   naming its task in session state under {@link TASK_SESSION_TASK_KEY}, a
  *   field the session's flow declares readonly and refuses at create from any

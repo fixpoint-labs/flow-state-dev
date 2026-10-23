@@ -36,7 +36,7 @@ function flakyCapture() {
 }
 
 const file = async (host: BoardHost, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act("alice", conv, "dispatchTask_tasks", input);
+  const result = await host.act("alice", conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   const output = result.output as { ok: boolean; taskId?: string };
   expect(output.ok).toBe(true);

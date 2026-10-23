@@ -503,7 +503,7 @@ whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSe
 `"completed"`, `"errored"` (failed for good), `"parked"` (on its worker's question) or
 `"cancelled"`, and `cancelled` lists, on a failure or a cancel, the dependents it cancelled that
 the same session filed (they send no notice of their own). A retry sends nothing, nor does a row
-the filer waited on (`dispatchTask` with `wait`), nor a cancel the filer's own model made with its
+the filer waited on (`getTask` with `wait`), nor a cancel the filer's own model made with its
 task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
 sent again. The entry queues on the session unless `concurrency` says otherwise.
 
@@ -601,9 +601,9 @@ declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, labe
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
-allowSessionState?, taskTurn? })` returns a `TaskBinding` to pass as a task entry's `from`.
+allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
-ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
+ledger `resolve(ledgerId, ctx, partition, taskId)` returns (`Promise<TaskCollectionRef | undefined>`).
 The ledger id is the `boardId` the sending board dispatches under, so a board over a
 shared ledger sets `boardId` to the ledger's id. `partition` is the partition the
 dispatch names when the sender's ledger keeps one per partition (`partitionBy`), and
@@ -613,15 +613,14 @@ row and again before its recorders settle it. An id `resolve` doesn't answer for
 throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`,
 `taskId`, `ledgerId`) before any row is read; otherwise every check below runs on
 that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
-a process-wide map. `uses` declares the ledgers' resources, `onError` defaults to
-`"skip"`, and `allowSessionState` accepts an entry whose blocks keep session state.
-`taskTurn` defaults to `true`, which makes each run of the entry a task turn
-(`isTaskTurn(ctx)`): the run gets `parkOnQuestion`, whose question goes to whoever filed
-the task. Set `taskTurn: false` for an entry whose run answers the user directly: it
-doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the
-task is still current, and task-tool writes from the run can touch only the task it
-holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session
-state; if it does, its runs are task turns anyway.
+a process-wide map. `taskId` is the row the dispatch names, so a resolver can answer
+only when that row is one the running session may take; it arrives on the dispatch
+too, and the gate re-reads the row it names. `uses` declares the ledgers' resources,
+`onError` defaults to `"skip"`, and `allowSessionState` accepts an entry whose blocks
+keep session state. Each run of the entry is a task turn (`isTaskTurn(ctx)`): the run
+gets `parkOnQuestion`, whose question goes to whoever filed the task. The entry runs
+only if its claim on the task is still current, and task-tool writes from the run can
+touch only the task it holds.
 
 ```ts
 task: {
@@ -850,8 +849,7 @@ refused when it loads; give the work to workers on a task board instead.
 ### Task tools
 
 `taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
-`getTask`, `listTasks` and `updateTask`, with `answerTask`, plus `dispatchTask` on a board that
-dispatches (below). The worker's fifth tool, `reportProgress`, is built apart
+`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's fifth tool, `reportProgress`, is built apart
 ([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
 returns or throws.
 `createTaskToolsCapability(resolver, roster?)` points them at a
@@ -861,7 +859,7 @@ context, read on each call that checks an assignee, for a board whose team chang
 while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
-`createTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
+`createTask`, is a JSON object: a string, number or array is refused by the
 tool's schema, so a model that would send the payload as a JSON string is told to send the object.
 A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
 answers it when a task has one, and a task filed without one is labelled by its goal.
@@ -890,13 +888,13 @@ included: "a finished task takes no message; file a follow-up"), `cancel_takes_n
 check runs before the write, so a refused call writes nothing. A cancel through the tool writes
 `cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
 
-`dispatchTask` starts work now. Pass
+On a board that starts work now, `createTask` starts a task as soon as it is filed. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
-ready row as soon as it's written, the way a Workforce conversation does. It takes `createTask`'s
-fields, or `taskId` for a held row, and with `wait` it parks the turn until the task ends
-([below](#waiting-for-a-tasks-answer)). On such a board `createTask` starts a row at once unless
-it is filed `held: true`. `dispatches` defaults to `false`. Without it the tools offer no `dispatchTask`, and `createTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
-the `dispatchTask_<board>` action, which never waits.
+ready row as soon as it's written, the way a Workforce conversation does; `taskToolActions(collectionId,
+resolve, roster, { dispatches: true })` does the same for the actions. On such a board a task
+filed `held: true` waits until `updateTask({ id, status: "pending" })` releases it, and the same
+write can name its `assignee`. `dispatches` defaults to `false`: `createTask` then files a row
+the drain runs.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
@@ -932,10 +930,8 @@ fields and the task's status. So the recoverable set across the tools is
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
 `task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
 (`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
-`TaskFilingRule`). `dispatchTask`
-adds its own (`assignee_required`, `task_not_dispatchable`, `dispatch_target_required`,
-`dispatch_target_ambiguous`, `dispatch_ref_takes_no_task_fields`, and the `wait_*`
-codes when it [waits](#waiting-for-a-tasks-answer)). A
+`TaskFilingRule`), and the `wait_*` codes when `getTask`
+[waits](#waiting-for-a-tasks-answer). A
 coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 `not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
 and [follow-ups](#following-up-on-a-finished-task), below.
@@ -999,10 +995,9 @@ the request ends without reading it, the ending goes to `onTaskSettled`, once. W
 task's own turn may wait too. A wait is refused when it would make a chain of more than five
 waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
 on.
-`listTasks` marks a row a request is parked on `waitedOn: true`. `createTask` and
-`dispatchTask` never wait: `createTask` refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the refusal of the old fields -->
-`timeoutMs` with `create_task_does_not_wait`, `dispatchTask` refuses `wait` and `timeoutMs`
-with `dispatch_task_does_not_wait`, and nothing is filed. See
+`listTasks` marks a row a request is parked on `waitedOn: true`. `createTask` never waits: it
+refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the refusal of the old fields -->
+`timeoutMs` with `create_task_does_not_wait`, and nothing is filed. See
 [Task board → Waiting on a task](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-task)
 for the refusals.
 
@@ -1062,7 +1057,7 @@ answers it. Anyone who can call `answerTask` on the board can answer.
 `createParkOnQuestion({ resolve })` builds the worker's side:
 `parkOnQuestion({ question })` parks the task the current turn is working on, and
 `offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
-task that no turn is waiting on (`dispatchTask` with `wait`).
+task that no turn is waiting on (`getTask` with `wait`).
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
 the task goes back to `pending` with the answer, its worker picks it up again in the
@@ -1089,10 +1084,10 @@ finished task it answers `task_finished` and writes nothing. The collection side
 
 #### Following up on a finished task
 
-`createTask` and `dispatchTask` take `followUpOf` to file new work on a task: the follow-up
+`createTask` takes `followUpOf` to file new work on a task: the follow-up
 is a new task, with the same worker, that runs in that task's session. It
 keeps that worker: `updateTask` won't move it
-(`follow_up_takes_no_assignee`). Both tools refuse an `assignee` beside it
+(`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
 (`follow_up_takes_no_assignee`) and a task that never ran with a worker
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
 waits until that task ends, then runs. The task it follows never changes. If two

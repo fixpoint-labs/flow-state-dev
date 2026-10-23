@@ -57,7 +57,7 @@ function host(agentScript: MockGeneratorScriptEntry[], extra: Parameters<typeof 
 }
 
 const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) => {
-  const result = await h.act("alice", conv, "dispatchTask_tasks", input);
+  const result = await h.act("alice", conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -139,7 +139,7 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
-  it("a follow-up held with addTask waits, and dispatched by its id runs in the root task's session", async () => {
+  it("a follow-up held with addTask waits, and released runs in the root task's session", async () => {
     const h = plain();
     try {
       const conv = await h.conversation("alice", "lead");
@@ -153,7 +153,7 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
       // Held: nothing ran.
       expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan"]);
 
-      expect(await file(h, conv, { taskId: followUp.taskId })).toMatchObject({ ok: true, taskId: followUp.taskId });
+      expect((await h.act("alice", conv, "updateTask_tasks", { id: followUp.taskId, status: "pending" })).output).toEqual({ ok: true });
       await h.settled();
       expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan", "Now open the PR"]);
       expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);

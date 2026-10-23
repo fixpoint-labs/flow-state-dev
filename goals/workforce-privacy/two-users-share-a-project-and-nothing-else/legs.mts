@@ -20,7 +20,7 @@ import { rowsOf, sessionOn } from "./milestone.mts";
 import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, type RosterEntry, type SessionSummary } from "./people.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterRows, type ProjectAt } from "./screens.mts";
-import { isPostRow } from "../../lib/post-rows.mts";
+import { isRoutedTask } from "../../lib/routed-tasks.mts";
 import type { StoredItem } from "../../lib/shift-manager.mts";
 import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession, type StoredTask } from "./store.mts";
 
@@ -50,9 +50,9 @@ const research = (w: string) => `Please research this and write up the options w
 const ASK: Record<string, (w: string) => string> = { "eng.em": feature, researcher: research, "general-lead": research };
 /**
  * The standard workers a fork may come from: the ones ASK names, each on a flow
- * that takes a delegated post (the EM, the researcher, the general lead). The
- * Error Reporter's flow takes neither a post nor a task, so `addDelegate`
- * refuses a fork of it.
+ * that takes a task, so a coordinator can route to it (the EM, the
+ * researcher, the general lead). The Error Reporter's flow takes no task, so
+ * `addDelegate` refuses a fork of it.
  */
 const forkableStandard = (standard: readonly RosterEntry[]): RosterEntry[] => standard.filter((e) => Object.hasOwn(ASK, e.id));
 
@@ -212,7 +212,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   }
 
   // ---- a2 · fork ----
-  // The standard worker forked: one a coordinator can hand a post (a4) and a4
+  // The standard worker forked: one a coordinator can route a message to (a4) and a4
   // has a held-out ask for.
   const forkable = forkableStandard(standard);
   if (runs("a2")) {
@@ -500,6 +500,14 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const w = `${word()}-${hex()}`;
       // Earlier steps' work (b2's leads filing) settles first, so what appears next is this hand-off's.
       await quiet(o.store);
+      // A workstream's session works one routed task at a time (FIX-2083): b2's hand-off still open there
+      // (its lead parked on a question, or waiting on work it filed) holds this one until it ends. The person
+      // cancels it through the app first, so this step grades the new hand-off, not the order of two.
+      for (const open of conversationRecord(o.store, person.userId, pcSession[key]!).ledger.filter((d) => !["completed", "errored", "cancelled"].includes(d.rowStatus))) {
+        const cancelled = await act(who, COORDINATOR, pcSession[key]!, "updateTask_tasks", { id: open.taskId, status: "cancelled" });
+        r.saw("b3", `${person.label} cancelled b2's still-open routed task \`${open.taskId}\` (${open.rowStatus}) first: ${cancelled.status}`);
+      }
+      await quiet(o.store);
       const before = sessionIds(o.store);
       const entries0 = (await entriesOf(who, P)).length;
       const ledger0 = conversationRecord(o.store, person.userId, pcSession[key]!).ledger.length;
@@ -537,7 +545,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   if (runs("b4")) {
     o.say("b4: two of Alice's conversations with the chief of staff each add a task");
     r.via("b4", "action");
-    r.saw("b4", "surface: the app's `dispatchTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
+    r.saw("b4", "surface: the app's `createTask_tasks` action as Alice on each conversation; no screen adds a task, and the chief of staff's view draws one conversation (an observation, D2)");
     const delegate = "eng.coder";
     const before = sessionIds(o.store);
     const convs: Array<{ id: string; task?: string; word: string }> = [];
@@ -555,9 +563,9 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const t0 = Date.now();
     await Promise.all(
       convs.map(async (c) => {
-        const filed = await act(alice, COORDINATOR, c.id, "dispatchTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
+        const filed = await act(alice, COORDINATOR, c.id, "createTask_tasks", { goal: `Write a short note file in the storefront checkout recording the code ${c.word}, and commit it.`, assignee: delegate, input: { project: { visibility: "shared", id: "storefront" } } });
         c.task = (filed.output as any)?.taskId ?? (filed.output as any)?.task?.id;
-        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `dispatchTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
+        if (filed.status !== "completed" || c.task === undefined) r.fail("b4", `createTask on \`${c.id}\` ended ${filed.status}: ${filed.error ?? show(filed.output)}`);
       }),
     );
     for (const until = Date.now() + 300_000; Date.now() < until; await sleep(2_000)) {
@@ -622,8 +630,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         await quiet(o.store, 420_000, 15_000);
         const filed = taskRows(o.store).filter((t) => t.partition.startsWith(ws!.sessionId!));
         const emItems = await alice.routes.items(ws.sessionId!, "");
-        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])dispatchTask$/.test(String(i.toolCall?.name ?? "")));
-        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`dispatchTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
+        const adds = emItems.filter((i) => i.type === "tool_output" && /(^|[._/])createTask$/.test(String(i.toolCall?.name ?? "")));
+        if (adds.length === 0) r.fail("b5", `the EM's workstream session called no \`createTask\` (items: ${emItems.map((i) => i.type).join(",")})`);
         if (filed.length === 0) r.fail("b5", "no task row sits on the workstream session's board");
         const coderish = filed.filter((t) => t.assignee === "eng.coder" || t.assignee === "eng.reviewer");
         if (coderish.length !== filed.length) r.fail("b5", `a task's assignee isn't a DevTeam standard worker: ${show(filed.map((t) => t.assignee))}`);
@@ -648,8 +656,8 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (shown === undefined || entry === undefined || !shown.text.toLowerCase().includes(entry.status.toLowerCase())) r.fail("b5", `Alice's Storefront screen doesn't show the entry's status \`${entry?.status}\` (${shown?.text ?? drawn.errors.join(" | ")})`);
         else r.saw("b5", `Alice's Storefront screen shows \`${ws.id}\` with status \`${entry.status}\``);
         r.saw("b5", `${filed.length} task(s) on the workstream session's board: ${filed.map((t) => `\`${t.id}\` ${t.assignee} ${show(t.input)} → ${t.status}${t.error === undefined ? "" : ` (${String(t.error).slice(0, 120)})`}`).join("; ")}`);
-        // The coordinator's hand-off of the ask into the workstream session is a post row on its own board; any other row makes a third board.
-        const handOff = (t: StoredTask) => isPostRow(t) && t.sealed?.session?.id === ws!.sessionId;
+        // The coordinator's hand-off of the ask into the workstream session is a routed task on its own board, targeted at that session; any other row makes a third board.
+        const handOff = (t: StoredTask) => isRoutedTask(t) && (t.targetSessionId ?? t.sealed?.session?.id) === ws!.sessionId;
         const boards = new Set(taskRows(o.store).filter((t) => !handOff(t) && !before.has(t.partition.split("~")[0]!) && t.partition.split("~")[0] !== ws!.sessionId && newSessions(o.store, before).some((s) => t.partition.startsWith(s.id))).map((t) => t.partition));
         if (boards.size > 0) r.fail("b5", `a third board holds rows: ${show([...boards])}`);
         const created = newSessions(o.store, before);
@@ -688,11 +696,11 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       else r.saw("b6", `the turn offered ${offered.size === 0 ? "(unread)" : show([...offered])} and called ${show(called)}: none of the task tools`);
       r.via("b6", "action");
       const tasksBefore = taskRows(o.store).length;
-      const refused = await act(alice, COORDINATOR, s.id, "dispatchTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
+      const refused = await act(alice, COORDINATOR, s.id, "createTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
       const declined = (refused.output as { ok?: boolean } | undefined)?.ok === false;
-      if (refused.status === "completed" && declined) r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
-      else if (refused.status === "completed") r.fail("b6", `the app's dispatchTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
-      else r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
+      if (refused.status === "completed" && declined) r.saw("b6", `the app's createTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
+      else if (refused.status === "completed") r.fail("b6", `the app's createTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
+      else r.saw("b6", `the app's createTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
       if (taskRows(o.store).length !== tasksBefore) r.fail("b6", "a task row was stored");
     }
   }

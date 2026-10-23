@@ -18,7 +18,7 @@ Where the work is kept is never written anywhere. It is the filer's conversation
 
 (b) **The filer's conversation lists its delegate as taking a task.** Its `listDelegates`, read over HTTP, names `eng.coder` with `takes` of `tasks` (or `both`). The delegate list is the only thing that gives the filer the task tools.
 
-(c) **The filer files one task, through its own conversation.** `dispatchTask_tasks` on its conversation, over HTTP, names the delegate and nothing about a board.
+(c) **The filer files one task, through its own conversation.** `createTask_tasks` on its conversation, over HTTP, names the delegate and nothing about a board.
 
 (d) **The board hands it over, and the work really ran.** Proof of execution is a **file on disk** written by the delegate's run, not the board's own report, because the board would report "completed" whatever it actually did.
 

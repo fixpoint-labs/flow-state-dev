@@ -23,12 +23,10 @@
  * reply among them has landed here, or once its deadline has passed, whatever
  * is still out. Closing removes the record,
  * so an answer that lands after its round closed lands once and routes
- * nowhere. The deadline is set by the round's first row, and every row in the
- * round carries it, so a delegate still working at the deadline wakes the
- * conversation then (`delegated-post.ts`). A delegate that never says
- * anything (its process stopped) holds its round only until the
- * conversation's next wake after the deadline: every wake closes each overdue
- * round ({@link closeOverdue}).
+ * nowhere. The deadline is set by the round's first row, and the coordinator
+ * owes a wake on its own session at it (FIX-2083 D2), so a round whose
+ * delegate is still working closes then, after a host restart too. Every
+ * wake also closes each overdue round ({@link closeOverdue}).
  *
  * At most {@link MAX_OPEN_ROUNDS} rounds stay open per conversation. A round
  * past that is refused, not opened: its deliveries still go out, but nothing

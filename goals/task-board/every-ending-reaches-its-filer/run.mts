@@ -179,10 +179,10 @@ function buildHost(filename: string) {
       const ref = await deskBoard.board.resolver(ctx as never);
       if (ref === undefined) return { ok: false, error: "no_delegation_board" };
       // The wait parks the turn by throwing its park; nothing here may catch it.
-      // Start the held task, then wait on it, as `dispatchTask` then
-      // `getTask({ id, wait: true })` do (FIX-2082).
+      // Release the held task, then wait on it, as `updateTask({ status:
+      // "pending" })` then `getTask({ id, wait: true })` do (FIX-2082).
       if (script.op === "wait") {
-        await ref.dispatch!(script.taskId, { call: `goal.dispatch:${script.taskId}` });
+        await ref.release(script.taskId);
         const waited = await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
         return waited.ok ? { ok: true, status: waited.task.status, answer: waited.task.output } : waited;
       }

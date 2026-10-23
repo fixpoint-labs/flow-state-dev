@@ -1,6 +1,6 @@
 /**
  * Goal check: recording a task on a conversation's board never starts it, and
- * `dispatchTask` starts a recorded task, or a new one, now (FIX-1875). See
+ * `createTask` starts a recorded task, or a new one, now (FIX-1875). See
  * goal.md.
  *
  * One person on a goal-local Lab (`lab/`), the FIX-1817 Lab's shape with two
@@ -153,16 +153,16 @@ async function drive(origin: string, store: string) {
   });
   const afterTouches = { assigned: snapshot(assignedId), unassigned: snapshot(unassignedId) };
 
-  // lineage: the same dispatch from Alice's other conversation.
-  const reached = assignedId === undefined ? null : await act(elsewhere, "dispatchTask_tasks", { taskId: assignedId });
+  // lineage: the same release from Alice's other conversation.
+  const reached = assignedId === undefined ? null : await act(elsewhere, "updateTask_tasks", { id: assignedId, status: "pending" });
   await quiet();
   const afterReach = row(assignedId);
 
-  // disp: dispatch both recorded rows, and a new one.
-  const dispatchedAssigned = assignedId === undefined ? null : await act(conv, "dispatchTask_tasks", { taskId: assignedId });
-  const dispatchedUnassigned = unassignedId === undefined ? null : await act(conv, "dispatchTask_tasks", { taskId: unassignedId, assignee: other });
+  // disp: release both recorded rows, and file a new one ready.
+  const dispatchedAssigned = assignedId === undefined ? null : await act(conv, "updateTask_tasks", { id: assignedId, status: "pending" });
+  const dispatchedUnassigned = unassignedId === undefined ? null : await act(conv, "updateTask_tasks", { id: unassignedId, assignee: other, status: "pending" });
   const freshFor = pick(DELEGATES);
-  const fresh = await act(conv, "dispatchTask_tasks", { goal: drill(`${word}-n`), assignee: freshFor });
+  const fresh = await act(conv, "createTask_tasks", { goal: drill(`${word}-n`), assignee: freshFor });
   const freshId = fresh.output?.taskId as string | undefined;
   await waitFor(() => [assignedId, unassignedId, freshId].every((id) => ENDED.includes(row(id)?.status ?? "")), 180_000);
   await quiet();

@@ -154,7 +154,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   const agent = seams.agent?.(installation) ?? defineAgentWorkerFlow({ installation });
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: [agent as never], routeModel: ROUTE_MODEL })
+    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })
   };
   const copies = hireWorkforce(installation);
 

@@ -13,14 +13,14 @@
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createParkOnQuestion } from "@flow-state-dev/orchestration";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 
 const park = createParkOnQuestion({
-  // The conversation this task session was born for: a readonly birth field.
+  // The board this session's task is on: server-set state (`./board-above`).
   resolve: async (ctx: BlockContext) => {
-    const filing = (ctx.session.state as Record<string, unknown> | undefined)?.[FILING_SESSION_STATE_KEY];
-    return typeof filing === "string" ? conversationLedgerAt(ctx, filing) : undefined;
+    const filing = boardAboveOf(ctx);
+    return filing !== undefined ? conversationLedgerAt(ctx, filing) : undefined;
   }
 });
 

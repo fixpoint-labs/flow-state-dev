@@ -46,8 +46,6 @@
  * - {@link payOwedResumes}, the waker: the filer's pass resumes every request
  *   its rows are owed, through `ctx.requestHost.resumeWait`. Never called
  *   inside the waiting request.
- * - {@link replayLegacyDispatchWait}, the replay of a `dispatchTask({ wait })`
- *   call a request parked on before FIX-2082 (BP-030).
  */
 import {
   canHoldWait,
@@ -820,55 +818,4 @@ export async function payOwedResumes(ctx: BlockContext, collection: TaskCollecti
     }
   }
   return { resumed, stillOwed };
-}
-
-/**
- * The replay of a `dispatchTask({ wait: true })` call a request parked on
- * before FIX-2082 (BP-030), or `undefined` when this call recorded no such
- * filing (a new call, which the caller refuses).
- *
- * The filing it recorded (`fsd.ask.file`, keyed on the call) names the gate it
- * parked on and its deadline. The request parks on that gate again, which
- * gives back the outcome recorded there, and answers in the shape that call
- * answered: `answer` for a completion, an error naming any other ending. Its
- * timeout cancels nothing: the slot lapses, as any wait's does at its deadline.
- */
-export async function replayLegacyDispatchWait(
-  ctx: BlockContext,
-  collection: TaskCollectionRef
-): Promise<
-  | { readonly ok: true; readonly taskId: string; readonly answer: unknown }
-  | { readonly ok: false; readonly error: string; readonly taskId: string }
-  | undefined
-> {
-  const call = toolCallOf(ctx);
-  if (call === undefined || ctx.runOnce === undefined || ctx.suspend === undefined) return undefined;
-  // A new call records nothing here, and is refused by its caller; a replay
-  // reads the filing the call made before the upgrade.
-  const filed = await ctx.runOnce<{ taskId: string; gateId: string; deadline: number } | null>(
-    `fsd.ask.file:${call.logicalId}`,
-    async () => null
-  );
-  if (filed === null) return undefined;
-  const outcome = await parkOnWait(ctx, {
-    gateId: filed.gateId,
-    binding: { board: collection.collectionId, taskId: filed.taskId },
-    deadline: filed.deadline
-  });
-  if ("stopped" in outcome) {
-    await endStopped(ctx, collection, filed.taskId);
-    return { ok: false, error: "wait_stopped", taskId: filed.taskId };
-  }
-  await clearMarker(collection, filed.taskId);
-  if (outcome.answered) return { ok: true, taskId: filed.taskId, answer: outcome.answer };
-  if ("deadline" in outcome || isLegacyTimeout(outcome)) {
-    const lapsed = await collection.lapseWait?.(filed.taskId, filed.gateId, ctx.request.identity.id);
-    const row = collection.get(filed.taskId);
-    if (lapsed?.outcome === "declined" && row !== undefined && row.status === "completed") {
-      return { ok: true, taskId: filed.taskId, answer: row.output };
-    }
-    if (lapsed?.outcome !== "declined") releaseAtRequestEnd(ctx, collection, filed.taskId);
-    return { ok: false, error: "wait_timed_out: the task was still running at the wait's deadline; it runs on", taskId: filed.taskId };
-  }
-  return { ok: false, error: `${outcome.error.code}: ${outcome.error.message}`, taskId: filed.taskId };
 }

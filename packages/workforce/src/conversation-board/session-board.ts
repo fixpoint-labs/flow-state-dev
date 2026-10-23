@@ -7,7 +7,7 @@
  * builds them over one installation and one worker flow:
  *
  * - **The model's tools**: `tools`, one capability for the model block's
- *   `uses`, carrying Orchestration's task tools, `dispatchTask` among them, while the session
+ *   `uses`, carrying Orchestration's task tools while the session
  *   files and none otherwise, read before each model call. Compose it once
  *   per turn: core refuses a turn with two tools of one name. Beside it,
  *   `questions` and `progress` (a task turn's own two) and `delegateTools`.
@@ -41,7 +41,6 @@
  * ```
  */
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { DispatchPostForm } from "@flow-state-dev/orchestration";
 import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
@@ -53,13 +52,14 @@ import { WORKER_MESSAGE_ENTRY } from "../messages/keys";
 import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/worker-message-entry";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
+import { ROUTED_FROM_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import { takesConversationTasks } from "../worker-task-entry";
 import type { WorkerInstallation } from "../workers/installation";
-import { defineConversationBoard } from "./board";
+import { defineConversationBoard, type RoutedFiling } from "./board";
 import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
-import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
+import { TASK_SETTLED_ENTRY } from "./board-entries";
 import { questionPark } from "./question-park";
 import { taskProgress } from "./task-progress";
 import { steerTurnEntry } from "./steer";
@@ -69,7 +69,6 @@ import {
   PASS_CONCURRENCY,
   CONVERSATION_BOARD_SERVER_OWNED,
   conversationBoardStateShape,
-  postSettledEntry,
   taskSettledEntry
 } from "./task-settled";
 
@@ -80,10 +79,10 @@ import {
 export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
 
 /**
- * The board action a screen files a task through, in its goal form: filed
- * ready, the board woken. A scheduled task files through it too.
+ * The board action a screen files a task through: filed ready, the board
+ * woken. A scheduled task files through it too.
  */
-const SCREEN_FILING_ACTION = "dispatchTask_tasks";
+const SCREEN_FILING_ACTION = "createTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
 export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
@@ -96,7 +95,9 @@ export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(worker
 export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   ...DELEGATE_SERVER_OWNED,
   ...CONVERSATION_BOARD_SERVER_OWNED,
-  ...WORKER_MESSAGE_SERVER_OWNED
+  ...WORKER_MESSAGE_SERVER_OWNED,
+  // The `work` entry writes it when it starts a routed task in a session the routing conversation doesn't own (FIX-2083).
+  ROUTED_FROM_STATE_KEY
 ];
 
 /** What a session board is built from. */
@@ -109,27 +110,23 @@ export interface SessionBoardOptions {
    */
   readonly flowKind: string;
   /**
-   * The worker flows a delegated post reaches, for a flow that routes posts.
-   * Omitted, every worker flow on the installation that takes one.
-   */
-  readonly postFlows?: ReadonlySet<string>;
-  /**
    * The records a session's delegates start with beside its worker's
    * defaults, copied in the first time they are read or changed. A project
    * coordinator's flow seeds one per workstream its user has open there.
    */
   readonly seed?: (ctx: BlockContext) => Promise<readonly DelegateRecord[] | undefined>;
   /**
-   * `dispatchTask`'s post form, for a flow that routes posts: on a turn routing
-   * one, the model hands it on with `post: true`.
+   * How a flow that routes messages files a routed task from its model's
+   * turn (FIX-2083): on a turn routing one, a filing whose result goes to the
+   * conversation is handed here, which attaches the message.
    */
-  readonly posts?: DispatchPostForm;
+  readonly routes?: RoutedFiling;
 }
 
 /**
  * Build the filing kit for one worker flow.
  *
- * @param options The installation, the flow's name, and the flows a post reaches.
+ * @param options The installation, the flow's name, its seed and its routing.
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
@@ -139,14 +136,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesConversationTasks(options.installation.workerFlows()[options.flowKind]?.flow),
     chainLimit: () => taskChainLimitOf(options.installation),
-    ...(options.posts === undefined ? {} : { posts: options.posts }),
-    // A post row's delegate is checked again at hand-over, for a post: one
-    // fired or moved to a flow that takes none since its filing is refused.
-    postFlow: async (ctx, worker) => {
-      const checked = await delegates.check(ctx as never, worker, "post");
-      if (!checked.ok) throw new Error(`The post wasn't handed to "${worker}": ${checked.message}`);
-      return checked.worker.flow;
-    }
+    ...(options.routes === undefined ? {} : { routes: options.routes })
   });
 
   const messages = defineMessageWorkerCapability(options.installation, options.flowKind);
@@ -196,8 +186,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
-    /** File a post row and start it: the coordinator's one way to hand a post on. */
-    filePost: board.filePost,
+    /** File a routed task and start it: the write under a coordinator's one filing step (FIX-2083). */
+    fileRouted: board.fileRouted,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
     actions: { ...board.actions, ...delegates.actions },
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
@@ -210,37 +200,36 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * The internal entries the board needs on its flow, in this order: a run
      * of the board; the notice of a task the session filed; a check of the
      * session's waiting task (`CHECK_TASK_ENTRY`); the turn a late steer is
-     * owed (`STEER_TURN_ENTRY`, FIX-2086); with `onPost`, a post
-     * row's notice; a worker's message (`onWorkerMessage`, FIX-1989), which
-     * always wakes the turn; and a scheduled task's filing
-     * (`fileScheduledTask`, FIX-2085), through the board's own
-     * `dispatchTask_tasks`. Spread into `internal: { actions: ... }`.
+     * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
+     * (`onWorkerMessage`, FIX-1989), which always wakes the turn; and a
+     * scheduled task's filing (`fileScheduledTask`, FIX-2085), through the
+     * board's own `createTask_tasks`. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.
-     * @param policy For the two notice entries only (a task's and a post's):
-     *   whether a notice wakes the turn (`judgment`, the default) or lands as
-     *   a line only (`fixed`), for the running session.
-     * @param onPost A post row's ending, for a flow that hands posts on: the
-     *   coordinator's own handling (`PostEnding` in), on its own entry.
+     * @param policy For the notice entry: whether a notice wakes the turn
+     *   (`judgment`, the default) or lands as a line only (`fixed`), for the
+     *   running session.
+     * @param onRouted For a flow that routes messages: a conversation-result
+     *   task's completion, failure or cancel (`RoutedEnding` in), handed to
+     *   the flow's own handling instead of a line (FIX-2083).
      */
     entries(
       turn: BlockDefinition<any, any>,
       policy: (ctx: BlockContext) => NoticePolicy = () => "judgment",
-      onPost?: BlockDefinition<any, any>
+      onRouted?: BlockDefinition<any, any>
     ) {
       return {
         // One pass at a time per session (FIX-2078): a second waits its turn,
         // and runs once the first ends.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
-        [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
+        [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
         // A check of the session's waiting task, on the notices' line: what
         // the upgrade's backfill wakes for a split an older host parked.
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
-        ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
       };

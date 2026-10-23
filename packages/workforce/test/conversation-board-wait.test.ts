@@ -236,7 +236,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
 
       // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
       const lost = await host.loseDispatches("onTaskSettled");
-      const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       const tables = (filed.output as { taskId: string }).taskId;
       expect(await until(async () => (await host.rows("alice")).find((r) => r.id === tables)?.status === "completed")).toBe(true);
@@ -275,7 +275,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
   it("a task filed without waiting still wakes the judgment turn when it ends", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Nine laptops." } }
       ]
@@ -325,7 +325,7 @@ describe("a task session's turn that waits on a task it filed (FIX-2082)", { tim
     try {
       // boss hands lead a task; lead's task turn files for its own delegate and waits on it.
       const conv = await host.conversation("alice", "boss");
-      const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Ship the release", assignee: "lead" });
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: "Ship the release", assignee: "lead" });
       expect(filed.output).toMatchObject({ ok: true });
       const shipped = async () => (await host.rows("alice")).find((row) => row.goal === "Ship the release")?.status === "completed";
       expect(await until(shipped, 10_000)).toBe(true);

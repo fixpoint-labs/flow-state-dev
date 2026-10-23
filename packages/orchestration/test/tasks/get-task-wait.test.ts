@@ -2,7 +2,7 @@
  * `getTask({ id, wait, deadline })` as a model calls it (FIX-2082): a task
  * filed with `createTask`, now or in an earlier request, is waited on through
  * the read, which returns the task once it ends or as it stands at the
- * deadline. `dispatchTask` no longer waits.
+ * deadline. `createTask` never waits, and `dispatchTask` is gone (FIX-2083).
  *
  * The waiting request is a generator holding the task tools capability over a
  * durable board, the shape a coordinator's turn has. "The colleague" is a
@@ -144,10 +144,9 @@ describe("where getTask offers wait", () => {
         await act(state as never, flow, "run", {}, { sweeper: options.router });
         const names = seen[0]!.tools!.map((t) => t.name).sort();
         // Waiting adds no tool.
-        expect(names).toEqual(["answerTask", "createTask", "dispatchTask", "getTask", "listTasks", "updateTask"]);
+        expect(names).toEqual(["answerTask", "createTask", "getTask", "listTasks", "updateTask"]);
         expect(fieldsOf(seen, "getTask")).toEqual(offered ? ["deadline", "id", "wait"] : ["id"]);
         // No other tool waits.
-        expect(fieldsOf(seen, "dispatchTask")).not.toContain("wait");
         expect(fieldsOf(seen, "createTask")).not.toContain("wait");
       } finally {
         await state.dispose();
@@ -294,48 +293,6 @@ describe("getTask waits on a task this session filed", () => {
       const [row] = await listRows(state, flow);
       expect(row).toMatchObject({ status: "pending" });
       expect(row!.wait).toBeUndefined();
-    } finally {
-      await state.dispose();
-    }
-  });
-});
-
-describe("dispatchTask no longer waits", () => {
-  for (const args of [{ wait: true }, { timeoutMs: 60_000 }, { wait: true, timeoutMs: 60_000 }]) {
-    it(`refuses ${JSON.stringify(args)} by name, files nothing, parks nothing, and points at getTask`, async () => {
-      const { model, seen } = stepModel([
-        call("c1", "dispatchTask", () => ({ goal: "Is ACME's SOC 2 current?", assignee: "researcher", ...args })),
-        finalAnswer
-      ]);
-      const flow = toolFlow(model);
-      const state = await host(flow, { durable: true, router: true });
-      try {
-        const run = await act(state as never, flow, "run");
-        expect(await statusOf(state as never, run.requestId!)).toBe("completed");
-        const sent = toolResults(seen[1]!.messages);
-        expect(sent).toContain('"error":"dispatch_task_does_not_wait');
-        expect(sent).toContain("getTask({ id, wait: true })");
-        expect(await listRows(state, flow)).toEqual([]);
-      } finally {
-        await state.dispose();
-      }
-    });
-  }
-
-  it("a plain dispatchTask files and returns at once, taking no slot", async () => {
-    const { model, seen } = stepModel([
-      call("c1", "dispatchTask", () => ({ goal: "Is ACME's SOC 2 current?", assignee: "researcher" })),
-      finalAnswer
-    ]);
-    const flow = toolFlow(model);
-    const state = await host(flow, { durable: true, router: true });
-    try {
-      const run = await act(state as never, flow, "run");
-      expect(await statusOf(state as never, run.requestId!)).toBe("completed");
-      const [row] = await listRows(state, flow);
-      expect(row).toMatchObject({ status: "pending" });
-      expect(row!.wait).toBeUndefined();
-      expect(toolResults(seen[1]!.messages)).toMatch(/"ok":true,"taskId":"task_[^"]+"}/);
     } finally {
       await state.dispose();
     }

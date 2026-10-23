@@ -472,7 +472,7 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
     const h = host();
     try {
       const lead = await h.open("alice", "editor");
-      const filed = await h.act("alice", lead, "dispatchTask_tasks", { goal: "Edit it myself", assignee: "editor" }, "stepper");
+      const filed = await h.act("alice", lead, "createTask_tasks", { goal: "Edit it myself", assignee: "editor" }, "stepper");
       expect(filed.output).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "editor"/) });
       expect(await h.rows("alice")).toEqual([]);
       expect(await h.steps("alice")).toEqual([]);
@@ -487,7 +487,7 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
       h.controls.plans.editor = [{ id: "e-plan", goal: "Plan the edit" }];
       const lead = await h.open("alice", "editor");
       expect((await h.act("alice", lead, "run", { message: "plan the edit" }, "stepper")).error).toBeUndefined();
-      expect((await h.act("alice", lead, "dispatchTask_tasks", { goal: "Write the piece", assignee: "writer" }, "stepper")).output).toMatchObject({ ok: true });
+      expect((await h.act("alice", lead, "createTask_tasks", { goal: "Write the piece", assignee: "writer" }, "stepper")).output).toMatchObject({ ok: true });
       await h.settled();
       const listed = (await h.act("alice", lead, "listTasks_tasks", {}, "stepper")).output as { tasks: Array<{ id: string; assignee: string }> };
       expect(listed.tasks.map((task) => task.assignee).sort()).toEqual(["editor", "writer"]);
@@ -503,7 +503,7 @@ describe("a task session works its steps in its task's request (D1, D2)", () => 
     try {
       h.controls.plans.writer = outline;
       const lead = await h.open("alice", "editor");
-      const filed = await h.act("alice", lead, "dispatchTask_tasks", { goal: "Write me a post", assignee: "writer" }, "stepper");
+      const filed = await h.act("alice", lead, "createTask_tasks", { goal: "Write me a post", assignee: "writer" }, "stepper");
       expect(filed.output).toMatchObject({ ok: true });
       await h.settled();
 
@@ -531,7 +531,7 @@ describe("a task session works its steps in its task's request (D1, D2)", () => 
     try {
       h.controls.plans.writer = outline;
       const lead = await h.open("alice", "editor");
-      expect((await h.act("alice", lead, "dispatchTask_tasks", { goal: "Write me a post", assignee: "writer" }, "stepper")).output).toMatchObject({ ok: true });
+      expect((await h.act("alice", lead, "createTask_tasks", { goal: "Write me a post", assignee: "writer" }, "stepper")).output).toMatchObject({ ok: true });
       await h.settled();
       // Two steps fit under the limit of two; the third is refused, as a third piece would be.
       expect(h.controls.refusals).toEqual([{ worker: "writer", error: "TaskCapExceededError" }]);

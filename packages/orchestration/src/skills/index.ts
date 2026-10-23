@@ -109,7 +109,6 @@ export {
   buildTaskToolsList,
   taskToolsForTurn,
   type TaskToolsOptions,
-  type DispatchPostForm,
   type TaskCollectionResolver,
   // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
   // roster can name its type.

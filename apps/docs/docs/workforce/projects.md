@@ -364,7 +364,6 @@ import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/
 
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent],
   routeModel: "openai/gpt-6-luna",
   agent: { catalog: { ...projectCoordinatorTools } },
 });
@@ -406,7 +405,7 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 - **When you start your coordinator**, its delegates are the workstreams you have open in the project.
 - **When you open a workstream**, `openWorkstream` adds its delegate: the lead, with the workstream's address as the target. If you haven't started your coordinator yet, nothing changes now; it picks the workstream up when it starts.
 - **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same, and so does the coordinator's `editWorkstream`.
-- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the dispatch fails with that reason.
+- **When the coordinator hands work to a delegate**, it files a routed task with `createTask`, naming the workstream's address as `target`. The task runs in that workstream's session, and the lead answers there; its answer lands in your conversation with the coordinator. If the workstream can't take work then, because it's done or its session isn't started yet, the filing fails with that reason. `target` is set when the task is filed and can't be changed.
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
 
@@ -427,7 +426,6 @@ const workstreams = defineWorkstreamBlocks({
 
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent],
   routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
@@ -477,7 +475,6 @@ Your coordinator can change your workstreams in its project when you ask: rename
 ```ts
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent],
   routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
@@ -531,7 +528,6 @@ const projects = defineProjectBlocks();
 
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent],
   routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {

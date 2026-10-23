@@ -466,7 +466,7 @@ The `onTaskSettled` entry is where the flow [hears how each task ended](#hearing
 
 `implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the assignee is the only way in.
 
-The drain dispatches a row once it has claimed it. A board run by a drain has no `dispatchTask` tool, because the drain decides when each task runs. For a worker that needs another worker to start now, see [Giving another worker work](#giving-another-worker-work).
+The drain dispatches a row once it has claimed it, because the drain decides when each task runs. For a worker that needs another worker to start now, see [Giving another worker work](#giving-another-worker-work).
 
 ### When a dispatched task is done
 
@@ -658,7 +658,7 @@ A session picked by `{ id }` is never created. If it doesn't exist, belongs to s
 
 A task entry is normally reached by one board in its own flow, which puts its claim check in front of it. An entry can instead say where its tasks come from, with `from`. Its flow then needs no board at all, and any board in any flow can hand it tasks, as long as `from` knows that board's ledger.
 
-`taskLedgers` builds the `from` value. Its `resolve` gets the ledger id each incoming task names and returns that ledger, or `undefined` for a ledger the entry takes nothing from:
+`taskLedgers` builds the `from` value. Its `resolve` gets the ledger id each incoming task names, with the partition and the task's id, and returns that ledger, or `undefined` for a ledger the entry takes nothing from:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -694,7 +694,7 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), `endRules` (what else [holds a task open](#when-a-dispatched-task-is-done)), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-`taskTurn`, `true` by default, makes each run of the entry a task turn: the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
+Each run of the entry is a task turn: the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. The entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds.
 
 A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
 
@@ -813,43 +813,25 @@ The entry belongs on the flow that holds the board, even when the board hands it
 
 ### Giving another worker work
 
-`dispatchTask` is on a board that dispatches: one that starts a ready task as soon as it's
-written, such as a conversation's board in Workforce. A board that a drain runs decides for
-itself when each task runs, so it has no `dispatchTask`, and its `createTask` files a task the
-drain runs.
-
-On a board that dispatches, `createTask` starts a task at once too, unless it was filed with
-`held: true`. `dispatchTask` does the same for a new task:
+On a board that dispatches, one that starts a ready task as soon as it's written, such as a
+conversation's board in Workforce, `createTask` starts the work at once:
 
 ```ts
-dispatchTask({ goal: "Draft the release note", assignee: "writer" })
+createTask({ goal: "Draft the release note", assignee: "writer" })
 ```
 
-The work starts at once, and the call returns the task's id without waiting for it. When the
-task ends, you [hear about it](#hearing-how-a-task-ended) the same way you hear about any task you filed. To release a task
-you filed held, name it instead of describing a new one:
+The call returns the task's id without waiting for it. When the task ends, you
+[hear about it](#hearing-how-a-task-ended) the same way you hear about any task you filed.
+
+To file a task without starting it, pass `held: true`. It waits until you release it, and the
+same write can give it its worker:
 
 ```ts
-dispatchTask({ taskId: "task_8f2" })
+updateTask({ id: "task_8f2", status: "pending", assignee: "writer" })
 ```
 
-| Input | |
-|---|---|
-| `goal`, `title`, and the rest of `createTask`'s fields | A new task, exactly as for `createTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
-| `taskId` | A task you filed held on this board, instead of a new one. It must not have started. With `assignee`, it also moves the task to that worker, which only a held task allows |
-
-| Error | When |
-|---|---|
-| `assignee_required` | No `assignee` named or already on the task, and the board has no single worker to give it to. Nothing is filed |
-| `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
-| `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a held one. Nothing is filed |
-| `dispatch_target_ambiguous` | Both `goal` and `taskId`. Give one. Nothing is filed |
-| `dispatch_ref_takes_no_task_fields` | `taskId` with any field but `assignee`. Change the held task with `updateTask` first. Nothing is written |
-| `dispatch_task_does_not_wait` | `wait` or `timeoutMs`. `dispatchTask` doesn't wait: [wait with `getTask`](#waiting-on-a-task). Nothing is filed |
-
-A refused call returns `{ ok: false, error, taskId? }`, with `taskId` when a task was filed.
-`error` is the code, then `: ` and a sentence for the model, so match it with
-`error.startsWith("task_not_dispatchable")`, not `===`.
+A board that a drain runs decides for itself when each task runs, so its `createTask` files a
+task the drain starts when it claims it.
 
 ### Waiting on a task
 
@@ -915,10 +897,10 @@ the task a waiting turn is working ends that turn too, with no further model cal
 wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's
 limits apply. The `getTask_<board>` action reads without waiting.
 
-**Moving from `dispatchTask({ wait })`.** `dispatchTask` no longer waits: it refuses `wait` and
-`timeoutMs` with `dispatch_task_does_not_wait`. File the task with `createTask` or
-`dispatchTask`, then call `getTask({ id, wait: true })`. `deadline` takes the place of
-`timeoutMs`.
+**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action.
+File a new task with `createTask`, which starts it on a board that dispatches, and release a held
+one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
+`deadline` takes the place of `timeoutMs`.
 
 **Moving from `waitForResponse`.** `createTask` doesn't wait, and refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`. File the task, then wait with `getTask`. Nothing is filed. {/* retired-name-refusal: migration note */}
 

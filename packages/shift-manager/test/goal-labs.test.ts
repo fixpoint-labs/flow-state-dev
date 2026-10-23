@@ -97,7 +97,7 @@ describe.each([
     const conversation = (
       await clients.sessions.createSession({ flowKind, userId: clients.userId, state: { workerId: filer.id } })
     ).id;
-    const sent = await clients.actions(flowKind).sendAction("dispatchTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const sent = await clients.actions(flowKind).sendAction("createTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
     const taskId = await eventually(async () => {
       const listed = (await clients.sessions.listSessionRequests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
         id: string;

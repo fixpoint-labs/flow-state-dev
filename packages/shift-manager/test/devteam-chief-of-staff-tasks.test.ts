@@ -193,7 +193,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
   it("files a task for an agent delegate, which runs it in a task session of the user's, and hears it complete once", async () => {
     const goal = `audit the licenses of ${globalThis.crypto.randomUUID().slice(0, 8)}`;
     // The task tools come with a delegate that takes a task, so the filing is the next turn's (FIX-1802 D1).
-    const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "dispatchTask", args: { goal, assignee: "licenses" } }]));
+    const lab = await open(scripted([...hireTaskTaker, END_TURN, { toolName: "createTask", args: { goal, assignee: "licenses" } }]));
     const id = await conversation(lab);
     expect((await act(lab, id, "run", { message: "hire someone to audit licenses" })).error).toBeUndefined();
     expect((await act(lab, id, "run", { message: "have our dependencies' licenses audited" })).error).toBeUndefined();
@@ -251,7 +251,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
     modelId: "test/jev",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, unknown>; state?: unknown }) {
-      // Best fit's route: no pick, so the chief of staff's judgment takes the post, as without the hook.
+      // Best fit's route: no pick, so the chief of staff's judgment takes the message, as without the hook.
       if (!("verdict" in call.questions)) throw new Error("no route in this test");
       judged.push(call);
       const next = verdicts[verdict] ?? { choice: "done", confidence: 0.95 };
@@ -277,7 +277,7 @@ function scriptedCoder(calls: Array<ToolCall | typeof END_TURN>, verdicts: Verdi
 
 /** File one task for the coder, from the chief of staff's first turn. */
 const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
-  toolName: "dispatchTask",
+  toolName: "createTask",
   args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
 });
 

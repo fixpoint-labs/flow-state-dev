@@ -480,7 +480,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         api,
         EM_FLOW,
         session,
-        "dispatchTask_tasks",
+        "createTask_tasks",
         {
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,

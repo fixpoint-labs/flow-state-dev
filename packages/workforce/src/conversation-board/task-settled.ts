@@ -13,9 +13,13 @@
  *   take goes again with the notice (epic decision (f)). A notice stored before
  *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
  *   starts the attempt or resumes the turn.
- * - **`onPostSettled`** is a post row's (`../coordinator/delegated-post`), until
- *   FIX-2083 routes posts: acknowledged only after the coordinator's handling
- *   has run, so a failure there leaves the answer owed.
+ * - **A task whose result goes to the conversation** (`resultTo:
+ *   "conversation"`, a routed task among them, FIX-2083) wakes no turn: its
+ *   answer lands as a line under the delegate's name. A conversation that
+ *   routes messages hands its completion, failure or cancel to its own
+ *   handling instead ({@link TaskSettledOptions.onRouted}: the line, and the
+ *   rounds it feeds), and acknowledges the notice only once that has run, so a
+ *   failure there leaves the answer owed.
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -36,15 +40,16 @@ import {
   clearNotice,
   decideNotice,
   isTerminalStatus,
-  isNoticeOwed,
   noticeKey,
   noticeText,
   type NoticePolicy,
+  type Task,
+  type TaskCollectionRef,
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { isPostRow, postRowOf, postRowSchema } from "../coordinator/delegated-post";
+import { routedBriefOf, routedBriefSchema } from "../coordinator/routed-brief";
 import { triggerPass, wakeIfStartable } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
@@ -83,12 +88,12 @@ export const conversationBoardStateShape = {
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE];
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line", "post"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "routed"]),
   text: z.string().optional(),
   worker: z.string().optional(),
-  /** On a post row's ending: what the coordinator's handling is handed. */
-  post: z.unknown().optional(),
-  /** On a post row's ending: the notice, acknowledged once the coordinator's handling has run. */
+  /** On a routed ending: what the conversation's routing is handed. */
+  routed: z.unknown().optional(),
+  /** On a routed ending: the notice, acknowledged once the routing's handling has run. */
   notice: taskNoticeSchema.optional()
 });
 
@@ -101,24 +106,26 @@ export interface TaskSettledOptions {
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
   /**
-   * A post row's ending, acted on once like any notice, and handed here
-   * instead of a line or a turn ({@link PostEnding}). Only a coordinator's
-   * conversation files post rows.
+   * A conversation-result task's completion, failure or cancel, acted on once
+   * like any notice, and handed here instead of a line ({@link RoutedEnding}):
+   * a coordinator's routing lands the answer and feeds its rounds (FIX-2083).
    */
-  readonly onPost?: BlockDefinition<any, any>;
+  readonly onRouted?: BlockDefinition<any, any>;
 }
 
-/** What a post row's ending hands {@link TaskSettledOptions.onPost}. */
-export const postEndingSchema = z.object({
+/** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
+export const routedEndingSchema = z.object({
   taskId: z.string(),
   ending: z.enum(["completed", "errored", "cancelled"]),
-  /** The row's output: the delegate's reply, on a completed row. */
+  /** The row's output: the delegate's answer, on a completed row. */
   output: z.unknown().optional(),
-  /** The row's server-written post, read once here. */
-  post: postRowSchema
+  /** The delegate it went to. */
+  assignee: z.string().optional(),
+  /** The row's server-written brief, when it was routed: its message and round. */
+  brief: routedBriefSchema.optional()
 });
 
-export type PostEnding = z.infer<typeof postEndingSchema>;
+export type RoutedEnding = z.infer<typeof routedEndingSchema>;
 
 /**
  * Not `"session"`. Delegate answers are `queue` on that key, and a queued
@@ -160,8 +167,8 @@ function noteSeen(ctx: BlockContext, key: string) {
 }
 
 /**
- * What every notice does first, task or post: free the session it ran in, and
- * end the chain count of a top task that ended (FIX-1802 S5).
+ * What every notice does first: free the session it ran in, and end the
+ * chain count of a top task that ended (FIX-1802 S5).
  */
 async function onEnding(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   const ref = await ownConversationLedger(ctx);
@@ -230,6 +237,12 @@ const runPass = handler({
   }
 });
 
+/** A conversation-result task's answer as it lands: the delegate's reply itself, or the ending in words. */
+function resultLine(notice: TaskNotice, row: { goal: string; title?: string; assignee?: string }): string {
+  if (notice.ending === "completed" && typeof notice.output === "string" && notice.output.trim() !== "") return notice.output;
+  return noticeText(notice, row);
+}
+
 /**
  * Build the `onTaskSettled` internal entry: orchestration's entry, with the
  * conversation's handling. It defers on the reply line, so the writer's send
@@ -237,6 +250,37 @@ const runPass = handler({
  * on once by the dedupe, a versioned write.
  */
 export function taskSettledEntry(options: TaskSettledOptions) {
+  /**
+   * A conversation-result task's ending (FIX-2083): no turn wakes for it. With
+   * a routing layer, a completion, failure or cancel goes to it, and is
+   * acknowledged after; anything else, and any ending without one, lands as a
+   * line now.
+   */
+  const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
+    const key = noticeKey(notice);
+    const acted = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+    // Acted on already, by a run that stopped before clearing the marker.
+    if (acted.includes(key)) {
+      await ref.patchMetadata(row.id, clearNotice(notice));
+      return { act: "none" };
+    }
+    if (options.onRouted !== undefined && (notice.ending === "completed" || notice.ending === "errored" || notice.ending === "cancelled")) {
+      const brief = routedBriefOf(row);
+      const routed: RoutedEnding = {
+        taskId: row.id,
+        ending: notice.ending,
+        ...(notice.output !== undefined ? { output: notice.output } : {}),
+        ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
+        ...(brief !== undefined ? { brief } : {})
+      };
+      return { act: "routed", routed, notice: notice as Settled["notice"] };
+    }
+    const first = await noteSeen(ctx, key);
+    await ref.patchMetadata(row.id, clearNotice(notice));
+    if (first !== true) return { act: "none" };
+    return { act: "line", text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+  };
+
   const settle = handler({
     name: "conversation-task-settled",
     inputSchema: taskNoticeSchema,
@@ -251,6 +295,9 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       if (ref === undefined || row === undefined) return { act: "none" };
       await onEnding(ctx, notice);
       await reportFailure(ctx, notice);
+      if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.asked !== true) {
+        return settleConversationResult(ctx, ref, row, notice);
+      }
       const first = await noteSeen(ctx, noticeKey(notice));
       // Acknowledged here, once reported and deduped, before what it wakes: the
       // check at this request's end reads a piece whose notice is still owed as
@@ -269,85 +316,9 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     }
   });
 
-  const handling = sequencer({ name: "conversation-on-task-settled", inputSchema: taskNoticeSchema })
-    // In a task session whose task waits (its pieces, FIX-2077): this request
-    // runs for the task, and the task is checked at its end, after any turn
-    // this notice wakes, with that turn's answer. First, before any await.
-    .tap(admitOwnTask("conversation-task-settled-admission", true))
-    .step(settle)
-    .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
-    .tapIf(
-      (settled: Settled) => settled.act === "wake-turn",
-      (settled: Settled) => ({ message: settled.text ?? "" }),
-      wokenTurnOf(options)
-    )
-    .tapIf((settled: Settled) => settled.act === "run-board", runPass);
-
-  return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
-}
-
-/**
- * Build the `onPostSettled` internal entry: a post row's ending, deduped, acted
- * on by the coordinator's handling, and acknowledged once that has run, queued
- * on the session rather than deferred on the reply line, so a delegate's answer
- * lands while a reply runs. A post that failed for good is reported to the
- * Error Reporter first, best effort (decision (f), FIX-2010): the coordinator
- * hears the ending whether or not the intake took it. Until FIX-2083.
- */
-export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {
-  const settle = handler({
-    name: "conversation-post-settled",
-    inputSchema: taskNoticeSchema,
-    outputSchema: settledSchema,
-    sessionStateSchema: z.object(conversationBoardStateShape),
-    resources: { ...taskChainResources },
-    execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
-      const ctx = rawCtx as unknown as BlockContext;
-      if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
-      const ref = await ownConversationLedger(ctx);
-      if (ref === undefined) return { act: "none" };
-      await onEnding(ctx, notice);
-      const row = ref.get(notice.taskId);
-      if (!isPostRow(row)) return { act: "none" };
-      // A post row a user cancelled: its handling only closes what the cancel
-      // lets close, so a copy sent again changes nothing.
-      if (row!.status === "cancelled" && notice.ending === "cancelled" && !isNoticeOwed(row!, notice)) {
-        const post = postRowOf(row);
-        if (post === undefined) return { act: "none" };
-        return { act: "post", post: { taskId: row!.id, ending: "cancelled", post } satisfies PostEnding };
-      }
-      // A notice its row doesn't owe was delivered already, or was never owed.
-      if (!isNoticeOwed(row!, notice)) return { act: "none" };
-      // Best effort on a post (FIX-2010): the coordinator hears its ending
-      // whether or not the intake took the report.
-      await reportFailure(ctx, notice).catch(() => undefined);
-      const key = noticeKey(notice);
-      const acknowledged = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
-      const post = postRowOf(row);
-      // Acknowledged already, by a run that stopped before clearing the
-      // marker. A post that doesn't read can't be landed: its round closes at its deadline.
-      if (
-        acknowledged.includes(key) ||
-        post === undefined ||
-        (notice.ending !== "completed" && notice.ending !== "errored" && notice.ending !== "cancelled")
-      ) {
-        await noteSeen(ctx, key);
-        await ref.patchMetadata(row!.id, clearNotice(notice));
-        return { act: "none" };
-      }
-      const ending: PostEnding = {
-        taskId: row!.id,
-        ending: notice.ending,
-        ...(notice.output !== undefined ? { output: notice.output } : {}),
-        post
-      };
-      return { act: "post", post: ending, notice: notice as Settled["notice"] };
-    }
-  });
-
-  /** The coordinator's handling of a post row's ending ran: acknowledge its notice. */
+  /** The routing's handling of a conversation-result task's ending ran: acknowledge its notice. */
   const acknowledge = handler({
-    name: "conversation-post-acknowledged",
+    name: "conversation-routed-acknowledged",
     inputSchema: settledSchema,
     outputSchema: z.object({}),
     sessionStateSchema: z.object(conversationBoardStateShape),
@@ -361,14 +332,28 @@ export function postSettledEntry(options: TaskSettledOptions & { readonly onPost
     }
   });
 
-  const block = sequencer({ name: "conversation-on-post-settled", inputSchema: taskNoticeSchema })
+  let handling = sequencer({ name: "conversation-on-task-settled", inputSchema: taskNoticeSchema })
+    // In a task session whose task waits (its pieces, FIX-2077): this request
+    // runs for the task, and the task is checked at its end, after any turn
+    // this notice wakes, with that turn's answer. First, before any await.
+    .tap(admitOwnTask("conversation-task-settled-admission", true))
     .step(settle)
+    .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
     .tapIf(
-      (settled: Settled) => settled.act === "post",
-      (settled: Settled) => settled.post as PostEnding,
-      options.onPost
+      (settled: Settled) => settled.act === "wake-turn",
+      (settled: Settled) => ({ message: settled.text ?? "" }),
+      wokenTurnOf(options)
     )
-    .tapIf((settled: Settled) => settled.act === "post" && settled.notice !== undefined, acknowledge);
+    .tapIf((settled: Settled) => settled.act === "run-board", runPass);
+  if (options.onRouted !== undefined) {
+    handling = handling
+      .tapIf(
+        (settled: Settled) => settled.act === "routed",
+        (settled: Settled) => settled.routed as RoutedEnding,
+        options.onRouted
+      )
+      .tapIf((settled: Settled) => settled.act === "routed", acknowledge);
+  }
 
-  return { inputSchema: taskNoticeSchema, block, concurrency: "queue" as const };
+  return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
 }

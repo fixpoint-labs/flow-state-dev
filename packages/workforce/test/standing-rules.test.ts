@@ -126,7 +126,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     const h = boot();
     const conversation = await h.conversation("alice", "lead");
     const filed = await h.act("alice", conversation, "run", {
-      message: `call dispatchTask ${JSON.stringify({ assignee: "otto", goal: "Write the summary." })}`
+      message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Write the summary." })}`
     });
     expect(filed.error).toBeUndefined();
     await h.settled();
@@ -139,7 +139,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     for (const call of woken) expect(ruleToolsOf(call)).toEqual([]);
   });
 
-  it("offers none on a coordinator's post handed to an agent delegate", async () => {
+  it("offers none on a coordinator's routed task to an agent delegate", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "front");
     expect((await h.act("alice", conversation, "run", { message: "Who can help with billing?" })).error).toBeUndefined();
@@ -178,7 +178,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     const h = boot();
     const conversation = await h.conversation("alice", "lead");
     await h.act("alice", conversation, "run", {
-      message: `call dispatchTask ${JSON.stringify({ assignee: "otto", goal: "Draft the notes." })}`
+      message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Draft the notes." })}`
     });
     await h.settled();
     const runtime = await h.state.getRuntime();
@@ -293,7 +293,7 @@ describe("what every turn reads (V4, BR-6 to BR-8)", () => {
     await h.client("bob").standingRules("otto", { op: "add", version: 0, text: "Bob's rule." });
     const conversation = await h.conversation("alice", "lead");
     await h.act("alice", conversation, "run", {
-      message: `call dispatchTask ${JSON.stringify({ assignee: "otto", goal: "Sum it up." })}`
+      message: `call createTask ${JSON.stringify({ assignee: "otto", goal: "Sum it up." })}`
     });
     await h.settled();
     const task = calls.find((c) => c.block === "agent-answer" && c.user.includes("Sum it up."));

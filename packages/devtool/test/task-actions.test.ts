@@ -67,17 +67,15 @@ describe("taskActionsFor", () => {
     expect(taskIdField("deleteProject", takesId)).toBeUndefined();
   });
 
-  it("offers a board's generated dispatchTask on its rows, though a new task makes its taskId optional", () => {
-    // `dispatchTask_<suffix>` starts a recorded row by its id, or files a new
-    // one with a goal, so its taskId is optional. On a row it starts that row.
+  it("offers no action whose taskId is optional on a row, an app's own included", () => {
+    // A board has no generated action that starts a held row by an optional
+    // id any more (dispatchTask is gone, FIX-2083): updateTask releases it.
     const schemas: Record<string, ActionInputSchema> = {
       ...familySchemas("tasks"),
-      dispatchTask_tasks: { type: "object", fields: { goal: { type: "string", required: false }, taskId: { type: "string", required: false } } },
-      // An app's own action with an optional taskId is still not a row action.
       maybe: optionalTaskId,
     };
     const offered = taskActionsFor(Object.keys(schemas), schemas, "tasks", []);
-    expect(offered).toContain("dispatchTask_tasks");
+    expect(offered).toContain("updateTask_tasks");
     expect(offered).not.toContain("maybe");
     expect(offered).not.toContain("createTask_tasks");
   });

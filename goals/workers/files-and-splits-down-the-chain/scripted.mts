@@ -168,7 +168,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       out.b = { conv, word: w, turn, quietAt };
     });
 
-  // c: a routing coordinator whose one delegate takes only posts, and a worker
+  // c: a routing coordinator whose one delegate takes no task, and a worker
   // with no delegates: each turn says which tools it was handed and tries to
   // file; the app tries to file on each conversation.
   if (o.legs.has("c"))
@@ -198,7 +198,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       await quiet(o.store);
       // The app files on the deepest board too: the session of the task on the fifth.
       const d5 = sessionOf(o.store, "deep.d5", conv);
-      const deepApp = d5 === null ? null : await alice.act("agent", d5, "dispatchTask_tasks", { goal: `Dig the ${w} well deeper`, assignee: "deep.d6" });
+      const deepApp = d5 === null ? null : await alice.act("agent", d5, "createTask_tasks", { goal: `Dig the ${w} well deeper`, assignee: "deep.d6" });
       const fw = word();
       const fanConv = await alice.conversation("agent", "wide.top");
       const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);

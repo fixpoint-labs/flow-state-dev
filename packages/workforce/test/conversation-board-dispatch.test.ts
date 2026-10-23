@@ -3,7 +3,8 @@
  *
  * A held row is never started by any of the board's start paths: the claim,
  * the drain's exit, a filing's wake, an assign's wake, a touch's wake.
- * `dispatchTask` releases one, and files a new row ready. Some rows are
+ * `updateTask({ status: "pending" })` releases one, and `createTask` files a
+ * new row ready, starting it at once (`dispatchTask` is gone, FIX-2083). Some rows are
  * seeded in the shape an older build stored a recorded row in (`undispatched`,
  * FIX-1875), which the board reads as held (FIX-2080); every leg reads the
  * store, never the action's own say-so.
@@ -45,7 +46,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
       // A touch: every action on the board starts what's startable.
       for (let i = 0; i < 5; i += 1) await act(host, conv, "listTasks_tasks", {});
       // A filing that starts its own row, so the board runs and its drain exits.
-      const other = await act(host, conv, "dispatchTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
+      const other = await act(host, conv, "createTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
       expect(other.ok).toBe(true);
       await host.settled();
       // An assign that names the row's new owner: it moves, and stays held.
@@ -142,14 +143,14 @@ describe("createTask held and updateTask on a conversation's board (FIX-1875 S7,
     }
   });
 
-  it("an assign and then a dispatch of a recorded row: the assigned owner runs it, once (BR-25)", async () => {
+  it("an assign and then a release of a held row: the assigned owner runs it, once (BR-25)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
       const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
       await act(host, conv, "updateTask_tasks", { id: filed.taskId!, assignee: "eng.writer" });
-      await act(host, conv, "dispatchTask_tasks", { taskId: filed.taskId! });
+      await act(host, conv, "updateTask_tasks", { id: filed.taskId!, status: "pending" });
       await host.settled();
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", assignee: "eng.writer" });
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
@@ -174,27 +175,24 @@ describe("createTask held and updateTask on a conversation's board (FIX-1875 S7,
   });
 });
 
-describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => {
-  it("starts a recorded row by its id, once, with one completed notice", async () => {
+describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () => {
+  it("starts a recorded row on its release, once, with one completed notice", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
       await host.writeRow("alice", filing, recorded("task_recorded", "eng.tasker"));
 
-      expect(await act(host, conv, "dispatchTask_tasks", { taskId: "task_recorded" })).toEqual({
-        ok: true,
-        taskId: "task_recorded"
-      });
+      expect(await act(host, conv, "updateTask_tasks", { id: "task_recorded", status: "pending" })).toEqual({ ok: true });
       await host.settled();
       const row = await host.row("alice", filing, "task_recorded");
       expect(row).toMatchObject({ status: "completed", assignee: "eng.tasker" });
       expect(row?.undispatched).toBeUndefined();
       expect(host.runs.filter((run) => run.taskId === "task_recorded")).toHaveLength(1);
 
-      // Again: it is no longer recorded, so it is refused, naming why, and nothing runs.
-      const again = await act(host, conv, "dispatchTask_tasks", { taskId: "task_recorded" });
-      expect(again).toMatchObject({ ok: false, error: expect.stringMatching(/^task_not_dispatchable: .*completed/) });
+      // Again: it has finished, so it is refused, and nothing runs.
+      const again = await act(host, conv, "updateTask_tasks", { id: "task_recorded", status: "pending" });
+      expect(again).toMatchObject({ ok: false });
       await host.settled();
       expect(host.runs.filter((run) => run.taskId === "task_recorded")).toHaveLength(1);
     } finally {
@@ -202,13 +200,13 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     }
   });
 
-  it("gives a recorded row its owner in the same write, when the call names one (BR-9)", async () => {
+  it("gives a recorded row its owner in the release's own call (BR-9)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
       await host.writeRow("alice", filing, recorded("task_recorded", undefined));
-      await act(host, conv, "dispatchTask_tasks", { taskId: "task_recorded", assignee: "eng.tasker" });
+      await act(host, conv, "updateTask_tasks", { id: "task_recorded", assignee: "eng.tasker", status: "pending" });
       await host.settled();
       expect(await host.row("alice", filing, "task_recorded")).toMatchObject({ status: "completed", assignee: "eng.tasker" });
     } finally {
@@ -220,7 +218,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
-      const filed = await act(host, conv, "dispatchTask_tasks", { goal: "Draft the release note", assignee: "eng.tasker" });
+      const filed = await act(host, conv, "createTask_tasks", { goal: "Draft the release note", assignee: "eng.tasker" });
       expect(filed).toMatchObject({ ok: true, taskId: expect.any(String) });
       await host.settled();
       const filing = await host.filingOf("alice", conv);
@@ -242,9 +240,9 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
       await host.writeRow("alice", filing, recorded("task_recorded", "eng.tasker"));
       const before = await host.row("alice", filing, "task_recorded");
 
-      expect(await act(host, other, "dispatchTask_tasks", { taskId: "task_recorded" })).toMatchObject({
+      expect(await act(host, other, "updateTask_tasks", { id: "task_recorded", status: "pending" })).toMatchObject({
         ok: false,
-        error: "task_not_found"
+        error: expect.stringMatching(/^task_not_found/)
       });
       await host.settled();
       expect(await host.row("alice", filing, "task_recorded")).toEqual(before);
@@ -254,7 +252,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     }
   });
 
-  it("refuses, writing nothing, when there is no owner to start it with (BR-24)", async () => {
+  it("starts nothing that has no owner to start with: a row filed or released with none waits, unassigned (BR-24)", async () => {
     const host = bootBoardHost();
     try {
       // Two delegates take tasks here, so neither is the default.
@@ -262,59 +260,29 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
       const filing = await host.filingOf("alice", conv);
       await host.writeRow("alice", filing, recorded("task_nobody", undefined));
 
-      expect(await act(host, conv, "dispatchTask_tasks", { goal: "Do it" })).toMatchObject({
-        ok: false,
-        error: expect.stringMatching(/^assignee_required: /)
-      });
-      expect(await act(host, conv, "dispatchTask_tasks", { taskId: "task_nobody" })).toMatchObject({
-        ok: false,
-        error: expect.stringMatching(/^assignee_required: /)
-      });
+      const filed = await act(host, conv, "createTask_tasks", { goal: "Do it" });
+      expect(filed).toMatchObject({ ok: true });
+      expect(await act(host, conv, "updateTask_tasks", { id: "task_nobody", status: "pending" })).toEqual({ ok: true });
       await host.settled();
-      expect((await host.rows("alice")).map((row) => row.id)).toEqual(["task_nobody"]);
-      expect(await host.row("alice", filing, "task_nobody")).toMatchObject({ undispatched: true });
-      expect(host.runs).toEqual([]);
-    } finally {
-      await host.dispose();
-    }
-  });
-
-  it("refuses none, or more than one, of goal and taskId, and new-row fields beside taskId, before writing (BR-12, BR-13)", async () => {
-    const host = bootBoardHost();
-    try {
-      const conv = await host.conversation("alice", "desk");
-      const filing = await host.filingOf("alice", conv);
-      await host.writeRow("alice", filing, recorded("task_recorded", "eng.tasker"));
-      const refusals: Array<[Record<string, unknown>, RegExp]> = [
-        [{}, /^dispatch_target_required: /],
-        [{ goal: "x", taskId: "task_recorded" }, /^dispatch_target_ambiguous: /],
-        [{ taskId: "task_recorded", deps: ["a"] }, /^dispatch_ref_takes_no_task_fields: .*deps/],
-        [{ taskId: "task_recorded", input: { a: 1 } }, /^dispatch_ref_takes_no_task_fields: .*input/],
-        [{ taskId: "task_recorded", followUpOf: "t" }, /^dispatch_ref_takes_no_task_fields: .*followUpOf/],
-        [{ post: true }, /^post_unavailable: /]
-      ];
-      for (const [input, error] of refusals) {
-        expect(await act(host, conv, "dispatchTask_tasks", input), JSON.stringify(input)).toMatchObject({
-          ok: false,
-          error: expect.stringMatching(error)
-        });
+      for (const id of [filed.taskId!, "task_nobody"]) {
+        const row = await host.row("alice", filing, id);
+        expect(row?.status).toBe("pending");
+        expect(row?.assignee).toBeUndefined();
       }
-      await host.settled();
-      expect(await host.row("alice", filing, "task_recorded")).toMatchObject({ undispatched: true, status: "pending" });
       expect(host.runs).toEqual([]);
     } finally {
       await host.dispose();
     }
   });
 
-  it("runs addTask's own checks, with addTask's answers: an assignee off the team is refused the same way (BR-14)", async () => {
+  it("runs the same checks held or ready: an assignee off the team is refused the same way (BR-14)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const viaAdd = await act(host, conv, "createTask_tasks", { held: true, goal: "x", assignee: "nobody.here" });
-      const viaDispatch = await act(host, conv, "dispatchTask_tasks", { goal: "x", assignee: "nobody.here" });
-      expect(viaDispatch).toEqual(viaAdd);
-      expect(viaDispatch.ok).toBe(false);
+      const viaReady = await act(host, conv, "createTask_tasks", { goal: "x", assignee: "nobody.here" });
+      expect(viaReady).toEqual(viaAdd);
+      expect(viaReady.ok).toBe(false);
       expect(await host.rows("alice")).toEqual([]);
     } finally {
       await host.dispose();
@@ -329,9 +297,9 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
         { goal: "x", assignee: "eng.tasker", wait: true },
         { goal: "x", assignee: "eng.tasker", timeoutMs: 60_000 }
       ]) {
-        expect(await act(host, conv, "dispatchTask_tasks", input)).toMatchObject({
+        expect(await act(host, conv, "createTask_tasks", input)).toMatchObject({
           ok: false,
-          error: expect.stringMatching(/^dispatch_task_does_not_wait: /)
+          error: expect.stringMatching(/^create_task_does_not_wait: /)
         });
       }
       await host.settled();
@@ -341,10 +309,10 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     }
   });
 
-  it("is a tool on the coordinator's own turn, and a dispatch from it starts the row", async () => {
+  it("is a tool on the coordinator's own turn, and a filing from it starts the row", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "d1", toolName: "dispatchTask", args: { goal: "Write the notes", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "d1", toolName: "createTask", args: { goal: "Write the notes", assignee: "eng.tasker" } }] },
         { text: "Handed it over." },
         { text: "It's done." }
       ]

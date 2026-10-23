@@ -539,7 +539,7 @@ describe("a task that ended errored", () => {
   it("is one report, and the task's failed requests join it rather than making their own", async () => {
     const lab = await openLab();
     const conv = await lab.host.conversation("alice");
-    const added = await lab.host.act("alice", conv, "dispatchTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
+    const added = await lab.host.act("alice", conv, "createTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
     expect(added.error, messageOf(added.error)).toBeUndefined();
     await lab.host.settled();
     await lab.reporter.idle();
@@ -562,7 +562,7 @@ describe("a task that ended errored", () => {
   it("reports nothing for a failed request whose task has not ended errored", async () => {
     const lab = await openLab();
     const conv = await lab.host.conversation("alice");
-    await lab.host.act("alice", conv, "dispatchTask_tasks", { goal: "fine work", assignee: "eng.tasker" });
+    await lab.host.act("alice", conv, "createTask_tasks", { goal: "fine work", assignee: "eng.tasker" });
     await lab.host.settled();
     const [task] = await lab.host.rows("alice");
     await failedIn(lab, task!.run!.sessionId, "req_retried");
@@ -634,7 +634,7 @@ describe("the ledger's owed report", () => {
     const host = bootBoardHost();
     open = host;
     const conv = await host.conversation("alice");
-    await host.act("alice", conv, "dispatchTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
+    await host.act("alice", conv, "createTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
     await host.settled();
     const filing = await host.filingOf("alice", conv);
     const [failed] = (await host.rows("alice")).filter((r) => r.status === "errored");
@@ -654,7 +654,7 @@ describe("the ledger's owed report", () => {
     const host = bootBoardHost();
     open = host;
     const conv = await host.conversation("alice");
-    await host.act("alice", conv, "dispatchTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
+    await host.act("alice", conv, "createTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
     await host.settled();
     const ledger = await host.rows("alice");
     expect(ledger.some((r) => r.status === "errored")).toBe(true);

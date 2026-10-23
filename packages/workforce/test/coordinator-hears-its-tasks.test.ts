@@ -47,7 +47,7 @@ async function heard(worker: string, ending: "completed" | "errored") {
   try {
     const conv = await host.conversation("alice", worker);
     const goal = ending === "errored" ? "Count licenses [fail-until:9]" : "Count licenses";
-    const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal, assignee: "eng.tasker" });
+    const filed = await host.act("alice", conv, "createTask_tasks", { goal, assignee: "eng.tasker" });
     expect(filed.error, messageOf(filed.error)).toBeUndefined();
     expect((filed.output as { ok: boolean }).ok).toBe(true);
     await host.settled();

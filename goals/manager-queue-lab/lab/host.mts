@@ -168,7 +168,7 @@ export interface Lab {
 
   /** Say something to the manager, as its user does: one turn of its conversation. */
   say(message: string): Promise<{ error?: string }>;
-  /** Run one of the conversation's public actions (`dispatchTask_tasks`, `listTasks_tasks`, ...). */
+  /** Run one of the conversation's public actions (`createTask_tasks`, `listTasks_tasks`, ...). */
   act(actionName: string, input: unknown): Promise<{ output?: any; error?: string }>;
   /** The partition the conversation's board files in, as its `listDelegates` answers it. */
   filingSessionId(): Promise<string>;
@@ -318,8 +318,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   const coordinator = defineCoordinatorFlow({
     installation,
-    // The builders take tasks, not posts, so no post is routed to a flow.
-    delegateFlows: [],
     routeModel: model,
     agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
   });

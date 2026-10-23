@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * <SessionView> draws one session by id, opened from Messages (FIX-1989).
- * What is checked: a task's session and a post's take no line whatever the
+ * What is checked: a task's session and a delegate's session for another conversation take no line whatever the
  * worker, a worker's own conversation does, and a session the snapshot
  * doesn't list yet is looked up in a fresh listing before it is called
  * missing. The read and the listing are stood in for.
@@ -50,9 +50,9 @@ describe("a session opened by id", () => {
     expect(screen.getByTestId("session-composer-blocked").textContent).toContain("task's session");
   });
 
-  it("takes no line in a session answering a post in another conversation", async () => {
+  it("takes no line in a session answering messages routed from another conversation", async () => {
     await drawn([session("s_post", { filingSessionId: "s_conv" })], "s_post");
-    expect(screen.getByTestId("session-composer-blocked").textContent).toContain("answers a post");
+    expect(screen.getByTestId("session-composer-blocked").textContent).toContain("answers messages routed from another conversation");
   });
 
   it("takes a line in the worker's own conversation once it is read", async () => {

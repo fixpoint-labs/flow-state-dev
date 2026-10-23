@@ -127,12 +127,6 @@ export type TaskWriteDeclineReason =
    */
   | "follow-up"
   /**
-   * A dispatch of a row that is already ready (FIX-1875): it was never
-   * recorded, or another call dispatched it. Only the call that readied it is
-   * answered `unchanged` instead (`Task.dispatchCall`).
-   */
-  | "already-dispatched"
-  /**
    * An edit of a filing's start or attempts settings on a task that has
    * already started (FIX-2080, ER-4): a retry's return to `pending` does not
    * reopen them. A started task takes a cancel.
@@ -191,17 +185,6 @@ export type TaskWriteOutcome =
       /** The status the task was in when the write was refused. */
       status: TaskStatus;
     };
-
-/** What {@link TaskCollectionRef.dispatch} writes with the ready row (FIX-1875). */
-export interface TaskDispatchOptions {
-  /**
-   * The call dispatching it: a tool call's or action's logical id, the same on
-   * every replay of that call. Stored as `Task.dispatchCall`.
-   */
-  call: string;
-  /** The owner, set in the same write. Omitted, the row keeps its own. */
-  assignee?: string;
-}
 
 /** What {@link TaskCollectionRef.markWait} takes the row's wait slot with (FIX-2082; see `Task.wait`). */
 export interface TaskWaitSlot {
@@ -1056,20 +1039,6 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * the slot is not a lapsed one that request holds.
    */
   releaseWait?(id: string, release: { readonly requestId: string; readonly read: boolean }): Promise<TaskWriteOutcome>;
-  /**
-   * Release a held row for a dispatch (FIX-1875; a release since FIX-2080):
-   * `held → pending` in one conditional write, recording the call that made
-   * it (`Task.dispatchCall`), with `assignee` set in the same write.
-   * Publishes `released`, as every release of a held row does.
-   *
-   * Declines `terminal` on an ended row, `already-dispatched` on a row that
-   * isn't held (started, or released already), and an assignee `setAssignee`
-   * would refuse (`follow-up`, `awaiting-answer`) for the same reason. The
-   * same call replayed is answered `unchanged`, never `already-dispatched`.
-   *
-   * Optional: both built-in backings implement it.
-   */
-  dispatch?(id: string, options: TaskDispatchOptions): Promise<TaskWriteOutcome>;
   /**
    * A touch of the board: pay every cascade owed past its due time
    * (`Task.cascadeOwed`, FIX-2080 D2), so one a crash left owed is paid.

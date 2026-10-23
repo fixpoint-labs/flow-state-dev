@@ -84,13 +84,13 @@ describe("V4 · every control is read through the gate, and only in this app (BR
   const workers = [
     { id: "support.help", declared: { flow: "coordinator", routing: "best-fit", delegates: ["support.general"] }, body: "", skills: [] },
   ] as unknown as WorkerManifest[];
-  const flows = [{ kind: "agent" }];
+  const agentFlow = { kind: "agent", task: { actions: { work: {} } } };
 
   const controls: Array<[name: string, apply: () => Promise<{ swapped: boolean }>]> = [
     ["no-landing", async () => ({ swapped: (await import("@/lib/landing-control")).landingControl(catalog, createWorkerInstallation()) !== undefined })],
     ["no-route", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
     ["answers-go-on", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
-    ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).delegateFlowsUnderControl(flows) !== flows })],
+    ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).agentFlowUnderControl(agentFlow) !== agentFlow })],
     [
       "gate-open",
       async () => {

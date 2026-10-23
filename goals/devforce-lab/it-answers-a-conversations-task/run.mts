@@ -512,7 +512,7 @@ await runGoal(async (failures) => {
 
       const chief = () => http.open(COORDINATOR_FLOW, { workerId: CHIEF });
       const fileForCoder = (goal: string, input?: Record<string, unknown>): ToolCall => ({
-        toolName: "dispatchTask",
+        toolName: "createTask",
         args: { goal, assignee: CODER, ...(input === undefined ? {} : { input }) },
       });
 

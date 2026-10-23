@@ -49,7 +49,7 @@ export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./wo
 export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
-export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
+export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
   filingConversationBoard,
@@ -59,6 +59,8 @@ export {
   type WorkerTaskEntryOptions
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
+// A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
+export { routedTaskHistory } from "./coordinator/routed-brief";
 // Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on
 // every flow whose `work` entry is a `workerTaskEntry`, and how a write starts it.
 export {

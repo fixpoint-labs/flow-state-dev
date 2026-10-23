@@ -27,7 +27,6 @@ import { steersForAttempt, untakenSteers } from "../steers";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
-  TaskDispatchOptions,
   TaskHandle,
   TaskTransitionOptions,
   TaskWaitSlot,
@@ -112,7 +111,8 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
     ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
-    ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
+    ...(init.target !== undefined ? { target: init.target } : {}),
+    ...(init.targetSessionId !== undefined ? { targetSessionId: init.targetSessionId } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
     // Only a row stored cancelled (a replan's skip) names a cause: `held` wins
     // over `status`, so a held row keeps neither.
@@ -202,43 +202,6 @@ export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDe
   if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
   if (task.followUpOf !== undefined) return "follow-up";
   return undefined;
-}
-
-/**
- * The one rule for a dispatch's release of a held row
- * (`TaskCollectionRef.dispatch`, FIX-1875; a release since FIX-2080 D1),
- * decided on the freshest committed row, inside the write. Both backings run
- * it, so they refuse identically. Terminal rows are refused by the caller's
- * `declineOnTerminal` before this runs.
- *
- * @returns The patch to write, `undefined` for the same call replayed (its
- *   own write already landed), or the reason it is refused.
- */
-export function dispatchWrite(
-  task: Task,
-  options: TaskDispatchOptions,
-): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
-  if (task.status !== "held") {
-    return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
-  }
-  // A dispatch releases, so it takes the field table's rule for a release,
-  // with the same one exception for a legacy blocked row; a reassignment is
-  // never allowed once the row has started.
-  if (hasStarted(task) && (task.heldFromBlocked !== true || options.assignee !== undefined)) {
-    return { decline: "started" };
-  }
-  if (options.assignee !== undefined) {
-    const refused = assigneeChangeDecline(task, options.assignee);
-    if (refused !== undefined) return { decline: refused };
-  }
-  return {
-    patch: {
-      status: "pending",
-      dispatchCall: options.call,
-      ...(task.heldFromBlocked === true ? { heldFromBlocked: undefined } : {}),
-      ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
-    },
-  };
 }
 
 /**

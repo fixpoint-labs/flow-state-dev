@@ -19,7 +19,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
-import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
@@ -121,7 +121,7 @@ const leadIdFor = (project: string, workstream: string) => `lead-${project}-${wo
 /** What a hired lead is told: lead one workstream, and keep its entry current with `updateWorkstream`. */
 const LEAD_INSTRUCTIONS =
   "You lead one workstream of a project, for the person who owns it. When asked for work, file it as a task " +
-  "for eng.coder with dispatchTask. When its status changes, or there is something to report, call updateWorkstream " +
+  "for eng.coder with createTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
 /** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
@@ -227,14 +227,14 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
 
 const calls = (name: string, tool: string) => name === tool || [`/${tool}`, `.${tool}`, `_${tool}`].some((s) => name.endsWith(s));
 
-type Delivery = PostDelivery;
+type Delivery = RoutedDelivery;
 
 /**
- * A coordinator session's post rows, from the store file, from the rows `who`
+ * A coordinator session's routed tasks, from the store file, from the rows `who`
  * owns. No route exposes them with their server-written payload.
  */
 function ledgerOf(store: string, who: Connected, sessionId: string): Delivery[] {
-  return postDeliveries(store, who.person.userId, sessionId);
+  return routedDeliveries(store, who.person.userId, sessionId);
 }
 
 /** What each leg found: failures by assertion name, and notes. */
@@ -506,13 +506,13 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
 
   const workTurns: Turn[] = [await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.work, { word: d.workWord }))];
   const first = workTurns[0]!;
-  if (first.status === "completed" && !first.tools.some((t) => calls(t.name, "dispatchTask"))) {
+  if (first.status === "completed" && !first.tools.some((t) => calls(t.name, "createTask"))) {
     workTurns.push(await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.workAgain, { word: d.workWord })));
   }
   for (const turn of workTurns) {
     c.notes.push(`work turn ${turn.status}: tools ${turn.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${turn.reply.slice(0, 300).replace(/\n/g, " ")}${turn.providerRetry === undefined ? "" : ` (after a provider error: ${turn.providerRetry})`}`);
   }
-  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "dispatchTask"))) c.notes.push("the coordinator called dispatchTask on no work ask");
+  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "createTask"))) c.notes.push("the coordinator called createTask on no work ask");
   const postIds = new Set(workTurns.map((t) => t.requestId).filter((id): id is string => id !== null));
   const aliceTarget = `shared/${S.id}/${d.aliceWs.id}`;
   const bobTarget = `shared/${S.id}/${d.bobWs.id}`;

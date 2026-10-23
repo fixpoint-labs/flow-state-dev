@@ -110,7 +110,7 @@ async function startApp(resolver: ModelResolver) {
   const agent = defineAgentWorkerFlow({ installation });
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: await routeModelFor(resolver) })
+    coordinator: defineCoordinatorFlow({ installation, routeModel: await routeModelFor(resolver) })
   };
   const copies = hireWorkforce(installation) as FlowInstance[];
   const state: FlowState = createFlowState({

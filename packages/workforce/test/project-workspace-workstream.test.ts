@@ -266,7 +266,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       title: "Checkout",
       lead: "alice-filer"
     })) as any;
-    const filed = (await h.ok("alice", "filer", opened.workstream.sessionId, "dispatchTask_tasks", {
+    const filed = (await h.ok("alice", "filer", opened.workstream.sessionId, "createTask_tasks", {
       goal: "Add guest checkout",
       assignee: "alice-taker"
     })) as any;
@@ -286,7 +286,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
     const roster = await h.openSession("alice", "workforce-roster");
     await h.ok("alice", "workforce-roster", roster, "hire", { id: "alice-filer", flow: "filer", settings: { delegates: ["alice-taker"] } });
     const talk = await h.openSession("alice", "filer", { workerId: "alice-filer" });
-    await h.ok("alice", "filer", talk, "dispatchTask_tasks", { goal: "Tidy up", assignee: "alice-taker" });
+    await h.ok("alice", "filer", talk, "createTask_tasks", { goal: "Tidy up", assignee: "alice-taker" });
     await h.settled();
     expect(h.answers).toHaveLength(1);
     expect(h.answers[0]!.state).not.toHaveProperty("filingWorkstreamId");

@@ -4,7 +4,7 @@
  * session's ended request.
  *
  *   const http = httpActions(await state.getRouter(), userId);
- *   const out = await http.act("lead", sessionId, "dispatchTask_tasks", { goal, assignee });
+ *   const out = await http.act("lead", sessionId, "createTask_tasks", { goal, assignee });
  *   await untilIdle(runtime.stores);
  *
  * The host's `resolvePrincipal` must read the caller from the `x-user` header.

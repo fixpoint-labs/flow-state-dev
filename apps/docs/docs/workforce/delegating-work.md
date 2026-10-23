@@ -9,7 +9,7 @@ description: "Any worker can file tasks for the workers on your roster that work
 
 A worker can hand work to other workers on your roster. The workers it hands work to are its **delegates**, and handing work to one is **delegation**. Every hand-over is checked against your roster.
 
-There are two ways to hand something over. A [coordinator](./coordinators.md) passes a question on as a **post**, and the delegate answers it. Work that has to be done, like a change made, a report written or a run that takes an hour, goes as a **task**: the worker files it on a board, for one of its delegates. The delegate works it in a new session of its own, a **task session**, and the worker that filed it hears how it ended.
+Every hand-over is a **task**: the worker files it on a board, for one of its delegates. Work that has to be done, like a change made, a report written or a run that takes an hour, goes as a task the delegate works in a new session of its own, a **task session**, and the worker that filed it hears how it ended. A [coordinator](./coordinators.md) passes your message on as a **routed task**: a task the delegate works in its one session for your conversation, whose answer lands in that conversation under the delegate's name.
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
 
@@ -26,7 +26,7 @@ delegates: [eng.coder, eng.reviewer]
 ---
 ```
 
-`delegates:` is who works for this worker, and the only workers it can give work to. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
+`delegates:` is who works for this worker, and the only workers it can give work to. A coordinator hands your messages to this list as routed tasks, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
 The worker itself changes its list only when it is a coordinator whose file sets `editsOwnDelegates: true`. Every worker with a board can read its list with `listDelegates`.
 
@@ -41,11 +41,11 @@ delegates: all
 
 The roster is read on every call, so a worker you hire partway through a conversation can be handed work on the next call, and a worker you fire drops off. Removing one delegate from such a session turns its list into the roster as it stands then, less that worker, and it stops following the roster. Only the worker's file sets `all`; no action or tool switches a list to it. `all` isn't bounded by the 25-delegate limit a written list has.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), `answerTask`, and `dispatchTask`, which starts work on a delegate now. `createTask` with `held: true` files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), and `answerTask`. `createTask` starts work on a delegate now; with `held: true` it files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
 A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, and `parkOnQuestion`. Neither is an action.
 
-A worker whose delegates only take posts, like a coordinator that routes questions, has no one to hand a task to, and neither does a worker with no delegates. On a session of either, the app's actions answer:
+A worker with no delegate that takes tasks has no one to hand a task to. On a session of one, the app's actions answer:
 
 ```json
 { "ok": false, "error": "no_delegation_board" }
@@ -134,7 +134,7 @@ A flow that leaves the kit out gives its workers no task tools, whatever their d
 
 A worker can plan its own work. A task it files naming **itself** is a **step**: it isn't handed to anyone, and no new session opens for it. When the worker's turn ends, the same request works the steps, one at a time and in order, each as a turn of the worker in the same session. A step sees the conversation so far, the steps before it included, and the results of the steps listed in its `deps`. Then the worker answers once more, told how each step ended, and that answer is what the request returns: your reply in a conversation, or the task's result in a task session.
 
-```json title="Three dispatchTask calls: the steps the worker files for itself"
+```json title="Three createTask calls: the steps the worker files for itself"
 { "goal": "Outline the post", "assignee": "eng.writer" }
 { "goal": "Draft the post", "assignee": "eng.writer", "deps": ["<the outline's taskId>"] }
 { "goal": "Tighten the draft", "assignee": "eng.writer", "deps": ["<the draft's taskId>"] }
@@ -164,9 +164,9 @@ The worker's `listTasks` lists the session's steps beside the tasks it dispatche
 
 ## Where the tasks go
 
-Every session of a worker that files keeps its own board: a conversation with you, a session another worker posted to, or a task session. A worker files onto the board of the session it's in, never another's. Two sessions of one worker never see each other's tasks.
+Every session of a worker that files keeps its own board: a conversation with you, the session a coordinator routes your messages to, or a task session. A worker files onto the board of the session it's in, never another's. Two sessions of one worker never see each other's tasks.
 
-A worker that files from a session it was **posted** to still answers the post as usual. The tasks it filed report back to that session, not to whoever posted. If the result has to come back to you, file the work rather than posting it.
+A delegate that files work from the session a coordinator routed your message to answers that message once the work has ended, from the turn that hears it end, so its answer can carry what the work came back with. The tasks it filed report back to that session; its answer is what lands in your conversation with the coordinator.
 
 How a filed task runs, how the filing session hears it ended, and how to manage it from your app are on the coordinators page, under [Handing out tasks](./coordinators.md#handing-out-tasks). They work the same for every worker.
 

@@ -15,8 +15,9 @@
  * wrote, still carrying a list the project no longer has.
  *
  * The models are scripted by block: the project coordinator's judgment
- * (`coordinator-judgment`) hands the post on; the EM's turn files on the turn
- * a post starts and updates the entry on each later one; Jev answers `done`.
+ * (`coordinator-judgment`) hands the message on as a routed task; the EM's
+ * turn files on the turn the routed task starts and updates the entry on each
+ * later one; Jev answers `done`.
  * The coder's harness is a stub that commits a file.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -68,7 +69,7 @@ function lastText(messages: unknown[]): string {
 }
 
 /**
- * The EM's turn. A turn that starts on the handed post files the coder's two
+ * The EM's turn. A turn that starts on the routed task files the coder's two
  * tasks; each later turn (a task's end heard) updates the workstream entry.
  * `turns` records what started each turn; `prompts`, everything each turn's
  * first call was handed.
@@ -90,7 +91,7 @@ function emModel(turns: string[], prompts: string[]): GeneratorModel {
         queue =
           turns.length === 1
             ? ISSUES.map((issue) => ({
-                toolName: "dispatchTask",
+                toolName: "createTask",
                 args: { goal: `Build ${issue}.`, assignee: CODER, input: { issue, phase: "implement" } },
               }))
             : [{ toolName: "updateWorkstream", args: { report: REPORT } }];
@@ -103,7 +104,7 @@ function emModel(turns: string[], prompts: string[]): GeneratorModel {
   };
 }
 
-/** Jev, always `done`; best fit's route is never picked, so the coordinator's own judgment takes a post. */
+/** Jev, always `done`; best fit's route is never picked, so the coordinator's own judgment takes a message. */
 const judge = {
   specificationVersion: "v4",
   provider: "test",
@@ -121,7 +122,12 @@ const judge = {
 };
 
 function scripted(emTurns: string[], emPrompts: string[] = []): ModelResolver {
-  const judgment = stepping("test/judgment", [{ toolName: "dispatchTask", args: { post: true, assignee: EM, target: "shared/storefront/feature" } }], "Handed on.");
+  const judgment = stepping("test/judgment", [
+    {
+      toolName: "createTask",
+      args: { goal: "Add guest checkout", assignee: EM, target: "shared/storefront/feature", session: "ongoing", resultTo: "conversation" },
+    },
+  ], "Handed on.");
   const em = emModel(emTurns, emPrompts);
   const helper = stepping("test/helper", [], "On it.");
   return Object.assign(
@@ -201,8 +207,8 @@ describe("the EM files from the workstream it leads", () => {
 
     // The EM filed one task per part, from the workstream session, on that session's board; each ran and completed.
     const settled = await eventually(async () => {
-      // The post to the EM is a row on the project coordinator's board; the coder's tasks are the rest.
-      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.kind !== "post");
+      // The routed task to the EM is a row on the project coordinator's board, its brief sealed on it; the coder's tasks are the rest.
+      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.postId === undefined);
       return rows.length === ISSUES.length && rows.every((r) => r.status === "completed") ? rows : undefined;
     }, "both tasks completed", 60_000);
     expect(settled.map((r) => r.input).sort((a, b) => a.issue.localeCompare(b.issue))).toEqual(
@@ -233,5 +239,20 @@ describe("the EM files from the workstream it leads", () => {
     expect([workstream, ...tasks.map((s) => s.id)].every((id) => sessions.find((s) => s.id === id)?.userId === ALICE.userId)).toBe(true);
     // No claim row came back.
     expect(await org.getByPrefix("org", LAB_ORG_ID, "workstream-claims/")).toEqual({});
+
+    // The routed task that handed the job to the EM ends once the work it filed has ended (FIX-2083, rule 6),
+    // so the EM's answer lands in her project coordinator conversation and the workstream session is free
+    // for her next ask.
+    const routed = await eventually(async () => {
+      const rows = (Object.values(await lab!.stored("user", "tasks/")) as Array<Record<string, any>>).filter((r) => r.sealed?.postId !== undefined);
+      return rows.length === 1 && rows[0]!.status === "completed" ? rows[0]! : undefined;
+    }, "the routed task completed", 30_000);
+    expect(routed.targetSessionId).toBe(workstream);
+    const emLines = async () =>
+      (await runtime.stores.request.list({ sessionId: pc, withItems: true }))
+        .flatMap((r) => ((r as { items?: any[] }).items ?? []))
+        .filter((item) => item.type === "message" && item.agentName === EM);
+    await eventually(async () => ((await emLines()).length > 0 ? true : undefined), "the EM's answer in her conversation", 10_000);
+    expect(await emLines()).toHaveLength(1);
   }, 120_000);
 });

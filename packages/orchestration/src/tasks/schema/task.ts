@@ -190,6 +190,23 @@ export const taskSchema = z.object({
    */
   resultTo: z.enum(["filer", "conversation"]).optional(),
 
+  /**
+   * The workstream record the task goes to (FIX-2083, a filing setting): the
+   * target of a delegate record whose worker leads that workstream. Chosen at
+   * filing, refused there by a filer with no such record, and never changed.
+   * **Absent** on every task filed for a delegate record with no target.
+   */
+  target: z.string().optional(),
+
+  /**
+   * The session `target` resolved to when the task was filed (FIX-2083): the
+   * workstream's session, where a task filed `session: "ongoing"` runs.
+   * Server-written by the filing, top level beside `session` so no
+   * caller-writable surface reaches it (BP-031), and never patched.
+   * **Absent** on a task with no `target` (BP-030).
+   */
+  targetSessionId: z.string().optional(),
+
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
@@ -542,16 +559,6 @@ export const taskSchema = z.object({
    * **Absent** on every row no cascade cancelled (BP-030).
    */
   causedBy: z.string().optional(),
-
-  /**
-   * The call that dispatched this row: the logical id of the tool call or
-   * action (FIX-1875). Written by `dispatch` in the same write that releases
-   * a held row, or with the row when a dispatch files it ready, so the
-   * same call replayed after a crash finds its own write and answers as the
-   * first call did. **Absent** on every row no dispatch filed or readied
-   * (BP-030).
-   */
-  dispatchCall: z.string().optional(),
 
   /**
    * A payload the code that filed the row wrote with it, for whatever runs the

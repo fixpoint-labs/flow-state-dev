@@ -339,8 +339,8 @@ await runGoal(async (failures, tell) => {
 
     // ---- a. start ----------------------------------------------------------
     await leg("a", async () => {
-      const dep = await h.act(conversation, "dispatchTask_tasks", { goal: word("[slow:300] the dependency") });
-      const after = await h.act(conversation, "dispatchTask_tasks", { goal: word("the dependent"), deps: [dep.taskId] });
+      const dep = await h.act(conversation, "createTask_tasks", { goal: word("[slow:300] the dependency") });
+      const after = await h.act(conversation, "createTask_tasks", { goal: word("the dependent"), deps: [dep.taskId] });
       const held = await h.script(conversation, { op: "file", tasks: [{ goal: word("held until released"), held: true }] });
       const heldId = held.ids?.[0] as string;
       for (let i = 0; i < 5; i += 1) await h.act(conversation, "listTasks_tasks", {});
@@ -363,7 +363,7 @@ await runGoal(async (failures, tell) => {
       }
 
       // Another board's task (the other conversation's), and a loop.
-      const foreign = await h.act(other, "dispatchTask_tasks", { goal: word("on another board"), deps: [dep.taskId] });
+      const foreign = await h.act(other, "createTask_tasks", { goal: word("on another board"), deps: [dep.taskId] });
       const loop = await h.script(conversation, {
         op: "file",
         tasks: [
@@ -382,7 +382,7 @@ await runGoal(async (failures, tell) => {
       if (stored.length > 0) failures.push(`a:refused and files nothing — ${stored.length} row(s) stored: ${stored.map((r) => r.goal).join(", ")}`);
 
       // After a retry, its settings are fixed.
-      const retried = await h.act(conversation, "dispatchTask_tasks", { goal: word("[fail-until:2][slow:1500] retried") });
+      const retried = await h.act(conversation, "createTask_tasks", { goal: word("[fail-until:2][slow:1500] retried") });
       await h.until(async () => ((await h.byId(retried.taskId))?.attempts ?? 0) >= 2, 10_000);
       const editAttempts = await h.script(conversation, { op: "settings", id: retried.taskId, patch: { maxAttempts: 5 } });
       const editDeps = await h.script(conversation, { op: "settings", id: retried.taskId, patch: { deps: [dep.taskId] } });
@@ -401,9 +401,9 @@ await runGoal(async (failures, tell) => {
 
     // ---- b. session and result --------------------------------------------------
     await leg("b", async () => {
-      const root = await h.act(conversation, "dispatchTask_tasks", { goal: word("[slow:1500] the root") });
+      const root = await h.act(conversation, "createTask_tasks", { goal: word("[slow:1500] the root") });
       await h.until(async () => proofsOf(root.taskId).length > 0, 5000);
-      const followUp = await h.act(conversation, "dispatchTask_tasks", { goal: word("the follow-up"), followUpOf: root.taskId });
+      const followUp = await h.act(conversation, "createTask_tasks", { goal: word("the follow-up"), followUpOf: root.taskId });
       const early = followUp?.taskId === undefined ? undefined : await h.byId(followUp.taskId);
       const rootEarly = await h.byId(root.taskId);
       if (followUp?.ok !== true || early?.status !== "pending" || early.attempts !== 0 || rootEarly?.status !== "in_progress") {
@@ -437,7 +437,7 @@ await runGoal(async (failures, tell) => {
         );
       }
 
-      const fromTask = await h.act(conversation, "dispatchTask_tasks", { goal: word("[file-ongoing][file-conversation] from a task") });
+      const fromTask = await h.act(conversation, "createTask_tasks", { goal: word("[file-ongoing][file-conversation] from a task") });
       await h.idle();
       const refused = tell.over("b · the task's refused filings", proofsOf(fromTask.taskId).flatMap((p) => p.refused ?? []));
       const strays = await h.named(`refused piece-ongoing ${RUN_STAMP}`);
@@ -471,7 +471,7 @@ await runGoal(async (failures, tell) => {
       const piece = (name: string, attempt: number) => h.named(`${name}#${attempt} [slow:${PIECE_MS}]`);
       // A cancel, while the task's own turn is still running.
       const name1 = `cancelled-${RUN_STAMP}`;
-      const cancelled = await h.act(conversation, "dispatchTask_tasks", { goal: word(`[file:${name1}][slow:5000] cancelled`) });
+      const cancelled = await h.act(conversation, "createTask_tasks", { goal: word(`[file:${name1}][slow:5000] cancelled`) });
       await h.until(async () => (await piece(name1, 1)).length === 1, 5000);
       await h.act(conversation, "updateTask_tasks", { id: cancelled.taskId, status: "cancelled" });
       const paid = await h.until(async () => (await piece(name1, 1))[0]?.status === "cancelled", 2500);
@@ -486,7 +486,7 @@ await runGoal(async (failures, tell) => {
 
       // A final failure.
       const name3 = `failed-${RUN_STAMP}`;
-      await h.act(conversation, "dispatchTask_tasks", { goal: word(`[file:${name3}][fail] failed`) });
+      await h.act(conversation, "createTask_tasks", { goal: word(`[file:${name3}][fail] failed`) });
       await h.until(async () => (await piece(name3, 1))[0]?.status === "cancelled", 8000);
       const lastPiece = (await piece(name3, 1))[0];
       if (lastPiece?.status !== "cancelled") failures.push(`d:the open filed task is cancelled — by a final failure: the piece is ${lastPiece?.status ?? "missing"}`);
@@ -526,7 +526,7 @@ await runGoal(async (failures, tell) => {
       const recorded = `recorded-${RUN_STAMP}`;
       await h.writeRow(partition, { ...base, id: blocked, goal: word("stored blocked"), status: "blocked", error: "waiting on legal" });
       await h.writeRow(partition, { ...base, id: recorded, goal: word("stored recorded"), status: "pending", undispatched: true });
-      // The entry still off reads as it is stored.
+      // On since FIX-2083: a post row reads as a routed task, its status as stored.
       await h.writeRow(partition, { ...base, id: `post-${RUN_STAMP}`, goal: word("stored post"), status: "completed", sealed: { kind: "post" } });
       await h.writeRow(partition, { ...base, id: `split-${RUN_STAMP}`, goal: word("stored split"), status: "parked", metadata: { splitInto: { session: "s", flow: "doer" } } });
       // On since FIX-2086: a row parked for a person's turn goes back to the queue, uncharged.
@@ -538,9 +538,9 @@ await runGoal(async (failures, tell) => {
       for (const id of [blocked, recorded]) {
         if (listed.get(id) !== "held" || proofsOf(id).length !== 0) failures.push(`e:a retired not-started row reads as held — ${id} reads ${listed.get(id)}, ran ${proofsOf(id).length} time(s)`);
       }
-      // A stored split reads as running since FIX-2077 turned its entry on.
+      // A stored post keeps its status; a stored split reads as running since FIX-2077 turned its entry on.
       for (const [id, stored] of [[`post-${RUN_STAMP}`, "completed"], [`split-${RUN_STAMP}`, "in_progress"]] as const) {
-        if (listed.get(id) !== stored) failures.push(`e:an entry still off reads as stored — ${id} reads ${listed.get(id)}, stored ${stored}`);
+        if (listed.get(id) !== stored) failures.push(`e:a stored post keeps its status and a stored split runs — ${id} reads ${listed.get(id)}, stored ${stored}`);
       }
       // A turn-parked row is queued again, so a touch starts it; the attempt it gets is not charged.
       const turnRow = await h.byId(turned);

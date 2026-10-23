@@ -3,9 +3,9 @@
  * conversation's recent lines in view, not the post alone, and the delegate
  * that takes a post is shown those lines with it, for that turn only.
  *
- * The delegates are `agent` workers, or workers on an app's own flow whose
- * generator reads `delegatedPostHistory`, so what is graded is what their
- * model was handed, with each message's role, and what landed in the
+ * The delegates are `agent` workers, whose turn reads the routed task's lines
+ * (FIX-2083), or workers on an app's own flow, which is handed the message
+ * as written and no lines, so what is graded is what their model was handed, with each message's role, and what landed in the
  * user's conversation. The models are scripted, and answer only from what
  * they are handed:
  *
@@ -30,9 +30,9 @@ import {
 import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
-import { DELEGATED_POST_ENTRY } from "../src/worker-task-entry";
+import { WORKER_TASK_ENTRY } from "../src/worker-task-entry";
+import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { RECENT_CHARS, RECENT_LINES, keepLanded, recentLines } from "../src/coordinator/coordinator-lines";
-import { delegatedPostEntry, delegatedPostHistory } from "../src/coordinator/delegated-post";
 import { workerConfigSchema } from "../src/worker-config";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
@@ -101,9 +101,9 @@ function scriptedRoute() {
 /**
  * An app's own delegate flow, as the coordinators page shows it: the worker is
  * loaded in `request.onStarted`, and the door is a generator that answers
- * with the worker's own instructions (`workerConfigOf`) and reads
- * `delegatedPostHistory`. Each worker's body names it, so a turn that missed
- * its instructions is graded as `unknown`.
+ * with the worker's own instructions (`workerConfigOf`) over its session's
+ * history, taking routed tasks on `work`. Each worker's body names it, so a
+ * turn that missed its instructions is graded as `unknown`.
  */
 function researchFlow(installation: ReturnType<typeof createWorkerInstallation>) {
   const input = z.object({ message: z.string() });
@@ -117,7 +117,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     name: "research-answer",
     inputSchema: input,
     model: "scripted/research",
-    history: delegatedPostHistory,
+    history: true,
     prompt: (_input, ctx) => {
       const { instructions } = workerConfigOf(ctx);
       return typeof instructions === "string" ? instructions : "You answer research questions.";
@@ -131,7 +131,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { run: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
-    task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research-task", turn: door }) } }
   });
 }
 
@@ -175,12 +175,12 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
     const requests = (await stores.resolve()).request;
     const set = requests.set.bind(requests);
     requests.set = async (id, value, expected) => {
-      if (value.actionName === "onPostSettled" && value.status === "completed") await released;
+      if (value.actionName === "onTaskSettled" && value.status === "completed") await released;
       return set(id, value, expected);
     };
   }
   const delegateFlow = flow === "agent" ? defineAgentWorkerFlow({ installation }) : researchFlow(installation);
-  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [delegateFlow], routeModel: "typesafe-ai/jev" });
+  const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
   flows = { [flow]: delegateFlow, coordinator };
   const copies = hireWorkforce(installation);
   const route = scriptedRoute();
@@ -251,7 +251,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const postRows = async (): Promise<any[]> =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "tasks/"))
       .map((value) => value.state as any)
-      .filter((row) => row?.sealed?.kind === "post");
+      .filter((row) => typeof row?.sealed?.postId === "string");
 
   /** The session each delegate worked its post in, from the conversation's post rows. */
   const delegateSession = async (worker: string) =>
@@ -304,7 +304,7 @@ describe("a follow-up keeps its conversation's context", () => {
     const turn = desk.answer.turns.find((call) => call.turn.includes("It fails right after the password"));
     expect(turn?.worker).toBe("devices");
     expect(shownTo(turn)).toContain(
-      ["Recent lines in the conversation with desk before this post, oldest first:", `- alice: ${first}`, `- devices: ${answered.text}`].join(
+      ["Recent lines in the conversation with desk before this message, oldest first:", `- alice: ${first}`, `- devices: ${answered.text}`].join(
         "\n"
       )
     );
@@ -322,7 +322,7 @@ describe("a follow-up keeps its conversation's context", () => {
     expect(turn.system).not.toContain("Recent lines in the conversation");
     const carrying = turn.before.filter((m) => m.text.includes(injected));
     expect(carrying.map((m) => m.role)).toEqual(["user"]);
-    expect(carrying[0]!.text.startsWith("Recent lines in the conversation with desk before this post, oldest first:")).toBe(true);
+    expect(carrying[0]!.text.startsWith("Recent lines in the conversation with desk before this message, oldest first:")).toBe(true);
   });
 
   it("routes a follow-up with an answer that has landed while its request is still finishing", async () => {
@@ -332,7 +332,7 @@ describe("a follow-up keeps its conversation's context", () => {
     const answered = await desk.post(first, 1);
     expect(answered.agentName).toBe("devices");
     expect((await desk.postRows()).map((row) => [row.assignee, row.status])).toEqual([["devices", "completed"]]);
-    expect(await desk.requests()).toContainEqual(["onPostSettled", "in_progress", true]);
+    expect(await desk.requests()).toContainEqual(["onTaskSettled", "in_progress", true]);
 
     // Routed while that request is still open. Its answer is released once the follow-up has been routed.
     const second = await desk.post("[follow-up] It sees it. It fails right after the password. [route:accounts]", 2, desk.release);
@@ -377,11 +377,11 @@ describe("a follow-up keeps its conversation's context", () => {
     expect(kept.filter((text) => text.includes(item))).toEqual([`Buy the ${item} at the shop.`]);
   });
 
-  it("shows the lines to a flow of the app's own whose generator reads delegatedPostHistory", async () => {
+  it("hands a flow of the app's own the message as written, and not the lines: only the agent's turn reads them (FIX-2083)", async () => {
     const desk = await openDesk("round-robin", { flow: "research" });
     const item = `item-${Math.random().toString(36).slice(2, 8)}`;
     expect((await desk.post(`My ${item} charger stopped working.`, 1)).agentName).toBe("devices");
-    expect(await desk.post("[where] Where can I buy it?", 2)).toEqual({ agentName: "accounts", text: `Buy the ${item} at the shop.` });
+    expect(await desk.post("[where] Where can I buy it?", 2)).toEqual({ agentName: "accounts", text: "Buy what?" });
     expect(desk.answer.turns.at(-1)?.worker).toBe("accounts");
   });
 

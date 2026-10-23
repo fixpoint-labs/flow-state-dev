@@ -64,7 +64,6 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
-  dispatchWrite,
   lapseWaitWrite,
   markWaitWrite,
   releaseWaitWrite,
@@ -422,8 +421,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
    * Patch a task's fields inside the CAS, returning what it did (FIX-976).
    *
    * `declineOnTerminal` is the terminal guard for the writes that change a
-   * task's future (epic constraint A1): `setAssignee`, the settings write and
-   * `dispatch` pass it. The four sibling patch methods pass nothing and keep
+   * task's future (epic constraint A1): `setAssignee` and the settings write
+   * pass it. The four sibling patch methods pass nothing and keep
    * writing to terminal tasks, which a first-party block depends on (the
    * supervisor's failure-category audit). Making this helper-wide would break it.
    *
@@ -1065,27 +1064,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     async releaseWait(id, release) {
       const dueAt = now() + NOTICE_DUE_MS;
       return patchOne(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
-    },
-
-    async dispatch(id, dispatchOptions) {
-      // The decision and the write are one CAS write: a claim or another
-      // dispatch that lands first is read here, never raced.
-      return patchOne(
-        id,
-        // Every release of a held row publishes `released` (FIX-2080 D1).
-        "released",
-        (task) => {
-          const decided = dispatchWrite(task as Task, dispatchOptions);
-          return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
-        },
-        {
-          declineOnTerminal: true,
-          decline: (task) => {
-            const decided = dispatchWrite(task as Task, dispatchOptions);
-            return decided !== undefined && "decline" in decided ? decided.decline : undefined;
-          },
-        }
-      );
     },
 
     async payOwedCascades() {

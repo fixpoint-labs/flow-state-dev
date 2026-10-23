@@ -15,7 +15,7 @@
  * |---|---|---|---|
  * | `blocked` | status `blocked` | `held` | FIX-2080 |
  * | `recorded` | the recorded-not-started mark (`undispatched`) | `held` | FIX-2080 |
- * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session | FIX-2083 |
+ * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session, its result to the conversation | FIX-2083 |
  * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
  * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
@@ -90,16 +90,24 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return row.status === "pending" ? { ...rest, status: "held" } : rest;
     },
   },
-  // A post row becomes a task routed to the delegate's ongoing session for the
-  // conversation. FIX-2083 turns it on, and carries a workstream post's session
-  // (a session by id) onto the field it adds for the session a filing resolved.
+  // A post row is a routed task: worked in the delegate's ongoing session for
+  // the conversation, its result to the conversation. A workstream post's
+  // session (a session by id) is the session its filing resolved
+  // (`targetSessionId`). Its payload is the routed task's brief as it was.
   post: {
-    on: false,
+    on: true,
     owner: "FIX-2083",
     read: (row) => {
       if (!isObject(row.sealed) || row.sealed.kind !== "post") return undefined;
       if (row.session === "ongoing") return undefined;
-      return { ...row, session: "ongoing" };
+      const session = isObject(row.sealed.session) ? row.sealed.session : undefined;
+      const byId = typeof session?.id === "string" ? session.id : undefined;
+      return {
+        ...row,
+        session: "ongoing",
+        resultTo: "conversation",
+        ...(byId !== undefined && row.targetSessionId === undefined ? { targetSessionId: byId } : {}),
+      };
     },
   },
   // A split task parked on its pieces stays running (FIX-2077), waiting on
@@ -150,16 +158,6 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
 };
 
 const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "parked-split", "reopened", "parked-for-turn"];
-
-/**
- * Read one entry, whether or not it is on: what the row reads as once its
- * owner turns the entry on. For the owner's change and for tests; the read
- * boundary calls {@link withRetiredShapes}.
- */
-export function readRetiredShape<T>(shape: RetiredShape, row: T): T {
-  if (!isObject(row)) return row;
-  return (RETIRED_SHAPES[shape].read(row) as T | undefined) ?? row;
-}
 
 /**
  * A stored row read in the current shapes: every entry that is on, in order.

@@ -42,10 +42,10 @@
  *
  * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-routed-post-gets-one-answer/run.mts
  * Controls: GOAL_CONTROL=no-route     (the best-fit coordinator read as `routing: everyone`)
- *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a delegated post and hands nothing back)
+ *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a routed task and hands nothing back)
  *           GOAL_CONTROL=no-org       (the host's resolvePrincipal left out)
  *           GOAL_CONTROL=no-recent    (best fit's evaluation handed the post without the conversation's lines)
- *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose delegated post arrives without its lines)
+ *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose turn is shown no lines)
  * Live:     GOAL_LIVE=1 (needs AI_GATEWAY_API_KEY)
  */
 import { randomUUID } from "node:crypto";
@@ -56,17 +56,14 @@ import { z } from "zod";
 import { createModelResolver, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostSchema,
   workerConfigOf,
   workerConfigSchema,
-  type DelegatedPost,
+  workerTaskEntry,
+  WORKER_TASK_ENTRY,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import type { TaskWorkerInput } from "@flow-state-dev/orchestration";
 import { gatewayModel, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 import type { HostSeams, RoutedHost } from "./host.mts";
 
@@ -93,21 +90,25 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** How a delegate's turn reads a delegated post: `<from>, through <coordinator>: <body>`. */
-const heard = (post: DelegatedPost) => `${post.from}, through ${post.coordinator}: ${post.body}`;
+/** A routed task's brief, as much of it as a delegate's turn reads. */
+const briefSchema = z.object({ body: z.string(), from: z.string(), coordinator: z.string() }).passthrough();
+type Brief = z.infer<typeof briefSchema>;
+
+/** How a delegate's turn reads a routed message: `<from>, through <coordinator>: <body>`. */
+const heard = (brief: Brief) => `${brief.from}, through ${brief.coordinator}: ${brief.body}`;
 
 /**
- * `no-landing`'s agent flow: takes a delegated post behind the published
+ * `no-landing`'s agent flow: takes a routed task behind the published `work`
  * entry's claim gate and answers it through `agent-answer` in its own
  * conversation, and never hands the answer back: its turn then fails, so the
- * post's row ends with no answer on it, as a delegate's that answers nothing.
+ * task ends with no answer on it, as a delegate's that answers nothing.
  */
 function quietAgentFlow(installation: WorkerInstallation) {
   const answer = generator({
     name: "agent-answer",
-    inputSchema: delegatedPostSchema,
+    inputSchema: briefSchema,
     model: "scripted/answer",
-    prompt: (_post: DelegatedPost, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
+    prompt: (_brief: Brief, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
     user: heard
   });
   const run = generator({ name: "agent-answer", inputSchema: z.object({ message: z.string() }), model: "scripted/answer", prompt: "", user: (i: { message: string }) => i.message });
@@ -118,9 +119,8 @@ function quietAgentFlow(installation: WorkerInstallation) {
       throw new Error("this agent keeps its answer");
     }
   });
-  const entry = delegatedPostEntry(run);
-  const quiet = sequencer({ name: "quiet-agent-post", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })
-    .step((task: { sealed?: unknown }) => task.sealed as DelegatedPost, answer)
+  const quiet = sequencer({ name: "quiet-agent-task", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })
+    .step((task: { sealed?: unknown }) => briefSchema.parse(task.sealed), answer)
     .step(keep);
   const loadWorker = handler({
     name: "quiet-agent-load-worker",
@@ -135,15 +135,15 @@ function quietAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { onDelegatedPost: { from: entry.from, userMessage: entry.userMessage, block: quiet } } }
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
   } as never);
 }
 
 /**
- * `no-context`'s agent flow: takes a delegated post through the published
- * entry, answers it through `agent-answer` with `delegatedPostHistory`, and
- * hands the answer back, as the built-in one does; but the post row's payload
- * reaches the entry with its lines stripped, so the turn is shown none.
+ * `no-context`'s agent flow: takes a routed task through the published
+ * `work` entry, answers it through `agent-answer` and hands the answer back,
+ * as the built-in one does; but its turn reads the session's history alone,
+ * not the brief's lines beside it, so it is shown none.
  */
 function linelessAgentFlow(installation: WorkerInstallation) {
   const run = generator({
@@ -151,10 +151,9 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     inputSchema: z.object({ message: z.string() }),
     model: "scripted/answer",
     prompt: (_input: { message: string }, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
-    history: delegatedPostHistory,
+    history: true,
     user: (i: { message: string }) => i.message
   });
-  const entry = delegatedPostEntry(run);
   const loadWorker = handler({
     name: "lineless-agent-load-worker",
     inputSchema: z.unknown(),
@@ -168,17 +167,7 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    task: {
-      actions: {
-        onDelegatedPost: {
-          ...entry,
-          block: entry.block.connectInput((task: TaskWorkerInput) => {
-            const { recent: _recent, ...post } = task.sealed as DelegatedPost;
-            return { ...task, sealed: post };
-          })
-        }
-      }
-    }
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
   } as never);
 }
 

@@ -12,7 +12,7 @@
 
 **Signal:** six legs over a real `createFlowState` host, acted on through its HTTP router as the lab's verified user, with the rows read from the store. **Every control also grades itself**: a control that goes red at a leg other than the one it names has demonstrated a different check.
 
-(a) **The rows are filed, on the manager's own board.** On the gate's path the manager's judgment turn decides which builder each piece is for and files with its `dispatchTask` tool: the check sends no `dispatchTask_tasks`, and the turn was handed `dispatchTask`. Every row is stored in the manager's conversation's partition.
+(a) **The rows are filed, on the manager's own board.** On the gate's path the manager's judgment turn decides which builder each piece is for and files with its `createTask` tool: the check sends no `createTask_tasks`, and the turn was handed `createTask`. Every row is stored in the manager's conversation's partition.
 
 (b) **Every piece reaches the board in its own words, one distinct row per piece**, both directions (exactly one row carries each piece, and each row carries exactly one piece), every row naming one of the manager's delegates, and one builder given two pieces, or leg (e) grades nothing.
 
@@ -22,7 +22,7 @@
 
 (e) **A second row for one worker is not re-routed and not dropped**: every row for that worker ran on it, once each, and every row completed.
 
-(f) **A row for a worker the manager can't hand a task to is refused by name**: a filing for `eng.nobody` answers `unknown_assignee`, naming it, and stores nothing. A row filed for nobody, with three delegates, waits `pending` and unassigned (FIX-1794 BR-6) and runs nowhere.
+(f) **A row for a worker the manager can't hand a task to is refused by name**: a filing for `eng.nobody` answers `unknown_assignee`, naming it, and stores nothing. A row filed for nobody, with three delegates, waits `held` and unassigned (FIX-1794 BR-6; `pending` before FIX-2080) and runs nowhere.
 
 **Retired under FIX-1792's BR-24, with the reason.**
 
@@ -33,7 +33,7 @@
 **The filer is a slot, and only one of its two values is the gate.**
 
 - `GOAL_FILER=model` (default) — **the gate.** The manager chooses and files with its own tool. Needs a model credential.
-- `GOAL_FILER=scripted` — **not the gate.** The same four pieces are filed through the conversation's `dispatchTask_tasks` action, spread across the manager's delegates (two for the first), and legs (b) to (f) run unchanged. The manager's turn, woken by each task's notice, runs on a quiet stub that files nothing. A scripted run says so in its own evidence line.
+- `GOAL_FILER=scripted` — **not the gate.** The same four pieces are filed through the conversation's `createTask_tasks` action, spread across the manager's delegates (two for the first), and legs (b) to (f) run unchanged. The manager's turn, woken by each task's notice, runs on a quiet stub that files nothing. A scripted run says so in its own evidence line.
 
 **Anti-game:** A hollow pass would file four rows and assert the board reported four completions, true even when a task ran as the wrong worker or nothing ran at all. So the check MUST prove execution by a **side effect outside the board** (the outbox file); MUST grade the file a worker ran with against **the tree's file for the row's assignee**, read at run time, never against the session's own label alone, since the board's hand-over agrees with itself; MUST require one builder to get two pieces, or leg (e) grades nothing; MUST match pieces to rows **one to one in both directions**; and MUST read the rows from the store, not from the board's own listing.
 
@@ -64,3 +64,5 @@
 | 2026-10-10 | `claude/project-thread-5s0me3` on `f90171c18` + uncommitted | `vercel:openai/gpt-5.4-mini` | **PASS (the gate)** | The manager, on Workforce's coordinator flow with `tools: []` in its file, filed four rows for four pieces with its own `addTask` tool (no `addTask_tasks` sent by the check), giving `eng.builder-a` two. Legs (b) to (f) green on the same terms as the scripted row. One run. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a — `GOAL_FILER=scripted` | PASS (**routing half only; NOT the gate**) | Re-run after the mailbox code was removed, unchanged. Four rows on the manager's conversation's partition, one per piece both ways, `eng.builder-a` given two; each ran on the worker it names carrying that worker's own file, proved by the outbox, each in its own task session under the manager's conversation. `eng.nobody` answered `unknown_assignee`, nothing stored; a filing for nobody stayed `pending`, unassigned. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | `vercel:openai/gpt-5.4-mini` | **PASS (the gate)** | The manager, with `tools: []` in its file, filed four rows for four pieces with its own `addTask` tool, giving `eng.builder-a` two. Legs (b) to (f) green on the same terms as the scripted row. One run. |
+| 2026-10-23 | fix/FIX-2083 on 52ad9b934 (the merge with FIX-2082) + the `dispatchTask` removal, uncommitted | n/a — `GOAL_FILER=scripted` | FAIL (stale check) | Only leg (f): *"the unassigned row is held for nobody"*. The row is filed `held: true`, and since FIX-2080 that reads `held`; the check still wanted `pending` |
+| 2026-10-23 | the same, leg (f) reading `held` | n/a — `GOAL_FILER=scripted` | PASS (**routing half only; NOT the gate**) | Four rows through `createTask_tasks`; the stranger refused `unknown_assignee`; the row for nobody held and unassigned, run nowhere |

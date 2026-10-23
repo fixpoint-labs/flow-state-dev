@@ -45,15 +45,14 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  DELEGATED_POST_ENTRY,
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostOnFinished,
   defineSessionBoard,
   projectAddressSchema,
+  routedTaskHistory,
   workerConfigOf,
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry,
+  WORKER_TASK_ENTRY,
+  workerTaskEntry,
   type ProjectAddress,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
@@ -180,14 +179,15 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   /**
    * The turn: one model call, as the worker the session names, with its
    * file's instructions and model, the session board's task tools, and the
-   * tools its `tools:` line names. Its history is the conversation's, with a
-   * delegated post's lines shown before the post.
+   * tools its `tools:` line names. Its history is the session's, with a
+   * routed task's recent lines from the conversation that routed it shown
+   * just before the message, on that turn only.
    */
   const turn = generator({
     name: EM_TURN,
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
-    history: delegatedPostHistory,
+    history: routedTaskHistory,
     uses: [kit.tools, kit.messages],
     prompt: [
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
@@ -351,10 +351,8 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     }),
     session: { ...installation.session(kit.sessionStateShape), serverOwned: [...kit.serverOwned] },
     resources: { ...options.resources, ...installation.resources, ...kit.resources },
-    // The worker is loaded first; a handed-on post whose run is cancelled
-    // before it answers tells its coordinator, so a round with answers to send
-    // on doesn't wait for its deadline.
-    request: { onStarted: resolveEmWorker, onFinished: delegatedPostOnFinished },
+    // The worker is loaded first.
+    request: { onStarted: resolveEmWorker },
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on this session's board." },
       [DRAIN_ENTRY]: { block: kit.board.triggerPass, description: "Run this session's board until nothing it can start is waiting." },
@@ -381,10 +379,10 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       // The nine task actions and the four delegate actions.
       ...kit.actions,
     },
-    // A coordinator's delegated post: the project coordinator's dispatch to
-    // the workstream this worker leads, or the chief of staff's. A post is a
-    // row on the coordinator's board, so its entry is a task entry.
-    task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } },
+    // A coordinator's routed task (FIX-2083): the project coordinator's, for
+    // the workstream this worker leads, or the chief of staff's. A routed task
+    // is a task on the coordinator's board, taken on `work` like any.
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "em-task", turn }) } },
     internal: {
       actions: {
         // Opening a workstream this worker leads starts its session here.

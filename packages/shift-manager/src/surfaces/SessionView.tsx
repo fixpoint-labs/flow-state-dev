@@ -1,7 +1,7 @@
 /**
  * One session with a worker, opened by id from Messages, pinned so a line
  * typed here stays in it. A worker the inventory doesn't register is drawn
- * read-only: its door isn't known. So is a task's session or a post's,
+ * read-only: its door isn't known. So is a task's session or a delegate's session for another conversation,
  * whatever the worker: a line typed there would be task input.
  * A session the snapshot doesn't list yet (one a message opened after the
  * last Lab read) is looked up in a fresh listing first.
@@ -16,11 +16,11 @@ import { workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { workerOf, type Worker } from "../lib/reads";
 
-/** Why a line can't go to `session`, or `undefined` when it can: a task's session and a post's take task input only. */
+/** Why a line can't go to `session`, or `undefined` when it can: a task's session and a delegate's session for another conversation take task input only. */
 function readOnlyReason(session: SessionSummary): string | undefined {
   const state = ((session as { state?: unknown }).state ?? {}) as Record<string, unknown>;
   if (typeof state[TASK_ID_STATE_KEY] === "string") return "This is a task's session. It is read here, not written to.";
-  if (typeof state[FILING_SESSION_STATE_KEY] === "string") return "This session answers a post in another conversation. It is read here, not written to.";
+  if (typeof state[FILING_SESSION_STATE_KEY] === "string") return "This session answers messages routed from another conversation. It is read here, not written to.";
   return undefined;
 }
 

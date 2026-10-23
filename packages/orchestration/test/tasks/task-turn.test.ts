@@ -6,7 +6,6 @@
 import { describe, expect, it } from "vitest";
 import { isTaskTurn, TASK_SESSION_TASK_KEY } from "../../src";
 import {
-  currentWorkerClaim,
   openWorkerClaimScope,
   stampCurrentClaim,
   type WorkerClaimReader,
@@ -42,18 +41,6 @@ describe("isTaskTurn", () => {
       return [isTaskTurn(inRequest("r_worker")), isTaskTurn(inRequest("r_started"))];
     });
     expect(seen).toEqual([true, false]);
-  });
-
-  it("is not a task turn under a claim its entry stamped as no task turn (a delegated post)", async () => {
-    // A post's turn answers the user: it may wait on work it dispatches and
-    // has no filer to ask. Its claim still fences its task-tool writes.
-    const ctx = { session: { state: {} }, request: { identity: { id: "r_post" }, incarnation: "i1" } };
-    const seen = await isolated(() => {
-      openWorkerClaimScope();
-      stampCurrentClaim({ collectionId: "tasks", taskId: "post:1", attempt: 1, createdAt: 1 }, ctx, { taskTurn: false });
-      return [isTaskTurn(ctx), currentWorkerClaim(ctx)?.taskId];
-    });
-    expect(seen).toEqual([false, "post:1"]);
   });
 
   it("is a task turn in a session a hand-over opened for a task, claim or not (a replay after a park)", async () => {

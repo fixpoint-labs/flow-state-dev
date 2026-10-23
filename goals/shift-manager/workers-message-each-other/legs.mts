@@ -301,7 +301,7 @@ export async function hireTeam(world: World): Promise<string[]> {
     id: HELPER_A,
     flow: "agent",
     description: "Helper A: a teammate other workers can ask quick questions.",
-    instructions: `You are Helper A. Answer other workers' questions briefly and directly. Your favourite colour is ${colourA}. When you are asked to have helper-b do something, start helper-b on a task for it with dispatchTask.`,
+    instructions: `You are Helper A. Answer other workers' questions briefly and directly. Your favourite colour is ${colourA}. When you are asked to have helper-b do something, start helper-b on a task for it with createTask.`,
     settings: { delegates: [HELPER_B], model: HIRE_MODEL },
   });
   await hire(world.alice, {
@@ -489,7 +489,7 @@ export async function leg3b(world: World): Promise<LegResult> {
     alice,
     RESEARCHER,
     researcher,
-    `Send ${HELPER_A} exactly this message: "Please start ${HELPER_B} on a task now (dispatchTask) that says: send ${RESEARCHER} a message with the word ${w3b}."`,
+    `Send ${HELPER_A} exactly this message: "Please start ${HELPER_B} on a task now (createTask) that says: send ${RESEARCHER} a message with the word ${w3b}."`,
   );
   const back = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_B && m.to === RESEARCHER && m.text.includes(w3b)), 360_000);
   if (back === undefined) {

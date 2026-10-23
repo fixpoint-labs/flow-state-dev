@@ -7,8 +7,7 @@
  * board's generated `getTask_<board>` or `updateTask_<board>`, which names it
  * `id` ({@link taskIdField}). That covers the framework's task tools and an
  * app's own actions (an `answer` for a parked row) alike, and leaves an app's
- * unrelated `{ id }` action, such as a `deleteProject`, off task rows. A board's generated `dispatchTask`, whose
- * `taskId` is optional, is offered too: on a row it starts that row.
+ * unrelated `{ id }` action, such as a `deleteProject`, off task rows.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
  * are offered only on that board's rows; so is any action whose name ends with
@@ -42,8 +41,8 @@ function isIdTool(action: string, generated?: ReadonlySet<string>): boolean {
 }
 
 /**
- * The field `action` names its task in: `taskId` (`answerTask`,
- * `dispatchTask`, and an app's own), which wins when both are present; else
+ * The field `action` names its task in: `taskId` (`answerTask`, and an
+ * app's own), which wins when both are present; else
  * `id`, only for a board's generated `getTask` or `updateTask`. `undefined`
  * when it names none, required unless `optional`.
  *
@@ -67,16 +66,9 @@ export function taskIdField(
 }
 
 /**
- * The generated tool that starts a held row, `dispatchTask_<suffix>`. Its
- * `taskId` is optional, since a goal files a new task instead, so the required
- * `taskId` rule alone would never offer it; on a row it starts that row.
- */
-const DISPATCH_PREFIX = "dispatchTask_";
-
-/**
  * The filer's four task tools `taskToolActions` generates for a board, always
- * together (FIX-2081). It also generates `answerTask` and, on a board that
- * dispatches, `dispatchTask`; these four are enough to find a board's family.
+ * together (FIX-2081). It also generates `answerTask`; these four are enough
+ * to find a board's family.
  */
 const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
@@ -125,8 +117,7 @@ export function taskActionsFor(
   const suffixes = [...new Set([...[collectionId, ...boardIds].map(taskToolSuffix), ...generatedSuffixes(actions)])];
   const generated = new Set(generatedSuffixes(actions));
   return actions.filter((name) => {
-    const dispatches = name.startsWith(DISPATCH_PREFIX) && generated.has(name.slice(DISPATCH_PREFIX.length));
-    if (taskIdField(name, schemas?.[name], dispatches, generated) === undefined) return false;
+    if (taskIdField(name, schemas?.[name], false, generated) === undefined) return false;
     const owner = suffixes
       .filter((suffix) => name.endsWith(`_${suffix}`))
       .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);

@@ -132,7 +132,6 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
-  dispatchWrite,
   lapseWaitWrite,
   markWaitWrite,
   releaseWaitWrite,
@@ -658,8 +657,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * it did (FIX-976).
    *
    * `declineOnTerminal` is the terminal guard for the writes that change a
-   * task's future (epic constraint A1): `setAssignee`, the settings write and
-   * `dispatch` pass it. The four sibling patch methods pass nothing and keep
+   * task's future (epic constraint A1): `setAssignee` and the settings write
+   * pass it. The four sibling patch methods pass nothing and keep
    * writing to terminal tasks, which a first-party block depends on (the
    * supervisor's failure-category audit). Making this helper-wide would break it.
    *
@@ -1383,23 +1382,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         await delivery.hooks.owePassAt(row, dueAt);
       }
       return patchRef(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
-    },
-
-    async dispatch(id, dispatchOptions) {
-      return confirmedDecline(id, () =>
-        patchRef(
-          id,
-          // Every release of a held row publishes `released` (FIX-2080 D1).
-          "released",
-          (task) => {
-            const decided = dispatchWrite(task as Task, dispatchOptions);
-            if (decided === undefined) return undefined;
-            if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
-            return decided.patch as Partial<Task<TInput, TOutput>>;
-          },
-          { declineOnTerminal: true }
-        )
-      );
     },
 
     async refresh(id) {

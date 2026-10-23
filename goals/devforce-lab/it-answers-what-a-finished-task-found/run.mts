@@ -7,7 +7,7 @@
  * The DevTeam lab, opened as its profile is served, driven over its HTTP door
  * as the lab's owner. A conversation is opened on the coordinator's flow, a
  * tech-debt scan is dispatched to eng.coder on its board (the
- * `dispatchTask_tasks` action, as an app's screen would), and the coder's run,
+ * `createTask_tasks` action, as an app's screen would), and the coder's run,
  * the lab's stub, answers with a scan report whose pick and plan come after
  * the start a line about the task carries. Once the task has completed and the
  * conversation is quiet, the person asks, as one turn with a real model.
@@ -146,7 +146,7 @@ await runGoal(async (failures) => {
     const conversation = await http.open();
 
     // ---- setup: the scan, dispatched on the conversation's board, completes --
-    const filed = await http.act(conversation, "dispatchTask_tasks", {
+    const filed = await http.act(conversation, "createTask_tasks", {
       goal: fixture.scanGoal,
       assignee: CODER,
       input: { project: { visibility: "shared", id: "storefront" } },

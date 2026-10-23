@@ -5,9 +5,9 @@
  *
  * Any worker whose file lists `delegates:` has them, on any flow that carries
  * this module: the built-in `agent` flow, the coordinator, and an app's own
- * worker flow through `defineSessionBoard`. A coordinator routes its posts to
- * them; any worker files tasks for the ones that take one, and for no one
- * else (FIX-2081). Every add and every use runs the one check
+ * worker flow through `defineSessionBoard`. A coordinator routes its users'
+ * messages to them as tasks (FIX-2083); any worker files tasks for the ones
+ * that take one, and for no one else (FIX-2081). Every add and every use runs the one check
  * (`./delegate-check`).
  *
  * The list is server-written session state (`./delegate-list`): copied from
@@ -30,7 +30,7 @@ import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
-import { DELEGATE_TAKES, createDelegateCheck, flowTakes, postTakingFlows, type DelegateTakes } from "./delegate-check";
+import { DELEGATE_TAKES, createDelegateCheck, flowTakes, type DelegateTakes } from "./delegate-check";
 import { ADD_DELEGATE, ALL_DELEGATES, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 import {
   changeDelegates,
@@ -51,6 +51,12 @@ export interface TaskDelegates {
   readonly available: ReadonlyMap<string, string>;
   /** Each delegate on the list that can't take a task now, by worker id, with why. */
   readonly unavailable: ReadonlyMap<string, string>;
+  /**
+   * The list's records, as read now: a worker with a target on its record
+   * leads that workstream here, and a task for that record names it
+   * (`target`, FIX-2083).
+   */
+  readonly records: readonly DelegateRecord[];
 }
 
 /** What a worker's delegates are built from. */
@@ -59,12 +65,6 @@ export interface WorkerDelegatesOptions {
   readonly installation: WorkerInstallation;
   /** The worker flow the session runs on: its worker is loaded on it. */
   readonly flowKind: string;
-  /**
-   * The worker flows a delegated post can reach. Omitted, every worker flow
-   * on the installation that declares the delegated-post entry. A
-   * coordinator names the ones it dispatches to.
-   */
-  readonly postFlows?: ReadonlySet<string>;
   /**
    * The records a session starts with beside its worker's defaults, read the
    * first time its delegates are read or changed and copied in then, never
@@ -146,12 +146,11 @@ export async function withRoster(
 /**
  * Build a worker's delegates for the flow it runs on.
  *
- * @param options The installation, the flow's name, and the flows a post reaches.
+ * @param options The installation, the flow's name, and the session's seed.
  */
 export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const { installation, flowKind } = options;
-  const check = createDelegateCheck(installation, options.postFlows);
-  const postFlows = (): ReadonlySet<string> => options.postFlows ?? postTakingFlows(installation);
+  const check = createDelegateCheck(installation);
   const resources = { ...installation.resources };
 
   /**
@@ -224,7 +223,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    * The list as `listDelegates` answers it, each delegate with what it does and
    * what it takes now, from the roster row the check reads: its worker's
    * description and what its flow takes. One that fails the check for an add
-   * (fired, or on a flow that takes neither) takes nothing, with no description.
+   * (fired, or on a flow that takes no task) takes nothing, with no description.
    */
   const read = async (ctx: BlockContext) => {
     const listed = listOutput(await list(ctx));
@@ -233,7 +232,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
       const checked = await check(ctx as never, record.worker, "add");
       delegates.push(
         checked.ok
-          ? { ...record, description: checked.worker.description, takes: flowTakes(installation, postFlows(), checked.worker.flow) }
+          ? { ...record, description: checked.worker.description, takes: flowTakes(installation, checked.worker.flow) }
           : { ...record, description: null, takes: "nothing" }
       );
     }
@@ -314,7 +313,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
     description:
-      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `dispatchTask` with `post: true` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
+      "Read who this conversation's delegates are: every one, with its note, what it does (`description`), what it takes (`tasks`, or `nothing`), the workstream it leads here when its record names one (`target`), and the fallback. Answer who your delegates are from this, never from memory.",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,
@@ -323,25 +322,23 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
 
   /**
    * The session's delegates as a task sees them, read now: each that takes a
-   * task, with its flow, and why each other one can't. A record with a target
-   * is a workstream, which takes posts, not tasks. Read per call, from the
-   * list the session holds now, so an add or a remove counts on the next one.
+   * task, with its flow, and why each other one can't, beside the records
+   * themselves. A record with a target is a workstream its worker leads: a
+   * task for it names that target (FIX-2083), which the board checks. Read
+   * per call, from the list the session holds now, so an add or a remove
+   * counts on the next one.
    */
   const taskDelegates = async (ctx: BlockContext): Promise<TaskDelegates> => {
     const listed = currentDelegates(ctx.session.state, await turnDefaults(ctx));
     const available = new Map<string, string>();
     const unavailable = new Map<string, string>();
     for (const record of listed.delegates) {
-      if (record.target !== undefined) {
-        unavailable.set(record.worker, "a workstream takes posts, not tasks");
-        continue;
-      }
+      if (available.has(record.worker) || unavailable.has(record.worker)) continue;
       const checked = await check(ctx as never, record.worker, "task");
       if (checked.ok) available.set(record.worker, checked.worker.flow);
       else unavailable.set(record.worker, checked.message);
     }
-    for (const worker of available.keys()) unavailable.delete(worker);
-    return { available, unavailable };
+    return { available, unavailable, records: listed.delegates };
   };
 
   /**
@@ -365,12 +362,10 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   });
 
   return {
-    /** The one check, for an add, a post or a task. */
+    /** The one check, for an add or a task. */
     check,
     /** The session's worker's defaults, with the flow's seed while its list was never written. */
     defaults: ownerDefaults,
-    /** The flows a delegated post reaches now. */
-    postFlows,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates,
     /** The four delegate actions, for the flow's `actions`. */

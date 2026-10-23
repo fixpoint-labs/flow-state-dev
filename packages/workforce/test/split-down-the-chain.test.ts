@@ -100,7 +100,7 @@ describe("a task session splits its task (BR-14, BR-16, V5, FIX-2077)", () => {
 
       // The follow-up files nothing of its own: it is answered by its turn.
       h.controls.plans.s1 = [];
-      const followUp = await h.tool("alice", planner, "dispatchTask", { goal: "Add a second venue", followUpOf: top.id });
+      const followUp = await h.tool("alice", planner, "createTask", { goal: "Add a second venue", followUpOf: top.id });
       expect(followUp.ok).toBe(true);
       await h.settled();
       const row = await one(h, "Add a second venue");
@@ -350,18 +350,18 @@ describe("a task session's pieces go only to its delegates (FIX-2081)", () => {
       const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
 
       // d1 is on alice's roster and takes tasks, and isn't one of s1's delegates.
-      const notDelegate = await h.tool("alice", t1, "dispatchTask", { goal: "Ask d1", assignee: "d1" });
+      const notDelegate = await h.tool("alice", t1, "createTask", { goal: "Ask d1", assignee: "d1" });
       expect(notDelegate).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "d1"/) });
       const viaCreate = await h.tool("alice", t1, "createTask", { goal: "Ask d1 later", assignee: "d1" });
       expect(viaCreate).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "d1"/) });
-      const offRoster = await h.tool("alice", t1, "dispatchTask", { goal: "Ask nobody", assignee: "nobody" });
+      const offRoster = await h.tool("alice", t1, "createTask", { goal: "Ask nobody", assignee: "nobody" });
       expect(offRoster).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "nobody"/) });
       // A delegate takes it.
-      expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask the tasker", assignee: "eng.tasker" })).toMatchObject({ ok: true });
+      expect(await h.tool("alice", t1, "createTask", { goal: "Ask the tasker", assignee: "eng.tasker" })).toMatchObject({ ok: true });
       // Its own worker is no delegate: a step for itself is filed only by its own turn (FIX-2076),
       // never by an action, and never as a task session of itself.
       h.controls.plans.s1 = [];
-      expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask myself", assignee: "s1" })).toMatchObject({
+      expect(await h.tool("alice", t1, "createTask", { goal: "Ask myself", assignee: "s1" })).toMatchObject({
         ok: false,
         error: expect.stringMatching(/^unknown_assignee: "s1"/)
       });

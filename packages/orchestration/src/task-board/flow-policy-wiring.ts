@@ -146,7 +146,7 @@ export interface BoardRunFlowState {
 const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
 
 /** Opened before the ticket exists, same as the lease-renewal slot. */
-type ClaimSlot = { ticket?: TaskClaimTicket; request?: string; taskTurn?: boolean };
+type ClaimSlot = { ticket?: TaskClaimTicket; request?: string };
 
 /**
  * The part of a block context a claim is bound to: the request it runs in.
@@ -390,8 +390,7 @@ export function openWorkerClaimScope(): void {
  */
 export function stampCurrentClaim(
   ticket: TaskClaimTicket,
-  ctx: WorkerClaimReader,
-  options: { taskTurn?: boolean } = {}
+  ctx: WorkerClaimReader
 ): void {
   const slot = workerClaimStore.getStore();
   if (slot === undefined) {
@@ -403,13 +402,11 @@ export function stampCurrentClaim(
   }
   slot.ticket = ticket;
   slot.request = claimRequestKey(ctx);
-  slot.taskTurn = options.taskTurn !== false;
 }
 
-/** A claim in this request whose stamp did not pass `taskTurn: false`. */
+/** A claim stamped in this request: every claimed turn is a task turn. */
 export function claimServesTaskTurn(ctx: WorkerClaimReader): boolean {
-  const slot = slotInRequest(claimRequestKey(ctx));
-  return slot !== undefined && slot.taskTurn !== false;
+  return slotInRequest(claimRequestKey(ctx)) !== undefined;
 }
 
 /**

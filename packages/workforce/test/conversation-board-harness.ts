@@ -10,7 +10,7 @@
  *   `[park:<question>]` parks the task on its question on the first attempt,
  *   `[slow:<ms>]` takes that long, `[hold:<name>]` waits until the test
  *   releases the gate of that name (`holds`), and anything else is done.
- * - `helper` takes delegated posts and no task.
+ * - `helper` answers the message a routed task hands it.
  * - `agent` is the built-in worker flow, scripted by its generator's block name
  *   (`agent-answer`).
  *
@@ -29,7 +29,6 @@ import { conversationLedgerAt, conversationLedgerResources } from "../src/conver
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
-import { delegatedPostEntry } from "../src/coordinator/delegated-post";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
@@ -40,7 +39,7 @@ import { mockEvaluationModel } from "@flow-state-dev/testing";
 
 export const ORG = "acme";
 
-/** The standard workers: coordinators that file, workers that take tasks, one that takes only posts. */
+/** The standard workers: coordinators that file, workers that take tasks, one that answers what it is handed. */
 export function boardWorkers(overrides: Partial<Record<string, Record<string, unknown>>> = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({
     id,
@@ -63,7 +62,7 @@ export function boardWorkers(overrides: Partial<Record<string, Record<string, un
     worker("front", { flow: "coordinator", routing: "best-fit", delegates: ["otto"], fallback: "otto" }),
     worker("eng.tasker", { flow: "tasker", description: "Does tasks." }),
     worker("eng.writer", { flow: "tasker", description: "Writes things." }),
-    worker("eng.helper", { flow: "helper", description: "Answers posts." }),
+    worker("eng.helper", { flow: "helper", description: "Answers what it is handed." }),
     worker("otto", { description: "An agent worker." }, "You do what you're asked.")
   ];
 }
@@ -148,7 +147,7 @@ function helperFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
+    task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
 
@@ -268,7 +267,6 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const agent = defineAgentWorkerFlow({ installation, ...(options.agent ?? {}) });
   const coordinator = defineCoordinatorFlow({
     installation,
-    delegateFlows: [helper, agent],
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent })
   });

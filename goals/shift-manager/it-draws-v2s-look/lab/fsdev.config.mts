@@ -61,7 +61,7 @@ const { installation, copies } = installWorkers(tree.workers, (installation) => 
   const agent = defineAgentWorkerFlow({ installation });
   return {
     [AGENT_FLOW]: agent,
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: ROUTE_MODEL }),
+    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
   };
 });
 // The worker-row write takes caller-supplied rows, so it is internal only.

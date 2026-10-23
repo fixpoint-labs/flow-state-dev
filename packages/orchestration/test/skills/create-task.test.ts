@@ -81,17 +81,19 @@ describe("createTask starts a task as its start setting says", () => {
     expect(collection.get(result.taskId!)!.status).toBe("held");
   });
 
-  it("dispatchTask({ taskId }) releases a held row while it stands (D1)", async () => {
+  it("updateTask({ status: \"pending\" }) releases a held row while it stands (D1)", async () => {
     const collection = await board();
     const tools = toolsOf(collection, true);
     const added = await run(tool(tools, "createTask"), { goal: "Draft", assignee: "writer", held: true });
-    expect((await run(tool(tools, "dispatchTask"), { taskId: added.taskId! })).ok).toBe(true);
+    expect((await run(tool(tools, "updateTask"), { id: added.taskId!, status: "pending" })).ok).toBe(true);
     expect(collection.get(added.taskId!)!.status).toBe("pending");
   });
 
-  it("offers no dispatchTask on a board a drain runs", async () => {
+  it("offers no dispatchTask on any board: createTask starts a task (FIX-2083)", async () => {
     const collection = await board();
-    expect(toolsOf(collection, false).map((t) => (t as { name?: string }).name)).not.toContain("dispatchTask");
+    for (const starts of [true, false]) {
+      expect(toolsOf(collection, starts).map((t) => (t as { name?: string }).name)).not.toContain("dispatchTask");
+    }
   });
 });
 
@@ -134,11 +136,11 @@ describe("createTask only files: it refuses a wait field by name (BR-21, FIX-208
     expect(collection.list()).toEqual([]);
   });
 
-  it("offers no wait field on createTask or dispatchTask, and wait and deadline on getTask, wherever a wait can be held", async () => {
+  it("offers no wait field on createTask, and wait and deadline on getTask, wherever a wait can be held", async () => {
     const collection = await board();
     const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesWaits: true })(canWait);
     const fieldsOf = (name: string) => Object.keys(((tool(tools, name) as any).config.inputSchema as { shape: object }).shape);
-    for (const name of ["createTask", "dispatchTask"]) {
+    for (const name of ["createTask"]) {
       expect(fieldsOf(name)).not.toContain("timeoutMs");
       expect(fieldsOf(name).some((f) => f.startsWith("wait"))).toBe(false);
     }

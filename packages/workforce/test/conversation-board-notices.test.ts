@@ -18,7 +18,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string };
 };
@@ -89,7 +89,7 @@ describe("an attempt that completes (BR-22)", () => {
   it("wakes the coordinator's judgment turn once, with the notice as its message", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
@@ -115,7 +115,7 @@ describe("an attempt that fails", () => {
   it("with attempts left wakes no turn: the board runs again and the next attempt completes (BR-23)", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: () => true, then: { text: "Done on the second try." } }
       ]
@@ -184,7 +184,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   const script = (...more: Array<{ when: (input: unknown) => boolean; then: { text: string } }>) =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
         ...more
@@ -313,9 +313,9 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     // Call 2 is the round's reply: it files the task, and is held open until the notice arrives.
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.helper" } }] },
+        { toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: { goal: "Take this", assignee: "eng.helper", session: "ongoing", resultTo: "conversation" } }] },
         { text: "Handed." },
-        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "createTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
@@ -382,9 +382,9 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 });
 
 describe("a delegate's answer that arrives mid-reply", () => {
-  it("lands as it always has, without waiting for the reply: only a task's notice waits", async () => {
+  it("waits for the reply, like any task's notice: a routed task's ending takes the one ending path (FIX-2083)", async () => {
     const judgment = mockGenerator({
-      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.helper" } }] }, { text: "Handed." }]
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: { goal: "Take this", assignee: "eng.helper", session: "ongoing", resultTo: "conversation" } }] }, { text: "Handed." }]
     });
     let calls = 0;
     let conv = "";
@@ -393,8 +393,9 @@ describe("a delegate's answer that arrives mid-reply", () => {
       judgment,
       afterModelCall: async (blockName) => {
         if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        landedMidReply = await until(async () =>
-          (await host.messages(conv)).some((message) => message.text.startsWith("eng.helper heard:"))
+        landedMidReply = await until(
+          async () => (await host.messages(conv)).some((message) => message.text.startsWith("eng.helper heard:")),
+          500
         );
       }
     });
@@ -402,7 +403,7 @@ describe("a delegate's answer that arrives mid-reply", () => {
       conv = await host.conversation("alice", "mixed");
       await host.post("alice", conv, "run", { message: "who's on call?" });
       await host.settled();
-      expect(landedMidReply).toBe(true);
+      expect(landedMidReply).toBe(false);
       const texts = (await host.messages(conv)).map((message) => message.text);
       expect(texts.filter((text) => text.startsWith("eng.helper heard:"))).toHaveLength(1);
       expect(texts.filter((text) => text === "Handed.")).toHaveLength(1);

@@ -141,7 +141,7 @@ function gradeE(o: any): LegResult {
     r.failures.push(`e:redelivery — handed desk.alpha twice, wanted the second skipped, one delivery and one answer; skipped again: ${skippedAgain}, deliveries: ${p4Ledger.length}, answers after ${o.graceMs} ms: ${p4Answers}`);
   }
   one("e:unplaced", ladder.posts.p5, "unplaced", undefined);
-  if (!lines.some((l) => l.agentName === null && /^Nobody took this post/.test(l.text))) {
+  if (!lines.some((l) => l.agentName === null && /^Nobody took this (post|message)/.test(l.text))) {
     r.failures.push(`e:unplaced — the conversation never said the post went unplaced`);
   }
   r.notes.push(`best fit: ${records.map((d) => `${d.by}→${(d.delegates as any[]).map((x) => `${x.worker}:${x.outcome}`).join("+") || "nobody"}`).join(", ")}; evaluator calls ${show(ladder.evaluatorCalls)}`);

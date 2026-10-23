@@ -12,7 +12,8 @@
  *   BR-1a  a delegate action on a session no create linked to a worker is refused, naming why;
  *   BR-2   an add lands in this conversation only; a `target` sent to `addDelegate` is refused, naming it;
  *   BR-3   Bob's worker and a name nobody holds get one answer; nothing is written;
- *   BR-4   a worker whose flow takes neither a post nor a task is refused, naming the flow;
+ *   BR-4   a worker whose flow takes no task is refused, naming the flow (FIX-2083: a delegate is
+ *          a worker whose flow takes a conversation's tasks);
  *   BR-5   a record already on the list, or a 26th, is refused; records go by worker and target;
  *   BR-6   removal checks the list, not the roster: a fired delegate can be removed; removing the fallback clears it;
  *   BR-6a  the fallback is set to a listed record or cleared; an unlisted one is refused;
@@ -153,25 +154,25 @@ describe("a conversation's delegates (V2)", () => {
     expect(standard.error, messageOf(standard.error)).toBeUndefined();
     const listed = await host.act("alice", id, "listDelegates", {});
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "posts" },
-      { worker: "licenses", note: "license questions", description: "Audits licenses.", takes: "posts" },
-      { worker: "eng.coder", description: "Writes code.", takes: "posts" }
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks" },
+      { worker: "licenses", note: "license questions", description: "Audits licenses.", takes: "tasks" },
+      { worker: "eng.coder", description: "Writes code.", takes: "tasks" }
     ]);
     expect(listed.output.max).toBe(25);
   });
 
-  it("says what each delegate does and takes, and a dispatch reaches exactly the ones it says take posts", async () => {
-    // The coordinator's turn picks whom to hand a post to from this read: what
+  it("says what each delegate does and takes, and a routed filing reaches exactly the ones it says take tasks", async () => {
+    // The coordinator's turn picks whom to hand a message to from this read: what
     // each delegate does (its worker's description) and what it takes. So a
-    // delegate it says takes posts must be one `dispatchTask` hands it to, and a
-    // delegate it says takes only tasks, or nothing, must be one it refuses.
+    // delegate it says takes tasks must be one its routed filing reaches, and one
+    // it says takes nothing must be one it refuses.
     const judgment = mockGenerator({
       script: [
         {
           toolCalls: ["eng.em", "eng.builder", "eng.lead", "temp"].map((worker, n) => ({
             toolCallId: `h${n}`,
-            toolName: "dispatchTask",
-            args: { post: true, assignee: worker }
+            toolName: "createTask",
+            args: { goal: "Take this", assignee: worker, session: "ongoing", resultTo: "conversation" }
           }))
         },
         { text: "Handed on." }
@@ -188,9 +189,9 @@ describe("a conversation's delegates (V2)", () => {
 
     const listed = await host.act("alice", id, "listDelegates", {});
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "posts" },
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks" },
       { worker: "eng.builder", description: "Builds what a task names.", takes: "tasks" },
-      { worker: "eng.lead", description: "Leads engineering work.", takes: "both" },
+      { worker: "eng.lead", description: "Leads engineering work.", takes: "tasks" },
       // Fired: no roster row to read a description from.
       { worker: "temp", description: null, takes: "nothing" }
     ]);
@@ -200,10 +201,10 @@ describe("a conversation's delegates (V2)", () => {
     await host.settled();
     const [record] = (await host.items(id)).records;
     const delivered = record.delegates.filter((d: any) => d.outcome === "delivered").map((d: any) => d.worker);
-    const takesPosts = (listed.output.delegates as Array<{ worker: string; takes: string }>)
-      .filter((d) => d.takes === "posts" || d.takes === "both")
+    const takesTasks = (listed.output.delegates as Array<{ worker: string; takes: string }>)
+      .filter((d) => d.takes === "tasks")
       .map((d) => d.worker);
-    expect(delivered).toEqual(takesPosts);
+    expect(delivered).toEqual(takesTasks);
   });
 
   it("refuses a target sent to addDelegate, naming the field (BR-2)", async () => {
@@ -225,11 +226,11 @@ describe("a conversation's delegates (V2)", () => {
     expect((await host.sessionState(id)).delegates).toBeNull();
   });
 
-  it("refuses a worker whose flow takes neither a post nor a task, naming the flow (BR-4)", async () => {
+  it("refuses a worker whose flow takes no task, naming the flow (BR-4)", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "chief");
     const refused = await host.act("alice", id, "addDelegate", { worker: "notes" });
-    expect(messageOf(refused.error)).toBe('Worker "notes" runs on flow "quiet", which takes neither a delegated post nor a task.');
+    expect(messageOf(refused.error)).toBe('Worker "notes" runs on flow "quiet", which takes no task, so it can\'t be a delegate.');
     expect((await host.sessionState(id)).delegates).toBeNull();
   });
 
@@ -392,8 +393,8 @@ describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", (
     const results = await toolResults(host, id);
     expect(results.addDelegate[0]).toEqual({ refused: 'No worker "bobs-helper" on your roster.' });
     expect(results.listDelegates[0].delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "posts" },
-      { worker: "eng.coder", note: "the build", description: "Writes code.", takes: "posts" }
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks" },
+      { worker: "eng.coder", note: "the build", description: "Writes code.", takes: "tasks" }
     ]);
     expect((await host.sessionState(id)).delegates.map((d: any) => d.worker)).toEqual(["eng.em", "eng.coder"]);
   });

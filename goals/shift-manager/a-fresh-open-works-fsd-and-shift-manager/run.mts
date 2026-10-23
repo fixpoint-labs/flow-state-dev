@@ -231,7 +231,7 @@ await runGoal(async (failures) => {
     let together = false;
     const watching = (async () => {
       for (const until = Date.now() + BUDGET_MS; Date.now() < until; await sleep(5_000)) {
-        // The coder's row, not a post row handed to the EM on the way: a post settles before the coder commits.
+        // The coder's row, not the routed task handed to the EM on the way, which ends once the coder's task does.
         rows = Object.fromEntries((await filed()).filter((r) => r.assignee === CODER).map((r) => [legOf(r), r]).filter(([leg]) => leg !== undefined));
         const live = runWorktrees().filter((w) => !before.has(w.path));
         if (rows.a !== undefined && rows.b !== undefined && !SETTLED.has(rows.a.status) && !SETTLED.has(rows.b.status) && live.length >= 2) together = true;

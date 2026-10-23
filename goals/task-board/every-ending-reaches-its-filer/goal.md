@@ -25,3 +25,4 @@
 
 > Against `main` before this issue the script does not load: it imports `NOTICE_DUE_MS` and the delivery entry this issue adds. The control above is the discriminating run.
 | 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | PASS | The waiter files, then waits with `waitOnTask`. a: 3 endings each; the waiter got its answer. b: the notice fell due 1933 ms after the restart; the filer heard 417 ms and the parent settled 493 ms after that. c: the dependent started 39 ms after its dependency ended; 8 passes, none overlapping |
+| 2026-10-23 | fix/FIX-2083 on 52ad9b934 (the merge with FIX-2082) + the `dispatchTask` removal, uncommitted | n/a (model-free) | PASS | The waiter releases its held task (`release`, where it called the ref's `dispatch`) and waits with `waitOnTask`. a, b, c, d, e as before |
