@@ -524,4 +524,28 @@ describe.each(STORES)("wait on a task: a deadline that passes while the request 
       await state.dispose();
     }
   });
+
+  it("a request that resumes and parks again on a second wait gets that deadline soon after its second park too", async () => {
+    // The second park is a resumed run's, which holds the request's resume
+    // lease until it has parked: the deadline must not wait out a retry for it.
+    let taskId = "";
+    const { model, seen } = stepModel([
+      waitCall("c1", "q", 50),
+      (opts) => {
+        taskId = waitedTaskId([opts], 0);
+        return waitAgain("c2", () => taskId, 50)(opts);
+      },
+      finalAnswer
+    ]);
+    const flow = waitFlow(model, { parkTakesMs: 300 });
+    const state = runtimeFor(flow, await stores(), true, 25, SHORT);
+    try {
+      const parked = await act(state, flow, "run");
+      await until(state, parked.requestId!, "completed", 3_000);
+      expect(seen).toHaveLength(3);
+      expect(toolResults(seen[2]!.messages)).toContain('"status":"pending"');
+    } finally {
+      await state.dispose();
+    }
+  });
 });

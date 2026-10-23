@@ -147,6 +147,14 @@ export function waitFlow(
 ): FlowInstance {
   let cancelFailed = false;
   let clearFailed = false;
+  /** With `parkTakesMs`, a request-end hook that makes this request's park take that long. */
+  const slowPark = (ctx: BlockContext): void => {
+    const parkTakesMs = options.parkTakesMs;
+    if (parkTakesMs === undefined) return;
+    onRequestEnded(ctx, async (ending) => {
+      if (ending.status === "suspended") await new Promise((r) => setTimeout(r, parkTakesMs));
+    });
+  };
   const waitBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
     const settle = async (id: string, output: unknown) => {
@@ -205,12 +213,7 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await waitBoard(ctx);
       const call = toolCallOf(ctx)!;
-      const parkTakesMs = options.parkTakesMs;
-      if (parkTakesMs !== undefined) {
-        onRequestEnded(ctx, async (ending) => {
-          if (ending.status === "suspended") await new Promise((r) => setTimeout(r, parkTakesMs));
-        });
-      }
+      slowPark(ctx);
       // Filed once per call, as `createTask` files on a board that starts work.
       const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => {
         const task = await board.addTask({
@@ -246,6 +249,7 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await boardOf(ctx);
       const call = toolCallOf(ctx)!;
+      slowPark(ctx);
       const waited = await waitOnTask(ctx, board, input.id, {
         key: call.logicalId,
         step: call.stepKey,
