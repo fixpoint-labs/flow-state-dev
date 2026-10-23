@@ -29,7 +29,7 @@ worker's session, or **the engine**, starting a request for a task. It produces 
 session runs one request at a time; the rest wait in its **queue**. A request **ends** when its
 **background work** ends too; until then its session is **busy**. A request **waits** until a task,
 a call or a **condition** (an external signal, such as a webhook or a CI result) ends, or it **stops
-for a person**. Either way it is **suspended**: stored, and **resumed** from the same step; its
+for a person** with `waitForUser`. Either way it is **suspended**: stored, and **resumed** from the same step; its
 session is **waiting**. That needs **durable execution**, a host that stores a waiting request and
 carries it on later.
 
@@ -134,7 +134,7 @@ background work included.
 row's current one before the entry runs, and settles the row once rule 6 holds (rules 2, 6, 18).
 
 **A failed attempt is retried while attempts are left.** An **attempt** fails when one of its
-requests throws or errors, its background work included, including a question or review whose `waitForUser` deadline goes unhandled
+requests throws or errors, its background work included, including a review or input whose `waitForUser` deadline goes unhandled
 (an unhandled wait or call deadline just carries on). Its open tasks are cancelled, nothing it
 returned is recorded, and the task goes back to pending in its session, or, with no attempts left,
 fails.
@@ -208,35 +208,47 @@ behind it, such as a held task once it's released, gets a fresh 6. A message is 
 
 ## Inbox items
 
-**Work stops for a person in one of two ways, each one Inbox item.**
+**Work stops for a person in one of two ways, each one Inbox item.** If code reads the answer on
+its next line, the request suspends. If the work can pick up from its brief, the task holds.
 
-**Before it starts, a task can be held on questions,** in the user's Inbox as one item as soon as
-it's filed. Each answer joins the brief; the last releases the hold, and its dependents wait until
-then. launch files coder's adoption-script task held on "Which CSV export should the script read?";
-Alice answers, and coder starts. Cancelling the task closes the item.
+**A question holds its task,** before it starts or midway. Open questions are a mark on the task's
+row, whatever its status, and the claim gate never claims a row that has one. Filed with questions,
+a task is pending and in the user's Inbox as one item at once: launch files coder's adoption-script
+task held on "Which CSV export should the script read?"; Alice answers, and coder starts, with no
+attempt used and a fresh budget. Midway, a request asks its question and ends; the task stays running
+with no request on it, its attempt and budget carrying on. Each answer is a steer, and the first
+answer to a question wins unless a cancel is already written. The last answer releases the hold: a
+held task starts, a running one takes one more turn on the same attempt, picking up from its brief.
+Its dependents wait until then, and a task with an open question never settles. At the question's
+deadline, 7 days by default, the hold releases; proposed, not yet decided: the work goes on, its
+brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
+so it is input, and suspends.
 
-**Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })`, `kind` being an
-**approval**, **question** or **review**, and `deadline` defaulting to the host's. A waited-on task
-may still stop for a person. If the request works a task, the claim gate marks it waiting on a
-person; it keeps its claim, and the resume carries on the same attempt.
+**Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })` when its code reads
+the answer next, `kind` being an **approval** (every one, "go ahead with the plan?" included), a
+**review** or **input**, and `deadline` defaulting to the host's. A review is a verdict the code
+reads; a revision request is new direction, a steer into a held task. A waited-on task may still
+suspend for a person. If the request works a task, the claim gate marks it waiting on a person; it
+keeps its claim, and the resume carries on the same attempt.
 
-| A stop for a person resumes once | When | The suspended block |
+| A suspension resumes once | When | The suspended block |
 | -- | -- | -- |
 | Answered | The first answer, in the Inbox or the task's session | Carries on with it |
-| Deadline | No answer by then | **Handles** it: goes ahead without the answer, ends, or suspends again with a new deadline (a **check-in**), perhaps messaging its filer first. Unhandled, an approval counts as rejected and a question or review errors, using an attempt |
+| Deadline | No answer by then | **Handles** it: goes ahead without the answer, ends, or suspends again with a new deadline (a **check-in**), perhaps messaging its filer first. Unhandled, an approval counts as rejected and a review or input errors, using an attempt |
 | Cancelled | Its task is cancelled; the item closes | Resumes at once with `cancelled` and runs to its end: it may clean up and send messages, its writes to the task are refused, anything it creates is cancelled with it, and nothing it returns is recorded |
 
 **The filer hears its task's questions.** A question asked midway reaches the task's filer as a
-message from the task's session, for its `receive`. The filer may answer it by a steer (rule 11) or
-leave it to the user; the first answer closes the item. The task's row records which suspension
-holds it, so `getTask` and `listTasks` show the open question's kind and text.
+message from the task's session, for its `receive` (delivered by FIX-2070; until then the filer reads
+it with `getTask`). The filer may answer it by a steer (rule 11) or
+leave it to the user; the first answer closes the item. The task's row holds its open questions, and
+records which suspension holds it, so `getTask` and `listTasks` show what the task waits on.
 
 Apart from a cancel, only the user **stops** a
 request, from a screen; its Inbox item closes, if it had one. A steer is never a stop.
 
 **A coding run can't pause midway,** because the harness is its own process. Its question ends the
-run, and the coding flow's request suspends with `waitForUser`. The answer starts the next run in
-the same **coding session**, using no attempt. A steer ends the current coding run, not the request;
+run, and its task holds on the question. The answer, a steer, starts the next run in the same
+**coding session**, using no attempt. A steer ends the current coding run, not the request;
 the next run continues the coding session with the message.
 
 ## Routing
@@ -331,8 +343,8 @@ configured at hire to change its own delegates gets `addDelegate`, `removeDelega
 3. writer's `work` request calls coder: "Does the CSV have a month column?" coder answers yes.
 4. Needing numbers before it plans, it files a task for researcher and ends; writer's task stays
    running with no request on it.
-5. researcher asks "Which region?" with `waitForUser`. Alice answers in her Inbox; the same request
-   carries on.
+5. researcher asks "Which region?", and its task holds. Alice answers in her Inbox; the task picks
+   up from its brief on the same attempt.
 6. researcher finishes; the claim gate marks its task done, and `onTaskSettled` starts a request
    working writer's task.
 7. It drains writer's plan board, waiting on the dispatched fact-check, and finishes with nothing
@@ -399,12 +411,13 @@ A behavior none of these rules explains is a bug in the model.
 10. A call returns the recipient's result; nothing is relayed or answered automatically. A send or a
     call to a busy or waiting session queues, a call up to its deadline. A message past the budget
     is refused.
-11. Every stop for a person is one Inbox item: a request suspended by `waitForUser`, or a task held
-    on questions. Only the user answers held questions, approvals and reviews; a question asked
-    midway is also messaged to the filer, which may answer it unless the task is routed.
-12. A stop for a person resumes once: answered, deadline or cancelled; a user stopping its request
-    instead ends it and cancels its task. Its task keeps its claim. A task held on questions starts
-    no sooner than its last answer.
+11. Every stop for a person is one Inbox item: a request suspended by `waitForUser` for an approval,
+    a review or input its code reads next, or a task held on questions, before it starts or midway.
+    Only the user answers approvals, reviews and questions asked at filing; a question asked midway
+    is also messaged to the filer (FIX-2070), which may answer it by a steer unless the task is routed.
+12. A stop for a person ends once: answered, deadline or cancelled; a user stopping its request
+    instead ends it and cancels its task. A suspended task keeps its claim. A task with an open
+    question is never claimed and never settles; its last answer releases it.
 13. Only the user changes delegates, except a coordinator the user configured at hire to change its
     own.
 14. A board's `mode` is `plan`, the default, or `delegation`. A plan board's drain waits on every
@@ -448,10 +461,10 @@ rest.
 | Shift Coordinator | The coordinator the Shift Manager app opens on: the user's point of contact, which hires workers, starts projects and hands out work. launch plays it |
 | Session, conversation | Where a worker works; where a user talks to one worker |
 | Request, sender, the engine, result | One run of a worker in a session; who it runs for; the sender of a request starting a task; what it produces |
-| Wait, condition, deadline | Holding a request until a task, call or condition ends; an external signal, such as a webhook; when a wait or stop resumes unanswered, which a block **handles** by acting on it |
-| Suspended, resume, check-in | Stored while waiting or stopped for a person; carrying on from the same step; a renewed deadline |
+| Wait, condition, deadline | Holding a request until a task, call or condition ends; an external signal, such as a webhook; when a wait or suspension resumes unanswered, which a block **handles** by acting on it |
+| Suspended, resume, check-in | Stored while waiting, or suspended for a person's approval, review or input; carrying on from the same step; a renewed deadline |
 | Stop (a request) | End it from a screen with no result, running or suspended; only the user does, apart from a cancel; unlike a stop for a person |
-| Busy, waiting, queue (a session) | Running a request; holding a suspended one, by a wait or a stop for a person; its requests waiting their turn, such as queued messages |
+| Busy, waiting, queue (a session) | Running a request; holding a suspended one, by a wait or a suspension for a person; its requests waiting their turn, such as queued messages |
 | Durable execution | A host that stores a waiting request and carries it on later |
 | Task, top task, filer, filer above, assignee, brief | Work on a board; one no task filed; the session that filed it; the filer of the task a request works; who does it; what it is |
 | Task's session, ongoing session | Where its assignee works it, outliving the task; a delegate's one session per conversation, for routed tasks |
@@ -461,8 +474,8 @@ rest.
 | Pattern, goal-seek loop | A ready-made plan board, such as one running several rows at once; a loop (`goalSeekLoop`) that drains a plan board, asks a judge, a block such as an evaluator, whether the goal is met, and drains again if not |
 | Dispatch, `dispatch`, dispatcher | Start work in another session; the pass that drains a delegation board; the block that does it, waiting for the result when its `wait` is true, set or followed from a plan board (a waited dispatch) |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
-| Dependency, held, held on questions | A task on the same board that must end first; not started until the filer releases it; pending until the user answers its questions, not waiting on a person |
-| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, or with filed tasks open; its request suspended by `waitForUser` |
+| Dependency, held, held on questions | A task on the same board that must end first; not started until the filer releases it; not claimed while it has an open question, asked at filing or midway, and never waiting on a person |
+| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, with filed tasks open, or held midway on a question with no lease; its request suspended by `waitForUser` |
 | Ending: done, failed, cancelled | Rule 6 met; out of attempts; cancelled |
 | Finished, open, settle | Ended; not ended; record a row's ending |
 | Attempt | One try at a task: every request working it in that try, resumes included; `maxAttempts` caps them |
@@ -473,8 +486,9 @@ rest.
 | Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; `work`, the action a task runs through |
 | Debt, due time, durability sweeper | What a row owes; when it's due, a few seconds out; the engine's pass that pays it |
 | Send, call, call id, budget | A message returning nothing; one whose sender waits; the call's message id, which its result is kept under; how many messages a request may still send |
-| Inbox, Inbox item | The user's screen of open Inbox items; one stop for a person: a request suspended by `waitForUser`, or a task held on questions |
-| Approval, question, review | `waitForUser`'s kinds: yes or no; an answer in words; the user accepts work or sends it back |
+| Inbox, Inbox item | The user's screen of open Inbox items; one stop for a person: a request suspended by `waitForUser`, or a task held on questions, before it starts or midway |
+| Approval, review, input | `waitForUser`'s kinds: yes or no; the user accepts work or sends it back; a value its code reads next |
+| Question | An answer in words its task holds on, on the row, never a `waitForUser` kind |
 | Delegate, coordinator | A worker a session may file tasks with; a worker that routes a user's messages |
 | Routed task, fit check, fallback, rounds | A task with routing's settings, which a judgment coordinator chooses per task; the model call that picks a delegate for best fit, or vets the lead a worker picked when opening a workstream; the delegate the coordinator names to take a weak pick; up to 3 passes sending answers back out |
 | Project, workstream, lead, evaluator | A body of a user's work a coordinator runs, with its own conversation; a piece of a project; the worker that runs it; a block that judges input |
@@ -490,7 +504,8 @@ The model above is the owner's, including: nothing settled by hand (no tool mark
 failed); a deadline on every wait and every stop for a person, a waited dispatch included; nested
 waits (rule 9); and twenty-three newly decided:
 
-- [x] **Held on questions:** asked at filing, in the Inbox at once → rule 11.
+- [x] **Held on questions:** asked at filing or midway, one hold on the row, in the Inbox at once
+  → rules 11, 12.
 - [x] **The worker contract:** roles declared, entries checked at hire → rule 15.
 - [x] **The sweeper backs up what a board owes (rule 8);** the fast paths stay.
 - [x] **Dependencies stay within one board (rule 16).**
@@ -529,6 +544,8 @@ Open:
 - [x] **An error in background work fails the attempt** → Tasks, failed attempts.
 - [x] **A cancelled block may clean up and send messages;** its writes to the task are refused and
   anything it creates is cancelled with it → Inbox items, Cancelled.
+- [ ] **An unanswered question at its deadline.** Recommended: the hold releases and the work goes
+  on from its brief, which says no answer came → Inbox items.
 - [ ] **Default worker instructions.** Punted to its own issue, as prompt content, not a mechanism:
   asked for more work after its task finished, a worker tells the filer with `sendMessage`.
 - [ ] **A separate entry for proposing work.** Punted: found work rides on `sendMessage`, and the
@@ -539,6 +556,7 @@ Superseded:
 - Rows a session filed for itself, closed by `completeTask` → plan rows, settled by the drain.
 - A per-block timeout → a deadline on every wait and call.
 - An answer starting a new request → resuming the suspended one, same step and attempt.
+- A midway question suspending with `waitForUser` → the task holds on its row, same attempt.
 - One Inbox record over two mechanisms → every stop is one Inbox item.
 - Moving patterns onto the in-request board → patterns are plan boards as they stand.
 - A board-level `wait` → `mode`; `dispatcher({ wait })` stays.

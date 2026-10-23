@@ -250,9 +250,25 @@ export function createRequestWaits(inputs: {
         }
       }
       return answers;
+    },
+    running: async (requestIds) => {
+      const answers: Record<string, boolean> = {};
+      for (const requestId of new Set(requestIds)) {
+        try {
+          const record = await inputs.readRequest(requestId);
+          answers[requestId] = record !== undefined && record.sessionId === inputs.sessionId && RUNNING.has(record.status);
+        } catch {
+          // A record that can't be read answers for itself only: not running, so nothing waits on it.
+          answers[requestId] = false;
+        }
+      }
+      return answers;
     }
   };
 }
+
+/** Request statuses of a request running its own work: started, and neither parked nor ended. */
+const RUNNING: ReadonlySet<RequestRecord["status"]> = new Set(["in_progress"]);
 
 /** Request statuses after which a request runs no more of its own work. */
 const WORK_OVER: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);

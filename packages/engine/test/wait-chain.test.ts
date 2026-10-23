@@ -181,6 +181,32 @@ describe("whether a request has stopped running its own work", () => {
       elsewhere: false
     });
   });
+
+  it("tells running apart from parked: only a request in progress in this session is running", async () => {
+    const elsewhereRunning = { id: "elsewhereRunning", status: "in_progress", sessionId: "s_other" };
+    const both = createRequestWaits({
+      provider: { ...provider([]), loadSuspension: async () => null as never },
+      deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
+      userId: "u",
+      requestId: "r",
+      own: undefined,
+      sessionId: "s",
+      readRequest: async (id) => {
+        if (id === "unreadable") throw new Error("store unavailable");
+        return (id === "elsewhereRunning" ? elsewhereRunning : records[id]) as never;
+      }
+    });
+    expect(await both.running!(["running", "parked", "done", "died", "redriven", "gone", "elsewhereRunning", "unreadable"])).toEqual({
+      running: true,
+      parked: false,
+      done: false,
+      died: false,
+      redriven: false,
+      gone: false,
+      elsewhereRunning: false,
+      unreadable: false
+    });
+  });
 });
 
 describe("the stamp a waited dispatch leaves on its child", () => {

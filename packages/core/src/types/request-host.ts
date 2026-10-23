@@ -89,7 +89,9 @@ export type ResumeWaitInput = {
  *   yet to be created.
  * - `already-resolved` — the gate was resumed before and its turn has not
  *   finished. The first answer stands.
- * - `busy` — another resume of the same turn holds its lease right now.
+ * - `busy` — another resume of the same turn holds its lease right now, or
+ *   the turn has not finished parking on the gate. Retryable: the gate is
+ *   still pending, so try again shortly.
  * - `ambiguous` — more than one turn in this session is parked on a gate with
  *   that id. Neither is resumed: guessing would hand one wait's answer to the
  *   other. Gate ids must be unique within the session (see `parkOnWait`).
@@ -192,6 +194,15 @@ export interface RequestWaits {
    * for a request that ended without reading the task.
    */
   ended?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  /**
+   * Whether each request is running its own work now (`in_progress`): neither
+   * parked (`suspended`) nor ended. `false` for one parked
+   * on a person or a wait, for one that ended or whose process died, for a
+   * request of another session, and for one with no record. A board reads it
+   * to hold a task's notice while the request that filed the task still runs
+   * (FIX-2123), and not while that request is parked.
+   */
+  running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
 }
 
 /**

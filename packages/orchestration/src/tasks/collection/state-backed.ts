@@ -68,6 +68,7 @@ import {
   markWaitWrite,
   releaseWaitWrite,
   noticeReadByWaitWrite,
+  noticeTakeWrite,
   settingsWrite,
   settingsChangeKind,
   type EndingRecording,
@@ -1072,6 +1073,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async dropNoticeReadByWait(id) {
       return patchOne(id, "metadata_changed", (task) => noticeReadByWaitWrite(task as Task)?.patch as Partial<Task<TInput, TOutput>> | undefined);
+    },
+
+    async takeNotice(id, notice, take) {
+      const at = now();
+      return patchOne(id, "metadata_changed", (task) => noticeTakeWrite(task as Task, notice, { ...take, at })?.patch as Partial<Task<TInput, TOutput>> | undefined);
     },
 
     async payOwedCascades() {

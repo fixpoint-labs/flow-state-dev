@@ -796,16 +796,18 @@ When a task the board handed out ends, the session that filed it is told, once. 
 | `question` | On `parked`: what the worker asked. Answer it with [`answerTask`](#when-a-task-stops-on-a-question) |
 | `cancelled` | On `errored` or `cancelled`: the ids of the dependents this ending [cancelled](#when-a-dependency-fails) that the same session filed. Those dependents send no notice of their own |
 
+While the request that filed the task is still running, its notice is held. When that request ends, it sends what it held right away. When it parks, on a person's approval or input or on a [`getTask` wait](#waiting-on-a-task), it holds nothing more. A task that ends during the park sends its notice right away. A notice held while the request ran goes out the next time the board tries to send it again: seconds after the park, or up to 5 minutes later if it had already been held a while (those tries back off). A task whose `getTask` wait reached its deadline is the exception: its ending goes to the request's next `getTask`, even during a park. See [Waiting on a task](#waiting-on-a-task). So a turn that files a task and never waits on it hears the ending once that turn ends, or soon after it parks. Holding needs a host with durable execution; elsewhere a notice is sent as soon as the task ends.
+
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
-- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })` while it ended. The waiting call gets the result instead. An ending after the wait's deadline goes to the waiting request's next `getTask` while it runs, and comes here only if that request ends without reading it.
+- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })`, either a wait that was open when the task ended, or one started after it ended but before an `onTaskSettled` request for that ending had started. The `getTask` call gets the result instead. A wait that reached its deadline first doesn't count: that ending goes to the request's next `getTask`, and is sent as a notice only if the request ends without reading it.
 - A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
 
 A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
 
-Your block runs once per ending. If it throws, the notice stays owed and is sent again, so the same ending can reach the block a second time after a failure. The entry queues on the session by default, so two notices run one after the other; pass `concurrency` to `taskSettledEntry` to change that.
+Your block runs once per ending. If it throws, the notice stays owed and is sent again, so the same ending can reach the block a second time after a failure. A second copy never runs while the first copy's request is still running or parked. The entry queues on the session by default, so two notices run one after the other; pass `concurrency` to `taskSettledEntry` to change that.
 
-A notice that can't be sent when the task ends, because the process died first or the send failed, is sent about two seconds later, or as soon as the server is running again if it was down then. The [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) runs `onTaskSettled` in the filing session with an empty input, which sends whatever the session's boards still owe. You may see an extra `onTaskSettled` request with empty input in the session; your block isn't called for it. This needs a host with durable execution (`durable: true` on `createFlowState`) and a store that keeps wakes, which every built-in store does. Without them, a notice is sent once, when the task ends, and a lost one isn't sent again.
+A notice that can't be sent when it falls due, because the process died first or the send failed, is sent about two seconds later, or as soon as the server is running again if it was down then. The [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) runs `onTaskSettled` in the filing session with an empty input, which sends whatever the session's boards still owe. You may see an extra `onTaskSettled` request with empty input in the session; your block isn't called for it. This needs a host with durable execution (`durable: true` on `createFlowState`) and a store that keeps wakes, which every built-in store does. Without them, a notice is sent once, when the task ends, and a lost one isn't sent again.
 
 If the filing session no longer exists, the notice can't be delivered. The task records that in its `metadata`, under `noticeUndeliverable:<attempt>:<ending>`, as `{ at, detail }`. A notice still owed a day after it fell due is given up the same way; the host's [`maxDebtAgeMs`](../advanced/durable-execution.md#retention-and-cleanup) sets that limit.
 
@@ -845,17 +847,31 @@ getTask({ id: "task_8f2", wait: true })
 
 You can wait in the same turn or in a later one. Your turn pauses until the task ends, then
 carries on with the task as `getTask` always returns it: its status, and its output once it
-completed. Nothing holds a request open while it waits, so a server restart loses nothing.
-A task that already ended is returned at once, and no `onTaskSettled` follows for it, as long
-as your `onTaskSettled` waits behind the turn that filed the task. A Workforce conversation or
-task turn works that way. The request still runs, but your block isn't called.
+completed. Nothing keeps a request open while it waits, so a server restart loses nothing.
+A task that already ended is returned at once. If no `onTaskSettled` request for that ending
+has started yet, the wait returns the ending, and no notice is sent for it.
+
+Once an `onTaskSettled` request for that ending has started, whether it is still running or
+has finished, `getTask` returns this instead of the task:
+
+```ts
+{ ok: true, taskId: "task_8f2", arrivesAsNotice: true, message: "…" }
+```
+
+`message` names the task, says its ending comes to the conversation as a notice, and tells the
+model not to wait on it again. The session hears that ending once, from the notice.
+
+You'll see it when your turn parks between filing a task and waiting on it, or when a second
+turn waits on a task the first one filed. Say a turn files a task, then waits for a person's
+approval. The task finishes during that wait, and the conversation hears it from
+`onTaskSettled`. After the approval, the same turn waits on the task and gets `arrivesAsNotice`.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
-cancelled: the task runs on, and you can wait on it again. If it ends before your request
-does, even while your request waits on something else, your next `getTask` on it returns the
-ending. If your request ends without reading it, you [hear about it](#hearing-how-a-task-ended)
-once, the usual way. A worker you're
+cancelled: the task runs on, and you can wait on it again. If it ends while your request is
+running, or while it is parked on something else, your request's next `getTask` on it returns
+the ending. Only if your request ends without reading it do you
+[hear about it](#hearing-how-a-task-ended) once, the usual way. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
