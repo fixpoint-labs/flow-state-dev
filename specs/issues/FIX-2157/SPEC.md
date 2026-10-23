@@ -47,7 +47,7 @@ the lab's own state.
 | **Signal** | 1 your line shows, marked *Sent to a thread* · 2 three thread cards show and three rows under *Working*; through `listTasks`, three tasks filed by this session's coordinator, each with a different run session, all `in_progress` at once · 3 one row moves to *Waiting on you* with its question; you type the answer in that thread's view; the row returns to *Working* and `getTask` shows the question answered on the same attempt · 4 one row moves to *Ready for review*; `getTask` shows it waiting on you with kind `review` · 5 you press *Resolve*; the row moves under *Resolved* and `getTask` reads `completed` |
 | **Input** | "Research three vendors for a status page, one thread each, and draft a summary of each for me to review." The thread worker's instructions say to ask which region matters before it starts, so step 3 doesn't hang on the model's choice. A different ask that starts three threads must pass too |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't answer or resolve through a package call from the test; click and type as a person does |
-| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to hand the request on as routed tasks (`resultTo: "conversation"`): all three run in the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker without review on: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
+| **Control that must fail** | The lab with the coordinator's delegates removed: no thread starts, FAIL on step 2. The lead told to hand the request on as routed tasks (`resultTo: "conversation"`): all three run in the delegate's one session and two wait `pending`, FAIL on step 2. The thread worker's `WORKER.md` without its review line: FAIL on step 4. And the inventory check with a planted `src/glue.ts`: FAIL |
 
 ## What changes
 
@@ -69,8 +69,10 @@ review, and *Resolve* answers its review.
 + # workforce/teams/desk/workers/thread/WORKER.md
 + ---
 + description: Works one request in its own session and hands it back for review.
-+ review: true             # gap A: the task ends in a review (D2)
 + ---
++ Work the request. Ask which region matters before you start (askQuestion).
++ When the work is ready, call waitForUser({ kind: "review", prompt }) with a summary.
++ On "changes", take the words and work again; on no answer, finish as you are.
 ```
 
 **The modes config, its second entry** ([FIX-2153 D1](../FIX-2153/DECISIONS.md#d1)): `threads: {
@@ -101,7 +103,7 @@ flowchart LR
   B --> T2["thread 2 · own session"]
   B --> T3["thread 3 · own session"]
   T2 -->|"askQuestion · held"| W["Waiting on you"]
-  T3 -->|"waitForUser review · gap"| R["Ready for review"]
+  T3 -->|"waitForUser review"| R["Ready for review"]
   B -->|"listTasks"| P["status board and feed cards"]
 ```
 
@@ -127,42 +129,43 @@ status of its own.
 | Routed tasks and the `coordinator-route` item (FIX-2083) | **Not used.** A thread is not a message handed on ([D1](DECISIONS.md#d1)) |
 | Task statuses and `waitingOn` (`orchestration/src/tasks/schema/`); `waitForUser` with its kind, the row's record of its stop, and the answer route (FIX-2129); a question that holds its task, answered by a steer that names it (FIX-2131) | **Builds on.** The board's columns, step 3, and *Resolve* |
 | The public `updateTask_tasks` action, where a person's `message` is a user steer (FIX-2086) | **Builds on.** Talking inside a thread |
-| Shift Manager's board (`shift-manager/src/lib/columns.ts`): its *In review* column is drawn and stays empty, because no status means it | **Leaves alone**, and gap A is what could fill it |
+| Shift Manager's board (`shift-manager/src/lib/columns.ts`): its *In review* column is drawn and stays empty, because no status means it | **Leaves alone.** A review wait, the same as here, is what could fill it |
 | `@flow-state-dev/react`'s `BoardColumns` and `BoardCard` | **Not used.** Their columns are task statuses; this board's are what the person owes. The lab writes its own, as UI |
 
 **Gaps** ([ER-4](../../epics/FIX-2152/DECISIONS.md#who-owns-what)). The epic files them:
 
 | Gap | Blocks |
 |---|---|
-| **A. An agent worker's task can end in a review**, a worker setting over FIX-2131's `waitForUser({ kind: "review" })`: accepted completes it, revision words are a steer the work takes next, and an unanswered review completes at its deadline, through FIX-2129's existing `waitForUser` deadline, with no second timeout path ([D2](DECISIONS.md#d2)) | Steps 4 and 5 · a child |
-| **B. A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
+| **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
+| Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
 | Checked at wiring: **three ordinary tasks for one delegate run side by side**, each in its own new session. Read from code (above), not yet run | Step 2; a gap only if it fails |
 | Checked at wiring: **the coordinator's `createTask` call item names the task it filed** | The feed cards; a gap only if it doesn't |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, and their fixtures until wiring. One package entry from gap A, which Shift Manager can use too |
-| **Leaves** | Shift Manager's empty *In review* column. Gap A gives it a source; wiring it there is Shift Manager's issue |
+| **Adds** | Threads mode in the lab: a status board, thread cards, a thread view, one small flow for pins, and their fixtures until wiring. No package entry |
+| **Leaves** | Shift Manager's empty *In review* column. A review wait gives it a source; wiring it there is Shift Manager's issue |
 
-**Net: up, by one mode of a private lab and one package entry.** The mode is the epic's
-evidence; each entry is a gap the lab proved.
+**Net: up, by one mode of a private lab.** It is the epic's evidence, and it needs no
+package change: the one gap it lists blocks nothing.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** five steps, a real model, a
 browser, and no *other* row. If wrong: a board that looks right on fixtures and proves nothing.
 
-**[The debt](#whats-already-here-and-the-debt), net up:** one mode, one package entry. If
-wrong: an entry no other app uses.
+**[The debt](#whats-already-here-and-the-debt), net up:** one mode of a private lab. If
+wrong: a mode nobody maintains.
 
 1. **[D1](DECISIONS.md#d1) · The main worker is a coordinator, and a thread is an ordinary task
    it files, in a session of its own.** No gap. If wrong: leg c proves the coordinator's board and
    delegates but not its routing, and routing stays proved only by Shift Manager.
 2. **[D2](DECISIONS.md#d2) · *Ready for review* is a review the thread's task waits on, and
-   *Resolve* answers it.** If wrong: one more gap where a mark the lab keeps would have done.
+   *Resolve* answers it.** No gap: the thread worker's model asks for review with FIX-2131's tool.
+   If wrong: a thread's state lives on the task when a mark in the lab would have done.
 
 **Decided from the epic's recommendation, open to product:** you can talk inside a thread
 directly ([D3](DECISIONS.md#d3)); *Pinned* is your choice, kept in your own state ([D4](DECISIONS.md#d4)).
 
-Feature · a mode of a private lab, one `workforce` gap filed by the epic · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)
+Feature · a mode of a private lab, no blocking gap · medium · epic [FIX-2152](https://linear.app/fixpoint-labs/issue/FIX-2152)

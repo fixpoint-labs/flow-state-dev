@@ -48,20 +48,21 @@ then that refusal is the gap.
 <a name="d2"></a>
 ## D2 · *Ready for review* is a review the thread's task waits on, and *Resolve* answers it
 
-*An engineering call that adds a gap to the epic, so it comes to the owner.*
+*An engineering call on where a thread's state lives, recorded for the owner.*
 
 | | |
 |---|---|
 | **Instead of** | A *resolved* mark the lab keeps per task: *Ready for review* is "completed and not marked", *Resolved* is "marked" |
 | **Because** | A review is already a kind of wait in the package (FIX-2129, FIX-2131): the task waits on you, the Inbox lists it, an answer carries the work on, and revision words are a steer the work takes next. That gives *Request changes* for free, and *Resolve* means the task completes. A lab mark puts a task's state in the lab, where ER-4 says it can't go, and Shift Manager's empty *In review* column gains nothing |
-| **Locks in** | Gap A, a child of the epic: an agent worker can end its task in a review, set in `WORKER.md`. *Resolve* and *Request changes* are the answer route's two verdicts. A review nobody answers completes at the person-stop deadline and lands in *Resolved*, so a week away doesn't fail a thread. It uses FIX-2129's existing `waitForUser` deadline, with no second timeout path; how it completes there is the gap's call |
+| **Locks in** | No gap. FIX-2131 gives a model on a task turn `waitForUser({ kind: "review", prompt })` (its *Decided* list; `agent-worker-flow.ts` composes `board.questions`), so the thread worker's `WORKER.md` tells it to ask for review when the work is ready. *Resolve* and *Request changes* are the answer route's two verdicts. At the person-stop deadline the tool returns a no-answer result, and the instructions say to finish then, so the thread lands in *Resolved*: FIX-2129's deadline, no second timeout path |
 
-![D2: a review the task waits on, chosen, beside a resolved mark the lab keeps. Decides it: where a thread's state lives. Price: one more gap in the epic](figures/d2-review-wait.svg)
+![D2: a review the task waits on, chosen, beside a resolved mark the lab keeps. Decides it: where a thread's state lives. Price: the review rests on the model following its instructions](figures/d2-review-wait.svg)
 
 It comes down to where a thread's state lives: on the task, where every app can read it.
 
-**What would change my mind:** FIX-2131's review not fitting a model's turn, for example if
-an agent worker can't end on a block. Then the lab keeps the mark, and the inventory names it.
+**What would change my mind:** the wiring finding that the model skips the review step too
+often to rely on. Then a worker setting that ends every task in a review is a package gap; the lab
+still doesn't keep the mark.
 
 <a name="d3"></a>
 ## D3 · You can talk inside a thread directly
@@ -112,7 +113,7 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
   timer, with a question and a review, so the board can be seen and tested in the browser. Each
   fixture standing in for a gap carries the gap's issue id. They are deleted at wiring.
 - **Two PRs.** The front end on fixtures first, stacked on FIX-2153's front end; the wiring and
-  the goal check after FIX-2056, FIX-2058 and gap A merge.
+  the goal check after FIX-2056 and FIX-2058 (FIX-2129, FIX-2131) merge.
 
 ## Considered and dropped
 
@@ -132,13 +133,14 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 - **Review round 1:** fsd-architect pinned a thread's session to epic D3's shape and named the
   ER-7 amendment. A second look found that the coordinator's turn can file ordinary tasks, each
   in a new session, so D1 moved from "routed tasks plus a gap" to "ordinary tasks, no gap", and
-  says what leg c no longer proves. The review gap became gap A.
+  says what leg c no longer proves. Codex showed FIX-2131 already gives the model a review
+  tool, so the review gap went too: D2 is now configuration.
 
 ## Notes from review
 
 For the implementer, recorded and not folded:
 - An unanswered review that completes at the deadline lands in *Resolved* beside accepted ones.
-  Make it tell apart on the row, from the task row only, if gap A's outcome allows.
+  Make it tell apart on the row, from the task row only, if FIX-2129's record of the stop allows.
 - Keep the `taskRow → column` projection a pure function in a leaf module with a table test,
   free of React, so it can sit beside Shift Manager's `columns.ts` and move later.
 - Consider splitting the adapter into a task port and a pins port, and `resolve` and
