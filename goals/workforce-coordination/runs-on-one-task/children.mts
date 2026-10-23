@@ -24,6 +24,13 @@ export interface Check {
   controls?: Record<string, string[]>;
   /** What row 1 walks of it, printed beside it. */
   walked?: string;
+  /**
+   * The runs elsewhere in this closure that grade it end to end, for a closure finding whose fix
+   * landed in a goal another entry already runs, or whose failing check was a row-1 assertion:
+   * a goal path some entry here runs, a row-1 assertion tag (`a:follow-up`), or `sweep`. Printed
+   * beside it; one that names no such run is a failure, so a stale reference can't pass silently.
+   */
+  by?: string[];
 }
 
 /** Each child's checks, by issue id. */
@@ -55,6 +62,32 @@ export const CHECKS: Record<string, Check[]> = {
     { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/task-board/drain-pays-owed-cascade.test.ts", "test/collection/owes-a-touch.test.ts", "test/collection/filing-settings.test.ts", "test/skills/task-tools-capability.test.ts"] } },
     { vitest: { filter: "@flow-state-dev/workforce", files: ["test/conversation-board-filing-settings.test.ts", "test/worker-plans-its-steps.test.ts"] } },
   ],
+  // The closure's own findings, each a child blocking FIX-2087 once filed: its regression tests,
+  // and the run that found it, which now grades it (`by`).
+  "FIX-2097": [{ vitest: { filter: "@flow-state-dev/store-sqlite", files: ["test/write-after-close.test.ts"] }, by: ["workforce/split-to-roster"] }],
+  "FIX-2110": [{ vitest: { filter: "@flow-state-dev/workforce", files: ["test/worker-plans-its-steps.test.ts"] }, by: ["a:answers-after-steps", "a:lands-once", "task-board/waits-on-a-task-it-filed"] }],
+  "FIX-2111": [
+    { vitest: { filter: "@flow-state-dev/workforce", files: ["test/task-session-stays-open.test.ts", "test/project-coordinator.test.ts"] }, by: ["a:follow-up", "a:once", "task-tools/steer-and-follow-up"] },
+  ],
+  "FIX-2112": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/wait-on-task.test.ts", "test/tasks/task-notice.test.ts"] }, by: ["j1:read-once", "j1:heard-once", "task-board/waits-on-a-task-it-filed"] },
+  ],
+  "FIX-2113": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/notice-defer.test.ts", "test/tasks/pass.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/workforce", files: ["test/steer-while-filed-work-open.test.ts"] }, by: ["j2:steer-shows"] },
+  ],
+  "FIX-2114": [
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/collection/deps-read-committed.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/workforce", files: ["test/deps-read-committed.test.ts"] }, by: ["task-board/runs-by-its-filing-settings"] },
+  ],
+  "FIX-2115": [{ vitest: { filter: "@flow-state-dev/workforce", files: ["test/coordinator-routed-tasks.test.ts"] }, by: ["coordinators/files-tasks-down-the-owners-chain"] }],
+  "FIX-2116": [{ by: ["coordinators/hands-each-post-to-its-delegates"] }],
+  "FIX-2117": [{ by: ["task-board/a-worker-plans-its-own-steps"] }],
+  "FIX-2118": [{ by: ["task-board/every-ending-reaches-its-filer"] }],
+  "FIX-2119": [{ by: ["sweep"] }],
+  "FIX-2120": [{ by: ["goal-seek-loop/replans-until-done"] }],
+  "FIX-2121": [{ by: ["hand-offs/ask-survives-a-restart", "hand-offs/survives-a-restart-and-runs-once"] }],
+  "FIX-2122": [{ vitest: { filter: "@flow-state-dev/orchestration", files: ["test/collection/filing-settings.test.ts"] }, by: ["a:follow-up", "task-tools/steer-and-follow-up"] }],
 };
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */
@@ -84,6 +117,17 @@ async function childrenFromLinear(): Promise<Array<{ id: string; title: string }
   return (body.data?.issue?.inverseRelations?.nodes ?? [])
     .filter((n: any) => n.type === "blocks" && n.issue.parent?.identifier === "FIX-2056")
     .map((n: any) => ({ id: n.issue.identifier, title: n.issue.title }));
+}
+
+/** Every goal some entry runs, for checking `by`. */
+const RUN_GOALS = new Set([...Object.values(CHECKS).flat(), ...NAMED].flatMap((c) => (c.goal === undefined ? [] : [c.goal])));
+
+/** Report a check's `by`, and fail one that names no run here (`tags` are row 1's assertions). */
+function checkBy(owner: string, check: Check, tags: readonly string[], failures: string[], report: string[]): void {
+  if (check.by === undefined) return;
+  const stale = check.by.filter((b) => !(b === "sweep" || tags.includes(b) || RUN_GOALS.has(b)));
+  report.push(`  ${owner} graded by ${check.by.join(", ")}`);
+  if (stale.length > 0) failures.push(`children:${owner} — graded by ${stale.join(", ")}, which no run in this closure holds`);
 }
 
 /** Run one check (and its controls); push a failure per red run or control that stayed green. */
@@ -122,8 +166,8 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
   }
 }
 
-/** Run row 3. */
-export async function runChildren(failures: string[], report: string[], say: (s: string) => void): Promise<void> {
+/** Run row 3. `tags` are row 1's assertions, which a check's `by` may name. */
+export async function runChildren(failures: string[], report: string[], say: (s: string) => void, tags: readonly string[]): Promise<void> {
   const read = await childrenFromLinear().catch(() => undefined);
   const set = read ?? Object.keys(CHECKS).map((id) => ({ id, title: "(not read: LINEAR_API_KEY unset)" }));
   report.push(`row 3: ${set.length} children blocking FIX-2087${read === undefined ? ", the built-in set (Linear not read)" : ", read from Linear"}:`);
@@ -135,7 +179,10 @@ export async function runChildren(failures: string[], report: string[], say: (s:
       failures.push(`children:${c.id} — a child blocking the closure has no check here`);
       continue;
     }
-    for (const check of checks) runCheck(c.id, check, failures, report, say);
+    for (const check of checks) {
+      runCheck(c.id, check, failures, report, say);
+      checkBy(c.id, check, tags, failures, report);
+    }
   }
   for (const check of NAMED) runCheck("named", check, failures, report, say);
 }

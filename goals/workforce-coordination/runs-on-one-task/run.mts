@@ -427,7 +427,7 @@ await runGoal(async (failures, tell) => {
     if (ctl.status !== 0) failures.push(`sweep:control — the plants were not reported exactly:\n${ctl.stdout.slice(-1500)}`);
     report.push(`sweep --control: ${/CONTROL (OK|BROKEN).*/.exec(ctl.stdout)?.[0] ?? "no verdict"}`);
   }
-  if (parts.has("children")) await runChildren(failures, report, say);
+  if (parts.has("children")) await runChildren(failures, report, say, Object.keys(TAGS));
   if (parts.has("gaps")) printGaps(report, failures);
   if (control !== undefined) {
     const red = failures.filter((x) => tagOf(x) === control.mustFail);
