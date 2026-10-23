@@ -220,8 +220,18 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
 
   it("a board run whose resume throws still delivers another row's owed notice", async () => {
     const judgment = waitingJudgment("Count chairs [hold:g]", () => "unused");
+    // The second task's notice wakes the judgment turn too. That turn says a
+    // line and files nothing: run on the waiting script, it filed chairs again
+    // and waited on them, a second waiting turn whose fate hung on timing.
+    const model: GeneratorModel = {
+      ...judgment.model,
+      async generateStep(options) {
+        if (JSON.stringify(options.messages).includes("Count tables")) return { text: "Noted.", finishReason: "stop" };
+        return judgment.model.generateStep!(options);
+      }
+    };
     const held = gate();
-    const host = await waitingHost(judgment.model, held);
+    const host = await waitingHost(model, held);
     try {
       // Every resume fails: the waited-on row keeps owing its turn.
       const requestHost = (await host.state.getRuntime()).runtimeConfig.requestHost as { waitResume: (input: unknown) => Promise<unknown> };
@@ -232,6 +242,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       await parkThenRelease(host, waiting.requestId!, held);
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
+      const chairs = (await host.rows("alice"))[0]!.id;
       expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
 
       // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
@@ -266,7 +277,9 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
       expect(run.error, messageOf(run.error)).toBeUndefined();
       await host.settled();
       expect(await owedOn(tables)).toEqual([]);
-      expect((await host.rows("alice")).find((r) => r.id !== tables)!.resumeOwed).toBe(true);
+      // The waited-on row still owes its resume, and no other row was filed.
+      expect((await host.rows("alice")).map((r) => r.id).sort()).toEqual([chairs, tables].sort());
+      expect((await host.rows("alice")).find((r) => r.id === chairs)!.resumeOwed).toBe(true);
     } finally {
       await host.dispose();
     }
