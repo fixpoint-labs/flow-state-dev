@@ -46,7 +46,11 @@ export const setWorkProjectOutputSchema = z.object({ project: projectAddressSche
 
 export type SetWorkProjectOutput = z.infer<typeof setWorkProjectOutputSchema>;
 
-/** The session fields that make a session someone else's than the user's own conversation, and what each one is. */
+/**
+ * The session fields that make a session someone else's than the user's own conversation, and what
+ * each one is. A task session carries `taskId` and `filingProjectId` both, and a step's session
+ * `taskId` alone; each is listed, so either one refuses.
+ */
 const LINKED: ReadonlyArray<readonly [string, string]> = [
   [PROJECT_STATE_KEY, "a project coordinator's session, which is linked to its project when it is created"],
   [TASK_ID_STATE_KEY, "a task's session, which works in the project its task was filed in"],
@@ -56,9 +60,9 @@ const LINKED: ReadonlyArray<readonly [string, string]> = [
   [WORKSTREAM_STATE_KEY, "a workstream lead's session, which works in its workstream's project"]
 ];
 
-const refuse = (message: string): never => {
+function refuse(message: string): never {
   throw new Error(`Refused: ${message}`);
-};
+}
 
 /** The action's block. */
 export const setWorkProjectBlock = handler({
@@ -82,7 +86,7 @@ export const setWorkProjectBlock = handler({
         visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`
       );
     }
-    const row = projectRowSchema.parse(stored!.state);
+    const row = projectRowSchema.parse(stored.state);
     const allowed = visibility === "private" ? row.ownerUserId === user : isMember(row, user);
     if (!allowed) refuse(`not-a-member: "${user}" is not a member of project "${id}", so this conversation can't work in it.`);
     await ctx.session.patchState({ [WORK_PROJECT_STATE_KEY]: projectRef(input.project) });
