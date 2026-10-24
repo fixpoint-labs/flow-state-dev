@@ -174,8 +174,8 @@ net down. If wrong: a second path to a person survives somewhere.
    apart across a suspension.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
    beside a waiting request.
 3. **[D3](DECISIONS.md#d3) · A person's stop has no deadline by default;** a host setting or a
-   call's `deadline` opts in. The owner's, decided 2026-10-24; approvals included is my reading,
-   to confirm. If wrong: unanswered stops sit in the Inbox until someone sets the host setting.
+   call's `deadline` opts in. The owner's, decided 2026-10-24, approvals included (confirmed).
+   If wrong: unanswered stops sit in the Inbox until someone sets the host setting.
 
 **Decided by the owner:** the five objective lines; FIX-2133 kept;
 [questions hold their task, approvals, reviews and input suspend](DECISIONS.md#d1) (2026-10-23); the filer's message to FIX-2070;

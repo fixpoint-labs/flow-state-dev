@@ -64,7 +64,7 @@ It comes down to `onTaskSettled`: holding the key across a suspension keeps a ta
 |---|---|
 | **Instead of** | A default of its own, 7 days, set per host and per call, or the 5-minute default a wait on a task already has |
 | **Because** | The owner: waiting 7 days and then going ahead is arbitrary. No one length fits every stop, and a stop that ends on a length nobody chose for it fails or guesses on work a person still means to answer; minutes fail it while she is at lunch. With no deadline, a stop waits until someone answers it, or its task is stopped or cancelled. An app that wants a stop to end says when |
-| **Applied to every kind** | The coordinator's reading: D3 was one rule for approvals, questions, reviews and input, so no default covers all four, approvals included. If the owner meant questions only, approvals, reviews and input get a host default back; only this line, ER-1 and FIX-2129's `deadline` line change |
+| **Applied to every kind** | Confirmed by the owner, 2026-10-24: D3 was one rule for approvals, questions, reviews and input, so no default covers all four, approvals included |
 | **Locks in** | A host setting for a person's stop, separate from the wait default and unset by default: set, every `waitForUser` with no `deadline` and every held question gets it ([ER-1](#who-owns-what), [ER-8](#who-owns-what)); `waitForUser`'s `deadline` sets one on a single call. At a deadline the endings stand: an approval is a no, a review or input throws, the model's tool returns no answer, and a held question's deadline is the debt pass's, where the work goes ahead from its brief. Neither the sweeper nor the debt pass ends a stop with no deadline. FIX-2129 builds the setting. The concept (`workforce-coordination-concept.md`, *Inbox items* and *Decisions*) says so as of this amendment: every wait has a deadline; a stop for a person has none unless the host or the call sets one |
 
 **What would change my mind:** Inboxes filling with stops nobody will answer. Then the host sets
@@ -174,8 +174,8 @@ After the merge (owner, 2026-10-23):
 
 After the analysis (2026-10-24):
 
-- **No default deadline** on any stop for a person ([D3](#d3), owner). Approvals included is the
-  coordinator's reading, for the owner to confirm ([Open](#open)).
+- **No default deadline** on any stop for a person, approvals included ([D3](#d3), owner,
+  confirmed 2026-10-24).
 - **A held question goes ahead at a set deadline** (owner): the debt pass closes it with a "no
   answer came" steer and the work goes on from its brief, "with whatever recommendation it
   provided". FIX-2133's deadline path and its legs stay, with the deadline set explicitly. This
@@ -277,16 +277,5 @@ and FIX-2063. Considered and dropped:
 
 ## Open
 
-**Does "no default deadline" cover approvals too?** Asked of the owner as a check, not a fork.
-
-- **Plain terms:** the owner said waiting 7 days and then going ahead is arbitrary. D3 was one rule
-  for every stop, so the coordinator read the change as one rule too: an approval nobody answers
-  waits, rather than counting as a no after a week.
-- **The trade-off:** one rule is simpler to explain; a default on approvals alone would end a
-  forgotten "go ahead?" on its own, as a no.
-- **My recommendation:** keep approvals in. A no after a week is the same arbitrary length.
-- **What would change my mind:** the owner meant questions only.
-- **What being wrong costs:** a host default back for approvals, reviews and input: this card's
-  *Applied to every kind* line, ER-1 and FIX-2129's deadline line.
-
-The amendment also needs the owner's renewed approval before its children build on it.
+None. The owner confirmed on 2026-10-24 that no default deadline covers approvals too ([D3](#d3)).
+The amendment's merge is the owner's renewed approval of the set.
