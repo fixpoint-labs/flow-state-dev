@@ -102,11 +102,18 @@ async function crashAndRestart(open: () => Promise<StoreAdapter>, sweepMs: numbe
   // The first server: the turn files a task that ends at once, then its
   // model call never answers. Its heartbeat beats once an hour, which here
   // is never: the request is left as a killed process leaves it.
-  const { model } = stepModel([fileCall("f1"), () => new Promise(() => {})]);
+  // The call answers only the teardown's abort, so the run ends before the
+  // next test file: a run left hanging holds this process's request-end
+  // drain, which every later host's shutdown waits on.
+  const kill = new AbortController();
+  const neverAnswers = (opts: { signal?: AbortSignal }) =>
+    new Promise<never>((_, reject) => (opts.signal ?? kill.signal).addEventListener("abort", () => reject(new Error("killed")), { once: true }));
+  const { model } = stepModel([fileCall("f1"), neverAnswers as never]);
   const first = engine(waitFlow(model, { endsOnFiling: "already done", heartbeatIntervalMs: 3_600_000, ...heard }), await open(), sweepMs);
   const firstRuntime = await first.getRuntime();
   const flow = firstRuntime.registry.get("wait-board")!;
-  void runAction({
+  const abandoned = runAction({
+    signal: kill.signal,
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
@@ -149,7 +156,9 @@ async function crashAndRestart(open: () => Promise<StoreAdapter>, sweepMs: numbe
       return heardAt[0]! - lastBeat;
     },
     dispose: async () => {
-      // The abandoned run never ends: wait out no drain for it.
+      kill.abort();
+      const ended = await Promise.race([abandoned.then(() => true), settle(5_000).then(() => false)]);
+      expect(ended, "the abandoned run ended at the teardown's abort").toBe(true);
       await disposeFlowApiRouter(router, { drainMs: 100 });
       await second.dispose();
       await first.dispose().catch(() => undefined);
