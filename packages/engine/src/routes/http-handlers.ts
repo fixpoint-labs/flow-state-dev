@@ -28,6 +28,7 @@ import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
+  handleListInterruptedRequests,
   handleContinueRequest,
   handleListActiveRequests,
   handleRetryRequest
@@ -651,12 +652,26 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "request_status") {
         return await handleGetRequestStatus(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId,
+          principal
         });
       }
 
       if (route.kind === "active_requests") {
         return await handleListActiveRequests(request, {
+          registry: options.registry,
+          stores,
+          runtimeConfig,
+          tenantId,
+          principal,
+          anonymousFlowIds,
+          callerFor
+        });
+      }
+
+      if (route.kind === "list_interrupted_requests") {
+        return await handleListInterruptedRequests(route, {
           registry: options.registry,
           stores,
           runtimeConfig,
