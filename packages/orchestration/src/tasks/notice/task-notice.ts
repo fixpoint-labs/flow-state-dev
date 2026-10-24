@@ -106,10 +106,10 @@ export const NOTICE_DUE_MS = 2_000;
 
 /**
  * How often a filer's pass looks again at a wait slot that lapsed for a
- * request still running or parked (FIX-2082): the slot is released by the
- * pass after that request ends, so an ending held for it is never stranded.
- * The release at the request's end in its own process comes first; this is
- * what pays it when that process is gone. Thirty seconds, the age at which a
+ * request still running (FIX-2082): the slot is released by the pass after
+ * that request parks (FIX-2170) or ends, so an ending held for it is never
+ * stranded. The wake a park owes and the release at the request's end in its
+ * own process come first; this is what pays it when that process is gone. Thirty seconds, the age at which a
  * request whose process died is marked interrupted. The first look; later
  * ones come less often ({@link LAPSED_SLOT_CHECK_CAP_MS}).
  */

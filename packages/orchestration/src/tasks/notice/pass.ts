@@ -9,10 +9,10 @@
  * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
  *    before any notice, so a resent notice names what its ending cancelled.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
- * 4. **Wait slots lapsed** for a request that has since ended (FIX-2082):
- *    released, so an ending held for it is owed to the filer's notice. A slot
- *    whose request still runs or is parked is looked at again less and less
- *    often, and no more once it is past the maximum age.
+ * 4. **Wait slots lapsed** for a request that has since parked (FIX-2170) or
+ *    ended (FIX-2082): released, so an ending held for it is owed to the
+ *    filer's notice. A slot whose request still runs is looked at again less
+ *    and less often, and no more once it is past the maximum age.
  * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed. One
  *    last turned away for the request that filed its task, which has since
