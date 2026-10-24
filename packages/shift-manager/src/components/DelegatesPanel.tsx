@@ -20,7 +20,7 @@ import { useWorkforce } from "../lib/workforce";
 type Read = { list: DelegateList } | { failure: string } | undefined;
 
 export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionId: string | null }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const workforce = useWorkforce();
   const [read, setRead] = useState<Read>(undefined);
   const [roster, setRoster] = useState<readonly RosterEntry[]>([]);
@@ -32,7 +32,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     if (sessionId === null || worker.kind === null) return;
     let closed = false;
     setRead(undefined);
-    readDelegates(clients, worker.kind, sessionId)
+    readDelegates(client, worker.kind, sessionId)
       .then((list) => !closed && setRead({ list }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error).message }));
     workforce
@@ -42,7 +42,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     return () => {
       closed = true;
     };
-  }, [clients, workforce, worker.kind, sessionId]);
+  }, [client, workforce, worker.kind, sessionId]);
 
   if (sessionId === null || worker.kind === null) {
     return (
@@ -99,7 +99,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
                 type="button"
                 className="shrink-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 disabled={busy}
-                onClick={() => void change(() => removeDelegate(clients, flow, sessionId, delegate.worker))}
+                onClick={() => void change(() => removeDelegate(client, flow, sessionId, delegate.worker))}
                 data-testid="cos-delegate-remove"
               >
                 remove
@@ -113,7 +113,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           className="mt-1 flex gap-1 px-1"
           onSubmit={(event) => {
             event.preventDefault();
-            if (picked !== "") void change(() => addDelegate(clients, flow, sessionId, picked));
+            if (picked !== "") void change(() => addDelegate(client, flow, sessionId, picked));
           }}
         >
           <select

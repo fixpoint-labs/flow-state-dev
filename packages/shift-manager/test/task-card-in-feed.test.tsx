@@ -14,8 +14,8 @@ let rows: Row[] = [];
 let failing = false;
 const calls: string[] = [];
 let refreshes = 0;
-const lab: { clients: { userId: string }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
-  clients: { userId: "alice" },
+const lab: { client: { userId: string }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
+  client: { userId: "alice" },
   snapshot: { readAt: 1 },
   refresh: async () => void refreshes++,
 };

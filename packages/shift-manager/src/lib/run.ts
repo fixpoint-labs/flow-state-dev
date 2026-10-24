@@ -12,10 +12,10 @@
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
  * the task, no "latest session of this worker".
  */
-import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
+import { compareItemOrder, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, planKeySegment, type RequestStatus } from "@flow-state-dev/core/types";
-import type { LabClients } from "./connection";
+import type { Client } from "@flow-state-dev/client";
 import { describeFailure, type Failure } from "./reads";
 
 /** A run the screen can open: the row's link, and the flow its session names. */
@@ -36,10 +36,10 @@ function fail(error: unknown): never {
  * The flow that owns `sessionId`: the one the run's request, stream and abort
  * go through. A session that names no owner is refused rather than guessed at.
  */
-export async function resolveRunFlow(clients: LabClients, sessionId: string): Promise<string> {
+export async function resolveRunFlow(client: Client, sessionId: string): Promise<string> {
   let flowId: string | undefined;
   try {
-    flowId = (await clients.sessions.getSession(sessionId)).flowId;
+    flowId = (await client.sessions.get(sessionId)).flowId;
   } catch (error) {
     fail(error);
   }
@@ -52,9 +52,9 @@ export async function resolveRunFlow(clients: LabClients, sessionId: string): Pr
 }
 
 /** The run's request record, read through the run's flow. */
-export async function readRunStatus(clients: LabClients, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
   try {
-    return (await clients.actions(run.flowId).getRequestStatus(run.requestId)).status;
+    return (await client.flow(run.flowId).request(run.requestId).status()).status;
   } catch (error) {
     return fail(error);
   }
@@ -72,12 +72,12 @@ export type SessionItems = { items: OutputItem[]; truncated: boolean };
  * The run session's stored items, oldest first. At most {@link ITEM_PAGES}
  * pages; past that the answer says so rather than reading on.
  */
-export async function readSessionItems(clients: LabClients, sessionId: string): Promise<SessionItems> {
+export async function readSessionItems(client: Client, sessionId: string): Promise<SessionItems> {
   const items: OutputItem[] = [];
   let offset = 0;
   try {
     for (let page = 0; page < ITEM_PAGES; page += 1) {
-      const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, offset, limit: ITEM_PAGE });
+      const state = await client.sessions.state(sessionId, { includeItems: true, offset, limit: ITEM_PAGE });
       items.push(...(state.items ?? []));
       if (state.pagination?.hasMore !== true) return { items: items.sort(compareItemOrder), truncated: false };
       offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
@@ -103,11 +103,8 @@ export type RequestFollower = {
  * Only finished, non-transient items are passed on: an item the store does not
  * hold yet is not drawn.
  */
-export function followRequest(clients: LabClients, run: Pick<OpenRun, "flowId" | "requestId">, to: RequestFollower): { close(): void } {
-  return createSSEClient({
-    url: `/api/flows/${encodeURIComponent(run.flowId)}/requests/${encodeURIComponent(run.requestId)}/stream`,
-    fetcher: clients.fetcher,
-    ...(clients.baseUrl === undefined ? {} : { baseUrl: clients.baseUrl }),
+export function followRequest(client: Client, run: Pick<OpenRun, "flowId" | "requestId">, to: RequestFollower): { close(): void } {
+  return client.flow(run.flowId).request(run.requestId).stream({
     onItemDone: (event) => {
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) to.onItem(item);
@@ -172,13 +169,13 @@ export type InterruptOutcome =
  * the abort is refused or fails, or the record never settles.
  */
 export async function interruptRun(
-  clients: LabClients,
+  client: Client,
   run: Pick<OpenRun, "flowId" | "requestId">,
   options: { timeoutMs?: number; pollMs?: number; signal?: AbortSignal } = {},
 ): Promise<InterruptOutcome> {
-  const actions = clients.actions(run.flowId);
+  const actions = client.flow(run.flowId);
   try {
-    await actions.abortRequest(run.requestId);
+    await actions.request(run.requestId).abort();
   } catch (error) {
     // 409: the request was already terminal. Anything else is a refusal.
     if (describeFailure(error).httpStatus !== 409) fail(error);
@@ -187,7 +184,7 @@ export async function interruptRun(
   for (;;) {
     // The screen that asked has gone: stop reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const status = await readRunStatus(clients, run);
+    const status = await readRunStatus(client, run);
     if (status === "aborted") return { kind: "aborted" };
     if (status !== "in_progress") return { kind: "finished", status };
     if (Date.now() > until) {
@@ -228,10 +225,10 @@ function recordedRef(manifest: ResourceManifest, pattern: string): string | unde
  * selects everything this request did and nothing an earlier run in the same
  * session did.
  */
-export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
+export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
   let manifest: ResourceManifest;
   try {
-    manifest = await clients.resources.getResourceManifest(run.sessionId);
+    manifest = await client.resources.getResourceManifest(run.sessionId);
   } catch (error) {
     fail(error);
   }
@@ -241,7 +238,7 @@ export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "
     // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
     const prefix = `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
     try {
-      const page = await clients.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
+      const page = await client.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
       return { items: page.items, truncated: page.nextCursor != null };
     } catch (error) {
       fail(error);

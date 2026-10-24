@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
-import type { LabClients } from "./lib/connection";
+import type { Connection } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
 import type { Failure } from "./lib/reads";
@@ -44,9 +44,9 @@ import { isTyping, usePanels } from "./lib/panels";
  * @param look The page's theme, which the mark in the sidebar changes. Absent:
  *   the sidebar draws no mark.
  */
-export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
+export function App({ connection, gaps = GAPS, devtoolUrl, look }: { connection: Connection; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
   return (
-    <LabProvider clients={clients}>
+    <LabProvider connection={connection}>
       <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
     </LabProvider>
   );
@@ -96,11 +96,11 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
 }
 
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
-  const { snapshot, refresh, clients } = useLab();
+  const { snapshot, refresh, client } = useLab();
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
-  const panels = usePanels(clients.userId);
+  const panels = usePanels(client.userId);
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
 

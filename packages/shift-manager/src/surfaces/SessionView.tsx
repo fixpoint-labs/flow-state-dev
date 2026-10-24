@@ -25,15 +25,15 @@ function readOnlyReason(session: SessionSummary): string | undefined {
 }
 
 export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSnapshot; sessionId: string; gaps: Gaps }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const listed = snapshot.sessions.find((s) => s.id === sessionId);
   // `undefined` while the fresh listing is read; `null` when it doesn't hold the session either.
   const [fresh, setFresh] = useState<{ sessionId: string; session: SessionSummary | null } | undefined>(undefined);
   useEffect(() => {
     if (listed !== undefined) return;
     let closed = false;
-    clients.sessions
-      .listSessions({ userId: clients.userId, include: "dispatch-runs" })
+    client.sessions
+      .list({ userId: client.userId, include: "dispatch-runs" })
       .then(
         (sessions) => !closed && setFresh({ sessionId, session: sessions.find((s) => s.id === sessionId) ?? null }),
         () => !closed && setFresh({ sessionId, session: null })
@@ -41,7 +41,7 @@ export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSna
     return () => {
       closed = true;
     };
-  }, [clients, sessionId, listed]);
+  }, [client, sessionId, listed]);
   const looked = fresh?.sessionId === sessionId ? fresh.session : undefined;
   const session = listed ?? looked ?? undefined;
   if (session === undefined && looked === undefined) {

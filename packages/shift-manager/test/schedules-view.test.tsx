@@ -11,7 +11,7 @@ vi.mock("../src/lib/action", async (original) => ({
   ...(await original<typeof import("../src/lib/action")>()),
   runAction: (...a: unknown[]) => runAction(...a),
 }));
-const lab = { clients: { userId: "u_1" }, refresh: vi.fn() };
+const lab = { client: { userId: "u_1" }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Schedules, nextRunLabel } from "../src/surfaces/Schedules";

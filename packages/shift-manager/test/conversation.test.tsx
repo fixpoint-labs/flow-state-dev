@@ -18,9 +18,9 @@ import { TurnNotDelivered } from "../src/lib/send";
 const read = vi.fn();
 const sendTurn = vi.fn();
 const ensureWorkerSession = vi.fn();
-// One object, as the provider hands one: a fresh `clients` each render would re-read forever.
+// One object, as the provider hands one: a fresh `client` each render would re-read forever.
 const lab = {
-  clients: { userId: "u_1" },
+  client: { userId: "u_1" },
   refresh: vi.fn(),
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };

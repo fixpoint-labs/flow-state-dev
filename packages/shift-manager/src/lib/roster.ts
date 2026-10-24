@@ -32,15 +32,15 @@ const reads = new WeakMap<object, { readAt: number; read: Promise<RosterEntry[]>
  * snapshot.
  */
 export function useRoster(readAt: number | undefined): RosterRead {
-  const { clients } = useLab();
+  const { client } = useLab();
   const workforce = useWorkforce();
   const [read, setRead] = useState<RosterRead>(undefined);
   useEffect(() => {
     if (readAt === undefined) return;
-    let held = reads.get(clients);
+    let held = reads.get(client);
     if (held?.readAt !== readAt) {
       held = { readAt, read: workforce.roster() };
-      reads.set(clients, held);
+      reads.set(client, held);
     }
     let closed = false;
     held.read
@@ -53,7 +53,7 @@ export function useRoster(readAt: number | undefined): RosterRead {
     return () => {
       closed = true;
     };
-  }, [clients, workforce, readAt]);
+  }, [client, workforce, readAt]);
   return read;
 }
 

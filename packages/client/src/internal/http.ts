@@ -118,12 +118,16 @@ export function topicPath(topic: string): string {
   return topic.split("/").map(encodeURIComponent).join("/");
 }
 
+/**
+ * The given fetcher, else the global `fetch`, looked up on each call so a
+ * `fetch` installed or wrapped after the client was built is the one used.
+ */
 function resolveFetch(fetcher?: ClientFetch): ClientFetch {
   if (fetcher !== undefined) return fetcher;
   if (typeof globalThis.fetch !== "function") {
     clientError("No fetch implementation is available. Pass a fetcher to createClient.");
   }
-  return globalThis.fetch.bind(globalThis);
+  return (input, init) => globalThis.fetch(input, init);
 }
 
 /**

@@ -41,6 +41,7 @@
 import {
   createBearerSecretPrincipalResolver,
   createFlowState,
+  createInProcessFetch,
   ensureSessionRecord,
   PrincipalResolutionError,
   resolveRequestIncarnation,
@@ -1226,6 +1227,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // After the logger is set, so the router the door probes run through is
   // built with it too.
   const router = await state.getRouter();
+  // Door probes reach the router the way a request from outside would.
+  const inProcess = createInProcessFetch(router);
   // A user's line the coder's door kept for a run before lines became steers
   // (FIX-2086) becomes a steer on its task, so the run still takes it. Every
   // coder run is on a conversation's board (`tasks`). A second start adds nothing.
@@ -1446,9 +1449,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     path: string,
     doorOptions?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }> => {
-    const url = new URL(`http://lab/api/flows/${path}`);
-    const segments = url.pathname.slice("/api/flows/".length).split("/");
-    const request = new Request(url, {
+    const request = new Request(`http://lab/api/flows/${path}`, {
       method,
       headers: {
         "content-type": "application/json",
@@ -1459,7 +1460,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       },
       ...(doorOptions?.body === undefined ? {} : { body: JSON.stringify(doorOptions.body) }),
     });
-    const response = await (router as any)[method](request, { params: { path: segments } });
+    const response = await inProcess(request);
     const text: string = await response.text();
     let body: unknown = text;
     try {
@@ -1587,7 +1588,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           },
           body: JSON.stringify({ userId: LAB_USER_ID, input: {} }),
         });
-        const response = await (router as any).POST(request, { params: { path: segments } });
+        const response = await inProcess(request);
         const text: string = await response.text();
         if (response.status >= 400) {
           const json = text.length > 0 ? JSON.parse(text) : undefined;
@@ -1604,7 +1605,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
               },
           );
         // The facts come off the client-visible component the entry emits, by
-        // name, not off any trace item: trace items are not for clients, and
+        // name, not off any trace item: trace items are not for client, and
         // are not captured at all when trace observability is off.
         const facts = events
           .filter(

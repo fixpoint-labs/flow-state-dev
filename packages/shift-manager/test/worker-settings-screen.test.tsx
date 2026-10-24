@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
-import type { LabClients } from "../src/lib/connection";
+import type { Client } from "@flow-state-dev/client";
 import { toWorker, type LabSnapshot, type Worker } from "../src/lib/reads";
 import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
 
@@ -65,7 +65,7 @@ function lab(...more: Worker[]): LabSnapshot {
 
 async function open(path: string, devtoolUrl?: string) {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
-  render(<App clients={{ userId: "u_test" } as unknown as LabClients} devtoolUrl={devtoolUrl} />);
+  render(<App connection={{ userId: "u_test" }} devtoolUrl={devtoolUrl} />);
   await screen.findByTestId("sidebar");
 }
 
