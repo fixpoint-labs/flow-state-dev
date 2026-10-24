@@ -142,9 +142,6 @@ export const MAX_ANSWERS_AGAIN = 3;
 /** Request state: how many times this request answered again. */
 const ANSWERS_AGAIN_STATE = "answersAgain";
 
-/** Request state: whether this round may still answer again (under {@link MAX_ANSWERS_AGAIN}). */
-const ANSWER_ROUND_OPEN_STATE = "answerRoundOpen";
-
 /** Request state: what this round's sources asked the worker to answer about, in order. */
 const ANSWER_ROUND_MESSAGES_STATE = "answerRoundMessages";
 
@@ -376,7 +373,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       const own = await ownPlanLedger(ctx as never);
       const workable = (own?.list() ?? []).filter(isWorkable);
       // The answer-again step starts afresh for this turn: nothing briefed, nothing answered again yet.
-      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0, [PLAN_BRIEFED_STATE]: false, [ANSWERS_AGAIN_STATE]: 0 } as never);
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0, [PLAN_BRIEFED_STATE]: false, [ANSWERS_AGAIN_STATE]: 0, [ANSWER_ROUND_MESSAGES_STATE]: [] } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
       if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx as never);
     }
@@ -396,25 +393,10 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
   const owesPlan = (_answer: unknown, ctx: unknown): boolean =>
     ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_OWED_STATE] === true;
 
-  /** Whether this round may still answer again, as {@link openRound} recorded it. */
-  const roundOpen = (_value: unknown, ctx: unknown): boolean =>
-    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[ANSWER_ROUND_OPEN_STATE] === true;
-
-  /** The plan's source: due once, in the first round, when the turn left steps to work. */
+  /** The plan's source: due once, when the turn left steps to work. */
   const planDue = (value: unknown, ctx: unknown): boolean =>
-    roundOpen(value, ctx) &&
     owesPlan(value, ctx) &&
     ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_BRIEFED_STATE] !== true;
-
-  /** A round begins: no message yet, and open while the request has answers again left. */
-  const openRound = handler({
-    name: "answer-again-open-round",
-    inputSchema: z.unknown(),
-    execute: async (_input, ctx) => {
-      const answered = Number((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWERS_AGAIN_STATE] ?? 0);
-      await ctx.request.patchState({ [ANSWER_ROUND_MESSAGES_STATE]: [], [ANSWER_ROUND_OPEN_STATE]: answered < MAX_ANSWERS_AGAIN } as never);
-    }
-  });
 
   /** Keep what a source asked the worker to answer about, when it asked anything. */
   const keepMessage = handler({
@@ -443,9 +425,11 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     execute: async (value, ctx): Promise<z.infer<typeof roundEndSchema>> => {
       const state = (ctx.request.state ?? {}) as Record<string, unknown>;
       const messages = (state[ANSWER_ROUND_MESSAGES_STATE] ?? []) as string[];
-      if (state[ANSWER_ROUND_OPEN_STATE] !== true || messages.length === 0) return { answer: value.answer, again: false };
+      if (messages.length === 0) return { answer: value.answer, again: false };
       await ctx.request.patchState({
         [ANSWERS_AGAIN_STATE]: Number(state[ANSWERS_AGAIN_STATE] ?? 0) + 1,
+        // Consumed, so the next round does not ask these again.
+        [ANSWER_ROUND_MESSAGES_STATE]: [],
         [PLAN_ANSWERING_STATE]: true,
         // A step that threw left its mark: the answering turn is no step.
         [PLAN_STEPPING_STATE]: false
@@ -454,12 +438,18 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     }
   });
 
-  /** The answer the worker gave again: the round's answer now, and another round to look. */
+  /**
+   * The round's answer, and whether to look again. At the cap, no: a further
+   * round would run a source.
+   */
   const answeredAgain = handler({
     name: "answer-again-answered",
     inputSchema: z.unknown(),
     outputSchema: roundEndSchema,
-    execute: (answer): z.infer<typeof roundEndSchema> => ({ answer, again: true })
+    execute: (answer, ctx): z.infer<typeof roundEndSchema> => {
+      const answered = Number((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWERS_AGAIN_STATE] ?? 0);
+      return { answer, again: answered < MAX_ANSWERS_AGAIN };
+    }
   });
 
   /** The request's answer: the last one the worker gave. */
@@ -503,14 +493,13 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       .tap(board.drain)
       .step(briefAnswer)
       .tap(keepMessage);
-    // Each source in turn, while the round is open: the plan's, then the flow's.
+    // Each source in turn: the plan's, once, then the flow's.
     let sources = sequencer({ name: `${turn.name}-answer-again-sources`, inputSchema: z.unknown() })
-      .tap(openRound)
       .tapIf(planDue, planSource);
     if (answerAgain !== undefined) {
       // Handed the worker's last answer.
       const source = sequencer({ name: `${turn.name}-answer-again-source`, inputSchema: z.unknown() }).step(answerAgain).tap(keepMessage);
-      sources = sources.tapIf(roundOpen, (value: { answer?: unknown }) => value.answer, source);
+      sources = sources.tap((value: { answer?: unknown }) => value.answer, source);
     }
     const answering = sequencer({ name: `${turn.name}-answer-again-turn`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
@@ -521,9 +510,8 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       .tap(sources)
       .step(briefRound)
       .stepIf((value: { again: boolean }) => value.again, (value: { message?: string }) => ({ message: value.message ?? "" }), answering);
-    // After the turn: answer again while a source asks something, at most
-    // MAX_ANSWERS_AGAIN times; the last round finds the request out of answers or
-    // no source asking, and ends the loop.
+    // Another round while the last one answered under the cap. At the cap
+    // `again` is false, so no further source runs.
     let again = sequencer({ name: `${turn.name}-answer-again`, inputSchema: roundSchema })
       .doWhile((value: { again?: boolean }) => value.again === true, round)
       .tapIf(owesPlan, endPlanWaiting);

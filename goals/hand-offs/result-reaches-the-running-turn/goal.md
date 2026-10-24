@@ -34,3 +34,4 @@
 | 2026-10-24 | same | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-source`, expected) | `request-id`: both lines landed in later requests of their own |
 | 2026-10-24 | `c8bef91b` (main, before FIX-2159), this script copied in | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | `request-id`: both lines landed in later requests of their own |
 | 2026-10-24 | `6ede85dc` (af14e78b before a spec-only rebase) | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 3, codes neutral (`rc-1b0ff4`, `rc-eb7f50`): each said once under the delegate in the person's request, each followed by text naming it |
+| 2026-10-24 | `0f06609e` + the open-round flag dropped | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 3 (`rc-f73d3d`, `rc-6e93fa`): each said once under the delegate in the user's request, each followed by text naming it |
