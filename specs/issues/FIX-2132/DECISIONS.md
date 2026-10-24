@@ -61,15 +61,15 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
 - **The marker's path names the attempt and the run** (`<attempt>-<run>.md`), the run counted on
   the run record so the count survives the answer's turn: a run must never read a question an
   earlier turn already asked. `isAskMarkerPath` matches that shape, so a marker is never committed.
-- **A line typed in the run's session answers its question.** This issue makes
-  `harnessSessionDoor` write the line as a steer naming the task's open question (the oldest, if
-  more than one), as `updateTask({ id, question, message })` does, per the concept ("the user
-  typing in a task's session answers its question") and as FIX-2131 does for other sessions. The
+- **A line typed in the run's session answers its question, with no change here.**
+  `harnessSessionDoor` already writes the line through orchestration's `steerFromLine`, which
+  FIX-2133 makes answer the task's oldest open question through the one question write, for every
+  session alike (the concept: "the user typing in a task's session answers its question"). The
   answer's turn then starts as any answer's does. A steer naming no question, the filer's or
   `updateTask({ message })`, answers nothing (ER-8): it is kept on the task, and the run the answer
   starts takes it. The claim gate refuses a held row, so no run starts beside the hold.
 - **A cancel** closes the question with the row (ER-8). No turn is owed, so the manager starts
-  nothing; its branch and kept files stay, and leg d proves it.
+  nothing; its branch and kept files stay, as they do today. FIX-2133's cancel leg proves the hold closes.
 - **At the deadline the manager adds nothing.** ER-8's deadline write releases the hold with a
   "no answer came" steer and owes the turn like an answer, so the next run goes ahead in the same
   session, as the [epic decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them) (owner, 2026-10-24).
@@ -147,6 +147,11 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
   deadline set through FIX-2133's test hook, and adds a question with none that still holds. From
   the epic's reuse review: the run counter is genuinely new; the manager's attempt-only checks
   move onto the turn generation.
+
+- **Cut to the coding-run delta** (the epic's other-shapes analysis, 2026-10-24): legs c, d and e
+  went, since cancel, the deadline and line answering are FIX-2133's to prove; two regressions and
+  FIX-2133's reconciler stayed, and the door change dropped to none. It still merges before FIX-2131,
+  which deletes `awaitReview`, and keeps the FIX-2163 edge.
 
 ## Notes from the reuse review, for the implementer
 

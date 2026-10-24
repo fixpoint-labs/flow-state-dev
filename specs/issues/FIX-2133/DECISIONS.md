@@ -97,8 +97,8 @@ Then the gate's backstop could go; the generation stays either way.
   in the same step: no Inbox item survives for it.
 - **The deadline:** a question has none unless one is set ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3),
   owner, 2026-10-24). Once FIX-2129's host setting lands, a host that sets it gives every question
-  that long from when it is asked; until then, and in tests, a test hook sets one (FIX-2132's leg e
-  and this issue's leg e use it). A set deadline is paid by the board's debt pass on a touch past
+  that long from when it is asked; until then, and in tests, a test hook sets one (this issue's leg e
+  uses it). A set deadline is paid by the board's debt pass on a touch past
   due (rule 8). It closes the question with a "no answer came" steer from a new server-written
   sender, the board, and the last close lets the work go on as an answer would. A board nobody
   touches pays late. A question with no deadline is never closed by the debt pass: it stays open
@@ -125,6 +125,29 @@ Then the gate's backstop could go; the generation stays either way.
   twice. This issue owns the Inbox list as one package read that Shift Manager and FIX-2157's lab
   both consume, in place of `reads.ts` merging its sources; FIX-2131 lists reviews through it. Its
   package is the implementer's.
+- **The Inbox invariant comes first**, as this issue's first PR, before the hold's write (the
+  epic's other-shapes analysis). A pure `reconcileInbox(items, truth)` helper (shift-manager
+  `src/lib/`, the implementer's to place) returns four lists, missing, duplicate, orphan and both
+  arms, and is green when all four are empty and every item is answerable through its kind's
+  trusted route (ER-7). `truth` comes from reads independent of the listing, or the check proves
+  nothing: `listTasks` rows (`waitingOn: "user"` with `waitingFor` as the join key, plus open
+  `questions`) and `listSessionRequests({ status: "suspended" })` filtered by ER-1's predicate,
+  never `readAsks` or `deriveSuspensions` over session items. Two more clauses: no row maps to both
+  arms, and after an answer or a cancel its key is in no later read. The snapshot's Inbox section
+  becomes one union of two arms, `source: "suspension"` fed only by `readAsks` and
+  `source: "question"` fed only by rows, and `Inbox.tsx` reads only that section. Today's `main`
+  fails the answerable clause (a task run's approval listed as `DISPATCHED_RUN_UNANSWERABLE`, the
+  `REOPENED_SOURCES` path), which FIX-2129 turns green; the controls `duplicate-item` and
+  `drop-question-arm` fail it too. Every child's acceptance is the reconciler green with its kind
+  present. A sweep rule in `rules.mjs` keeps it so: nothing outside the Inbox read (`reads.ts` and
+  the package read it calls) reads a board row's `question` for listing, or calls
+  `deriveSuspensions`.
+- **A line answers the oldest open question**, in one server-side home: orchestration's
+  `steerFromLine` (`tasks/steers.ts`), which harness-manager's session door and workforce's steer
+  share, writes the line through the one question write as the answer to the row's oldest open
+  question, from the user the request was verified as. With two open, it answers the oldest and
+  leaves the other open. FIX-2131's composer sends the plain line and the server decides, so no
+  client picks the question (BP-031); FIX-2132's door changes nothing.
 - **One public "waiting on the user" read.** `getTask` and `listTasks` derive `waitingOn: "user"`
   and `waitingFor: { kind: "question", … }` for a row with an open question, so a reader sees one
   shape for every stop. It is read-only: the claim gate, the ask's refusal of a suspended row and
@@ -146,6 +169,7 @@ Then the gate's backstop could go; the generation stays either way.
 | Answers outside the cap, under a question cap of their own | A second bound beside the steer cap. Bypassing the cap with no bound grows the row without limit |
 | Pruning taken steers at the cap | A retry's brief reads every steer |
 | One Inbox item per question | Rule 11: the questions show as one item |
+| A transient "held: waiting on N answers" item | It would fire on every admission probe. The claim's refusal reason goes on its trace span instead, and the DevTool shows `getTask`'s `questions` |
 
 ## Notes from review, for the implementer
 
@@ -177,7 +201,8 @@ Then the gate's backstop could go; the generation stays either way.
   the caller check on `updateTask`; idempotent retries and the steer cap from review.
 - **Analysis and reuse review, 2026-10-24:** the turn generation is one field on the existing
   ticket fence, with the attempt-only copies named; one listing source per kind and the derived
-  read; the Inbox list one package read, owned here.
+  read; the Inbox list one package read, owned here. Other shapes: the Inbox reconciler as the
+  first PR, and `steerFromLine` as the one home for a line's answer.
 - **Owner, 2026-10-24:** no default deadline (epic D3). The 7-day constant goes; a question is due
   only where the host setting or the test hook sets it, and leg e proves one with none stays open.
 

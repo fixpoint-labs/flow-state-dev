@@ -40,15 +40,16 @@ session limit. Then two overlapping walks of three, each mixing a suspended and 
 | | |
 |---|---|
 | **Instead of** | The removed names swept only when someone runs this goal |
-| **Because** | The epic promises one way to stop for a person and one route per kind to answer it. The likeliest way to break that after the wrap is a later PR bringing back a park or `answerTask` under its old name. Only CI sees every PR. FIX-2087's engine already runs in CI with plants, and FIX-2131 already edits it to drop the two allowances, so this is a list beside its own, not a second sweep |
+| **Because** | The epic promises one way to stop for a person and one route per kind to answer it. The likeliest way to break that after the wrap is a later PR bringing back a park or `answerTask` under its old name. Only CI sees every PR. FIX-2087's engine already runs in CI with plants, and FIX-2131 already edits it to drop the two allowances, so this is a list beside its own, not a second sweep. **It ratchets:** each child adds the names it deletes in the same PR that deletes them, so the rule is green in CI from that child on: FIX-2132 harness-manager's `answerQuestion`, `parkOnBoardQuestion` and `inboxCollection`; FIX-2131 `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain`, `unpark` and the scoped `onReview`. This closure checks the list is complete |
 | **Locks in** | A PR whose package source names one of the nine fails CI until it edits the list, where a reviewer sees it. The list carries FIX-2131's and FIX-2132's sweep names too, so the closure guards what they removed. A name too common to ban bare carries its scope: `answerQuestion` is matched only as harness-manager's export, and `onReview` everywhere but the board's by-name refusal, so neither false-positives on unrelated code |
 
 ![D2: one rule in FIX-2087's CI sweep, chosen, beside a check this goal runs alone; decided by a later PR bringing a removed path back](figures/d2-sweep-in-ci.svg)
 
 It comes down to a later PR: run only here, a returned park is seen at the next closure, if ever.
 
-**If #3692 isn't on `main` when this runs:** the rule still runs in CI. This closure adds the
-smallest CI step that runs it standalone, and moves it into FIX-2087's engine once that lands. The
+**If #3692 isn't on `main` when the first child adds a name:** the rule still runs in CI. That
+child, FIX-2132 as it merges first, adds the smallest CI step that runs it standalone, and it
+moves into FIX-2087's engine once that lands. The
 closure is not done until the rule runs in CI (coordinator, 2026-10-23).
 
 ## The plan in full
@@ -68,9 +69,10 @@ the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone
 
 ## Decided, not asked
 
-- **A session line answers only as an id-carrying steer.** ER-7 allows one route per kind. The coding
-  session's `harnessSessionDoor` is the one place a typed line answers, by writing that steer for
-  the oldest open question (FIX-2132); a plain message to any other task's session answers nothing.
+- **A session line answers only as an id-carrying steer.** ER-7 allows one route per kind.
+  Orchestration's `steerFromLine` is the one place a typed line answers, by writing that steer for
+  the oldest open question (FIX-2133), shared by every session; a `sendMessage` to a task's session
+  answers nothing.
 - **[FIX-2087 D1](../FIX-2087/DECISIONS.md#d1), inherited:** a structural miss on any attempt is a
   finding; only a judgment miss (what the model chose to write) earns another attempt.
 - **Stops raised where the epic's rule puts them:** approval, review and input from blocks that read
@@ -82,8 +84,9 @@ the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone
   FIX-2133's check, never skipped for this, reads the state backing; the gap sweep checks both
   backings' cancels call the hold's one write.
 - **One listing source per kind:** suspensions list from `readAsks` only, held questions from task
-  rows only, and `waitingFor` never ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)). Six
-  kinds open at once, each listed once, checks the rule; a double listing or a missed stop is a Bug.
+  rows only, and `waitingFor` never ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)).
+  FIX-2133's reconciler checks it: green over six kinds at once is leg a, and a double listing or
+  a missed stop is a Bug.
 - **Two new controls**, each one module swap that fails the build if it never fired:
   `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the hold's questions; `steer-ignores-mark` ignores the row's person mark.
 - **No legacy leg:** stores are reset (owner). Leg a reads `waitingOn: "user"`.
@@ -111,7 +114,9 @@ the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone
 - **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): j2 sets its deadlines
   explicitly, and `a:no-deadline-waits` proves the six stops, with none set, still wait. From the
   epic's analysis: the sweep list gains FIX-2131's and FIX-2132's names and scopes the common
-  ones; the walk's model name updated; FIX-2163 named as a consumer.
+  ones; the walk's model name updated; FIX-2163 named as a consumer. Other shapes: leg a is
+  FIX-2133's reconciler green over all kinds; D2's list ratchets, each child adding what it
+  deletes; a session line answers through `steerFromLine`.
 
 ## Notes from review
 

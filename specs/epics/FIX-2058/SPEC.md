@@ -91,10 +91,10 @@ The reviewed snapshot; live state is in Linear. FIX-2056 blocks every child too.
 | Issue | Delivers | Blocked by |
 |---|---|---|
 | [FIX-2063](https://linear.app/fixpoint-labs/issue/FIX-2063) · durable by default | Durability and the sweeper with no app config; a host without it refuses a suspension loudly. Stays in Developer Tools | FIX-2137, for the default flip |
-| [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a suspension holds its task and ends once | `waitForUser`, kinds approval, review and input; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063; FIX-2137 (Done), for approval resumes |
+| [FIX-2129](https://linear.app/fixpoint-labs/issue/FIX-2129) · a suspension holds its task and ends once | `waitForUser`, kinds approval, review and input; the person mark keyed on it; the claim across a resume; the row's record of its stop; the Inbox's one answer route; answered, deadline or cancelled, and a user's stop cancels the task | FIX-2063; FIX-2137 (Done), for approval resumes; FIX-2133's first PR, the Inbox reconciler (soft) |
 | [FIX-2131](https://linear.app/fixpoint-labs/issue/FIX-2131) · questions and reviews | A review suspends; a midway question holds its task ([ER-8](DECISIONS.md#who-owns-what)); retires both parks, `answerTask`, `unparkAndDrain`; a steer answers a question; the Inbox lists both | FIX-2063, FIX-2129, FIX-2133; merges after FIX-2132, which moves the harness parks off the shared park this removes |
 | [FIX-2132](https://linear.app/fixpoint-labs/issue/FIX-2132) · a coding run's question | The question holds its task; the answer, a steer, starts the next run in the same coding session; the harness inbox goes; LAB-162's park is superseded | FIX-2133; FIX-2137 (Done): a host's own harness block may still suspend ([FIX-2132 D1](../../issues/FIX-2132/DECISIONS.md#d1)) |
-| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | The hold, one row predicate before start and midway: the claim gate refuses the row, it can't settle, one item, the last answer or the deadline releases it | — |
+| [FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133) · held on questions | First, the Inbox reconciler every child's acceptance runs; then the hold, one row predicate before start and midway: the claim gate refuses the row, it can't settle, one item, the last answer or a set deadline releases it | — |
 | [FIX-2137](https://linear.app/fixpoint-labs/issue/FIX-2137) · a durable resume runs completed steps again · bug | A durable resume with trace observability off no longer runs its completed steps again. Direct route: no spec, a fix PR | — |
 | [FIX-2134](https://linear.app/fixpoint-labs/issue/FIX-2134) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
@@ -117,6 +117,7 @@ flowchart LR
   G -->|"the hold"| D
   G -->|"the hold"| E["FIX-2132 · a coding run's question"]
   E -.->|"merges first · the harness parks moved"| D
+  G -.->|"first PR · the Inbox reconciler"| B
   A --> P["FIX-2134 · closure · required"]
   B --> P
   D --> P
@@ -126,7 +127,7 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next; the dashed input is consumed, not owned, and the dashed
-edge from FIX-2132 to FIX-2131 is merge order only: FIX-2131 builds in parallel and merges after it.
+edge from FIX-2132 to FIX-2131 is merge order only: FIX-2131 builds in parallel and merges after it. The dashed edge from FIX-2133 to FIX-2129 is a soft one, on FIX-2133's first PR only, the reconciler FIX-2129's acceptance runs; it costs nothing, since FIX-2129 already waits on FIX-2063.
 FIX-2137, Done, stays on FIX-2132 because a host's own harness block may suspend. FIX-2056 blocks
 every child, drawn into the two that start first. FIX-2063 blocks the two that suspend; FIX-2133's
 hold needs neither it nor FIX-2129, and comes before the two that ask a question midway.

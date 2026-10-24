@@ -71,13 +71,13 @@ FIX-2080's map gains no entry for it. The `parked` status and its rows simply go
   `question` (ER-1).
 - **First answer wins, unless a cancel is already written,** at one point per kind: a held
   question's at ER-8's one write (FIX-2133), a review's at FIX-2129's pending state. This issue
-  adds writers to the first, never a second write: the filer's tool, the task-session composer and
-  the Inbox, all through `updateTask` with the question's id.
-- **A line in the task's session is a steer the composer writes.** For a task with one open
-  question, Shift Manager's task-session composer calls `updateTask({ id, question, message })` as
-  the user, instead of sending a turn to the session. Midway a task has at most one, since asking
-  ends the turn; with none, or several asked at filing, the line is an ordinary steer and the
-  Inbox answers each. A `sendMessage` to a session waiting on a person still queues and answers
+  adds writers to the first, never a second write: the filer's tool and the Inbox through
+  `updateTask` with the question's id, and the task-session line through `steerFromLine`.
+- **A line in the task's session is a steer the server writes.** Shift Manager's task-session
+  composer sends the plain line, instead of a turn to the session, and orchestration's
+  `steerFromLine` answers the row's oldest open question with it, as the user the request was
+  verified as (FIX-2133; BP-031: no client picks the question). With none open, the line is an
+  ordinary steer. A `sendMessage` to a session waiting on a person still queues and answers
   nothing (rule 10; the owner's call of 2026-10-22).
 - **Who may answer by steer** is ER-8's acceptance, read from server-set state (BP-031): the
   public action for any question, the filer's tool only for a midway question on a task not routed.
@@ -176,6 +176,6 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   deadline for its no-answer result, and checks that with none the request still waits. From the
   epic's analysis: the drain's park excusal moves onto ER-1's predicate and ER-8's hold, so a board
   waiting only on a person reports `blocked` (leg h); a model's review returns at its deadline
-  where a block's throws, and the signal for that is [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165)'s; reviews list through FIX-2133's one Inbox read, from `readAsks`, adding no source; `turnReentries` goes with its only writer.
+  where a block's throws, and the signal for that is [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165)'s; reviews list through FIX-2133's one Inbox read, from `readAsks`, adding no source, and acceptance is its reconciler green with a review present; a session line answers server-side through `steerFromLine`, so the composer keeps no copy of which question; each deleted name joins the sweep list in the same PR; `turnReentries` goes with its only writer.
 
 **Open: none of this issue's.**

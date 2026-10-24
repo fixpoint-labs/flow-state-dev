@@ -52,7 +52,7 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 
 | Assertion | Passes when |
 |---|---|
-| `a:six-items` | Every cell of the [six-stop figure](#what-changes) holds at once: six items, kind named, one per stop |
+| `a:six-items` | FIX-2133's `reconcileInbox` is green over all six kinds at once: no missing, duplicate or orphan item, no row in both arms, every item answerable through its kind's route, as each cell of the [six-stop figure](#what-changes) says |
 | `a:no-deadline-waits` | None of the six has a deadline set; past the sweeper's interval and a board touch, all six are still listed and none has resumed or released ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)) |
 | `a:rows-read` | The three suspended rows read `waitingOn: "user"` and keep their claim; the three held rows carry an open question and no lease; no row reads `parked` |
 | `b:<stop>-same-attempt` | Each stop, answered once in the Inbox, carries on as its figure row says: `attempts` never past 1, work counter 1 |
@@ -60,7 +60,7 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 | `c:item-closes` | Cancelling a suspended and a held task closes both items; nothing the resumed block writes is kept |
 | `c:held-cancel-closes-questions` | `getTask` on the cancelled held row shows no open question. The item would vanish on the status alone, so this reads the row |
 | `d:no-request-beside` | A steer into a task waiting on a review starts no request beside it; one more turn takes it after the answer |
-| `d:answer-by-id` | A held question is answered only by a steer carrying its question id: through `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or, in a coding session only, by `harnessSessionDoor` writing the typed line as that steer for the oldest open question ([FIX-2132](../FIX-2132/DECISIONS.md)) |
+| `d:answer-by-id` | A held question is answered only by a steer carrying its question id: through `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or by a line typed in the task's session, which orchestration's `steerFromLine` writes as that steer for the oldest open question, in every session alike ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)) |
 | `d:plain-answers-nothing` | A plain message to a non-coding task's session (conversation outside the task, owner 2026-10-22), and a steer naming no question, answer nothing |
 | `sweep:no-old-path` | None of `PERSON_STOPS_REMOVED` has a reference in package source, each read at its scope: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain`, `parkOnBoardQuestion`, `inboxCollection` and `unpark` anywhere; `onReview` beyond the board's by-name refusal; `answerQuestion` as harness-manager's export only |
 
@@ -74,7 +74,7 @@ blocking this issue, and the whole plan runs again on a fresh commit.
 
 Red cells are today's six forms; the closure asserts every right half at once.
 
-**The sweep, one rule in the engine CI already runs** ([D2](DECISIONS.md#d2)):
+**The sweep, one rule in the engine CI already runs** ([D2](DECISIONS.md#d2)), filled by the children as they delete; here it is complete:
 
 ```diff
   // goals/workforce-coordination/runs-on-one-task/rules.mjs (FIX-2087, #3692)

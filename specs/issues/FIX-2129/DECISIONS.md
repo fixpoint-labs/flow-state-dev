@@ -190,6 +190,9 @@ Recorded for the implementer, not folded into the design.
 - **Owner, 2026-10-23** — `waitingOn: "person"` renamed `"user"`; the old value is not read.
 - **Owner, 2026-10-23** — no old data: stores are reset, so no persisted-data dual-read (BP-030
   waived for this epic's persisted shapes).
+- **Other shapes, 2026-10-24** — acceptance is FIX-2133's Inbox reconciler green with a task's
+  suspension present; this issue turns its answerable clause green, and waits on FIX-2133's first
+  PR for it.
 - **Reuse review, 2026-10-24** — the cancel's debt reuses `resumeOwed`, `payOwedResumes` and
   `resumeWait` (Cursor's note, adopted); `waitingFor` is never a listing source.
 - **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): the host setting is
