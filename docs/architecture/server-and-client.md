@@ -154,42 +154,43 @@ defineFlow({
 
 ## Client Setup
 
-### Action Client
+### One client
+
+`createClient` holds the user and the transport; flows, sessions, resources
+and requests hang off it. The transport is a URL over HTTP, or the engine's
+`createInProcessFetch(flowState)` as the `fetcher`, which reaches the engine in
+the same process with no web server. Every call and stream goes through that
+one fetcher.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
+import type { helloChat } from "./flows/hello-chat";
 
-const client = createClient({
-  flowKind: "hello-chat",
-  userId: "devuser",
-});
-
-// Untyped
-await client.sendAction("chat", { message: "Hello!" });
-
-// Typed (with schema)
-const typedClient = createClient({
-  flowKind: "hello-chat",
-  userId: "devuser",
-  actions: { chat: chatInputSchema },
-});
-await typedClient.actions.chat({ message: "Hello!" });
-```
-
-### Session Client
-
-```ts
-import { createSessionClient } from "@flow-state-dev/client";
-
-// Browser, same origin, no base path: no `baseUrl`. In Node, pass an absolute
+// Browser, same origin, no base path: `baseUrl: ""`. In Node, pass an absolute
 // URL ("http://localhost:3000", plus any base path). The client adds
 // `/api/flows` itself; don't include it. Canonical rule:
 // apps/docs/docs/configuration/client.md → "Choosing baseUrl".
-const sessions = createSessionClient();
+const fsd = createClient({ baseUrl: "", userId: "devuser" });
 
-const list = await sessions.listSessions({ flowKind: "my-app" });
-const detail = await sessions.getSession(sessionId);
-const snapshot = await sessions.getSessionState(sessionId, {
+// Untyped
+await fsd.flow("hello-chat").send("chat", { message: "Hello!" });
+
+// Typed: the flow's type, imported as a type only
+const sent = await fsd.flow<typeof helloChat>("hello-chat").send("chat", { message: "Hello!" });
+
+// The request: status, wait, abort, continue, retry, resume, stream
+await sent.wait();
+for (const lost of await fsd.requests.interrupted()) await lost.continue();
+```
+
+### Sessions
+
+A listing with no `userId` is the client's own user's sessions.
+
+```ts
+const list = await fsd.sessions.list({ flowKind: "my-app" });
+const detail = await fsd.sessions.get(sessionId);
+const snapshot = await fsd.sessions.state(sessionId, {
   includeItems: true,
   offset: 0,
   limit: 100,
@@ -199,16 +200,13 @@ const snapshot = await sessions.getSessionState(sessionId, {
 #### Background work (child sessions)
 
 A child session is where work that outlives the turn runs. Reading one is
-two hops: `listChildSessions` for the rows, then the shipped
-`listSessionRequests` with a row's `id` for that work's own history. Whether
+two hops: `fsd.sessions.children` for the rows, then `fsd.sessions.requests`
+with a row's `id` for that work's own history. Whether
 work runs in a child session is declared by the flow author — the client has
 no way to request it.
 
 ```ts
-// Browser, same origin (see the Session Client note above for Node).
-const sessions = createSessionClient();
-
-const children = await sessions.listChildSessions(parentSessionId, {
+const children = await fsd.sessions.children(parentSessionId, {
   limit: 25,
   offset: 0,
 });
@@ -243,13 +241,12 @@ The client's one piece of filtering is a compatibility check: a row whose
 relabelled as that conversation's background work. Authorization is the
 server's, resolved from the stored parent record (BP-031).
 
-### SSE Stream Client
+### Streams
+
+A request's stream, through the same client and fetcher as every other call:
 
 ```ts
-import { createSSEClient } from "@flow-state-dev/client";
-
-const stream = createSSEClient({
-  url: `/api/flows/hello-chat/requests/${requestId}/stream`,
+const stream = fsd.flow("hello-chat").request(requestId).stream({
   onItemAdded: (event) => { /* handle new item */ },
   onContentDelta: (event) => { /* handle text chunk */ },
   onRequestStatus: (event) => {

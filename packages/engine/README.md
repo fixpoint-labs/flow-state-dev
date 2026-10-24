@@ -541,8 +541,8 @@ as the session snapshot (`GET /api/flows/sessions/:sessionId/state`) is, before
 anything is streamed. An unknown session answers `404`, and one that needs
 migrating `409` (`migration-required`). In an app that authenticates, both
 routes can also answer `404` when the session is replaced by a new one under
-the same id while the request is being answered. `createSessionSSEClient` in
-`@flow-state-dev/client` reads it.
+the same id while the request is being answered. The client's `sessions.stream`
+in `@flow-state-dev/client` reads it.
 
 Query parameters, all optional:
 
@@ -589,14 +589,14 @@ The server reads the store about once a second per open stream, and each read
 costs what is running or recently changed, not the session's history. Every
 server reads the same store, so a line written on one instance reaches a view
 held by another. The server closes the connection after at most 15 minutes;
-reconnect with `since` to carry on, as `createSessionSSEClient` does. It also
+reconnect with `since` to carry on, as the client's `sessions.stream` does. It also
 closes the connection when the session is deleted or replaced by a new session
 under the same id. The
 reconnect then answers `404` if the session is gone, or `403` if the app
 authenticates and another user or organization now holds the id. If the same
 owner created the session again, or the app doesn't authenticate, the
 reconnect answers `404` when it names `session_created_at`, and otherwise
-follows the new session. `createSessionSSEClient` stops for good,
+follows the new session. The client's `sessions.stream` stops for good,
 without an error, on a `401`, `403`, `404`, `409` or `501`.
 
 A session deleted and created again under the same id, by the same owner in

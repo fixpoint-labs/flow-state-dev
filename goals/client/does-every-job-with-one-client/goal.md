@@ -16,7 +16,7 @@
 - `GOAL_CONTROL=retry-instead` calls `retry()` instead of `continue()`: must fail `a:same-id` and `a:ran-once`, nothing else.
 - `GOAL_CONTROL=two-clients` builds a second client for the recovery reads: must fail `b:one-client`, nothing else.
 - `GOAL_CONTROL=stream-off-fetcher` opens the stream with global `fetch`: must fail `b:through-fetcher`. Also red: `b:stream` on the in-process legs only, since a fetch around the fetcher has no web server to reach.
-- `node check.mjs --control` plants a named facade, a hand-built router helper, `httpActions` and each removed method, and requires the census to name every one; it also plants a facade built from neutrally named helpers and requires the census to pass it (that one is the structural test's to catch).
+- `node check.mjs --control` plants a named facade, a hand-built router helper, the goals' retired action helper and each removed method, and requires the census to name every one; it also plants a facade built from neutrally named helpers and requires the census to pass it (that one is the structural test's to catch).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

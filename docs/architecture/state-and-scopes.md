@@ -363,10 +363,8 @@ Sessions carry first-class `title`, `description`, and `tags` fields alongside t
 ### Creating sessions with metadata
 
 ```ts
-// Via the client
-const session = await sessionClient.createSession({
-  flowKind: "my-flow",
-  userId: "user_1",
+// Via the client (`fsd` from createClient; the user is the client's)
+const session = await fsd.flow("my-flow").createSession({
   title: "Planning session",
   description: "Sprint 12 work breakdown",
   tags: ["planning", "sprint-12"]

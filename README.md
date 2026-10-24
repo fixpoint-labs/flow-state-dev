@@ -76,8 +76,8 @@ export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 **Client** — Connect from anywhere, framework handles SSE and state sync:
 
 ```ts
-const client = createClient({ flowKind: "my-app", userId: "user_1" });
-await client.sendAction("chat", { message: "Hello" });
+const fsd = createClient({ baseUrl: "http://localhost:3000", userId: "user_1" });
+await fsd.flow("my-app").send("chat", { message: "Hello" });
 ```
 
 **React** — Hooks that wire streaming, items, and clientData to your UI:
