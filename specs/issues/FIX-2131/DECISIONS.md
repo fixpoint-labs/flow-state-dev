@@ -65,7 +65,8 @@ FIX-2080's map gains no entry for it. The `parked` status and its rows simply go
   `askQuestion` calls ER-8's ask: it adds the question, drops the lease and ends the turn
   unsettled. What the request did before asking stands, and the next turn starts from the brief,
   the last checkpoint and the answer. Its deadline is the hold's (ER-8, FIX-2133). `waitForUser`,
-  input included, takes the host's person-stop default and returns a no-answer result at it,
+  input included, takes the host's person-stop deadline where the host sets one and none otherwise
+  ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)); at a deadline it returns a no-answer result,
   since a model can't catch (ER-1); input's answer is the tool's result. `waitForUser` never takes
   `question` (ER-1).
 - **First answer wins, unless a cancel is already written,** at one point per kind: a held
@@ -171,5 +172,10 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   the owner's #44 decision governs, and a model's question on a task turn holds.
 - **Owner reset** (2026-10-23) — stores are reset, so D2, its two map entries, the feedback-less
   park's fixed prompt, the migrated question's place above the cap and leg f all go.
+- **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): leg g sets the host's
+  deadline for its no-answer result, and checks that with none the request still waits. From the
+  epic's analysis: the drain's park excusal moves onto ER-1's predicate and ER-8's hold, so a board
+  waiting only on a person reports `blocked` (leg h); a model's review returns at its deadline
+  where a block's throws, and the signal for that is [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165)'s; reviews list through FIX-2133's one Inbox read, from `readAsks`, adding no source; `turnReentries` goes with its only writer.
 
-**Open: none of this issue's.** The held question's deadline outcome is the epic's.
+**Open: none of this issue's.**

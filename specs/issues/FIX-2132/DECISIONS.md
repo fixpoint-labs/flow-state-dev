@@ -19,7 +19,7 @@ flowchart TD
 Solid edges are what you sign. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · FIX-2137 stays a blocker: the manager's own path never suspends, but a host's harness block may
+## D1 · FIX-2137 stays a blocker: the manager's own path never suspends for a question, but a host's harness block may suspend
 
 *Engineering, decided by the coordinator after Codex's finding on `c2aa9f5`; recorded because it
 keeps an edge in the epic's graph.*
@@ -27,7 +27,7 @@ keeps an edge in the epic's graph.*
 | | |
 |---|---|
 | **Instead of** | Dropping the FIX-2137 edge (a durable resume with trace observability off runs its completed steps again; fix in #3749), and refusing a harness block that suspends |
-| **Because** | The built-in path holds and never suspends: under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question holds its task, and every ask the manager makes is a question (the run's marker, the judge's *ask*, a saved-work mismatch). But the public `HarnessSlot` takes any `HarnessBlock` (`manager.ts`, `HarnessSlot`), and the harness step's `onSettled` already handles a child that exits suspended. A host's own harness that calls `ctx.suspend` resumes through the engine's durable resume, which is FIX-2137's path. Refusing it would be a new limit on a public slot, to save an edge that costs nothing: FIX-2137 is merged (#3749), so the edge is satisfied |
+| **Because** | The built-in path holds every question and never suspends for one (FIX-2163 later adds a review that does, behind a host option): under [ER-1](../../epics/FIX-2058/DECISIONS.md#who-owns-what) a question holds its task, and every ask the manager makes is a question (the run's marker, the judge's *ask*, a saved-work mismatch). But the public `HarnessSlot` takes any `HarnessBlock` (`manager.ts`, `HarnessSlot`), and the harness step's `onSettled` already handles a child that exits suspended. A host's own harness that calls `ctx.suspend` resumes through the engine's durable resume, which is FIX-2137's path. Refusing it would be a new limit on a public slot, to save an edge that costs nothing: FIX-2137 is merged (#3749), so the edge is satisfied |
 | **Locks in** | FIX-2137 blocks FIX-2132, with FIX-2133 and FIX-2056. The manager itself suspends no request for a question. *Amended 2026-10-24 by [FIX-2163](../FIX-2163/DECISIONS.md#decided-not-asked):* it suspends only for a review of a run's changes when the host sets `reviewChanges`; questions still never suspend. This issue's implementation keeps the sweep at no `waitForUser` reference in `harness-manager`; FIX-2163's implementation changes it to exactly one, the review step. The goal check runs with traces off |
 
 ![D1: does FIX-2132 still wait on FIX-2137, now that its own question holds the task? Chosen: yes, keep the edge. Instead of: drop it and refuse a harness block that suspends. Decides it: a host's custom harness block may still suspend. Price: FIX-2132 waits on a fix, now merged. Locks in: FIX-2137 blocks FIX-2132. Flips if: no host-supplied block or callback in the manager chain can suspend](figures/d1-keep-fix-2137.svg)
@@ -72,9 +72,7 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
   nothing; its branch and kept files stay, and leg d proves it.
 - **At the deadline the manager adds nothing.** ER-8's deadline write releases the hold with a
   "no answer came" steer and owes the turn like an answer, so the next run goes ahead in the same
-  session. The epic's [Open](../../epics/FIX-2058/DECISIONS.md#open) recommends that. If the owner
-  picks "fail", the try fails, the next try resumes the session through today's retry path, and
-  the manager still adds nothing; only leg e changes.
+  session, as the [epic decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them) (owner, 2026-10-24).
 - **Removed outright** (epic, *no shim*; [FIX-2056 (e)](../../epics/FIX-2056/DECISIONS.md#e)):
   the inbox collection and its ten exports, `announce` (refused by name, BP-030),
   `parkOnBoardQuestion` and harness-manager's `awaitReview` calls (the epic moves every question
@@ -145,5 +143,13 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
 - **Owner, 2026-10-23** — no old data: stores and attempt files are reset, so no legacy marker
   read (BP-030 waived for this epic's persisted shapes). The guarded `<attempt>.md` fallback and
   its transition test went with it.
+- **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): leg e keeps its
+  deadline set through FIX-2133's test hook, and adds a question with none that still holds. From
+  the epic's reuse review: the run counter is genuinely new; the manager's attempt-only checks
+  move onto the turn generation.
+
+## Notes from the reuse review, for the implementer
+
+- Could clearing the ask marker before each run remove the run counter?
 
 **Open: none of its own.**

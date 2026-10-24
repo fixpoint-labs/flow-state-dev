@@ -221,14 +221,14 @@ attempt used and a fresh budget. Midway, a request asks its question and ends; t
 with no request on it, its attempt and budget carrying on. Each answer is a steer, and the first
 answer to a question wins unless a cancel is already written. The last answer releases the hold: a
 held task starts, a running one takes one more turn on the same attempt, picking up from its brief.
-Its dependents wait until then, and a task with an open question never settles. At the question's
-deadline, 7 days by default, the hold releases; proposed, not yet decided: the work goes on, its
-brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
+Its dependents wait until then, and a task with an open question never settles. A question has no
+deadline unless the host or the call sets one; at a set deadline the hold releases and the work
+goes on, its brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
 so it is input, and suspends.
 
 **Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })` when its code reads
 the answer next, `kind` being an **approval** (every one, "go ahead with the plan?" included), a
-**review** or **input**, and `deadline` defaulting to the host's. A review is a verdict the code
+**review** or **input**, and `deadline` opting in: with none from the call or the host, it waits until answered, stopped or cancelled. A review is a verdict the code
 reads; a revision request is new direction, a steer into a held task. A waited-on task may still
 suspend for a person. If the request works a task, the claim gate marks it waiting on a person; it
 keeps its claim, and the resume carries on the same attempt.
@@ -513,7 +513,7 @@ rest.
 ## Decisions
 
 The model above is the owner's, including: nothing settled by hand (no tool marks a task done or
-failed); a deadline on every wait and every stop for a person, a waited dispatch included; nested
+failed); every wait has a deadline, a waited dispatch included, and a stop for a person has none unless the host or the call sets one (2026-10-24); nested
 waits (rule 9); and twenty-three newly decided:
 
 - [x] **Held on questions:** asked at filing or midway, one hold on the row, in the Inbox at once
@@ -556,8 +556,8 @@ Open:
 - [x] **An error in background work fails the attempt** → Tasks, failed attempts.
 - [x] **A cancelled block may clean up and send messages;** its writes to the task are refused and
   anything it creates is cancelled with it → Inbox items, Cancelled.
-- [ ] **An unanswered question at its deadline.** Recommended: the hold releases and the work goes
-  on from its brief, which says no answer came → Inbox items.
+- [x] **An unanswered question at a set deadline:** the hold releases and the work goes on from
+  its brief, which says no answer came → Inbox items.
 - [ ] **Default worker instructions.** Punted to its own issue, as prompt content, not a mechanism:
   asked for more work after its task finished, a worker tells the filer with `sendMessage`.
 - [ ] **A separate entry for proposing work.** Punted: found work rides on `sendMessage`, and the
@@ -567,6 +567,7 @@ Superseded:
 
 - Rows a session filed for itself, closed by `completeTask` → plan rows, settled by the drain.
 - A per-block timeout → a deadline on every wait and call.
+- A default deadline on every stop for a person → none unless the host or the call sets one.
 - An answer starting a new request → resuming the suspended one, same step and attempt.
 - A midway question suspending with `waitForUser` → the task holds on its row, same attempt.
 - One Inbox record over two mechanisms → every stop is one Inbox item.

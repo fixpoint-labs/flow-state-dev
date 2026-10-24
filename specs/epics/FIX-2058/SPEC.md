@@ -8,7 +8,7 @@
 |---|---|---|
 | **uses Shift Manager** | The Inbox lists approvals and input. A question or review parks where it can't see it; a coding run's question has no screen | Every stop waiting on them is one Inbox item, answered there, on the same attempt |
 | **builds a worker that files work** | Answers its task's question with `answerTask`, a second tool; can't ask before a task starts | Answers a midway question with a steer, first answer wins; files a task held on questions |
-| **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, prompt, deadline? })`, 7 days by default; the flow decides at the deadline; a cancel or a stop closes the item |
+| **writes a flow that asks a person** | An approval expires only as a rejection; a question has no deadline; a user's stop leaves the board unaware | One `waitForUser({ kind, prompt, deadline? })`, with no deadline unless the call or the host sets one; the flow decides at a deadline; a cancel or a stop closes the item |
 | **runs flows locally or self-hosted** | `fsdev run` with no app config refuses to stop for a person | Durable execution by default on file-backed hosts |
 | **maintains the framework** | Six forms of stopping for a person, three answer paths | One suspension, one hold, one trusted route per kind ([ER-7](DECISIONS.md#who-owns-what)) |
 
@@ -31,7 +31,7 @@ less the message half of the last, now FIX-2070's.
 |---|---|
 | **The real need** | Six forms of stopping for a person ([the reduction check](https://claude.ai/artifact/QNetb3YFwTCAypMm1EkE4M)) become one. Goal 4: a person shouldn't hunt for what waits on them |
 | **Smaller, and rejected** | "Questions and reviews show in the Inbox." FIX-2131 alone meets it, while a coding run's question has no screen and a task can't ask before it starts |
-| **Not done if** | A park or the harness inbox still answers a stop · an answer to a stop starts a new attempt · a steer runs beside a waiting request · a cancelled task's item stays open · a local host refuses a suspension · a closure bug is open |
+| **Not done if** | A park or the harness inbox still answers a stop · an answer to a stop starts a new attempt · a steer runs beside a waiting request · a cancelled task's item stays open · a local host refuses a suspension · a stop with no deadline set ends unanswered · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -77,7 +77,7 @@ it is retired. Questions hold their task on the row and don't need durable execu
 
 ## What's in the box
 
-![In the box: one call to suspend for a person with three kinds and a deadline, a task held on questions, the task's person mark and its recorded stop, one Inbox listing every stop, and durable execution by default. Composed in by the app: what a block does at its deadline, which kind it asks, and the Inbox screen. Replaced in one line: the parks, answerTask and the harness inbox. Not built, below a fence: the Not doing list](figures/end-state.svg)
+![In the box: one call to suspend for a person with three kinds and an opt-in deadline, a task held on questions, the task's person mark and its recorded stop, one Inbox listing every stop, and durable execution by default. Composed in by the app: what a block does at its deadline, which kind it asks, and the Inbox screen. Replaced in one line: the parks, answerTask and the harness inbox. Not built, below a fence: the Not doing list](figures/end-state.svg)
 
 Inside the box is what a flow gets by calling one function; below the fence is the Not doing list.
 
@@ -156,7 +156,7 @@ hold needs neither it nor FIX-2129, and comes before the two that ask a question
 | The debt | |
 |---|---|
 | **Removes** | Both parks, the harness question inbox, `answerTask`, `unparkAndDrain`, `answerQuestion()`, two extra person-stop checks, the Inbox's unanswerable task stops |
-| **Adds** | `waitForUser`, one hold on questions with one pure answer-and-release write both store backings call ([ER-8](DECISIONS.md#who-owns-what)), a default deadline for a person's stop ([D3](DECISIONS.md#d3)), one trusted answer route |
+| **Adds** | `waitForUser`, one hold on questions with one pure answer-and-release write both store backings call ([ER-8](DECISIONS.md#who-owns-what)), an opt-in host deadline for a person's stop, unset by default ([D3](DECISIONS.md#d3)), one trusted answer route |
 
 **Net: down.** Six forms and three answer paths become one suspension, one hold and one trusted route per kind (ER-7).
 
@@ -172,19 +172,20 @@ net down. If wrong: a second path to a person survives somewhere.
 2. **[D2](DECISIONS.md#d2) · The row's person mark, not the session's key, keeps a task's requests
    apart across a suspension.** Engineering, decided; messages stay rule 10's. If wrong: a steer runs
    beside a waiting request.
-3. **[D3](DECISIONS.md#d3) · A person's stop has its own default deadline, 7 days,** a host
-   setting overridable per call. The owner's, decided. If wrong: one host setting to change.
+3. **[D3](DECISIONS.md#d3) · A person's stop has no deadline by default;** a host setting or a
+   call's `deadline` opts in. The owner's, decided 2026-10-24; approvals included is my reading,
+   to confirm. If wrong: unanswered stops sit in the Inbox until someone sets the host setting.
 
 **Decided by the owner:** the five objective lines; FIX-2133 kept;
 [questions hold their task, approvals, reviews and input suspend](DECISIONS.md#d1) (2026-10-23); the filer's message to FIX-2070;
 [no shim for in-flight states, and no old data read: stores are reset](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them);
-#1612 closed as superseded; D3.
+#1612 closed as superseded; D3, no default deadline, and a held question going ahead from its brief at a set deadline (2026-10-24).
 
 **Decided in review, engineering:** FIX-2130 folded into FIX-2129; LAB-162's park superseded;
 `waitForUser` on the person suspensions, not the wait gate, resuming with `cancelled`; one trusted
 answer route (ER-7).
 
-**Open:** [what an unanswered question does at its deadline](DECISIONS.md#open); I recommend it goes
-ahead from its brief.
+**Open:** renewed approval of this amendment, and the owner's confirmation that D3 covers
+approvals too, as I read it ([Open](DECISIONS.md#open)).
 
 Epic · 6 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest · Goal 2, differentiate on hard problems

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments in the life of a task whose run suspends for a person, today and after. Reading the task: today it shows running, after it shows waiting on a person with the kind, prompt and deadline. Answered in the Inbox: today a run a task started can't be answered there, after it is answered there and the same try carries on. No answer by the deadline: today an approval reads as a rejection and an input waits for good, after the flow decides, and unhandled an approval is a no and a review or input fails the try. The task is cancelled: today the run stays parked and its item open, after the block resumes cancelled, runs to its end, its writes to the task are refused, and the item closes. The user stops it: today the try fails and the task runs again, after the request ends, the item closes and the task is cancelled."
+<svg viewBox="0 0 940 300" role="img" aria-label="A grid of five moments in the life of a task whose run suspends for a person, today and after. Reading the task: today it shows running, after it shows waiting on a person with the kind, prompt and deadline. Answered in the Inbox: today a run a task started can't be answered there, after it is answered there and the same try carries on. No answer by the deadline: today an approval reads as a rejection and an input waits for good, after a deadline only where the call or the host sets one, and there the flow decides; unhandled, an approval is a no and a review or input fails the try. The task is cancelled: today the run stays parked and its item open, after the block resumes cancelled, runs to its end, its writes to the task are refused, and the item closes. The user stops it: today the try fails and the task runs again, after the request ends, the item closes and the task is cancelled."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -73,7 +73,7 @@
     <text class="t-s" x="306" y="252">carries on, claim kept</text>
     <rect class="good" x="452" y="178" width="150" height="100" rx="4"/>
     <text class="t-ok" x="462" y="200">The flow decides</text>
-    <text class="t-s" x="462" y="220">7 days by default;</text>
+    <text class="t-s" x="462" y="220">if a deadline is set;</text>
     <text class="t-s" x="462" y="236">unhandled, approval is no,</text>
     <text class="t-s" x="462" y="252">review or input fails</text>
     <rect class="good" x="608" y="178" width="150" height="100" rx="4"/>

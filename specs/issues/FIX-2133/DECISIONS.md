@@ -45,7 +45,7 @@ Then a question's answer rides it, and `updateTask` drops `question`.
 |---|---|
 | **Instead of** | `status: "held"` for a task held before it starts (this spec's first draft), with a midway question marked some other way |
 | **Because** | The owner's hold is one predicate before the start and midway. A midway row is `in_progress`; it can't read `held` without a new transition, and a status for the pre-start case beside a predicate for midway is two gates. The predicate lands once: in the shared admission helper (`isClaimable`, FIX-1005, which the claim path, the wake probe and the preview read; `isReady` built on the same helper) and in the settle guard |
-| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once. A question is open while no steer carries its key, so "answered" is never stored twice. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
+| **Locks in** | `questions` on the row, each `{ id, prompt, askedAt, due }`, written once, `due` empty when no deadline is set. A question is open while no steer carries its key, so "answered" is never stored twice. Before the start the row is `pending`; midway, `in_progress` with no lease. It settles only by cancel. `held` may be derived for a screen, never read to gate. A plain `held: true` composes: both must clear. Because the gate reads the predicate, no release (the legacy `heldFromBlocked` one included) can start a row unanswered. The concept's glossary and FIX-2080 D1's note, "pending until the user answers", stand |
 
 ![D2: what the hold is on the row. The open-questions predicate on any status, chosen, beside a held status for the pre-start case. Decides it: how many gates cover both cases; one predicate, against a status plus a second gate for midway. The price: every start path reads the predicate, through one shared helper. A tie: dependents wait either way. Locks in: questions on the row, open while no steer carries the key. Flips if a start path can't go through the shared helper](figures/d2-one-hold.svg)
 
@@ -61,7 +61,7 @@ its own guard, and the goal check's leg a must name it.
 |---|---|
 | **Instead of** | Re-entry through FIX-2078's wake alone, as FIX-2086's steer turn starts today, with tickets fenced by row, status and attempt |
 | **Because** | The wake is written before the row write and is absent on a host without `RequestWakes`, so a turn owed only by a wake can be stranded. And a same-attempt re-entry means two turns share an attempt: an attempt fence can't tell the asking turn's late renewal or result from its successor's |
-| **Locks in** | **Ask:** one write adds the questions, drops the lease and ends the turn unsettled. **Lease fence:** `renewLease` and `reclaim()` refuse a row with an open question, decided on the committed row, so a renewal racing an ask loses. **Release:** the write that closes the last question makes a `pending` row claimable with a fresh budget, or sets the owed-turn mark on an `in_progress` row (FIX-2086's `waitingOn: "steer"`) in that same write. **Claim:** the gate claims a marked `in_progress` row with no lease and no open question for its same attempt, uncharged, and clears the mark in the claim write; a wake only starts that claim sooner, and whichever claims first wins. FIX-2086's late-steer turn gets the same backstop. **Generation:** every claim advances a turn generation on the row; the ticket carries it; ask, renew, complete, fail and settle refuse a ticket whose generation isn't the row's. An unclaimed row's generation is 0. **Invariants**, tested on both backings: at most one live turn per attempt; a row with no open question is never left with no lease, no mark and nothing to claim it; a stop ends exactly once |
+| **Locks in** | **Ask:** one write adds the questions, drops the lease and ends the turn unsettled. **Lease fence:** `renewLease` and `reclaim()` refuse a row with an open question, decided on the committed row, so a renewal racing an ask loses. **Release:** the write that closes the last question makes a `pending` row claimable with a fresh budget, or sets the owed-turn mark on an `in_progress` row (FIX-2086's `waitingOn: "steer"`) in that same write. **Claim:** the gate claims a marked `in_progress` row with no lease and no open question for its same attempt, uncharged, and clears the mark in the claim write; a wake only starts that claim sooner, and whichever claims first wins. FIX-2086's late-steer turn gets the same backstop. **Generation:** every claim advances a turn generation on the row, one more field on `TaskClaimTicket`, minted by `ticketForClaim` and checked where every claim-ticket write already converges, `transitionDeclineReason` (`internal.ts`); ask, renew, complete, fail and settle refuse a ticket whose generation isn't the row's. An unclaimed row's generation is 0. It extends the fence, not a new mechanism, so every copy that re-checks ownership by comparing `attempts` outside that point moves onto the one predicate or checks the generation too, or a stale turn of the same attempt passes: `holds` (`task-board/task-request.ts`), `advisory-write-back.ts`, `task-entry.ts`'s dispatch check, and harness-manager's three in `manager.ts` and one in `run-record.ts` (FIX-2132 names those two). **Invariants**, tested on both backings: at most one live turn per attempt; a row with no open question is never left with no lease, no mark and nothing to claim it; a stop ends exactly once |
 
 ![D3: how a midway task gets its turn back. An owed mark on the row that the claim gate claims, with a turn generation, chosen, beside the wake alone fenced by attempt. Decides it: a host with no wake; the gate claims the row, against the row stranded. The price: two starters for one turn, which the generation fence makes safe. A tie: the same attempt, no budget spent, either way. Locks in: the mark, the lease fences and the generation on every claim-ticket write. Flips if the wake became one write with the row on every host](figures/d3-owed-turn.svg)
 
@@ -95,13 +95,15 @@ Then the gate's backstop could go; the generation stays either way.
   question. The engine creates the suspension before that mark is tried, so the step that refuses
   the mark also cancels the suspension it was for, through ER-1's cancel (it resumes `cancelled`),
   in the same step: no Inbox item survives for it.
-- **The deadline:** each question is due 7 days after it is asked: a 7-day constant until FIX-2129's
-  host setting lands and replaces it. A test hook overrides the question deadline (FIX-2132's leg e
-  uses it). It is paid by the board's debt pass on a touch past due (rule 8). It
-  closes the question with a "no answer came" steer from a new server-written sender, the board,
-  and the last close lets the work go on as an answer would. A board nobody touches pays late.
-  If the owner picks "fail" in the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open), this
-  write fails the try instead.
+- **The deadline:** a question has none unless one is set ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3),
+  owner, 2026-10-24). Once FIX-2129's host setting lands, a host that sets it gives every question
+  that long from when it is asked; until then, and in tests, a test hook sets one (FIX-2132's leg e
+  and this issue's leg e use it). A set deadline is paid by the board's debt pass on a touch past
+  due (rule 8). It closes the question with a "no answer came" steer from a new server-written
+  sender, the board, and the last close lets the work go on as an answer would. A board nobody
+  touches pays late. A question with no deadline is never closed by the debt pass: it stays open
+  until it is answered or its task is cancelled. Going ahead at a set deadline is the owner's
+  ([epic](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them), 2026-10-24).
 - **Who asks.** The filer, at filing; midway, only the turn holding the current ticket, through the
   collection's ask, which FIX-2131's `askQuestion({ question })` tool calls. Answers arrive as
   `updateTask({ id, question, message })` (D1). A fixed-board harness run holds no `state.claim`
@@ -117,6 +119,16 @@ Then the gate's backstop could go; the generation stays either way.
 - **The Inbox item** is one per row with an open question, `pending` or `in_progress`, read from the
   board snapshot in the same pass as stops, and counted in the "needs you" totals. The board's
   `counts` stay keyed by status; a held-on-questions count is derived beside them.
+- **One listing source per kind** (from the epic's analysis): suspensions list from `readAsks`
+  only, held questions from task rows only (`toBoardRow` already carries `question`), and
+  FIX-2129's `waitingFor` is a join key, never listed, or a task's approval or review would show
+  twice. This issue owns the Inbox list as one package read that Shift Manager and FIX-2157's lab
+  both consume, in place of `reads.ts` merging its sources; FIX-2131 lists reviews through it. Its
+  package is the implementer's.
+- **One public "waiting on the user" read.** `getTask` and `listTasks` derive `waitingOn: "user"`
+  and `waitingFor: { kind: "question", … }` for a row with an open question, so a reader sees one
+  shape for every stop. It is read-only: the claim gate, the ask's refusal of a suspended row and
+  the settle guard read the stored mark and the predicate, never the derived fields (D2).
 - **The edges** (adopted in the epic): blocked by FIX-2056 alone, blocking FIX-2131 and FIX-2132.
   The first draft's flip condition, a question with a deadline, fired; the debt pass pays it, so
   FIX-2063 and FIX-2129 stay off.
@@ -163,7 +175,12 @@ Then the gate's backstop could go; the generation stays either way.
 - **Re-spec, after the epic amendment (#3748):** one hold before the start and midway, the
   predicate in place of `held`; the re-entry, lease and turn fences; the deadline as a board debt;
   the caller check on `updateTask`; idempotent retries and the steer cap from review.
+- **Analysis and reuse review, 2026-10-24:** the turn generation is one field on the existing
+  ticket fence, with the attempt-only copies named; one listing source per kind and the derived
+  read; the Inbox list one package read, owned here.
+- **Owner, 2026-10-24:** no default deadline (epic D3). The 7-day constant goes; a question is due
+  only where the host setting or the test hook sets it, and leg e proves one with none stays open.
 
 ## Open
 
-None of this spec's. The deadline's outcome is the epic's.
+None.

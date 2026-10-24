@@ -8,7 +8,7 @@
 |---|---|---|
 | **decides whether the epic is done** | Each child green on its own commit; nothing opens every kind of stop at once | One report on one `main` commit, every check beside its control's FAIL |
 | **uses Shift Manager, like Alice** | The Inbox lists approvals and input; a review, a question and a coding run's question wait where she can't see them | Six stops wait at once on a real model and her Inbox shows six items, each answered once there, the work carrying on the same attempt |
-| **files work, or writes a flow that asks** | Answers with `answerTask`; an input past its expiry stays parked | A filer's steer answers only its own task's midway question; at a deadline an approval is a no and a held question goes ahead from its brief |
+| **files work, or writes a flow that asks** | Answers with `answerTask`; an input past its expiry stays parked | A filer's steer answers only its own task's midway question; a stop has no deadline unless one is set, and at a set one an approval is a no and a held question goes ahead from its brief |
 | **runs Shift Manager on their own machine** | A stop needs an app setting to survive a restart | The host is killed while all six wait; after a restart all six are still listed once |
 | **maintains the framework** | Six forms of stopping, three answer paths | CI fails a later PR that brings an old path back ([D2](DECISIONS.md#d2)) |
 
@@ -42,17 +42,18 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/shift-manager/every-stop-is-one-inbox-item/` · real model `openai/gpt-5.4-mini`, Claude Code through the devteam harness for the coding run · run by the closure worker on one `main` commit · the report is the closure PR's body |
+| **Goal check** | `goals/shift-manager/every-stop-is-one-inbox-item/` · real model `openai/gpt-6-luna`, Claude Code through the devteam harness for the coding run · run by the closure worker on one `main` commit · the report is the closure PR's body |
 | **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes |
 | **Input** | A goal-local Lab served by Shift Manager's command, no durability or store setting in its config; prompts and the coding run's held-out fact picked at run time |
 | **Anti-game** | Assert on the Inbox's pending read and `getTask` / `listTasks` as Alice; no fixture writes a row; `FSDEV_TRACE_OBSERVABILITY=0`, so a step run twice shows as a work counter of 2 |
-| **Control that must fail** | `public-resume` (FIX-2129's) **`b:approval-same-attempt`** · `new-attempt` (FIX-2132's) **`b:coding-same-attempt`** · `cancel-keeps-item`, the cancel written but neither the suspension nor the hold resolved, **`c:item-closes`** and **`c:held-cancel-closes-questions`** · `steer-ignores-mark` **`d:no-request-beside`** · the sweep's `--control` its plants · today's `main` **`a:six-items`** and the sweep |
+| **Control that must fail** | `public-resume` (FIX-2129's) **`b:approval-same-attempt`** · `new-attempt` (FIX-2132's) **`b:coding-same-attempt`** · `cancel-keeps-item`, the cancel written but neither the suspension nor the hold resolved, **`c:item-closes`** and **`c:held-cancel-closes-questions`** · `steer-ignores-mark` **`d:no-request-beside`** · `default-deadline` (FIX-2129's) **`a:no-deadline-waits`** · the sweep's `--control` its plants · today's `main` **`a:six-items`** and the sweep |
 
 ### The signal
 
 | Assertion | Passes when |
 |---|---|
 | `a:six-items` | Every cell of the [six-stop figure](#what-changes) holds at once: six items, kind named, one per stop |
+| `a:no-deadline-waits` | None of the six has a deadline set; past the sweeper's interval and a board touch, all six are still listed and none has resumed or released ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)) |
 | `a:rows-read` | The three suspended rows read `waitingOn: "user"` and keep their claim; the three held rows carry an open question and no lease; no row reads `parked` |
 | `b:<stop>-same-attempt` | Each stop, answered once in the Inbox, carries on as its figure row says: `attempts` never past 1, work counter 1 |
 | `b:answered-once` | The item leaves the list; a second answer is told the stop is resolved |
@@ -61,12 +62,11 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 | `d:no-request-beside` | A steer into a task waiting on a review starts no request beside it; one more turn takes it after the answer |
 | `d:answer-by-id` | A held question is answered only by a steer carrying its question id: through `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or, in a coding session only, by `harnessSessionDoor` writing the typed line as that steer for the oldest open question ([FIX-2132](../FIX-2132/DECISIONS.md)) |
 | `d:plain-answers-nothing` | A plain message to a non-coding task's session (conversation outside the task, owner 2026-10-22), and a steer naming no question, answer nothing |
-| `sweep:no-old-path` | `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain` and harness-manager's `answerQuestion()` have no references in package source |
+| `sweep:no-old-path` | None of `PERSON_STOPS_REMOVED` has a reference in package source, each read at its scope: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain`, `parkOnBoardQuestion`, `inboxCollection` and `unpark` anywhere; `onReview` beyond the board's by-name refusal; `answerQuestion` as harness-manager's export only |
 
 **The rest of the plan** is [in DECISIONS](DECISIONS.md#the-plan-in-full): three team journeys,
 the children's checks under a skip map, and the gap sweep. A failure becomes a child of FIX-2058
-blocking this issue, and the whole plan runs again on a fresh commit. The run is written against
-the deadline going ahead; [one leg flips](DECISIONS.md#the-plan-in-full) if the owner picks "fail".
+blocking this issue, and the whole plan runs again on a fresh commit.
 
 ## What changes
 
@@ -84,7 +84,12 @@ Red cells are today's six forms; the closure asserts every right half at once.
   };
 + // FIX-2058's old ways to stop for a person or answer one: no reference in package source,
 + // matched as the REMOVED rows are, with the same `--control` plant
-+ export const PERSON_STOPS_REMOVED = ["answerTask", "parkOnQuestion", "awaitReview", "unparkAndDrain", "answerQuestion"];
++ export const PERSON_STOPS_REMOVED = [
++   "answerTask", "parkOnQuestion", "awaitReview", "unparkAndDrain",
++   "parkOnBoardQuestion", "inboxCollection", "unpark",          // FIX-2131's and FIX-2132's sweeps
++   { name: "onReview", allow: "the board's by-name refusal" },  // FIX-2131 keeps that one
++   { name: "answerQuestion", in: "packages/harness-manager" },  // the export; the word stays free elsewhere
++ ];
 ```
 
 **Docs:** no documentation impact. The closure ships checks; a page that doesn't hold when followed
@@ -100,14 +105,14 @@ stores are reset (owner).
 | The epic's goal check, legs a to d | **Builds on.** Input and held-before-start named as stops of their own |
 | The children's goal checks and controls | **Builds on.** Composed; two controls reused |
 | [FIX-2087](../FIX-2087/SPEC.md), the last closure, and its `rules.mjs` (#3692, open) | **Kept** its shape and D1; **extended** by one rule ([D2](DECISIONS.md#d2)) |
-| [FIX-2133](../FIX-2133/SPEC.md#whats-already-here-and-the-debt) *Leaves*: the Inbox's three reads | **Judged** here, by the walk |
+| [FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)'s rule, one listing source per kind, in one package read | **Checked** here, by the walk |
 | Anything else grading the assembled set | **None.** Searched `goals/` for `inbox`, `waitForUser`, `askQuestion`, `held`, `closure` |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing. The children remove; this proves it |
 | **Adds** | One goal and one CI sweep rule. Permanent by design |
-| **Leaves** | The Inbox's three reads, unless the walk finds one listing a stop twice or missing one |
+| **Leaves** | Nothing of the Inbox's: a stop listed twice or missed is a Bug against FIX-2133's rule |
 
 **Net: up, a little.** One goal and one rule, for a promise that stays true.
 
@@ -118,7 +123,7 @@ answered once, the same attempt, on a real model and one commit. If wrong: the e
 that pass apart and collide together.
 
 **[The debt](#whats-already-here-and-the-debt), net up a little:** one goal and one CI rule. If
-wrong: a CI rule that fails a later PR reusing one of five names.
+wrong: a CI rule that fails a later PR reusing one of nine names.
 
 1. **[D1](DECISIONS.md#d1) · All six stops wait at once, in one Lab and one Inbox, not one walk per
    kind.** If wrong: a longer run whose failures are harder to split.

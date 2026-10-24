@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Always returning a "no answer by the deadline" outcome, as a wait on a task does, for the block to branch on |
 | **Because** | The concept says an unhandled deadline fails a review's or input's try, using an attempt. With a returned outcome nothing can tell a block that handled it from one that forgot, so the forgetful one carries on with an empty answer and nobody sees it. A thrown error is unhandled exactly when nobody catches it. An approval keeps what FIX-1846 shipped, a no marked as the deadline's: that is a choice, not the same rule. A no leaves undone the one thing that waited for a yes, and an input's empty answer has no value that is safe to carry on with: code reads it on its next line, which is why it suspends and doesn't hold (epic D1) |
-| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and at a review's or input's deadline throws `SuspensionTimeoutError`, which `core` already exports and nothing throws today: one timeout error for one suspension mechanism. The throw is a block's contract; FIX-2131's model tool returns a deadline result instead, since a model can't catch. ER-1's "share answered and deadline" means the same words, not the same shape: a wait returns `{ answered: false, deadline: true }`. FIX-2131 and every app that suspends for a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's input must not. A held question's deadline is not this: it is FIX-2133's, and the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open) |
+| **Locks in** | `ctx.waitForUser` returns the answer or `cancelled`, and at a review's or input's deadline throws `SuspensionTimeoutError`, which `core` already exports and nothing throws today: one timeout error for one suspension mechanism. The throw is a block's contract; FIX-2131's model tool returns a deadline result instead, since a model can't catch. ER-1's "share answered and deadline" means the same words, not the same shape: a wait returns `{ answered: false, deadline: true }`. FIX-2131 and every app that suspends for a person write against this; changing it later changes every asking block. The wait gate keeps its returned deadline: it carries on by default, which a person's input must not. A held question's deadline is not this: it is FIX-2133's, and goes ahead from its brief ([epic, decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
 
 ![D1: a review or input throws and an approval is a no, chosen, beside always returning a no-answer outcome. Decides it: a flow that never checks. Price: a catch around the call](figures/d1-deadline-throws.svg)
 
@@ -79,10 +79,17 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
   row written before it is read (owner, 2026-10-23). The exported `TaskWaitingOn` becomes
   `"user" | "wait" | "filed" | "steer"`.
 - **`waitingFor`** is the public name on `getTask` and `listTasks`, beside `waitingOn`, which they
-  now show. The park's `question` string stays until FIX-2131 removes it.
-- **The cancel is a debt with a due time** (rule 8), written in the cancel's own write: the
-  cancelling side pays it at once through the request host, and a board touch or the sweeper
-  resends it. It never goes over HTTP. A crash between the row's cancel and the resume is the
+  now show. The park's `question` string stays until FIX-2131 removes it. It is a read convenience
+  and a join key for the task's context, never a listing source: the Inbox lists a suspension from
+  `readAsks` only, so listing from `waitingFor` too would show a task's approval or review twice.
+  FIX-2133 derives the same two fields for a row with an open question (`kind: "question"`); the
+  claim gate keys on the stored mark and the predicate, never on the derived read.
+- **The cancel is the board's existing owed-resume debt** (rule 8), not a second one: the
+  cancel's own write sets the row's `cancelOwed`/`resumeOwed` marks, the cancelling side pays it at
+  once, and `payOwedResumes` (`wait-on-task.ts`) pays it on the next board touch, as it pays a
+  wait's today, through `RequestHost.resumeWait`, widened to take a person's suspension with a
+  `cancelled` outcome. No eighth verb on the request host, which is closed at seven
+  (`request-host.ts`), and no second payer. It never goes over HTTP. A crash between the row's cancel and the resume is the
   case the debt exists for, so the goal check kills the host there (leg e).
 - **A cancelled block's writes to the task are refused** by the claim fence already there, and
   nothing it returns is recorded. What it does outside the task (a call, another scope's resource)
@@ -103,17 +110,19 @@ It comes down to what the caller sends: through resume, caller data re-enters a 
 - **A user's stop of a person's stop cancels the task.** The request's ending tells the gate the
   stop was a person's, and the gate cancels where it would have failed the try. A stop of a running
   request, or of a wait, is unchanged.
-- **The deadline** is the call's `deadline`, else the host's person-stop default, written to the
+- **The deadline** is the call's `deadline`, else the host's person-stop setting, else none
+  ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3), owner, 2026-10-24). A set one is written to the
   stop's existing `expiresAt` (the field `timeoutMs` sets), which FIX-2063's sweeper fires: one
-  clock. The host setting has its own bounds beside `waitDeadlines`; its name is the implementer's.
-  The default applies to `waitForUser` and to a held question, never to a raw `ctx.suspend`, which
-  keeps its own `timeoutMs`, none meaning no deadline, so an approval that waits today doesn't start
-  expiring. A held question keeps its own 7-day default, read from the same host setting: when the
-  setting lands, this issue replaces FIX-2133's 7-day constant with it, so the two can't drift (ER-8,
-  [epic D3](../../epics/FIX-2058/DECISIONS.md#d3)). This issue owns that proof: goal leg f sets a
-  non-7-day default and reads it on both, and a raw `ctx.suspend`'s own `timeoutMs` beside them. An input's and a
+  clock. With none, `expiresAt` stays empty, and neither the sweeper nor the debt pass ends the
+  stop: it waits until it is answered, stopped or cancelled. The host setting is unset by default
+  and has its own bounds beside `waitDeadlines`; its name is the implementer's. It applies to
+  `waitForUser` and to a held question, never to a raw `ctx.suspend`, which keeps its own
+  `timeoutMs`, none meaning no deadline. A held question reads the same setting, so the two can't
+  drift (ER-8); before it lands, only FIX-2133's test hook gives a question a deadline. This issue
+  owns that proof: goal leg f sets the setting and reads it on both, and a raw `ctx.suspend`'s own
+  `timeoutMs` beside them; leg g leaves it unset and finds both still waiting. An input's and a
   review's expiry now resume the block, as an approval's already does (FIX-1846). Input that
-  fails its try at the deadline is asked again on the next try, so it can stay open a deadline per
+  fails its try at a deadline is asked again on the next try, so it can stay open a deadline per
   try.
 - **A person's stop never holds back a notice.** A task the stopped request filed ends during the
   stop, and its `onTaskSettled` runs then (ER-2). A filing request parked on a person's stop counts
@@ -181,5 +190,10 @@ Recorded for the implementer, not folded into the design.
 - **Owner, 2026-10-23** — `waitingOn: "person"` renamed `"user"`; the old value is not read.
 - **Owner, 2026-10-23** — no old data: stores are reset, so no persisted-data dual-read (BP-030
   waived for this epic's persisted shapes).
+- **Reuse review, 2026-10-24** — the cancel's debt reuses `resumeOwed`, `payOwedResumes` and
+  `resumeWait` (Cursor's note, adopted); `waitingFor` is never a listing source.
+- **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): the host setting is
+  unset by default and the call's `deadline` opts in; leg b sets its deadlines, leg f sets the
+  setting, and leg g, with its control, proves a stop with none still waits.
 
 **Open: none.**
