@@ -66,6 +66,28 @@ const DEFAULT_HEARTBEAT_MS = 10_000;
 const DEFAULT_STALE_THRESHOLD_MS = 60_000;
 
 /**
+ * The stale threshold a request's heartbeat can be read against, or
+ * `undefined` where heartbeats can't say a request stopped (FIX-2166): they
+ * are off (`0`), or beat slower than half the threshold, so a healthy request
+ * can look stale between beats. The same rule as the gate's second arm, and
+ * the same defaults. Unlike the gate it reads one process's own registry
+ * entry as well as a shared one's: a stale entry is a stopped heartbeat
+ * wherever it is kept. And it ignores the gate's third arm, the sweep's
+ * cadence, deliberately: with sweeping off nothing marks a dead request
+ * interrupted, and this read is then the only thing that frees a notice held
+ * for it.
+ */
+export function heartbeatStaleThreshold(
+  inputs: Pick<LivenessGateInputs, "heartbeatIntervalMs" | "staleThresholdMs">
+): number | undefined {
+  const heartbeatMs = inputs.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
+  const thresholdMs = inputs.staleThresholdMs ?? DEFAULT_STALE_THRESHOLD_MS;
+  if (!Number.isFinite(heartbeatMs) || heartbeatMs <= 0) return undefined;
+  if (!Number.isFinite(thresholdMs) || thresholdMs < 2 * heartbeatMs) return undefined;
+  return thresholdMs;
+}
+
+/**
  * Decide whether the liveness verb can be trusted in this deployment.
  *
  * Arms are evaluated in a fixed order so the reported reason is stable, and the

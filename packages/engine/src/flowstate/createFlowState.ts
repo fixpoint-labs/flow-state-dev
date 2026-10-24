@@ -31,7 +31,7 @@ import {
   type RuntimeLoggerLevel
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
-import { detectInterruptedRequests } from "../execution/request-recovery";
+import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -842,6 +842,8 @@ class InternalFlowState<TSettings extends object>
       stores,
       staleThresholdMs,
       queuedGraceMs,
+      // A request reaped here owes its session's passes now (FIX-2166).
+      wakeEntriesOf: internalEntriesFrom(this.#registry),
       // Resolved per call rather than captured, for the same reason
       // `#logShutdown` does it: the CLI installs its logger onto the resolved
       // config AFTER `getRuntime()` returns, and this sweep is already running

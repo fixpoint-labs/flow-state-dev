@@ -31,7 +31,7 @@
  * cadence is tuned.
  */
 import { describe, it, expect } from "vitest";
-import { evaluateLivenessGate } from "../../src/context/liveness-gate";
+import { evaluateLivenessGate, heartbeatStaleThreshold } from "../../src/context/liveness-gate";
 import type { ActiveRequestRegistry } from "../../src/stores/types";
 
 const shared = { sharedAcrossProcesses: true } as ActiveRequestRegistry;
@@ -118,5 +118,19 @@ describe("liveness gate", () => {
       // capability — an unexplained missing verb reads as a bug.
       expect(verdict.detail).toMatch(/shared/i);
     }
+  });
+});
+
+describe("the stale threshold a request's heartbeat is read against (FIX-2166)", () => {
+  // `waits.running` reads a stale heartbeat as a stopped request only where a
+  // healthy one can't look stale: heartbeats on, at least twice per threshold.
+  it("is the sweep's threshold where heartbeats beat often enough, with the same defaults", () => {
+    expect(heartbeatStaleThreshold({ heartbeatIntervalMs: undefined, staleThresholdMs: undefined })).toBe(60_000);
+    expect(heartbeatStaleThreshold({ heartbeatIntervalMs: 5_000, staleThresholdMs: 10_000 })).toBe(10_000);
+  });
+
+  it("is absent with heartbeats off or too slow for the threshold, so no healthy request reads as stopped", () => {
+    expect(heartbeatStaleThreshold({ heartbeatIntervalMs: 0, staleThresholdMs: 60_000 })).toBeUndefined();
+    expect(heartbeatStaleThreshold({ heartbeatIntervalMs: 40_000, staleThresholdMs: 60_000 })).toBeUndefined();
   });
 });

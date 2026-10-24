@@ -32,6 +32,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import { internalEntriesFrom } from "../execution/request-recovery";
 import { drainRequestEnds } from "../execution/request-end-hooks";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
@@ -499,7 +500,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     stores: handlers.host.stores,
     intervalMs: staleSweepIntervalMs,
     staleThresholdMs: staleSweepThresholdMs,
-    queuedGraceMs
+    queuedGraceMs,
+    wakeEntriesOf: internalEntriesFrom(options.registry)
   });
 
   // Server-internal durability sweeper (FIX-141): enforces suspension expiry,

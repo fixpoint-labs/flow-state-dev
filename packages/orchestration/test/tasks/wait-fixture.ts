@@ -143,6 +143,8 @@ export function waitFlow(
      * parked, as a slow hook on a real host does.
      */
     parkTakesMs?: number;
+    /** The flow's request heartbeat (`request.heartbeatIntervalMs`); the engine's default when absent. */
+    heartbeatIntervalMs?: number;
   } = {}
 ): FlowInstance {
   let cancelFailed = false;
@@ -342,6 +344,7 @@ export function waitFlow(
     // Its rows' endings are delivered to their filer, and each row names it
     // (FIX-2078): only the session that filed a task may wait on it.
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: options.scope ?? "session", delivery: {} }) },
+    ...(options.heartbeatIntervalMs !== undefined ? { request: { heartbeatIntervalMs: options.heartbeatIntervalMs } } : {}),
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(

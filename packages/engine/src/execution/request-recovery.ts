@@ -17,6 +17,7 @@ import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./l
 import { settledRecordFields } from "./request-action-result";
 import { runAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
+import { bringSessionWakesForward } from "../durability/request-wakes";
 
 /**
  * The heartbeat-age threshold {@link detectInterruptedRequests} applies when its
@@ -24,6 +25,19 @@ import { resolveRecordOwner } from "../context/record-owner";
  * caller-supplied threshold to the same floor on a host that configures none.
  */
 export const DEFAULT_DETECTION_STALE_THRESHOLD_MS = 30_000;
+
+/**
+ * {@link detectInterruptedRequests}' `wakeEntriesOf`, read off a flow registry
+ * (FIX-2166): the internal entries of the flow instance that owns a record.
+ * Read per call, so a flow registered after the sweep was built is found. A
+ * record whose owner isn't registered here has none.
+ */
+export function internalEntriesFrom(registry: Pick<FlowRegistry, "get" | "list">): (record: RequestRecord) => readonly string[] {
+  return (record) => {
+    const owner = resolveRecordOwner(registry, record);
+    return owner.ok ? Object.keys(owner.flow.internal?.actions ?? {}) : [];
+  };
+}
 
 export type InterruptedRequestInfo = {
   entry: ActiveRequestEntry;
@@ -68,6 +82,14 @@ export async function detectInterruptedRequests(options: {
   userId?: string;
   /** Restrict the sweep to entries this predicate admits. Undefined means unrestricted. */
   ownedBy?: (entry: ActiveRequestEntry) => boolean;
+  /**
+   * The internal entries of the flow a request ran on (FIX-2166): the keys its
+   * session's wakes can have. With it, a request marked interrupted here
+   * brings its session's wakes forward to now, so a pass that held something
+   * for the request while it ran sends it at once, not at its backoff.
+   * Undefined, or no wake store, leaves the wakes as they are.
+   */
+  wakeEntriesOf?: (record: RequestRecord) => readonly string[];
   logger?: RuntimeLogger;
 }): Promise<InterruptedRequestInfo[]> {
   const { stores, userId, ownedBy, logger = DEFAULT_RUNTIME_LOGGER } = options;
@@ -85,6 +107,20 @@ export async function detectInterruptedRequests(options: {
       (entry.queuedAt == null || sweepStartedAt - entry.queuedAt > queuedGraceMs)
   );
   const results: InterruptedRequestInfo[] = [];
+
+  /** Owe the interrupted request's session its passes now (FIX-2166); never fails the sweep. */
+  const wakeSessionOf = async (record: RequestRecord, now: number): Promise<void> => {
+    const wakes = stores.wakes;
+    if (wakes === undefined || options.wakeEntriesOf === undefined || record.sessionId == null) return;
+    try {
+      await bringSessionWakesForward(wakes, { tenantId: record.tenantId, sessionId: record.sessionId }, options.wakeEntriesOf(record), now);
+    } catch (error) {
+      logRuntimeEvent(logger, "warn", "[flow-state] an interrupted request's session wakes weren't brought forward: they fire at their own due time", {
+        requestId: record.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
 
   for (const entry of stale) {
     const requestRecord = await stores.request.get(entry.requestId);
@@ -133,6 +169,8 @@ export async function detectInterruptedRequests(options: {
         actionName: entry.actionName,
         sessionId: entry.sessionId
       });
+
+      await wakeSessionOf(requestRecord, now);
     }
 
     // A run whose record says `heartbeatsUntilFinalized` beats from its

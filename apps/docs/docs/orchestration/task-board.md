@@ -798,6 +798,8 @@ When a task the board handed out ends, the session that filed it is told, once. 
 
 While the request that filed the task is still running, its notice is held. When that request ends, it sends what it held right away. When it parks, on a person's approval or input or on a [`getTask` wait](#waiting-on-a-task), it holds nothing more. A task that ends during the park sends its notice right away. A notice held while the request ran goes out about two seconds after the park. So a turn that files a task and never waits on it hears the ending once that turn ends, or soon after it parks. Holding needs a host with durable execution; elsewhere a notice is sent as soon as the task ends.
 
+If the server stops while the request is running, the held notice goes out when the request is marked `interrupted`. With default settings that is within about 90 seconds of the request's last heartbeat, or a few seconds after the server comes back if it's down longer. `staleSweepThresholdMs` and `staleSweepIntervalMs` set that window; see [connection resilience](../server/connection-resilience.md).
+
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
 - A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })`, either a wait that was open when the task ended, or one started after it ended but before an `onTaskSettled` request for that ending had started. The `getTask` call gets the result instead. A wait that reached its deadline first doesn't count: that ending goes to the request's next `getTask` only while the request is still running. If the request parks or ends first, the ending is sent as a notice.

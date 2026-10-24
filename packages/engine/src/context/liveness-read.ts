@@ -83,7 +83,11 @@ export type LivenessReadInputs = {
  * wrong question, so it is answered before the comparison rather than by tuning
  * it — see `queuedAt` on `ActiveRequestEntry` (FIX-999).
  */
-function isFresh(entry: ActiveRequestEntry, nowMs: number, staleThresholdMs: number): boolean {
+export function isFresh(
+  entry: Pick<ActiveRequestEntry, "lastHeartbeatAt" | "queuedAt">,
+  nowMs: number,
+  staleThresholdMs: number
+): boolean {
   // Accepted into an external queue, not yet claimed. No worker exists to beat
   // for it, so its age is queue wait, not death — it is live by construction.
   //

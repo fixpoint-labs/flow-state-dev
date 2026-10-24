@@ -45,7 +45,8 @@ import {
   type WaitOutcome,
   type WaitRow
 } from "@flow-state-dev/core/types";
-import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { ActiveRequestEntry, RequestRecord, StoreRegistry } from "../stores/types";
+import { isFresh } from "../context/liveness-read";
 import type { DurabilityProvider } from "./types";
 import { resumeWaitGate, type WaitResumeDeps } from "./resume-wait-gate";
 import { drivenAgain } from "./stop-suspended";
@@ -227,7 +228,48 @@ export function createRequestWaits(inputs: {
   readonly sessionId: string;
   /** A request's record, with its item log, from the request store. */
   readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
+  /**
+   * How `running` tells a request whose process died from one still running
+   * (FIX-2166): its registry entry's heartbeat, read against the host's stale
+   * threshold, the one past which the stale-request sweep marks it
+   * interrupted. Absent where heartbeats can't say (they are off, or beat
+   * slower than half the threshold): there `running` reads the record alone.
+   *
+   * The threshold is per process, as the sweep's is: each process reads with
+   * its own `staleSweepThresholdMs` and the heartbeat interval of the flow
+   * version it runs, and its sweep trusts the same values. A process
+   * configured tighter than the one running the request, or a deploy that
+   * slows the heartbeat, can read a live request as stopped, exactly as its
+   * sweep would reap it.
+   *
+   * The read stays on with sweeping off (`staleSweepIntervalMs: 0`), on
+   * purpose: nothing then marks a dead request interrupted, so this read is
+   * the only thing that frees a notice held for it.
+   */
+  readonly heartbeat?: {
+    readonly readEntry: (requestId: string) => Promise<Pick<ActiveRequestEntry, "lastHeartbeatAt" | "queuedAt"> | undefined>;
+    readonly staleThresholdMs: number;
+    readonly now: () => number;
+  };
 }): RequestWaits {
+  // An `in_progress` record whose heartbeat stopped past the stale threshold
+  // is a request whose process died before the sweep marked it interrupted
+  // (FIX-2166). No entry reads as the record says: a request with no
+  // registration is no proof that its process is gone, nor is an entry with
+  // no heartbeat recorded (a custom registry's), nor a registry that can't be
+  // read: each fails safe, to the record's answer.
+  const stillBeating = async (requestId: string): Promise<boolean> => {
+    const heartbeat = inputs.heartbeat;
+    if (heartbeat === undefined) return true;
+    let entry: Pick<ActiveRequestEntry, "lastHeartbeatAt" | "queuedAt"> | undefined;
+    try {
+      entry = await heartbeat.readEntry(requestId);
+    } catch {
+      return true;
+    }
+    if (entry === undefined || entry.lastHeartbeatAt == null) return true;
+    return isFresh(entry, heartbeat.now(), heartbeat.staleThresholdMs);
+  };
   return {
     deadlines: inputs.deadlines,
     depth: ({ binding, own }) =>
@@ -256,7 +298,11 @@ export function createRequestWaits(inputs: {
       for (const requestId of new Set(requestIds)) {
         try {
           const record = await inputs.readRequest(requestId);
-          answers[requestId] = record !== undefined && record.sessionId === inputs.sessionId && RUNNING.has(record.status);
+          answers[requestId] =
+            record !== undefined &&
+            record.sessionId === inputs.sessionId &&
+            RUNNING.has(record.status) &&
+            (await stillBeating(requestId));
         } catch {
           // A record that can't be read answers for itself only: not running, so nothing waits on it.
           answers[requestId] = false;

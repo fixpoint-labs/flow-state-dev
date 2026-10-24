@@ -198,7 +198,11 @@ export interface RequestWaits {
    * Whether each request is running its own work now (`in_progress`): neither
    * parked (`suspended`) nor ended. `false` for one parked
    * on a person or a wait, for one that ended or whose process died, for a
-   * request of another session, and for one with no record. A board reads it
+   * request of another session, and for one with no record. Also `false` for
+   * one still recorded `in_progress` whose registry heartbeat has been silent
+   * past the host's stale-request threshold: its process died before the sweep
+   * marked it interrupted (FIX-2166). Where heartbeats can't tell (off, or
+   * slower than half the threshold), the record alone answers. A board reads it
    * to hold a task's notice while the request that filed the task still runs
    * (FIX-2123), and not while that request is parked.
    */

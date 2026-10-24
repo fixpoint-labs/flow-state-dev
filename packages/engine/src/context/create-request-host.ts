@@ -93,7 +93,7 @@ import {
   type SessionRecordSeed
 } from "./session-birth";
 import { pinRejectsCaller } from "./instance-pin";
-import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
+import { evaluateLivenessGate, heartbeatStaleThreshold, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
@@ -788,7 +788,13 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   // deadline is a wake, so it is present only beside both. The user and the
   // request come from here, never the block.
   if (inputs.waits !== undefined && waitResume !== undefined && inputs.wakes !== undefined) {
+    // `running` answers for requests of this session only, which run this
+    // flow, so this flow's heartbeat is theirs (FIX-2166).
+    const staleThresholdMs = heartbeatStaleThreshold(inputs.liveness);
     (host as { waits?: RequestHost["waits"] }).waits = createRequestWaits({
+      ...(staleThresholdMs !== undefined
+        ? { heartbeat: { readEntry: (requestId) => stores.activeRequests.get(requestId), staleThresholdMs, now: nowMs } }
+        : {}),
       provider: inputs.waits.provider,
       deadlines: inputs.waits.deadlines,
       userId: identity.userId,
