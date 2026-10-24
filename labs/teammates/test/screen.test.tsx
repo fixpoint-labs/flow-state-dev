@@ -183,7 +183,7 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
   });
 
-  it("keeps a draft to lead with lead: switching workers starts an empty box for the new one", async () => {
+  it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
     render(<App adapter={fast()} />);
     const leadBox = (await screen.findByLabelText("Message lead")) as HTMLTextAreaElement;
     fireEvent.change(leadBox, { target: { value: "For lead only" } });
@@ -197,6 +197,8 @@ describe("the teammates screen", () => {
     const box = await screen.findByLabelText("Message lead");
     fireEvent.change(box, { target: { value: "日本語" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    // Safari: the committing Enter arrives after compositionend, marked only by keyCode 229.
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
     expect((box as HTMLTextAreaElement).value).toBe("日本語");
     expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(false);
     fireEvent.keyDown(box, { key: "Enter" });
