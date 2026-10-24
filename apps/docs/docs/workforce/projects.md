@@ -674,7 +674,7 @@ const session = await sessions.createSession({ flowKind: "lab-main", userId, sta
 await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
 ```
 
-Without `sessionId`, it sets the user's default conversation with that worker, creating the conversation if there isn't one. With `sessionId`, it sets that session, which must be the user's own. It resolves to `{ project: { visibility, id } }`. A new session takes two calls, as above: create it, then set its project. A create that puts `workProjectId` in `state` is refused with a 400 naming the field.
+Without `sessionId`, it sets the user's default conversation with that worker, creating the conversation if there isn't one. With `sessionId`, it sets that session, which must be the user's own and run that worker. It resolves to `{ project: { visibility, id } }`. A new session takes two calls, as above: create it, then set its project. A create that puts `workProjectId` in `state` is refused with a 400 naming the field.
 
 Calling it again with another project replaces the first. Tasks already filed keep the project they were filed in, including one still waiting on the board for a delegate and one handed to a delegate's ongoing session, along with whatever that delegate files while working it. A run that has already started stays where it is. There's no way to clear the project: once set, the conversation always has one.
 
@@ -697,6 +697,7 @@ A refused call rejects with an `Error` whose message starts `Refused:`, and noth
 | The user has no private project with that id | `you have no private project "<id>"` |
 | The organization has no shared project with that id | `this organization has no project "<id>" you can read` |
 | The session is a project coordinator's, a task's, a delegate's or a workstream lead's | Which of those it is. Each of them works in the project it was created, filed or opened in. |
+| The session runs a different worker than the one named | `this session runs "<its worker>", not "<worker>"` |
 
 Membership is checked again on every run, so a user removed from the project can't run work there through a conversation set to it earlier. A project coordinator's conversation gets its project from `ensureWorkerSession({ worker, projectId })`, as in [Talking to a project](#talking-to-a-project).
 

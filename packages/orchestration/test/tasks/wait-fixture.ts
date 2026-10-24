@@ -441,6 +441,26 @@ export async function until(
   }
 }
 
+/** The person approves the turn parked on them, through the host's resume route. */
+export async function approve(state: ReturnType<typeof runtimeFor>, requestId: string): Promise<void> {
+  const runtime = await state.getRuntime();
+  const [suspension] = (await runtime.stores.suspensions.list({ sessionId: SESSION })).filter(
+    (s: { requestId: string; status: string }) => s.requestId === requestId && s.status === "pending"
+  );
+  if (suspension === undefined) throw new Error(`request "${requestId}" isn't parked on a person`);
+  const router = await state.getRouter();
+  const path = ["wait-board", "requests", requestId, "resume"];
+  const sent = await router.POST(
+    new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: USER, suspensionId: (suspension as { suspensionId: string }).suspensionId, action: "approve" })
+    }),
+    { params: { path } }
+  );
+  if (sent.status >= 300) throw new Error(`the approval was refused: ${sent.status}`);
+}
+
 export type Row = {
   id: string;
   status: string;

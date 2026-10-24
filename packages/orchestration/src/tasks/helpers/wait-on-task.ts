@@ -29,12 +29,14 @@
  *    session's pass resumes it, `payOwedResumes`), or at the deadline with the
  *    task still running. The deadline cancels nothing: the slot lapses, in one
  *    conditional write that loses to an ending already written, and an ending
- *    that lands while this request still runs, or is parked on something else,
- *    is held for it, so its next read of the task delivers it. If it ends
- *    without that read, the ending goes to the filer's `onTaskSettled`, once
- *    (`releaseWait`): at the request's end in this process, or, whatever
- *    became of the process, by the filer's next pass, which the lapse owes a
- *    wake (`releaseEndedWaits`).
+ *    that lands while this request still runs is held for it, so its next
+ *    read of the task delivers it. Once it parks (on a person or another
+ *    wait) or ends without that read, the ending goes to the filer's
+ *    `onTaskSettled`, once (`releaseWait`): at a park, by the filer's pass,
+ *    which the park owes a wake (FIX-2170); at its end, in this process; and,
+ *    whatever became of the process, by the filer's next pass, which the
+ *    lapse owes a wake (`releaseEndedWaits`). A wait on the task after the
+ *    resume then answers that its ending arrives as a notice.
  *
  * A person stopping a waiting request ends it and cancels the task it waited
  * on, as before. A request whose own task is cancelled while it waits ends at
@@ -73,6 +75,7 @@ import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_C
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
+import { requestStates } from "./request-states";
 import { admittedTaskOf } from "../../task-board/task-request";
 import { TASK_SESSION_TASK_KEY } from "../../task-board/task-turn";
 
@@ -652,10 +655,12 @@ export function lapsedSlotsHeldInProcess(): ReadonlyMap<string, ReadonlySet<stri
 }
 
 /**
- * Release this request's lapsed slot on `taskId` when the request ends. A park
- * is not its end: the slot stays lapsed for it across the park, so an ending
- * that lands meanwhile is held for its read after the resume. An ending held
- * for it and never read goes to the filer's notice, once.
+ * Release this request's lapsed slot on `taskId` when the request ends. An
+ * ending held for it and never read goes to the filer's notice, once. A park
+ * releases nothing here: no row is written while a request parks. The board
+ * owes the filer's pass a wake at the park, and that pass releases the slot
+ * (FIX-2170), so a parked request holds no ending. This release is what pays
+ * a slot the pass hadn't reached before the resume.
  */
 function releaseAtRequestEnd(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): void {
   const requestId = ctx.request.identity.id;
@@ -683,7 +688,8 @@ function arm(ctx: BlockContext, requestId: string, entry: { readonly tasks: Map<
   if (entry.armed) return;
   const registered = onRequestEnded(ctx, async (ending) => {
     entry.armed = false;
-    // Parked: the slots stay lapsed for it; its run after the resume arms again.
+    // Parked: no row I/O here. The filer's pass, woken at the park, releases
+    // the slots; its run after the resume arms again for any it hadn't.
     if (ending.status === "suspended") return;
     if (lapsedByRequest.get(requestId) === entry) lapsedByRequest.delete(requestId);
     for (const [id, ref] of entry.tasks) {
@@ -710,22 +716,24 @@ function forgetLapsed(requestId: string, taskId: string): void {
 }
 
 /**
- * Release every slot on `collection` that lapsed for a request that has since
- * stopped running its work (`RequestWaits.ended`): the durable half of the
- * release at a request's end, run by the filer's pass. An ending held for such
- * a request goes to the filer's notice, once.
+ * Release every slot on `collection` that lapsed for a request that no longer
+ * runs its work ({@link requestStates}): parked (FIX-2170) or ended. Run by
+ * the filer's pass. An ending held for such a request goes to the filer's
+ * notice, once.
  *
- * Only a crash needs this: a request that ends in a process that runs it
- * releases its slots itself, and one resumed after a park arms that release
- * again. So the pass looks again at a slot whose request still runs or is
- * parked less and less often, from {@link LAPSED_SLOT_CHECK_MS} up to
+ * A parked request holds no ending: the board owes this pass a wake at the
+ * park, and the pass releases its slots then. A request that ended releases
+ * its slots itself in the process that ran it; the pass releases what that
+ * missed (a crash: the request reads ended once it is marked interrupted).
+ * So the pass looks again at a slot whose request still runs less and less
+ * often, from {@link LAPSED_SLOT_CHECK_MS} up to
  * {@link LAPSED_SLOT_CHECK_CAP_MS}, as the slot ages, and stops looking once
  * it is `maxAgeMs` past its lapse (the wait's deadline), as every other debt
  * of the pass ends. A slot it stops looking at is still released by its
- * request's end, or by a later pass that finds the request ended.
+ * request's end or park, or by a later pass that finds the request stopped.
  *
  * @returns When the pass should look again: the earliest check-in for a slot
- *   whose request still runs or is parked, or `undefined` when none is owed.
+ *   whose request still runs, or `undefined` when none is owed.
  */
 export async function releaseEndedWaits(
   ctx: BlockContext,
@@ -735,9 +743,11 @@ export async function releaseEndedWaits(
 ): Promise<number | undefined> {
   const lapsed = collection.list().filter((row) => row.wait?.lapsed === true && row.wait.requestId !== undefined);
   if (lapsed.length === 0) return undefined;
-  const ended = ctx.requestHost?.waits?.ended;
-  if (ended === undefined || collection.releaseWait === undefined) return undefined;
-  const answers = await ended(lapsed.map((row) => row.wait!.requestId!));
+  if (ctx.requestHost?.waits?.ended === undefined || collection.releaseWait === undefined) return undefined;
+  const states = await requestStates(
+    ctx,
+    lapsed.map((row) => row.wait!.requestId!)
+  );
   let next: number | undefined;
   // Look again at this slot later, unless it is past the age every debt ends at.
   const lookAgain = (row: Task, why: string): void => {
@@ -758,8 +768,14 @@ export async function releaseEndedWaits(
   };
   for (const row of lapsed) {
     const requestId = row.wait!.requestId!;
-    if (answers[requestId] !== true) {
-      lookAgain(row, "its request still runs or is parked");
+    const state = states?.[requestId];
+    // A request of another session reads as neither running nor ended, so as
+    // parked: only this session's own slots are released at a park. The
+    // slot's waiter is the session that filed the row (the filer check of
+    // every wait; a drain hands over rows of its own session's board).
+    const own = (collection.filerOf?.(row) ?? row.filer?.sessionId) === ctx.session?.identity?.id;
+    if (state !== "ended" && !(state === "parked" && own)) {
+      lookAgain(row, "its request still runs");
       continue;
     }
     try {
@@ -776,7 +792,8 @@ export async function releaseEndedWaits(
 /**
  * A read of `task` by the running request delivers an ending held for it
  * (FIX-2082): the request's wait on the task lapsed at its deadline, the task
- * ended while the request still ran, and this read is that request's. The held
+ * ended while the request still ran, no park has released the slot since
+ * (FIX-2170), and this read is that request's. The held
  * notice is dropped and the slot released, so the filer's `onTaskSettled` is
  * never told. A no-op for any other read.
  *

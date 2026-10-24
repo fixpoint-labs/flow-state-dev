@@ -41,6 +41,7 @@ import { z } from "zod";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import { readCommittedTask } from "../collection/read-committed";
+import { requestStates } from "../helpers/request-states";
 import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
@@ -92,24 +93,21 @@ export interface TaskSettledEntryOptions {
 
 /**
  * Whether a request of this session has stopped running (FIX-2123), as the
- * engine records it. A host that keeps no such record answers `true`: there a
- * notice is admitted as it was before.
+ * engine records it ({@link requestStates}). A host that keeps no such record
+ * answers `true`: there a notice is admitted as it was before.
  */
 async function hasEnded(ctx: BlockContext, requestId: string): Promise<boolean> {
-  const ended = ctx.requestHost?.waits?.ended;
-  if (ended === undefined) return true;
-  return (await ended([requestId]))[requestId] === true;
+  const states = await requestStates(ctx, [requestId]);
+  return states === undefined || states[requestId] === "ended";
 }
 
 /**
  * Whether a request of this session is running its own work now, neither
- * parked nor ended (FIX-2123), as the engine records it. A host that keeps no
- * such record answers `false`: there no notice is held for it.
+ * parked nor ended (FIX-2123), as the engine records it ({@link requestStates}).
+ * A host that keeps no such record answers `false`: there no notice is held for it.
  */
 async function isRunning(ctx: BlockContext, requestId: string): Promise<boolean> {
-  const running = ctx.requestHost?.waits?.running;
-  if (running === undefined) return false;
-  return (await running([requestId]))[requestId] === true;
+  return (await requestStates(ctx, [requestId]))?.[requestId] === "running";
 }
 
 /** The running session's board a notice names, at this session's partition. */

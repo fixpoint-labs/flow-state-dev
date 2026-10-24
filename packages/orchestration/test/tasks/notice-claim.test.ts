@@ -26,6 +26,7 @@ import type { TaskSettledInput } from "../../src";
 import { defineTaskCollection, NOTICE_DUE_MS, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
 import { taskBoard } from "../../src/task-board";
 import {
+  approve,
   awaitApproval,
   fileCall,
   finishTask,
@@ -92,26 +93,6 @@ async function eventually(check: () => boolean, withinMs: number): Promise<void>
 }
 
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** The person approves the turn parked on them, through the host's resume route. */
-async function approve(state: ReturnType<typeof runtimeFor>, requestId: string): Promise<void> {
-  const runtime = await state.getRuntime();
-  const [suspension] = (await runtime.stores.suspensions.list({ sessionId: SESSION })).filter(
-    (s: { requestId: string; status: string }) => s.requestId === requestId && s.status === "pending"
-  );
-  expect(suspension).toBeDefined();
-  const router = await state.getRouter();
-  const path = ["wait-board", "requests", requestId, "resume"];
-  const sent = await router.POST(
-    new Request(`http://localhost/api/flows/${path.join("/")}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId: USER, suspensionId: (suspension as { suspensionId: string }).suspensionId, action: "approve" })
-    }),
-    { params: { path } }
-  );
-  expect(sent.status).toBeLessThan(300);
-}
 
 describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {
   it("on the defaults, the filing turn's wait is the delivery: no onTaskSettled block runs beside it", async () => {

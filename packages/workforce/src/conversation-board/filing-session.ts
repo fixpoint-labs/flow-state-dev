@@ -50,6 +50,16 @@ export function filingProjectOf(state: unknown): string | undefined {
 }
 
 /**
+ * A session's state as it stood before a user could set the project it works
+ * in (`workProjectId`, FIX-2161): the state a row filed before rows carried
+ * the project stamp was filed from.
+ */
+export function stateBeforeWorkProject(state: unknown): Record<string, unknown> {
+  const { [WORK_PROJECT_STATE_KEY]: _set, ...before } = (state ?? {}) as Record<string, unknown>;
+  return before;
+}
+
+/**
  * The session's project, in the run's order: its workstream's, else its own.
  * The board writes it on the tasks the session files; the run source checks
  * them against it.

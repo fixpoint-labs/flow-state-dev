@@ -737,8 +737,32 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * delivery owes the filer's pass a wake, and the pass sends.
    */
   function noteFiled(row: Task): void {
+    if (delivery?.ownRequest === undefined || row.filer?.requestId !== delivery.ownRequest) return;
+    sendOwedAtStop();
+  }
+
+  /**
+   * Note a wait slot this request lapsed (FIX-2170), and ask to be called as
+   * the request ends, as {@link noteFiled} does: at a park, the delivery owes
+   * the filer's pass a wake, and that pass releases the slot, so an ending it
+   * holds goes out while the request is parked. No row is read or written at
+   * the park. The request's end releases the slot itself (`waitOnTask`).
+   */
+  function noteLapsed(row: Task | undefined): void {
     const own = delivery?.ownRequest;
-    if (delivery === undefined || own === undefined || row.filer?.requestId !== own) return;
+    if (own === undefined || row?.wait?.lapsed !== true || row.wait.requestId !== own) return;
+    sendOwedAtStop();
+  }
+
+  /**
+   * Ask the delivery to send, as this request ends, what the rows it filed
+   * still owe: once per request and board. Registered for a row the request
+   * filed ({@link noteFiled}) and for a wait slot it lapsed
+   * ({@link noteLapsed}): either way its park owes the filer's pass a wake.
+   */
+  function sendOwedAtStop(): void {
+    const own = delivery?.ownRequest;
+    if (delivery === undefined || own === undefined) return;
     delivery.hooks.whenRequestEnds?.(async () => {
       await adoptUnknownRows(mirror, options.collection);
       for (const filed of listAll() as Task[]) {
@@ -850,11 +874,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   };
 
   // A request that runs again after a park (FIX-2123) is a new resolution of
-  // the board: its own rows are noted again, so it sends what it held when
-  // it ends.
+  // the board: its own rows, and the slots it lapsed (FIX-2170), are noted
+  // again, so it sends what it held when it ends, and a second park owes the
+  // pass a wake again.
   if (delivery?.ownRequest !== undefined) {
     const own = listAll().find((row) => row.filer?.requestId === delivery.ownRequest);
     if (own !== undefined) noteFiled(own as Task);
+    noteLapsed((listAll() as Task[]).find((row) => row.wait?.lapsed === true && row.wait.requestId === delivery.ownRequest));
   }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
@@ -1413,20 +1439,23 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async lapseWait(id, gateId, requestId) {
-      // A lapsed slot is released when its request ends; the filer's pass
-      // does it when nothing in this process will (a crash). The wake first,
-      // so a crash between leaves a wake that pays nothing, never a slot with none.
+      // A lapsed slot is released when its request ends, by the filer's pass
+      // once the request parks (FIX-2170), and by that pass when nothing in
+      // this process will (a crash). The wake first, so a crash between
+      // leaves a wake that pays nothing, never a slot with none.
       const row = lookupRow(id);
       if (delivery !== undefined && row?.wait?.gateId === gateId && row.wait.lapsed !== true) {
         // Read as lapsed: a ledger that owes no notices owes no pass for a lapsed slot either.
         await delivery.hooks.owePassAt({ ...row, wait: { ...row.wait, lapsed: true } } as Task, now() + LAPSED_SLOT_CHECK_MS);
       }
-      return patchRef(id, "wait_changed", (task) => {
+      const lapsed = await patchRef(id, "wait_changed", (task) => {
         const decided = lapseWaitWrite(task as Task, gateId, requestId);
         if (decided === undefined) return undefined;
         if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
         return decided.patch as Partial<Task<TInput, TOutput>>;
       });
+      if (lapsed.outcome === "recorded") noteLapsed(lookupRow(id));
+      return lapsed;
     },
 
     async releaseWait(id, release) {

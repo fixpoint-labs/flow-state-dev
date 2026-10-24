@@ -145,8 +145,9 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { parseProjectRef, type ProjectAddressRef } from "../projects/workstream-ref";
-import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
+import { projectAddressSchema } from "../projects/collections";
+import { parseProjectRef, projectRef, type ProjectAddressRef } from "../projects/workstream-ref";
+import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf, stateBeforeWorkProject } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -380,6 +381,10 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
  * stamp in a delegate's ongoing session).
  */
 async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp: string | null; own: ProjectAddressRef | undefined }> {
+  if (root !== undefined && !isStamped(root)) {
+    const legacy = legacyProjectOf(ctx.session.state, root);
+    return { stamp: legacy === undefined ? null : projectRef(legacy), own: legacy };
+  }
   const stamp = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
   const inherited = stamp === null ? undefined : parseProjectRef(stamp);
   const own = isStamped(root) ? inherited : (filingProjectAddressOf(ctx.session.state) ?? inherited);
@@ -387,16 +392,34 @@ async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp:
 }
 
 /**
+ * The project a row filed before rows carried the stamp was filed in
+ * (FIX-2161): its conversation's as it stood then, before a user could set
+ * one (`workProjectId`), else the one its input names, which its session's
+ * run read. `undefined` for none.
+ */
+function legacyProjectOf(state: unknown, row: Pick<Task, "input">): ProjectAddressRef | undefined {
+  const conversation = filingProjectAddressOf(stateBeforeWorkProject(state));
+  if (conversation !== undefined) return conversation;
+  const named = projectAddressSchema.safeParse((row.input as { project?: unknown } | null | undefined)?.project);
+  return named.success ? named.data : undefined;
+}
+
+/**
  * The project a task's session is handed (FIX-2161): the one its row was
  * stamped with when it was filed, so a task waiting on the board keeps it
  * when its conversation's project changes; none for a row filed with none.
- * A row filed before rows carried the stamp takes its conversation's, as
- * before (BP-030).
+ * A row filed before rows carried the stamp is handed what it was handed
+ * then, its conversation's project before a user could set one (BP-030).
+ * Not the project its input names, as `legacyProjectOf` falls back to: the
+ * run reads that one itself, and the task's session may already exist,
+ * created with this value in its readonly `filingProjectId`, so handing a
+ * follow-up any other would be refused.
  */
 async function handedProjectOf(ctx: BlockContext, taskId: string): Promise<string | undefined> {
   const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
   const row = ref?.get(taskId);
-  return isStamped(row) ? filedProjectOf(row) : filingProjectOf(ctx.session.state);
+  if (isStamped(row)) return filedProjectOf(row);
+  return filingProjectOf(stateBeforeWorkProject(ctx.session.state));
 }
 
 /**

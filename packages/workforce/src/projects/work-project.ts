@@ -36,8 +36,14 @@ import { isMember } from "./membership-gate";
 import { PROJECT_ROW_RESOURCES, projectRowsAt } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
-/** What the action takes: the project, by visibility and id. */
-export const setWorkProjectInputSchema = z.object({ project: projectAddressSchema }).strict();
+/**
+ * What the action takes: the project, by visibility and id, and the worker
+ * the caller means the session to run, which it must. `worker` is a check on
+ * the caller's intent, which the workforce client always sends, not a
+ * boundary: a caller that leaves it out sets whichever of its own sessions it
+ * names.
+ */
+export const setWorkProjectInputSchema = z.object({ project: projectAddressSchema, worker: z.string().min(1).optional() }).strict();
 
 export type SetWorkProjectInput = z.infer<typeof setWorkProjectInputSchema>;
 
@@ -80,7 +86,11 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
     resources: { ...PROJECT_ROW_RESOURCES },
     execute: async (input, ctx) => {
       const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-      if (typeof state[WORKER_ID_STATE_KEY] !== "string") refuse("this session runs no worker, so it has no project to set.");
+      const running = state[WORKER_ID_STATE_KEY];
+      if (typeof running !== "string") refuse("this session runs no worker, so it has no project to set.");
+      if (input.worker !== undefined && input.worker !== running) {
+        refuse(`this session runs "${running}", not "${input.worker}". Name the session's own worker.`);
+      }
       for (const [key, what] of LINKED) {
         if (state[key] !== undefined) refuse(`this is ${what}. Its project can't be set.`);
       }
