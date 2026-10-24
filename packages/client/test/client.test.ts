@@ -58,10 +58,12 @@ describe("createClient", () => {
     expect(() => createClient({ userId: "u1", fetcher: vi.fn() })).not.toThrow();
   });
 
-  it("addresses a fixed internal origin when it has a fetcher and no baseUrl", async () => {
+  it("addresses the same origin when it has a fetcher and no baseUrl", async () => {
+    // A credential wrapper forwards the URL to the browser's fetch, so it must
+    // stay relative; `createInProcessFetch` reads only the path either way.
     const fetcher = routed({ "GET /api/flows": () => json({ flows: [] }) });
     await createClient({ userId: "u1", fetcher }).flows();
-    expect(String(fetcher.mock.calls[0]?.[0])).toBe("http://in-process.invalid/api/flows");
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe("/api/flows");
   });
 });
 

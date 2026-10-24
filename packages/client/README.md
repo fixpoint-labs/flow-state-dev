@@ -48,8 +48,9 @@ const flowState = createFlowState({ flows: { support } });
 const fsd = createClient({ userId: "user_1", fetcher: createInProcessFetch(flowState) });
 ```
 
-With a fetcher and no `baseUrl`, the client addresses a fixed internal origin
-the fetcher ignores.
+With a fetcher and no `baseUrl`, the client sends relative URLs: the in-process
+fetcher reads only the path, and in a browser a credential wrapper reaches the
+page's own origin.
 
 ### Adding credentials
 

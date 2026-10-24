@@ -12,13 +12,6 @@ import { ClientHttpError } from "../types";
 /** The mount every client route is written against, and the server's default. */
 const DEFAULT_API_PATH = "/api/flows";
 
-/**
- * The origin a client with a `fetcher` and no `baseUrl` addresses. It never
- * resolves (`.invalid` is reserved), and `createInProcessFetch` reads only the
- * path, so an embedded caller never writes a made-up URL.
- */
-export const IN_PROCESS_ORIGIN = "http://in-process.invalid";
-
 /** What one transport is built from. */
 export type TransportOptions = {
   baseUrl?: string;
@@ -41,8 +34,9 @@ export type Transport = {
  * Builds the one transport for a client.
  *
  * `baseUrl` is required without a fetcher (an empty string means the page's
- * own origin). With a fetcher and no `baseUrl`, routes are addressed at
- * {@link IN_PROCESS_ORIGIN}.
+ * own origin). With a fetcher and no `baseUrl`, routes stay relative: a
+ * credential wrapper hands them to the browser's `fetch`, which resolves them
+ * against the page, and `createInProcessFetch` reads only the path.
  */
 export function createTransport(options: TransportOptions): Transport {
   const fetcher = resolveFetch(options.fetcher);
@@ -50,7 +44,7 @@ export function createTransport(options: TransportOptions): Transport {
     options.baseUrl !== undefined
       ? options.baseUrl
       : options.fetcher !== undefined
-        ? IN_PROCESS_ORIGIN
+        ? ""
         : clientError("createClient requires baseUrl, or a fetcher");
   const url = (path: string, query?: Record<string, QueryValue>): string =>
     buildFlowApiUrl({ path, baseUrl, apiPath: options.apiPath, query });
@@ -137,7 +131,7 @@ function resolveFetch(fetcher?: ClientFetch): ClientFetch {
  * given, that leading mount is swapped for it, so a server mounted elsewhere
  * (the Node host's `basePath`) is reached at the same route.
  */
-export function buildFlowApiUrl(options: {
+function buildFlowApiUrl(options: {
   path: string;
   baseUrl?: string;
   apiPath?: string;
