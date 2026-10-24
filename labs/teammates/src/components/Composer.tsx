@@ -17,7 +17,8 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    // Enter that ends an input method's composition (CJK and the like) picks the text; it doesn't send.
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
     }

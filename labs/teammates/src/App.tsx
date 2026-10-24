@@ -48,6 +48,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <Runs adapter={adapter} worker={worker} workers={workers} sessions={sessions} projects={projects} nameOf={nameOf} />
       ) : worker && sessionId ? (
         <Conversation
+          // One conversation per session: a draft typed to one worker never carries over to another.
+          key={sessionId}
           adapter={adapter}
           worker={worker}
           sessionId={sessionId}
