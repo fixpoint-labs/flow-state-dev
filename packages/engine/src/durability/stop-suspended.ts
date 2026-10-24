@@ -46,11 +46,12 @@
  * skipped) whose turn never continued (FIX-1850): the turn continues with the
  * person's recorded resolution, as their resume would have.
  */
-import { isWaitGate, isExpiredApproval, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { isUserSuspension, isWaitGate, continuesAtExpiry, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { DurabilityProvider } from "./types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
+import { TASK_SOURCE } from "../execution/transport-sources";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
 
@@ -175,7 +176,7 @@ async function owedNonWaitLatestGate(
   const suspensionId = latestGateIdOf(record);
   if (suspensionId === undefined) return undefined;
   const gate = await deps.provider.loadSuspension(record.id, suspensionId);
-  if (gate === null || isWaitGate(gate) || isExpiredApproval(gate) || !owesRedrive(gate)) return undefined;
+  if (gate === null || isWaitGate(gate) || continuesAtExpiry(gate) || !owesRedrive(gate)) return undefined;
   return gate;
 }
 
@@ -227,11 +228,16 @@ async function stopAtNonWaitGate(
       }
       // Fenced on the incarnation checked: if another request took the id in
       // between, nothing is stopped, and the caller hears `already-resolved`.
-      if (!(await recordStop(deps, record))) return { refusal: "refused" };
+      if (stopsAtItsGate(record, current)) {
+        if (!(await stillParked(deps, record))) return { refusal: "refused" };
+      } else if (!(await recordStop(deps, record))) {
+        return { refusal: "refused" };
+      }
       return { suspension: current };
     },
     // Read as a rejection only if a block reaches the gate before the stop
-    // does; the stop recorded on the turn ends it first.
+    // does; the stop recorded on the turn ends it first. A task's run stopped
+    // at a user's stop ends at the gate instead (`stopsAtItsGate`).
     action: "reject",
     resumedBy: "stop",
     status: "stopped"
@@ -239,6 +245,35 @@ async function stopAtNonWaitGate(
   if (result.ok) return true;
   // Busy: someone holds the turn's lease. If it is a stop, the gate says so.
   return "busy" in result && (await deps.provider.loadSuspension(record.id, gate.suspensionId))?.status === "stopped";
+}
+
+/**
+ * Whether a stop of this parked request ends it at its gate rather than
+ * before anything runs (FIX-2129): a task's run (`task` source) parked on a
+ * user's suspension. Its continuation re-enters the board's claim gate, which
+ * reads the stop and cancels the task, and then ends at the suspension itself:
+ * `ctx.suspend` reads `stopped`, records the stop on the request and throws
+ * its abort, so no block runs past it. Every other parked request is stopped
+ * before anything runs, as before (BR-16).
+ */
+export function stopsAtItsGate(
+  record: Pick<RequestRecord, "source">,
+  gate: Pick<SuspensionRecord, "reason">
+): boolean {
+  return record.source === TASK_SOURCE && isUserSuspension(gate);
+}
+
+/** Whether `record` is still parked under the incarnation that was checked. */
+async function stillParked(
+  deps: SuspendedStopDeps,
+  record: Pick<RequestRecord, "id" | "createdAt" | "incarnation">
+): Promise<boolean> {
+  const fresh = await deps.stores.request.get(record.id);
+  return (
+    fresh !== undefined &&
+    PARKED.includes(fresh.status) &&
+    resolveRequestIncarnation(fresh) === resolveRequestIncarnation(record)
+  );
 }
 
 /**
@@ -320,12 +355,26 @@ export async function parkedInterruptedIds(
   return parked;
 }
 
+/**
+ * Whether the request's log holds a user's suspension with this id: one it
+ * asked, since resolved, whose record a finished request no longer keeps.
+ */
+export function loggedUserStop(record: { readonly items?: readonly unknown[] }, suspensionId: string): boolean {
+  return (record.items ?? []).some((item) => {
+    const logged = item as { type?: string; suspensionId?: string; reason?: string };
+    return logged.type === "suspension" && logged.suspensionId === suspensionId && isUserSuspension({ reason: logged.reason ?? "" });
+  });
+}
+
 /** Whether this gate owes a re-drive. The sweep and {@link redriveResolvedGate} both use it. */
 export function owesRedrive(gate: Pick<SuspensionRecord, "reason" | "status" | "allow">): boolean {
   return (
     gate.status === "stopped" ||
+    // A user's suspension cancelled (FIX-2129): the cancel's own payment
+    // continues it at once, and this finishes one a crash left parked.
+    gate.status === "cancelled" ||
     (gate.status === "submitted" && isWaitGate(gate)) ||
-    isExpiredApproval(gate) ||
+    continuesAtExpiry(gate) ||
     personResolutionOf(gate) !== undefined
   );
 }
@@ -373,7 +422,7 @@ export async function redriveResolvedGate(
       if (!isLatestGate(record, gate.suspensionId)) return { refusal: "superseded" };
       const current = await deps.provider.loadSuspension(gate.requestId, gate.suspensionId);
       if (current === null || current.status === "pending") return { refusal: "superseded" };
-      if (isExpiredApproval(current)) {
+      if (continuesAtExpiry(current)) {
         // No longer valid: the gated call reads a rejection marked expired,
         // and the turn carries on.
         return {
@@ -387,9 +436,16 @@ export async function redriveResolvedGate(
       }
       const personAction = personResolutionOf(current);
       if (personAction !== undefined) return recordedResume(current, personAction);
+      // A cancel continues as a rejection; the turn reads the gate's
+      // recorded `cancelled` as its resolution (FIX-2129).
+      if (current.status === "cancelled") {
+        return { resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy } };
+      }
       if (!isWaitGate(current)) {
-        // Only a `stopped` non-wait gate is owed here: the stop recorded on the turn ends it.
-        if (current.status !== "stopped" || !(await recordStop(deps, record))) return { refusal: "not-parked" };
+        // Only a `stopped` non-wait gate is owed here: the stop recorded on the
+        // turn ends it, or, for a task's run at a user's stop, the gate does.
+        if (current.status !== "stopped") return { refusal: "not-parked" };
+        if (!stopsAtItsGate(record, current) && !(await recordStop(deps, record))) return { refusal: "not-parked" };
         return {
           resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy }
         };

@@ -560,7 +560,7 @@ async function legC(run: Run): Promise<void> {
 }
 
 const STOPS = [
-  ["human_input", "person"],
+  ["human_input", "user"],
   ["external_event", "wait"]
 ] as const;
 

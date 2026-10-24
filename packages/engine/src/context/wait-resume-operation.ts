@@ -17,9 +17,11 @@ import { isWaitGate } from "@flow-state-dev/core/types";
 import type {
   WaitOutcome,
   ResumeWaitResult,
+  SuspensionAddress,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resumeWaitGate, type WaitResumeDeps } from "../durability/resume-wait-gate";
+import { cancelUserSuspension } from "../durability/cancel-user-suspension";
 import { ownsRecord, type OwnerIdentity } from "./record-owner";
 
 /**
@@ -30,23 +32,30 @@ import { ownsRecord, type OwnerIdentity } from "./record-owner";
  * it over the running request's identity. The identity arrives from there,
  * never from the block that calls the verb.
  */
-export type WaitResumeOperation = (input: {
-  gateId: string;
-  outcome: WaitOutcome;
-  /** The running request's identity, server-derived. */
-  owner: {
-    sessionId: string;
-    userId: string;
-    tenantId: string | undefined;
-    orgId: string;
-    /** The flow instance that runs the request. */
-    flow: OwnerIdentity;
-  };
-}) => Promise<ResumeWaitResult>;
+export type WaitResumeOperation = (
+  input: (
+    | { gateId: string; outcome: WaitOutcome }
+    | { suspension: SuspensionAddress; outcome: { readonly cancelled: true }; first?: () => Promise<void> }
+  ) & {
+    /** The running request's identity, server-derived. */
+    owner: {
+      sessionId: string;
+      userId: string;
+      tenantId: string | undefined;
+      orgId: string;
+      /** The flow instance that runs the request. */
+      flow: OwnerIdentity;
+    };
+  }
+) => Promise<ResumeWaitResult>;
 
 /** Build the {@link WaitResumeOperation} a host hands its request hosts. */
 export function createWaitResumeOperation(deps: WaitResumeDeps): WaitResumeOperation {
-  return async ({ gateId, outcome, owner }) => {
+  return async (input) => {
+    // A wait for a user to cancel (FIX-2129): found by its address, in any
+    // session of this principal's.
+    if ("suspension" in input) return cancelUserSuspension(deps, input.suspension, input.owner, input.first);
+    const { gateId, outcome, owner } = input;
     const notFound: ResumeWaitResult = {
       ok: false,
       refused: "gate-not-found",

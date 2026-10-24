@@ -73,7 +73,7 @@
  */
 import { sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
-import { taskDispatchInputSchema } from "@flow-state-dev/core/types";
+import { requestResumeOf, taskDispatchInputSchema } from "@flow-state-dev/core/types";
 import type {
   ActionCore,
   BlockContext,
@@ -442,6 +442,18 @@ function buildTaskGate(options: {
                 "addressed (its incarnation differs, though its creation stamp does not)"
             );
           }
+          // The task's own run, resumed from its wait for a user without an
+          // answer (FIX-2129). Cancelled with the task: its block reads
+          // `cancelled` and runs to its end. Stopped: the task is cancelled
+          // here, and the run ends at its suspension. Either way it holds no
+          // claim, so nothing it writes to the task, nothing it returns and no
+          // task it files is kept: it is admitted for nothing.
+          const resumed = userResumeOf(ctx, row);
+          if (resumed === "stopped" && row.status === "in_progress") await cancelForStop(board, row);
+          if (resumed === "stopped" || (resumed === "cancelled" && row.status === "cancelled")) {
+            ctx._markTaskScope?.(row.id);
+            return;
+          }
           if (row.status !== "in_progress") {
             throw new StaleTaskClaimError(
               dispatch.taskId,
@@ -584,6 +596,31 @@ export class UnknownTaskLedgerError extends Error {
  *   code, because what the dispatch must do about them is the same: stop, and
  *   write nothing.
  */
+/** Why a stop cancels a task waiting on a user, on its row. */
+export const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
+
+/**
+ * How the running request, `row`'s own run, resumed from its wait for a
+ * user without an answer (FIX-2129): `cancelled` (its task was cancelled, or
+ * the board ended that one stop) or `stopped`. `undefined` for any other
+ * request, and for an answered resume.
+ */
+function userResumeOf(ctx: BlockContext, row: Task): "cancelled" | "stopped" | undefined {
+  const resumed = requestResumeOf(ctx as never);
+  if (resumed === undefined || !resumed.userSuspension || row.run?.requestId !== ctx.request.identity.id) return undefined;
+  return resumed.resolution === "cancelled" || resumed.resolution === "stopped" ? resumed.resolution : undefined;
+}
+
+/**
+ * A stop of a task's run while it waits for a user cancels the task, where a
+ * stopped request would otherwise fail its attempt (FIX-2129, rule 12): asked
+ * again, the user would be asked the same thing. Written with the run's own
+ * claim, so a row another attempt took is left alone.
+ */
+async function cancelForStop(board: TaskCollectionRef, row: Task): Promise<void> {
+  await board.cancel(row.id, STOPPED_WHILE_WAITING, { claim: ticketForClaim(board.collectionId, row, board.partition) });
+}
+
 async function adoptLapsedLease(
   board: TaskCollectionRef,
   row: Task

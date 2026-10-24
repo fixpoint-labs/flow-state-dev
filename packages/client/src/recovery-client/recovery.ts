@@ -101,6 +101,27 @@ export type ResumeSuspensionResult = {
   originalRequestId: string;
 };
 
+/**
+ * The answer to a suspension that waits for a user ({@link RecoveryClient.answerSuspension}).
+ * Who answered is the signed-in caller, set by the server: there is no `resumedBy`.
+ */
+export type AnswerSuspensionBody = {
+  /** Id of the pending suspension to answer. */
+  suspensionId: string;
+  /**
+   * The answer: `approve` or `reject` for an approval, `submit` with `data`
+   * for a review or an input. Must be in the suspension's `allow` set (409 otherwise).
+   */
+  action: ResumeAction;
+  /** The answer's payload, validated against the suspension's `resumeSchema`. */
+  data?: unknown;
+};
+
+export type AnswerSuspensionResult = {
+  /** The answered request's id: the same request continues. */
+  requestId: string;
+};
+
 export type RecoveryClient = {
   /**
    * Sweep stale active-request entries for the given user. Returns the
@@ -157,6 +178,21 @@ export type RecoveryClient = {
     requestId: string,
     body: ResumeSuspensionBody
   ) => Promise<Response>;
+  /**
+   * Answer a suspension that waits for a user (`ctx.waitForUser`, or a raw
+   * `human_approval` / `human_input` stop), whatever started its run, a
+   * task's included (FIX-2129). POSTs to the answer route, which checks the
+   * caller owns the stop's request before it reads the stop, resolves it
+   * once, and continues the same request. Throws on a refusal: 404 for a stop
+   * that is not the caller's or not a user's, 409 for one already resolved
+   * (an answer, a cancel, a deadline or a stop got there first), 410 past its
+   * deadline, 400 for an answer that fails the stop's schema.
+   */
+  answerSuspension: (
+    flowKind: string,
+    requestId: string,
+    body: AnswerSuspensionBody
+  ) => Promise<AnswerSuspensionResult>;
 };
 
 type RetryResponseBody = {
@@ -288,6 +324,27 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body)
+        }
+      });
+    },
+
+    answerSuspension: async (flowKind, requestId, body) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(requestId, "requestId");
+      requireNonEmpty(body.suspensionId, "suspensionId");
+      requireAction(body.action, "answerSuspension");
+
+      return requestJson<AnswerSuspensionResult>({
+        fetcher,
+        url: buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/answer`
+        }),
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
         }
       });
     },

@@ -75,6 +75,8 @@ export {
   type ContinueRequestResult,
   type ResumeSuspensionBody,
   type ResumeSuspensionResult,
+  type AnswerSuspensionBody,
+  type AnswerSuspensionResult,
   type RecoveryClient
 } from "./recovery-client/recovery";
 

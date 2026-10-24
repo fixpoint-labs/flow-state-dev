@@ -40,6 +40,8 @@ export interface ResolvedResume {
   rejected: boolean;
   /** True when the rejection was an expiry, not a person's answer. */
   expired: boolean;
+  /** True when the suspension was cancelled, not answered (FIX-2129): read as a rejection marked cancelled. */
+  cancelled: boolean;
   /**
    * True when the resolution was a skip — `ctx.suspend()` must return the
    * `SUSPENSION_SKIPPED` sentinel on replay, not the persisted `data`, so a
@@ -185,7 +187,7 @@ export function buildReplayLog(
   /** Resolution payloads keyed by the suspension id they resolved. */
   const resumeBySuspension = new Map<
     string,
-    { data: unknown; rejected: boolean; expired: boolean; skipped: boolean; resolvedBy: string | undefined }
+    { data: unknown; rejected: boolean; expired: boolean; cancelled: boolean; skipped: boolean; resolvedBy: string | undefined }
   >();
 
   for (const item of items) {
@@ -251,8 +253,9 @@ export function buildReplayLog(
       resumedIds.add(resume.suspensionId);
       resumeBySuspension.set(resume.suspensionId, {
         data: resume.resumeData,
-        rejected: resume.resolution === "rejected" || resume.resolution === "expired",
+        rejected: resume.resolution === "rejected" || resume.resolution === "expired" || resume.resolution === "cancelled",
         expired: resume.resolution === "expired",
+        cancelled: resume.resolution === "cancelled",
         skipped: resume.resolution === "skipped",
         resolvedBy: resume.resolvedBy,
       });
@@ -285,6 +288,7 @@ export function buildReplayLog(
       data: resume.data,
       rejected: resume.rejected,
       expired: resume.expired,
+      cancelled: resume.cancelled,
       skipped: resume.skipped,
       suspensionId: s.suspensionId,
       resolvedBy: resume.resolvedBy,

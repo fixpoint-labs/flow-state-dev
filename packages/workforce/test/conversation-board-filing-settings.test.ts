@@ -241,9 +241,10 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
     }
   });
 
-  it("cancels a piece filed after its task was cancelled, so it doesn't outlive the task", async () => {
+  it("refuses a piece filed after its task was cancelled, so it never outlives the task (FIX-2129)", async () => {
     // The task's ending finds nothing filed yet, so its cascade cancels
-    // nothing; the piece is added after. The add itself must catch it.
+    // nothing; the piece is filed after. The filing reads the task as stored
+    // and is refused before anything is added, so no claimable row exists.
     const h = bootSplitHost();
     try {
       let file!: () => void;
@@ -256,11 +257,12 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       const top = await one(h, "Plan the retreat");
       expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
       file();
-      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the cabin")).length === 1)).toBe(true);
+      expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);
       await h.settled();
 
       expect((await one(h, "Plan the retreat")).status).toBe("cancelled");
-      expect((await one(h, "[slow:3000] Book the cabin")).status).toBe("cancelled");
+      expect(h.controls.refusals.find((r) => r.worker === "s1")).toMatchObject({ error: "TaskFilingRefusedError", message: expect.stringMatching(/^parent_cancelled:/) });
+      expect(await h.rowsNamed("alice", "[slow:3000] Book the cabin")).toEqual([]);
     } finally {
       await h.dispose();
     }

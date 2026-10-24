@@ -439,13 +439,13 @@ describe("the claim gate settles a task when its work is over", () => {
         return { resumedWith: resolution };
       });
       const first = await h.run();
-      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person" });
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user" });
 
       // A piece of the task ends (or a check runs) while its own turn waits on the person.
       h.setLaterTurn(async () => "an answer while it waits");
       await h.runLater(later);
 
-      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person", attempts: 1 });
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user", attempts: 1 });
       expect((await h.row())?.leaseUntil).toBeUndefined();
 
       const resumed = await h.resume(first.requestId!, { ok: true });
@@ -454,23 +454,23 @@ describe("the claim gate settles a task when its work is over", () => {
     }
   );
 
-  it("a parked request that is stopped fails its attempt: the task never sits waiting with no lease and no payer", async () => {
+  it("a parked request stopped while it waits for a user cancels its task on that attempt (FIX-2129): never left waiting, never asked again", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "human_input", message: "which one?" }));
     const first = await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person" });
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user" });
 
     expect(await h.stop(first.requestId!)).toBe("stopped");
 
     const row = await h.row();
-    // Two attempts: the stopped one fails and the task goes back for its retry.
-    expect(row?.status === "pending" || row?.status === "errored").toBe(true);
+    // A retry would ask the user the same thing again (rule 12): the stop cancels the task instead.
+    expect(row).toMatchObject({ status: "cancelled", attempts: 1 });
     expect(row?.waitingOn).toBeUndefined();
   });
 
   it.each([
-    ["human_input", "person"],
-    ["human_approval", "person"],
+    ["human_input", "user"],
+    ["human_approval", "user"],
     ["external_event", "wait"],
   ] as const)("a %s stop keeps its claim with no lease, and the resume settles it on attempt 1", async (reason, waitingOn) => {
     const h = await harness();

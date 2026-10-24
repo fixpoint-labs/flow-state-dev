@@ -151,7 +151,7 @@ import type { DeliveryHooks } from "../notice/delivery";
 import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS, owesUntakenNotice, resendNowPatch } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
-import { assertDepsFileable, assertFilingSettings, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
+import { assertDepsFileable, assertFilingSettings, assertParentsOpen, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
 import {
   cascadeCancelPatch,
   endsDependents,
@@ -801,10 +801,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   }
 
   /** Each outside dependency as stored now, so one another request ended is refused here (FIX-2114). */
-  async function refreshDeps(batch: readonly Pick<Task, "id" | "deps">[]): Promise<void> {
+  async function refreshDeps(batch: readonly Pick<Task, "id" | "deps" | "filedByTask">[]): Promise<void> {
     const filed = new Set(batch.map((row) => row.id));
-    for (const depId of new Set(batch.flatMap((row) => row.deps ?? []))) {
-      if (!filed.has(depId)) await ref.refresh?.(depId);
+    // The rows each filing depends on, and the task that files it (FIX-2129):
+    // both are read committed, not from this process's mirror.
+    const read = batch.flatMap((row) => [...(row.deps ?? []), ...(row.filedByTask !== undefined ? [row.filedByTask] : [])]);
+    for (const id of new Set(read)) {
+      if (!filed.has(id)) await ref.refresh?.(id);
     }
   }
 
@@ -902,6 +905,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init));
       await refreshDeps([task as Task]);
       assertDepsFileable([task as Task], lookupRow);
+      assertParentsOpen([task as Task], lookupRow);
       const created = await options.collection.create(
         task.id,
         task as unknown as JsonObject
@@ -921,6 +925,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // Every row is checked before any is written; ids in the batch count (FIX-2080).
       await refreshDeps(built as Task[]);
       assertDepsFileable(built as Task[], lookupRow);
+      assertParentsOpen(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];
       for (const task of built) {
         const createdRef = await options.collection.create(
