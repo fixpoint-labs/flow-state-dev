@@ -165,7 +165,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const task = s.tasks.find((t) => t.title === title);
     if (!task || task.status !== "in_progress") return;
     writeStep(s, task, { status: "completed", statusNote: undefined }, summary);
-    // fixture: stands in for the lab's answerAgain source block (FIX-2159): the take shows as an item in the running request.
+    // fixture: stands in for the main worker's `answerAgain: true` (FIX-2159): the take shows as an item in the running request.
     push(s, {
       kind: "result",
       id: nextId("r"),
@@ -262,14 +262,15 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const turn = (s: FixtureSession, text: string, origin: string) => {
     startTurn(s);
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
-    // The running task the line names (by a word of its title), else the first one running.
+    // The task the line names (by a word of its title), finished or not, else the first one running.
+    // The stop script re-reads its status, so a finished one is reported, not swapped for another.
     const runningTasks = s.tasks.filter((t) => t.status === "in_progress" || t.status === "held" || t.status === "parked");
     // One tokenizer for the line and the titles, so punctuation (`second.ts`) splits the same on both sides.
     const tokens = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
     const words = new Set(tokens(text));
     // The task whose title shares the most words with the line, so `second.ts` beats a shared `ts`.
     const score = (t: FixtureTask) => tokens(t.title).slice(1).filter((word) => words.has(word)).length;
-    const named = runningTasks.reduce<FixtureTask | undefined>((best, t) => (score(t) > (best ? score(best) : 0) ? t : best), undefined);
+    const named = s.tasks.reduce<FixtureTask | undefined>((best, t) => (score(t) > (best ? score(best) : 0) ? t : best), undefined);
     const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
       play(s, stopScript(s, running));

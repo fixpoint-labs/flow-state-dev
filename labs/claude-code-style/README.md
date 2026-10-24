@@ -73,7 +73,7 @@ fixtures are deleted and each verb calls the package.
 |---|---|
 | The sessions list and *New session* | FIX-2158, a user's sessions of one worker |
 | The project picker and a session's project | FIX-2161, an ordinary session opened on a project |
-| A result card inside a running turn | FIX-2159, the lab's `answerAgain` source block (built at wiring) |
+| A result card inside a running turn | FIX-2159, `answerAgain: true` on the main worker (set at wiring) |
 | Sending, interrupting, the thread and the tasks pane | `respond`, aborting a request, session items, `listTasks` |
 | Threads and the board's columns | the lead's `createTask` calls, task statuses and what a task waits on |
 | Talking in a thread and answering its question | `updateTask_tasks` with your line as a steer, naming the open question (FIX-2131) |
@@ -92,9 +92,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 301 |
+| Configuration | 18 | 501 |
 | React UI | 20 | 1326 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 470 |
-| Checks (not app code) | 6 | 671 |
+| Fixtures (deleted at wiring) | 3 | 1413 |
+| Checks (not app code) | 6 | 681 |
 <!-- inventory:end -->
