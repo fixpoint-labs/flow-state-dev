@@ -288,8 +288,8 @@ export interface RequestHandle {
    */
   retry(options?: { input?: unknown }): Promise<RequestHandle>;
   /**
-   * Answer a pending suspension of this request. The run carries on as a new
-   * request, which this resolves to.
+   * Answer a pending suspension of this request. The run carries on under the
+   * same request id; this resolves to its handle.
    */
   resume(body: ResumeSuspensionBody): Promise<RequestHandle>;
   resume(body: ResumeSuspensionBody, options: StreamOption): Promise<Response>;
@@ -726,12 +726,11 @@ function requestHandle(
     if (resumeOptions?.stream === true) {
       return t.raw(`${base}/resume`, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } });
     }
-    const resumed = await t.json<{ requestId: string; originalRequestId: string }>(`${base}/resume`, {
-      ...init,
-      headers: JSON_HEADERS
-    });
-    // The resumed run is a new request in the same session.
-    return requestHandle(t, flow, resumed.requestId, session === undefined ? undefined : await session);
+    const resumed = await t.json<{ requestId: string }>(`${base}/resume`, { ...init, headers: JSON_HEADERS });
+    // The run carries on under its own id; a server that answers another id names the request that does.
+    return resumed.requestId === id
+      ? handle
+      : requestHandle(t, flow, resumed.requestId, session === undefined ? undefined : await session);
   }
 
   const handle: RequestHandle = {

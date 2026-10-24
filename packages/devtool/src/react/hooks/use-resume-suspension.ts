@@ -9,7 +9,7 @@
  * `__devtool__` address, and not whichever copy of the kind is registered.
  */
 import { useCallback, useState } from "react";
-/** The resumed run: a new request, and the suspended one it carries on from. */
+/** The resumed run: the request that carries on (the suspended one, under its own id), and the one it carries on from. */
 export type ResumeSuspensionResult = { requestId: string; originalRequestId: string };
 import { useDevTool } from "../context/devtool-context";
 

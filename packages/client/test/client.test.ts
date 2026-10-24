@@ -203,17 +203,17 @@ describe("request handle", () => {
     expect(calls(fetcher).at(-1)).toBe("POST /api/flows/demo/sessions/sess_1/requests/req_1/retry");
   });
 
-  it("resumes a suspension as a new request, and refuses an unknown action before any call", async () => {
+  it("resumes a suspension under the same request, and refuses an unknown action before any call", async () => {
     const fetcher = routed({
       "POST /resume": (init) => {
         expect(JSON.parse(String(init?.body))).toEqual({ suspensionId: "sus_1", action: "approve" });
-        return json({ requestId: "req_3", originalRequestId: "req_1" }, 202);
+        return json({ requestId: "req_1" }, 202);
       }
     });
     const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
 
     const resumed = await request.resume({ suspensionId: "sus_1", action: "approve" });
-    expect(resumed.id).toBe("req_3");
+    expect(resumed).toBe(request);
 
     await expect(
       // @ts-expect-error not a resume action
