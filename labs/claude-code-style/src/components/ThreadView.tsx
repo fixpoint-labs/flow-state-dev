@@ -4,13 +4,7 @@ import { useWatch } from "../lib/use-watch";
 import { Entry } from "./Entry";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
-/**
- * One thread, in place of the board. Its work reads the task's run session.
- * You can talk inside a thread (spec D3): your line is a steer on its task,
- * and answers its open question when it has one. When it is ready for
- * review, *Resolve* accepts it and *Request changes* sends your words back.
- * A finished thread's composer is off: you ask the main session to follow up.
- */
+/** Your line steers, answers a question, or requests changes. A finished thread's composer is off. */
 export function ThreadView({
   adapter,
   sessionId,

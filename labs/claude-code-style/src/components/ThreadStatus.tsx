@@ -1,26 +1,13 @@
 import type { TaskRow } from "../adapter";
-import { columnOf, type Column } from "../lib/columns";
+import { COLUMNS, columnOf } from "../lib/columns";
 import { cn } from "../lib/utils";
 
-/** A harness's name as a card and row tag it. */
 const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
 
-/** What a thread's status line says first, by its column. */
-const LINE_LABEL: Record<Exclude<Column, "pinned">, string> = {
-  working: "Working",
-  waiting: "Waiting on you",
-  review: "Ready for review",
-  resolved: "Resolved",
-};
-
 /** The thread's column, ignoring pins: a pinned thread keeps its status icon and line. */
-export const statusColumn = (task: TaskRow) => columnOf(task, false) as Exclude<Column, "pinned">;
+export const statusColumn = (task: TaskRow) => columnOf(task, false);
 
-/**
- * A thread's status icon: a ring while it works, a filled dot when it needs
- * you (`attention` for a question, `success` for a review), a cross when it
- * failed, a check when resolved.
- */
+/** Ring while it works, filled dot when it needs you, cross when it failed, check when resolved. */
 export function ThreadIcon({ task }: { task: TaskRow }) {
   const column = statusColumn(task);
   if (task.status === "errored") return <span aria-hidden className="mt-0.5 w-3 shrink-0 text-center text-xs leading-none text-destructive">✕</span>;
@@ -41,19 +28,17 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
 /** A run that completed at the review deadline: resolved, but never approved. */
 const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
 
-/** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …", "Resolved · not reviewed". */
+/** Not reviewed when it completed at the deadline. Failed and Cancelled name the status; other columns use their group label. */
 export function statusLine(task: TaskRow): string {
   if (notReviewed(task)) return "Resolved · not reviewed";
-  const label = task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : LINE_LABEL[statusColumn(task)];
+  const column = statusColumn(task);
+  const label =
+    task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : COLUMNS.find((c) => c.id === column)!.label;
   const note = task.waitingOn?.prompt ?? task.statusNote;
   return note ? `${label} · ${note}` : label;
 }
 
-/**
- * The tag naming the harness a thread runs through, or nothing for a plain
- * thread; and a *Not reviewed* mark on a run that completed at its review
- * deadline, so it never reads as approved.
- */
+/** The harness tag, or nothing when there is none. Not reviewed when the run completed at its review deadline. */
 export function HarnessTag({ task }: { task: TaskRow }) {
   return (
     <>

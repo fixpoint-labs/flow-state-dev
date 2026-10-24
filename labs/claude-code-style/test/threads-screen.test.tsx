@@ -59,7 +59,6 @@ describe("the threads-mode screen", () => {
     await startThreadsSession(0.01);
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(rowsIn("Waiting on you").join()).toMatch(/Which region matters, EU or US\?/));
-    // The card offers Answer; answering happens in the thread's view, which replaces the board.
     fireEvent.click(within(card("Vendor B · regions")).getByRole("button", { name: "Answer" }));
     const view = screen.getByRole("complementary", { name: "Thread: Vendor B · regions" });
     expect(within(view).getByRole("note").textContent).toMatch(/Waiting on you · Which region matters/);

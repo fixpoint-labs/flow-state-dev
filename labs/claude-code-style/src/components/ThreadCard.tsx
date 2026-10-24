@@ -2,14 +2,7 @@ import type { LabAdapter, TaskRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
-/**
- * A compact thread card in the main thread, where the lead's `createTask`
- * call is. It reads the task row live: icon, title, status line, and
- * *View thread*, plus *Answer* when the thread waits on you and *Resolve* and
- * *Request changes* when it is ready for review. *Resolve* answers the review
- * from the card; *Answer* and *Request changes* open the thread's view, where
- * you type the words.
- */
+/** Resolve answers from the card. Answer and Request changes open the view, where you type. */
 export function ThreadCard({
   adapter,
   sessionId,
@@ -25,6 +18,11 @@ export function ThreadCard({
   const column = statusColumn(task);
   const button = "border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
   const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
+  const viewThread = (
+    <button type="button" className={button} onClick={() => onOpen(task.id)}>
+      View thread
+    </button>
+  );
   return (
     <section
       aria-label={`Thread: ${task.title}`}
@@ -61,17 +59,11 @@ export function ThreadCard({
                 </button>
               </>
             ) : null}
-            <button type="button" className={button} onClick={() => onOpen(task.id)}>
-              View thread
-            </button>
+            {viewThread}
           </div>
         ) : null}
       </div>
-      {column === "working" || column === "resolved" ? (
-        <button type="button" className={button} onClick={() => onOpen(task.id)}>
-          View thread
-        </button>
-      ) : null}
+      {column === "working" || column === "resolved" ? viewThread : null}
     </section>
   );
 }

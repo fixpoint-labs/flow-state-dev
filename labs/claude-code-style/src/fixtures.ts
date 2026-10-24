@@ -134,39 +134,37 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const say = (s: FixtureSession, text: string): Step[1] => () => push(s, { kind: "assistant", id: nextId("a"), text });
 
-  const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
-    const id = nextId("task");
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
-    s.tasks = [
-      ...s.tasks,
-      {
-        id,
-        title,
-        goal,
-        status: "in_progress",
-        assignee: "desk.researcher",
-        statusNote: note,
-        work: [{ kind: "assistant", id: nextId("w"), text: `Starting: ${goal}` }],
-      },
-    ];
-    touch(s);
-    notify();
+  const startTask = (title: string, goal: string, note: string | undefined, extra: Partial<FixtureTask> = {}): FixtureTask => ({
+    id: nextId("task"),
+    title,
+    goal,
+    status: "in_progress",
+    assignee: "desk.thread",
+    statusNote: note,
+    work: [{ kind: "assistant", id: nextId("w"), text: `Starting: ${goal}` }],
+    ...extra,
+  });
+
+  /** The next state of a task that is still working, with an optional line of its work. */
+  const writeStep = (s: FixtureSession, task: FixtureTask | undefined, patch: Partial<FixtureTask>, line?: string) => {
+    if (!task || task.status !== "in_progress") return;
+    const work = line ? [...task.work, { kind: "assistant" as const, id: nextId("w"), text: line }] : task.work;
+    setTask(s, task.id, { ...patch, work });
   };
 
-  const progress = (s: FixtureSession, title: string, note: string): Step[1] => () => {
-    const task = s.tasks.find((t) => t.title === title);
-    if (!task || task.status !== "in_progress") return;
-    setTask(s, task.id, { statusNote: note, work: [...task.work, { kind: "assistant", id: nextId("w"), text: note }] });
+  const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
+    const task = startTask(title, goal, note, { assignee: "desk.researcher" });
+    s.tasks = [...s.tasks, task];
+    push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
   };
+
+  const progress = (s: FixtureSession, title: string, note: string) => () =>
+    writeStep(s, s.tasks.find((t) => t.title === title), { statusNote: note }, note);
 
   const settle = (s: FixtureSession, title: string, summary: string): Step[1] => () => {
     const task = s.tasks.find((t) => t.title === title);
     if (!task || task.status !== "in_progress") return;
-    setTask(s, task.id, {
-      status: "completed",
-      statusNote: undefined,
-      work: [...task.work, { kind: "assistant", id: nextId("w"), text: summary }],
-    });
+    writeStep(s, task, { status: "completed", statusNote: undefined }, summary);
     // fixture: stands in for the lab's answerAgain source block (FIX-2159): the take shows as an item in the running request.
     push(s, {
       kind: "result",
@@ -208,7 +206,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     [200, () => endTurn(s)],
   ];
 
-  // Threads mode. A thread is a task the lead files; its card sits where the createTask call is.
   /** A filed thread's id, set when the lead files it, so later steps find that thread and no other. */
   type Ref = { id?: string };
 
@@ -221,35 +218,17 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     note: string,
     extra: Partial<FixtureTask> = {},
   ): Step[1] => () => {
-    const id = nextId("task");
-    ref.id = id;
-    s.tasks = [
-      ...s.tasks,
-      {
-        id,
-        title,
-        goal,
-        status: "in_progress",
-        assignee: "desk.thread",
-        statusNote: note,
-        updatedAt: now(),
-        work: [{ kind: "assistant", id: nextId("w"), text: `Starting: ${goal}` }],
-        ...extra,
-      },
-    ];
-    push(s, { kind: "thread", id: nextId("card"), taskId: id });
+    const task = startTask(title, goal, note, { updatedAt: now(), ...extra });
+    ref.id = task.id;
+    s.tasks = [...s.tasks, task];
+    push(s, { kind: "thread", id: nextId("card"), taskId: task.id });
     // The line that asked for it is marked once the lead's turn files a thread for it.
     s.entries = s.entries.map((e) => (e.id === origin && e.kind === "user" ? { ...e, sentToThread: true } : e));
     notify();
   };
 
-  /** A thread's next state, if it is still working: a progress note, a question, or a review. */
-  const advance = (s: FixtureSession, ref: Ref, patch: Partial<FixtureTask>, line?: string): Step[1] => () => {
-    const task = s.tasks.find((t) => t.id === ref.id);
-    if (!task || task.status !== "in_progress") return;
-    const work = line ? [...task.work, { kind: "assistant" as const, id: nextId("w"), text: line }] : task.work;
-    setTask(s, task.id, { ...patch, work });
-  };
+  const advance = (s: FixtureSession, ref: Ref, patch: Partial<FixtureTask>, line?: string): Step[1] => () =>
+    writeStep(s, s.tasks.find((t) => t.id === ref.id), patch, line);
 
   const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", waitingOn: { kind: "question", prompt }, statusNote: prompt });
   const review = (prompt: string): Partial<FixtureTask> => ({ status: "parked", waitingOn: { kind: "review", prompt }, statusNote: prompt });
@@ -343,16 +322,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const seedThreads = () => {
     const id = nextId("session");
     const ago = 26 * 60 * MINUTE;
-    const thread = (title: string, status: FixtureTask["status"], note?: string): FixtureTask => ({
-      id: nextId("task"),
-      title,
-      goal: title,
-      status,
-      assignee: "desk.thread",
-      statusNote: note,
-      updatedAt: now() - ago,
-      work: [{ kind: "assistant", id: nextId("w"), text: `Starting: ${title}` }],
-    });
+    const thread = (title: string, status: FixtureTask["status"], note?: string) =>
+      startTask(title, title, note, { status, updatedAt: now() - ago });
     const tasks = [
       thread("Weekly uptime digest", "in_progress", "Collecting this week's incidents"),
       thread("Export failed invoices", "errored", "The export timed out"),
@@ -444,7 +415,6 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         setTask(s, taskId, { work: [...work, { kind: "assistant", id: nextId("w"), text: "Noted. I'll work that in." }] });
         return;
       }
-      // Your line answers its open question: the task works again, then comes back for review.
       setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
       play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
     },

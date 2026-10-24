@@ -10,13 +10,7 @@ import { ThreadView } from "./ThreadView";
 const rowNote = (task: TaskRow) =>
   task.status === "errored" || task.status === "cancelled" ? statusLine(task) : (task.waitingOn?.prompt ?? task.statusNote ?? "");
 
-/**
- * Threads mode's right pane: the status board, titled *Threads*. Every row is
- * one task row of the session's board, grouped by what you owe it (the
- * columns table), and pinned ones on top. Each group has a count and
- * collapses; *Resolved* starts collapsed. Opening a thread replaces the board
- * with its view, with a back arrow; the main thread stays in the center.
- */
+/** The session's tasks grouped by column. Opening one replaces this board. */
 export function ThreadsBoard({
   adapter,
   sessionId,

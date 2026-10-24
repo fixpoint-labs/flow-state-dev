@@ -125,13 +125,9 @@ export interface LabAdapter {
   watchThread(sessionId: string, onChange: (view: ThreadView) => void): Unsubscribe;
   watchTasks(sessionId: string, onChange: (rows: TaskRow[]) => void): Unsubscribe;
   watchTaskWork(sessionId: string, taskId: string, onChange: (work: TaskWork) => void): Unsubscribe;
-  /** Talk inside a thread: a steer on its task, which answers its open question if it has one. */
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
-  /** Accept a thread's work: answers its review wait. */
   resolve(sessionId: string, taskId: string): Promise<void>;
-  /** Send a thread back to work: answers its review wait with your words. */
   requestChanges(sessionId: string, taskId: string, words: string): Promise<void>;
-  /** Your pinned task ids. */
   watchPins(onChange: (taskIds: string[]) => void): Unsubscribe;
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
