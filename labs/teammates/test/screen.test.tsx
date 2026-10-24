@@ -199,5 +199,7 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     expect((box as HTMLTextAreaElement).value).toBe("日本語");
     expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(false);
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(true));
   });
 });
