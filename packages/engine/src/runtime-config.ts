@@ -126,7 +126,7 @@ export interface RuntimeConfig {
    * `waitDeadlines`, which bounds waits on work. Between
    * {@link MIN_USER_DEADLINE_MS} and {@link MAX_USER_DEADLINE_MS}. A raw
    * `ctx.suspend` never reads it: its own `timeoutMs` is its only deadline.
-   * Read by `RequestHost.userDeadlineMs`.
+   * Read by `ctx.waitForUser` with or without a request host, and exposed as `RequestHost.userDeadlineMs`.
    */
   userDeadlineMs?: number;
 }

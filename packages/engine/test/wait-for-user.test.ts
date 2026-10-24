@@ -155,6 +155,13 @@ describe("waitForUser: what the stop records", () => {
     const set = await park(host, flow, { options: { kind: "approval", prompt: "Ship?" } });
     expect(set.gate).toMatchObject({ reason: "human_approval", kind: "approval" });
     expect(set.gate.expiresAt! - set.gate.createdAt).toBeGreaterThanOrEqual(59_000);
+
+    // A caller that runs the action directly, with no request host wired, keeps the deadline it set.
+    const direct = harness(flow);
+    delete (direct.runtimeConfig as { requestHost?: unknown }).requestHost;
+    direct.runtimeConfig.userDeadlineMs = 60_000;
+    const bare = await park(direct, flow, { options: { kind: "input", prompt: "Which region?" } });
+    expect(bare.gate.expiresAt! - bare.gate.createdAt).toBeGreaterThanOrEqual(59_000);
   });
 });
 

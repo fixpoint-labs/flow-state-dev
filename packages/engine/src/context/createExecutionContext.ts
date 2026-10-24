@@ -3786,9 +3786,17 @@ export async function createExecutionContext<
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
-      // FIX-2129: built on this scope's `suspend`, reading the host's deadline
-      // for a user's stop off the request host.
-      waitForUser: ((waitOptions: Parameters<WaitForUser>[0]) => waitForUserOn(context, waitOptions)) as WaitForUser,
+      // FIX-2129: built on this scope's `suspend`, with the host's deadline
+      // for a user's stop: the request host's, else the runtime config's, so
+      // a caller that runs the action with no request host keeps the one it set.
+      waitForUser: ((waitOptions: Parameters<WaitForUser>[0]) =>
+        waitForUserOn(
+          {
+            suspend: context.suspend,
+            requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
+          },
+          waitOptions
+        )) as WaitForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per
