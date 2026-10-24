@@ -2,7 +2,7 @@
  * Resolves a durable-execution suspension by approving or rejecting it
  * (FIX-141 operator UI).
  *
- * Wraps the client's `recoveryClient.resumeSuspension` — transport lives in
+ * Wraps a request's `resume()` on the DevTool's client — transport lives in
  * the client, this hook only manages the in-flight / error UI state. The
  * owning instance and `requestId` come from the selected RECORD, so the resume
  * re-enters the exact copy that suspended — not the DevTool's synthetic

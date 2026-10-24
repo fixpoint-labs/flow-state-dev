@@ -5,7 +5,7 @@
  * up), this hook drives `continue({ stream: true })` directly: the POST
  * response IS the SSE stream, so serverless deployments without shared
  * pub/sub still see the continued run live (mirrors
- * `resumeSuspensionStream`'s inline-streaming approach).
+ * a streaming resume's inline approach).
  *
  * Each call gets its own `RequestStreamStore`, seeded with the row's existing
  * items via `loadSnapshot` — the continuation stream only adds to that seed,

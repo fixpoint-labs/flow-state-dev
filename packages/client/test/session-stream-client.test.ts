@@ -1,5 +1,5 @@
 /**
- * `createSessionSSEClient`: following a whole session, and every way the
+ * `sessions.stream()`: following a whole session, and every way the
  * connection ends. The server side of the contract (what is sent, and when) is
  * the engine's conformance suite; this file holds the client to its half: hand
  * back the last server time on a reconnect, back off, and stop quietly where

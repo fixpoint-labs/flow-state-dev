@@ -5,7 +5,7 @@
  * `resumeLatestRequest` /retry path). `@flow-state-dev/client`'s session and
  * recovery clients are mocked; the SSE transport is mocked the same way
  * `useRequestStream.test.ts` does — capturing the callbacks handed to
- * `createSSEClientFromResponse`/`createSSEClient` so the test can feed events
+ * `createSSEClientFromResponse`/a request's `stream()` so the test can feed events
  * directly instead of parsing real SSE wire bytes.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

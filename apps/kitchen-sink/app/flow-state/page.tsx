@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -85,8 +85,9 @@ type MobilePanel = "chat" | "artifacts";
 const SHOW_WORKERS_IN_RAIL = true;
 
 /**
- * The `fetch` the roster and the user's conversations with workers are read
- * with. This app sends no credential; a host that does adds it here, once.
+ * The `fetch` the page's own client sends with: the roster, the user's
+ * conversations with workers, the rail and request statuses. This app sends
+ * no credential; a host that does adds it here, once.
  */
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 
@@ -157,6 +158,8 @@ function PageInner() {
 }
 
 function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
+  // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
+  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row. A test's own session, when one is named, is the
@@ -245,21 +248,17 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const pickedAddress = picked?.address;
   const pickedRequestStatus = useMemo(() => {
     if (pickedAddress === undefined) return async () => "in_progress";
-    const client = createClient({ flowKind: pickedAddress, userId: KITCHEN_SINK_USER_ID, baseUrl: "" });
-    return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
-  }, [pickedAddress]);
+    const pickedFlow = fsd.flow(pickedAddress);
+    return async (requestId: string) => (await pickedFlow.request(requestId).status()).status;
+  }, [fsd, pickedAddress]);
 
   // The user's roster and their conversations with workers.
-  const workforce = useMemo(
-    () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
-    [],
-  );
+  const workforce = useMemo(() => createWorkforceClient(fsd), [fsd]);
 
-  const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
   // What the rail lists: under the coordinator flow, the user's conversation
   // with each coordinator the tree declares. Stable, so the navigator's reads
   // stay fenced on it.
-  const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);
+  const railSessionSource = useMemo(() => railSessions(fsd, workforce), [fsd, workforce]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -729,7 +728,7 @@ function Rail({
             included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
-          sessionClient={sessionSource}
+          client={sessionSource}
           includeDispatchRuns
           selectedSessionId={selectedSessionId}
           onSelectSession={onSelectSession}

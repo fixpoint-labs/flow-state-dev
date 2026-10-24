@@ -11,7 +11,7 @@
  * asserts the one it grades AND that it does not read as either of the others.
  *
  * **Red states, observed** (each produced by hand once and reverted):
- * - V3a: `createDevToolResourceClient` built with no `fetcher` (a bare
+ * - V3a: a resource read built with no `fetcher` (a bare
  *   resource client) → `the manifest request carries the token: expected null
  *   to be 'Bearer tok-inventory'`.
  * - BR-12: a heading changed to *Open …* → `words the tab must not use:
