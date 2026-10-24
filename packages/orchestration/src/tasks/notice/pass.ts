@@ -9,10 +9,10 @@
  * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
  *    before any notice, so a resent notice names what its ending cancelled.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
- * 4. **Wait slots lapsed** for a request that has since ended (FIX-2082):
- *    released, so an ending held for it is owed to the filer's notice. A slot
- *    whose request still runs or is parked is looked at again less and less
- *    often, and no more once it is past the maximum age.
+ * 4. **Wait slots lapsed** for a request that has since parked (FIX-2170) or
+ *    ended (FIX-2082): released, so an ending held for it is owed to the
+ *    filer's notice. A slot whose request still runs is looked at again less
+ *    and less often, and no more once it is past the maximum age.
  * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed. One
  *    last turned away for the request that filed its task, which has since
@@ -34,6 +34,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
 import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
+import { requestStates } from "../helpers/request-states";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
@@ -205,9 +206,8 @@ export async function payBoardDebts(
  * which requests are running, where no notice is held for one.
  */
 async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, rows: readonly Task[]): Promise<Set<string>> {
-  const running = ctx.requestHost?.waits?.running;
   const held = new Set<string>();
-  if (running === undefined) return held;
+  if (ctx.requestHost?.waits?.running === undefined) return held;
   for (const row of rows) {
     for (const notice of owedNotices(row, ref.collectionId)) {
       const heldFor = heldWhileRunning(row, notice);
@@ -216,8 +216,8 @@ async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, 
   }
   if (held.size === 0) return held;
   try {
-    const stillRunning = await running([...held]);
-    return new Set([...held].filter((id) => stillRunning[id] !== true));
+    const states = await requestStates(ctx, [...held]);
+    return new Set([...held].filter((id) => states?.[id] === "parked" || states?.[id] === "ended"));
   } catch (error) {
     log("a pass couldn't read whether the requests its notices were held for still run: they wait for their next resend", {
       error: (error as Error).message

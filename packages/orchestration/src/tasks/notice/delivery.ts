@@ -107,8 +107,9 @@ export interface DeliveryHooks {
   /**
    * Run `send` once the running request has ended (FIX-2123), on the
    * engine's request-end seam. `send` doesn't run when it parks: a parked
-   * request holds no notice, so the filer's pass is owed one wake shortly
-   * after (FIX-2149) and sends what the request held, past its backoff. No
+   * request holds no notice and no ending, so the filer's pass is owed one
+   * wake shortly after (FIX-2149) and sends what the request held, past its
+   * backoff, and releases the wait slots it lapsed (FIX-2170). No
    * row is read or written there: a hook at a park delays the request's park
    * record. A failure is logged, never
    * thrown; what `send` didn't send stays owed for the filer's pass. Nothing
@@ -202,7 +203,9 @@ export function createDelivery(
     onRequestEnded(ctx, async (ending) => {
       // At a park, one wake and no row I/O (FIX-2149): a parked request holds
       // no notice, so the filer's pass is owed shortly, once the park is
-      // recorded, and sends what it held then, past its backoff. A hook here
+      // recorded, and sends what it held then, past its backoff. It releases
+      // the wait slots the request lapsed too, so an ending one held goes out
+      // (FIX-2170). A hook here
       // runs before the request is recorded parked, so it stays small. The
       // request that runs again after the park registers anew (the board
       // notes the rows it filed).
@@ -221,7 +224,7 @@ export function createDelivery(
     });
   }
 
-  /** The filing request parked: owe this (its filer's) session's pass one wake (FIX-2149). */
+  /** The filing or waiting request parked: owe this (its filer's) session's pass one wake (FIX-2149, FIX-2170). */
   async function owePassAtPark(): Promise<void> {
     try {
       await ctx.requestHost?.wakes?.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS });
