@@ -87,6 +87,7 @@ function server(rows: SessionSummary[]) {
   return {
     listSessions,
     client: {
+      userId: "u",
       flows: vi.fn(async (): Promise<FlowListEntry[]> => [
         { id: "reports", kind: "reports", cardinality: "singleton", requireUser: false, actions: [] },
       ]),

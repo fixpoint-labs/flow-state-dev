@@ -29,7 +29,7 @@ import type { FlowNavigatorLeaf } from "./grouping";
  * says which. A host passes the client it already holds — with its own
  * `fetcher`, so every request carries whatever credential that transport adds.
  */
-export type FlowNavigatorClient = Pick<Client, "flows"> & { readonly sessions: Pick<SessionsApi, "list"> };
+export type FlowNavigatorClient = Pick<Client, "flows" | "userId"> & { readonly sessions: Pick<SessionsApi, "list"> };
 
 /** Stable empty lists, so a stale hold hands back the same reference each render. */
 const EMPTY_FLOWS: FlowListEntry[] = [];

@@ -31,7 +31,6 @@ import {
   type ReactNode
 } from "react";
 import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
 import { useClient } from "../../internal/useClient";
 import {
   groupFlowsIntoSections,
@@ -640,8 +639,6 @@ function KindRow(props: {
  * The rail. One mount, one flow-list read, one scroll container.
  */
 export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
-  const context = useFlowContext();
-  const userId = context.userId;
   const slots = props.slots ?? {};
 
   // The host's client wins: a component that always built its own would list
@@ -666,7 +663,9 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
 
   const leafContext: LeafContext = {
     source,
-    userId,
+    // The client's own user: the navigator lists the sessions of whoever
+    // the client acts as.
+    userId: source.userId,
     selectedSessionId: props.selectedSessionId,
     includeDispatchRuns: props.includeDispatchRuns ?? false,
     onSelectSession: props.onSelectSession,

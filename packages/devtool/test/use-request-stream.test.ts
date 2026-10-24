@@ -15,25 +15,25 @@ const { connections } = vi.hoisted(() => ({
   connections: [] as Array<{ callbacks: Record<string, ((e: unknown) => void) | undefined>; closed: boolean; flowKind: string; requestId: string }>,
 }));
 
-vi.mock("../src/react/lib/client", () => ({
-  connectRequestStream: (
-    flowKind: string,
-    requestId: string,
-    callbacks: Record<string, ((e: unknown) => void) | undefined>,
-  ) => {
-    const rec = { callbacks, closed: false, flowKind, requestId };
-    connections.push(rec);
-    return { close() { rec.closed = true; }, get lastEventId() { return undefined; } };
-  },
-}));
+/** The DevTool's client, faked down to a request's stream: it records the address and the callbacks. */
+const client = {
+  flow: (flowKind: string) => ({
+    request: (requestId: string) => ({
+      stream: (callbacks: Record<string, ((e: unknown) => void) | undefined>) => {
+        const rec = { callbacks, closed: false, flowKind, requestId };
+        connections.push(rec);
+        return { close() { rec.closed = true; }, get lastEventId() { return undefined; } };
+      },
+    }),
+  }),
+};
 
 // Mutable so a test can move the workspace under an open stream. The hook reads
 // the visit from context rather than taking it as a prop.
-const devToolState = { baseUrl: undefined, config: { userId: "devuser" }, workspaceToken: 1 };
+const devToolState = { client, config: { userId: "devuser" }, workspaceToken: 1 };
 
 vi.mock("../src/react/context/devtool-context", () => ({
-  // The real context always carries `config`; the stream hook reads
-  // `config.bearerToken` to forward a bearer on the SSE request.
+  // The stream goes through the context's one client, bearer token and all.
   useDevTool: () => devToolState,
 }));
 
