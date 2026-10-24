@@ -1,15 +1,7 @@
 /**
- * A user's conversations with one worker (FIX-2158): `listWorkerSessions`
- * lists every top-level session the user opened with the worker, the
- * default conversation first and marked, and leaves out the sessions a task
- * runs in. A message another worker addresses to the worker still lands in
- * the default, however many sessions the user opens.
- *
- * Real engine, real HTTP router, the caller a verified user. The tests read
- * what the client returns and where a request ran, never a stored key, and
- * seed nothing in the store by hand. The project coordinator's per-project
- * sessions are left out too: that check is in `project-coordinator.test.ts`,
- * whose host names one.
+ * `listWorkerSessions` (FIX-2158). Real engine; the caller is a verified user.
+ * Reads the client and where a request ran, never a stored key, and seeds nothing by hand.
+ * Project-coordinator sessions are in `project-coordinator.test.ts`, the host that names one.
  */
 import { describe, expect, it } from "vitest";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
@@ -20,7 +12,6 @@ import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conver
 /** A scripted model input as text, with its escapes dropped. */
 const textOf = (input: unknown) => JSON.stringify(input).replaceAll("\\", "");
 
-/** Any turn the script doesn't name ends with no text. */
 const fallback: MockGeneratorScriptEntry = { when: () => true, then: { text: "" } };
 
 /** The board's workers, and an agent worker that messages otto when asked to. */
@@ -68,7 +59,6 @@ describe("a user's conversations with one worker", () => {
       const random = await open(h, "alice");
       const listed = await alice.listWorkerSessions("otto");
       expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([[random, false]]);
-      // Listing opened no default conversation.
       expect(await alice.findWorkerSession({ worker: "otto" })).toBeUndefined();
     } finally {
       await h.dispose();
@@ -93,7 +83,6 @@ describe("a user's conversations with one worker", () => {
         [first, false],
         [second, false]
       ]);
-      // The default is the one find returns.
       expect((await alice.findWorkerSession({ worker: "otto" }))?.id).toBe(main.id);
     } finally {
       await h.dispose();
@@ -149,7 +138,6 @@ describe("a user's conversations with one worker", () => {
         (request) => request.actionName === WORKER_MESSAGE_ENTRY
       );
       expect(received.map((request) => request.sessionId)).toEqual([main.id]);
-      // The default is still first and marked in the list.
       const [top] = await alice.listWorkerSessions("otto");
       expect([top?.session.id, top?.isDefault]).toEqual([main.id, true]);
     } finally {

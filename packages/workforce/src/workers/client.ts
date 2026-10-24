@@ -61,11 +61,7 @@ export type RosterEntry = {
 /** One of a user's conversations with a worker, as {@link WorkforceClient.listWorkerSessions} returns it. */
 export type WorkerSessionEntry = {
   session: SessionSummary;
-  /**
-   * Whether it is the worker's default conversation: the one
-   * `findWorkerSession({ worker })` returns, where a message addressed to the
-   * worker lands.
-   */
+  /** True for the conversation `findWorkerSession({ worker })` returns. */
   isDefault: boolean;
 };
 
@@ -104,16 +100,12 @@ export interface WorkforceClient {
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
   /**
-   * The user's conversations with `worker` on its current flow: every
-   * top-level session that names the worker and no task, conversation,
-   * workstream or project, whatever id it was opened at. The default
-   * conversation (what `findWorkerSession({ worker })` returns) comes first
-   * and is marked; the rest follow by latest activity. A task's session, a
-   * conversation's delegate session, a workstream lead's session and the
-   * project coordinator's session for one project are left out: each is
-   * reached through its task, conversation, workstream or project. Never
-   * creates the default conversation. Throws when the worker isn't on the
-   * user's roster.
+   * The user's top-level sessions with `worker` on its current flow, opened
+   * at any id. The default (`findWorkerSession({ worker })`) comes first and
+   * is marked; the rest follow by latest activity. A task's session, a
+   * delegate session, a workstream lead's session and the project
+   * coordinator's session for one project are left out. Never creates the
+   * default. Throws when the worker isn't on the user's roster.
    */
   listWorkerSessions(worker: string): Promise<WorkerSessionEntry[]>;
   /**
