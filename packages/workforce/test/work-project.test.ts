@@ -249,7 +249,7 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("piece of split the work")).toEqual(inApollo);
   });
 
-  it("not-a-member: a reader who isn't a member is refused, another user's private project isn't found, and nothing is stored", async () => {
+  it("not-a-member: a reader of the project who may not work in it is refused, another user's private project isn't found, and nothing is stored", async () => {
     const h = await withProjects();
     const carol = h.client("carol");
     const lead = (await carol.ensureWorkerSession({ worker: "lead" })).id;
