@@ -21,3 +21,7 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-24 | f6461eaa | n/a | FAIL | Legs a and b PASS on all four legs (http and in-process, support and notes-7): `interrupted()` listed the held request on both reads, `continue()` completed it under its id, each held step ran once, the stop resumed under its id to the fixture's answer, one `createClient` and 0 calls around the fetcher per process. Leg c red only: `check.mjs --after` names 57 references in 22 `apps/docs` pages, left for the docs pass; everything else in the tree is clean. `check.mjs --control` PASS (all 20 plants named). The in-process legs first found `wait()` reading a continued run's old status back (fixed in the client, 457f09ec). |
+| 2026-10-24 | f6461eaa | n/a | FAIL (expected) | `GOAL_CONTROL=retry-instead`: red exactly `a:same-id` and `a:ran-once`, on all four legs. |
+| 2026-10-24 | f6461eaa | n/a | FAIL (expected) | `GOAL_CONTROL=two-clients`: red exactly `b:one-client`, on all four legs. |
+| 2026-10-24 | f6461eaa | n/a | FAIL (expected) | `GOAL_CONTROL=stream-off-fetcher`: red `b:through-fetcher` on all four legs, and `b:stream` on the two in-process legs only, as documented. |
