@@ -6,13 +6,16 @@
  * pieces it needs exist. It proves the UI only. The README lists which gap
  * each part stands for.
  *
- * Three workers, each with one conversation. Your first ask to lead makes it
- * message researcher; researcher looks the fact up and replies. Each worker
+ * Three workers, each with one conversation, and coder, which takes tasks
+ * only. Your first ask to lead makes it message researcher; researcher looks
+ * the fact up and replies. Ask lead to have coder fix something and lead files
+ * a task: with no project picked for lead, the run is refused before it
+ * touches a file, and once you pick one lead files it again. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, TalkRow, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
+import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
 
 /** How the fixtures keep time, and what they stand in for. */
 export interface FixtureOptions {
@@ -32,12 +35,21 @@ const ROSTER: WorkerRow[] = [
   { id: "teammates.lead", name: "lead", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
+  { id: "teammates.coder", name: "coder", role: "Makes code changes lead hands it, in lead's project.", takesTasks: true, harness: "Claude Code" },
+];
+const PROJECTS: ProjectRow[] = [
+  { id: "relay", name: "relay" },
+  { id: "relay-site", name: "relay-site" },
 ];
 const LEAD = "teammates.lead";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
+const CODER = "teammates.coder";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow };
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
+
+/** A board row, and the conversation that filed it. */
+type FixtureTask = BoardTask & { sessionId: string };
 
 interface FixtureWorker {
   row: WorkerRow;
@@ -79,6 +91,11 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     return found;
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
+  const workProjects = new Map<string, string>();
+  let tasks: FixtureTask[] = [];
+  const runs = new Map<string, RunStep[]>();
+  /** Refused tasks lead has filed again. */
+  const refiled = new Set<string>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -107,7 +124,41 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     startNext(recipient);
   };
 
+  const updateTask = (id: string, patch: Partial<BoardTask>) => {
+    tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
+    notify();
+  };
+  const step = (taskId: string, text: string): Step[1] => () => {
+    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("step"), text }]);
+    notify();
+  };
+
+  /** `createTask` for coder: a card in the filer's conversation. The run gets the filer's project, or is refused before it starts. */
+  const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
+    const project = workProjects.get(w.row.id);
+    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
+    tasks = [...tasks, task];
+    push(w, { kind: "task", id: nextId("k"), taskId: task.id });
+    if (!project) return;
+    const result = "Fixed the typo in README.md, line 1.";
+    let at = 0;
+    for (const [delay, run] of [
+      [600, step(task.id, "Read README.md")],
+      [1200, step(task.id, 'Edited line 1: "Relay keps" → "Relay keeps"')],
+      [800, step(task.id, "Ran the docs check: passed")],
+      [400, () => {
+        updateTask(task.id, { status: "done", result });
+        w.queue.push({ kind: "result", task: { ...task, status: "done", result } });
+        startNext(w);
+      }],
+    ] as Step[]) {
+      at += delay;
+      setTimeout(run, at * speed);
+    }
+  };
+
   const script = (w: FixtureWorker, job: Job): Step[] => {
+    if (job.kind === "result") return [[900, say(w, `coder is done: "${job.task.result}" That's in ${job.task.project}.`)]];
     if (job.kind === "receive") {
       const { message } = job;
       const from = worker(message.from).row.name;
@@ -116,6 +167,15 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         return [[700, say(w, "Looking it up in the plan doc.")], [4000, sendMessage(w, message.from, "Nov 12, per the plan doc.", message.id)]];
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
+    }
+    if (w.row.id === LEAD && /\bcoder\b/i.test(job.text)) {
+      return [[800, say(w, "Handing it to coder.")], [400, fileTask(w, "Fix the typo in the README's first line")]];
+    }
+    const project = workProjects.get(w.row.id);
+    const refused = tasks.find((t) => t.sessionId === w.sessionId && t.status === "needs-project" && !refiled.has(t.id));
+    if (w.row.id === LEAD && refused && project) {
+      refiled.add(refused.id);
+      return [[600, say(w, `Filing it again, in ${project}.`)], [300, fileTask(w, refused.title)]];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
@@ -135,6 +195,9 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     w.lastActiveAt = now();
     if (job.kind === "user") {
       w.entries = w.entries.map((e) => (e.id === job.entryId && e.kind === "user" ? { ...e, queued: false } : e));
+    } else if (job.kind === "result") {
+      const { task } = job;
+      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? "" }];
     } else {
       const { message } = job;
       w.entries = [...w.entries, { kind: "received", id: nextId("r"), messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];
@@ -249,7 +312,9 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     watchActivity(workerId, onChange) {
       return watch(() => {
         const w = worker(workerId);
-        onChange({ running: w.running, lastActiveAt: w.lastActiveAt });
+        // A worker that takes tasks is busy while one of its runs is.
+        const running = w.row.takesTasks ? tasks.some((t) => t.to === workerId && t.status === "running") : w.running;
+        onChange({ running, lastActiveAt: w.lastActiveAt });
       });
     },
 
@@ -262,6 +327,27 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
           starts.length > WINDOW_TURNS ? { firstVerbatimEntryId: starts[starts.length - WINDOW_TURNS].id, summarized: options.summary ?? false } : undefined;
         onChange(mark);
       });
+    },
+
+    async listProjects() {
+      return PROJECTS;
+    },
+
+    watchWorkProject(workerId, onChange) {
+      return watch(() => onChange(workProjects.get(workerId)));
+    },
+
+    async setWorkProject(workerId, project) {
+      workProjects.set(workerId, project);
+      notify();
+    },
+
+    watchTasks(sessionId, onChange) {
+      return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+    },
+
+    watchRun(taskId, onChange) {
+      return watch(() => onChange(runs.get(taskId) ?? []));
     },
   };
 }
