@@ -200,9 +200,10 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
   const turn = (s: FixtureSession, text: string) => {
     startTurn(s);
-    // The running task the line names (by a word of its title), else the first one running.
+    // The task the line names (by a word of its title), finished or not, else the first one running.
+    // The stop script re-reads its status, so a finished one is reported, not swapped for another.
     const runningTasks = s.tasks.filter((t) => t.status === "in_progress");
-    const named = runningTasks.find((t) => t.title.split(" ").slice(1).some((word) => new RegExp(`\\b${word}\\b`, "i").test(text)));
+    const named = s.tasks.find((t) => t.title.split(" ").slice(1).some((word) => new RegExp(`\\b${word}\\b`, "i").test(text)));
     const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
       play(s, stopScript(s, running));

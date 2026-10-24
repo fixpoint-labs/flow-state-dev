@@ -39,6 +39,16 @@ describe("the fixture's stop script", () => {
     await vi.advanceTimersByTimeAsync(800);
     expect(status("Research Acme")).toBe("completed");
   });
+
+  it("stops nothing else when the named task has already finished", async () => {
+    const { lab, id, status } = await start();
+    await vi.advanceTimersByTimeAsync(4500); // Acme settled at 4200; Globex still running
+    await lab.interrupt(id);
+    await lab.send(id, "Stop the Acme research.");
+    await vi.advanceTimersByTimeAsync(800);
+    expect(status("Research Acme")).toBe("completed");
+    expect(status("Research Globex")).toBe("in_progress");
+  });
 });
 
 describe("the fixture's projects", () => {
