@@ -128,7 +128,8 @@ import { RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
-import { ROUTED_FROM_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   coordinatorConfigProblems,
@@ -1708,7 +1709,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     session: {
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
       // The board's `routedFrom` too: no caller names the conversation a routed task came from (BP-031).
-      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED, ...WORKER_MESSAGE_SERVER_OWNED, ROUTED_FROM_STATE_KEY],
+      // And `workProjectId`: only the work-project action sets the project a conversation works in (FIX-2161).
+      serverOwned: [
+        ...COORDINATOR_SERVER_OWNED,
+        ...CONVERSATION_BOARD_SERVER_OWNED,
+        ...WORKER_MESSAGE_SERVER_OWNED,
+        ROUTED_FROM_STATE_KEY,
+        WORK_PROJECT_STATE_KEY
+      ],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
@@ -1727,7 +1735,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY
       },
-      [STANDING_RULES_ACTION]: standingRulesAction
+      [STANDING_RULES_ACTION]: standingRulesAction,
+      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
     },
     internal: {
       actions: {

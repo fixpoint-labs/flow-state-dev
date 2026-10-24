@@ -133,7 +133,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { FILED_HOP, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
+import { FILED_HOP, FILED_PROJECT, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -145,7 +145,7 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import type { ProjectAddressRef } from "../projects/workstream-ref";
+import { parseProjectRef, type ProjectAddressRef } from "../projects/workstream-ref";
 import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
@@ -159,7 +159,7 @@ import { startOwedSteerTurn } from "./steer-turn-start";
 import { holdRoutedSession, routedSessionResources, sessionsHeldElsewhere } from "./routed-session";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
-import { pieceOwnerOf } from "./held-task";
+import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
 import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
@@ -370,6 +370,33 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
     ...(row?.session !== undefined ? { session: row.session } : {}),
     ...(row?.targetSessionId !== undefined ? { targetSessionId: row.targetSessionId } : {})
   };
+}
+
+/**
+ * The project a row filed here runs in (FIX-2161), as the stamp to write on
+ * the row and the address to write over a project its input names, so a
+ * guess is not refused `other-project`: a follow-up's root row's project,
+ * then the session's own, then the one the filing inherits (a held task's
+ * stamp in a delegate's ongoing session).
+ */
+async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp: string | null; own: ProjectAddressRef | undefined }> {
+  const stamp = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
+  const inherited = stamp === null ? undefined : parseProjectRef(stamp);
+  const own = isStamped(root) ? inherited : (filingProjectAddressOf(ctx.session.state) ?? inherited);
+  return { stamp, own };
+}
+
+/**
+ * The project a task's session is handed (FIX-2161): the one its row was
+ * stamped with when it was filed, so a task waiting on the board keeps it
+ * when its conversation's project changes; none for a row filed with none.
+ * A row filed before rows carried the stamp takes its conversation's, as
+ * before (BP-030).
+ */
+async function handedProjectOf(ctx: BlockContext, taskId: string): Promise<string | undefined> {
+  const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
+  const row = ref?.get(taskId);
+  return isStamped(row) ? filedProjectOf(row) : filingProjectOf(ctx.session.state);
 }
 
 /**
@@ -752,7 +779,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const workstream = filingWorkstreamOf(ctx.session.state);
-      const project = filingProjectOf(ctx.session.state);
+      // The session's project, or, in a delegate's ongoing session, the held task's (FIX-2161).
+      const project = (await filingProjectStampOf(ctx)) ?? undefined;
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
@@ -893,7 +921,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
       const workstream = filingWorkstreamOf(ctx.session.state);
-      const project = filingProjectOf(ctx.session.state);
+      const project = await handedProjectOf(ctx, taskId);
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
@@ -1065,9 +1093,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
+      // A follow-up runs in its root's session, so it keeps the root's
+      // project even after the conversation's changes (FIX-2161).
+      const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+      const { stamp: project, own } = await filedProjectFor(ctx, root);
       // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-      const metadata = { ...(given ?? {}), ...(owner === undefined ? {} : { [PIECE_OF]: owner }), [FILED_HOP]: turnHopMark(ctx) };
-      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      const metadata = {
+        ...(given ?? {}),
+        ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
+        [FILED_HOP]: turnHopMark(ctx),
+        [FILED_PROJECT]: project
+      };
+      const input = ownProjectIn(init.input, own);
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
       if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);
@@ -1287,7 +1324,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const fileReservedStep = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
       const { id, markAdded } = reserved;
       const metadata = callerMetadata(init.metadata);
-      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      // The project the step's own session is handed, so a guess in its input
+      // matches it (FIX-2161).
+      const input = ownProjectIn(init.input, (await filedProjectFor(ctx)).own);
       // A step a task session plans is that task's, server-written (FIX-2081).
       const owner = await pieceOwnerOf(ctx);
       const added = await plan.addTask({
@@ -1658,8 +1697,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // What a model asked beside the message is a caller's, as on any filing:
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx) };
-    const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
+    const { stamp, own } = await filedProjectFor(ctx);
+    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: stamp };
+    const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = filing;
     const init: TaskInit & { id: string } = {
       ...rest,

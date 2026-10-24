@@ -597,6 +597,23 @@ describe("the reporter itself", () => {
   });
 });
 
+describe("a report's session", () => {
+  // The Error Reporter flow declares the work-project action (FIX-2161), and a report's
+  // session carries only its worker, so only its id marks it as the reporter's own.
+  it("can't be set to work in a project, while the operator's own conversation with the reporter gets to the project check", async () => {
+    const lab = await openLab();
+    const project = { project: { visibility: "shared", id: "storefront" } };
+    const report = `${REPORT_SESSION_PREFIX}fp-a-report`;
+    await lab.open(ERROR_REPORTER_FLOW, report, OPERATOR, { workerId: "error-reporter" });
+    const refused = await lab.host.act(OPERATOR, report, "setWorkProject", project, ERROR_REPORTER_FLOW);
+    expect(messageOf(refused.error)).toContain("an error report's session");
+    const own = "operator-talks-to-the-reporter";
+    await lab.open(ERROR_REPORTER_FLOW, own, OPERATOR, { workerId: "error-reporter" });
+    const checked = await lab.host.act(OPERATOR, own, "setWorkProject", project, ERROR_REPORTER_FLOW);
+    expect(messageOf(checked.error)).toContain('no project "storefront"');
+  });
+});
+
 describe("a user reporting a problem", () => {
   it("takes the same intake, preview and filing: one report in Inbox, nothing filed before the answer", async () => {
     const agentAnswer = mockGenerator({

@@ -63,6 +63,8 @@ export type HostExtras = {
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The scripted models, as `createMockModelResolver` takes them. */
   models?: Parameters<typeof createMockModelResolver>[0];
+  /** Durable execution, for a flow whose request parks on a wait (a worker's step in a session of its own). */
+  durable?: boolean;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -143,6 +145,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     flows: instances,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver(extras.models ?? {}),
+    ...(extras.durable === true ? { durable: true } : {}),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       const org = context.request?.headers.get("x-org") ?? ORG;
