@@ -24,7 +24,7 @@ const fsd = createClient({
 | Option | Type | Notes |
 |--------|------|-------|
 | `userId` | `string` | Required. The user every call acts as. With sign-in on, the server trusts the request's credentials over this value. |
-| `baseUrl` | `string` | Where the flow routes are mounted, minus the mount: the origin plus any base path. `""` is the page's own origin. Required unless you pass a `fetcher`. See [Choosing `baseUrl`](/docs/configuration/client#choosing-baseurl). |
+| `baseUrl` | `string` | Where the flow routes are mounted, minus the mount: the origin plus any base path. `""` is the page's own origin. Required unless you pass a `fetcher`; with a `fetcher` and no `baseUrl`, requests go to relative paths, which a browser sends to the page's own origin. See [Choosing `baseUrl`](/docs/configuration/client#choosing-baseurl). |
 | `apiPath` | `string` | Where the server mounts the flow API, after `baseUrl`. Default `"/api/flows"`. See [Choosing `apiPath`](/docs/configuration/client#choosing-apipath). |
 | `fetcher` | `ClientFetch` | The `fetch` every call and stream goes through. Default: the global `fetch`. Pass a wrapper that adds credentials, or the engine's [`createInProcessFetch`](/docs/server/host-adapters#calling-flows-in-the-same-process) to reach an engine in the same process. |
 

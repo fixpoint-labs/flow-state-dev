@@ -76,7 +76,7 @@ await sent.wait();
 
 `createInProcessFetch(app, { basePath? })` takes a `FlowState` or a router from `createFlowApiRouter`, and returns `(input, init?) => Promise<Response>`. Pass it as a client's `fetcher`, or as `FlowProvider`'s.
 
-- Only the URL's path is read. The origin is ignored, and a relative path works.
+- Only the URL's path is read. The origin is ignored, and a relative path such as `/api/flows/support/actions/reply` works, which is what a client with no `baseUrl` sends.
 - `basePath` is where the API is mounted, `"/api/flows"` by default. Match it to the client's `apiPath`. A path outside it answers `404`.
 - Each call waits for the stores to initialize. If they failed to, it answers `500 { error: "Server failed to initialize" }`.
 - `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.

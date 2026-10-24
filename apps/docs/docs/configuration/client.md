@@ -81,7 +81,7 @@ Every call and stream the client makes uses it, `transcribe` included. In React,
 | `apiPath` | `string` | `"/api/flows"` | Where the server mounts the flow API. Set it to the server's mount when that differs, such as a Node host's `basePath`. See [Choosing `apiPath`](#choosing-apipath). |
 | `fetcher` | `ClientFetch` | global `fetch` | The `fetch` every call and stream goes through. See [Adding credentials](#adding-credentials) and [Calling an engine in the same process](#calling-an-engine-in-the-same-process). |
 
-Called without `baseUrl` or `fetcher`, `createClient` throws.
+Called without `baseUrl` or `fetcher`, `createClient` throws. With a `fetcher` and no `baseUrl`, the client requests relative paths (`/api/flows/…`): in a browser a credential wrapper reaches the page's own origin, and `createInProcessFetch` reads the path and ignores the origin.
 
 ### Adding credentials
 
@@ -90,7 +90,7 @@ Wrap `fetch` to add a header, and pass the wrapper as `fetcher`. Every call and 
 ```ts
 const fsd = createClient({
   userId,
-  baseUrl: "https://api.example.com",
+  baseUrl: "https://api.example.com", // leave out for the page's own origin
   fetcher: (input, init) => {
     const headers = new Headers(init?.headers);
     headers.set("authorization", `Bearer ${token}`);
