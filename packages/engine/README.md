@@ -1156,7 +1156,7 @@ The server runs three coordinated mechanisms so a dropped SSE connection doesn't
 Two user-addressed routes cover requests a crash left behind:
 
 - `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers only the requests **that call** marked `interrupted`. A request the startup pass or the sweeper marked first is not in it.
-- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them, and the same records on every call until each is continued, retried or removed. It sweeps nothing. Poke `check-interrupted` first when you want an answer that doesn't wait for the next sweep.
+- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them, and the same records on every call until each is continued or removed. It sweeps nothing. Poke `check-interrupted` first when you want an answer that doesn't wait for the next sweep.
 
 Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take (the kind for a singleton, the instance id for a collection member); a record written before instance ids falls back to its `flowKind`. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
 
