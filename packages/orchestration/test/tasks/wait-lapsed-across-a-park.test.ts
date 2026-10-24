@@ -6,8 +6,8 @@
  * T1 gets the ending. Once the request parks (on a person, or on another
  * wait), it holds nothing: T1's ending goes to the filer's `onTaskSettled`
  * within seconds of the park, the way a task the parked request filed does
- * (FIX-2149), and a wait on T1 after the resume answers that the ending came
- * as a notice. The filer hears it once.
+ * (FIX-2149), and a wait on T1 after the resume, the notice heard, answers
+ * with T1 (FIX-2181). The filer's notice runs once.
  *
  * Each runs on the in-memory stores and on SQLite.
  */
@@ -76,6 +76,16 @@ async function eventually(check: () => boolean, withinMs: number, what: string):
   }
 }
 
+/** Until `taskId`'s notice is delivered: the notice turn ran and cleared its marker. */
+async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parameters<typeof rows>[1], taskId: string): Promise<void> {
+  const owed = (row: { metadata?: Record<string, unknown> } | undefined) =>
+    Object.entries(row?.metadata ?? {}).some(([key, value]) => key.startsWith("noticeOwed:") && value !== null);
+  for (const deadline = Date.now() + 5_000; owed((await rows(state, flow)).find((row) => row.id === taskId)); ) {
+    if (Date.now() > deadline) throw new Error(`${taskId}'s notice was never acknowledged`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 /** Wait until the model has been called `n` times: the turn is past the steps before them. */
 const stepped = (seen: unknown[], n: number) => eventually(() => seen.length >= n, 10_000, `the model called ${n} times`);
 
@@ -117,12 +127,13 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
       expect(heardAt[0]! - parkedAt).toBeLessThan(HEARD_AFTER_PARK_MS);
       expect((await rows(state, flow)).find((row) => row.id === first)?.wait).toBeUndefined();
 
-      // The resumed wait says the ending came as a notice, and doesn't hand it over again.
+      // The notice was heard, so none is coming: the resumed wait answers with the task (FIX-2181).
+      await untilDelivered(state, flow, first);
       await approve(state, run.requestId!);
       await until(state, run.requestId!, "completed", 10_000);
       const answer = toolResults(seen[4]!.messages);
-      expect(answer).toContain('"arrivesAsNotice":true');
-      expect(answer).not.toContain("T1 done");
+      expect(answer).not.toContain("arrivesAsNotice");
+      expect(answer).toContain("T1 done");
       await pastNoticeDue();
       expect(heardFor(notices, first)).toHaveLength(1);
       expect(lapsedSlotsHeldInProcess().has(run.requestId!)).toBe(false);
@@ -227,7 +238,7 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
     }
   });
 
-  it("an ending while the request is parked on another wait is heard during the park, and the resumed wait answers that it came as a notice", async () => {
+  it("an ending while the request is parked on another wait is heard during the park, and the resumed wait answers with the task, the notice already heard", async () => {
     const notices: TaskSettledInput[] = [];
     let first = "";
     const seen: Parameters<typeof stepModel>[1] = [];
@@ -258,13 +269,15 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
       await eventually(() => heardFor(notices, first).length > 0, HEARD_AFTER_PARK_MS, "T1's ending heard during the park");
       expect(heardFor(notices, first)).toEqual([expect.objectContaining({ ending: "completed", output: "T1 done" })]);
 
-      // T2 ends; the request resumes and waits on T1 again.
+      // T2 ends; the request resumes and waits on T1 again. The notice was
+      // heard, so none is coming: the wait answers with the task (FIX-2181).
+      await untilDelivered(state, flow, first);
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "T2 done" } });
       await act(state, flow, "touch");
       await until(state, run.requestId!, "completed", 10_000);
       const read = toolResults(seen[3]!.messages);
-      expect(read).toContain('"arrivesAsNotice":true');
-      expect(read).not.toContain("T1 done");
+      expect(read).not.toContain("arrivesAsNotice");
+      expect(read).toContain("T1 done");
 
       // One delivery: the notice.
       await pastNoticeDue();

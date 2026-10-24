@@ -44,3 +44,13 @@ export async function requestStates(
   }
   return states;
 }
+
+/**
+ * Whether a request of this session has stopped running (FIX-2123), as the
+ * engine records it ({@link requestStates}). A host that keeps no such record
+ * answers `true`: there a notice's taker is never waited on.
+ */
+export async function hasEnded(ctx: BlockContext, requestId: string): Promise<boolean> {
+  const states = await requestStates(ctx, [requestId]);
+  return states === undefined || states[requestId] === "ended";
+}
