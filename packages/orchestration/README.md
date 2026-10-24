@@ -815,82 +815,11 @@ drain returns while its tasks still run, and an `onReview: "exit"` board, whose 
 with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
-## Skills
-
-A skill is inline instructions injected into a generator's prompt. Bind skills to
-**one** generator with `createSkillsLibrary` — no shared bag, no cross-agent bleed —
-and configure the binding where the generator is defined:
+## Task tools
 
 ```ts
-import { createSkillsLibrary } from "@flow-state-dev/orchestration";
-
-const skills = createSkillsLibrary({ catalog, initialSkills });
-
-// Preload a skill, fails loud on a typo:
-generator({ uses: [skills.with({ active: ["detailed-analysis"] })] });
-
-// Let the agent load a skill mid-turn, stored in this generator's block state
-// (the binding installs the block-state field for you):
-generator({
-  uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
-});
+import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 ```
-
-The up-front activator, `createSkillActivator`, picks skills before the generator runs: slash,
-then keywords, then a classifier. Pass `evaluator: skillEvaluator(model)` to run that last tier
-on an evaluation model. It picks one skill or none, and its answer is final.
-Pass `skillEvaluator(model, { recentMessages: 3 })` to let it read the last three turns
-too, so follow-ups like "yes, do that" can match.
-`skillQuestions` builds the same question for an evaluator you construct yourself. See
-[Tier 3 with an evaluator](https://flow-state.dev/docs/skills/activation#tier-3-with-an-evaluator).
-
-`initialSkills` also takes a **function of the execution**, for a catalog that
-belongs to the flow copy rather than to the definition — two registered copies
-then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
-so each copy reads its own storage. The resolver runs before every step of every
-turn, so keep it to an O(1) read of something already resolved; and because there
-is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
-is refused rather than left unvalidated.
-
-### Partitioning a library
-
-When many users or workers share one copy, use `partitionBy` instead of `flowIsolation`. It
-returns the partition for the running context, and each partition gets its own catalog. Derive it
-from server-written data, such as session state, never from input. A run it returns `undefined`
-for reads no partition's skills: its catalog is empty, and a write to it is refused.
-
-```ts
-createSkillsLibrary({ scope: "user", partitionBy: (ctx) => ctx.session.state.workerId });
-```
-
-Seeding writes a **copy**, so a later edit to the source does not reach a catalog
-that already holds the skill. `refreshSeededSkills(collection, sources)` is the
-deliberate act that pulls one through. It replaces a touched skill's folder whole,
-so a supporting file the source has dropped is deleted rather than left reachable;
-it skips a name whose manifest is gone, so a deletion stands; and ordinary seeding
-stays additive.
-
-**`importSkillsDirectory({ overwrite: true })` is not the same thing, and picking
-the wrong one is how stale instructions survive.** Both write a source skill over
-one that is already there, but `overwrite` enumerates nothing — it writes the
-files the source *has* and leaves everything else, so a supporting file the source
-has since **dropped** stays in the folder and stays resolvable by its path.
-`refreshSeededSkills` prunes it. Reach for `overwrite` when you mean
-"write these on top" (a migration, a test fixture); reach for refresh when you mean
-"make this match the source".
-
-A binding that contributes the catalog contributes all of it, never the subset a
-skill's `allowed-tools` names. It contributes the catalog when it preloads skills
-(`active`), when it installs the load tool (`dynamicActivation`), and when it
-pairs `activeState` with `allowed`; an `activeState` binding with neither
-contributes no catalog tools at all. `registerCatalogTools: false` turns that
-grant off while leaving the validation on, for a host that owns tool registration
-itself.
-
-A skill can't declare a team of its own. A `SKILL.md` with an `agents:` block is
-refused when it loads; give the work to workers on a task board instead.
-
-### Task tools
 
 `taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
 `getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's fifth tool, `reportProgress`, is built apart
@@ -957,8 +886,8 @@ comes back as that text cut to 20,000 characters, with `outputCut: true`; an `in
 on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
-> **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
-> collection, so they cover boards `taskBoard` builds itself — not the capability
+> **Which surfaces are capped.** The caps come from the code that constructs the
+> collection, so they cover boards `taskBoard` builds itself, not the capability
 > surface on its own. A resolver you hand to `createTaskToolsCapability(resolver)`
 > is bounded only if the collection it returns was built with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
@@ -1016,19 +945,16 @@ throw, so it never reaches this `catch`.
 At the `taskTools` boundary a `declined` verdict **does** become a tool
 result: an `updateTask` cancel or edit that the collection declines answers
 `{ ok: false, error: … }` rather than reporting a success that did not happen. `ok: true` from those tools means "the
-backing reported no decline", not "the write happened" — for the two built-in
+backing reported no decline", not "the write happened". For the two built-in
 backings those coincide, but a custom ref that reports nothing is carried past
 rather than having a verdict synthesized for it.
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
 dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
-`tools:` — any block can be a tool, and only the finalized result re-enters the
+`tools:`. Any block can be a tool, and only the finalized result re-enters the
 caller's history.
 
-See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
-`active` / `allowed` / `activeState` surface.
-
-#### Waiting for a task's answer
+### Waiting for a task's answer
 
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
@@ -1109,7 +1035,7 @@ even when its process died. Until that pass runs, a cancelled task's worker may 
 The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
 sure the flow holding the board declares `onTaskSettled`.
 
-#### When a task stops on a question
+### When a task stops on a question
 
 A worker that can't go on without an answer parks its task on a question until someone
 answers it. Anyone who can call `answerTask` on the board can answer.
@@ -1130,7 +1056,7 @@ moved past (`not_parked_on_question: …`), and a finished task
 its own; on your own board, drain it afterwards. An answered task has started, so `updateTask`
 refuses to move it to another worker, and the answer reaches the session that asked.
 
-#### Progress from the worker
+### Progress from the worker
 
 `createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
 and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
@@ -1141,7 +1067,7 @@ task completes, a checkpoint stays as its output; a failed attempt keeps it for 
 finished task it answers `task_finished` and writes nothing. The collection side is
 `TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
 
-#### Following up on a finished task
+### Following up on a finished task
 
 `createTask` takes `followUpOf` to file new work on a task: the follow-up
 is a new task, with the same worker, that runs in that task's session. Its
@@ -1162,7 +1088,7 @@ A follow-up takes no
 waits until that task ends, then runs. The task it follows never changes. If two
 follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
 
-#### Messages on an open task
+### Messages on an open task
 
 `updateTask({ id, message })` keeps a message on a task that hasn't finished: from the filer's
 model through the tool (`from: "filer"`), or from a person through the `updateTask_<board>` action
@@ -1192,13 +1118,91 @@ Where a message lands:
 request takes mid-run shows in the task's session as a line from its sender
 (`showTakenSteers`); a line typed in the session is there already.
 
-#### Upgrading from stores written by an older version
+### Upgrading from stores written by an older version
 
 Rows written before steers existed read in their new shape, with nothing to run. A row stored with
 `reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
 at the latest line in its session, so its next turn reads it. A row stored `parked` for a
 person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged. See
 `retired-shapes`.
+
+## Skills
+
+A skill is inline instructions injected into a generator's prompt. Bind skills to
+**one** generator with `createSkillsLibrary` — no shared bag, no cross-agent bleed —
+and configure the binding where the generator is defined:
+
+```ts
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+
+const skills = createSkillsLibrary({ catalog, initialSkills });
+
+// Preload a skill, fails loud on a typo:
+generator({ uses: [skills.with({ active: ["detailed-analysis"] })] });
+
+// Let the agent load a skill mid-turn, stored in this generator's block state
+// (the binding installs the block-state field for you):
+generator({
+  uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
+});
+```
+
+The up-front activator, `createSkillActivator`, picks skills before the generator runs: slash,
+then keywords, then a classifier. Pass `evaluator: skillEvaluator(model)` to run that last tier
+on an evaluation model. It picks one skill or none, and its answer is final.
+Pass `skillEvaluator(model, { recentMessages: 3 })` to let it read the last three turns
+too, so follow-ups like "yes, do that" can match.
+`skillQuestions` builds the same question for an evaluator you construct yourself. See
+[Tier 3 with an evaluator](https://flow-state.dev/docs/skills/activation#tier-3-with-an-evaluator).
+
+`initialSkills` also takes a **function of the execution**, for a catalog that
+belongs to the flow copy rather than to the definition — two registered copies
+then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
+so each copy reads its own storage. The resolver runs before every step of every
+turn, so keep it to an O(1) read of something already resolved; and because there
+is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
+is refused rather than left unvalidated.
+
+### Partitioning a library
+
+When many users or workers share one copy, use `partitionBy` instead of `flowIsolation`. It
+returns the partition for the running context, and each partition gets its own catalog. Derive it
+from server-written data, such as session state, never from input. A run it returns `undefined`
+for reads no partition's skills: its catalog is empty, and a write to it is refused.
+
+```ts
+createSkillsLibrary({ scope: "user", partitionBy: (ctx) => ctx.session.state.workerId });
+```
+
+Seeding writes a **copy**, so a later edit to the source does not reach a catalog
+that already holds the skill. `refreshSeededSkills(collection, sources)` is the
+deliberate act that pulls one through. It replaces a touched skill's folder whole,
+so a supporting file the source has dropped is deleted rather than left reachable;
+it skips a name whose manifest is gone, so a deletion stands; and ordinary seeding
+stays additive.
+
+**`importSkillsDirectory({ overwrite: true })` is not the same thing, and picking
+the wrong one is how stale instructions survive.** Both write a source skill over
+one that is already there, but `overwrite` enumerates nothing — it writes the
+files the source *has* and leaves everything else, so a supporting file the source
+has since **dropped** stays in the folder and stays resolvable by its path.
+`refreshSeededSkills` prunes it. Reach for `overwrite` when you mean
+"write these on top" (a migration, a test fixture); reach for refresh when you mean
+"make this match the source".
+
+A binding that contributes the catalog contributes all of it, never the subset a
+skill's `allowed-tools` names. It contributes the catalog when it preloads skills
+(`active`), when it installs the load tool (`dynamicActivation`), and when it
+pairs `activeState` with `allowed`; an `activeState` binding with neither
+contributes no catalog tools at all. `registerCatalogTools: false` turns that
+grant off while leaving the validation on, for a host that owns tool registration
+itself.
+
+A skill can't declare a team of its own. A `SKILL.md` with an `agents:` block is
+refused when it loads; give the work to workers on a task board instead.
+
+See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
+`active` / `allowed` / `activeState` surface.
 
 ### skillsManifestSource
 

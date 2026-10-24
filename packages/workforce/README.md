@@ -2057,6 +2057,8 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 `best-fit`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
 same problems without throwing.
 
+### The coordinator's task board
+
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
 Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask` and
 `answerTask`), and the conversation's session takes them as actions named for the board:
@@ -2078,25 +2080,14 @@ ends; a waiting turn gets the answer instead. See
 with durable execution, an ending whose notice was lost (a crash right after the task ended) is
 heard within seconds, without anyone opening the conversation, through the session's wake.
 
-**After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
-settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
-whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
-version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
-task an earlier version held open for a message queued to its session: its work had answered, and
-it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
-start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
-orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
-now, in each session holding such a debt, and returns how many. It is safe to run again, and
-answers `0` on a store without wakes. A Shift Manager Lab runs it at start. `userCell` maps a
-user and org to the storage key of that user's state, where conversation boards keep their rows;
-those rows stay in the user's shared state even on a flow with `isolateUserState`, so a
-flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Types:
-`BoardWakeBackfillStores`, `BoardWakeBackfillOptions`.
+## Filing tasks from any worker
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
 that carries the session board: the built-in `agent` and `coordinator` flows do, and your own flow
 does through `defineSessionBoard({ installation, flowKind })` (see its row under Exports). A worker with no such delegate has nothing to file for, and its actions answer
 `{ ok: false, error: "no_delegation_board" }`.
+
+### Steps
 
 A worker can also file tasks naming **itself**: each is a **step**, kept on the session's own
 `plan` ledger, never handed to a session. When its turn ends, the same request works the steps one
@@ -2116,6 +2107,8 @@ wait on a task it filed with `getTask({ id, wait: true })`, up to five waits dee
 See
 [Working in steps](https://flow-state.dev/docs/workforce/delegating-work#working-in-steps).
 
+### Splitting a task
+
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
 its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
@@ -2133,6 +2126,8 @@ a durable host delivers the notice when it starts again; without durable executi
 five boards deep and 100 tasks under one top task; a filing past either is answered
 `{ ok: false, error: "total_task_cap_exceeded" }`. Raise the 100 with `hireWorkforce`'s
 `taskChainLimit`. See [Delegating work](https://flow-state.dev/docs/workforce/delegating-work).
+
+### Questions, messages and follow-ups
 
 A worker on a task turn has `parkOnQuestion`: it parks the task on its question, and the
 conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
@@ -2154,6 +2149,8 @@ session with the same worker, and `getTask` on the original then shows the follo
 A follow-up can be filed while that task still runs: a session works one task at a time, so it
 waits until the task ends.
 
+### Filing from code, and reading boards from a browser
+
 Code filing through the board's ref chooses, per task, `session: "new" | "ongoing"` (its own task
 session, or the session where that delegate works for this conversation) and
 `resultTo: "filer" | "conversation"`. A conversation-result task takes one attempt, and a wait on
@@ -2167,6 +2164,23 @@ conversations' rows in one listing, paged like any collection read, and none of 
 conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that conversation's
 session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
 and the like), never a task's input, output or metadata.
+
+### After upgrading
+
+Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
+settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
+whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
+version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. So does a
+task an earlier version held open for a message queued to its session: its work had answered, and
+it settles with that answer once checked. Call `backfillBoardWakes(stores, { userCell })` once at host
+start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
+orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
+now, in each session holding such a debt, and returns how many. It is safe to run again, and
+answers `0` on a store without wakes. A Shift Manager Lab runs it at start. `userCell` maps a
+user and org to the storage key of that user's state, where conversation boards keep their rows;
+those rows stay in the user's shared state even on a flow with `isolateUserState`, so a
+flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Types:
+`BoardWakeBackfillStores`, `BoardWakeBackfillOptions`.
 
 ## Worker messages
 

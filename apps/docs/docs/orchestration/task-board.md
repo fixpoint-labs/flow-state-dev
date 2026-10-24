@@ -12,125 +12,29 @@ import TaskBoardPartsDrawing from "./task-board-parts.svg";
 
 Task board is the building block underneath Parallel Tasks, Supervisor, and Plan and Execute. It runs a pool of workers that pull from a shared `TaskCollection`, respects task dependencies, and drains until the collection is finished: either every task completed, or nothing left can run.
 
-Most users reach for one of the wrapper patterns. Reach for the board directly when none of those fit: a custom worker registry, a session-scoped board that accepts tasks from external actors, or a termination policy the wrappers don't expose.
-
 ## When to use a task board
 
+Start with a wrapper pattern when its shape fits:
+
+- [**Parallel Tasks**](../patterns/parallelTasks): known-upfront fan-out, no review loop, one drain.
+- [**Supervisor**](../patterns/supervisor): per-task quality review before write-back.
+- [**Plan and Execute**](../patterns/plan-and-execute): re-planning across drains based on partial results.
+- [**Round Robin**](../patterns/round-robin): fixed-roster turn-taking.
+- [**Debate**](../patterns/debate): paired adversarial contributors.
+
+Reach for the board directly when none of those fit:
+
 - You need a long-running board that accepts new tasks from outside the initial seed list (Parallel Tasks decomposes once and stops).
-- You need a custom dispatcher or termination predicate that none of the higher-level wrappers expose.
-- You're building a new coordination pattern and want a tested concurrent-drain substrate underneath it.
+- You need a custom worker registry, dispatcher, or termination rule that none of the wrappers expose.
+- You're building a new coordination pattern and want a tested concurrent drain underneath it.
 
-## When NOT to use one
-
-Use the higher-level wrappers when their shape fits:
-
-- **Parallel Tasks** — known-upfront fan-out, no review loop, one drain.
-- **Supervisor** — per-task quality review before write-back.
-- **Plan and Execute** — re-planning across drains based on partial results.
-- **Round Robin** — fixed-roster turn-taking.
-- **Debate** — paired adversarial contributors.
-
-Drop to the board only when none of those fit.
+The page starts with the board you build and drain in code. Later sections cover the [task tools](#one-task-five-tools) a model uses to work a board, and boards whose [assignees dispatch](#assignees-that-dispatch) their tasks to other sessions.
 
 ## The parts
 
 The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
 
 <Figure svg={TaskBoardPartsDrawing} caption="Board, task collection, worker: where each lives" description={"The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee"} />
-
-## One task, five tools
-
-A model works a board through five task tools. Four belong to whoever files the work:
-
-- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, or, filed with `held: true`, when you release it.
-- `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
-- `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
-- `updateTask({ id, ... })` changes one, each field by its own rule.
-
-The fifth is the worker's. `reportProgress({ statusNote?, output? })` is offered only on a turn that is working a task, and acts on that task, so it takes no `id`.
-
-```ts
-createTask({ goal: "Find adoption numbers", assignee: "researcher" })
-updateTask({ id, priority: 2, labels: ["stats"] })   // before it starts
-updateTask({ id, status: "cancelled" })              // until it finishes
-updateTask({ id, message: "Use the March figures" }) // until it finishes
-reportProgress({ statusNote: "Drafting the summary", output: draft })
-```
-
-No tool finishes a task. A task ends when its worker's turn returns, or throws.
-
-### What `updateTask` can change, and when
-
-| Field | Allowed |
-|---|---|
-| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
-| `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
-| `status: "cancelled"` | Until the task finishes. Sent alone |
-| `message` | Until the task finishes. Sent alone, and kept on the task; see [below](#sending-a-message-to-an-open-task) |
-
-The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel or a message lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` to correct or extend it.
-
-A started task keeps the worker it started with. To move it, cancel it and file it again.
-
-Every rule is checked inside the write, so a task that starts between your read and your write is refused, not edited. A refusal is a result, not a throw, and it names the field, the state and the next move:
-
-| Error | When |
-|---|---|
-| `field_locked_after_start` | A field that changes only before a start, on a task that has started. It names the fields and the task's status |
-| `task_finished` | Any write to a finished task, a message included |
-| `cancel_takes_no_edits` | `status: "cancelled"` sent with another field |
-| `message_takes_no_edits` | `message` sent with a field or a status |
-| `nothing_to_update` | No field and no status beside `id` |
-| `unknown_assignee` | An `assignee` the board's roster doesn't name |
-| `steer_limit` | A message to a task that already holds 20 |
-| `message_not_supported` | A message on a board whose task list keeps no messages |
-
-### Sending a message to an open task
-
-`updateTask({ id, message })` sends words to a task that hasn't finished: a correction, a detail the filer forgot, a change of direction. The message is kept on the task, in order, and reaches the work without using an attempt, ending the task, or changing its status. Where it lands depends on where the task is:
-
-- **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
-- **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
-- **Waiting on tasks it filed.** A turn starts with the message while those tasks keep running. On a Workforce conversation's board, a session runs one turn of a task at a time. If another of the task's turns is waiting on a step it filed for itself in a session of its own, the message's turn waits until that turn answers. So does the turn that a finished task wakes.
-- **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
-
-The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
-
-The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
-
-`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). Unless it arrived before the task started, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
-
-A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
-
-### Progress from the worker
-
-`reportProgress` writes two things on the task its turn holds. `statusNote` is a one-line note for task views; `listTasks` shows it. `output` is a checkpoint of the result so far; `getTask` shows it as the task's output, marked `checkpoint: true`. Neither changes the task's status.
-
-The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
-
-For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createParkOnQuestion`](#when-a-task-stops-on-a-question) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
-
-## Block composition
-
-```
-seedCollection   (write initialTasks into the TaskCollection)
-  ↓
-boardMetaActive  (emit "started" status item)
-  ↓
-forEach worker (concurrency=N)
-  ↓
-  ┌─ claimTask    (claim a ready task, or report empty)
-  │  ↓
-  │  workerBody   (run the task's worker block, recordSuccess / recordError)
-  │  ↓
-  │  checkBoard   (decide: continue, or exit with a reason)
-  │  ↓
-  │  loopBack until checkBoard says stop
-  ↓
-boardMetaCompleted (emit "completed" status item with counts + terminationReason)
-```
-
-Each worker runs its own claim/run/check loop. A claim is a single atomic compare-and-set, so two workers never run the same task: one wins, the other moves straight on to the next eligible task.
 
 ## Basic usage
 
@@ -161,6 +65,28 @@ const board = taskBoard({
 
 Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
 
+## How a drain runs
+
+```
+seedCollection   (write initialTasks into the TaskCollection)
+  ↓
+boardMetaActive  (emit "started" status item)
+  ↓
+forEach worker (concurrency=N)
+  ↓
+  ┌─ claimTask    (claim a ready task, or report empty)
+  │  ↓
+  │  workerBody   (run the task's worker block, recordSuccess / recordError)
+  │  ↓
+  │  checkBoard   (decide: continue, or exit with a reason)
+  │  ↓
+  │  loopBack until checkBoard says stop
+  ↓
+boardMetaCompleted (emit "completed" status item with counts + terminationReason)
+```
+
+Each worker runs its own claim/run/check loop. A claim is a single atomic compare-and-set, so two workers never run the same task: one wins, the other moves straight on to the next eligible task.
+
 ## Plan boards and delegation boards: `mode`
 
 A board either runs its tasks or hands them out, and you say which with `mode`. It decides whether the drain waits for the work.
@@ -177,27 +103,94 @@ A board has one mode, so its assignees all agree with it. `taskBoard()` throws w
 
 `board.mode` reads the mode back. A [goal-seek loop](./goal-seek-loop.md) refuses a delegation board, because its judge would rule on work that is still running.
 
+## Worker registry
+
+Two ways to provide workers:
+
+- **Single uniform worker**: one block runs every claimed task. Pass it directly as `workers`.
+- **Registry**: a `{ [assignee]: block }` map. Each task carries `assignee: "name"`; the substrate dispatches to the matching worker.
+
+```ts
+const board = taskBoard({
+  name: "research",
+  collection: { collectionId: "r" },
+  workers: {
+    "market-analyst": marketAnalyst,
+    "financial-analyst": financialAnalyst,
+    synthesizer: synthesizer,
+  },
+  initialTasks: [
+    { id: "m", goal: "market", assignee: "market-analyst" },
+    { id: "f", goal: "financial", assignee: "financial-analyst" },
+    { id: "s", goal: "synthesize", assignee: "synthesizer", deps: ["m", "f"] },
+  ],
+});
+```
+
+Assignee resolution: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; with no `defaultWorker`, the task fails per `onError`.
+
+```ts
+const board = taskBoard({
+  name: "research",
+  collection: { collectionId: "r" },
+  workers: { "market-analyst": marketAnalyst },
+  // Optional fallback: any task whose assignee is unset or unmatched runs here
+  // instead of failing. Reached only on a miss; declared workers are untouched.
+  defaultWorker: genericWorker,
+});
+```
+
+There is no `defaultWorker` unless you pass one.
+
+The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `createTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
+
+On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
+
+## Dispatcher modes
+
+The dispatcher decides which `pending` task gets claimed next. No dispatcher claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
+
+- `"topological"` (default): earliest-added ready task first.
+- `"fifo"`: the same ordering. The name reads better for a flat fan-out with no deps.
+- `"priority"`: highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
+
+Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
+
+The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
+
+## Dependencies
+
+A task's `deps` name the tasks that must complete before it can be claimed. A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in an `addTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
+
+### When a dependency fails
+
+A task that fails for good, or is cancelled, takes its open dependents with it. The collection cancels every task that depends on it, then every task that depends on those, and labels each one `skipped` with `causedBy` naming the task that ended. There is nothing to wire: every board does this, whichever backing it runs on.
+
+The cascade is paid in the same call as the ending. If the process dies between the two, the debt is on the stored row, and the board's next drain pays it before it claims anything. A task that is retried owes nothing yet, because the retry may still succeed.
+
+On a board that [dispatches](#assignees-that-dispatch), the failed or cancelled task's notice to the session that filed it lists the dependents it cancelled, in `cancelled`. See [Hearing how a task ended](#hearing-how-a-task-ended).
+
 ## Termination: `onIdle` modes
 
-A board needs a rule for "when do we stop." That rule is `onIdle`. Three values:
+A board needs a rule for when to stop. That rule is `onIdle`.
 
 ### `"complete-or-blocked"` (default)
 
 Exits when one of the following is true on a worker's `checkBoard` iteration:
 
-- **Drained** — no `pending`, `in_progress`, or `parked` tasks remain.
-- **Blocked** — no task is `in_progress` or `parked`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
+- **Drained**: no `pending`, `in_progress`, or `parked` tasks remain.
+- **Blocked**: no task is `in_progress` or `parked`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
 Both checks ignore tasks sitting in `parked` when the board sets [`onReview: "exit"`](#waiting-on-a-person-onreview).
 
 The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
-- `"all-completed"` — every task reached `completed` (or the board started empty).
-- `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `held` waiting on a release.
-- `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
-- `"dispatched"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
+- `"all-completed"`: every task reached `completed` (or the board started empty).
+- `"blocked-by-failures"`: at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `held` waiting on a release.
+- `"retry-budget-exhausted"`: the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
+- `"dispatched"`: every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
   Older logs report `"handed-off"` for the same thing.
-- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
+- `"parked-for-review"`: the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, or is `held`. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
 
@@ -265,14 +258,14 @@ That is the right default when the answer arrives in seconds. It is the wrong on
 
 `counts.parked` does not tell that board apart from one that hit a real failure. A parked task and a failed task can sit on the same board, and when they do `blocked-by-failures` is the accurate answer: the failure is there, and answering the review will not clear it. A check that sees `parked` above zero and reads no further has just missed the errored task beside it.
 
-So read the whole of `counts`, and know what it still cannot settle. A board whose only outstanding work is a question for a person has `parked` above zero with `errored`, `cancelled`, and `held` all at zero. Past that the counts run out: a task queued behind the parked one is plain `pending`, and a task in `in_progress` may be running elsewhere or may have been abandoned when its worker died. Separating those means reading the tasks, not the counts — `listTasks` through [the board's capability](#commanding-the-board-with-its-capability), then checking what each pending task's `deps` are waiting for.
+So read the whole of `counts`, and know what it still cannot settle. A board whose only outstanding work is a question for a person has `parked` above zero with `errored`, `cancelled`, and `held` all at zero. Past that the counts run out: a task queued behind the parked one is plain `pending`, and a task in `in_progress` may be running elsewhere or may have been abandoned when its worker died. Separating those means reading the tasks, not the counts: `listTasks` through [the board's capability](#commanding-the-board-with-its-capability), then checking what each pending task's `deps` are waiting for.
 
 `onReview: "exit"` says the board should not wait:
 
 ```ts
 const board = taskBoard({
   name: "reviews",
-  collection: reviewLedger,   // defineTaskCollection — required for this mode
+  collection: reviewLedger,   // a defineTaskCollection: required for this mode
   workers,
   onReview: "exit",
 });
@@ -322,7 +315,7 @@ Whichever drain gets there first claims the task and runs it, exactly as if it h
 
 Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws, naming the problem and the change to make:
 
-- **A durable collection** — one built with `defineTaskCollection`. The parked task has to outlive the drain that let go of it, or there is nothing for a later drain to come back to.
+- **A durable collection**, one built with `defineTaskCollection`. The parked task has to outlive the drain that let go of it, or there is nothing for a later drain to come back to.
 - **The default `onIdle`.** `"complete"` and `"wait"` are both refused. If you need a wait-mode board to stop on parked tasks, put that rule in `shouldExit`.
 - **An explicit `id` on every entry in `initialTasks`.** This mode makes a second drain the normal case, and each drain re-runs the seed step. Seed entries with ids are matched against what is already on the board and skipped; an entry without one is added again every time, so the board grows a duplicate task on every pass.
 
@@ -332,68 +325,447 @@ The task lifecycle is the same under either setting. A parked task sits in `park
 
 The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
-## When a dependency fails
+## Concurrency and error handling
 
-A task that fails for good, or is cancelled, takes its open dependents with it. The collection cancels every task that depends on it, then every task that depends on those, and labels each one `skipped` with `causedBy` naming the task that ended. There is nothing to wire: every board does this, whichever backing it runs on.
+- `concurrency`: max parallel workers. Default `4`.
+- `onError: "skip" | "fail"`: `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
+- `maxAttempts` (per task): set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored.
+- `maxTotalRetries` (default `50`): how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
+- `maxIterations`: safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
-The cascade is paid in the same call as the ending. If the process dies between the two, the debt is on the stored row, and the board's next drain pays it before it claims anything. A task that is retried owes nothing yet, because the retry may still succeed.
-
-On a board that [dispatches](#assignees-that-dispatch), the failed or cancelled task's notice to the session that filed it lists the dependents it cancelled, in `cancelled`. See [Hearing how a task ended](#hearing-how-a-task-ended).
-
-## Dispatcher modes
-
-The dispatcher decides which `pending` task gets claimed next. No dispatcher claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
-
-- `"topological"` (default) — earliest-added ready task first.
-- `"fifo"` — the same ordering. The name reads better for a flat fan-out with no deps.
-- `"priority"` — highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
-
-Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
-
-A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in an `addTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
-
-## Worker registry
-
-Two ways to provide workers:
-
-- **Single uniform worker** — one block runs every claimed task. Pass it directly as `workers`.
-- **Registry** — a `{ [assignee]: block }` map. Each task carries `assignee: "name"`; the substrate dispatches to the matching worker.
+Some failures would come back the same on every attempt, such as a run refused because its task names nothing it may work on. Retrying those only spends the attempts. A worker that knows this throws `TaskEndsForGoodError`, exported from `@flow-state-dev/orchestration/task-board`, naming the task it is working on. The board ends that task on this attempt, with the error's message as its reason. It ends `errored` by default, or `cancelled` if you construct the error with `{ ending: "cancelled" }`. Dependents and filed work are cascaded as for any other ending. The error only counts for the task it names. If a board inside your worker rethrows one about its own task, your task treats it as an ordinary failure and keeps its retries.
 
 ```ts
-const board = taskBoard({
-  name: "research",
-  collection: { collectionId: "r" },
-  workers: {
-    "market-analyst": marketAnalyst,
-    "financial-analyst": financialAnalyst,
-    synthesizer: synthesizer,
+import { TaskEndsForGoodError } from "@flow-state-dev/orchestration/task-board";
+
+// in a worker: input.taskId is the task this worker is running
+throw new TaskEndsForGoodError("the task names no project", { taskId: input.taskId });
+```
+
+`onError` reaches an [assignee that dispatches](#assignees-that-dispatch) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
+
+A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
+
+The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
+
+### When the board cannot record a result
+
+A task going wrong and the board failing to write down what happened are different events, and `onError` governs only the first.
+
+Saving a result is two steps: the store commits the write, then the change is announced to everything watching the board. The second step can fail on its own, when a block reacting to task changes throws or a resource hook rejects, and by then the work is already saved. When that happens the board says so. It emits a `task-board-recorder-failure` item:
+
+```ts
+// A task-board-recorder-failure item:
+{
+  component: "task-board-recorder-failure",
+  data: {
+    collectionId: "research",
+    taskId: "summarise-findings",
+    recorder: "complete",   // "complete" or "fail": which settlement it was recording
+    verdict: "committed",   // "committed" or "undetermined"
+    error: "task-change subscriber threw",
   },
-  initialTasks: [
-    { id: "m", goal: "market", assignee: "market-analyst" },
-    { id: "f", goal: "financial", assignee: "financial-analyst" },
-    { id: "s", goal: "synthesize", assignee: "synthesizer", deps: ["m", "f"] },
-  ],
-});
+}
 ```
 
-Assignee resolution: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; with no `defaultWorker`, the task fails per `onError`.
+The item is persisted, so it is still there after the run. The [`chatAssistantRenderers`](/docs/ui/flow-aware-components#chatassistant) registry maps it to `false`, so it does not appear in a chat thread; read it off the run's items. `verdict` is what the board could establish about the write:
+
+| `verdict` | Means |
+| --- | --- |
+| `committed` | The result is saved. Only the announcement failed. |
+| `undetermined` | The board cannot tell whether the result was saved. |
+
+Then the board run fails, after every other task has finished. `onError: "skip"` does not suppress it: `skip` governs tasks, not the board's own bookkeeping.
+
+`undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
+
+- **On a task store you wrote yourself.** A store built against `TaskCollectionRef` keeps no record of which write landed, so the board can never answer better than `undetermined`. There is no way to opt in.
+- **On rows a persistent store already held.** Rows written by an earlier release of the board carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
+
+A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
+
+On an [assignee that dispatches](#assignees-that-dispatch) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself, again regardless of `onError`.
+
+Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
+
+## Bounding how much work a board takes on
+
+`concurrency` paces how many tasks run at once. It says nothing about how many can be *created*, so a coordinator that plans badly can queue far more work than anyone intended. The board's bounds:
+
+- `maxEnqueuedTasks` (default `100`): how many tasks may be **added while others are still waiting**. Checked when a task is created, against the resulting `pending` count, so a slot comes back when its task leaves `pending` by completing, erroring, or being cancelled. A task that cannot run, such as one stranded behind a failed dependency, stays `pending` and keeps its slot however long the board drains.
+- `maxTotalTasks` (default `500`): how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
+- `maxTotalRetries` (default `50`): how many failure retries the board may **authorize in total**, across every task.
+- `concurrency` (default `4`): how many run at the same time.
+
+Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
+
+The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, a `release`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
+
+### Bounding the retries
+
+The two bounds above count tasks the board *creates*. A retry does not create a task, it re-runs one that already exists, so a task that keeps failing keeps costing model calls while both counts hold still. `maxTotalRetries` is the bound on that.
 
 ```ts
 const board = taskBoard({
   name: "research",
-  collection: { collectionId: "r" },
-  workers: { "market-analyst": marketAnalyst },
-  // Optional fallback: any task whose assignee is unset or unmatched runs here
-  // instead of failing. Reached only on a miss — declared workers are untouched.
-  defaultWorker: genericWorker,
+  workers,
+  maxTotalRetries: 200,
 });
 ```
 
-There is no `defaultWorker` unless you pass one.
+It counts failure retries across the whole board. When the count reaches the bound, the next task that fails goes to `errored` instead of back to `pending`, with an error naming the board's budget, and its `error` reads:
 
-The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `createTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
+```
+worker timed out — not retried: collection "research" has spent its retry budget of 200 (maxTotalRetries). Raise it, or pass null to opt out.
+```
 
-On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
+The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
+
+Only failure retries count. `reclaim()`, `release`, and `unpark` also return a task to `pending`, and none of them spends the budget.
+
+The budget is spent when a retry is granted, not when it runs. If a re-dispatched task is never picked up again because its worker died or its lease expired, the retry still counts.
+
+A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim. `reclaim()` and `unpark` re-pend a task *without* advancing `attempts` or spending the retry budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle. On such a board, `maxIterations` is what ends it. It bounds how long each worker loops, idle polls that claim nothing included, so at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
+
+On the durable (resource-backed) backing, retries are counted but the bound is not enforced. The completion item reports `maxTotalRetries: null` there.
+
+Every task carries its own record of this in `task.retryLedger`:
+
+```ts
+const task = collection.get(id);
+task.retryLedger;   // { granted: 2, deniedByBudget: false }
+```
+
+`granted` is how many retries this task was authorized. `deniedByBudget` is `true` once one was refused because the board's budget was spent. The field is absent on a task that has never failed, so read it as `task.retryLedger?.granted ?? 0`.
+
+When a board's completion item reports `terminationReason: "retry-budget-exhausted"`, the budget is what stopped it:
+
+```ts
+// task-board-meta, status: "completed"
+{
+  terminationReason: "retry-budget-exhausted",
+  maxTotalRetries: 200,
+  counts: { total: 12, completed: 9, errored: 3, retries: 200 },
+}
+```
+
+`maxTotalRetries` on that item is the limit the board's collection actually enforced, and `null` means none was. A board whose retry count happens to equal its limit but never refused a retry reports `"blocked-by-failures"`, the ordinary reason for a board that exited with unfinished tasks.
+
+### How long the counts last
+
+No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
+
+- **On the request** (the default): the tasks live on the request, so a new request starts empty and all three counts start from zero.
+- **On a state you pass**: the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a board kept there starts its tasks and counts from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
+- **Durable (resource-backed)**: no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
+
+### One writer, or hand every writer the bounds
+
+The bounds are carried by the collection reference the board resolved. Resolving the same storage a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them:
+
+```ts
+const board = taskBoard({ name: "research", workers });
+
+// This second reference is unbounded, even though the board has bounds.
+const loose = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "research" });
+
+// Hand it the board's own resolved bounds and it enforces them.
+const bounded = await getOrCreateTaskCollection({
+  ctx,
+  backing: "state",
+  collectionId: "research",
+  ...board.caps,
+});
+```
+
+`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
+
+`board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
+
+`createApplyReplan` is one of the blocks that can land on either side of that line, and it takes two shapes:
+
+- With `capability: board.capability`, it reads and writes through the board's own reference, so the board's bounds apply.
+- With only `name`, it resolves a request-backed collection under that id and enforces no bounds, because nothing in its options identifies which board it is writing to.
+
+Pass the capability when you want replanned tasks to respect the board's bounds. The bundled patterns do.
+
+### Where the bounds apply
+
+The bounds belong to the collection, so the board applies them only to a collection it builds itself: the request default and the sequencer opt-in. Per the previous section, they also reach only writers that go through the board's own reference. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing; that collection carries whatever bounds it was built with and stays the sole authority. Passing the cap options alongside a supplied `collection` throws at `taskBoard()` construction, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead. Here that is a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
+
+```ts
+const tasks = await getOrCreateTaskCollection({
+  ctx,
+  backing: "state",
+  state: ctx.sequencer!,
+  collectionId: "my-board",
+  maxTotalTasks: 2000,
+});
+```
+
+Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent`.
+
+The cap options exist on `backing: "state"` only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
+
+### If the defaults are too low for your board
+
+A board that needs to create more than 500 tasks in a run, or hold more than 100 `pending` at once, is refused the task that crosses the line. Raise the bound, or turn it off with `null`:
+
+```ts
+// Raise it.
+const board = taskBoard({ name: "big", workers, maxTotalTasks: 5_000 });
+
+// Or opt out of one axis entirely.
+const unbounded = taskBoard({ name: "streaming", workers, maxEnqueuedTasks: null });
+```
+
+Omitting an option is not an off switch; it reapplies the default. `null` is the off switch. Otherwise each option takes a positive integer, and `0`, a negative, a fraction, `NaN`, `Infinity`, or an enqueue bound above the lifetime ceiling all throw when the board is constructed.
+
+## Collection backing
+
+A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
+
+- **Request (default)**: tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
+- **Durable (resource-backed)**: tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
+- **Sequencer**: tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+- **Factory**: tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
+
+```ts
+// Request default: nothing to restate.
+const board = taskBoard({ name: "research", workers });
+
+// Sequencer opt-in: single-invocation, per-call state.
+const board = taskBoard({
+  name: "one-shot",
+  collection: { backing: "sequencer", collectionId: "one-shot" },
+  workers,
+});
+```
+
+### A task store of your own
+
+For a custom or externally managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`. If you write that ref by hand, `complete` and `fail` should accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown.
+
+A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
+
+Containment is not a substitute for the guards. It fires on a throw. A stale write the state machine happens to permit, such as a worker reporting success on a task another worker has since taken over, doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards to protect your data. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+
+Write provenance is the one part you can skip. Maintaining it correctly means reproducing a bounded receipt log and its eviction flag, and the mutator that does that is internal to the two built-in backings and isn't a documented extension point. A hand-written ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
+
+### Durable boards that survive across turns
+
+When a board's tasks must persist past the request, say a user's standing to-do list or an org-wide work queue, declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
+
+```ts
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { z } from "zod";
+
+const todos = defineTaskCollection({
+  id: "todos",
+  scope: "user",
+  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
+});
+
+const board = taskBoard({ name: "todos", collection: todos, workers });
+```
+
+`id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
+
+#### A board per conversation, worked on another flow
+
+A `session`-scoped board with `sharedToLineage: true` can hand rows to a session on its own flow. It can't hand them to another flow: a task run there starts a lineage of its own, so it never finds the row. A `user`-scoped board does cross flows, but then every session of that user shares one set of rows, and one conversation's board runs another conversation's tasks.
+
+To keep a board per conversation and still hand its rows to another flow, give a `user`-scoped collection a `partitionBy` function:
+
+```ts
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
+});
+```
+
+Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board dispatches a row, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
+
+On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
+
+```ts
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
+import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
+
+const from = taskLedgers({
+  name: "conversation-work",
+  resolve: async (ledgerId, ctx, partition) => {
+    const collection = resolveResourceCollection(ctx, ledgerId);
+    if (ledgerId !== work.id || collection === undefined || partition === undefined) return undefined;
+    return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: work.id, collection, partition });
+  },
+});
+```
+
+The function is handed the running session's server-set identity, `{ sessionId, lineageId, userId, orgId, tenantId }`, and nothing a caller sends. Return a value a caller can't set. A session id is reused when a session is deleted and created again, so a partition built from the id alone hands the new session its predecessor's rows. `lineageId` is minted when the session's record is created, so the two together name one life of the session, and a recreated session starts with an empty board.
+
+The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
+
+## Commanding the board with its capability
+
+You pick where a board stores its tasks once, on `taskBoard({...})`. After that, the only thing other blocks touch is `board.capability`. List it in a block's `uses` and the board's tasks are on `ctx.cap.<name>`, the board name verbatim. Hyphenated names work through bracket access (`ctx.cap["my-board"]`).
+
+```ts
+const board = taskBoard({ name: "research", workers });
+
+const enqueue = handler({
+  name: "enqueue-more",
+  inputSchema: z.unknown(),
+  uses: [board.capability],
+  execute: async (_input, ctx) => {
+    await ctx.cap.research.addTask({ goal: "check competitors" });
+    const open = await ctx.cap.research.countTasks({ status: "pending" });
+    return { open };
+  },
+});
+```
+
+The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
+
+A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on the request, sequencer and durable backings, as long as the add and the drain happen in the same request.
+
+Each sugar call re-resolves the collection, so reads always reflect the latest state. That costs something per call on every backing. When you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
+
+## One task, five tools
+
+A model works a board through five task tools. Four belong to whoever files the work:
+
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, or, filed with `held: true`, when you release it.
+- `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
+- `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
+- `updateTask({ id, ... })` changes one, each field by its own rule.
+
+The fifth is the worker's. `reportProgress({ statusNote?, output? })` is offered only on a turn that is working a task, and acts on that task, so it takes no `id`.
+
+```ts
+createTask({ goal: "Find adoption numbers", assignee: "researcher" })
+updateTask({ id, priority: 2, labels: ["stats"] })   // before it starts
+updateTask({ id, status: "cancelled" })              // until it finishes
+updateTask({ id, message: "Use the March figures" }) // until it finishes
+reportProgress({ statusNote: "Drafting the summary", output: draft })
+```
+
+No tool finishes a task. A task ends when its worker's turn returns, or throws.
+
+`createTaskToolsCapability(resolve, roster?)` from `@flow-state-dev/orchestration` points the filer's tools at a board, and [`taskToolActions`](#changing-tasks-from-outside-a-run) offers the same tools as actions for a screen. A Workforce worker gets them on its own; see [Delegating work](../workforce/delegating-work.md).
+
+### What `updateTask` can change, and when
+
+| Field | Allowed |
+|---|---|
+| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
+| `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
+| `status: "cancelled"` | Until the task finishes. Sent alone |
+| `message` | Until the task finishes. Sent alone, and kept on the task; see [below](#sending-a-message-to-an-open-task) |
+
+The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel or a message lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` to correct or extend it.
+
+A started task keeps the worker it started with. To move it, cancel it and file it again.
+
+Every rule is checked inside the write, so a task that starts between your read and your write is refused, not edited. A refusal is a result, not a throw, and it names the field, the state and the next move:
+
+| Error | When |
+|---|---|
+| `field_locked_after_start` | A field that changes only before a start, on a task that has started. It names the fields and the task's status |
+| `task_finished` | Any write to a finished task, a message included |
+| `cancel_takes_no_edits` | `status: "cancelled"` sent with another field |
+| `message_takes_no_edits` | `message` sent with a field or a status |
+| `nothing_to_update` | No field and no status beside `id` |
+| `unknown_assignee` | An `assignee` the board's roster doesn't name |
+| `steer_limit` | A message to a task that already holds 20 |
+| `message_not_supported` | A message on a board whose task list keeps no messages |
+
+### Sending a message to an open task
+
+`updateTask({ id, message })` sends words to a task that hasn't finished: a correction, a detail the filer forgot, a change of direction. The message is kept on the task, in order, and reaches the work without using an attempt, ending the task, or changing its status. Where it lands depends on where the task is:
+
+- **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
+- **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
+- **Waiting on tasks it filed.** A turn starts with the message while those tasks keep running. On a Workforce conversation's board, a session runs one turn of a task at a time. If another of the task's turns is waiting on a step it filed for itself in a session of its own, the message's turn waits until that turn answers. So does the turn that a finished task wakes.
+- **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
+
+The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
+
+The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
+
+`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). Unless it arrived before the task started, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
+
+A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
+
+### Progress from the worker
+
+`reportProgress` writes two things on the task its turn holds. `statusNote` is a one-line note for task views; `listTasks` shows it. `output` is a checkpoint of the result so far; `getTask` shows it as the task's output, marked `checkpoint: true`. Neither changes the task's status.
+
+The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
+
+For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createParkOnQuestion`](#when-a-task-stops-on-a-question) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
+
+## Changing tasks from outside a run
+
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, hold or release one, or edit one before it starts. `taskToolActions` gives your flow the filer's four task tools and `answerTask`, as actions any caller of the flow can run:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const todos = defineTaskCollection({ id: "todos", scope: "session" });
+const board = taskBoard({ name: "todos", collection: todos, workers });
+
+defineFlow({
+  kind: "ops",
+  actions: {
+    drain: { block: board.drain },
+    ...taskToolActions(board),
+  },
+});
+```
+
+The actions are named for the board's collection: `createTask_todos`, `getTask_todos`, `listTasks_todos`, `updateTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `updateTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+
+Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. A `createTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
+
+Each one runs the same block the model's tool does, so every rule in [the field table](#what-updatetask-can-change-and-when) holds for a screen as for a model. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task, drains the board or finishes a task. A cancel lands on a task a worker is still running, and the worker's own result is declined when it arrives.
+
+The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
+
+These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers, on each row, the board's `getTask` and `updateTask` and every action that takes a `taskId`.
+
+Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
+
+`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, and what it came back with, meaning its `output`, its `error`, or the `question` it is parked on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+
+## When a task stops on a question
+
+A worker that can't go on without an answer calls `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. The task waits until someone answers it with `answerTask`, then picks up again. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task its filer is [waiting on](#waiting-on-a-task) with `getTask` has no `parkOnQuestion`: its worker answers with what it has, or fails.
+
+`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
+
+```ts
+await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+```
+
+It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.
+
+`answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked with `awaitReview`, one parked while a person talks to its worker, or one waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. A declined answer writes nothing. What comes back:
+
+| Returned | When |
+|---|---|
+| `{ ok: true }` | The task was parked on its worker's question, and now holds the answer |
+| `{ ok: false, error: "not_parked_on_question: …" }` | Any other unfinished task, or a late answer |
+| `{ ok: false, error: "terminal_task_write_declined: …" }` | The task has finished |
+| `{ ok: false, error: "task_not_found" }` | The board holds no task with that id |
+
+An answered task has started, so `updateTask` refuses to give it another worker, and the answer reaches the session that asked.
 
 ## Assignees that dispatch {#assignees-that-dispatch}
 
@@ -401,9 +773,9 @@ On a delegation board, a registry assignee runs its tasks somewhere other than t
 
 An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. On a board declared `mode: "delegation"`, an assignee instead **dispatches** each claimed row to a **dispatch run** and moves on. The drain finishes with the row still `in_progress`, and the run settles it once [the task's work is over](#when-a-dispatched-task-is-done).
 
-A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
+A dispatch run is an ordinary session, either of this flow or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
-An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. Every assignee on the board dispatches; work that should run inline goes on a plan board of its own:
+An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"`; don't set `type` on the assignee. Every assignee on the board dispatches; work that should run inline goes on a plan board of its own:
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -552,7 +924,7 @@ By default, the tasks a task filed hold it. To change that, pass `endRules: { fi
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several assignees, or a key you compute from the task |
 | `{ by: (task) => ({ key }) \| ({ id }) }` | chosen per task: a run keyed like `{ key }`, or a session that already exists | some tasks belong in a run of their own and others in a session that is already running ([below](#choosing-the-entry-and-the-session-per-task)) |
 
-The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two assignees, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow assignee names. A `key` function that returns an empty string fails that task.
+The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two assignees, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them (the same key from another conversation is a different run) and to the instance a cross-flow assignee names. A `key` function that returns an empty string fails that task.
 
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -744,7 +1116,7 @@ When the dispatch arrives, the run re-reads the row and runs the worker only if 
 
 Nothing renews the row's lease while the dispatch waits in the host's queue, so a run that starts more than a lease later finds a row the queue already counts as free. It takes that row back rather than refusing it: the claim is renewed on the same attempt, and the run proceeds if that write lands. It refuses only when the renewal is declined, which is the case another drain has already reclaimed the row and is running it elsewhere. The board claims with the collection's default two-minute lease and exposes no setting for it, so a deep queue in front of the run costs waiting and nothing else.
 
-The board's `onError` reaches the run. `"skip"` settles the row with the error and lets that run complete; `"fail"` also fails it. See [What `status` tells you](../server/background-work#what-status-tells-you) for how that reads from the listing.
+The board's `onError` reaches the run too; see [Concurrency and error handling](#concurrency-and-error-handling).
 
 ### Which run is working a task
 
@@ -924,7 +1296,7 @@ File a new task with `createTask`, which starts it on a board that dispatches, a
 one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
 `deadline` takes the place of `timeoutMs`.
 
-**Moving from `waitForResponse`.** `createTask` doesn't wait, and refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`. File the task, then wait with `getTask`. Nothing is filed. {/* retired-name-refusal: migration note */}
+**Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
 
 ### A plan board that hands a row over
 
@@ -945,7 +1317,7 @@ const steps = taskBoard({
 Every other row runs in `workers`. The drain waits for the row to end, however many
 [deadlines](#waiting-on-a-task) that takes, before it starts the rows that depend on it, and
 they see its output, as any dependency's. No completion notice is sent for the row. Declare
-the board's [pass entry](#hearing-how-a-task-ended) on the flow: without it, the drain still
+the board's [`onTaskSettled` entry](#hearing-how-a-task-ended) on the flow: without it, the drain still
 learns of the row's ending, but only at its next deadline, up to five minutes later.
 A plan board may also hold dispatcher assignees, whose rows it waits on the same way. A
 dispatcher there that says `wait: false` is refused, and so is a delegation board's that says
@@ -967,397 +1339,27 @@ The drain writes nothing on the row it handed over. When the session it went to 
 that session finishes it. When the dispatch itself threw, nothing may be running it: the row stays
 `in_progress` until its lease lapses, and then the next run of the plan claims it again.
 
-## Concurrency and error handling
-
-- `concurrency` — max parallel workers. Default `4`.
-- `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
-- `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored.
-- `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
-- `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
-
-Some failures would come back the same on every attempt, such as a run refused because its task names nothing it may work on. Retrying those only spends the attempts. A worker that knows this throws `TaskEndsForGoodError`, exported from `@flow-state-dev/orchestration/task-board`, naming the task it is working on. The board ends that task on this attempt, with the error's message as its reason. It ends `errored` by default, or `cancelled` if you construct the error with `{ ending: "cancelled" }`. Dependents and filed work are cascaded as for any other ending. The error only counts for the task it names. If a board inside your worker rethrows one about its own task, your task treats it as an ordinary failure and keeps its retries.
-
-```ts
-import { TaskEndsForGoodError } from "@flow-state-dev/orchestration/task-board";
-
-// in a worker: input.taskId is the task this worker is running
-throw new TaskEndsForGoodError("the task names no project", { taskId: input.taskId });
-```
-
-`onError` reaches an [assignee that dispatches](#assignees-that-dispatch) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
-
-A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
-
-The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
-
-### When the board cannot record a result
-
-A task going wrong and the board failing to write down what happened are different events, and `onError` governs only the first.
-
-Saving a result is two steps: the store commits the write, then the change is announced to everything watching the board. The second step can fail on its own, when a block reacting to task changes throws or a resource hook rejects, and by then the work is already saved. When that happens the board says so. It emits a `task-board-recorder-failure` item:
-
-```ts
-// A task-board-recorder-failure item:
-{
-  component: "task-board-recorder-failure",
-  data: {
-    collectionId: "research",
-    taskId: "summarise-findings",
-    recorder: "complete",   // "complete" or "fail": which settlement it was recording
-    verdict: "committed",   // "committed" or "undetermined"
-    error: "task-change subscriber threw",
-  },
-}
-```
-
-The item is persisted, so it is still there after the run. The [`chatAssistantRenderers`](/docs/ui/flow-aware-components#chatassistant) registry maps it to `false`, so it does not appear in a chat thread; read it off the run's items. `verdict` is what the board could establish about the write:
-
-| `verdict` | Means |
-| --- | --- |
-| `committed` | The result is saved. Only the announcement failed. |
-| `undetermined` | The board cannot tell whether the result was saved. |
-
-Then the board run fails, after every other task has finished. `onError: "skip"` does not suppress it — `skip` governs tasks, not the board's own bookkeeping.
-
-`undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
-
-- **On a task store you wrote yourself.** A store built against `TaskCollectionRef` keeps no record of which write landed, so the board can never answer better than `undetermined`. There is no way to opt in.
-- **On rows a persistent store already held.** Rows written by an earlier release of the board carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
-
-A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
-
-On an [assignee that dispatches](#assignees-that-dispatch) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
-
-Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
-
-A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
-
-`maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unpark` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
-
-## Bounding how much work a board takes on
-
-`concurrency` paces how many tasks run at once. It says nothing about how many can be *created*, so a coordinator that plans badly can queue far more work than anyone intended. The board's bounds:
-
-- `maxEnqueuedTasks` (default `100`) — how many tasks may be **added while others are still waiting**. Checked when a task is created, against the resulting `pending` count, so a slot comes back when its task leaves `pending` by completing, erroring, or being cancelled. A task that cannot run, such as one stranded behind a failed dependency, stays `pending` and keeps its slot however long the board drains.
-- `maxTotalTasks` (default `500`) — how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
-- `maxTotalRetries` (default `50`) — how many failure retries the board may **authorize in total**, across every task.
-- `concurrency` (default `4`) — how many run at the same time.
-
-Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
-
-The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, a `release`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
-
-### Bounding the retries
-
-The two bounds above count tasks the board *creates*. A retry does not create a task, it re-runs one that already exists, so a task that keeps failing keeps costing model calls while both counts hold still. `maxTotalRetries` is the bound on that.
-
-```ts
-const board = taskBoard({
-  name: "research",
-  workers,
-  maxTotalRetries: 200,
-});
-```
-
-It counts failure retries across the whole board. When the count reaches the bound, the next task that fails goes to `errored` instead of back to `pending`, with an error naming the board's budget, and its `error` reads:
-
-```
-worker timed out — not retried: collection "research" has spent its retry budget of 200 (maxTotalRetries). Raise it, or pass null to opt out.
-```
-
-The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
-
-Only failure retries count. `reclaim()`, `release`, and `unpark` also return a task to `pending`, and none of them spends the budget.
-
-The budget is spent when a retry is granted, not when it runs. If a re-dispatched task is never picked up again because its worker died or its lease expired, the retry still counts.
-
-On the durable (resource-backed) backing, retries are counted but the bound is not enforced. The completion item reports `maxTotalRetries: null` there.
-
-Every task carries its own record of this in `task.retryLedger`:
-
-```ts
-const task = collection.get(id);
-task.retryLedger;   // { granted: 2, deniedByBudget: false }
-```
-
-`granted` is how many retries this task was authorized. `deniedByBudget` is `true` once one was refused because the board's budget was spent. The field is absent on a task that has never failed, so read it as `task.retryLedger?.granted ?? 0`.
-
-When a board's completion item reports `terminationReason: "retry-budget-exhausted"`, the budget is what stopped it:
-
-```ts
-// task-board-meta, status: "completed"
-{
-  terminationReason: "retry-budget-exhausted",
-  maxTotalRetries: 200,
-  counts: { total: 12, completed: 9, errored: 3, retries: 200 },
-}
-```
-
-`maxTotalRetries` on that item is the limit the board's collection actually enforced, and `null` means none was. A board whose retry count happens to equal its limit but never refused a retry reports `"blocked-by-failures"`, the ordinary reason for a board that exited with unfinished tasks.
-
-### How long the counts last
-
-No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
-
-- **On the request** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
-- **On a state you pass** — the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a board kept there starts its tasks and counts from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
-- **Durable (resource-backed)** — no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
-
-### One writer, or hand every writer the bounds
-
-The bounds are carried by the collection reference the board resolved. Resolving the same storage a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them:
-
-```ts
-const board = taskBoard({ name: "research", workers });
-
-// This second reference is unbounded, even though the board has bounds.
-const loose = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "research" });
-
-// Hand it the board's own resolved bounds and it enforces them.
-const bounded = await getOrCreateTaskCollection({
-  ctx,
-  backing: "state",
-  collectionId: "research",
-  ...board.caps,
-});
-```
-
-`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
-
-`board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
-
-`createApplyReplan` is one of the blocks that can land on either side of that line, and it takes two shapes:
-
-- With `capability: board.capability`, it reads and writes through the board's own reference, so the board's bounds apply.
-- With only `name`, it resolves a request-backed collection under that id and enforces no bounds, because nothing in its options identifies which board it is writing to.
-
-Pass the capability when you want replanned tasks to respect the board's bounds. The bundled patterns do.
-
-### Where the bounds apply
-
-The bounds belong to the collection, so the board applies them only to a collection it builds itself: the request default and the sequencer opt-in. Per the previous section, they also reach only writers that go through the board's own reference. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing; that collection carries whatever bounds it was built with and stays the sole authority. Passing the cap options alongside a supplied `collection` throws at `taskBoard()` construction, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead. Here that is a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
-
-```ts
-const tasks = await getOrCreateTaskCollection({
-  ctx,
-  backing: "state",
-  state: ctx.sequencer!,
-  collectionId: "my-board",
-  maxTotalTasks: 2000,
-});
-```
-
-Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent`.
-
-The cap options exist on `backing: "state"` only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
-
-### If the defaults are too low for your board
-
-A board that needs to create more than 500 tasks in a run, or hold more than 100 `pending` at once, is refused the task that crosses the line. Raise the bound, or turn it off with `null`:
-
-```ts
-// Raise it.
-const board = taskBoard({ name: "big", workers, maxTotalTasks: 5_000 });
-
-// Or opt out of one axis entirely.
-const unbounded = taskBoard({ name: "streaming", workers, maxEnqueuedTasks: null });
-```
-
-Omitting an option is not an off switch; it reapplies the default. `null` is the off switch. Otherwise each option takes a positive integer, and `0`, a negative, a fraction, `NaN`, `Infinity`, or an enqueue bound above the lifetime ceiling all throw when the board is constructed.
-
 ## Stream items emitted
 
 A board run produces two item streams:
 
-- `task-change` — one item per task transition (`added`, `claimed`, `completed`, `errored`, `cancelled`, and more). Keyed by `${collectionId}/${taskId}`, so the latest change for a task replaces the previous one.
-- `task-board-meta` — board-level state, keyed by `collectionId`. Emitted twice per run, once with `status: "active"` at start and once with `status: "completed"` at end. The completed item carries `terminationReason` and the `counts` snapshot.
+- `task-change`: one item per task transition (`added`, `claimed`, `completed`, `errored`, `cancelled`, and more). Keyed by `${collectionId}/${taskId}`, so the latest change for a task replaces the previous one.
+- `task-board-meta`: board-level state, keyed by `collectionId`. Emitted twice per run, once with `status: "active"` at start and once with `status: "completed"` at end. The completed item carries `terminationReason` and the `counts` snapshot.
 
 Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
 
 A board that could not record a result emits one more item, `task-board-recorder-failure`. It carries no key, so each failure in a run is its own entry rather than replacing the last. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 
-## Commanding the board with its capability
-
-You pick where a board stores its tasks once, on `taskBoard({...})`. After that, the only thing other blocks touch is `board.capability`. List it in a block's `uses` and the board's tasks are on `ctx.cap.<name>`, the board name verbatim. Hyphenated names work through bracket access (`ctx.cap["my-board"]`).
-
-```ts
-const board = taskBoard({ name: "research", workers });
-
-const enqueue = handler({
-  name: "enqueue-more",
-  inputSchema: z.unknown(),
-  uses: [board.capability],
-  execute: async (_input, ctx) => {
-    await ctx.cap.research.addTask({ goal: "check competitors" });
-    const open = await ctx.cap.research.countTasks({ status: "pending" });
-    return { open };
-  },
-});
-```
-
-The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
-
-A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on the request, sequencer and durable backings, as long as the add and the drain happen in the same request.
-
-Each sugar call re-resolves the collection, so reads always reflect the latest state. That costs something per call on every backing. When you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
-
-## Changing tasks from outside a run
-
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, hold or release one, or edit one before it starts. `taskToolActions` gives your flow the filer's four task tools and `answerTask`, as actions any caller of the flow can run:
-
-```ts
-import { defineFlow } from "@flow-state-dev/core";
-import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-
-const todos = defineTaskCollection({ id: "todos", scope: "session" });
-const board = taskBoard({ name: "todos", collection: todos, workers });
-
-defineFlow({
-  kind: "ops",
-  actions: {
-    drain: { block: board.drain },
-    ...taskToolActions(board),
-  },
-});
-```
-
-The actions are named for the board's collection: `createTask_todos`, `getTask_todos`, `listTasks_todos`, `updateTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `updateTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
-
-Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. A `createTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
-
-Each one runs the same block the model's tool does, so every rule in [the field table](#what-updatetask-can-change-and-when) holds for a screen as for a model. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task, drains the board or finishes a task. A cancel lands on a task a worker is still running, and the worker's own result is declined when it arrives.
-
-The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
-
-These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers, on each row, the board's `getTask` and `updateTask` and every action that takes a `taskId`.
-
-Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
-
-`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, and what it came back with, meaning its `output`, its `error`, or the `question` it is parked on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
-
-## When a task stops on a question
-
-A worker that can't go on without an answer calls `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. The task waits until someone answers it with `answerTask`, then picks up again. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task [dispatched with `wait`](#giving-another-worker-work) has no `parkOnQuestion`: its worker answers with what it has, or fails.
-
-`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
-
-```ts
-await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
-```
-
-It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.
-
-`answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked with `awaitReview`, one parked while a person talks to its worker, or one waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. A declined answer writes nothing. What comes back:
-
-| Returned | When |
-|---|---|
-| `{ ok: true }` | The task was parked on its worker's question, and now holds the answer |
-| `{ ok: false, error: "not_parked_on_question: …" }` | Any other unfinished task, or a late answer |
-| `{ ok: false, error: "terminal_task_write_declined: …" }` | The task has finished |
-| `{ ok: false, error: "task_not_found" }` | The board holds no task with that id |
-
-An answered task has started, so `updateTask` refuses to give it another worker, and the answer reaches the session that asked.
-
-## Collection backing
-
-A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
-
-- **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
-- **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
-- **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
-- **Factory** — tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
-
-```ts
-// Request default — nothing to restate.
-const board = taskBoard({ name: "research", workers });
-
-// Sequencer opt-in — single-invocation, per-call state.
-const board = taskBoard({
-  name: "one-shot",
-  collection: { backing: "sequencer", collectionId: "one-shot" },
-  workers,
-});
-```
-
-For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
-
-If you write that ref by hand, `complete` and `fail` should accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown.
-
-A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
-
-Containment is not a substitute for the guards. It fires on a throw. A stale write the state machine happens to permit — a worker reporting success on a task another worker has since taken over — doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards for the sake of your data; the board's survival is already covered. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
-
-Write provenance is the one part you can skip. Maintaining it correctly means reproducing a bounded receipt log and its eviction flag, and the mutator that does that is internal to the two built-in backings — not a documented extension point today. A hand-written ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
-
-## Durable boards that survive across turns
-
-When a board's tasks must persist past the request, say a user's standing to-do list or an org-wide work queue, declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
-
-```ts
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { z } from "zod";
-
-const todos = defineTaskCollection({
-  id: "todos",
-  scope: "user",
-  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
-});
-
-const board = taskBoard({ name: "todos", collection: todos, workers });
-```
-
-`id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
-
-### A board per conversation, worked on another flow
-
-A `session`-scoped board with `sharedToLineage: true` can hand rows to a session on its own flow. It can't hand them to another flow: a task run there starts a lineage of its own, so it never finds the row. A `user`-scoped board does cross flows, but then every session of that user shares one set of rows, and one conversation's board runs another conversation's tasks.
-
-To keep a board per conversation and still hand its rows to another flow, give a `user`-scoped collection a `partitionBy` function:
-
-```ts
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-
-const work = defineTaskCollection({
-  id: "work",
-  scope: "user",
-  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
-});
-```
-
-Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board dispatches a row, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
-
-On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
-
-```ts
-import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
-
-const from = taskLedgers({
-  name: "conversation-work",
-  resolve: async (ledgerId, ctx, partition) => {
-    const collection = resolveResourceCollection(ctx, ledgerId);
-    if (ledgerId !== work.id || collection === undefined || partition === undefined) return undefined;
-    return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: work.id, collection, partition });
-  },
-});
-```
-
-The function is handed the running session's server-set identity, `{ sessionId, lineageId, userId, orgId, tenantId }`, and nothing a caller sends. Return a value a caller can't set. A session id is reused when a session is deleted and created again, so a partition built from the id alone hands the new session its predecessor's rows. `lineageId` is minted when the session's record is created, so the two together name one life of the session, and a recreated session starts with an empty board.
-
-The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
-
 ## See also
 
-- [Configuration](./configuration) — every `taskBoard` field, including defaults.
-- [Coordinators](../workforce/coordinators.md) — the board each conversation with a coordinator keeps, and filing a task on it.
-- [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
-- [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
-- [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.
-- [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of the board.
-- [Supervisor](../patterns/supervisor) — per-task review wrapper.
-- [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.
-- [Flow policy](./flow-policy) — the observation ledger, `priorWork` shaping, and tool-result caching.
-- [Patterns Overview](../patterns/overview) — when to use which pattern.
-- [Human-in-the-Loop guide](/guides/human-in-the-loop) — pausing a single step for an approval with `ctx.suspend()`, and the card that resolves it.
+- [Configuration](./configuration): every `taskBoard` field, including defaults.
+- [Coordinators](../workforce/coordinators.md): the board each conversation with a coordinator keeps, and filing a task on it.
+- [Task substrate](./task-substrate.md): the `Task` record, the status state machine, and the collection API underneath.
+- [GoalSeekLoop](./goal-seek-loop): a config-driven, judge-gated loop over the board's drain.
+- [Block State](../advanced/block-state): the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.
+- [Parallel Tasks](../patterns/parallelTasks): single-pass fan-out wrapper on top of the board.
+- [Supervisor](../patterns/supervisor): per-task review wrapper.
+- [Plan and Execute](../patterns/plan-and-execute): replan-loop wrapper.
+- [Flow policy](./flow-policy): the observation ledger, `priorWork` shaping, and tool-result caching.
+- [Patterns Overview](../patterns/overview): when to use which pattern.
+- [Human-in-the-Loop guide](/guides/human-in-the-loop): pausing a single step for an approval with `ctx.suspend()`, and the card that resolves it.
