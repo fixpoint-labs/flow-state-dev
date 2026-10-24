@@ -52,7 +52,7 @@ harness run was handed.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/harness-manager/a-runs-changes-wait-for-review/` · model-free (`n/a`): the devteam harness stub makes commits and confirms a session, and a scripted judge returns *done* · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: a run that commits leaves `getTask` at `in_progress` with `waitingOn: "user"`, `waitingFor.kind` `review`, and a prompt that holds the commit count and subjects and the judge's verdict, confidence and reason; `attempts` 1; the checkout lease is free; one harness run. b: the answer route's *accepted* completes the task with output `review: "accepted"`, and the harness run count stays 1. c: *revise* with "Keep the old flag name" starts one more harness run on the same try (`attempts` 1), resuming the session the first run confirmed, with the words in its prompt; it commits and waits for review again; an accept then completes it, two harness runs in all. d: a run with no commits completes with no wait and `review: null`. e: a failed run fails its try, with no wait. f: with the deadline shortened through FIX-2129's test hook, the task completes after the sweep with `review: "deadline"`, and no harness run starts. g: a cancel while it waits closes the review, no harness run starts, and the branch's commit and a kept file are still there. h: the same run on a manager built without the option completes on the verdict, as today. i: a judge's *ask* holds the task on a question (FIX-2132), with no review |
+| **Signal** | a: a run that commits leaves `getTask` at `in_progress` with `waitingOn: "user"`, `waitingFor.kind` `review`, and a prompt that holds the commit count and subjects and the judge's verdict, confidence and reason; `attempts` 1; the checkout lease is free; one harness run. b: the answer route's *accepted* completes the task with output `review: "accepted"`, and the harness run count stays 1. c: *revise* with "Keep the old flag name" starts one more harness run on the same try (`attempts` 1), resuming the session the first run confirmed, with the words in its prompt; it commits and waits for review again; an accept then completes it, two harness runs in all. The host process is restarted between the stop and the revision, as in FIX-2129's leg e, since the POC never runs `stepForSteer` and this leg is the only proof of the real chain. c′: a revision on a run whose harness confirmed no session fails try 1, and try 2's brief holds the words d: a run with no commits completes with no wait and `review: null`. e: a failed run fails its try, with no wait. f: with the deadline shortened through FIX-2129's test hook, the task completes after the sweep with `review: "deadline"`, and no harness run starts. g: a cancel while it waits closes the review, no harness run starts, and the branch's commit and a kept file are still there. h: the same run on a manager built without the option completes on the verdict, as today. i: a judge's *ask* holds the task on a question (FIX-2132), with no review |
 | **Input** | A coding task whose stub run commits one file; for leg d, one that commits nothing; for leg e, one that errors; for leg i, a judge scripted to *ask* |
 | **Anti-game** | Run with `FSDEV_TRACE_OBSERVABILITY=0`, production's default, so a resume that runs the harness step again shows as a second harness run. Count runs from the stub's own log, not item counts. Answer through FIX-2129's answer route, never the store |
 | **Control that must fail** | `GOAL_CONTROL=no-review` (the manager ignores the option) fails leg a on *waiting on the user*. `GOAL_CONTROL=fail-on-revise` (a revision fails the try) fails leg c on *`attempts` 1*. Today's `main` fails leg a: it has no `waitForUser` and no option |
@@ -112,15 +112,20 @@ flowchart LR
   C -->|"none, or option off"| D["completes · as today"]
   C -->|"some, option on"| W["waitForUser review · the verdict in the prompt"]
   W -->|"accepted"| D2["completes · no harness run"]
-  W -->|"revise · words are a steer"| S["steer step · same session, same try"]
+  W -->|"revise · words are a steer"| S["steer check before settle · same session, same try"]
   S --> R
+  W -->|"revise · no session confirmed"| X
   W -->|"deadline"| D3["completes · review deadline"]
 ```
 
-The wait is a suspension of the manager's own request (FIX-2129), so the task keeps its claim and
-the checkout lease is already free. An accept resumes after the harness step, which a durable
-resume no longer runs again ([POC](DECISIONS.md#settled)). A revision goes round through the
-steer step FIX-2086 built, not a second loop.
+The review is its own step between the judge and the steer check before the settle
+(`steerBeforeSettle`), not inside the settle, which runs after the last loop back. The wait is a
+suspension of the manager's own request (FIX-2129), so the task keeps its claim and the checkout
+lease is already free. An accept resumes after the harness step, which a durable resume no longer
+runs again ([POC](DECISIONS.md#settled)). A revision's words are a steer on the row, so the steer
+check that already follows takes them and loops back through the steer step FIX-2086 built: no
+second loop. A run whose harness confirmed no session can't be continued, so there a revision fails
+the try and its words reach the next try's brief.
 
 ## What stays as it is
 
@@ -148,7 +153,7 @@ steer step FIX-2086 built, not a second loop.
 
 | The debt | |
 |---|---|
-| **Adds** | One manager option, `reviewChanges` · one output field, `review` · a review branch in the settle step. All permanent by design |
+| **Adds** | One manager option, `reviewChanges` · one output field, `review` · a review step between the judge and the steer check before the settle. All permanent by design |
 | **Removes** | Nothing |
 | **Leaves** | Shift Manager's empty *In review* column, until its host turns the option on |
 

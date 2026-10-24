@@ -45,7 +45,7 @@ a headless host turns it off.
 | | |
 |---|---|
 | **Instead of** | (a) Letting FIX-2129's deadline fail the try, as an uncaught review deadline does. (b) Failing the task for good |
-| **Because** | (a) starts a new try that runs the whole coding run again, only to ask the same review again: three tries are three weeks of asking and three coding runs, then an error. (b) throws away a finished change nobody rejected. Completing keeps the work on its branch, ends the task once, and matches the lab's other threads, which finish at the same deadline (FIX-2157 D2). Nothing merges on completion: the branch still needs whatever the host does next. This is the existing deadline, the host's person-stop default; the manager adds no clock (the product rule) |
+| **Because** | (a) starts a new try that runs the whole coding run again, only to ask the same review again: three tries are three weeks of asking and three coding runs, then an error. (b) throws away a finished change nobody rejected. Completing keeps the work on its branch, ends the task once, and matches the lab's other threads, which finish at the same deadline (FIX-2157 D2). Nothing merges on completion: the branch still needs whatever the host does next. This is the existing deadline, the host's person-stop default; the manager adds no clock (the product rule). Catching it is FIX-2129's own contract, not an exception to it: its D1 says the block "may catch" a review's `SuspensionTimeoutError`, its SPEC's example catches it "to go ahead, end, or ask again", and its leg b passes when "a caught one completes it". FIX-2129 has no deadline ending to use instead |
 | **Locks in** | The manager catches `SuspensionTimeoutError` from its own review and completes the task. Its output gains `review: "accepted" \| "deadline" \| null` (null when no review was asked), so a screen can show *no review came*. A completed run whose `review` is `"deadline"` must never read as approved: `"accepted"` is the only value that means a person accepted it, and a screen shows the deadline case as *not reviewed* (the product lead's condition, agent-mailbox #46). FIX-2157's board settles a harness thread's run under *Resolved* with a *not reviewed* mark, read from this output. The mark is required, not optional. FIX-2157's own text carries that through an amendment on its review PR (#3788). This condition covers harness runs only. A plain thread's review is the model's `waitForUser` tool, and nothing on its task says the deadline ended it; that signal is gap [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165), which the lab doesn't infer A revised run that reaches the deadline on its next review completes the same way |
 
 ![D2: at the deadline the run completes, marked so, chosen, beside fail the try and fail the task for good. Decides it: what a forgotten review costs. Price: a change nobody looked at reads as done](figures/d2-deadline.svg)
@@ -65,11 +65,16 @@ Then the deadline fails the task for good, and the work stays on its branch.
   checkout or the base (a fallback built for reporting), so the review step needs a read that
   tells "no commits" apart from "couldn't tell". When it can't tell, the run waits for review,
   and its prompt says the commits couldn't be read. Review is never skipped as a fallback.
-- **Where it sits:** the settle step, after the judge. *not-done* fails the try and *ask* holds on
-  a question, both as today (FIX-2132). A *done* run, one under the judge's floor, or one with no
-  judge goes to review when it has changes and the option is on. A run with no changes completes.
-  A failed run never reaches it. This is the convergence point: the review is the manager's only
-  `waitForUser` call, and no other path waits for a review.
+- **Where it sits:** its own step between the judge and `steerBeforeSettle`, not inside `settle`.
+  `settle` runs after the last loop back, so a review inside it couldn't reach the steer loop
+  without a new loop back. *not-done* fails the try and *ask* holds on a question, both as today
+  (FIX-2132). A *done* run, one under the judge's floor, or one with no judge goes to review when it
+  has changes and the option is on. A run with no changes goes on as today. A failed run never
+  reaches it. After the review, the existing `steerBeforeSettle` → `stepForSteer` → loop back does
+  the rest: a revision's words are a steer on the row (FIX-2131 D1), so it takes them; an accept
+  with a steer still pending goes the same way; and `settle` only writes the success. This is the
+  POC's order (review, loop back, report) and the convergence point: the review is the manager's
+  only `waitForUser` call, and no other path waits for a review.
 - **The prompt** names the commit count and subjects (at most 20, as the output already caps them)
   and the judge's verdict, confidence and reason, or that no judge ran. It says the verdict is
   information. It is set once and never changes (FIX-2129 copies it to the row).
@@ -79,9 +84,18 @@ Then the deadline fails the task for good, and the work stays on its branch.
 - **A revision** is FIX-2131's revision verdict; its words are already the user's steer on the
   row. The manager goes round through its steer step (`stepForSteer` and its loop back, FIX-2086)
   in the same request: same attempt, resuming the session this attempt confirmed, the words in
-  the prompt. When no session was confirmed, the run starts a fresh session told the brief and
-  the words. No second loop, and no cap of the manager's own: the words are steers, so the task's
+  the prompt. No second loop, and no cap of the manager's own: the words are steers, so the task's
   steer cap bounds them (ER-8's write).
+- **A revision when no session was confirmed fails the try.** There `stepForSteer` returns
+  nothing and the task would complete over the steer, as any steer on such a run does today;
+  changing that would change every steer, not just reviews. So the review step itself fails the
+  try, and the words, a steer that stays on the row (FIX-2131), are in the next try's brief. It
+  spends a try, the cost rejected below for the general case, but only on a run whose harness
+  confirmed no session, which is rare.
+- **The answer's order is FIX-2131's, required here.** The steer loop only runs when the row has
+  an untaken steer, so FIX-2131's answer route writes the revision's steer before it resolves the
+  review, and refuses a revision with no words. Otherwise the task completes over the request for
+  changes. FIX-2131's DECISIONS carries the same line, dated, in this PR.
 - **A cancel** while it waits: the review resumes `cancelled` (FIX-2129); the manager records
   nothing, starts no run, and the branch and kept files stay. A user's stop cancels the task
   (FIX-2129).
@@ -89,8 +103,9 @@ Then the deadline fails the task for good, and the work stays on its branch.
   released the checkout lease, and FIX-2129's mark drops the task's lease.
 - **Durable execution is required** for the wait, as it is for any `waitForUser` (FIX-2063). The
   manager's request is a durable sequencer when the option is on. A host with no durability
-  provider that turns the option on fails loudly at the first review; it never completes
-  unreviewed.
+  provider that turns the option on fails loudly when the request starts, among the manager's
+  start-of-run checks, before any coding run; it never completes unreviewed, and never spends a
+  coding run on work it can't hold for review.
 - **FIX-2132's sweep line** ("`waitForUser` has none in `harness-manager`") becomes "one, the
   review step"; its D1's "the manager itself suspends no request" becomes "suspends only for a
   review of a run's changes, when the host turns it on". Questions still never suspend. This
@@ -104,7 +119,7 @@ Then the deadline fails the task for good, and the work stays on its branch.
 | Alternative | Why not |
 |---|---|
 | A held question instead of a suspension ("Accept or describe changes?") | ER-1: a review suspends and a question holds. The Inbox and the board would show a question, not a review, and *Resolve* would be free text |
-| A revision fails the try, its words the next try's feedback (the issue's first wording) | It spends a retry per round of changes and, after a failure, the next try resumes through the retry path instead of the same request. The steer step already continues the session on the same try |
+| A revision fails the try, its words the next try's feedback (the issue's first wording) | Kept only for a run with no confirmed session. In general it spends a retry per round of changes and, after a failure, the next try resumes through the retry path instead of the same request. The steer step already continues the session on the same try |
 | A separate review timeout on the manager | The product rule: the person-stop deadline is the only clock. Two clocks for one wait |
 | Review every *done* run, changes or not | A run with nothing on its branch has nothing to review, and the lab sends it straight to *Resolved* (FIX-2157 D5) |
 
@@ -138,5 +153,9 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
   deadline never reads as approved; its output says so, and FIX-2157's board marks it *not reviewed*.
   Scoped to harness runs on the architect's review; plain threads' signal filed as FIX-2165.
 - **Codex, round 1** — an unreadable commit count no longer skips review: only a verified zero does.
+- **Architect, revision path** — the review is its own step before `steerBeforeSettle`, not inside
+  `settle`; a revision with no confirmed session fails the try; FIX-2131's answer writes the steer
+  before it resolves; durability is checked at the start; leg c restarts the host. D2 cites
+  FIX-2129's catch.
 
 **Open: none.**

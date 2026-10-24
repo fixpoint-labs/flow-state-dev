@@ -85,6 +85,11 @@ FIX-2080's map gains no entry for it. The `parked` status and its rows simply go
 - **The steer cap** and its reservation are
   FIX-2133's, inside ER-8's write ([FIX-2133, *Decided, not asked*](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2133/specs/issues/FIX-2133/DECISIONS.md#decided-not-asked)). This issue's tools
   and composer only call it.
+- **A revision's steer is written before the review resolves** (amended 2026-10-24, from
+  FIX-2163). The answer route writes the revision request's words as a steer on the row, then
+  resolves the review, and refuses a revision with no words. A block that loops on untaken steers
+  (the harness manager's steer check, FIX-2163) then sees them when it resumes; the other order
+  lets the task complete over the request for changes.
 - **A retry keeps a question's answer and asks for a review again.** A question's answer is a
   steer on the row, so the next attempt's brief holds it, as it holds any steer. A review's verdict
   lives on its suspension, which ends with its attempt; a revision request's words are a steer, and stay.
