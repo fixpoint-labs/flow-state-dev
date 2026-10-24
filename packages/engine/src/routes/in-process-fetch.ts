@@ -105,12 +105,24 @@ export function createInProcessFetch(
     // must reach the router untouched, body stream included. It is recognized
     // by shape, not `instanceof`: the host's Request class need not be this
     // realm's global one (a test that installs DOM globals replaces it).
+    // With init, it is rebuilt as `new Request(request, init)` would: init's
+    // fields win, the rest come from the Request. Never taken for a string.
     const request =
       init === undefined && isRequestLike(input)
         ? input
         : input instanceof Request
           ? new Request(input, init)
-          : new Request(new URL(String(input), INTERNAL_ORIGIN), init);
+          : isRequestLike(input)
+            ? new Request(input.url, {
+                method: input.method,
+                headers: input.headers,
+                body: input.body,
+                signal: input.signal,
+                // Required by Node to send a stream body; ignored elsewhere.
+                duplex: "half",
+                ...init
+              } as RequestInit)
+            : new Request(new URL(String(input), INTERNAL_ORIGIN), init);
 
     let router: FlowApiRouter;
     try {
