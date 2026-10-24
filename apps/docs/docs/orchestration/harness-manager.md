@@ -236,6 +236,84 @@ A checkout lives on the machine that made it, unless you give the manager somewh
 
 How promptly the harness then returns is the harness's own business, and harnesses differ. Neither bounds what the run *spawned*: a command the agent's process started can outlive the kill. The sandbox you configure on the harness is the fence for a runaway command, not this deadline.
 
+## Subscription usage
+
+A coding agent on a subscription plan stops working when one of its limit windows
+runs out. `harnessUsageAction` gives a flow one query, `harnessUsage`, that says
+how much of each window a user has used and how old that reading is. Hand it a
+[usage reader](/docs/tools/coding-agents#subscription-usage) per harness, keyed
+by the harness's name, and put it on one flow, the one your screens and workers call:
+
+```ts
+import { defineFlow, harnessEnv } from "@flow-state-dev/core";
+import { readCodexUsage } from "@flow-state-dev/codex";
+import { harnessUsageAction } from "@flow-state-dev/harness-manager";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] });
+
+defineFlow({
+  kind: "projects",
+  actions: {
+    harnessUsage: harnessUsageAction({
+      readers: { codex: (options) => readCodexUsage({ env, ...options }) },
+    }),
+  },
+});
+```
+
+Call it with `{ refresh?: boolean }`. It answers `{ harnesses }`, one row per
+harness, sorted by name:
+
+```ts
+{
+  harness: "codex",
+  status: "windows",         // or "api-key", "signed-out", "unavailable"
+  reason: null,              // why there is no number, for the other three
+  plan: "plus",
+  windows: [
+    { id: "codex:primary", label: null, minutes: 300, usedPercent: 42, resetsAt: 1798020000000,
+      checkedAt: 1798012000000, origin: "read", ageMs: 65000, rolledOver: false },
+  ],
+  checkedAt: 1798012000000,  // when the stored reading was made, or null
+  ageMs: 65000,              // how old it is, or null
+  refreshError: null,        // why the last refresh failed, or null
+}
+```
+
+A window's `origin` says how it arrived: `"read"` when a reader fetched it on a
+refresh. A harness that reports usage during its runs stores its windows through
+`recordHarnessUsage` with an origin of its own.
+
+**Without `refresh`, nothing is read.** The query returns what is stored.
+A harness with a reader and no reading yet is listed with `status: "unavailable"`,
+`reason: "Not checked yet"` and no windows.
+
+**`refresh: true` asks the readers first**, at most once a minute per user and
+harness (`USAGE_REFRESH_EVERY_MS`). The minute counts from the last attempt,
+whether it worked or not. Refreshes that arrive together share one call. A
+reader that throws, or takes longer than `timeoutMs` (default
+`USAGE_READ_TIMEOUT_MS`, 10 seconds), still gets an answer: the stored reading
+stays and `refreshError` says why.
+
+**Ages come from the server.** `ageMs` and `rolledOver` are worked out when the
+query runs, by the server's clock. A window whose `resetsAt` has passed reads
+`rolledOver: true`; its percent is from before the reset, so show the reset
+rather than the number.
+
+**One current reading per user and harness.** A new reading replaces the
+whole row, so after a sign-in change no window from the earlier account is left.
+A reading older than the stored one is refused. The account is kept only as a
+hash, with no email. There is no history.
+
+The readings live in `harnessUsageCollection` (`harness-usage/**`, user scope).
+A client can't read the collection directly. Read it through the `harnessUsage`
+query. On the server:
+
+- `readHarnessUsage(ctx, now, expected?)` returns the same rows the query does, without refreshing.
+- `recordHarnessUsage(ctx, harness, reading, checkedAt)` stores a reading from a harness that reports usage during its own runs. It answers `"recorded"`, `"kept-stored"` (an `unavailable` reading over a stored one, which stays) or `"refused-older"`.
+
+Both read the collection through the calling block's resources, under the key `HARNESS_USAGE`, and throw when it isn't installed there: give that block `resources: { [HARNESS_USAGE]: harnessUsageCollection }`. `harnessUsageAction` installs it on its own block.
+
 ## Pointing it away from your own code
 
 `assertDistinctRepository` refuses a source repository that is the host's own.
@@ -269,8 +347,9 @@ and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
 your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per
-organization, and the run-record and inbox collections for building a status
-surface.
+organization, the run-record and inbox collections for building a status
+surface, and the [usage query](#subscription-usage) with its collection and
+helpers.
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
 `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the
@@ -284,6 +363,7 @@ record instead of deriving them again.
 - **Saving work across machines is opt-in.** Without a held-work store, a run's checkout exists only on the machine that made it, and a retry that lands elsewhere starts from the base branch. A run whose record says its work was saved, with no store and no live checkout on this machine, parks and asks its owner rather than starting over.
 - **A turn in progress can be lost.** Work is saved when a turn ends, so a machine that dies mid-turn loses that turn.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
+- **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's usage row: their plan and percents, with no email.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).

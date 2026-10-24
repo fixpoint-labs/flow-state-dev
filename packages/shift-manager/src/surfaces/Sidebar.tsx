@@ -93,6 +93,8 @@ const ICON_PATHS = {
   messages: "M1.5 2.5h11v7h-6l-3 2.5v-2.5h-2z",
   /** Scheduled work: a clock face. */
   schedules: "M7 1.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11z M7 4v3l2 1.5",
+  /** Usage: a gauge. */
+  usage: "M1.5 10.5a5.5 5.5 0 0 1 11 0 M7 10.5l2.5-3",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
   /** Settings: a key. */
   settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
@@ -255,6 +257,9 @@ function SidebarRail({
         </RailItem>
         <RailItem label="Scheduled work" active={route.level === "schedules"} onClick={() => navigate({ level: "schedules" })} testId="rail-schedules">
           <NavIcon name="schedules" />
+        </RailItem>
+        <RailItem label="Usage" active={route.level === "usage"} onClick={() => navigate({ level: "usage" })} testId="rail-usage">
+          <NavIcon name="usage" />
         </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
           <NavIcon name="jump" />
@@ -501,6 +506,13 @@ export function Sidebar({
                 active={route.level === "schedules"}
                 onClick={() => navigate({ level: "schedules" })}
                 testId="nav-schedules"
+              />
+              <NavItem
+                label="Usage"
+                icon={<NavIcon name="usage" />}
+                active={route.level === "usage"}
+                onClick={() => navigate({ level: "usage" })}
+                testId="nav-usage"
               />
             </div>
 

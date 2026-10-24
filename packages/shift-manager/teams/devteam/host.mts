@@ -50,8 +50,15 @@ import {
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { encodeUserSegment, type BlockContext, type FlowInstance, type HarnessBlock, type ModelResolver } from "@flow-state-dev/core/types";
-import { upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import {
+  encodeUserSegment,
+  type BlockContext,
+  type FlowInstance,
+  type HarnessBlock,
+  type HarnessUsageReader,
+  type ModelResolver,
+} from "@flow-state-dev/core/types";
+import { harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -272,6 +279,9 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
  * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
 export const PROJECT_SETUP_ACTION = "projectSetup";
+
+/** The projects flow's action that answers how much of each harness's subscription is used. */
+export const HARNESS_USAGE_ACTION = "harnessUsage";
 
 /**
  * The project setup as the projects flow answers it: the installation's
@@ -624,6 +634,13 @@ export interface OpenLabOptions {
    * A report waits for an answer, which a Lab holds: it is always durable.
    */
   errorReporter?: LabErrorReporter;
+  /**
+   * How to read each harness's subscription usage, by harness name, for the
+   * Usage view and any worker that asks (`harnessUsage` on the projects
+   * flow). A reader runs only when someone asks for a fresh number. Absent:
+   * the query lists only what a harness recorded during its runs.
+   */
+  usage?: Readonly<Record<string, HarnessUsageReader>>;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -1139,6 +1156,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         description:
           "Name this Lab's project setup: the worker each user's project coordinator runs as.",
       },
+      // How much of each harness's subscription the caller has used. Here
+      // because Shift Manager reads this flow first, so the Usage view and a
+      // worker call one address.
+      [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
     },
   } as never)();
 

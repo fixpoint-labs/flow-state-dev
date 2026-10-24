@@ -590,6 +590,7 @@ export {
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
+  harnessUsageWindowSchema,
 } from "./types/harness";
 
 /**

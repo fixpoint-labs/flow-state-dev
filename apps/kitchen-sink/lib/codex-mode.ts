@@ -43,6 +43,7 @@ import {
   CodexAgentAbortedError,
   codexAgent,
   createDefaultResolveCodexClient,
+  findCodexProgram,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
   type CodexAgentOptions,
@@ -261,12 +262,6 @@ export function codexSessionFlow(seams: CodexSeams = {}) {
   });
 }
 
-/** The Codex program the SDK runs, and the directories it puts on the program's `PATH`. */
-export interface CodexProgram {
-  readonly path: string;
-  readonly pathDirs: readonly string[];
-}
-
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CodexHostChecks {
   /** Which `@openai/codex-sdk` is installed beside the Codex package. */
@@ -279,27 +274,9 @@ export interface CodexHostChecks {
   readonly sandboxFails: (dir: string, env: Record<string, string>) => Promise<string | null>;
 }
 
-/**
- * The Codex program the SDK would start, found the way the SDK finds it.
- *
- * The SDK resolves its platform binary when its client is constructed, which
- * starts nothing; its version is pinned, so the field read here is checked by
- * the same gate that pins the wire.
- */
-async function codexProgram(env: Record<string, string>): Promise<CodexProgram> {
-  // Loaded only here, so a host without the SDK never loads it.
-  const { Codex } = (await import("@openai/codex-sdk")) as unknown as {
-    Codex: new (options: CodexClientOptions) => { exec?: { executablePath?: unknown; pathDirs?: unknown } };
-  };
-  const exec = new Codex({ env }).exec;
-  if (typeof exec?.executablePath !== "string") throw new Error("the Codex SDK did not say where its program is");
-  const pathDirs = Array.isArray(exec.pathDirs) ? exec.pathDirs.filter((d): d is string => typeof d === "string") : [];
-  return { path: exec.executablePath, pathDirs };
-}
-
 /** Run the Codex program with `args` over `env`, the way the SDK would start it. */
 async function runCodex(args: readonly string[], env: Record<string, string>, cwd?: string) {
-  const program = await codexProgram(env);
+  const program = await findCodexProgram(env);
   const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
   return spawnSync(program.path, args, {
     // Next types `NODE_ENV` as always set; this process deliberately gets only `env`.
@@ -329,7 +306,7 @@ function failureOf(result: ReturnType<typeof spawnSync>): string {
 export async function userMcpServers(env: Record<string, string>): Promise<readonly string[]> {
   // Not `runCodex`: listing asks each server how it signs in, and this runs
   // on a turn, where a blocking wait would stall every other request.
-  const program = await codexProgram(env);
+  const program = await findCodexProgram(env);
   const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
   const stdout = await new Promise<string>((resolve, reject) =>
     execFile(
