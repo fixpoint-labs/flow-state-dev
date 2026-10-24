@@ -62,13 +62,19 @@ describe("the session-mode screen", () => {
     expect(blank()).toHaveLength(1);
   });
 
-  it("sets the mode by view: Sessions is built, Projects is shown but disabled until threads mode is", async () => {
+  it("sets the mode by view: each view lists only its own main worker's sessions", async () => {
     render(<App adapter={fast()} />);
     const views = screen.getByRole("tablist", { name: "View" });
     const sessionsTab = within(views).getByRole("tab", { name: "Sessions" }) as HTMLButtonElement;
     const projectsTab = within(views).getByRole("tab", { name: "Projects" }) as HTMLButtonElement;
+    const sessions = screen.getByRole("navigation", { name: "Sessions" });
     expect(sessionsTab.getAttribute("aria-selected")).toBe("true");
-    expect(projectsTab.disabled).toBe(true);
+    expect(within(sessions).queryByText("Billing triage")).toBeNull();
+    fireEvent.click(projectsTab);
+    expect(projectsTab.getAttribute("aria-selected")).toBe("true");
+    expect(within(sessions).getByText("Billing triage")).toBeTruthy();
+    expect(within(sessions).queryByText("Draft the launch note")).toBeNull();
+    fireEvent.click(sessionsTab);
     // New session asks only for the project: no mode menu, and no default project.
     await pick();
     fireEvent.click(screen.getByRole("button", { name: "+ New session" }));

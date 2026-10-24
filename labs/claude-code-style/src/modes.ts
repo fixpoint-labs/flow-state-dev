@@ -3,7 +3,8 @@
  * with and which right pane it shows. The view a person is in sets the mode:
  * the Sessions view is session mode and the Projects view is threads mode. A
  * session's mode is never stored: it is read from the session's main worker.
- * Session mode is the only one built; threads mode adds a status-board pane.
+ * Threads mode differs only in its main worker, a coordinator, and its right
+ * pane, a status board of the threads it files.
  */
 
 /** A mode the app knows. */
@@ -19,7 +20,7 @@ export interface Mode {
   worker: string;
   /** The right pane: the background tasks list, or the threads status board. */
   pane: "tasks" | "board";
-  /** False until the mode is built; the view switch shows its view disabled. */
+  /** False while the mode isn't built; the view switch shows its view disabled. */
   available: boolean;
 }
 
@@ -38,7 +39,7 @@ export const MODES: readonly Mode[] = [
     view: "Projects",
     worker: "desk.lead",
     pane: "board",
-    available: false,
+    available: true,
   },
 ];
 

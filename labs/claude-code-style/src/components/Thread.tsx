@@ -1,17 +1,30 @@
 import { useEffect, useRef } from "react";
-import type { LabAdapter, ProjectRow, SessionRow } from "../adapter";
+import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { Composer } from "./Composer";
 import { Entry } from "./Entry";
+import { ThreadCard } from "./ThreadCard";
 
 /**
  * The center: the open session's thread, its working indicator, and the
  * composer. The header names the session's project; a session with none gets
- * no composer, so nothing runs until it has one (spec D3).
+ * no composer, so nothing runs until it has one (spec D3). In threads mode a
+ * thread the lead filed is a card here, read from its task row.
  */
-export function Thread({ adapter, session, project }: { adapter: LabAdapter; session: SessionRow; project: ProjectRow | undefined }) {
+export function Thread({
+  adapter,
+  session,
+  project,
+  onOpenThread,
+}: {
+  adapter: LabAdapter;
+  session: SessionRow;
+  project: ProjectRow | undefined;
+  onOpenThread: (taskId: string) => void;
+}) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
+  const tasks = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(session.id, emit), [adapter, session.id]) ?? [];
   const running = view?.running ?? false;
   const now = useNow(running);
   const end = useRef<HTMLDivElement>(null);
@@ -37,11 +50,25 @@ export function Thread({ adapter, session, project }: { adapter: LabAdapter; ses
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
-            Ask the main session for something. It does what it can itself and starts background tasks for the long pieces.
+            {mode?.pane === "board"
+              ? "Ask the main session for something. It hands each piece to a thread of its own, and each comes back to you when it needs you."
+              : "Ask the main session for something. It does what it can itself and starts background tasks for the long pieces."}
           </div>
         ) : (
           <div className="mx-auto flex max-w-2xl flex-col gap-3">
-            {view?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+            {view?.entries.map((entry) =>
+              entry.kind === "thread" ? (
+                <ThreadCard
+                  key={entry.id}
+                  adapter={adapter}
+                  sessionId={session.id}
+                  task={tasks.find((t) => t.id === entry.taskId)}
+                  onOpen={onOpenThread}
+                />
+              ) : (
+                <Entry key={entry.id} entry={entry} />
+              ),
+            )}
             {running && view?.turnStartedAt !== undefined ? (
               <div role="status" className="flex items-center gap-2 text-xs text-info">
                 <span className="size-2 animate-pulse rounded-full bg-info" />

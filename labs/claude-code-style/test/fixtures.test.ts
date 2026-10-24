@@ -58,3 +58,90 @@ describe("the fixture's projects", () => {
     await expect(lab.openSession("session", "project-billing-service")).rejects.toThrow(/not-a-member/);
   });
 });
+
+describe("the fixture's threads", () => {
+  async function threads() {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Research three vendors for a status page, one thread each.");
+    const row = (title: string) => rows.find((t) => t.title === title);
+    return { lab, id, row };
+  }
+
+  it("leaves a thread's state alone when you talk in it without a question open, or resolve it before review", async () => {
+    const { lab, id, row } = await threads();
+    await vi.advanceTimersByTimeAsync(2000); // three threads filed, none waiting yet
+    const a = row("Vendor A · pricing and uptime")!;
+    await lab.sayInThread(id, a.id, "Check their status page too.");
+    await lab.resolve(id, a.id);
+    expect(row("Vendor A · pricing and uptime")?.status).toBe("in_progress");
+    expect(row("Vendor A · pricing and uptime")?.waitingOn).toBeUndefined();
+  });
+
+  it("files threads with ordinary task assignees, and a code change with the coder's harness", async () => {
+    const { lab, id, row } = await threads();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(row("Vendor B · regions")?.assignee).toBe("desk.thread");
+    expect(row("Vendor B · regions")?.harness).toBeUndefined();
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(800);
+    expect(row("Add a CHANGELOG line for the vendor pick")).toMatchObject({ assignee: "desk.coder", harness: "claude-code" });
+  });
+});
+
+describe("the fixture's threads, on review", () => {
+  it("advances each thread by its own id, so two code requests with one title both reach review", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(4000);
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(rows.map((t) => t.waitingOn?.kind)).toEqual(["review", "review"]);
+  });
+
+  it("marks the line that asked for threads, not one queued behind it", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let entries: { kind: string; text?: string; sentToThread?: boolean }[] = [];
+    lab.watchThread(id, (view) => (entries = view.entries));
+    await lab.send(id, "Research three vendors, one thread each.");
+    await lab.send(id, "Also keep it short.");
+    await vi.advanceTimersByTimeAsync(700); // the first thread is filed; the second line still waits
+    const marked = entries.filter((e) => e.kind === "user" && e.sentToThread).map((e) => e.text);
+    expect(marked).toEqual(["Research three vendors, one thread each."]);
+  });
+
+  it("matches a stop line against task titles literally, so a title with regex characters can't break the turn", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let running = true;
+    lab.watchThread(id, (view) => (running = view.running));
+    await lab.send(id, "Add code [x");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Thanks");
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(running).toBe(false);
+  });
+});
+
+describe("the fixture's stop line, with punctuation in titles", () => {
+  it("cancels the thread whose file the line names, not the first one running", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Add code first.ts");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Add code second.ts");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Stop second.ts");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rows.find((t) => t.title === "Add code second.ts")?.status).toBe("cancelled");
+    expect(rows.find((t) => t.title === "Add code first.ts")?.status).not.toBe("cancelled");
+  });
+});
