@@ -879,6 +879,8 @@ Then decide whether it joins the epic:
 belongs under the epic: the closure worker files it through `issue-manager` with the epic as
 parent and a blocks relation to the closure issue, and it is admitted like any other row (over
 the cap it queues, it is never left out). Its merge is what lets the next closure run start.
+A check another epic's merge only made stale is not one: the closure worker updates it and
+re-grades it in the same run.
 **Every other admitted child blocks the closure issue too.** On the wake that first sees a new
 child (from intake or discovery), write its blocks relation to the closure issue: one Linear call,
 like a status mirror. When the owner drops a closure finding, remove that relation in the same
@@ -1014,8 +1016,10 @@ step. So:
   wiring *is* observable and must be proven through `fsdev run`) — or a genuine
   inference-credential failure.
 - **The epic's goal is proven by its closure issue, and nothing else.** Every child passing its
-  own goal check is not the epic passing. The closure issue's QA run on one `main` commit is,
-  and it stays open until every bug it found is fixed and retested by a later run
+  own goal check is not the epic passing. The closure issue's QA run on one pinned `main` commit
+  is, and it stays open until every bug it found is fixed and retested by a later run, which
+  re-grades the failed checks, the checks whose subject changed and any check whose file was
+  rebuilt, and carries the rest forward
   ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
   Never wrap over an open closure issue, and never close it on a run that filed a finding.
 - **Stop before implementation merge**, per issue. Spec merge follows its separate approved-head/checks gate; implementation merges remain human-controlled.

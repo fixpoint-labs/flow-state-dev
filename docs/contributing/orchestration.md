@@ -267,7 +267,14 @@ standard of a release, and the epic cannot wrap while it is open.
   browser check to `fsd-qa`").
 - **A run is one commit of `main`**, after every other child has merged. Every check in the plan
   runs against that same commit, and the report names it. Checks that passed on different
-  commits prove nothing about the assembled set.
+  commits prove nothing about the assembled set, unless nothing they assert changed in between
+  (see *It stays open* below). **A run finishes on the commit it pinned**, and only a clean
+  verdict closes the closure issue. It never re-pins to chase merges from other epics.
+- **Another epic's merge is sorted, not chased.** When a check fails because another epic's
+  merge changed what it asserts, the run decides which kind of failure it is. A check made stale
+  (a rename, a new lead, a new surface) is updated to the new surface and re-graded in the same
+  run, not filed, and the report notes it. A real regression is still a broken goal, so it is
+  filed and blocks the closure like any finding, naming the merge that caused it.
 - **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
   as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
   wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
@@ -281,17 +288,22 @@ standard of a release, and the epic cannot wrap while it is open.
   outside the epic's goal is filed normally, not under the epic.
 - **It stays open until its findings are fixed and retested.** A run that files findings opens
   no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
-  line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
-  implementation again and the **whole plan runs again** on a fresh `main` commit, not only the
-  fixed bugs' repros, because a fix can break a neighbour. This repeats until a run files
-  nothing. This needs no `epic-wake` change: blocked-by, child discovery and `mayWrap`'s
-  every-row-terminal rule already carry it. `verify.mjs` covers those pieces one at a time, but
-  has no scenario yet for a closure run that files findings and is re-dispatched.
+  line, posts its report (the pinned commit, each check with its verdict and evidence, and where
+  the check files it ran are kept) as a comment on the closure issue, and the new blocked-by
+  relations park it. When the last one merges, the wake dispatches implementation again and the
+  next run, on the commit those fixes landed at, re-grades **the failed checks and every check
+  whose code, docs or surface changed since the last run**, whoever changed it, not only the
+  fixed bugs' repros, because a fix can break a neighbour. The rest carry forward from the last
+  report, each with the run it passed in; a check whose file was lost and rebuilt is re-graded,
+  not carried forward. This repeats until a run files nothing. This needs no `epic-wake` change: blocked-by,
+  child discovery and `mayWrap`'s every-row-terminal rule already carry it. `verify.mjs` covers
+  those pieces one at a time, but has no scenario yet for a closure run that files findings and
+  is re-dispatched.
 - **A clean run opens the closure PR.** It commits the end-to-end checks where they can live in
   the repo, so they keep running after the wrap, and its body is the QA report: the `main`
-  commit, each check with its PASS and its control's FAIL, and each finding with its bug and
-  the run that retested it. That PR's merge is the closure issue's Done and the epic's wrap
-  condition.
+  commit, each check with the run it passed in, its PASS and its control's FAIL, and each
+  finding with its bug and the run that retested it. That PR's merge is the closure issue's Done
+  and the epic's wrap condition.
 
 It is the most expensive child and the only one that repeats. That cost is the QA. An epic whose
 goal genuinely has no end-to-end surface (a pure internal refactor) says so in its goal section,
