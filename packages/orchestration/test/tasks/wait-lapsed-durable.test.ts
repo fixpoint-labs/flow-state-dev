@@ -5,9 +5,9 @@
  * running, so an ending held for it still reaches the filer once.
  *
  * - The lapse owes the filer's pass a wake, before it writes.
- * - The pass releases a slot whose request has ended (`RequestWaits.ended`),
- *   turning an ending it held into the filer's notice, and looks again later
- *   at one whose request still runs or is parked.
+ * - The pass releases a slot whose request has parked or ended
+ *   (`requestStates`), turning an ending it held into the filer's notice, and
+ *   looks again later at one whose request still runs.
  */
 import { describe, expect, it, vi } from "vitest";
 import { createRequestWaits } from "../../../engine/src/durability/wait-chain";
@@ -144,7 +144,11 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
 });
 
 describe("a lapsed wait slot the pass can't read the request of", () => {
-  it("answers for that slot only: the others are released, and nothing comes back every two seconds", async () => {
+  // The engine answers a request it can't read as neither running nor ended,
+  // which reads as parked: its slot is released, as a notice held for a
+  // filing request it can't read is sent (FIX-2149). Matches the filing case
+  // (FIX-2170).
+  it("is released like a parked request's, as the filing case sends a notice held for a request it can't read, and nothing comes back every two seconds", async () => {
     const owed: Owed[] = [];
     const boardCtx = hostCtx(owed, () => false);
     const board = await boardFor(boardCtx);
@@ -177,9 +181,9 @@ describe("a lapsed wait slot the pass can't read the request of", () => {
     const now = Date.now();
     const { nextDue } = await payBoardDebts(pass, board, { now });
     expect(board.get(ok)!.wait).toBeUndefined();
-    expect(board.get(bad)!.wait).toMatchObject({ lapsed: true, requestId: "req_bad" });
-    // The unreadable one is looked at again on the bounded cadence, not every two seconds.
-    expect(nextDue).toBe(now + LAPSED_SLOT_CHECK_MS);
+    expect(board.get(bad)!.wait).toBeUndefined();
+    // Nothing is left to look at again: no check-in two seconds out, or at all.
+    expect(nextDue).toBeUndefined();
   });
 });
 
@@ -198,7 +202,7 @@ describe("the line the pass logs when it stops looking at a slot", () => {
       await releaseEndedWaits(ctx, board, lapsedAt + 10 * maxAge, maxAge);
       const lines = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("stops looking"));
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain("its request still runs or is parked");
+      expect(lines[0]).toContain("its request still runs");
     } finally {
       warn.mockRestore();
     }
