@@ -38,19 +38,33 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
   );
 }
 
-/** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …". */
+/** A run that completed at the review deadline: resolved, but never approved. */
+export const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
+
+/** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …", "Resolved · not reviewed". */
 export function statusLine(task: TaskRow): string {
+  if (notReviewed(task)) return "Resolved · not reviewed";
   const label = task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : LINE_LABEL[statusColumn(task)];
   const note = task.waitingOn?.prompt ?? task.statusNote;
   return note ? `${label} · ${note}` : label;
 }
 
-/** The tag naming the harness a thread runs through, or nothing for a plain thread. */
+/**
+ * The tag naming the harness a thread runs through, or nothing for a plain
+ * thread; and a *Not reviewed* mark on a run that completed at its review
+ * deadline, so it never reads as approved.
+ */
 export function HarnessTag({ task }: { task: TaskRow }) {
-  if (!task.harness) return null;
   return (
-    <span className="shrink-0 border border-border px-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-      {HARNESS_LABEL[task.harness] ?? task.harness}
-    </span>
+    <>
+      {task.harness ? (
+        <span className="shrink-0 border border-border px-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+          {HARNESS_LABEL[task.harness] ?? task.harness}
+        </span>
+      ) : null}
+      {notReviewed(task) ? (
+        <span className="shrink-0 border border-warning px-1.5 font-mono text-[10px] tracking-widest text-warning uppercase">Not reviewed</span>
+      ) : null}
+    </>
   );
 }

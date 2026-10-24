@@ -80,3 +80,41 @@ describe("the fixture's threads", () => {
     expect(row("Add a CHANGELOG line for the vendor pick")).toMatchObject({ assignee: "desk.coder", harness: "claude-code" });
   });
 });
+
+describe("the fixture's threads, on review", () => {
+  it("advances each thread by its own id, so two code requests with one title both reach review", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(4000);
+    await lab.send(id, "Add a CHANGELOG line for the vendor pick");
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(rows.map((t) => t.waitingOn?.kind)).toEqual(["review", "review"]);
+  });
+
+  it("marks the line that asked for threads, not one queued behind it", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let entries: { kind: string; text?: string; sentToThread?: boolean }[] = [];
+    lab.watchThread(id, (view) => (entries = view.entries));
+    await lab.send(id, "Research three vendors, one thread each.");
+    await lab.send(id, "Also keep it short.");
+    await vi.advanceTimersByTimeAsync(700); // the first thread is filed; the second line still waits
+    const marked = entries.filter((e) => e.kind === "user" && e.sentToThread).map((e) => e.text);
+    expect(marked).toEqual(["Research three vendors, one thread each."]);
+  });
+
+  it("matches a stop line against task titles literally, so a title with regex characters can't break the turn", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let running = true;
+    lab.watchThread(id, (view) => (running = view.running));
+    await lab.send(id, "Add code [x");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Thanks");
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(running).toBe(false);
+  });
+});

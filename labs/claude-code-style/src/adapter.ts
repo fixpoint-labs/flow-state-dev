@@ -98,6 +98,12 @@ export interface TaskRow {
   waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
   /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
   harness?: string;
+  /**
+   * How a harness run's review ended, from its output: `accepted` when you
+   * resolved it, `deadline` when nobody answered by the person-stop deadline
+   * and it completed unreviewed, none when no review was asked.
+   */
+  review?: "accepted" | "deadline" | null;
   /** Steps done of total, when known. */
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */

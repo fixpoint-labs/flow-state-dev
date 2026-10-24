@@ -110,7 +110,11 @@ describe("the threads-mode screen", () => {
     expect(within(board()).queryByRole("region", { name: "Working" })).toBeNull();
     // A failed thread waits on you; there is no retry button, you ask the main session.
     expect(rowsIn("Waiting on you").join()).toMatch(/Export failed invoices.*Failed · The export timed out/);
-    expect(within(board()).getByRole("button", { name: /Resolved · 2/ })).toBeTruthy();
+    // A harness run that completed at its review deadline is resolved, marked so it never reads as approved.
+    fireEvent.click(within(board()).getByRole("button", { name: /Resolved · 3/ }));
+    const unreviewed = rowsIn("Resolved").find((row) => row.includes("Retry webhook on 502")) ?? "";
+    expect(unreviewed).toMatch(/Not reviewed/);
+    expect(rowsIn("Resolved").filter((row) => /Not reviewed/.test(row))).toHaveLength(1);
 
     fireEvent.click(within(group("Pinned")).getByRole("button", { name: /Weekly uptime digest/ }));
     const view = screen.getByRole("complementary", { name: "Thread: Weekly uptime digest" });
@@ -132,5 +136,17 @@ describe("the threads-mode screen", () => {
     expect(rowsIn("Ready for review").join()).toMatch(/Claude Code/);
     fireEvent.click(within(coder).getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(coder.dataset.column).toBe("resolved"));
+  });
+
+  it("turns a thread's composer off once it is finished, and points you to the main session", async () => {
+    await startThreadsSession(0.01);
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
+    fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View thread" }));
+    const view = screen.getByRole("complementary", { name: "Thread: Vendor C · summary" });
+    expect(within(view).getByLabelText("Message this thread")).toBeTruthy();
+    fireEvent.click(within(view).getByRole("button", { name: "Resolve" }));
+    await waitFor(() => expect(within(view).queryByLabelText("Message this thread")).toBeNull());
+    expect(within(view).getByText(/This thread is finished/)).toBeTruthy();
   });
 });

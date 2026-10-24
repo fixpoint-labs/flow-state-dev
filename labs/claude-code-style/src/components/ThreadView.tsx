@@ -9,6 +9,7 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * You can talk inside a thread (spec D3): your line is a steer on its task,
  * and answers its open question when it has one. When it is ready for
  * review, *Resolve* accepts it and *Request changes* sends your words back.
+ * A finished thread's composer is off: you ask the main session to follow up.
  */
 export function ThreadView({
   adapter,
@@ -31,6 +32,7 @@ export function ThreadView({
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
+  const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
   const say = (event: FormEvent) => {
     event.preventDefault();
@@ -76,32 +78,38 @@ export function ThreadView({
           <span className="font-semibold">Ready for review</span> · {task.waitingOn?.prompt}
         </div>
       ) : null}
-      <form onSubmit={say} className="px-3 py-3">
-        <textarea
-          aria-label="Message this thread"
-          rows={2}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={question ? "Answer the thread…" : column === "review" ? "What should change…" : "Say something in this thread…"}
-          className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
-        />
-        <div className="mt-2 flex justify-end gap-1.5">
-          {column === "review" ? (
-            <>
-              <button type="button" onClick={() => void adapter.resolve(sessionId, task.id)} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
-                Resolve
+      {finished ? (
+        <p role="note" className="px-4 py-3 text-xs text-muted-foreground">
+          This thread is finished. To follow up or retry, ask the main session.
+        </p>
+      ) : (
+        <form onSubmit={say} className="px-3 py-3">
+          <textarea
+            aria-label="Message this thread"
+            rows={2}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={question ? "Answer the thread…" : column === "review" ? "What should change…" : "Say something in this thread…"}
+            className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
+          />
+          <div className="mt-2 flex justify-end gap-1.5">
+            {column === "review" ? (
+              <>
+                <button type="button" onClick={() => void adapter.resolve(sessionId, task.id)} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
+                  Resolve
+                </button>
+                <button type="button" disabled={!words} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                  Request changes
+                </button>
+              </>
+            ) : (
+              <button type="submit" disabled={!words} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+                {question ? "Answer" : "Send"}
               </button>
-              <button type="button" disabled={!words} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
-                Request changes
-              </button>
-            </>
-          ) : (
-            <button type="submit" disabled={!words} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
-              {question ? "Answer" : "Send"}
-            </button>
-          )}
-        </div>
-      </form>
+            )}
+          </div>
+        </form>
+      )}
     </aside>
   );
 }

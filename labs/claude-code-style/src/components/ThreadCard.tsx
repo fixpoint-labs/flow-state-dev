@@ -6,8 +6,9 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * A compact thread card in the main thread, where the lead's `createTask`
  * call is. It reads the task row live: icon, title, status line, and
  * *View thread*, plus *Answer* when the thread waits on you and *Resolve* and
- * *Request changes* when it is ready for review. Answering and requesting
- * changes happen in the thread's view, where you type.
+ * *Request changes* when it is ready for review. *Resolve* answers the review
+ * from the card; *Answer* and *Request changes* open the thread's view, where
+ * you type the words.
  */
 export function ThreadCard({
   adapter,

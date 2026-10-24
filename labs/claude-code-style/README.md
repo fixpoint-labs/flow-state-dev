@@ -32,7 +32,8 @@ threads, each a task in a session of its own, and the right pane is the status b
   the thread's task and answers its open question. You can pin it there.
 - **A code change** goes to `desk.coder`, which runs through Claude Code (its `harness` setting).
   Its card and row are tagged, and a run that made changes waits for your review, with the
-  judge's verdict shown as information.
+  judge's verdict shown as information. A run nobody reviews by the deadline lands in *Resolved*
+  marked *Not reviewed*, so it never reads as approved.
 
 Scope is core messaging and session management. There are no file diffs, permission prompts,
 linked PRs or harness picker. The design and the decisions behind it are in the specs for
@@ -91,9 +92,9 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 300 |
-| React UI | 20 | 1304 |
+| Configuration | 16 | 301 |
+| React UI | 20 | 1333 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 479 |
-| Checks (not app code) | 6 | 600 |
+| Fixtures (deleted at wiring) | 1 | 496 |
+| Checks (not app code) | 6 | 654 |
 <!-- inventory:end -->

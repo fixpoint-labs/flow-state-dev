@@ -49,7 +49,8 @@ interface FixtureSession {
   entries: ThreadEntry[];
   running: boolean;
   turnStartedAt?: number;
-  queue: string[];
+  /** Lines sent while a turn ran, by their entry id. */
+  queue: { id: string; text: string }[];
   /** The running turn's steps: Stop clears these. */
   timers: ReturnType<typeof setTimeout>[];
   /** Background tasks' steps: they outlive the turn, and only asking the main session stops a task. */
@@ -126,8 +127,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     notify();
     const next = s.queue.shift();
     if (next !== undefined) {
-      s.entries = s.entries.map((e) => (e.kind === "user" && e.queued && e.text === next ? { ...e, queued: false } : e));
-      turn(s, next);
+      s.entries = s.entries.map((e) => (e.id === next.id && e.kind === "user" ? { ...e, queued: false } : e));
+      turn(s, next.text, next.id);
     }
   };
 
@@ -208,8 +209,20 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   ];
 
   // Threads mode. A thread is a task the lead files; its card sits where the createTask call is.
-  const fileThread = (s: FixtureSession, title: string, goal: string, note: string, extra: Partial<FixtureTask> = {}): Step[1] => () => {
+  /** A filed thread's id, set when the lead files it, so later steps find that thread and no other. */
+  type Ref = { id?: string };
+
+  const fileThread = (
+    s: FixtureSession,
+    origin: string,
+    ref: Ref,
+    title: string,
+    goal: string,
+    note: string,
+    extra: Partial<FixtureTask> = {},
+  ): Step[1] => () => {
     const id = nextId("task");
+    ref.id = id;
     s.tasks = [
       ...s.tasks,
       {
@@ -225,19 +238,14 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       },
     ];
     push(s, { kind: "thread", id: nextId("card"), taskId: id });
-    // Your line is marked once the lead's turn files a thread for it.
-    const last = [...s.entries].reverse().find((e) => e.kind === "user");
-    if (last?.kind === "user" && !last.sentToThread) {
-      s.entries = s.entries.map((e) => (e === last ? { ...last, sentToThread: true } : e));
-      notify();
-    }
+    // The line that asked for it is marked once the lead's turn files a thread for it.
+    s.entries = s.entries.map((e) => (e.id === origin && e.kind === "user" ? { ...e, sentToThread: true } : e));
+    notify();
   };
 
-  const byTitle = (s: FixtureSession, title: string) => s.tasks.find((t) => t.title === title);
-
   /** A thread's next state, if it is still working: a progress note, a question, or a review. */
-  const advance = (s: FixtureSession, title: string, patch: Partial<FixtureTask>, line?: string): Step[1] => () => {
-    const task = byTitle(s, title);
+  const advance = (s: FixtureSession, ref: Ref, patch: Partial<FixtureTask>, line?: string): Step[1] => () => {
+    const task = s.tasks.find((t) => t.id === ref.id);
     if (!task || task.status !== "in_progress") return;
     const work = line ? [...task.work, { kind: "assistant" as const, id: nextId("w"), text: line }] : task.work;
     setTask(s, task.id, { ...patch, work });
@@ -246,42 +254,46 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", waitingOn: { kind: "question", prompt }, statusNote: prompt });
   const review = (prompt: string): Partial<FixtureTask> => ({ status: "parked", waitingOn: { kind: "review", prompt }, statusNote: prompt });
 
-  const threadsScript = (s: FixtureSession): Step[] => [
-    [600, fileThread(s, "Vendor A · pricing and uptime", "Compare Vendor A's price and uptime record.", "Reading pricing pages", { steps: { done: 0, total: 7 } })],
-    [300, fileThread(s, "Vendor B · regions", "Find where Vendor B hosts, for the region that matters.", "Listing regions")],
-    [300, fileThread(s, "Vendor C · summary", "Draft a summary of Vendor C for review.", "Gathering notes")],
-    [500, say(s, "I've started three threads, one per vendor. Each comes back to you when it needs you.")],
-    [200, () => endTurn(s)],
-    [600, advance(s, "Vendor A · pricing and uptime", { steps: { done: 1, total: 7 }, statusNote: "Comparing plans" }, "Comparing plans"), "background"],
-    [400, advance(s, "Vendor B · regions", ask("Which region matters, EU or US?"), "Which region matters, EU or US?"), "background"],
-    [600, advance(s, "Vendor A · pricing and uptime", { steps: { done: 2, total: 7 }, statusNote: "Comparing SLA tiers" }, "Comparing SLA tiers"), "background"],
-    [600, advance(s, "Vendor C · summary", review("Draft summary attached"), "Vendor C: $29 per user, 99.95% uptime last year, EU and US hosting."), "background"],
-  ];
-
-  const codeScript = (s: FixtureSession, text: string): Step[] => {
-    const title = text.split("\n")[0].slice(0, 60);
+  const threadsScript = (s: FixtureSession, origin: string): Step[] => {
+    const [a, b, c]: Ref[] = [{}, {}, {}];
     return [
-      [600, fileThread(s, title, text, "Editing CHANGELOG.md", { assignee: "desk.coder", harness: "claude-code" })],
-      [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
+      [600, fileThread(s, origin, a, "Vendor A · pricing and uptime", "Compare Vendor A's price and uptime record.", "Reading pricing pages", { steps: { done: 0, total: 7 } })],
+      [300, fileThread(s, origin, b, "Vendor B · regions", "Find where Vendor B hosts, for the region that matters.", "Listing regions")],
+      [300, fileThread(s, origin, c, "Vendor C · summary", "Draft a summary of Vendor C for review.", "Gathering notes")],
+      [500, say(s, "I've started three threads, one per vendor. Each comes back to you when it needs you.")],
       [200, () => endTurn(s)],
-      [1200, advance(s, title, { statusNote: "Committing" }, "Committing: docs: note the vendor pick"), "background"],
-      [800, advance(s, title, review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), "One commit, CHANGELOG.md only."), "background"],
+      [600, advance(s, a, { steps: { done: 1, total: 7 }, statusNote: "Comparing plans" }, "Comparing plans"), "background"],
+      [400, advance(s, b, ask("Which region matters, EU or US?"), "Which region matters, EU or US?"), "background"],
+      [600, advance(s, a, { steps: { done: 2, total: 7 }, statusNote: "Comparing SLA tiers" }, "Comparing SLA tiers"), "background"],
+      [600, advance(s, c, review("Draft summary attached"), "Vendor C: $29 per user, 99.95% uptime last year, EU and US hosting."), "background"],
     ];
   };
 
-  const turn = (s: FixtureSession, text: string) => {
+  const codeScript = (s: FixtureSession, text: string, origin: string): Step[] => {
+    const ref: Ref = {};
+    return [
+      [600, fileThread(s, origin, ref, text.split("\n")[0].slice(0, 60), text, "Editing CHANGELOG.md", { assignee: "desk.coder", harness: "claude-code" })],
+      [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
+      [200, () => endTurn(s)],
+      [1200, advance(s, ref, { statusNote: "Committing" }, "Committing: docs: note the vendor pick"), "background"],
+      [800, advance(s, ref, review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), "One commit, CHANGELOG.md only."), "background"],
+    ];
+  };
+
+  const turn = (s: FixtureSession, text: string, origin: string) => {
     startTurn(s);
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
     // The running task the line names (by a word of its title), else the first one running.
     const runningTasks = s.tasks.filter((t) => t.status === "in_progress" || t.status === "held" || t.status === "parked");
-    const named = runningTasks.find((t) => t.title.split(" ").slice(1).some((word) => new RegExp(`\\b${word}\\b`, "i").test(text)));
+    const words = new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+    const named = runningTasks.find((t) => t.title.toLowerCase().split(/\s+/).slice(1).some((word) => words.has(word)));
     const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
       play(s, stopScript(s, running));
     } else if (threads && /\b(changelog|code)\b/i.test(text)) {
-      play(s, codeScript(s, text));
+      play(s, codeScript(s, text, origin));
     } else if (threads && !s.tasks.some((t) => t.assignee === "desk.thread")) {
-      play(s, threadsScript(s));
+      play(s, threadsScript(s, origin));
     } else if (!threads && s.tasks.length === 0) {
       play(s, vendorScript(s));
     } else {
@@ -342,6 +354,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       thread("Export failed invoices", "errored", "The export timed out"),
       thread("Refund report", "completed"),
       thread("Dunning emails", "completed"),
+      // A harness run nobody reviewed by the person-stop deadline: it completed, marked so.
+      { ...thread("Retry webhook on 502", "completed"), assignee: "desk.coder", harness: "claude-code", review: "deadline" as const },
     ];
     pins.add(tasks[0].id);
     sessions.set(id, {
@@ -382,12 +396,14 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       const s = session(sessionId);
       if (s.entries.length === 0) s.row = { ...s.row, title: text.split("\n")[0].slice(0, 120) };
       if (s.running) {
-        s.queue.push(text);
-        push(s, { kind: "user", id: nextId("u"), text, queued: true });
+        const id = nextId("u");
+        s.queue.push({ id, text });
+        push(s, { kind: "user", id, text, queued: true });
         return;
       }
-      push(s, { kind: "user", id: nextId("u"), text });
-      turn(s, text);
+      const id = nextId("u");
+      push(s, { kind: "user", id, text });
+      turn(s, text, id);
     },
 
     async interrupt(sessionId) {
@@ -425,8 +441,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         return;
       }
       // Your line answers its open question: the task works again, then comes back for review.
-      setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: `Checking ${line}`, work });
-      play(s, [[1200, advance(s, task.title, review(`Summary for ${line} ready`), `Vendor B hosts in ${line}: two regions, both with 99.9% uptime.`), "background"]]);
+      setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
+      play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
     },
 
     async resolve(sessionId, taskId) {
@@ -437,6 +453,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         status: "completed",
         waitingOn: undefined,
         statusNote: undefined,
+        review: "accepted",
         work: [...task.work, { kind: "assistant", id: nextId("w"), text: "Resolved. Your review accepted the work." }],
       });
     },
@@ -451,7 +468,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         statusNote: "Revising",
         work: [...task.work, { kind: "user", id: nextId("w"), text: words }],
       });
-      play(s, [[1500, advance(s, task.title, review("Revised draft attached"), "Revised with your notes."), "background"]]);
+      play(s, [[1500, advance(s, { id: taskId }, review("Revised draft attached"), "Revised with your notes."), "background"]]);
     },
 
     watchPins(onChange) {
