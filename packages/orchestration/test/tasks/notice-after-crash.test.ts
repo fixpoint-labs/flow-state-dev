@@ -16,6 +16,10 @@
  * again, with nothing ended or deregistered; a second engine starts on the
  * same stores. Short thresholds stand in for the defaults' minutes.
  *
+ * Two cases, one per way the notice is freed: the sweep marking the request
+ * interrupted and bringing the pass forward; and, with sweeping off, the pass
+ * itself reading the request's stale heartbeat as stopped.
+ *
  * Each runs on the in-memory stores and on SQLite.
  */
 import { mkdtemp, rm } from "node:fs/promises";
@@ -24,7 +28,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
+import { createFlowState, disposeFlowApiRouter, inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskSettledInput } from "../../src";
 import { act, fileCall, type Row, SESSION, stepModel, USER, waitFlow } from "./wait-fixture";
@@ -75,80 +79,124 @@ async function eventually<T>(read: () => Promise<T | undefined>, withinMs: numbe
   }
 }
 
-function engine(flow: FlowInstance, primary: StoreAdapter) {
+function engine(flow: FlowInstance, primary: StoreAdapter, sweepMs: number) {
   return createFlowState({
     flows: { "wait-board": flow },
     stores: { default: { primary } },
     durable: true,
     staleSweepThresholdMs: THRESHOLD_MS,
-    staleSweepIntervalMs: SWEEP_MS
+    staleSweepIntervalMs: sweepMs
   });
+}
+
+/**
+ * A filing request left mid-run by a dead server, its task's notice held for
+ * it, and a second server started on the same stores with the stale sweep at
+ * `sweepMs` (0: off).
+ */
+async function crashAndRestart(open: () => Promise<StoreAdapter>, sweepMs: number) {
+  const notices: TaskSettledInput[] = [];
+  const heardAt: number[] = [];
+  const heard = { heard: notices, heardGate: async () => void heardAt.push(Date.now()) };
+
+  // The first server: the turn files a task that ends at once, then its
+  // model call never answers. Its heartbeat beats once an hour, which here
+  // is never: the request is left as a killed process leaves it.
+  const { model } = stepModel([fileCall("f1"), () => new Promise(() => {})]);
+  const first = engine(waitFlow(model, { endsOnFiling: "already done", heartbeatIntervalMs: 3_600_000, ...heard }), await open(), sweepMs);
+  const firstRuntime = await first.getRuntime();
+  const flow = firstRuntime.registry.get("wait-board")!;
+  void runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow,
+    actionName: "run",
+    input: {},
+    userId: USER,
+    sessionId: SESSION,
+    stores: firstRuntime.stores,
+    runtimeConfig: firstRuntime.runtimeConfig
+  }).catch(() => undefined);
+
+  // The notice is turned away for the running filing request, as it is
+  // while that request lives.
+  const filing = await eventually(
+    async () => {
+      // Read without a router: the first server runs no sweeps, as a server about to die runs none we can count on.
+      const listed = (await act(first, flow, "list", {}, { sweeper: false })).output as Row[];
+      const meta = listed[0]?.metadata ?? {};
+      const deferred = Object.entries(meta).find(([key]) => key.startsWith("noticeDeferred:"))?.[1] as { whileRunning?: string } | undefined;
+      return deferred?.whileRunning;
+    },
+    10_000,
+    "the notice was never held for its filing request"
+  );
+  const entry = await firstRuntime.stores.activeRequests.get(filing);
+  expect(entry).toBeDefined();
+  const lastBeat = entry!.lastHeartbeatAt;
+  expect(notices).toEqual([]);
+
+  // The restart: a second server on the same stores, nothing sent to it.
+  // Its flow beats as a healthy one does, so a stale entry reads as stopped.
+  const { model: idle } = stepModel([]);
+  const second = engine(waitFlow(idle, { heartbeatIntervalMs: 1_000, ...heard }), await open(), sweepMs);
+  const router = await second.getRouter();
+  return {
+    notices,
+    statusOf: async () => (await (await second.getRuntime()).stores.request.get(filing))?.status,
+    /** Resolves once the notice is heard, with how long after the request's last heartbeat. */
+    heard: async (withinMs: number) => {
+      await eventually(async () => (notices.length > 0 ? true : undefined), withinMs, "the notice was never heard");
+      return heardAt[0]! - lastBeat;
+    },
+    dispose: async () => {
+      // The abandoned run never ends: wait out no drain for it.
+      await disposeFlowApiRouter(router, { drainMs: 100 });
+      await second.dispose();
+      await first.dispose().catch(() => undefined);
+    }
+  };
 }
 
 describe.each(STORES)("a notice held for a filing request whose process died (%s)", { timeout: 60_000 }, (_name, open) => {
   it("is heard within the stale threshold and one sweep tick of that request's last heartbeat, not at its resend's backoff", async () => {
-    const reopen = await open();
-    const notices: TaskSettledInput[] = [];
-    const heardAt: number[] = [];
-    const heard = { heard: notices, heardGate: async () => void heardAt.push(Date.now()) };
-
-    // The first server: the turn files a task that ends at once, then its
-    // model call never answers. Its heartbeat beats once an hour, which here
-    // is never: the request is left as a killed process leaves it.
-    const { model } = stepModel([fileCall("f1"), () => new Promise(() => {})]);
-    const first = engine(waitFlow(model, { endsOnFiling: "already done", heartbeatIntervalMs: 3_600_000, ...heard }), await reopen());
-    const firstRuntime = await first.getRuntime();
-    const flow = firstRuntime.registry.get("wait-board")!;
-    void runAction({
-      orgId: DEFAULT_ORG_ID,
-      flow,
-      actionName: "run",
-      input: {},
-      userId: USER,
-      sessionId: SESSION,
-      stores: firstRuntime.stores,
-      runtimeConfig: firstRuntime.runtimeConfig
-    }).catch(() => undefined);
-
-    // The notice is turned away for the running filing request, as it is
-    // while that request lives.
-    const filing = await eventually(
-      async () => {
-        // Read without a router: the first server runs no sweeps, as a server about to die runs none we can count on.
-        const listed = (await act(first, flow, "list", {}, { sweeper: false })).output as Row[];
-        const meta = listed[0]?.metadata ?? {};
-        const deferred = Object.entries(meta).find(([key]) => key.startsWith("noticeDeferred:"))?.[1] as { whileRunning?: string } | undefined;
-        return deferred?.whileRunning;
-      },
-      10_000,
-      "the notice was never held for its filing request"
-    );
-    const entry = await firstRuntime.stores.activeRequests.get(filing);
-    expect(entry).toBeDefined();
-    const lastBeat = entry!.lastHeartbeatAt;
-    expect(notices).toEqual([]);
-
-    // The restart: a second server on the same stores, nothing sent to it.
-    // Its flow beats as a healthy one does, so a stale entry reads as stopped.
-    const { model: idle } = stepModel([]);
-    const second = engine(waitFlow(idle, { heartbeatIntervalMs: 1_000, ...heard }), await reopen());
+    const run = await crashAndRestart(await open(), SWEEP_MS);
     try {
-      await second.getRouter();
-      await eventually(async () => (notices.length > 0 ? true : undefined), THRESHOLD_MS + 15_000, "the notice was never heard");
-
-      expect(notices).toEqual([expect.objectContaining({ ending: "completed", output: "already done" })]);
-      const sinceBeat = heardAt[0]! - lastBeat;      // Not while the request could still be alive on another server: only
+      const sinceBeat = await run.heard(THRESHOLD_MS + 15_000);
+      expect(run.notices).toEqual([expect.objectContaining({ ending: "completed", output: "already done" })]);
+      // Not while the request could still be alive on another server: only
       // once its heartbeat is stale past the threshold the sweep reaps at.
       expect(sinceBeat).toBeGreaterThanOrEqual(THRESHOLD_MS);
       // And within one sweep tick and one pass of that, not at the backoff.
       expect(sinceBeat).toBeLessThanOrEqual(THRESHOLD_MS + SWEEP_MS + PASS_MS);
-      expect((await (await second.getRuntime()).stores.request.get(filing))?.status).toBe("interrupted");
+      // A pass that read the stale heartbeat may have sent it just before the
+      // sweep's tick: the sweep marks the request all the same.
+      await eventually(async () => ((await run.statusOf()) === "interrupted" ? true : undefined), SWEEP_MS + 2_000, "the sweep never marked the request");
 
       await settle(2_500);
-      expect(notices).toHaveLength(1);
+      expect(run.notices).toHaveLength(1);
     } finally {
-      await second.dispose();
-      await first.dispose().catch(() => undefined);
+      await run.dispose();
+    }
+  });
+
+  it("with the stale sweep off, is heard at the first resend after that request's heartbeat goes stale, though nothing marks it", async () => {
+    // Nothing marks the request interrupted here, so only the pass's own read
+    // of its heartbeat frees the notice. Its resends run about 2, 6 and 14 s
+    // after the ending; the threshold falls between the second and the third.
+    const run = await crashAndRestart(await open(), 0);
+    try {
+      const sinceBeat = await run.heard(THRESHOLD_MS + 15_000);
+      expect(run.notices).toEqual([expect.objectContaining({ ending: "completed", output: "already done" })]);
+      expect(sinceBeat).toBeGreaterThanOrEqual(THRESHOLD_MS);
+      // At most one backoff step (8 s here) past the threshold, and its pass.
+      expect(sinceBeat).toBeLessThanOrEqual(THRESHOLD_MS + 8_000 + PASS_MS);
+      expect(await run.statusOf()).toBe("in_progress");
+
+      await settle(2_500);
+      expect(run.notices).toHaveLength(1);
+    } finally {
+      await run.dispose();
     }
   });
 });
+

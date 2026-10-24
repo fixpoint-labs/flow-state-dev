@@ -228,8 +228,12 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
  * so a wake fired early costs one pass and moves itself on.
  *
  * One read per entry the session's flow declares and one write per wake kept
- * there that is due later; nothing else is read. A wake a pass moved meanwhile
- * is left to that pass.
+ * there that is due later; nothing else is read. The write is an `owe` from
+ * the wake just read: it keeps the earlier due time and bumps the version, so
+ * a pass that read the wake before this write and settles it after finds it
+ * changed (`stale`) and leaves it due now, rather than moving it back to its
+ * backoff. A wake a pass cleared between the read and the write is kept
+ * again, due now: its fire finds nothing owed and clears it.
  *
  * @param entries The internal entries of the session's flow: the only keys a
  *   wake in it can have.
@@ -245,6 +249,8 @@ export async function bringSessionWakesForward(
     const key = { ...(tenant !== undefined ? { tenantId: tenant } : {}), sessionId: session.sessionId, entry };
     const wake = await store.get(key);
     if (wake === null || wake.dueAt <= now) continue;
-    if (await store.move(key, wake.version, now)) noteWakeOwed(store, now);
+    const { version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...owed } = wake;
+    const kept = await store.owe({ ...owed, dueAt: now });
+    noteWakeOwed(store, kept.dueAt);
   }
 }

@@ -72,7 +72,10 @@ const DEFAULT_STALE_THRESHOLD_MS = 60_000;
  * can look stale between beats. The same rule as the gate's second arm, and
  * the same defaults. Unlike the gate it reads one process's own registry
  * entry as well as a shared one's: a stale entry is a stopped heartbeat
- * wherever it is kept.
+ * wherever it is kept. And it ignores the gate's third arm, the sweep's
+ * cadence, deliberately: with sweeping off nothing marks a dead request
+ * interrupted, and this read is then the only thing that frees a notice held
+ * for it.
  */
 export function heartbeatStaleThreshold(
   inputs: Pick<LivenessGateInputs, "heartbeatIntervalMs" | "staleThresholdMs">

@@ -477,6 +477,19 @@ describe("detectInterruptedRequests", () => {
       expect(await dueOf("s_other", "onTaskSettled")).toBe(LATER);
     });
 
+    it("bumps the wake's version, so a pass that read it before settles stale and leaves it due now", async () => {
+      await crashed("req_racing", "s_racing");
+      await stores.wakes!.owe(wake("s_racing", "onTaskSettled"));
+      // A pass in flight read the wake while the request still looked alive.
+      const read = (await stores.wakes!.get({ sessionId: "s_racing", entry: "onTaskSettled" }))!;
+
+      await detectInterruptedRequests({ stores, staleThresholdMs: 30_000, wakeEntriesOf: () => ["onTaskSettled"] });
+
+      // That pass now settles to its backoff, at the version it read.
+      expect(await stores.wakes!.move({ sessionId: "s_racing", entry: "onTaskSettled" }, read.version, LATER)).toBe(false);
+      expect(await dueOf("s_racing", "onTaskSettled")).toBeLessThanOrEqual(Date.now());
+    });
+
     it("leaves the wakes of a request it doesn't mark, and every wake when its caller names no entries", async () => {
       // Still beating: maybe on a live peer, so nothing it holds is owed yet.
       await crashed("req_beating", "s_beating", Date.now());

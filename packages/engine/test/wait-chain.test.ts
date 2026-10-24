@@ -219,7 +219,9 @@ describe("whether a request has stopped running its own work", () => {
       atThreshold: { lastHeartbeatAt: NOW - THRESHOLD },
       stopped: { lastHeartbeatAt: NOW - THRESHOLD - 1 },
       // Queued for an external worker: nothing beats for it yet, and it is not dead.
-      queued: { lastHeartbeatAt: NOW - 10 * THRESHOLD, queuedAt: NOW - 10 * THRESHOLD }
+      queued: { lastHeartbeatAt: NOW - 10 * THRESHOLD, queuedAt: NOW - 10 * THRESHOLD },
+      // A custom registry that records no heartbeat: no proof of anything.
+      noHeartbeat: {} as { lastHeartbeatAt: number }
     };
     const waitsWith = (heartbeat?: { staleThresholdMs: number }) =>
       createRequestWaits({
@@ -237,11 +239,12 @@ describe("whether a request has stopped running its own work", () => {
 
     it("reads it as stopped once its heartbeat is stale past the sweep's threshold, and no sooner", async () => {
       // A notice held for it is sent then, rather than when the sweep gets to it.
-      expect(await waitsWith({ staleThresholdMs: THRESHOLD }).running!(["beating", "atThreshold", "stopped", "queued", "unregistered"])).toEqual({
+      expect(await waitsWith({ staleThresholdMs: THRESHOLD }).running!(["beating", "atThreshold", "stopped", "queued", "noHeartbeat", "unregistered"])).toEqual({
         beating: true,
         atThreshold: true,
         stopped: false,
         queued: true,
+        noHeartbeat: true,
         // No entry is no proof its process is gone: the record answers.
         unregistered: true
       });
