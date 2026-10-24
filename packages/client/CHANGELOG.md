@@ -1,5 +1,144 @@
 # @flow-state-dev/client
 
+## 0.3.0
+
+### Minor Changes
+
+- 97894aa: A flow can check every new session's initial state with `session.createCheck`, refuse caller-seeded fields with `session.serverOwned`, and fix a field for a session's life by declaring it `.readonly()` in its session `stateSchema`; `listSessions({ state })` and the list route's `state.<field>` filter select sessions by a readonly field. On a flow that binds its sessions this way (a readonly field or a create check), an initial state that fails the `stateSchema` is refused on every path that creates a session; other flows keep it as sent. A dispatcher's `session: { key, state }` and a task dispatcher's `state` create the child session with that state. `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).
+- cd180d7: Stopping a paused request now ends it `aborted` and records its gate with the new `stopped` suspension status, a turn paused on an ask cancels the asked task instead of waiting for it, and a durable host now runs the durability sweeper even without `durabilityRetention`, so a paused request past its `expiresAt` expires and an ask past its deadline times out, while pruning still waits for a retention policy (FIX-1816).
+
+### Patch Changes
+
+- 585b75b: `POST /api/flows/users/:userId/check-interrupted` and `createRecoveryClient().checkInterrupted({ staleThresholdMs })` now use the larger of the caller's `staleThresholdMs` and the server's `staleSweepThresholdMs`, so a smaller, zero, or negative value sweeps as if it were left out and a request that is still heartbeating is never marked `interrupted` (to sweep sooner, lower `staleSweepThresholdMs` on the server) (FIX-1571).
+- 49852d9: `abortRequest` now rejects with a `ClientHttpError` carrying the route's `status` (for example 409 when the request had already finished, 403 when it isn't yours), instead of a plain `Error`. The message is unchanged, so code that reads it keeps working (FIX-1664).
+- 698e06b: New `apiPath` option on every client constructor and on `FlowProvider` names where the server mounts the flow API (default `/api/flows`), so the client and React hooks can reach a Node server started with a custom `basePath`. Requests go to `baseUrl` + `apiPath` + route; with `apiPath` unset, every URL is unchanged. The `@flow-state-dev/node` README documents pairing `basePath` with `apiPath` (FIX-1677).
+- 6a3ecf5: `@flow-state-dev/client` exports `readEveryCollectionPage`, one collection read with a single 1,000-page ceiling that fails when the server repeats a cursor, and the workforce panels, the DevTool Inventory tab, the Shift Manager and the workforce roster read now use it, so a repeated cursor ends a read with an error instead of 1,000 wasted page reads, a partial list shown as whole, or a read that never stops (FIX-1674).
+- 65ddb90: Each request's record now stores its action result (`output` as JSON, and/or `error`) with its final status, `listSessionRequests` returns it (the output with `includeResultOutput`), the DevTool task row reads it instead of reconstructing it from traces, and a run a completion hook failed after the action answered now reports that answer as `output` (including `fsdev run`'s result, where it was `null`) (FIX-1661).
+- 60c8192: `getItems()`, `RequestRecord.items` and item subscriptions return `RuntimeItem`, which is `OutputItem` plus trace rows: `block_trace`, `router_decision`, `state_snapshot` and `generator_step` (FIX-2054). Only types change. Runtime behaviour is the same.
+
+  These signatures return or pass `RuntimeItem`, which can break code that expects `OutputItem`:
+
+  - `ResponseEmitterHandle.getItems()` and the `subscribeToItems` listener and filter (core).
+  - `ResponseEmitter.getItems()`, `RequestRecord.items` and `RequestStore.persistItems` (engine).
+  - The `testItems` selectors that don't filter by type: `all()`, `sideChain()`, `main()`, `byAgent()` and `byVisibility()` (testing). They return trace rows when given them.
+
+  To upgrade, type arrays and callbacks that receive these values as `RuntimeItem`, imported from `@flow-state-dev/core`. Where code needs an `OutputItem`, filter out the trace rows with a type guard:
+
+  ```ts
+  import type { RuntimeItem } from "@flow-state-dev/core";
+  import type { OutputItem } from "@flow-state-dev/core/items";
+
+  const TRACE = new Set([
+    "block_trace",
+    "router_decision",
+    "state_snapshot",
+    "generator_step",
+  ]);
+  const isOutputItem = (item: RuntimeItem): item is OutputItem =>
+    !TRACE.has(item.type);
+
+  const visible = emitter.getItems().filter(isOutputItem);
+  ```
+
+  `.waitForCondition` predicates and `wakeOn` filters keep their `OutputItem` types. These signatures accept `RuntimeItem` as well as `OutputItem`: `resolveItemVisibility` and `collapseToCanonicalLog` (contracts, re-exported by core), `testItems` (testing), and the filter that `onTaskChangeFor` returns (orchestration). Existing callers need no change.
+
+  `RequestStreamStore` and `createRequestStreamStore` (client) take the row type as a parameter, defaulting to `OutputItem`, so existing stores are unchanged. A store seeded with trace rows is created as `createRequestStreamStore<RuntimeItem>()`, and its `getSorted()`, `getRaw()`, `getById()` and `getOwnedBy()` return `RuntimeItem`.
+
+- b7c523b: Add `createSessionSSEClient(options)`, a client for the whole-session stream. It reconnects with backoff, handing back the last server time it heard, and stops without retrying when the server refuses the session (401, 403, or a 409 for a session that must be migrated first) or has no such route (FIX-1609).
+
+  `createRequestStreamStore` takes an optional `keyOf`, the key each item is held under (default: its id). A store that holds more than one request's items keys by request and item id, since two requests can keep the same id.
+
+  `SessionStateSnapshotResponse` has an optional `at`, and `createSessionSSEClient`'s `since` accepts it. It also has an optional `sessionCreatedAt`, and `createSessionSSEClient` takes it as `sessionCreatedAt` and names that session on every connection: once the id holds another session, the server answers 404 and the client stops. `compareItemOrder` breaks a tie on time and index by request id, then item id, where it used to return 0.
+
+  `createSessionSSEClient` takes `onReconnecting`, called before each reconnect with how many tries there have been since the stream last delivered an event: 1 after an ordinary close, 2 or more once a try has failed.
+
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [3221d05]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [617aeab]
+- Updated dependencies [8dc242e]
+- Updated dependencies [89af7db]
+- Updated dependencies [7d4158f]
+- Updated dependencies [5492a77]
+- Updated dependencies [6819520]
+- Updated dependencies [ad5df6f]
+- Updated dependencies [211679a]
+- Updated dependencies [dd80e01]
+- Updated dependencies [2ce15c7]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [e71ea1a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [fe5df7d]
+- Updated dependencies [423a405]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [f9995b1]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [849f6ec]
+- Updated dependencies [028af6f]
+- Updated dependencies [eb831f8]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [db7df1c]
+- Updated dependencies [968faa6]
+- Updated dependencies [653549d]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [9510a03]
+- Updated dependencies [adbcf0b]
+- Updated dependencies [1027b98]
+- Updated dependencies [1cfd80c]
+- Updated dependencies [65ad58a]
+- Updated dependencies [3b0161c]
+- Updated dependencies [385d01e]
+- Updated dependencies [fa7b22e]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [60c8192]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [295e96a]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b7c523b]
+- Updated dependencies [b552b50]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [e11764a]
+- Updated dependencies [872a088]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [96ff077]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/contracts@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
