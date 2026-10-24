@@ -44,10 +44,22 @@ export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollection
  * this request holds (its turn, or a turn a piece's ending woke, filed it),
  * else a task session's own task. In a delegate's ongoing session (FIX-2083),
  * only the routed task this request holds: a turn there that works no task
- * files plain tasks.
+ * files plain tasks. A run that goes on after its task was cancelled (one
+ * the cancel resumed from a wait for a user, FIX-2129) holds no row, but its
+ * row's run link still names it: that task is the owner, so the filing is
+ * refused under it.
  */
 export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
-  return (await heldTask(ctx))?.row.id ?? stringAt(ctx, TASK_ID_STATE_KEY);
+  return (await heldTask(ctx))?.row.id ?? stringAt(ctx, TASK_ID_STATE_KEY) ?? (await cancelledTaskOf(ctx));
+}
+
+/** The cancelled row on the board above whose run link names the running request. */
+async function cancelledTaskOf(ctx: BlockContext): Promise<string | undefined> {
+  const partition = boardAboveOf(ctx);
+  const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
+  if (partition === undefined || requestId === undefined) return undefined;
+  const ref = await conversationLedgerAt(ctx, partition);
+  return ref?.list({ status: "cancelled" }).find((task) => task.run?.requestId === requestId)?.id;
 }
 
 /**

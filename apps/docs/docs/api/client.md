@@ -366,6 +366,26 @@ if ((response.headers.get("content-type") ?? "").includes("text/event-stream")) 
 
 All failures throw `ClientHttpError` with a `.status` property.
 
+#### Answering a stop that waits for a user
+
+An inbox answers a stop that waits for a user (a `ctx.waitForUser`, or a `human_approval` / `human_input` suspension) with `answerSuspension`. Unlike `resumeSuspension`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
+
+```ts
+await recovery.answerSuspension(flowId, item.requestId, {
+  suspensionId: item.suspensionId,
+  action: "submit", // "approve" or "reject" for an approval
+  data: "eu-west",
+});
+```
+
+The server checks that the signed-in caller owns the stop's request before it reads the stop, and records that caller as who answered, so there is no `resumedBy`. A stop resolves once: whichever of an answer, a cancel, a deadline or a stop comes first wins.
+
+`answerSuspension` error codes:
+- **400**: missing or invalid `action`, or `data` that fails the stop's `resumeSchema`
+- **404**: the stop isn't the caller's (another user, tenant or organization), isn't one that waits for a user, or doesn't exist
+- **409**: the stop is already resolved (body `refused: "already-resolved"`), the action isn't one it allows, or another resume of the request is still running (`refused: "busy"`)
+- **410**: the stop passed its deadline
+
 ## Error Handling
 
 ### `ClientHttpError`

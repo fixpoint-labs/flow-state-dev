@@ -87,7 +87,7 @@ function suspensionResumeItem(
   path: string,
   suspensionId: string,
   itemIndex: number,
-  extra?: { resolution?: "approved" | "rejected" | "skipped" | "expired"; resumeData?: unknown; resolvedBy?: string },
+  extra?: { resolution?: "approved" | "rejected" | "skipped" | "expired" | "cancelled"; resumeData?: unknown; resolvedBy?: string },
 ): RuntimeItem {
   const blockInstanceId = `${REQ}:${path}:0`;
   return {
@@ -240,7 +240,7 @@ describe("buildReplayLog", () => {
         suspensionItem("root/step[3]", "susp_b", 2),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { observed: "In Spec Review" }, rejected: false, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
+        { data: { observed: "In Spec Review" }, rejected: false, expired: false, cancelled: false, skipped: false, suspensionId: "susp_a", resolvedBy: undefined },
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[3]`)).toEqual([]);
     });
@@ -265,7 +265,7 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: { note: "no" }, rejected: true, expired: false, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
+        { data: { note: "no" }, rejected: true, expired: false, cancelled: false, skipped: false, suspensionId: "susp_a", resolvedBy: "reviewer" },
       ]);
     });
 
@@ -280,7 +280,19 @@ describe("buildReplayLog", () => {
         }),
       ]);
       expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
-        { data: undefined, rejected: true, expired: true, skipped: false, suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
+        { data: undefined, rejected: true, expired: true, cancelled: false, skipped: false, suspensionId: "susp_a", resolvedBy: "durability-sweeper" },
+      ]);
+    });
+
+    it("replays a cancelled stop as a rejection marked cancelled, never as an answer (FIX-2129)", () => {
+      // A block that read `cancelled` and ran on must read it again on a later
+      // replay, not its (empty) data as an answer it never got.
+      const log = buildReplayLog([
+        suspensionItem("root/step[2]", "susp_a", 0),
+        suspensionResumeItem("root/step[2]", "susp_a", 1, { resolution: "cancelled", resolvedBy: "cancel" }),
+      ]);
+      expect(log.resolvedResumes(`${REQ}:root/step[2]`)).toEqual([
+        { data: undefined, rejected: true, expired: false, cancelled: true, skipped: false, suspensionId: "susp_a", resolvedBy: "cancel" },
       ]);
     });
 

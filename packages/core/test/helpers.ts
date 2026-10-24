@@ -2,6 +2,7 @@ import type { BlockContext, BlockDefinition, ResponseEmitterHandle } from "../sr
 import { asRuntime } from "../src/types/block";
 import type { GeneratorModel, ModelResolver } from "../src/types/model";
 import type { ScopeStateOps } from "../src/types/state";
+import { waitForUserOn, type WaitForUser } from "../src/types/wait-for-user";
 
 /**
  * Drive a block from test code (FIX-503). Recovers the substrate runtime
@@ -45,6 +46,8 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
   resolveModel.resolveId = (modelId: string) => modelId;
 
   const baseContext: BlockContext = {
+    // Built on whatever `suspend` the context ends up with, as the runtime's is.
+    waitForUser: ((options: Parameters<WaitForUser>[0]) => waitForUserOn(merged, options)) as WaitForUser,
     request: {
       identity: { type: "request", id: "req_1" },
       incarnation: "inc_1",
@@ -95,5 +98,6 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
   };
 
   // Only the overrides are cast: their `resolveModel` and `response` may be partial.
-  return { ...baseContext, ...(overrides as Partial<BlockContext>) };
+  const merged: BlockContext = { ...baseContext, ...(overrides as Partial<BlockContext>) };
+  return merged;
 }

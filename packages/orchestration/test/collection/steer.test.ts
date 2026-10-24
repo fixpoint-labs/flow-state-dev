@@ -142,11 +142,11 @@ describe.each([
     const { tasks } = await makeBacking();
     await tasks.addTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
-    await tasks.setWaitingOn!("t", "person", { claim: ticketForClaim("tasks", claimed) });
+    await tasks.setWaitingOn!("t", "user", { claim: ticketForClaim("tasks", claimed) });
 
     await tasks.steer!("t", { message: "use the draft", from: "filer" });
 
-    expect(tasks.get("t")).toMatchObject({ waitingOn: "person" });
+    expect(tasks.get("t")).toMatchObject({ waitingOn: "user" });
   });
 
   it("the claim marks every steer taken by the attempt it starts, so a retry's brief carries them all", async () => {

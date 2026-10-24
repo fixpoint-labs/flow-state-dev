@@ -80,7 +80,7 @@ import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
-import { assertDepsFileable, assertFilingSettings, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
+import { assertDepsFileable, assertFilingSettings, assertParentsOpen, withFollowUpPlacement, type TaskSettingsSupport } from "./filing";
 import {
   cascadeCancelPatch,
   endsDependents,
@@ -564,6 +564,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         }
         // Against the committed map, inside the write (FIX-2080).
         assertDepsFileable([task as Task], (id) => ownTask(tasks, id) as Task | undefined);
+        assertParentsOpen([task as Task], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks, [task.id]: task };
         assertWithinCaps(next);
         return next;
@@ -579,6 +580,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       await casWrite((tasks) => {
         // Ids filed in the same batch count (FIX-2080).
         assertDepsFileable(built as Task[], (id) => ownTask(tasks, id) as Task | undefined);
+        assertParentsOpen(built as Task[], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks };
         for (const task of built) {
           if (ownTask(next, task.id) !== undefined) {

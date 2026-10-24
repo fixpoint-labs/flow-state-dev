@@ -14,7 +14,8 @@
 export * from "./items";
 
 // Pure leaf types not surfaced through the items barrel.
-export type { ResumeAction, SuspensionReason, SuspensionStatus } from "./types/suspension";
+export type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "./types/suspension";
+export { isUserSuspension, waitForUserKindOf } from "./types/suspension";
 
 // Agent discovery: the shared manifest-entry record and the per-domain source
 // type that projects into it (FIX-817).

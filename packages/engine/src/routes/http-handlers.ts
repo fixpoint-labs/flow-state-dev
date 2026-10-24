@@ -23,6 +23,7 @@ import {
   jsonResponse
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
+import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
@@ -645,6 +646,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           principal,
           seams,
           requestContext
+        });
+      }
+
+      if (route.kind === "answer_suspension") {
+        return await handleAnswerSuspension(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
+          tenantId,
+          principal
         });
       }
 

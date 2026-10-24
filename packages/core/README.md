@@ -154,6 +154,21 @@ Copies that differ by more than their name declare `configSchema` on the definit
 
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, a projected actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
+**Waiting for a user:** `ctx.waitForUser({ kind, prompt, deadline?, title?, resumeSchema?, data? })` stops the request until a person answers, when your code reads the answer on its next line. `kind` is `"approval"`, `"review"` or `"input"`. It needs durable execution, as `ctx.suspend()` does.
+
+```ts
+const asked = await ctx.waitForUser({ kind: "input", prompt: "Which region?", deadline: 2 * DAY });
+if (asked.cancelled) return { skipped: true }; // the task was cancelled; nothing here is kept
+const region = asked.answer;
+```
+
+- An answer comes back as `{ cancelled: false, answer }`; an approval as `{ cancelled: false, approved: true }` or `{ cancelled: false, approved: false, deadline }`.
+- `deadline` is milliseconds from the call. Leave it out and the host's `userDeadlineMs` applies; with neither, the stop waits until it is answered, stopped or cancelled.
+- At a deadline an approval reads as a no with `deadline: true`. A review or an input throws `SuspensionTimeoutError`: catch it to go ahead, end or ask again, or leave it and the try fails.
+- When the task the request works is cancelled while it waits, the call returns `{ cancelled: true }`, and any later `waitForUser` in that run returns it at once.
+
+A raw `ctx.suspend({ reason: "human_approval" | "human_input" })` is the same kind of stop, read by its reason, with its own `timeoutMs` as its only deadline: an input that passes it throws `SuspensionTimeoutError`, and a cancel throws `SuspensionRejectedError` with `cancelled: true`. `isUserSuspension(suspension)` and `waitForUserKindOf(suspension)` (from `@flow-state-dev/core/types`) say whether a suspension waits for a user, and for what.
+
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, `internal` and `task` entries, scopes, resources, and per-scope `client` blocks. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 

@@ -409,7 +409,7 @@ describe("request-end seam · background failures", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
 
-    expect(endings).toEqual([{ status: "suspended", suspension: { reason: "human_input" } }]);
+    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "human_input", suspensionId: expect.any(String) }) }]);
   });
 
   it("hands on nothing for a request whose background work succeeded", async () => {

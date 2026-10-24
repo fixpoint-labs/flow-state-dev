@@ -1221,11 +1221,11 @@ export function requireClaimTicket(
 export function waitingOnPatch(
   task: Task,
   waitingOn: Task["waitingOn"],
-  options: { leaseUntil?: number; answer?: { output: unknown } }
+  options: { leaseUntil?: number; answer?: { output: unknown }; waitingFor?: Task["waitingFor"]; keepWaitingFor?: boolean }
 ): Partial<Task> {
   if (waitingOn == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
-    return { waitingOn: undefined, leaseUntil: options.leaseUntil };
+    return { waitingOn: undefined, waitingFor: options.keepWaitingFor === true ? task.waitingFor : undefined, leaseUntil: options.leaseUntil };
   }
   // The output a completion would write now, and only that (D3): a
   // checkpoint stays the output, and the answer is kept only where the
@@ -1237,7 +1237,9 @@ export function waitingOnPatch(
       if (key in done) (kept as Record<string, unknown>)[key] = done[key];
     }
   }
-  return { waitingOn, leaseUntil: options.leaseUntil, ...kept };
+  // What a user's stop asks, copied in the same write (FIX-2129); any other wait records none.
+  const waitingFor = waitingOn === "user" ? options.waitingFor : undefined;
+  return { waitingOn, waitingFor, leaseUntil: options.leaseUntil, ...kept };
 }
 
 /** Whether a progress report names anything to write. */
@@ -1368,8 +1370,9 @@ export function applyClaimToTask<TInput, TOutput>(
     run: undefined,
     // A claim starts an attempt that waits on nothing yet (FIX-2077): a row
     // taken back from a lapsed lease must not carry a wait onto the new
-    // attempt.
+    // attempt, nor what a user's stop asked (FIX-2129).
     waitingOn: undefined,
+    waitingFor: undefined,
     // The attempt's brief carries every steer (FIX-2086 D1), so the claim
     // marks them all taken by it; one that arrives later is untaken until a
     // request of this attempt reads it.
@@ -1522,13 +1525,19 @@ function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
   next: Task<TInput, TOutput>
 ): Task<TInput, TOutput> {
+  if (isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) return next;
+  // The row's own run is parked on a user's stop (FIX-2129): its ending (a
+  // cancel, a cascade) owes that run its `cancelled` resume, paid to the stop
+  // the row records (`waitingFor`), which stays until it is.
+  // `waitingOn` is cleared while a later request runs for the task (a notice):
+  // the stop it records stays, and so does what its ending owes.
+  const userStop = prev.waitingFor != null;
+  const owed = userStop ? { ...next, waitingFor: prev.waitingFor, resumeOwed: true } : next;
   // A lapsed slot has nobody parked on it (FIX-2082): its ending is held for
   // the request that waited instead (`recordNoticeOwed`).
-  if (prev.wait == null || prev.wait.lapsed === true || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
-    return next;
-  }
-  if (prev.cancelOwed === true) return { ...next, cancelOwed: undefined };
-  return { ...next, resumeOwed: true };
+  if (prev.wait == null || prev.wait.lapsed === true) return owed;
+  if (prev.cancelOwed === true) return { ...owed, cancelOwed: undefined };
+  return { ...owed, resumeOwed: true };
 }
 
 /**
@@ -1547,7 +1556,13 @@ export function applyTransition<TInput, TOutput>(
   // A row waits on something only while it runs (FIX-2077): every write that
   // moves it off `in_progress` clears the field.
   if (next.waitingOn != null && next.status !== "in_progress") next.waitingOn = undefined;
-  return recordEnding(task, next, recording);
+  const recorded = recordEnding(task, next, recording);
+  // What a user's stop asked stays only while the row runs, or while the
+  // cancel's resume is owed (FIX-2129): that debt is paid to the stop it names.
+  if (recorded.waitingFor != null && recorded.status !== "in_progress" && recorded.resumeOwed !== true) {
+    return { ...recorded, waitingFor: undefined };
+  }
+  return recorded;
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

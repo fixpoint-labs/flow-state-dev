@@ -12,6 +12,9 @@ import { taskSteerSchema } from "../steers";
 import { QUEUED_WAIT } from "./retired-shapes";
 
 /** The base Task schema. */
+/** The most characters of a stop's prompt a task row copies (`Task.waitingFor`): a list of tasks stays small. */
+export const MAX_WAITING_FOR_PROMPT = 1_000;
+
 export const taskSchema = z.object({
   id: z.string(),
   goal: z.string(),
@@ -497,8 +500,10 @@ export const taskSchema = z.object({
 
   /**
    * What keeps this running task open while no worker holds it (FIX-2077 D1):
-   * `"person"`, a stop to ask a person; `"wait"`, any other suspension (a
-   * webhook, a call); `"filed"`, work it filed that still holds it. Only on an
+   * `"user"`, a stop that waits for a user (FIX-2129: `waitForUser`, or a raw
+   * `human_approval` or `human_input` stop), with what it asks in
+   * `waitingFor`; `"wait"`, any other suspension (a webhook, a call);
+   * `"filed"`, work it filed that still holds it. Only on an
    * `in_progress` row. A waiting row has no lease, so the reclaim leaves it
    * alone: that task is never run again by a lapse. `"steer"`, a steer no
    * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
@@ -515,7 +520,33 @@ export const taskSchema = z.object({
   // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
   // it, and every src read of a stored row goes through `withRetiredShapes` first.
   waitingOn: z
-    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["person", "wait", "filed", "steer"]).nullable())
+    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["user", "wait", "filed", "steer"]).nullable())
+    .optional(),
+
+  /**
+   * The stop a task waiting on a user waits on (FIX-2129): its request and
+   * id, what it asks for (`kind`), its prompt (cut to
+   * {@link MAX_WAITING_FOR_PROMPT} characters) and heading, and its deadline
+   * (epoch ms), absent when it has none. Copied from the request's ending in
+   * the write that sets `waitingOn: "user"` and drops the lease, so a reader
+   * lists tasks with no read of the suspension store. Admission and every
+   * ending clear it, except a cancel's, which keeps it until the cancelled
+   * resume it owes the stop (`resumeOwed`) is paid.
+   *
+   * A read convenience and the address of that debt, never a listing source:
+   * the Inbox lists a suspension from the suspensions themselves. Server-
+   * written by the claim gate (`setWaitingOn`), never by a caller. **Absent**
+   * on every other row.
+   */
+  waitingFor: z
+    .object({
+      requestId: z.string(),
+      suspensionId: z.string(),
+      kind: z.enum(["approval", "review", "input"]),
+      prompt: z.string(),
+      title: z.string().optional(),
+      deadline: z.number().optional(),
+    })
     .optional(),
 
   /**

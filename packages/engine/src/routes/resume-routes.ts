@@ -24,10 +24,10 @@ import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 
 /** The resolution actions the resume endpoint accepts on the wire. */
-const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
+export const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 
 /** Narrow an arbitrary string to a known resume action. */
-function isResumeAction(value: string | undefined): value is ResumeAction {
+export function isResumeAction(value: string | undefined): value is ResumeAction {
   return value !== undefined && (RESUME_ACTIONS as readonly string[]).includes(value);
 }
 
@@ -38,7 +38,7 @@ function isResumeAction(value: string | undefined): value is ResumeAction {
  * mirroring rjsf's `extraErrors` shape so a client can pin each error to its
  * field. Only `submit`/`approve` carry a payload — `skip`/`reject` skip this.
  */
-function validateResumePayload(
+export function validateResumePayload(
   schema: Record<string, unknown> | undefined,
   data: unknown
 ): Record<string, string> | null {

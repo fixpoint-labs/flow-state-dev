@@ -329,6 +329,18 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 
 `action` is one of `"approve" | "reject" | "submit" | "skip"`. `submit` carries a typed payload in `data` that the server validates against the suspension's `resumeSchema` (an invalid payload is a `400` with path-keyed `validationErrors`); `skip` declines an optional step and carries no payload; `approve`/`reject` are the binary outcomes. An action outside the suspension's `allow` set is a `409`.
 
+To answer a stop that waits for a user from an inbox (a `ctx.waitForUser`, or a `human_approval` / `human_input` stop), use `answerSuspension`. It works for any run, a task board's included, which `resumeSuspension` refuses; the server checks the caller owns the stop's request before it reads the stop, and records the signed-in caller as who answered, so there is no `resumedBy`:
+
+```ts
+await recovery.answerSuspension(flowId, item.requestId, {
+  suspensionId: item.suspensionId,
+  action: "submit",
+  data: "eu-west",
+});
+```
+
+It throws on a refusal: `404` for a stop that isn't the caller's or isn't a user's, `409` for one already resolved (an answer, a cancel, a deadline or a stop got there first), `410` past its deadline, `400` for an answer its `resumeSchema` rejects.
+
 ## Public API
 
 - `createClient(options)` — Dynamic action client

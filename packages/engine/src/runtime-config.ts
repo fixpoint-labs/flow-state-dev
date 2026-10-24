@@ -118,6 +118,37 @@ export interface RuntimeConfig {
    * second, and 24 hours). Read by `RequestHost.waits.deadlines`.
    */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
+  /**
+   * The deadline a stop that waits for a user gets when it names none, in
+   * milliseconds from the stop (FIX-2129, epic D3): every `ctx.waitForUser`
+   * without a `deadline`, and every held question. **Unset by default**: such
+   * a stop waits until it is answered, stopped or cancelled. Separate from
+   * `waitDeadlines`, which bounds waits on work. Between
+   * {@link MIN_USER_DEADLINE_MS} and {@link MAX_USER_DEADLINE_MS}. A raw
+   * `ctx.suspend` never reads it: its own `timeoutMs` is its only deadline.
+   * Read by `RequestHost.userDeadlineMs`.
+   */
+  userDeadlineMs?: number;
+}
+
+/** The shortest deadline a user's stop may be given by the host: the sweep's resolution, one second. */
+const MIN_USER_DEADLINE_MS = 1_000;
+/** The longest deadline a user's stop may be given by the host: 365 days. */
+const MAX_USER_DEADLINE_MS = 365 * 24 * 60 * 60 * 1_000;
+
+/**
+ * Refuse a host's deadline for a user's stop outside its bounds.
+ *
+ * @throws When it is not a whole number of milliseconds between {@link MIN_USER_DEADLINE_MS} and {@link MAX_USER_DEADLINE_MS}.
+ */
+function assertUserDeadline(deadline: number | undefined): void {
+  if (deadline === undefined) return;
+  if (!Number.isSafeInteger(deadline) || deadline < MIN_USER_DEADLINE_MS || deadline > MAX_USER_DEADLINE_MS) {
+    throw new Error(
+      `userDeadlineMs must be a whole number of milliseconds from ${MIN_USER_DEADLINE_MS} to ${MAX_USER_DEADLINE_MS}, ` +
+        `received ${String(deadline)}. Leave it unset for stops that wait until a user answers them.`
+    );
+  }
 }
 
 /**
@@ -130,6 +161,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   // Both boundary points funnel through here, so a host that never builds a
   // router is validated too.
   assertMaxChildSessionListLimit(options.maxChildSessionListLimit);
+  assertUserDeadline(options.userDeadlineMs);
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -148,7 +180,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     publicReentrySources: options.publicReentrySources,
     maxChildSessionListLimit: options.maxChildSessionListLimit,
     maxDebtAgeMs: options.maxDebtAgeMs,
-    waitDeadlines: options.waitDeadlines
+    waitDeadlines: options.waitDeadlines,
+    userDeadlineMs: options.userDeadlineMs
   };
 }
 

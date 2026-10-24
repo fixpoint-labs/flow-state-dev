@@ -55,6 +55,7 @@
  *   its rows are owed, through `ctx.requestHost.resumeWait`. Never called
  *   inside the waiting request.
  */
+import { owesUserResume, payOwedUserResume } from "./user-stop";
 import {
   canHoldWait,
   logicalBlockIdOf,
@@ -935,36 +936,55 @@ export async function payOwedResumes(ctx: BlockContext, collection: TaskCollecti
   const resumed: string[] = [];
   const stillOwed: string[] = [];
   for (const row of owed) {
-    if (row.wait == null || host.resumeWait === undefined || collection.clearResumeOwed === undefined) {
+    // Two debts share the mark: the request waiting on this row (`wait`), and
+    // the row's own run parked on a user's stop when the row ended (FIX-2129).
+    // The mark clears once both are paid.
+    const userOwed = owesUserResume(row);
+    const waitOwed = row.wait != null && row.wait.lapsed !== true;
+    if (collection.clearResumeOwed === undefined || host.resumeWait === undefined || (!userOwed && !waitOwed)) {
       stillOwed.push(row.id);
       continue;
     }
-    let result: Awaited<ReturnType<NonNullable<typeof host.resumeWait>>>;
-    try {
-      result = await host.resumeWait({ gateId: row.wait.gateId, outcome: outcomeOf(row) });
-    } catch (error) {
-      // One row's failed resume stays owed for the next touch, and never
-      // stops the rest of the touch: the other rows, or the notices a board
-      // run sends after it.
-      console.warn(`[orchestration] wait "${row.id}": its resume failed and stays owed: ${(error as Error).message}`);
-      stillOwed.push(row.id);
-      continue;
-    }
-    if (result.ok || result.refused === "already-resolved") {
+    let paid = true;
+    let resumedHere = false;
+    if (userOwed) {
       try {
-        await collection.clearResumeOwed(row.id);
+        paid = await payOwedUserResume(ctx, row);
       } catch (error) {
-        // The marker stays: the next touch finds the gate resolved and clears it.
-        console.warn(
-          `[orchestration] wait "${row.id}": resumed, but its resume-owed marker was left for the next touch: ${(error as Error).message}`
-        );
+        console.warn(`[orchestration] task "${row.id}": its cancelled resume failed and stays owed: ${(error as Error).message}`);
+        paid = false;
+      }
+    }
+    if (waitOwed) {
+      let result: Awaited<ReturnType<NonNullable<typeof host.resumeWait>>>;
+      try {
+        result = await host.resumeWait({ gateId: row.wait!.gateId, outcome: outcomeOf(row) });
+      } catch (error) {
+        // One row's failed resume stays owed for the next touch, and never
+        // stops the rest of the touch: the other rows, or the notices a board
+        // run sends after it.
+        console.warn(`[orchestration] wait "${row.id}": its resume failed and stays owed: ${(error as Error).message}`);
         stillOwed.push(row.id);
         continue;
       }
-      if (result.ok) resumed.push(row.id);
-    } else {
-      stillOwed.push(row.id);
+      if (result.ok) resumedHere = true;
+      else if (result.refused !== "already-resolved") paid = false;
     }
+    if (!paid) {
+      stillOwed.push(row.id);
+      continue;
+    }
+    try {
+      await collection.clearResumeOwed(row.id);
+    } catch (error) {
+      // The marker stays: the next touch finds the gate resolved and clears it.
+      console.warn(
+        `[orchestration] wait "${row.id}": resumed, but its resume-owed marker was left for the next touch: ${(error as Error).message}`
+      );
+      stillOwed.push(row.id);
+      continue;
+    }
+    if (resumedHere || userOwed) resumed.push(row.id);
   }
   return { resumed, stillOwed };
 }

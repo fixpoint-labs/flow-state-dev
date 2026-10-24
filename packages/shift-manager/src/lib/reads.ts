@@ -219,29 +219,12 @@ export type Ask = {
   since: number;
   /**
    * Why this ask can't be answered from Shift Manager, or `null` when it can.
-   * Shown on the card; the card offers no answer when it is set.
+   * Shown on the card; the card offers no answer when it is set. Every ask
+   * answers through the Lab's answer route (FIX-2129), whatever started its
+   * run, a task's included: only one whose session names no flow can't.
    */
   unanswerable: string | null;
 };
-
-/**
- * The request sources the Lab reopens through its public resume route: the
- * engine's own allow-list (`http`, `mcp`, `scheduled`), mirrored here because
- * Shift Manager runs in a browser and can't import the engine. A test pins this set
- * to the engine's exported one, so the two can't drift apart unnoticed.
- *
- * An allow-list, like the engine's: any other source, and a request with no
- * source at all, is shown as unanswerable rather than offered a button the
- * Lab will refuse. A host that adds its own transport to the engine's list
- * (`publicReentrySources`) is shown unanswerable here too, which is the
- * visible failure rather than the silent one; the server saying per request
- * whether it will reopen it is FIX-1671's.
- */
-export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
-
-/** What an ask's card says when its run can't be reopened from outside the Lab. */
-export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a user, an MCP caller or a schedule started; a run it started by itself (a dispatch, a webhook) is never reopened from outside it.";
 
 /**
  * Why a Lab that lists the user no session, even after one was asked for on
@@ -814,15 +797,6 @@ export function createLabReader(clients: LabClients): LabReader {
   /** The pending user-asks in one session. */
   const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
     const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
-    if (pending.length === 0) return [];
-    // Which transport each suspended request arrived on: that decides whether
-    // the Lab will reopen it. Read only for a session that holds an ask.
-    const sources = new Map(
-      (await clients.sessions.listSessionRequests(session.id, { status: "suspended" })).map((request) => [
-        request.id,
-        request.source,
-      ]),
-    );
     return pending.map((view) => ({
       sessionId: session.id,
       workerId,
@@ -831,12 +805,7 @@ export function createLabReader(clients: LabClients): LabReader {
       kind: suspensionShape(view.item) === "approval" ? ("approval" as const) : ("question" as const),
       item: view.item,
       since: typeof view.item.ts === "number" ? view.item.ts : session.updatedAt,
-      unanswerable:
-        session.flowId == null
-          ? UNOWNED_SESSION_UNANSWERABLE
-          : !REOPENED_SOURCES.has(sources.get(view.item.requestId) ?? "")
-            ? DISPATCHED_RUN_UNANSWERABLE
-            : null,
+      unanswerable: session.flowId == null ? UNOWNED_SESSION_UNANSWERABLE : null,
     }));
   };
 
@@ -947,13 +916,14 @@ export function createLabReader(clients: LabClients): LabReader {
     };
   };
 
+  // The answer route (FIX-2129): the Lab sets who answered, and checks the
+  // ask is this user's before it reads it.
   const resume: LabReader["resume"] = async (ask, answer) => {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
-    await clients.recovery.resumeSuspension(ask.flowId, ask.item.requestId, {
+    await clients.recovery.answerSuspension(ask.flowId, ask.item.requestId, {
       suspensionId: ask.item.suspensionId,
       action: answer.action,
       ...(answer.data === undefined ? {} : { data: answer.data }),
-      resumedBy: clients.userId,
     });
   };
 

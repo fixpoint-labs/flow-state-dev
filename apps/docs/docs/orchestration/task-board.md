@@ -480,10 +480,20 @@ Until then the task stays `in_progress`, and its row's `waitingOn` says what it'
 | `waitingOn` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
-| `"person"` | a stop that asks a person: `ctx.suspend()` with `human_approval` or `human_input` | none |
+| `"user"` | a stop that waits for a user: `ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input` | none |
 | `"wait"` | any other stop, such as an external event | none |
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
+
+#### A task waiting on a user
+
+When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` return `waitingOn: "user"` and a `waitingFor` with what it asks: its `kind` (`approval`, `review` or `input`), its `prompt`, and its `deadline` if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answering-a-stop-that-waits-for-a-user), and the same attempt carries on. Only that user can answer it.
+
+The stop can end three other ways, and each ends it once:
+
+- **The task is cancelled.** The run picks up where it stopped, with `waitForUser` returning `{ cancelled: true }`, and runs to its end. Nothing it writes to the task or returns is kept, and a task it tries to file is refused. Anything it does elsewhere, like a call to another service, still happens, so check `cancelled` before work you'd rather skip. An answer sent at the same moment as the cancel is told the stop is already resolved.
+- **The run is stopped.** The task is cancelled rather than failed, so it isn't retried and the user isn't asked the same thing again.
+- **Its deadline passes.** A stop has no deadline unless the call passes one, or the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). At the deadline an approval reads as a no. A review or an input fails the attempt unless the run catches `SuspensionTimeoutError`.
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 

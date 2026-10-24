@@ -15,6 +15,7 @@ import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam } from "./request-end";
 import { REQUEST_END_SEAM } from "./request-end";
+import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -526,6 +527,17 @@ export interface BlockContext<
   suspend?(options: import("../errors/suspension-error").SuspendOptions): Promise<unknown>;
 
   /**
+   * Stop the request until the user answers: an approval, a review or an
+   * input (FIX-2129). Returns the answer, or `{ cancelled: true }` when the
+   * task was cancelled while it waited; at a review's or an input's deadline
+   * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
+   * with no `deadline` takes the host's setting for a user's stop, else waits
+   * until answered, stopped or cancelled. Needs durable execution, as
+   * `suspend` does. See `types/wait-for-user.ts`.
+   */
+  waitForUser: import("./wait-for-user").WaitForUser;
+
+  /**
    * Manually save a checkpoint at the current execution point. Normally
    * checkpoints are automatic at sequencer step boundaries; this is for
    * blocks that perform expensive work within a single step and want
@@ -570,6 +582,12 @@ export interface BlockContext<
    * to run after the request's last drain. See `types/request-end.ts`.
    */
   [REQUEST_END_SEAM]?: RequestEndSeam;
+
+  /**
+   * @internal How the running request resumed (FIX-2129), under a symbol key.
+   * Read only by `requestResumeOf`. See `types/request-resume.ts`.
+   */
+  [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
