@@ -248,6 +248,31 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);
   });
 
+  it("legacy follow-up: a follow-up of a task filed before rows kept their project stays in the task's project after a change", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const lead = (await alice.ensureWorkerSession({ worker: "lead" })).id;
+    // Filed with no conversation project, naming Apollo, as rows were before the stamp.
+    const first = await h.file("alice", lead, "first", { assignee: "eng.taker", input: { project: apollo } });
+    expect(h.answerOf("first")).toEqual(inApollo);
+    await h.unstamp("alice", first);
+    await alice.setWorkProject("lead", beta);
+    await h.file("alice", lead, "follow up first", { followUpOf: first, input: { project: apollo } });
+    expect(h.answerOf("follow up first")).toEqual(inApollo);
+  });
+
+  it("legacy follow-up in a project: a follow-up of a task the project coordinator filed before rows kept their project stays in the coordinator's project", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const pc = (await alice.ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: apollo })).id;
+    const first = await h.file("alice", pc, "first", { assignee: "eng.taker" });
+    expect(h.answerOf("first")).toEqual(inApollo);
+    // A row from before the board wrote the conversation's project over the one an input named.
+    await h.unstamp("alice", first, { project: beta });
+    await h.file("alice", pc, "follow up first", { followUpOf: first, input: { project: beta } });
+    expect(h.answerOf("follow up first")).toEqual(inApollo);
+  });
+
   it("waiting: a task filed under one project and assigned after the change still runs in the first", async () => {
     const h = await withProjects();
     const alice = h.client("alice");
@@ -256,6 +281,20 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Two delegates take tasks, so a task with no assignee waits on the board.
     const waiting = await h.file("alice", lead, "waiting", {});
     expect(h.runs).toHaveLength(0);
+    await alice.setWorkProject("lead", beta);
+    await h.ok("alice", COORDINATOR_FLOW, lead, "updateTask_tasks", { id: waiting, assignee: "eng.taker" });
+    await h.settled();
+    expect(h.answerOf("waiting")).toEqual(inApollo);
+  });
+
+  it("legacy waiting: a task filed before rows kept their project, assigned after a change, still runs in its project", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const lead = (await alice.ensureWorkerSession({ worker: "lead" })).id;
+    // Filed with no conversation project, naming Apollo, as rows were before the stamp.
+    const waiting = await h.file("alice", lead, "waiting", { input: { project: apollo } });
+    expect(h.runs).toHaveLength(0);
+    await h.unstamp("alice", waiting);
     await alice.setWorkProject("lead", beta);
     await h.ok("alice", COORDINATOR_FLOW, lead, "updateTask_tasks", { id: waiting, assignee: "eng.taker" });
     await h.settled();
@@ -297,6 +336,16 @@ describe("a user's conversation with a worker, set to a project", () => {
       /no private project "bobs"/
     );
     await h.file("carol", lead, "look at the repo");
+    expect(h.answerOf("look at the repo")).toEqual({ kind: "refused", reason: "no-project" });
+  });
+
+  it("other worker: a session named for one worker but running another is refused, and nothing is stored", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const main = (await alice.ensureWorkerSession({ worker: "main" })).id;
+    // "lead" and "main" share the coordinator flow, so only the session's worker tells them apart.
+    await expect(alice.setWorkProject("lead", apollo, { sessionId: main })).rejects.toThrow(/this session runs "main", not "lead"/);
+    await h.file("alice", main, "look at the repo");
     expect(h.answerOf("look at the repo")).toEqual({ kind: "refused", reason: "no-project" });
   });
 
