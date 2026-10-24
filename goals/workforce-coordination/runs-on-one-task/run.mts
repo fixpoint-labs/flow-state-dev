@@ -375,11 +375,12 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
       const second = await serve(`b-${attempt}-restarted`, store, tree, patches);
       const back = Date.now();
       try {
-        // No action on any board: only a wake can pay what is owed. Wait out the window, then a
-        // further 10 s for a second hearing.
+        // No action on any board: only a wake can pay what is owed. Watch the whole window, even
+        // after a first hearing (mid-turn, several release paths land across it), then a further
+        // 10 s for a second hearing.
         const due = Math.max(back, (ended.completedAt ?? back) + NOTICE_DUE_MS);
         const until = due + slack;
-        while (Date.now() < until && admittedRequests(store, writerSession).length === 0) await new Promise((r) => setTimeout(r, 1_000));
+        while (Date.now() < until) await new Promise((r) => setTimeout(r, 1_000));
         await new Promise((r) => setTimeout(r, 10_000));
         if (patches.length > 0) assertPatched(patches, REPO_ROOT, second.mark);
         const heard = admittedRequests(store, writerSession);

@@ -321,6 +321,7 @@ await runGoal(async () => {
     for (const note of result.notes) say(`attempt ${n}: ${note}`);
     say(`attempt ${n} of ${attempts}: ${result.failures.length === 0 ? "PASS" : `FAIL (${[...new Set(result.failures.map((f) => f.split(" — ")[0]))].join(", ")})`}`);
     if (result.failures.length === 0) break;
+    // A control stops early only on a graded attempt; an ungraded one (never parked) is retried.
     if (control !== undefined && !result.failures.some((f) => f.startsWith("kill:suspended "))) break;
     // A model that never asked is the model's flakiness; a mechanism failure fails every attempt the same way.
   }
