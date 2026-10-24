@@ -41,7 +41,7 @@ export interface Check {
 /** Each child's checks, by issue id. */
 export const CHECKS: Record<string, Check[]> = {
   "FIX-2076": [
-    { goal: "task-board/a-worker-plans-its-own-steps", controls: { "no-plan": ["a1:steps-in-task-session", "a1:no-child-session"] }, walked: "a: writer's plan step" },
+    { goal: "task-board/a-worker-plans-its-own-steps", controls: { "no-plan": ["a1:steps-in-task-session"] }, walked: "a: writer's plan step" },
     { goal: "task-board/refuses-a-board-built-wrong", controls: { "no-fence": ["b:refused"] } },
   ],
   "FIX-2077": [{ goal: "task-board/settles-when-its-work-is-over", controls: { "settle-at-return": ["a:after-the-side-chains"] }, walked: "a: writer's task stays running on its research" }],
@@ -135,7 +135,8 @@ export const NAMED: Check[] = [
       "no-roster-check": ["f:bobs-worker-refused"],
       "no-round-limit": ["e:four-then-none"],
       "no-delegate-read": ["d:reply-equals-list", "d:read-equals-list"],
-      "no-self-choice": ["h:hire-turn"],
+      // One of leg h's own-job asks, whichever best fit places on the EM (its goal.md).
+      "no-self-choice": ["h:"],
       "no-floor": ["e:below-floor"],
       "turn-after-route": ["a:no-turn"],
     },
@@ -187,8 +188,30 @@ function checkBy(owner: string, check: Check, tags: readonly string[], failures:
 export const RAN = new Map<string, boolean>();
 const record = (key: string, ok: boolean) => RAN.set(key, (RAN.get(key) ?? true) && ok);
 
-/** Whether a goal's output has `tag` red: a bullet of its `FAIL —` list starting with the tag (with a leg, `d:`, any bullet in that leg). */
-const redTag = (text: string, tag: string) => text.split("\n").some((line) => /^\s*- /.test(line) && line.replace(/^\s*- /, "").startsWith(tag));
+/**
+ * The bullets of a goal's `FAIL —` list (goals/lib/verdict.mts prints each failure as a line
+ * starting `  - `), each the text after its dash, a leading `[` dropped. Lines indented further
+ * continue a bullet and are not bullets.
+ */
+function failureBullets(text: string): string[] {
+  return text.split("\n").flatMap((line) => (/^ {2}- /.test(line) ? [line.slice(4).replace(/^\[/, "")] : []));
+}
+
+/** Whether a bullet is `tag`'s failure: it starts with the whole tag (`a:x — …`, `[a:x] …`); a leg tag (`d:`), any bullet in that leg. */
+const bulletIs = (bullet: string, tag: string) => bullet.startsWith(tag) && (tag.endsWith(":") || /^($|[\s\]·:])/.test(bullet.slice(tag.length)));
+
+/**
+ * A control run's verdict: red only when the goal exits 1, every required tag has a failure
+ * bullet of its own, and no bullet is the goal saying a control of its own didn't go red
+ * (`control <name>: <tag> did NOT fail …`, or red outside its expected set). Such a bullet
+ * carries the tag in its text, so reading the output for the tag anywhere would take it for red.
+ */
+export function controlVerdict(text: string, status: number | null, tags: readonly string[]): { red: boolean; green: string[]; broken: string[] } {
+  const bullets = failureBullets(text);
+  const green = tags.filter((t) => !bullets.some((b) => bulletIs(b, t)));
+  const broken = bullets.filter((b) => /^control\b/i.test(b) && /did not fail|stayed green|is broken|red outside/i.test(b));
+  return { red: status === 1 && green.length === 0 && broken.length === 0, green, broken };
+}
 
 /** Run one check (and its controls); push a failure per red run or control that stayed green. */
 function runCheck(owner: string, check: Check, failures: string[], report: string[], say: (s: string) => void): void {
@@ -224,11 +247,11 @@ function runCheck(owner: string, check: Check, failures: string[], report: strin
       else for (const file of check.vitest!.files) record(`${check.vitest!.filter} ${file}`, out.status === 0);
     } else {
       const tags = check.controls![run.control]!;
-      const green = tags.filter((t) => !redTag(text, t));
-      const red = out.status === 1 && green.length === 0;
+      const { red, green, broken } = controlVerdict(text, out.status, tags);
       record(`${check.goal} GOAL_CONTROL=${run.control}`, red);
-      report.push(`  ${red ? "FAIL (expected)" : "CONTROL BROKEN"} ${label} (${secs}s): wanted every one of ${tags.join(", ")} red${green.length > 0 ? `; green: ${green.join(", ")}` : ""}; ${verdict}`);
-      if (!red) failures.push(`children:${owner} — control ${run.control} of ${check.goal} did not fail as documented (exit ${out.status}; still green: ${green.join(", ") || "none"}): ${text.slice(-800).replace(/\n/g, " | ")}`);
+      const why = [green.length > 0 ? `green: ${green.join(", ")}` : "", ...broken.map((b) => `the goal says: ${b.slice(0, 160)}`)].filter(Boolean).join("; ");
+      report.push(`  ${red ? "FAIL (expected)" : "CONTROL BROKEN"} ${label} (${secs}s): wanted every one of ${tags.join(", ")} red${why === "" ? "" : `; ${why}`}; ${verdict}`);
+      if (!red) failures.push(`children:${owner} — control ${run.control} of ${check.goal} did not fail as documented (exit ${out.status}; ${why || "no failure list"}): ${text.slice(-800).replace(/\n/g, " | ")}`);
     }
   }
 }

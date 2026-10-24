@@ -40,6 +40,8 @@ interface Swept {
 const sweepJson = (): Swept => JSON.parse(spawnSync(process.execPath, [join(HERE, "sweep.mjs"), "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout) as Swept;
 let swept: Swept | undefined;
 const allowedTools = () => new Set((swept ??= sweepJson()).allowed);
+/** The tools a Lab worker's turn is handed that aren't task tools: the delegate read and the worker-to-worker message. */
+const NOT_TASK_TOOLS = new Set(["listDelegates", "messageWorker"]);
 
 // ---- D1: every assertion's kind ---------------------------------------------------------------
 
@@ -247,10 +249,11 @@ function gradeJ1(store: string, j: Awaited<ReturnType<typeof journeyHandsOut>>, 
     "j1 · tool lists the engine handed a task turn",
     readNdjson<{ who: string; tools: string[] }>(`${store}.tools.ndjson`).filter((c) => c.who === CAST.editor || c.who === CAST.writer),
   );
-  const taskish = new Set(offered.flatMap((c) => c.tools).filter((n) => /Tasks?$|_tasks$|^(reportProgress|parkOnQuestion)$/.test(n)));
+  // Every tool offered is either on the allow list or one of the roster's own (NOT_TASK_TOOLS),
+  // so a new task tool fails here whatever it is called, not only one named like a task tool.
   const allowed = allowedTools();
-  const beyond = [...taskish].filter((n) => !allowed.has(n));
-  if (beyond.length > 0) f.push(`j1:tools — a task turn was offered ${beyond.join(", ")}, beyond the allow list`);
+  const beyond = [...new Set(offered.flatMap((c) => c.tools))].filter((n) => !allowed.has(n) && !NOT_TASK_TOOLS.has(n));
+  if (beyond.length > 0) f.push(`j1:tools — a task turn was offered ${beyond.join(", ")}, beyond the allow list and the roster's own tools`);
   if (linesBy(store, j.conv, CAST.editor).filter((m) => textOf(m) === outputText(E.output)).length !== 1) f.push(`j1:once — editor's answer did not land once in Alice's conversation with chief`);
   return f;
 }

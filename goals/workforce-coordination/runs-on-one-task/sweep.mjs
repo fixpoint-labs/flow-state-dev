@@ -172,13 +172,15 @@ function doorPlants(root) {
   ];
 }
 
-/** A direct write planted inside a collection wrapper: only its forwarding is exempt, so this is reported. */
+/** Writes planted inside a collection wrapper: only its forwarding is exempt, so each is reported. */
 const BOARD = "packages/workforce/src/conversation-board/board.ts";
 function forwarderPlant(root) {
   const board = readFileSync(join(root, BOARD), "utf8");
   const anchor = "    const ending =\n      (write:";
   if (!board.includes(anchor)) throw new Error(`the control can't plant: ${BOARD} has no \`const ending =\` in guarded`);
-  return { rule: "endings", path: BOARD, text: board.replace(anchor, '    void ref.fail("planted", "a direct write in a forwarder");\n' + anchor) };
+  // A direct call, and calls through `.call` and `.apply`: each a write made in the forwarder, not a forwarding.
+  const writes = '    void ref.fail("planted", "a direct write in a forwarder");\n' + '    void ref.fail.call(ref, "planted", "a write through .call");\n' + '    void ref.complete.apply(ref, ["planted", 1] as any);\n';
+  return { rule: "endings", path: BOARD, text: board.replace(anchor, writes + anchor), expect: 3 };
 }
 
 function floorPlant(root) {
@@ -229,9 +231,11 @@ if (control) {
   const key = (f) => `${f.rule} ${f.where} ${f.what}`;
   const before = new Set(plain.findings.map(key));
   const added = result.findings.filter((f) => !before.has(key(f)));
-  const of = (p) => added.filter((f) => f.rule === p.rule && f.where.includes(p.path));
+  // A finding's place is `path:line`, or several joined by " and " (a key naming two functions).
+  const at = (f, p) => f.rule === p.rule && f.where.split(" and ").some((w) => w.startsWith(`${p.path}:`));
+  const of = (p) => added.filter((f) => at(f, p));
   const missed = PLANTS.filter((p) => of(p).length !== (p.expect ?? 1));
-  const stray = added.filter((f) => !PLANTS.some((p) => f.rule === p.rule && f.where.includes(p.path)));
+  const stray = added.filter((f) => !PLANTS.some((p) => at(f, p)));
   for (const p of PLANTS) console.log(`  plant ${p.rule.padEnd(8)} ${p.path}: ${of(p).length} of ${p.expect ?? 1} reported${missed.includes(p) ? "  MISSED" : ""}`);
   for (const f of stray) console.log(`  stray   ${f.rule} ${f.where}  ${f.what}`);
   const wantCantTell = plain.cantTell.length + PLANTS.reduce((n, p) => n + (p.cantTell ?? 0), 0);

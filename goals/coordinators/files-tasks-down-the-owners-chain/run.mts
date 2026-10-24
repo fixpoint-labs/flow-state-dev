@@ -91,6 +91,14 @@ const CONTROLS: Record<string, Control> = {
         from: String.raw`return policy === "judgment" \? \{ act: "wake-turn" \} : \{ act: "line" \};`,
         to: 'return { act: "none" };',
       },
+      {
+        // Workforce's conversation board maps the decision to a turn or a line itself for a
+        // turn-filed failure (FIX-2115) and an unrouted one (FIX-2122), so `none` there read as a
+        // line, and leg e's failure was still said: both maps say nothing too.
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`const act = (unrouted && )?decideNotice\(notice, options\.policy\(ctx\)\)\.act === "wake-turn" \? "wake-turn" : "line";`,
+        to: 'const act = "none" as const;',
+      },
     ],
     does: "a task's ending reaches the conversation that filed it, and nothing follows: no line and no coordinator turn (a retried attempt still runs again)",
   },

@@ -413,7 +413,10 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
       let forwards = false;
       if (ts.isPropertyAccessExpression(node) && ENDS.includes(node.name.text) && onCollection(node.expression, node.name)) {
         ending = `${node.getText(sf)}`;
-        forwards = !(ts.isCallExpression(node.parent) && node.parent.expression === node);
+        // Called, or called through `.call`/`.apply` (`ref.fail.call(ref, …)`), is a write made
+        // here; only a reference handed on (`.bind`, passed as a value) forwards.
+        const viaCall = ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node && ["call", "apply"].includes(node.parent.name.text) && ts.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
+        forwards = !((ts.isCallExpression(node.parent) && node.parent.expression === node) || viaCall);
       } else if (ts.isElementAccessExpression(node) && isCollection(checker.getTypeAtLocation(node.expression))) {
         const arg = node.argumentExpression;
         if (!ts.isStringLiteralLike(arg) || ENDS.includes(arg.text)) ending = `${node.getText(sf)} (element access)`;
