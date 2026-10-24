@@ -39,7 +39,7 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
 }
 
 /** A run that completed at the review deadline: resolved, but never approved. */
-export const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
+const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
 
 /** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …", "Resolved · not reviewed". */
 export function statusLine(task: TaskRow): string {
