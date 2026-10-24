@@ -473,7 +473,9 @@ reviewer saw. Take a PR out of draft when its work is ready for review, not when
 ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once an
 automated review has returned on the PR, any follow-up review you asked for has returned,
 and the required checks have passed on its current head. Later pushes don't need a fresh
-review of their own (see the next rule).
+review of their own (see the next rule). The workflow scripts check only that some review
+returned. A pending follow-up holds a PR back only because whoever reports its readiness
+says not ready, so say it.
 
 **Codex is the automated reviewer; an agent never stands in for it.** Don't dispatch a
 Claude review agent to fill in for a missing bot review: it costs credits and duplicates

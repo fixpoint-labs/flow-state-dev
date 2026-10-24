@@ -3608,7 +3608,8 @@ check('INVARIANT: no merge gate for a PR the automated review has not returned o
   assert.deepEqual(await mergeGates(single, scan({ implHeadSha: null, implReviewedHeadSha: null })), [], 'no head observed')
   assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'new' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
 
-  // A worker's readiness: it may have just pushed, so an unstated review is an unreviewed head.
+  // A worker's readiness: an unstated review is no review. A push after a review rides on it; the
+  // worker itself reports not ready while a follow-up it requested is pending.
   const worker = (shas) => ({
     fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } },
     worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ...shas } },
