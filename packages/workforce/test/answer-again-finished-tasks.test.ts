@@ -490,6 +490,8 @@ describe("what the take leaves to its own path", () => {
   it("leaves a retry, a waited-on row's ending, and a routed result", () => {
     expect(takesNotice({ ...notice, ending: "errored" }, "conversation")).toBe(false);
     expect(takesNotice({ ...notice, ending: "retried" }, undefined)).toBe(false);
-    expect(takesNotice({ ...notice, ending: "completed", asked: true }, undefined)).toBe(false);
+    // A waited-on row: the request parked on its ending resumes with it.
+    const asked = true as const;
+    expect(takesNotice({ ...notice, ending: "completed", asked }, undefined)).toBe(false);
   });
 });
