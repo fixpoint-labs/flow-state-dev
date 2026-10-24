@@ -738,7 +738,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    */
   function noteFiled(row: Task): void {
     if (delivery?.ownRequest === undefined || row.filer?.requestId !== delivery.ownRequest) return;
-    askAtStop();
+    sendOwedAtStop();
   }
 
   /**
@@ -751,11 +751,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   function noteLapsed(row: Task | undefined): void {
     const own = delivery?.ownRequest;
     if (own === undefined || row?.wait?.lapsed !== true || row.wait.requestId !== own) return;
-    askAtStop();
+    sendOwedAtStop();
   }
 
   /** Ask the delivery to send, as this request ends, what the rows it filed still owe: once per request and board. */
-  function askAtStop(): void {
+  function sendOwedAtStop(): void {
     const own = delivery?.ownRequest;
     if (delivery === undefined || own === undefined) return;
     delivery.hooks.whenRequestEnds?.(async () => {
