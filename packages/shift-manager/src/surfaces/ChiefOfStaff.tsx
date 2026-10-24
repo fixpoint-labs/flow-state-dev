@@ -35,6 +35,7 @@ import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { chiefOfStaffOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { suspensionItemId } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -220,7 +221,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                   <button
                     type="button"
                     className="text-info hover:text-foreground"
-                    onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+                    onClick={() => navigate({ level: "inbox", item: suspensionItemId(ask.item.suspensionId) })}
                     data-testid="cos-ask-open"
                   >
                     open in Inbox
@@ -299,7 +300,7 @@ function AskLine({ item }: { item: OutputItem }) {
     );
   }
   return (
-    <button type="button" className="flex items-baseline gap-[9px] text-left" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
+    <button type="button" className="flex items-baseline gap-[9px] text-left" onClick={() => navigate({ level: "inbox", item: null })}>
       <NeedsYouTag />
       <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
         Waiting on you: answer it in Inbox

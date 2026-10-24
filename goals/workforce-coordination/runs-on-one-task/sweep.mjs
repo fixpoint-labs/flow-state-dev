@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * FIX-2087 task-surface sweep: no task tool beyond the five (and `answerTask` and
- * `parkOnQuestion` until FIX-2058), nothing the epic's migration table removes is live, and
- * nothing records a task's ending except the claim gate or the drain. CI's Typecheck job runs
+ * `parkOnQuestion` until FIX-2058), nothing the epic's migration table removes is live,
+ * nothing records a task's ending except the claim gate or the drain, and nothing but the
+ * Inbox read builds a list of what waits on the user (FIX-2133). CI's Typecheck job runs
  * it, and again with `--control`; `run.mts` runs the same engine as the goal's sweep leg.
  *
  *   node goals/workforce-coordination/runs-on-one-task/sweep.mjs            # report + verdict
@@ -140,6 +141,7 @@ function plantsOf(root) {
       path: "packages/orchestration/src/__planted_passed_helper__.ts",
       text: 'import { advisoryComplete } from "./tasks/collection/advisory-write-back";\nexport async function later(run: (...a: any[]) => Promise<unknown>, ref: any, id: string) {\n  await run(ref, id, "ok");\n}\nexport const go = (ref: any, id: string) => later(advisoryComplete, ref, id);\n',
     },
+    ...inboxPlants(),
     {
       // A second function named like a recorder: its write would be read as the recorder's.
       rule: "endings",
@@ -183,6 +185,42 @@ function forwarderPlant(root) {
   return { rule: "endings", path: BOARD, text: board.replace(anchor, writes + anchor), expect: 3 };
 }
 
+/**
+ * A second list of what waits on the user, in each shape the Inbox rule reads: an Inbox item
+ * built outside the Inbox read (a typed literal, a cast, shorthand properties and a spread), a session's suspensions derived
+ * through a renamed import, and a board row's questions read and destructured.
+ */
+function inboxPlants() {
+  const lib = "packages/shift-manager/src/lib";
+  return [
+    {
+      rule: "inbox",
+      path: `${lib}/__planted_inbox_item__.ts`,
+      text:
+        'import type { InboxItem } from "./inbox";\nimport type { Ask } from "./reads";\n' +
+        'export function myList(asks: Ask[]): InboxItem[] {\n  return asks.map((ask) => ({ source: "suspension", id: "x", since: 0, ask }));\n}\n' +
+        'export const one = (ask: Ask) => ({ source: "suspension", id: "y", since: 0, ask }) as InboxItem;\n' +
+        'export function short(ask: Ask): InboxItem {\n  const source = "suspension";\n  const id = "z";\n  const since = 0;\n  return { source, id, since, ask };\n}\n' +
+        'const base = { source: "suspension" as const };\nexport const spread = (ask: Ask): InboxItem => ({ ...base, id: "w", since: 0, ask });\n',
+      expect: 4,
+    },
+    {
+      rule: "inbox",
+      path: `${lib}/__planted_inbox_derive__.ts`,
+      text: 'import { deriveSuspensions as pendingOf } from "@flow-state-dev/react";\nexport const asksOf = (items: any[]) => pendingOf(items).pending;\n',
+    },
+    {
+      rule: "inbox",
+      path: `${lib}/__planted_inbox_row__.ts`,
+      text:
+        'import type { BoardRow } from "./reads";\n' +
+        "export const waiting = (rows: BoardRow[]) => rows.filter((row) => row.questions.length > 0);\n" +
+        "export function prompts(row: BoardRow) {\n  const { questions } = row;\n  return questions;\n}\n",
+      expect: 2,
+    },
+  ];
+}
+
 function floorPlant(root) {
   const capability = readFileSync(join(root, CAPABILITY), "utf8");
   const anchor = "const createTask = defineTool({";
@@ -223,6 +261,7 @@ for (const [why, n] of result.files.excluded) console.log(`  excluded ${n} · ${
 console.log(`tools offered (${result.tools.length}): ${result.tools.join(", ")}`);
 console.log(`worker flows read for doors (${result.workerFlows.length}): ${result.workerFlows.join(", ")}`);
 console.log(`ending writes: ${result.scanned.endings} · by recorder ${JSON.stringify(result.recorders)}`);
+console.log(`inbox: ${result.scanned.inbox} reads of what waits on the user, each in the Inbox read or a reason rules.mjs gives`);
 console.log(`removed: ${result.rows.length} migration rows · ${result.scanned.removedText} text hits (${result.scanned.marked} marked retired-name-refusal · ${result.scanned.kept} kept by reason) · ${result.scanned.removedTyped} typed reads`);
 if (args.has("--rows")) for (const r of result.rows) console.log(`  ${r.by.padEnd(28)} ${r.row.slice(0, 110)}`);
 
@@ -256,9 +295,9 @@ if (result.scanned.tools === 0 || result.scanned.endings === 0 || result.rows.le
   process.exit(3);
 }
 if (result.findings.length === 0) {
-  console.log("PASS — no task tool beyond the allow list, nothing the migration table removes is live, every ending write is a recorder's");
+  console.log("PASS — no task tool beyond the allow list, nothing the migration table removes is live, every ending write is a recorder's, one Inbox list");
   process.exit(0);
 }
-console.log(`FAIL — ${result.findings.length} live lines (tools ${byRule("tools").length} · removed ${byRule("removed").length} · endings ${byRule("endings").length})`);
+console.log(`FAIL — ${result.findings.length} live lines (tools ${byRule("tools").length} · removed ${byRule("removed").length} · endings ${byRule("endings").length} · inbox ${byRule("inbox").length})`);
 for (const f of result.findings) console.log(`  ${f.rule.padEnd(8)} ${f.where}  ${f.what}`);
 process.exit(1);

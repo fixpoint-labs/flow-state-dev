@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import type { LabClients } from "../src/lib/connection";
-import { GENERAL_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import type { LoadedSnapshot } from "../src/lib/derive";
+import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the user's roster read answers: their own workers and the standard ones. */
@@ -55,7 +56,7 @@ const ask = (workerId: string, suspensionId: string, message: string): Ask =>
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
   const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("chief-of-staff", "cos")];
   const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
-  return {
+  const read: Omit<LoadedSnapshot, "inbox"> = {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
     sessions: [],
     orgId: ORG,
@@ -71,6 +72,7 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
     resources: { ok: true, value: [] },
     projects: { ok: true, value: { rows: [] } },
   };
+  return { ...read, inbox: inboxSection(read.asks, read.boards) };
 }
 
 async function open(path: string, snapshot: LabSnapshot = lab()) {

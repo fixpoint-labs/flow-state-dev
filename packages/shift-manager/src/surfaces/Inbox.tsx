@@ -1,7 +1,9 @@
 /**
- * Inbox (S10): every pending approval and question in the worker sessions the
- * Lab lists for this user, dispatch runs included, oldest first (BR-24).
- * A list and a detail pane; the detail draws the ask with the same card Chief
+ * Inbox (S10): everything waiting on the user, oldest first (BR-24): every
+ * pending approval and question in the worker sessions the Lab lists for this
+ * user, dispatch runs included, and every task holding questions for them. It
+ * draws the snapshot's `inbox` section and reads no other list (`inbox.ts`).
+ * A list and a detail pane; the detail draws an ask with the same card Chief
  * of Staff uses, and answers it through the same resume (BR-25).
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
@@ -25,9 +27,10 @@ import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
 import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { approvalOrQuestion, type InboxItem } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { navigate, pathFor } from "../lib/routes";
 import { readSessionItems, RunReadError } from "../lib/run";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
 import { emptyInboxSentence } from "../lib/tasks";
@@ -37,32 +40,44 @@ import type { Gaps } from "../gaps";
 const FILTERS = ["All", "Approvals", "Questions"] as const;
 type Filter = (typeof FILTERS)[number];
 
-function matches(filter: Filter, ask: Ask): boolean {
-  return filter === "All" || (filter === "Approvals") === (ask.kind === "approval");
+function matches(filter: Filter, item: InboxItem): boolean {
+  return filter === "All" || (filter === "Approvals") === (approvalOrQuestion(item) === "approval");
 }
 
 function askHeading(ask: Ask): string {
   return ask.item.title || ask.item.message || "(no message)";
 }
 
-export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
+/** An item's heading: an ask's title or message, or a held row's first open question. */
+function itemHeading(item: InboxItem): string {
+  return item.source === "suspension" ? askHeading(item.ask) : item.questions[0]!.prompt;
+}
+
+/** Who an item waits for the user on behalf of: the asking worker, or the task's assignee. */
+function itemFrom(item: InboxItem): string {
+  if (item.source === "suspension") return `${workerLabel(item.ask.workerId ?? "unknown worker")} · task —`;
+  const more = item.questions.length > 1 ? ` · ${item.questions.length} questions` : "";
+  return `${workerLabel(item.row.assignee ?? "unassigned")} · task ${item.row.title}${more}`;
+}
+
+export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
   const { clients, refresh } = useLab();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
   const [replies, setReplies] = useState(0);
-  if (!snapshot.asks.ok) {
+  if (!snapshot.inbox.ok) {
     return (
       <div className="p-6">
-        <SectionFailure what="Inbox" failure={snapshot.asks.failure} onRetry={() => void refresh()} />
+        <SectionFailure what="Inbox" failure={snapshot.inbox.failure} onRetry={() => void refresh()} />
       </div>
     );
   }
-  const asks = snapshot.asks.value;
-  const shown = asks.filter((ask) => matches(filter, ask));
-  const selected = asks.find((ask) => ask.item.suspensionId === suspensionId) ?? null;
+  const items = snapshot.inbox.value;
+  const shown = items.filter((item) => matches(filter, item));
+  const selected = items.find((item) => item.id === itemId) ?? null;
   const now = snapshot.readAt;
 
-  const oldest = asks.reduce<number | null>((min, ask) => (min === null || ask.since < min ? ask.since : min), null);
+  const oldest = items.reduce<number | null>((min, item) => (min === null || item.since < min ? item.since : min), null);
 
   return (
     <div className="flex h-full min-h-0" data-testid="inbox">
@@ -71,7 +86,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           <div className="flex items-baseline justify-between gap-3 px-[18px]">
             <ScreenTitle>Inbox</ScreenTitle>
             <Meta className="text-muted-foreground" testId="inbox-sub">
-              {oldest === null ? "all clear" : `${asks.length} waiting · oldest ${waited(oldest, now)}`}
+              {oldest === null ? "all clear" : `${items.length} waiting · oldest ${waited(oldest, now)}`}
             </Meta>
           </div>
           <p className="mt-2 px-[18px] text-xs text-muted-foreground" data-testid="inbox-scope">
@@ -83,11 +98,11 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
               selected={filter}
               onSelect={setFilter}
               label="Inbox filter"
-              counts={Object.fromEntries(FILTERS.map((f) => [f, asks.filter((a) => matches(f, a)).length]))}
+              counts={Object.fromEntries(FILTERS.map((f) => [f, items.filter((item) => matches(f, item)).length]))}
             />
           </div>
         </header>
-        {asks.length === 0 ? (
+        {items.length === 0 ? (
           <p className="px-[18px] py-7 text-sm leading-normal text-muted-foreground" data-testid="inbox-empty">
             {emptyInboxSentence(snapshot)}
           </p>
@@ -97,17 +112,19 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           </p>
         ) : (
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {shown.map((ask) => {
-              const isSelected = ask === selected;
+            {shown.map((item) => {
+              const isSelected = item === selected;
               return (
-                <li key={ask.item.suspensionId}>
+                <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+                    onClick={() => navigate({ level: "inbox", item: item.id })}
                     aria-selected={isSelected}
                     data-testid="inbox-item"
-                    data-suspension-id={ask.item.suspensionId}
-                    data-session-id={ask.sessionId}
+                    data-item-id={item.id}
+                    data-source={item.source}
+                    data-suspension-id={item.source === "suspension" ? item.ask.item.suspensionId : undefined}
+                    data-session-id={item.source === "suspension" ? item.ask.sessionId : undefined}
                     className={cn(
                       "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
@@ -118,18 +135,18 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex">
                         <span className="border border-foreground/50 px-1 font-mono text-[9.5px] font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
-                          {ask.kind === "approval" ? "APPROVAL" : "QUESTION"}
+                          {approvalOrQuestion(item) === "approval" ? "APPROVAL" : "QUESTION"}
                         </span>
                       </span>
                       <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
-                        {askHeading(ask)}
+                        {itemHeading(item)}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {workerLabel(ask.workerId ?? "unknown worker")} · task —
+                        {itemFrom(item)}
                       </Meta>
                     </span>
                     <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
-                      waiting {waited(ask.since, now)}
+                      waiting {waited(item.since, now)}
                     </Meta>
                   </button>
                 </li>
@@ -141,7 +158,43 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
+        ) : selected.source === "question" ? (
+          <HeldQuestions item={selected} gaps={gaps} />
         ) : (
+          <AskDetail
+            ask={selected.ask}
+            snapshot={snapshot}
+            gaps={gaps}
+            clients={clients}
+            replies={replies}
+            onDelivered={() => {
+              setReplies((n) => n + 1);
+              void refresh();
+            }}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** A suspension's detail: its card, its session, and the reply box under it. */
+function AskDetail({
+  ask: selected,
+  snapshot,
+  gaps,
+  clients,
+  replies,
+  onDelivered,
+}: {
+  ask: Ask;
+  snapshot: LoadedSnapshot;
+  gaps: Gaps;
+  clients: ReturnType<typeof useLab>["clients"];
+  replies: number;
+  onDelivered: () => void;
+}) {
+  return (
           <>
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
@@ -164,16 +217,40 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                   snapshot={snapshot}
                   gaps={gaps}
                   clients={clients}
-                  onDelivered={() => {
-                    setReplies((n) => n + 1);
-                    void refresh();
-                  }}
+                  onDelivered={onDelivered}
                 />
               </div>
             </div>
           </>
-        )}
-      </section>
+  );
+}
+
+/**
+ * A task holding questions: every open one, oldest first, and the task they
+ * hold. One item however many it holds (rule 11).
+ */
+function HeldQuestions({ item, gaps }: { item: Extract<InboxItem, { source: "question" }>; gaps: Gaps }) {
+  const task = { level: "task" as const, boardRef: item.row.boardRef, taskId: item.row.id, tab: "brief" as const };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6" data-testid="inbox-held">
+      <div className="flex max-w-[660px] flex-col gap-[18px]">
+        <Meta className="text-muted-foreground" testId="inbox-detail-head">
+          {workerLabel(item.row.assignee ?? "unassigned")} waits on {item.questions.length === 1 ? "your answer" : `${item.questions.length} answers`} to start or go on with{" "}
+          <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
+            {item.row.title}
+          </a>
+        </Meta>
+        <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">
+          {item.questions.map((question) => (
+            <li key={question.id} data-testid="inbox-held-question" data-question-id={question.id}>
+              <ScreenTitle scale="detail">{question.prompt}</ScreenTitle>
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs text-muted-foreground" data-testid="inbox-held-gap">
+          {gaps.inboxQuestionAnswer}
+        </p>
+      </div>
     </div>
   );
 }

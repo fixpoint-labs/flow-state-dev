@@ -247,3 +247,20 @@ export const FORWARDERS = {
  * their place, so a new caller of a helper is a finding like a direct write.
  */
 export const PASS_THROUGHS = ["advisoryComplete", "advisoryFail", "advisoryCancel"];
+
+/**
+ * FIX-2133's Inbox rule: one list says what waits on the user, built in one place. The
+ * functions allowed to build an Inbox item (an object typed as Shift Manager's `InboxItem`), to
+ * call `react`'s `deriveSuspensions`, or to read a Shift Manager `BoardRow`'s `questions` or
+ * `question`, each with its reason. Keyed like {@link RECORDERS}. Anything else that does one of
+ * those is a finding: a second list of what waits on the user, which the Inbox and its counts
+ * would disagree with.
+ */
+export const INBOX_READ = {
+  "shift-manager:inboxItems": "the Inbox read: the one function that builds the list, from the asks and the board rows",
+  "shift-manager:readPendingSuspensions": "the Inbox read: the suspension arm's source, a session's pending suspensions (`readAsks` lists them)",
+  "react:useSuspensions": "react's own hook over a session it renders: one session's stops, no Inbox list",
+  "shift-manager:stopOf": "the Lab send: tells a request waiting on a person from one waiting on other work, and lists nothing",
+  "shift-manager:shiftSummary": "the park's list (`parked`), read off a row parked on a question: retired with the park (FIX-2131)",
+  "shift-manager:ShiftSummary": "draws the park's list `shiftSummary` reads: retired with the park (FIX-2131)",
+};
