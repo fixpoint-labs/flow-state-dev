@@ -597,7 +597,7 @@ export class UnknownTaskLedgerError extends Error {
  *   write nothing.
  */
 /** Why a stop cancels a task waiting on a user, on its row. */
-export const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
+const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
 
 /**
  * How the running request, `row`'s own run, resumed from its wait for a

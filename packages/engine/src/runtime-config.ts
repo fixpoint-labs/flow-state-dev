@@ -132,16 +132,16 @@ export interface RuntimeConfig {
 }
 
 /** The shortest deadline a user's stop may be given by the host: the sweep's resolution, one second. */
-export const MIN_USER_DEADLINE_MS = 1_000;
+const MIN_USER_DEADLINE_MS = 1_000;
 /** The longest deadline a user's stop may be given by the host: 365 days. */
-export const MAX_USER_DEADLINE_MS = 365 * 24 * 60 * 60 * 1_000;
+const MAX_USER_DEADLINE_MS = 365 * 24 * 60 * 60 * 1_000;
 
 /**
  * Refuse a host's deadline for a user's stop outside its bounds.
  *
  * @throws When it is not a whole number of milliseconds between {@link MIN_USER_DEADLINE_MS} and {@link MAX_USER_DEADLINE_MS}.
  */
-export function assertUserDeadline(deadline: number | undefined): void {
+function assertUserDeadline(deadline: number | undefined): void {
   if (deadline === undefined) return;
   if (!Number.isSafeInteger(deadline) || deadline < MIN_USER_DEADLINE_MS || deadline > MAX_USER_DEADLINE_MS) {
     throw new Error(
