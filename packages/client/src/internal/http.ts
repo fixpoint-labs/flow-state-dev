@@ -105,11 +105,13 @@ export function seg(value: string): string {
 }
 
 /**
- * Encode a collection topic, which may hold `/`: each segment is encoded and
- * the slashes kept, which the routes' `*topic` wildcard reads back whole.
+ * Encode a collection topic as one path segment, its `/` included. The item
+ * routes share a `*topic` wildcard and the content route is the state route
+ * plus `/content`, so exposed slashes would send topic `a/content`'s state
+ * read to item `a`'s content. The engine decodes `%2F` back into the topic.
  */
 export function topicPath(topic: string): string {
-  return topic.split("/").map(encodeURIComponent).join("/");
+  return encodeURIComponent(topic);
 }
 
 /**
