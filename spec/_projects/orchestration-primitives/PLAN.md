@@ -26,7 +26,32 @@ is today.
 | FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
 | FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing; FIX-2056's read for retired rows removed no earlier than here |
 
-FIX-2058 and FIX-2070 run side by side once FIX-2056 wraps; neither waits on the other.
+FIX-2058 and FIX-2070 run side by side now that FIX-2056 has wrapped; neither waits on the other.
+
+**Before FIX-2058 builds on the dispatcher wait and the holds** (a recommendation from FIX-2056's
+[wrap analysis](https://linear.app/fixpoint-labs/issue/FIX-2056/epic-one-task-primitive-boards-settling-task-tools-and-authority#comment-5093310b),
+not a decision): fix FIX-2182, a dispatcher's `wait` that restates the board's `mode`, and
+FIX-2183, "hold" meaning four things. Neither changes the approach; both are cheaper before a
+second epic names them.
+
+## What FIX-2056 left open
+
+The closure, FIX-2087, passed on `main` at round 5
+([#3847](https://github.com/fixpoint-labs/flow-state-dev/pull/3847)); the last fix was FIX-2181
+([#3856](https://github.com/fixpoint-labs/flow-state-dev/pull/3856), 6ed70211). Wrap verdict:
+right approach, with changes.
+
+| Carried forward | What it is |
+|---|---|
+| FIX-2101 cause 2 | A hand-off killed mid-call; waits on a product decision |
+| FIX-2125 | Stores flush queued writes on close |
+| FIX-2169 | Seconds-scale crash recovery by an owner-liveness lease ([*decided once*](DECISIONS.md)) |
+| FIX-2182, FIX-2183, FIX-2184 | The wrap analysis's three: `wait` restates `mode`, "hold" overloaded, no event-order check on "each ending once" |
+| FIX-2178, FIX-2179, FIX-2180 | Folds: upgrade calls, "is a request running", the schedule check |
+| FIX-2186–2188, FIX-2190–2193 | Debt filed at wrap |
+
+Lessons are draft [#3849](https://github.com/fixpoint-labs/flow-state-dev/pull/3849) and the docs
+polish draft [#3848](https://github.com/fixpoint-labs/flow-state-dev/pull/3848).
 
 ## Milestones
 
@@ -39,8 +64,8 @@ catalog shipped) were deleted on Oct 12 when their issues moved out.
 | v2 · Existing patterns migrated | Board-based patterns reshaped onto the primitive (FIX-447, FIX-448) | Reached with the Plan/Task series, May 1. Patterns off the board are outside it |
 | v4 · Skills declare patterns | Skills naming a pattern in `SKILL.md` frontmatter (FIX-450) | Shipped May 20, then reversed by FIX-918 in July ([PD-2](DECISIONS.md)). The milestone's name and description still describe the reversed design |
 
-FIX-2056 waits on no other epic. Its closure runs the coordinator and hand-off goals on one `main`
-commit, and is the project's next regression gate.
+FIX-2056's closure ran the coordinator and hand-off goals on one `main` commit and passed on
+Oct 24. The project's next regression gate is FIX-2058's closure sweep.
 
 ## Deliberately not next
 
@@ -55,4 +80,4 @@ commit, and is the project's next regression gate.
   both out and FIX-2056's five task tools add neither; neither has an epic.
 - **Spend caps on delegated work (FIX-933).** Filed under FIX-930, never started.
 - **Anything after the renames.** No epic is filed after FIX-2071. The project's remaining life
-  is FIX-2056, then FIX-2058 and FIX-2070 side by side, then FIX-2071.
+  is FIX-2058 and FIX-2070 side by side, then FIX-2071.

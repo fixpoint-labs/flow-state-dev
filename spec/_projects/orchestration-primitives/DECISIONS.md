@@ -56,7 +56,8 @@ tool; a "question" task class is deferred until something needs it.
 
 **Costs** what FIX-1816's D3 protected, each delegate's line, routing and rounds, rides on
 tasks, and the sender must know which kind it sends. Accepted: one answer-once check is one thing
-to keep right. If FIX-2056's closure shows those can't run as routed tasks, this flips back.
+to keep right. It would have flipped back had FIX-2056's closure shown those can't run as routed
+tasks; FIX-2087's closure passed on `main` on Oct 24, so it holds.
 
 ![PD-3's trade-off](figures/pd3-asks-are-tasks.svg)
 
@@ -76,6 +77,11 @@ It comes down to a post that expects an answer: a ledger-backed message needs a 
 | What carries a post that expects an answer, and one that doesn't? | **A task**, filed by `createTask` and waited on by `getTask({ id, wait })`; a tell is a plain message ([PD-3](#pd-3--anything-that-expects-an-answer-is-a-task-a-tell-is-a-plain-message)). `dispatchTask` and `addTask` retire | Product owner, Oct 11; re-homed by FIX-2056, Oct 21 |
 | Does any FIX-2056 child wait on FIX-2058? | **No**, or each blocks the other and FIX-2056 never wraps. Answering a question by steer and marking a task *waiting on a person* are FIX-2058's; `answerTask` and the parks stay until then | FIX-2056 D2, approved Oct 21 ([#3588](https://github.com/fixpoint-labs/flow-state-dev/pull/3588)) |
 | Does the outcome cover a task that stops for a person? | **Yes.** Each stop is one Inbox item, answered once, and FIX-2058 stays in this project. The screens that ask (approvals, AskCard, the harness question inbox) stay outside | Coordinator, Oct 21, under the owner's standing authorization for reversible calls: the recommendation, applied when the owner had not answered within an hour |
+| Do retired task APIs get a deprecation release? | **No.** Removed outright in the owning PR, pre-1.0 minor bump, one migration line per removal in its changeset; no alias, wrapper or warning. FIX-2058 retiring `answerTask` and the parks, and FIX-2071's renames, follow it | Product owner, Oct 21 ([FIX-2056 (e)](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2056/DECISIONS.md#e)) |
+| After a server crash, how soon does a worker hear its task's ending? | **Within a minute-scale bound**, about 50–92 s with defaults (heartbeat freshness plus releasing held notices once the sweeper marks the request interrupted). Seconds-scale needs an owner-liveness lease, deferred to FIX-2169 | Product owner, Oct 24 ([FIX-2056](https://linear.app/fixpoint-labs/issue/FIX-2056/epic-one-task-primitive-boards-settling-task-tools-and-authority#comment-44236c63); FIX-2166) |
+| Does a request parked on a person keep the slot a timed-out wait holds? | **No.** It releases it at the park, the same as the filing case since FIX-2149; FIX-2058's parks inherit this | Product owner, Oct 24 ([FIX-2056](https://linear.app/fixpoint-labs/issue/FIX-2056/epic-one-task-primitive-boards-settling-task-tools-and-authority#comment-44236c63); FIX-2170) |
+| Do the four reservation records behind an ending's delivery merge into one? | **No.** They do three jobs: the timed-out-wait hold and its crash re-check, the `noticeTaken` delivery lock, and a resend-timing hint. Merging would reverse FIX-2149 or need a kind field. FIX-2184 adds an event-order check and does not reopen this | Owner call, Oct 24 ([FIX-2056](https://linear.app/fixpoint-labs/issue/FIX-2056/epic-one-task-primitive-boards-settling-task-tools-and-authority#comment-44236c63)) |
+| When does a wait on a task that already finished return? | **Once the task's notice has been handled**, and a parked notice turn counts as handled. Follow-up FIX-2186 | FIX-2181, merged Oct 24 (6ed70211) |
 
 <a name="open"></a>
 ## Open
