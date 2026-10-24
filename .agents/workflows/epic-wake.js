@@ -2094,7 +2094,7 @@ const PR_STATE_SCHEMA = {
         properties: {
           id: { type: 'string' },
           merged: { type: 'boolean' },
-          readyToMerge: { type: 'boolean' },
+          readyToMerge: { type: 'boolean', description: 'THIS sub-PR is approved, green and mergeable now, with no requested follow-up review still pending' },
           headSha: { type: ['string', 'null'], description: "This sub-PR's current head; a null head never passes the merge gate" },
           reviewedHeadSha: {
             type: ['string', 'null'],
@@ -2115,7 +2115,7 @@ const PR_STATE_SCHEMA = {
     // The assembled-goal repair PR, which lives outside `subPrs` and whose merge is the only thing
     // that re-arms the end-to-end goal.
     repairMerged: { type: 'boolean' },
-    repairReadyToMerge: { type: 'boolean' },
+    repairReadyToMerge: { type: 'boolean', description: 'The repair PR is approved, green and mergeable now, with no requested follow-up review still pending' },
     // Optional, read like the row's `ciFailed`: true withholds the repair PR's merge gate.
     repairCiFailed: { type: 'boolean' },
     // Optional like the other repair fields; an omission reads as "not reviewed" (→ `reviewedAtHead`).
@@ -2508,7 +2508,7 @@ const [gate, linear, prScan] = await parallel([
                         // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
                         // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
                         // stops at its first merge-ready slice.
-                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha, baseRefName }. readyToMerge means THAT PR is approved, green and mergeable now; headSha and reviewedHeadSha are filled per MERGE READINESS below. baseRefName is the GitHub PR base; report what you saw, do not fold it into readyToMerge.\n`
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha, baseRefName }. readyToMerge means THAT PR is approved, green and mergeable now, with no requested follow-up review still pending; headSha and reviewedHeadSha are filled per MERGE READINESS below. baseRefName is the GitHub PR base; report what you saw, do not fold it into readyToMerge.\n`
                       : '') +
                     // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
                     // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
@@ -2533,7 +2533,7 @@ const [gate, linear, prScan] = await parallel([
               `CI: read check runs on each PR's current head, never the combined commit status. Green means a successful \`Typecheck & Test\` check run; with no such run CI never ran, so the head is untested, not green, and readyToMerge is false (that alone is not ciFailed). ciFailed is true when any check on the current head failed: per check name only its LATEST completed run counts, so a failed or cancelled run superseded by a later success of the same check does not. readyToMerge is false whenever ciFailed is true.\n` +
               // orchestration.md → Gates, "A merge-ready PR has been reviewed". Two shas rather than a
               // boolean, so the wake does the check (→ `reviewedAtHead`).
-              `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold that check into readyToMerge: the wake runs it (reviewedAtHead).`,
+              `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold that check into readyToMerge: the wake runs it (reviewedAtHead). A follow-up review someone requested on a PR and that has not returned yet makes that PR's readiness flag false (row, sub-PR and repair alike): the wake accepts an earlier review, so it cannot see a pending one.`,
             { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
           ),
       ]
