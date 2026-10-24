@@ -123,6 +123,16 @@ export const CHECKS: Record<string, Check[]> = {
     { vitest: { filter: "@flow-state-dev/engine", files: ["test/wait-resume.test.ts"] } },
     { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/wait-on-task.test.ts"] } },
   ],
+  // Round 4's leg b finding: a notice held for a filing request the crash left `in_progress`
+  // goes out once that request is known gone. Leg b grades it end to end, in its mid-turn window.
+  "FIX-2166": [
+    { vitest: { filter: "@flow-state-dev/engine", files: ["test/request-recovery.test.ts", "test/wait-chain.test.ts", "test/context/liveness-gate.test.ts"] } },
+    { vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/notice-after-crash.test.ts"] }, by: ["b:hears-in-due-time", "b:once"] },
+  ],
+  // A request parked on a person releases, at the park, the ending a timed-out getTask wait held.
+  // No leg or goal here times a wait out and then parks on a person in the same request, so its
+  // regression tests are its whole check.
+  "FIX-2170": [{ vitest: { filter: "@flow-state-dev/orchestration", files: ["test/tasks/wait-lapsed-across-a-park.test.ts", "test/tasks/wait-lapsed-durable.test.ts"] } }],
 };
 
 /** The goals the closure rule names besides the children's: coordinators, hand-offs, FIX-2005's privacy leg, and the goal-seek loop (journey j3). */

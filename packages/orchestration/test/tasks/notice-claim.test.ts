@@ -9,6 +9,8 @@
  * - A notice already running (taken) when another turn waits on the task: the
  *   wait answers that the ending arrives as a notice, and the notice is the one
  *   delivery.
+ * - A notice already delivered when the filer waits on the task: no notice is
+ *   coming, so the wait answers with the task's output (FIX-2181).
  *
  * Each runs on the in-memory stores and on SQLite.
  */
@@ -37,6 +39,7 @@ import {
   stepModel,
   toolResults,
   until,
+  untilTakersEnded,
   USER,
   waitAgain,
   waitCall,
@@ -94,6 +97,14 @@ async function eventually(check: () => boolean, withinMs: number): Promise<void>
 
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Until the row's notice is delivered: the notice turn ran, acknowledged it and ended. */
+async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: FlowInstance): Promise<void> {
+  for (const deadline = Date.now() + 5_000; owedMarkers((await rows(state, flow))[0]!).length > 0; await settle(10)) {
+    if (Date.now() > deadline) throw new Error("the notice was never acknowledged");
+  }
+  await untilTakersEnded(state, (await rows(state, flow))[0]!);
+}
+
 describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {
   it("on the defaults, the filing turn's wait is the delivery: no onTaskSettled block runs beside it", async () => {
     // The turn action holds no line and the notice entry queues: the notice is
@@ -135,7 +146,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
     }
   });
 
-  it("a filing request parked on a person holds nothing: its task's notice is heard during the park, and the resumed wait on the task answers that it came as a notice", async () => {
+  it("a filing request parked on a person holds nothing: its task's notice is heard during the park, and the resumed wait on the task answers with its output, the notice already heard", async () => {
     const notices: TaskSettledInput[] = [];
     const seen: GeneratorModelCallOptions[] = [];
     let taskId = "";
@@ -159,13 +170,15 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       // While the person decides, the conversation hears the task that finished.
       await eventually(() => notices.length === 1, 6_000);
       expect(notices).toEqual([expect.objectContaining({ taskId, ending: "completed", output: "already done" })]);
+      await untilDelivered(state, flow);
 
+      // No notice is coming any more (FIX-2181): the wait answers with the task.
       await approve(state, turn);
       await until(state, turn, "completed", 10_000);
       const answer = toolResults(seen[3]!.messages);
-      expect(answer).toContain('"arrivesAsNotice":true');
       expect(answer).toContain(taskId);
-      expect(answer).not.toContain("already done");
+      expect(answer).toContain("already done");
+      expect(answer).not.toContain("arrivesAsNotice");
       await settle(500);
       expect(notices).toHaveLength(1);
     } finally {
@@ -310,6 +323,45 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
     } finally {
       release();
+      await state.dispose();
+    }
+  });
+
+  it("a later turn's wait on a task whose notice was already heard answers with the task's output, not that a notice is coming", async () => {
+    // The notice came and went: no notice is coming any more, so a wait that
+    // answered "it comes as a notice" would hand the model nothing at all.
+    const notices: TaskSettledInput[] = [];
+    const seen: GeneratorModelCallOptions[] = [];
+    let taskId = "";
+    const { model } = stepModel(
+      [
+        fileCall("f1"),
+        (opts) => {
+          taskId = waitedTaskId([opts], 0);
+          return finalAnswer(opts);
+        },
+        waitAgain("w1", () => taskId),
+        finalAnswer
+      ],
+      seen
+    );
+    const flow = waitFlow(model, { endsOnFiling: "already done", heard: notices });
+    const state = runtimeFor(flow, await stores());
+    try {
+      const filing = await startTurn(state);
+      await until(state, filing, "completed", 10_000);
+      await eventually(() => notices.length === 1, 5_000);
+      await untilDelivered(state, flow);
+
+      const later = await startTurn(state);
+      await until(state, later, "completed", 10_000);
+      const answer = toolResults(seen[3]!.messages);
+      expect(answer).toContain(taskId);
+      expect(answer).toContain("already done");
+      expect(answer).not.toContain("arrivesAsNotice");
+      await settle(500);
+      expect(notices).toHaveLength(1);
+    } finally {
       await state.dispose();
     }
   });

@@ -36,7 +36,8 @@
  *    which the park owes a wake (FIX-2170); at its end, in this process; and,
  *    whatever became of the process, by the filer's next pass, which the
  *    lapse owes a wake (`releaseEndedWaits`). A wait on the task after the
- *    resume then answers that its ending arrives as a notice.
+ *    resume then answers that its ending arrives as a notice while that
+ *    notice is being delivered, and with the task once it has been (FIX-2181).
  *
  * A person stopping a waiting request ends it and cancels the task it waited
  * on, as before. A request whose own task is cancelled while it waits ends at
@@ -72,11 +73,11 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS, deliveredAsNotice } from "../notice/task-notice";
+import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS, noticeTakenByAnother } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
-import { requestStates } from "./request-states";
+import { hasEnded, requestStates } from "./request-states";
 import { admittedTaskOf } from "../../task-board/task-request";
 import { TASK_SESSION_TASK_KEY } from "../../task-board/task-turn";
 
@@ -543,8 +544,9 @@ async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: s
  *
  * @returns `arrivesAsNotice`: whether the filer's `onTaskSettled` took the
  *   notice first (FIX-2123), read off the row as stored after the drop: that
- *   notice is the delivery, whether it is under way or done, and the wait says
- *   so. `dropped`: this wait dropped the notice, so its answer is the delivery
+ *   notice, still under way or to be sent again, is the delivery, and the wait
+ *   says so. A notice already delivered is not: the wait answers with the
+ *   ending, as a read does (FIX-2181). `dropped`: this wait dropped the notice, so its answer is the delivery
  *   (FIX-2138).
  */
 async function deliverEndedBeforeWait(
@@ -567,7 +569,8 @@ async function deliverEndedBeforeWait(
       return { arrivesAsNotice: false, dropped: false };
     }
   }
-  const arrivesAsNotice = deliveredAsNotice(row, ctx.request.identity.id);
+  const taken = noticeTakenByAnother(row, ctx.request.identity.id);
+  const arrivesAsNotice = taken !== undefined && (taken.owed || !(await hasEnded(ctx, taken.by)));
   // Dropped: the notice this ending owed is gone, and no other request took it.
   return { arrivesAsNotice, dropped: owed && !arrivesAsNotice && Object.keys(deliveredByWait(row)).length === 0 };
 }
