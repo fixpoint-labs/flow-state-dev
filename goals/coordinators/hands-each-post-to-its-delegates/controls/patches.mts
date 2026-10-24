@@ -14,8 +14,9 @@
  *   worker's defaults, not the conversation's list. Leg d must fail on *the
  *   reply equals the list*.
  * - `no-self-choice`: best fit never offers the coordinator itself. Leg h
- *   must fail on *a hire reaches the chief of staff's own turn*: the EM, its
- *   one choice, is picked at full confidence.
+ *   must fail on one of its own-job asks: the EM, its one choice, takes
+ *   whichever the evaluation places on it (the hire, when this was written;
+ *   the project since).
  * - `no-floor`: a delegate pick below `minConfidence:` is used. Leg e must
  *   fail on *a pick below the floor goes to the fallback*, and nothing else:
  *   a pick with no confidence is still a miss.
@@ -48,6 +49,8 @@ export interface Control {
   leg: "a" | "d" | "e" | "f" | "h";
   /** The assertion, by name, that must go red. */
   assertion: string;
+  /** When which assertion goes red is best fit's call: any one of these, `assertion` among them. */
+  anyOf?: readonly string[];
   /** The module, from the checkout root. */
   module: string;
   from: string;
@@ -88,6 +91,9 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-self-choice",
     leg: "h",
     assertion: "h:hire-turn",
+    // Which of leg h's asks best fit now places on the EM is the evaluation's call: on
+    // 2026-10-24 it was the project ask, 4 of 4 runs, and the hire missed back to the turn.
+    anyOf: ["h:hire-turn", "h:fire-turn", "h:who-turn", "h:project-turn"],
     module: "packages/workforce/src/coordinator/coordinator-flow.ts",
     from: String.raw`const offersSelf = post\.round === 0 && worker\.description !== null;`,
     to: "const offersSelf = false;",

@@ -45,6 +45,8 @@ export type StoredRequest = {
   createdAt: number;
   /** When it ended, or its last write while it runs. */
   updatedAt: number;
+  /** Its result's output, once it has one. */
+  output?: unknown;
 };
 
 export type StoredItem = Record<string, any> & { type: string; requestId: string };
@@ -99,7 +101,7 @@ export function sessions(file: string): StoredSession[] {
 export function requests(file: string): StoredRequest[] {
   return open(file, (db) =>
     (db.prepare("SELECT id, session_id, flow_kind, status, created_at, updated_at, data FROM requests ORDER BY created_at").all() as Array<Record<string, any>>).map((row) => {
-      const data = JSON.parse(row.data) as { actionName?: string; source?: string; finalizedAtMs?: number };
+      const data = JSON.parse(row.data) as { actionName?: string; source?: string; finalizedAtMs?: number; result?: { output?: unknown } };
       return {
         id: row.id,
         sessionId: row.session_id ?? null,
@@ -109,6 +111,7 @@ export function requests(file: string): StoredRequest[] {
         source: data.source,
         createdAt: row.created_at,
         updatedAt: data.finalizedAtMs ?? row.updated_at,
+        ...(data.result?.output !== undefined ? { output: data.result.output } : {}),
       };
     }),
   );

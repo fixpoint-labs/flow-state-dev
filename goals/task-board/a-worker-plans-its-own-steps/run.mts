@@ -59,7 +59,9 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; assertions: string[] }>
   // Today's main: the agent's turn runs without its plan, and a filing that
   // names the worker is a task like any other, handed to a session of itself.
   "no-plan": {
-    assertions: ["a1:steps-in-task-session", "a1:no-child-session"],
+    // `a1:no-child-session` goes red with it only when the model, planless, files for itself;
+    // since 2026-10-24 it mostly answers in one turn instead (4 of 4 runs), so it isn't required.
+    assertions: ["a1:steps-in-task-session"],
     patches: [
       {
         module: "packages/workforce/src/agent-worker-flow.ts",

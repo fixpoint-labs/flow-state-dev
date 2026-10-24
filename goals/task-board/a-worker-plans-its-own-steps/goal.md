@@ -25,7 +25,7 @@
 
 **Run:** `pnpm tsx goals/task-board/a-worker-plans-its-own-steps/run.mts`. `GOAL_LEGS=a1,a2` runs some legs. On demand only, never a CI gate.
 
-**Controls:** `GOAL_CONTROL=no-plan` is today's `main` as a scratch patch applied as the process loads (`goals/lib/module-patch.mts`): the agent's turn runs without its plan, and a filing naming the worker is a task handed to a session of its own. Leg a1 must fail **`a1:steps-in-task-session`** and **`a1:no-child-session`**.
+**Controls:** `GOAL_CONTROL=no-plan` is today's `main` as a scratch patch applied as the process loads (`goals/lib/module-patch.mts`): the agent's turn runs without its plan, and a filing naming the worker is a task handed to a session of its own. Leg a1 must fail **`a1:steps-in-task-session`**. `a1:no-child-session` goes red with it when the planless model files steps for itself, as it did on 2026-10-21; on 2026-10-24 it answered in one turn instead (4 of 4 runs), so it isn't required.
 
 A step that fails, and the answer naming it, is proven in CI by `packages/workforce/test/worker-plans-its-steps.test.ts`: a real model won't fail a step on cue. FIX-2080 had not landed when this did, so a failed attempt's open steps stay open for the next attempt rather than ending `cancelled`; that assertion joins this leg with FIX-2080.
 

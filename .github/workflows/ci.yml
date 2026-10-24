@@ -86,6 +86,19 @@ jobs:
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
 
+      # One task surface (FIX-2087). Here rather than beside "One word per thing"
+      # in Process guards: the endings rule reads callers by type, so it needs the
+      # TypeScript this job installs. The goal's rules.mjs owns the allow lists;
+      # its goal.md says why.
+      - name: One task surface
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs
+
+      # Every plant must be reported, and nothing else, or the sweep above could
+      # pass because it stopped reading a rule. It runs even when the sweep is red.
+      - name: The task-surface sweep reports its plants
+        if: ${{ !cancelled() }}
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --control
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.

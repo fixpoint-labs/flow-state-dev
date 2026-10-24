@@ -42,7 +42,7 @@
 - `GOAL_CONTROL=no-round-limit`: a coordinator whose `rounds:` is above 0 runs to the ceiling of 3 (`coordinator-flow.ts`, the worker's config read). Leg e must fail **`e:four-then-none`**, and nothing else: the patch leaves `rounds: 0` alone.
 - `GOAL_CONTROL=no-delegate-read`: the delegate read answers from the worker's defaults, not the conversation's list (`delegates/worker-delegates.ts`). Leg d must fail **`d:reply-equals-list`** (*the reply equals the list*), with `d:read-equals-list`.
 
-- `GOAL_CONTROL=no-self-choice`: best fit never offers the coordinator itself (`coordinator-flow.ts`). Leg h must fail **`h:hire-turn`**: the EM, its one choice, takes the hire.
+- `GOAL_CONTROL=no-self-choice`: best fit never offers the coordinator itself (`coordinator-flow.ts`). Leg h must fail one of its own-job asks (**`h:hire-turn`**, `h:fire-turn`, `h:who-turn`, `h:project-turn`): the EM, its one choice, takes whichever the evaluation places on it. That was the hire when this was written; on 2026-10-24 it was the project, 4 of 4 runs, with the hire missing back to the coordinator's turn.
 - `GOAL_CONTROL=no-floor`: a delegate pick below `minConfidence:` is used (`best-fit.ts`); a pick with no confidence is still a miss. Leg e must fail **`e:below-floor`**, and nothing else.
 - `GOAL_CONTROL=turn-after-route`: the coordinator's own turn also runs on a post best fit placed (`coordinator-flow.ts`). Leg a must fail **`a:no-turn`**.
 
