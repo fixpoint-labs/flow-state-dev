@@ -20,6 +20,7 @@ import {
   CODE,
   EXCLUDE,
   FORWARDERS,
+  INBOX_READ,
   KEEP,
   MIGRATION_TABLE,
   PASS_THROUGHS,
@@ -492,6 +493,93 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     };
     visit(sf);
   }
+  // ---- inbox · one list of what waits on the user, built in one place (FIX-2133) -------------
+  // Read by symbol: an object literal typed as Shift Manager's `InboxItem` (its contextual type,
+  // a cast included), a call of `react`'s `deriveSuspensions` (any import name or alias), and a
+  // read of the `questions` or `question` that Shift Manager's `BoardRow` declares (a property
+  // access or a destructured name). Each is allowed only in a function `INBOX_READ` names.
+  const INBOX_MODULE = "packages/shift-manager/src/lib/inbox.ts";
+  const READS_MODULE = "packages/shift-manager/src/lib/reads.ts";
+  const DERIVE_MODULE = "packages/react/src/hooks/useSuspensions.ts";
+  const declaredIn = (sym, module, name) => (sym?.declarations ?? []).some((d) => rel(d.getSourceFile()) === module && (name === undefined || d.name?.getText?.() === name));
+  const typeDeclaredIn = (type, module, name) => {
+    if (type === undefined) return false;
+    if (declaredIn(type.aliasSymbol, module, name)) return true;
+    return type.isUnion() && type.types.some((t) => declaredIn(t.aliasSymbol, module, name));
+  };
+  /** Whether a property symbol is declared on the `BoardRow` type alias in reads.ts. */
+  const onBoardRow = (sym) =>
+    (sym?.declarations ?? []).some((d) => {
+      if (rel(d.getSourceFile()) !== READS_MODULE) return false;
+      for (let n = d.parent; n; n = n.parent) if (ts.isTypeAliasDeclaration(n)) return n.name.text === "BoardRow";
+      return false;
+    });
+  const ROW_FIELDS = ["questions", "question"];
+  // `InboxItem` itself, so a literal whose contextual type is lost to inference (a `.map` callback's
+  // return) is still read: the literal's own type is one an `InboxItem` slot accepts.
+  const inboxItemDecl = ownFiles.find((sf) => rel(sf) === INBOX_MODULE)?.statements.find((s) => ts.isTypeAliasDeclaration(s) && s.name.text === "InboxItem");
+  const inboxItemType = inboxItemDecl === undefined ? undefined : checker.getTypeAtLocation(inboxItemDecl.name);
+  // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
+  // definition: a finding, not a rule that read nothing.
+  if (inboxItemType === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
+  const isInboxItem = (node) =>
+    typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem") ||
+    (inboxItemType !== undefined && checker.isTypeAssignableTo(checker.getTypeAtLocation(node), inboxItemType));
+  const inboxScanned = { items: 0, derive: 0, rowFields: 0 };
+  for (const sf of ownFiles) {
+    const path = rel(sf);
+    const visit = (node) => {
+      let what;
+      if (ts.isObjectLiteralExpression(node) && node.properties.some((p) => ts.isPropertyAssignment(p) && p.name.getText(sf) === "source")) {
+        if (isInboxItem(node)) {
+          inboxScanned.items++;
+          what = "builds an Inbox item";
+        }
+      } else if (ts.isCallExpression(node) && declaredIn(symbolOf(node.expression), DERIVE_MODULE, "deriveSuspensions")) {
+        inboxScanned.derive++;
+        what = "derives a session's pending suspensions";
+      } else if (ts.isPropertyAccessExpression(node) && ROW_FIELDS.includes(node.name.text) && onBoardRow(checker.getSymbolAtLocation(node.name))) {
+        inboxScanned.rowFields++;
+        what = `reads a board row's \`${node.name.text}\``;
+      } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const prop = (node.propertyName ?? node.name).getText(sf);
+        if (ROW_FIELDS.includes(prop) && onBoardRow(checker.getApparentType(checker.getTypeAtLocation(node.parent)).getProperty(prop))) {
+          inboxScanned.rowFields++;
+          what = `destructures a board row's \`${prop}\``;
+        }
+      }
+      if (what !== undefined) {
+        const key = `${packageOf(path)}:${recorderOf(node)}`;
+        if (!(key in INBOX_READ) && !isMarked(lineText(sf, node))) {
+          findings.push({ rule: "inbox", where: `${path}:${lineOf(sf, node)}`, what: `${what} in ${key}, outside the Inbox read: a second list of what waits on the user` });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  // The floor: the Inbox read itself must be read, or the rule is reading nothing.
+  if (inboxItemType !== undefined && inboxScanned.items === 0) cantTell.push("inbox: no object typed as InboxItem was read, so the rule can't see an Inbox list being built");
+  if (inboxItemType !== undefined && inboxScanned.derive === 0) cantTell.push("inbox: no call of react's deriveSuspensions was read");
+  if (inboxItemType !== undefined && inboxScanned.rowFields === 0) cantTell.push("inbox: no read of BoardRow's questions was read");
+  scanned.inbox = inboxScanned.items + inboxScanned.derive + inboxScanned.rowFields;
+  for (const key of inboxItemType === undefined ? [] : Object.keys(INBOX_READ)) {
+    const at = [];
+    for (const sf of ownFiles) {
+      const visit = (node) => {
+        const name = nameOfFunction(node);
+        if (name !== undefined && `${packageOf(rel(sf))}:${name}` === key) at.push(`${rel(sf)}:${lineOf(sf, node)}`);
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    if (at.length !== 1) {
+      const what = `CAN'T TELL: ${key} names ${at.length} functions, so the Inbox read can't be told from another`;
+      cantTell.push(`inbox: ${what}`);
+      findings.push({ rule: "inbox", where: at.join(" and ") || "rules.mjs", what });
+    }
+  }
+
   const unreadFlows = (doorRule?.floor ?? []).filter((f) => !workerFlows.some((w) => w.startsWith(`${f}:`)));
   if (unreadFlows.length > 0) cantTell.push(`removed: the door rule read no worker flow in ${unreadFlows.join(", ")}, so it stopped reading the built-in flows`);
 

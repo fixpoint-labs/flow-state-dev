@@ -9,7 +9,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { GENERAL_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -25,8 +25,8 @@ describe("landing (V1, BR-1)", () => {
 
   it("keeps Inbox at /inbox, and every other route round-trips as before", () => {
     const routes: Route[] = [
-      { level: "inbox", suspensionId: null },
-      { level: "inbox", suspensionId: "susp 1" },
+      { level: "inbox", item: null },
+      { level: "inbox", item: "susp 1" },
       { level: "tasks", by: "state" },
       { level: "tasks", by: "worker" },
       { level: "task", boardRef: "s_1.tasks", taskId: "t-1", tab: "diff" },
@@ -92,6 +92,7 @@ const row = (holderSessionId: string, id: string, status: string): BoardRow => (
   deps: [],
   run: null,
   error: null,
+  questions: [],
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -110,7 +111,7 @@ const ask = (workerId: string, suspensionId: string): Ask => ({
 });
 
 function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
-  return {
+  const read: Omit<LoadedSnapshot, "inbox"> = {
     readAt: 0,
     sessions: [],
     orgId: ORG,
@@ -129,6 +130,7 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
     resources: { ok: true, value: [] },
     ...over,
   };
+  return { ...read, inbox: inboxSection(read.asks, read.boards) };
 }
 
 describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {

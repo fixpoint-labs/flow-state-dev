@@ -6,7 +6,7 @@
  * route. The rest are Shift Manager's own.
  *
  *     /cos                           Chief of Staff: where `/` and any unknown path land
- *     /inbox[/<suspensionId>]
+ *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /messages                      every message between the user's workers (FIX-1989)
@@ -33,7 +33,7 @@ export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 /** Where the user is. */
 export type Route =
   | { level: "cos" }
-  | { level: "inbox"; suspensionId: string | null }
+  | { level: "inbox"; item: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "messages" }
@@ -80,7 +80,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "messages") return { level: "messages" };
   if (head === "schedules") return { level: "schedules" };
   if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
-  if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
+  if (head === "inbox") return { level: "inbox", item: a ?? null };
   if (head === "settings") return { level: "settings" };
   return { level: "cos" };
 }
@@ -100,7 +100,7 @@ export function pathFor(route: Route): string {
     case "cos":
       return "/cos";
     case "inbox":
-      return route.suspensionId === null ? "/inbox" : `/inbox/${e(route.suspensionId)}`;
+      return route.item === null ? "/inbox" : `/inbox/${e(route.item)}`;
     case "tasks":
       return route.by === "state" ? "/tasks" : `/tasks?by=${route.by}`;
     case "task":

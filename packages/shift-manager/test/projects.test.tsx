@@ -245,6 +245,7 @@ describe("grouping is the snapshot's (V4)", () => {
       projects: { ok: true, value: { rows } },
       boards: {},
       asks: { ok: true, value: [] },
+      inbox: { ok: true, value: [] },
       resources: { ok: true, value: [] },
     }) as LoadedSnapshot;
   const project = (over: Partial<Project>): Project => ({

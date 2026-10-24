@@ -63,6 +63,8 @@ export const GAPS = {
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another user's sessions are not listed; an organization-wide view is FIX-1652's call.",
+  /** A held question's detail: answering it from Inbox, through its board, arrives with the hold's write. */
+  inboxQuestionAnswer: "Answering a task's questions from Inbox arrives with FIX-2133's hold. Until then, open the task.",
 } as const;
 
 export type Gaps = typeof GAPS;

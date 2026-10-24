@@ -13,7 +13,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import type { Ask, BoardRow, Worker } from "../src/lib/reads";
+import { inboxSection, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 let index = 0;
 function item(fields: Record<string, unknown>): OutputItem {
@@ -69,6 +69,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
+  questions: [],
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -79,12 +80,14 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
 function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
   const byHolder = new Map<string, BoardRow[]>();
   for (const r of rows) byHolder.set(r.holderSessionId, [...(byHolder.get(r.holderSessionId) ?? []), r]);
+  const boards: LoadedSnapshot["boards"] = Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }]));
   return {
     orgId: "org",
     readAt: 0,
     inventory: { ok: true, value: { workers } },
-    boards: Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }])),
+    boards,
     asks: { ok: true, value: asks },
+    inbox: inboxSection({ ok: true, value: asks }, boards),
   } as unknown as LoadedSnapshot;
 }
 
@@ -109,7 +112,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { id: "eng.em", workerId: "eng.em", name: "em", team: "eng", kind: null },
       { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
     ] as unknown as Worker[];
-    const asks = [{ workerId: "eng.em" }] as unknown as Ask[];
+    const asks = [{ workerId: "eng.em", item: { suspensionId: "a1" }, since: 0 }] as unknown as Ask[];
     const s = snapshot(
       [
         row("A", "in_progress", { assignee: "eng.coder" }),

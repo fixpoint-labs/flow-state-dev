@@ -63,6 +63,7 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { workforceClientFor, type LabClients } from "./connection";
+import { inboxItems, type InboxItem } from "./inbox";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -190,10 +191,26 @@ export type BoardRow = {
    * on one, or published before boards showed it.
    */
   question?: string;
+  /**
+   * The questions the row holds open, oldest first: the task waits on the
+   * user's answers, before it starts or midway. Empty on a row that holds
+   * none, or on a board that publishes none. The Inbox lists the row from
+   * this, once, however many it holds.
+   */
+  questions: HeldQuestion[];
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
   completedAt: number | null;
+};
+
+/** One open question a row holds, as its board publishes it. */
+export type HeldQuestion = {
+  /** Unique on its row: the answer names it. */
+  id: string;
+  prompt: string;
+  /** When it was asked, epoch ms, or `null` when the board didn't say. */
+  askedAt: number | null;
 };
 
 /** A conversation's board and every row on it. */
@@ -290,7 +307,14 @@ export type LabSnapshot =
       projects: Section<Projects>;
       /** Per board holder: the id of a conversation that keeps a board. */
       boards: Record<string, Section<ConversationBoards>>;
+      /** The pending asks in worker sessions: the Inbox's suspension arm, and what a task's screen shows inline. */
       asks: Section<Ask[]>;
+      /**
+       * Everything waiting on the user, as one list (`inbox.ts`): every pending
+       * ask, and one item per board row holding open questions. Inbox, its
+       * counts and every "needs you" total read this, and nothing else.
+       */
+      inbox: Section<InboxItem[]>;
       /** The declared documents Jump to finds and opens read-only (BR-10). */
       resources: Section<DeclaredResource[]>;
     };
@@ -469,6 +493,23 @@ function strings(value: unknown): string[] {
 }
 
 /**
+ * The open questions a row publishes: each entry with an id and a prompt
+ * that the board marks `open: true`, oldest first. Anything else reads as no
+ * question, so a board that publishes none, or an older one, holds none.
+ */
+function toHeldQuestions(value: unknown): HeldQuestion[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((entry): HeldQuestion[] => {
+      const id = text(field(entry, "id"));
+      const prompt = text(field(entry, "prompt"));
+      if (id === null || prompt === null || field(entry, "open") !== true) return [];
+      return [{ id, prompt, askedAt: time(field(entry, "askedAt")) }];
+    })
+    .sort((a, b) => (a.askedAt ?? 0) - (b.askedAt ?? 0));
+}
+
+/**
  * A board row, from what the board publishes.
  *
  * `title` is never absent: a row filed with none reads its goal there. The
@@ -492,6 +533,7 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
       ? { question: text(field(data, "feedback")) as string }
       : {}),
+    questions: toHeldQuestions(field(data, "questions")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),
@@ -531,6 +573,21 @@ export function collectionOfBoard(boardRef: string): string {
  */
 export function conversationOfTopic(topic: string): string {
   return sessionIdOfFiling(decodeURIComponent(topic.split("/")[0] ?? ""));
+}
+
+/**
+ * The Inbox section, from the two reads it lists: the pending asks and every
+ * board. A list that can't hold one of them is a failure, never a shorter
+ * list: a held question on a board that didn't load would be missing from it.
+ */
+export function inboxSection(asks: Section<Ask[]>, boards: Record<string, Section<ConversationBoards>>): Section<InboxItem[]> {
+  if (!asks.ok) return asks;
+  const rows: BoardRow[] = [];
+  for (const board of Object.values(boards)) {
+    if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists the questions tasks hold from their boards, and a board did not load. ${board.failure.message}` } };
+    rows.push(...board.value.rows);
+  }
+  return { ok: true, value: inboxItems(asks.value, rows) };
 }
 
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
@@ -935,14 +992,16 @@ export function createLabReader(clients: LabClients): LabReader {
       readProjects(sessions, readers.failure),
     ]);
 
+    const boards = Object.fromEntries(conversationBoards);
     return {
       readAt: Date.now(),
       sessions,
       orgId,
       inventory,
       projects,
-      boards: Object.fromEntries(conversationBoards),
+      boards,
       asks,
+      inbox: inboxSection(asks, boards),
       resources,
     };
   };
