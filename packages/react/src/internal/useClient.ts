@@ -10,7 +10,7 @@ import { createClient, type Client } from "@flow-state-dev/client";
 import { useFlowContext } from "../context/FlowContext";
 
 /** The user a hook acts as when neither it nor its provider names one. */
-export const DEFAULT_HOOK_USER_ID = "devuser";
+const DEFAULT_HOOK_USER_ID = "devuser";
 
 /** A hook's client. `userId`, `baseUrl` and `apiPath` override the provider's. */
 export function useClient(overrides: { userId?: string; baseUrl?: string; apiPath?: string } = {}): Client {

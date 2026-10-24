@@ -17,7 +17,7 @@ const DEFAULT_API_PATH = "/api/flows";
  * resolves (`.invalid` is reserved), and `createInProcessFetch` reads only the
  * path, so an embedded caller never writes a made-up URL.
  */
-export const IN_PROCESS_ORIGIN = "http://in-process.invalid";
+const IN_PROCESS_ORIGIN = "http://in-process.invalid";
 
 /** What one transport is built from. */
 export type TransportOptions = {
@@ -137,7 +137,7 @@ function resolveFetch(fetcher?: ClientFetch): ClientFetch {
  * given, that leading mount is swapped for it, so a server mounted elsewhere
  * (the Node host's `basePath`) is reached at the same route.
  */
-export function buildFlowApiUrl(options: {
+function buildFlowApiUrl(options: {
   path: string;
   baseUrl?: string;
   apiPath?: string;
