@@ -300,7 +300,10 @@ await runGoal(async () => {
   say(`building Shift Manager's pages`);
   const pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
-  const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
+  // Under a control an attempt is graded once the asker's request parked before the kill. One
+  // that didn't (the keeper ended first, so the wait returned inline and nothing waited) grades
+  // nothing, so it is tried again, up to 5 attempts.
+  const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 5));
   let result: Graded = { failures: ["no attempt ran"], notes: [], path: "none" };
   for (let n = 1; n <= attempts; n += 1) {
     const label = `${control?.name ?? "plain"}-${n}`;
@@ -318,6 +321,7 @@ await runGoal(async () => {
     for (const note of result.notes) say(`attempt ${n}: ${note}`);
     say(`attempt ${n} of ${attempts}: ${result.failures.length === 0 ? "PASS" : `FAIL (${[...new Set(result.failures.map((f) => f.split(" — ")[0]))].join(", ")})`}`);
     if (result.failures.length === 0) break;
+    if (control !== undefined && !result.failures.some((f) => f.startsWith("kill:suspended "))) break;
     // A model that never asked is the model's flakiness; a mechanism failure fails every attempt the same way.
   }
 
