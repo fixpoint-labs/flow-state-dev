@@ -786,8 +786,9 @@ worker is still answering shows up in that same request, and the worker answers 
 const agent = defineAgentWorkerFlow({ installation, catalog: appTools, answerAgain: true });
 ```
 
-After the worker answers a user's message, each task the conversation filed that ended since the
-turn began is said once, as a line under the delegate's name:
+After the worker answers a user's message, each task the conversation filed whose ending hasn't
+been heard yet, usually one that finished while the worker answered, is said once, as a line under
+the delegate's name:
 
 ```text
 Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
@@ -2230,7 +2231,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 |--------|-------------|
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
-| `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed that ended since the turn began, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
+| `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
 | `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` built from the lines, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |

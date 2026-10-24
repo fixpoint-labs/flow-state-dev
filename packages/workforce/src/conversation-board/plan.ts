@@ -362,7 +362,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
   /**
    * Decide whether the turn left steps to work (a workable row on the
    * session's plan ledger) and record it. Its record is replayed on a resume,
-   * so it runs once per run of the turn.
+   * so it runs once per request.
    */
   const decidePlan = handler({
     name: "plan-decide",

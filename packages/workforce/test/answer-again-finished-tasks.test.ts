@@ -68,6 +68,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineSessionBoard, finishedTasksAnswerAgain, MAX_ANSWERS_AGAIN, workerConfigSchema, type WorkerManifest } from "../src";
 import { ownConversationLedger } from "../src/conversation-board/ledger";
+import { takesNotice } from "../src/conversation-board/take-finished";
 import { REPLY_CONCURRENCY } from "../src/conversation-board/task-settled";
 import { markUserTurnStep } from "../src/standing-rules/user-turn";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -470,5 +471,25 @@ describe("the agent flow's `answerAgain: true`", () => {
     } finally {
       await h.dispose();
     }
+  });
+});
+
+// The take hands over only what the queued handling would deliver to the turn. A retry runs the
+// board again, a waited-on row resumes the request that waits, and a routed result goes to the
+// flow's own handling: taken here, each would be said as a line and acknowledged, and its own
+// path would never run.
+describe("what the take leaves to its own path", () => {
+  const notice = { boardId: "b", taskId: "t-1", attempt: 1 } as const;
+
+  it("takes a completion, a final failure, a park that asks, and a cancel", () => {
+    for (const ending of ["completed", "errored", "parked", "cancelled"] as const) {
+      expect(takesNotice({ ...notice, ending }, undefined), ending).toBe(true);
+    }
+  });
+
+  it("leaves a retry, a waited-on row's ending, and a routed result", () => {
+    expect(takesNotice({ ...notice, ending: "errored" }, "conversation")).toBe(false);
+    expect(takesNotice({ ...notice, ending: "retried" }, undefined)).toBe(false);
+    expect(takesNotice({ ...notice, ending: "completed", asked: true }, undefined)).toBe(false);
   });
 });

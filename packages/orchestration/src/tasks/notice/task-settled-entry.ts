@@ -193,11 +193,12 @@ async function takeFor(
  * @returns The notice taken, with the dependents its ending cancelled named,
  *   or `undefined` when the row doesn't owe it or another request holds it.
  */
-export async function takeOwedNotice(ctx: BlockContext, notice: TaskSettledInput): Promise<TaskSettledInput | undefined> {
+export async function takeOwedNotice(ctx: BlockContext, notice: TaskNotice): Promise<TaskNotice | undefined> {
   const board = await boardOf(ctx, notice.boardId);
   const row = board === undefined ? undefined : await readCommittedTask(board.ref, notice.taskId);
   if (board === undefined || row === undefined || !isNoticeOwed(row, notice)) return undefined;
-  const taken = await takeFor(ctx, board, row, notice);
+  const { cancelled, ...rest } = notice;
+  const taken = await takeFor(ctx, board, row, { ...rest, ...(cancelled !== undefined ? { cancelled: [...cancelled] } : {}) });
   return typeof taken === "string" ? undefined : taken;
 }
 

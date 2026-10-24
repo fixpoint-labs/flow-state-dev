@@ -37,6 +37,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { takeOwedNotice } from "@flow-state-dev/orchestration";
 import {
+  decideNotice,
   isTerminalStatus,
   noticeText,
   owedNotices,
@@ -63,13 +64,18 @@ export const finishedTaskSchema = z.object({
 
 export type FinishedTask = z.infer<typeof finishedTaskSchema>;
 
-/** Whether the take hands `notice` over: an ending the queued handling would say, for a task whose result goes to the filer. */
-function takes(notice: TaskNotice, resultTo: string | undefined): boolean {
-  return resultTo !== "conversation" && notice.ending !== "retried" && notice.asked !== true;
+/**
+ * Whether the take hands `notice` over: an ending the queued handling would
+ * deliver to the turn (`decideNotice`: not a retry's board run, not a wait's
+ * resume), for a task whose result goes to the filer.
+ */
+export function takesNotice(notice: TaskNotice, resultTo: string | undefined): boolean {
+  return resultTo !== "conversation" && decideNotice(notice, "fixed").act === "line";
 }
 
 /**
- * Take the tasks this conversation filed that finished since the turn began,
+ * Take the tasks this conversation filed whose endings haven't been heard yet
+ * (usually ones that finished while the turn ran),
  * say each as a line under its delegate's name, and hand the lines back.
  * Empty outside a turn a user's own message started, and when nothing
  * finished. Input is ignored.
@@ -94,12 +100,12 @@ export const takeFinishedTasks = handler({
       const row = await readCommittedTask(ref, seen.id);
       if (row === undefined) continue;
       for (const owed of owedNotices(row, CONVERSATION_LEDGER_ID)) {
-        if (!takes(owed, row.resultTo)) continue;
-        const notice = await takeOwedNotice(ctx, owed as never);
+        if (!takesNotice(owed, row.resultTo)) continue;
+        const notice = await takeOwedNotice(ctx, owed);
         if (notice === undefined) continue;
         let first: boolean;
         try {
-          first = await settleTakenNotice(ctx, ref, row, notice as TaskNotice);
+          first = await settleTakenNotice(ctx, ref, row, notice);
         } catch (error) {
           // Left taken by this request: the queued copy takes it over after the turn.
           // eslint-disable-next-line no-console
@@ -110,7 +116,7 @@ export const takeFinishedTasks = handler({
           continue;
         }
         if (!first) continue;
-        const line = noticeText(notice as TaskNotice, row);
+        const line = noticeText(notice, row);
         ctx.emit.message(line, row.assignee !== undefined ? { agentName: row.assignee } : {});
         finished.push({
           taskId: row.id,
