@@ -33,3 +33,4 @@
 | 2026-10-24 | same | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `read-only`, expected) | `once`: each code said 4 times under the delegate: in the person's request by the lab's block, then by the queued notices and the turns they woke |
 | 2026-10-24 | same | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `no-source`, expected) | `request-id`: both lines landed in later requests of their own |
 | 2026-10-24 | `c8bef91b` (main, before FIX-2159), this script copied in | openai/gpt-5.4-mini (vercel gateway) | FAIL (expected) | `request-id`: both lines landed in later requests of their own |
+| 2026-10-24 | `6ede85dc` (af14e78b before a spec-only rebase) | openai/gpt-5.4-mini (vercel gateway) | PASS | Attempt 1 of 3, codes neutral (`rc-1b0ff4`, `rc-eb7f50`): each said once under the delegate in the person's request, each followed by text naming it |

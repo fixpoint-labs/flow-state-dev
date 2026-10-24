@@ -641,14 +641,15 @@ Spell it `instructions`.
 
 ### Composing capabilities into the built-in worker flow
 
-`defineAgentWorkerFlow` takes three more app-level options beyond its catalog, skills and model
-choices. All three are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
+`defineAgentWorkerFlow` takes four more app-level options beyond its catalog, skills and model
+choices. All four are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
 worker.
 
 | Option | What it does |
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string and cannot change the answer. A failure in it never fails a conversation turn; in a task it fails the attempt, except in a task whose result goes to the conversation (`resultTo: "conversation"`), where it is logged and the task keeps its answer. Absent, nothing runs after the answer. |
+| `answerAgain` | `true`, or a block run after each answer. When it returns `{ message }`, the worker answers again in the same request with that message as its input. `true` hands the worker the tasks it filed that finished while it answered; see [Answering again with finished tasks](#answering-again-with-finished-tasks). Takes effect only on a flow built with `installation`. Absent, a turn answers once (and again after its plan), and every task result is heard after the turn. |
 | `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the user's other flows. Every worker on `agent` shares the one copy, so a user's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
@@ -774,6 +775,103 @@ read it and can't write it. A fork starts with none, and a worker moved to anoth
 leaves its rules behind. If the list can't be read, the turn runs without it and says so in a
 status line. See
 [Standing rules](https://flow-state.dev/docs/workforce/standing-rules).
+
+#### Answering again with finished tasks
+
+A worker that hands tasks to its delegates hears their results after its reply, each as a line in
+the conversation and a turn of its own. With `answerAgain: true`, a result that lands while the
+worker is still answering shows up in that same request, and the worker answers again with it.
+
+```ts
+const agent = defineAgentWorkerFlow({ installation, catalog: appTools, answerAgain: true });
+```
+
+After the worker answers a person's message, each task the conversation filed that ended since the
+turn began is said once, as a line under the delegate's name:
+
+```text
+Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+```
+
+The worker is then told:
+
+```text
+These tasks you handed out finished while you answered:
+
+- Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+
+Use their results now: answer again, building on what you already said.
+```
+
+Its next text comes after the line, in the same request. A task that ends during that answer is
+picked up the same way once it finishes. A result handed over inside the turn isn't said again
+after it, and wakes no extra turn.
+
+The endings handed over are completions, final failures, cancels the worker didn't make itself,
+and parks that ask a question, for a task whose result goes back to the filer (the default). A task
+filed with `resultTo: "conversation"`, a retry, and a task some request waits on with
+`getTask({ wait: true })` keep their usual path.
+
+To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`:
+
+```ts
+import { defineAgentWorkerFlow, finishedTasksAnswerAgain } from "@flow-state-dev/workforce";
+
+const agent = defineAgentWorkerFlow({
+  installation,
+  catalog: appTools,
+  answerAgain: finishedTasksAnswerAgain({
+    message: (finished) => `Done while you answered:\n${finished.map((f) => f.line).join("\n")}`,
+  }),
+});
+```
+
+For full control, build your own block around `takeFinishedTasks`. It takes what finished, says
+each line in the conversation, and returns `FinishedTask[]`: `{ taskId, ending, worker?, line }`,
+where `ending` is `"completed"`, `"errored"`, `"parked"` or `"cancelled"` and `worker` is the
+delegate the line was said under. It returns `[]` when nothing finished.
+
+```ts
+import { handler, sequencer } from "@flow-state-dev/core";
+import { defineAgentWorkerFlow, takeFinishedTasks, type FinishedTask } from "@flow-state-dev/workforce";
+
+const agent = defineAgentWorkerFlow({
+  installation,
+  catalog: appTools,
+  answerAgain: sequencer({ name: "lab-answer-again" })
+    .step(takeFinishedTasks)
+    .step(
+      handler({
+        name: "lab-finished-message",
+        execute: (finished: FinishedTask[]) =>
+          finished.length === 0
+            ? {}
+            : { message: `Done while you answered:\n${finished.map((f) => f.line).join("\n")}` },
+      })
+    ),
+});
+```
+
+Any block works as `answerAgain`. Its input is the worker's latest answer. It
+returns `{ message?: string }`; a non-empty `message` makes the worker answer again, and `{}` ends
+it.
+
+Limits:
+
+- At most `MAX_ANSWERS_AGAIN` (3) answers again per request. The answer the worker gives after its
+  own plan of steps counts toward the same cap. When the plan and `answerAgain` both have something
+  in the same round, the worker answers once about both.
+- An answering-again turn files no step for the worker itself. A task it files for a delegate is
+  dispatched as usual.
+- Only a turn started by a person's own message to the worker (`respond`) takes anything. In a
+  task's turn, a turn a task's ending woke, or a turn another worker's message started,
+  `takeFinishedTasks` returns `[]` and results arrive after the turn.
+- A result that lands during a long answer waits until that answer ends. One that lands after the
+  last check arrives after the turn.
+- A final failure the [Error Reporter](#error-reporter) hasn't picked up yet is heard after the turn.
+- Each result is said at most once. If the process dies after a result is taken and before its line
+  is said, the line is dropped.
+- `defineCoordinatorFlow`'s `agent` options don't take `answerAgain`.
 
 ## Worker flows and blocks from files
 
@@ -2132,6 +2230,9 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 |--------|-------------|
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
+| `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed that ended since the turn began, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a person's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
+| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` built from the lines, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
+| `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |
 | `workforceManifestSources({ roster, inventory })` | The `workers` source on its own, for an app assembling its own manifest registry. |
