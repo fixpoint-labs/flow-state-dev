@@ -102,8 +102,8 @@ spec, so it is not anchored on the direction it is judging. That independence is
 **Inputs:** the drafted `SPEC.md` and `DECISIONS.md`, the author's research returns (prior
 art, internal patterns, the necessity check and its question-7 job list), the Linear issue,
 and for an issue under an epic, the epic's retained set. Treat the research as a lead, not
-as the answer: check at least one framework the author didn't cite, and re-run the reuse
-search yourself.
+as the answer: check at least one framework the author didn't cite, and get the reuse answer
+from a fresh `reuse-review` run (objective 1), not from the author's own search.
 
 **Alternatives.** On an **epic spec**, always run [`adhd`](../adhd/SKILL.md) in its analysis
 context — dividing a set into issues is the most expensive shape to get wrong. On an **issue
