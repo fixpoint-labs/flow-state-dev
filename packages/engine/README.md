@@ -190,6 +190,24 @@ const router = createFlowApiRouter({ registry, stores });
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+### Calling the router in process
+
+`createInProcessFetch(app, { basePath? })` turns a `FlowState` (or a router) into a fetch-shaped function, `(input, init?) => Promise<Response>`, that dispatches to the engine in this process, with no web server. Pass it as a client's `fetcher`:
+
+```ts
+import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
+
+const flowState = createFlowState({ flows: { support }, stores: { default: { primary: stores } } });
+const fetcher = createInProcessFetch(flowState);
+const res = await fetcher("/api/flows/support/actions/reply", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ userId: "u1", input: { text: "Hi" } })
+});
+```
+
+Only the URL's path is read; its origin is ignored, and a relative path works. Each call waits for store init (`500 { error: "Server failed to initialize" }` if it failed), picks the router handler by method (`405` for any other, `HEAD` included), and takes the route from the path under `basePath` (default `"/api/flows"`; `404` outside it). The `Request` reaches the router unchanged, so SSE bodies stream and an `AbortSignal` passed in `init` reaches the route. The router sees an ordinary HTTP request (`source: "http"`): credentials ride the request headers, and there is no trust shortcut for in-process callers. `@flow-state-dev/node`'s `createServerApp` dispatches through the same function.
+
 The registry indexes instances by id and `get(id)` is an exact lookup: a singleton is found by its kind, a collection member only by its own id, and a miss is `undefined` with no first-registered fallback. Ids are unique across the registry, so a duplicate id, a singleton under a custom id, or a kind mixing singleton and collection instances throws `FlowIdentityConflictError` at `register`. See the [Engine API](https://flow-state.dev/docs/api/server#createflowregistry) and [server setup](https://flow-state.dev/docs/server/setup#addressing-an-instance).
 
 For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.provider` overrides it. See the [Voice guide](https://flowstate.dev/docs/advanced/voice).
@@ -1133,7 +1151,14 @@ The server runs three coordinated mechanisms so a dropped SSE connection doesn't
 
 - **Wire-level SSE heartbeat.** Every live and GET-attach SSE response emits `: ping\n\n` comment frames at a configurable cadence. Keeps NAT/proxy idle timeouts from closing the connection and gives clients a robust inactivity signal during long pauses (e.g. an LLM thinking).
 - **Stale-request sweeper.** A periodic in-process job that reads the active request registry and, for entries whose executor heartbeat has stopped, marks the persisted request record `interrupted` so session locks release.
-- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips.
+- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips. The snapshot carries the request's `sessionId` (absent for a request with no session), which is what a caller holding only a request id needs to continue or retry it. A request in another tenant, or another principal's, answers `404` like a missing one.
+
+Two user-addressed routes cover requests a crash left behind:
+
+- `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers only the requests **that call** marked `interrupted`. A request the startup pass or the sweeper marked first is not in it.
+- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them, and the same records on every call until each is continued, retried or removed. It sweeps nothing. Poke `check-interrupted` first when you want an answer that doesn't wait for the next sweep.
+
+Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take (the kind for a singleton, the instance id for a collection member); a record written before instance ids falls back to its `flowKind`. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
 
 ```ts
 createFlowApiRouter({
