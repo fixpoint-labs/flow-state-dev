@@ -133,7 +133,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { FILED_HOP, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
+import { FILED_HOP, FILED_PROJECT, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -159,7 +159,7 @@ import { startOwedSteerTurn } from "./steer-turn-start";
 import { holdRoutedSession, routedSessionResources, sessionsHeldElsewhere } from "./routed-session";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
-import { pieceOwnerOf } from "./held-task";
+import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
 import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
@@ -370,6 +370,19 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
     ...(row?.session !== undefined ? { session: row.session } : {}),
     ...(row?.targetSessionId !== undefined ? { targetSessionId: row.targetSessionId } : {})
   };
+}
+
+/**
+ * The project a task's session is handed (FIX-2161): the one its row was
+ * stamped with when it was filed, so a task waiting on the board keeps it
+ * when its conversation's project changes; none for a row filed with none.
+ * A row filed before rows carried the stamp takes its conversation's, as
+ * before (BP-030).
+ */
+async function handedProjectOf(ctx: BlockContext, taskId: string): Promise<string | undefined> {
+  const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
+  const row = ref?.get(taskId);
+  return isStamped(row) ? filedProjectOf(row) : filingProjectOf(ctx.session.state);
 }
 
 /**
@@ -893,7 +906,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
       const workstream = filingWorkstreamOf(ctx.session.state);
-      const project = filingProjectOf(ctx.session.state);
+      const project = await handedProjectOf(ctx, taskId);
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
@@ -1066,7 +1079,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
       // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-      const metadata = { ...(given ?? {}), ...(owner === undefined ? {} : { [PIECE_OF]: owner }), [FILED_HOP]: turnHopMark(ctx) };
+      // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
+      const metadata = {
+        ...(given ?? {}),
+        ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
+        [FILED_HOP]: turnHopMark(ctx),
+        [FILED_PROJECT]: await filingProjectStampOf(ctx)
+      };
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
@@ -1658,7 +1677,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // What a model asked beside the message is a caller's, as on any filing:
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx) };
+    // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
+    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: await filingProjectStampOf(ctx) };
     const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
     const { metadata: _metadata, input: _input, ...rest } = filing;
     const init: TaskInit & { id: string } = {

@@ -104,6 +104,8 @@ import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
 import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
+import { setWorkProjectAction } from "./projects/work-project";
+import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
 import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
@@ -1354,6 +1356,7 @@ function defineAgentFlowAround(
         concurrency: REPLY_CONCURRENCY
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
+      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
       // On an installation: the task actions (`updateTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.

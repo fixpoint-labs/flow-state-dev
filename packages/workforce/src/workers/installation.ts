@@ -57,7 +57,8 @@ import {
   TASK_ID_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
-  WORKSTREAM_STATE_KEY
+  WORKSTREAM_STATE_KEY,
+  WORK_PROJECT_STATE_KEY
 } from "./keys";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
@@ -225,6 +226,7 @@ export type WorkerSessionStateShape = {
   readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [PROJECT_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [WORK_PROJECT_STATE_KEY]: z.ZodOptional<z.ZodString>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
@@ -251,7 +253,9 @@ export interface WorkerInstallation extends WorkerGrants {
    * session leads; `taskId`, when a conversation's board handed a task over,
    * names the task the session works, `filingWorkstreamId` the workstream
    * it was filed from, and `filingProjectId` the project; `projectId`, on a
-   * project coordinator's session, names its project.
+   * project coordinator's session, names its project; `workProjectId`, on a
+   * user's own conversation, names the project they set it to work in
+   * (not readonly: the work-project action writes and replaces it).
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
@@ -260,7 +264,7 @@ export interface WorkerInstallation extends WorkerGrants {
    * A worker flow's `session` declaration: {@link sessionStateShape} plus
    * `extraShape` as its `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
-   * ({@link SESSION_BOARD_SERVER_OWNED}). A flow without those fields still refuses a
+   * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it.
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
@@ -459,7 +463,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional()
+    [PROJECT_STATE_KEY]: z.string().min(1).readonly().optional(),
+    // Written only by the work-project action (FIX-2161): server-owned, and changeable.
+    [WORK_PROJECT_STATE_KEY]: z.string().min(1).optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */

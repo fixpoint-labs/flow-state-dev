@@ -13,6 +13,7 @@ import {
   FILING_PROJECT_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
+  WORK_PROJECT_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
 import { parseProjectRef, parseWorkstreamRef, type ProjectAddressRef } from "../projects/workstream-ref";
@@ -32,13 +33,18 @@ export function filingWorkstreamOf(state: unknown): string | undefined {
 
 /**
  * The project a session works in, from its server-written fields: the one it
- * is the conversation of (`projectId`), else the one it was filed from
- * (`filingProjectId`), in `projectRef` form. `undefined` for neither.
+ * is the coordinator conversation of (`projectId`), else the one its user
+ * set it to work in (`workProjectId`, FIX-2161), else the one it was filed
+ * from (`filingProjectId`), in `projectRef` form. `undefined` for none. The
+ * work-project action refuses a session carrying either of the others, so no
+ * two meet on one session.
  */
 export function filingProjectOf(state: unknown): string | undefined {
   const fields = state as Record<string, unknown> | undefined;
   const own = fields?.[PROJECT_STATE_KEY];
   if (typeof own === "string") return own;
+  const set = fields?.[WORK_PROJECT_STATE_KEY];
+  if (typeof set === "string") return set;
   const filed = fields?.[FILING_PROJECT_STATE_KEY];
   return typeof filed === "string" ? filed : undefined;
 }

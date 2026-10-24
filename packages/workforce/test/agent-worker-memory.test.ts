@@ -234,8 +234,16 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     // tasks off are the whole resource surface — no memory store is declared
     // anywhere in the default worker flow.
     // The standing-rules record is the worker's notes for each user, not memory (FIX-1945), and the
-    // routed-session record is which routed task a workstream's session works (FIX-2083).
-    expect(Object.keys(plain!.resources ?? {}).sort()).toEqual(["skills", "standing-rules", "tasks", "workforceRoutedSessions"]);
+    // routed-session record is which routed task a workstream's session works (FIX-2083). The
+    // project rows are what the work-project action checks a user's membership against (FIX-2161).
+    expect(Object.keys(plain!.resources ?? {}).sort()).toEqual([
+      "privateProjects",
+      "projects",
+      "skills",
+      "standing-rules",
+      "tasks",
+      "workforceRoutedSessions"
+    ]);
     // Nothing runs after the answer — the sequence is what it was.
     const children = stepNames(plain!.actions.respond!.block);
     expect(children.some((name) => name.startsWith("memory/"))).toBe(false);

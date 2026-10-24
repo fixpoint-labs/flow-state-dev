@@ -53,7 +53,7 @@ import { WORKER_MESSAGE_ENTRY } from "../messages/keys";
 import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/worker-message-entry";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
-import { ROUTED_FROM_STATE_KEY } from "../workers/keys";
+import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
@@ -101,7 +101,10 @@ export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   ROUTED_FROM_STATE_KEY,
   // A plan writes it while it waits on a step in a session of its own (FIX-2113). A seeded key
   // naming a request that never ends here would hold the session's notices with no live wait.
-  PLAN_WAITING_STATE
+  PLAN_WAITING_STATE,
+  // Not the board's: the work-project action writes it after a membership check (FIX-2161). Here so
+  // every flow declaring this list, with a board or without, refuses it on a caller's create.
+  WORK_PROJECT_STATE_KEY
 ];
 
 /** What a session board is built from. */
