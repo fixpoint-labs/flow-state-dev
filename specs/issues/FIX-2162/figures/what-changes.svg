@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 600" role="img" aria-label="Today, left: six separate ways to build a client, each binding the user and the flow in a different place. createClient binds a flow and a user; createTypedClient binds a flow definition and a user and builds two others inside; createSessionClient, createRecoveryClient and createResourceClient bind nothing and take the user, flow, session or request on each call; transcribe takes the transport and user on each call. The transport is a URL only: embedding FSD means a web server or a hand-made fetch, and React request streams ignore the fetcher. After, right: one createClient that binds the transport and the user once. On it sit sessions, resources, the interrupted-requests list, the flow list and transcribe. Inside it, fsd.flow(kind) binds a flow and holds send, createSession and request(id). Inside that, a request object carries its flow and session and holds status, wait, abort, continue, retry, resume and stream. Below, the one fetcher goes either to a host over HTTP from a baseUrl, or to the engine in the same process through createInProcessFetch, with no web server; both reach the same router with the same auth."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .one   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .flow  { fill:var(--surface); stroke:var(--accent); stroke-width:1.4; }
+    .req   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-a   { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="26">TODAY · SIX WAYS TO BUILD ONE</text>
+    <rect class="old" x="16" y="38" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="60">createClient({ flowKind, userId })</text>
+    <text class="t-g" x="30" y="80">binds a flow and a user · session per call</text>
+    <rect class="old" x="16" y="102" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="124">createTypedClient({ flow, userId })</text>
+    <text class="t-g" x="30" y="144">binds the flow definition and a user · builds two clients inside</text>
+    <rect class="old" x="16" y="166" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="188">createSessionClient()</text>
+    <text class="t-g" x="30" y="208">binds nothing · user and flow per call to create</text>
+    <rect class="old" x="16" y="230" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="252">createRecoveryClient()</text>
+    <text class="t-g" x="30" y="272">binds nothing · user, flow, session and request per call</text>
+    <rect class="old" x="16" y="294" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="316">createResourceClient()</text>
+    <text class="t-g" x="30" y="336">binds nothing · session per call</text>
+    <rect class="old" x="16" y="358" width="430" height="56" rx="5"/>
+    <text class="t-b" x="30" y="380">transcribe(request, transport)</text>
+    <text class="t-g" x="30" y="400">binds nothing · user and transport per call</text>
+    <text class="t-s" x="16" y="434">Request status and abort on one client; continue, retry, resume on another.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="476" y="26">AFTER · ONE</text>
+    <rect class="one" x="476" y="38" width="448" height="376" rx="6"/>
+    <text class="t-b" x="490" y="60">createClient({ userId, baseUrl?, fetcher? })</text>
+    <text class="t-c" x="490" y="80">binds the transport and the user, once</text>
+    <text class="t-m" x="490" y="104">sessions · resources · requests.interrupted()</text>
+    <text class="t-m" x="490" y="122">flow list · capabilities · user stream · transcribe</text>
+
+    <rect class="flow" x="492" y="138" width="416" height="262" rx="5"/>
+    <text class="t-b" x="506" y="160">fsd.flow(kind)</text>
+    <text class="t-a" x="506" y="180">binds a flow · typed by flow&lt;typeof def&gt;</text>
+    <text class="t-m" x="506" y="204">send · createSession · request(id)</text>
+
+    <rect class="req" x="508" y="222" width="384" height="162" rx="5"/>
+    <text class="t-b" x="522" y="244">a request</text>
+    <text class="t-a" x="522" y="264">carries its flow and session</text>
+    <text class="t-m" x="522" y="292">status · wait · abort</text>
+    <text class="t-m" x="522" y="312">continue · retry · resume</text>
+    <text class="t-m" x="522" y="332">stream</text>
+    <text class="t-s" x="522" y="362">from send, request(id), or the interrupted list</text>
+    <text class="t-s" x="476" y="434">The user sits once on the client, the flow once on its handle.</text>
+  </g>
+
+  <g id="transport-today">
+    <text class="t-lbl" x="16" y="470">TODAY · THE TRANSPORT</text>
+    <rect class="old" x="16" y="482" width="430" height="100" rx="5"/>
+    <text class="t-b" x="30" y="504">baseUrl, over HTTP only</text>
+    <text class="t-g" x="30" y="526">embedded: start a web server,</text>
+    <text class="t-g" x="30" y="544">or hand-write a fetch to the engine</text>
+    <text class="t-g" x="30" y="566">React request streams ignore the fetcher</text>
+  </g>
+
+  <g id="transport-after">
+    <text class="t-lbl" x="476" y="470">AFTER · ONE FETCHER, TWO TRANSPORTS</text>
+    <rect class="one" x="476" y="482" width="218" height="100" rx="5"/>
+    <text class="t-b" x="490" y="504">baseUrl</text>
+    <text class="t-s" x="490" y="526">a host over HTTP</text>
+    <text class="t-s" x="490" y="544">fsdev serve · Next · node</text>
+    <rect class="one" x="706" y="482" width="218" height="100" rx="5"/>
+    <text class="t-b" x="720" y="504">createInProcessFetch</text>
+    <text class="t-s" x="720" y="526">the engine in this process</text>
+    <text class="t-s" x="720" y="544">no web server</text>
+    <text class="t-c" x="490" y="568">same router · same auth</text>
+    <text class="t-c" x="720" y="568">every call and stream</text>
+  </g>
+</svg>
