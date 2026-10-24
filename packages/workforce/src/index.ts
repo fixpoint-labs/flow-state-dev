@@ -70,7 +70,7 @@ export {
   steerTurnEntry,
   type SteerTurnEntryOptions
 } from "./conversation-board/steer";
-// A person's running turn hears the tasks that finished while it answered
+// A user's running turn hears the tasks that finished while it answered
 // (FIX-2159): the take, the pre-built `answerAgain` source, and the cap on
 // answers again in one request.
 export {

@@ -1,5 +1,5 @@
 /**
- * A person's running turn hears the tasks that finished while it answered
+ * A user's running turn hears the tasks that finished while it answered
  * (FIX-2159): the worker answers, the answer-again step takes what finished
  * (`takeFinishedTasks`), the line lands in that same request under the
  * delegate's name, and the worker answers again with it. The queued
@@ -42,7 +42,7 @@ vi.mock("../src/conversation-board/ledger", async (original) => {
   return {
     ...actual,
     // A process that dies between the dedupe write and the acknowledgement, in
-    // a person's turn: the clear of a notice's marker never lands.
+    // a user's turn: the clear of a notice's marker never lands.
     ownConversationLedger: async (ctx: Parameters<typeof actual.ownConversationLedger>[0]) => {
       const ref = await actual.ownConversationLedger(ctx);
       if (ref === undefined || !seams.failAckInUserTurn || !isUserTurn(ctx)) return ref;
@@ -81,7 +81,7 @@ const STEP = "You are working a step you filed for yourself";
 type Turn = { requestId: string; kind: "turn" | "again" | "notice" | "step"; message: string };
 
 type Controls = {
-  /** What the person's turn files for `eng.tasker`, or (with `self`) for the worker itself, as a step. */
+  /** What the user's turn files for `eng.tasker`, or (with `self`) for the worker itself, as a step. */
   file: Array<{ id: string; goal: string; self?: boolean }>;
   /** Held after the filing, before the turn answers: the endings land meanwhile. */
   waitInTurn?: () => Promise<void>;
@@ -144,7 +144,7 @@ function deskFlow(installation: WorkerInstallation, controls: Controls, source: 
         inputSchema: doorInput.strict(),
         block: door,
         userMessage: (input: { message: string }) => input.message,
-        // The person's door holds the reply line, as the agent flow's does, so a queued notice waits for the reply.
+        // The user's door holds the reply line, as the agent flow's does, so a queued notice waits for the reply.
         concurrency: REPLY_CONCURRENCY
       },
       ...board.actions
@@ -176,13 +176,13 @@ function host(options: { source?: BlockDefinition<any, any>; marksUserTurn?: boo
       await sleep(10);
     }
   };
-  /** The person's turn, through the host's dispatch: its request id, once every request settled. */
-  const ask = async (sessionId: string) => {
+  /** The user's turn, through the host's dispatch: its request id, once every request settled. */
+  const sendMessage = async (sessionId: string) => {
     const requestId = await h.post("alice", sessionId, "respond", { message: "Find the facts" }, "desk");
     await h.settled(20_000);
     return requestId;
   };
-  return Object.assign(h, { controls, ended, ask });
+  return Object.assign(h, { controls, ended, sendMessage });
 }
 
 async function deskSession(h: BoardHost): Promise<string> {
@@ -205,7 +205,7 @@ function textOf(item: any): string {
   return ((item.content ?? []) as Array<{ text?: string }>).map((part) => part.text ?? "").join("");
 }
 
-describe("a person's turn hears a task that finished while it answered (FIX-2159)", () => {
+describe("a user's turn hears a task that finished while it answered (FIX-2159)", () => {
   it("says the result in that request, once, under the delegate's name, and the worker answers again with it", async () => {
     const nonce = `n${Math.random().toString(36).slice(2, 8)}`;
     const h = host({ source: finishedTasksAnswerAgain() });
@@ -213,7 +213,7 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: `Look up ${nonce}` }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
 
       const lines = (await delegateLines(h, session)).filter((line) => line.text.includes("(t-1)"));
       expect(lines).toHaveLength(1);
@@ -228,7 +228,7 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
       expect(h.controls.turns.filter((turn) => turn.kind === "notice")).toEqual([]);
       const row = (await h.rows("alice")).find((r) => r.id === "t-1")!;
       expect(row.metadata?.["noticeOwed:1:completed"] ?? null).toBeNull();
-      // Taken in the turn's name: the take record names the person's request.
+      // Taken in the turn's name: the take record names the user's request.
       expect((row.metadata?.["noticeTaken:1:completed"] as { by?: string } | undefined)?.by).toBe(respond);
     } finally {
       await h.dispose();
@@ -241,7 +241,7 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: "Look up the fact" }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const lines = (await delegateLines(h, session)).filter((line) => line.text.includes("(t-1)"));
       expect(lines).toHaveLength(1);
       expect(lines[0]!.requestId).not.toBe(respond);
@@ -273,7 +273,7 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: "Look up the fact" }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const heard = h.controls.turns.filter((turn) => turn.kind !== "turn" && turn.message.includes("t-1"));
       // In the reply, then again after it: the queued notice still owed it.
       expect(heard.slice(0, 2).map((turn) => [turn.kind, turn.requestId === respond])).toEqual([
@@ -301,7 +301,7 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
         release();
         await h.ended("t-2");
       };
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const lines = await delegateLines(h, session);
       for (const id of ["t-1", "t-2"]) {
         const said = lines.filter((line) => line.text.includes(`(${id})`));
@@ -321,14 +321,14 @@ describe("a person's turn hears a task that finished while it answered (FIX-2159
   });
 });
 
-describe("only a turn a person's own message started takes a result (D2)", () => {
-  it("a turn no person's message started takes nothing: the result is heard after it, as before", async () => {
+describe("only a turn a user's own message started takes a result (D2)", () => {
+  it("a turn no user's message started takes nothing: the result is heard after it, as before", async () => {
     const h = host({ source: finishedTasksAnswerAgain(), marksUserTurn: false });
     try {
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: "Look up the fact" }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const lines = (await delegateLines(h, session)).filter((line) => line.text.includes("(t-1)"));
       expect(lines).toHaveLength(1);
       expect(lines[0]!.requestId).not.toBe(respond);
@@ -349,7 +349,7 @@ describe("the take keeps the queued handling's guarantees (D1)", () => {
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: "[fail] Look up the fact" }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const lines = (await delegateLines(h, session)).filter((line) => line.text.includes("(t-1)"));
       expect(lines).toHaveLength(1);
       expect(lines[0]!.text).toContain("failed for good");
@@ -370,7 +370,7 @@ describe("the take keeps the queued handling's guarantees (D1)", () => {
       const session = await deskSession(h);
       h.controls.file = [{ id: "t-1", goal: "Look up the fact" }];
       h.controls.waitInTurn = () => h.ended("t-1");
-      await h.ask(session);
+      await h.sendMessage(session);
       const lines = (await delegateLines(h, session)).filter((line) => line.text.includes("(t-1)"));
       expect(lines).toEqual([]);
       expect(h.controls.turns.filter((turn) => turn.kind !== "turn")).toEqual([]);
@@ -401,7 +401,7 @@ describe("one answer-again step, under one cap", () => {
       const session = await deskSession(h);
       // A step the worker files for itself: the plan's source has its answer too.
       h.controls.file = [{ id: "s-1", goal: "Outline it", self: true }];
-      const respond = await h.ask(session);
+      const respond = await h.sendMessage(session);
       const again = h.controls.turns.filter((turn) => turn.kind === "again");
       expect(again).toHaveLength(MAX_ANSWERS_AGAIN);
       expect(again.every((turn) => turn.requestId === respond)).toBe(true);

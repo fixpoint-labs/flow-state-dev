@@ -369,7 +369,7 @@ export interface AgentWorkerFlowOptions {
    * It feeds the one answer-again step the worker's plan already runs, so the
    * answer after the plan and these count toward one cap,
    * {@link MAX_ANSWERS_AGAIN} answers again per request. The take hands
-   * over nothing outside a turn a person's own message started, so in a
+   * over nothing outside a turn a user's own message started, so in a
    * task's turn, or a turn a notice or another worker's message started,
    * results arrive after the turn as before. Only on an installation, where
    * the worker files tasks.

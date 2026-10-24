@@ -30,7 +30,7 @@
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
  *
- * A person's running turn may take a notice itself after it answers
+ * A user's running turn may take a notice itself after it answers
  * (FIX-2159, `./take-finished`): it runs this same handling
  * ({@link settleTakenNotice}) in its own request and says the line there, and
  * the copy queued here then finds the notice cleared.
@@ -244,7 +244,7 @@ async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: T
 }
 
 /**
- * A notice a person's running turn took itself (FIX-2159), handled as
+ * A notice a user's running turn took itself (FIX-2159), handled as
  * `onTaskSettled` handles one: the same steps, in the same order, so the
  * ending is heard once whichever request took it. Only what is said
  * differs: the caller says the line in its own request rather than waking a

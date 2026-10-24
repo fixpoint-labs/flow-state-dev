@@ -1,5 +1,5 @@
 /**
- * What finished while a person's turn ran (FIX-2159): the take that hands a
+ * What finished while a user's turn ran (FIX-2159): the take that hands a
  * running turn the endings of the tasks its conversation filed, so the worker
  * can answer again with them in the same request, rather than hear them after
  * the reply as a turn of their own.
@@ -16,7 +16,7 @@
  *   answer-again step (`defineAgentWorkerFlow({ answerAgain: true })`): the
  *   take, then the lines as the message the worker answers again about.
  *
- * Only a turn a person's own message started takes anything (`isUserTurn`):
+ * Only a turn a user's own message started takes anything (`isUserTurn`):
  * in a task session the queued handling also does the task's own ending work,
  * and a worker talking to a worker keeps its turn order. Everywhere else the
  * take hands over nothing, and endings arrive after the turn, as before.
@@ -71,7 +71,7 @@ function takes(notice: TaskNotice, resultTo: string | undefined): boolean {
 /**
  * Take the tasks this conversation filed that finished since the turn began,
  * say each as a line under its delegate's name, and hand the lines back.
- * Empty outside a turn a person's own message started, and when nothing
+ * Empty outside a turn a user's own message started, and when nothing
  * finished. Input is ignored.
  */
 export const takeFinishedTasks = handler({
