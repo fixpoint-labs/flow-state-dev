@@ -15,7 +15,11 @@ export type RequestState = "running" | "parked" | "ended";
  * Read where each of `ids` stands, in one read of each engine record.
  *
  * Read off the engine's records, never decided here: `running` says the
- * request runs, `ended` that it ended, and a request neither says is parked.
+ * request runs, `ended` that it ended, and a request neither says reads
+ * `parked`. Neither says so for a request that is parked, but also for one
+ * of another session (both answer `false` for it on purpose), for one whose
+ * record can't be read, and for one that crashed and is being driven again.
+ * A caller that acts on `parked` checks the request is this session's own.
  * A host that records only one of the two can't see every state. With only
  * `running`, a request not running reads `ended`: it can't tell a park from
  * an end. With only `ended`, a request not ended has no entry: it can't tell

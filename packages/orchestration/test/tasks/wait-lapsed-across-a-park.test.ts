@@ -177,6 +177,56 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
     }
   });
 
+  it("a request resumed before the pass reached its slot lets the held ending go at its next park", async () => {
+    // The person answers at once, so the pass the first park woke finds the
+    // request running again and leaves the slot. Back from the park, the turn
+    // files nothing and waits on nothing: only its read of the board ties it
+    // to the slot it lapsed, and its second park must still let the ending go.
+    const notices: TaskSettledInput[] = [];
+    const seen: Parameters<typeof stepModel>[1] = [];
+    let first = "";
+    const script: StepFn[] = [
+      fileCall("f1", "first question"),
+      finalAnswer,
+      (opts) => waitAgain("w1", () => first, 50)(opts),
+      awaitApproval("p1"),
+      // Resumed: T1 ends while the turn runs, held for it.
+      finishTask("x1", () => first, "T1 done"),
+      // The turn runs on past the pass the ending woke, then parks again.
+      async (opts) => {
+        await new Promise((r) => setTimeout(r, NOTICE_DUE_MS + 1_500));
+        return awaitApproval("p2")(opts);
+      },
+      finalAnswer
+    ];
+    const { model } = stepModel(script, seen);
+    const flow = waitFlow(model, { heard: notices });
+    const state = runtimeFor(flow, await stores(), true, 25, SHORT);
+    try {
+      const filing = await act(state, flow, "run");
+      await until(state, filing.requestId!, "completed", 10_000);
+      first = waitedTaskId(seen, 1);
+      const run = await act(state, flow, "run");
+      await stepped(seen, 4);
+      await until(state, run.requestId!, "suspended", 10_000);
+      await approve(state, run.requestId!);
+      await stepped(seen, 6);
+      await until(state, run.requestId!, "suspended", 10_000);
+      expect((await rows(state, flow)).find((row) => row.id === first)?.wait).toMatchObject({ lapsed: true });
+      expect(heardFor(notices, first)).toEqual([]);
+
+      await eventually(() => heardFor(notices, first).length > 0, HEARD_AFTER_PARK_MS, "T1's ending heard at the second park");
+      expect(heardFor(notices, first)).toEqual([expect.objectContaining({ ending: "completed", output: "T1 done" })]);
+
+      await approve(state, run.requestId!);
+      await until(state, run.requestId!, "completed", 10_000);
+      await pastNoticeDue();
+      expect(heardFor(notices, first)).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("an ending while the request is parked on another wait is heard during the park, and the resumed wait answers that it came as a notice", async () => {
     const notices: TaskSettledInput[] = [];
     let first = "";

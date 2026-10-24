@@ -754,7 +754,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     sendOwedAtStop();
   }
 
-  /** Ask the delivery to send, as this request ends, what the rows it filed still owe: once per request and board. */
+  /**
+   * Ask the delivery to send, as this request ends, what the rows it filed
+   * still owe: once per request and board. Registered for a row the request
+   * filed ({@link noteFiled}) and for a wait slot it lapsed
+   * ({@link noteLapsed}): either way its park owes the filer's pass a wake.
+   */
   function sendOwedAtStop(): void {
     const own = delivery?.ownRequest;
     if (delivery === undefined || own === undefined) return;

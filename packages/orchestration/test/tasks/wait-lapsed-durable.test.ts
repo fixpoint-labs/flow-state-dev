@@ -187,6 +187,40 @@ describe("a lapsed wait slot the pass can't read the request of", () => {
   });
 });
 
+describe("a lapsed wait slot on a ledger two sessions share", () => {
+  it("another session's pass never releases it: the engine answers that session's request as neither running nor ended, which isn't a park", async () => {
+    const store = Object.assign(createFakeResourceCollection<JsonObject>("waits/**"), {
+      config: defineTaskCollection({ id: "waits", scope: "user", delivery: {} })
+    }) as unknown as ResourceCollectionRef<JsonObject>;
+    const resolve = (ctx: BlockContext) => getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "waits", collection: store });
+
+    // Session A's request lapses a wait on a task it filed, and still runs.
+    const a = hostCtx([], () => false, new Map(), "req_a");
+    const boardA = await resolve(a);
+    const id = (await boardA.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    await waitOnTask(a, boardA, id, wait);
+    await boardA.claim("researcher-worker");
+    await boardA.complete(id, "done late");
+
+    // Session B's pass, as the engine answers there: false and false for A's request.
+    const base = hostCtx([], () => false, new Map(), "req_pass_b") as unknown as Record<string, any>;
+    const no = async (ids: readonly string[]) => Object.fromEntries(ids.map((i) => [i, false]));
+    const b = {
+      ...base,
+      session: { ...base.session, identity: { type: "session", id: "s_2", userId: "alice" } },
+      requestHost: { ...base.requestHost, waits: { ...base.requestHost.waits, running: no, ended: no } }
+    } as unknown as BlockContext;
+    const boardB = await resolve(b);
+    await releaseEndedWaits(b, boardB, Date.now());
+
+    // Still held for A's running request: its next read gets the ending.
+    expect(boardB.get(id)!.wait).toMatchObject({ lapsed: true, requestId: "req_a" });
+    const markers = owedMarkers(boardB.get(id)!);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]![1]).toMatchObject({ held: true });
+  });
+});
+
 describe("the line the pass logs when it stops looking at a slot", () => {
   it("is logged once, by the pass that crosses the bound, with the reason", async () => {
     const ctx = hostCtx([], () => false, new Map(), "req_log");

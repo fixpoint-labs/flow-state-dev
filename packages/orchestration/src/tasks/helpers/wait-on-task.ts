@@ -769,7 +769,12 @@ export async function releaseEndedWaits(
   for (const row of lapsed) {
     const requestId = row.wait!.requestId!;
     const state = states?.[requestId];
-    if (state !== "parked" && state !== "ended") {
+    // A request of another session reads as neither running nor ended, so as
+    // parked: only this session's own slots are released at a park. The
+    // slot's waiter is the session that filed the row (the filer check of
+    // every wait; a drain hands over rows of its own session's board).
+    const own = (collection.filerOf?.(row) ?? row.filer?.sessionId) === ctx.session?.identity?.id;
+    if (state !== "ended" && !(state === "parked" && own)) {
       lookAgain(row, "its request still runs");
       continue;
     }
