@@ -472,3 +472,24 @@ export type Row = {
 export async function rows(state: ReturnType<typeof runtimeFor>, flow: FlowInstance, sessionId?: string): Promise<Row[]> {
   return (await act(state, flow, "list", {}, sessionId !== undefined ? { sessionId } : {})).output as Row[];
 }
+
+/** The request statuses the engine reads as a request's work being over (`wait-chain.ts`). */
+const WORK_OVER = new Set(["completed", "incomplete", "failed", "aborted"]);
+
+/**
+ * Until every request that took a notice on `row` has ended. A wait answers
+ * `arrivesAsNotice` while a taker still runs, even after it cleared the
+ * marker, so a test that asserts a wait gets the row waits for both.
+ */
+export async function untilTakersEnded(state: ReturnType<typeof runtimeFor>, row: Row, withinMs = 5_000): Promise<void> {
+  const takers = Object.entries(row.metadata ?? {})
+    .filter(([key, value]) => key.startsWith("noticeTaken:") && value != null)
+    .map(([, value]) => (value as { by: string }).by);
+  if (takers.length === 0) throw new Error("no request took a notice on this row");
+  const store = (await state.getRuntime()).stores.request;
+  for (const deadline = Date.now() + withinMs; ; await new Promise((r) => setTimeout(r, 10))) {
+    const statuses = await Promise.all(takers.map(async (id) => (await store.get(id))?.status));
+    if (statuses.every((status) => status !== undefined && WORK_OVER.has(status))) return;
+    if (Date.now() > deadline) throw new Error(`a notice's taker never ended: ${statuses.join(", ")}`);
+  }
+}
