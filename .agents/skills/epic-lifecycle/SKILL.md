@@ -1,6 +1,6 @@
 ---
 name: epic-lifecycle
-description: Drive a related Linear epic through retained spec authoring, human direction approval, checked spec merge, parallel isolated issue lifecycles, and wrap. Hold compact live status from Linear and implementation PRs; meaningful post-merge spec amendments use new PRs. Implementation merges remain human-controlled. Finish with lessons and docs polish.
+description: Drive a related Linear epic through retained spec authoring, human direction approval, checked spec merge, parallel isolated issue lifecycles, and wrap. Hold compact live status from Linear and implementation PRs; meaningful post-merge spec amendments use new PRs. Implementation merges remain human-controlled. Finish with lessons, a retrospective analysis, and docs polish.
 argument-hint: "<epic issue ID, or the related issue IDs to run under one epic, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Discover/create the epic issue; `epic-agent` authors the retained set and opens its review PR; `project-agent` creates/refreshes the unchanged standing project spec | Epic review PR ready → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract. If the owner merges the epic PR themselves, that merge is the approval and nothing is dispatched | Confirmed epic spec merge, not approval alone |
 | **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. The **closure issue** runs last: its QA runs file bugs as children that block it, and it closes only on a clean run. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped, the closure issue included |
-| **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); docs-polish surfaced or justified skip; completion and amendment links reported |
+| **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the wrap analysis once lessons returns, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); wrap analysis posted to the epic issue; docs-polish surfaced or justified skip; completion and amendment links reported |
 
 ## How it stays safe and cheap
 
@@ -195,7 +195,8 @@ The epic-specific delta:
    wrap, each pass's **disposition**
    (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
    clean epic still lands its rows as a rows-only PR; only the proposal inside it is skippable
-   · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
+   · `analysis: <Linear comment link> [N filed]`, never skipped, since "right approach" is
+   itself a result · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
 
    **The retained epic set describes approved intent.** Link it at gates alongside live
    status derived from Linear and implementation PRs. Phase transitions update that status,
@@ -548,8 +549,8 @@ The bar, the three dispositions, and the **two-round convergence budget** are ca
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
 spec-review round budget". Every spec and the epic-spec also get
-[`reuse-review`](../reuse-review/SKILL.md) — `issue-spec` Step 5 / 6.5 for children,
-`epic-agent` for the epic — kept separate from `second-look`. The rule is
+[`reuse-review`](../reuse-review/SKILL.md) — inside the analysis dispatch (`issue-spec` Step 4.5, and again at 6.5 after a fold) for children,
+`epic-agent`'s analysis dispatch for the epic — kept separate from `second-look`. The rule is
 [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 **The budget arithmetic is the `epic-wake` script's, not yours** — one `atReviewBudget()`
@@ -811,6 +812,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   `lessons: <PR#> [proposal skipped: <why>]` to the epic record — the same token the coordinator
   state uses — and report it, so EPIC_WRAP completes on a PR that exists rather than waiting on
   one that never opens.
+- **Analyse the epic.** Once the lessons worker returns, dispatch **one bounded sub-agent**
+  (Opus) to run [`analysis`](../analysis/SKILL.md) at **wrap altitude**, with the epic issue,
+  the retained set, the merged child specs and impl PRs, and the lessons PR. Record
+  `analysis: <comment link> [N filed]` and surface the verdict in the wrap report. **It never
+  gates the wrap and never reopens the epic.**
+
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch

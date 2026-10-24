@@ -202,6 +202,9 @@ here** at epic altitude. Then the links line and the collapsed contract.
 > notice them. Reasoning, what lost and the rules every child obeys:
 > [DECISIONS.md](DECISIONS.md).
 >
+> **Analysis:** right approach. The alternatives pass found no better division of the set.
+> [DECISIONS.md → Analysis](DECISIONS.md#analysis).
+>
 > ## Reviewers · look here
 >
 > - **Is it three or two?** FIX-777, the backoff default, is the one I'd cut. Kept and scoped
@@ -465,7 +468,11 @@ Sections, in order:
    answers to cross-cutting questions land once they have one.
 6. **What the end-state POC showed** — four lines: built · see it · showed · changed. Omit the
    section when the epic built none, and say so in a line.
-7. **How it got here** — one line per turn, newest last. A set-table refresh never earns a
+7. **Analysis** — as an issue's ([`spec-template.md`](spec-template.md) → `DECISIONS.md`),
+   at epic altitude: the `adhd` alternatives pass always runs here, so objective 3 names the
+   strongest other *division of the set*, not only another design. Its date is the watermark
+   the wrap analysis reads.
+8. **How it got here** — one line per turn, newest last. A set-table refresh never earns a
    line; a change to the objective or a cross-cutting call always does.
 
 > # FIX-770 · Decisions

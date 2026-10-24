@@ -46,9 +46,11 @@ hold/release. A change can pass question 7 and still fail here.
 
 The caller dispatches this skill. It is not a new lifecycle. Existing triggers:
 
-- **`issue-spec` Step 5** — every spec, before the spec PR is opened.
+- **The spec-altitude [`analysis`](../analysis/SKILL.md) dispatch** — every spec and
+  epic-spec, before the PR opens (`issue-spec` Step 4.5, `epic-agent` on Create). The analyst
+  runs this skill for its reuse objective and reads the verdicts.
 - **`issue-spec` Step 6.5** — again after a fold that moves Adds or *What's already here*.
-- **`epic-agent`** — the epic-spec, after authoring and after a fold that moves the set's Adds.
+- **`epic-agent`** — again after a fold that moves the set's Adds.
 - **`review`** — the reuse lens, on every spec/epic target and on every implementation change
   (so an Adds item the spec missed, or one the implementer invented, still gets a verdict).
 - **`epic-pm`** — once per spec at the approval gate, separately from its `second-look` pass.

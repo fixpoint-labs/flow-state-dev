@@ -3,7 +3,7 @@ name: adhd
 context: fork
 agent: general-purpose
 model: opus
-description: Parallel divergent ideation — spawns N isolated sub-agents under different cognitive frames (regulator, biology, speedrunner, subtract-then-add, user-space only), scores, clusters, prunes traps, and deepens the survivors into concrete alternative approaches. Use on /adhd or "ADHD mode"; as `review`'s ALTERNATIVES lens when a change's shape is worth re-opening; and from `issue-spec` when Step 3.5 is stuck between build-and-don't-build, or Step 4 hits a design question the existing code can't answer. Skip for syntax, lookups, bugs with a known root cause, and closed phrasing ("quick", "standard", "canonical"). Keywords - alternative approaches, other shapes, third move, brainstorm, ideate, what else could this be, are we sure this is the right shape.
+description: Parallel divergent ideation — spawns N isolated sub-agents under different cognitive frames (regulator, biology, speedrunner, subtract-then-add, user-space only), scores, clusters, prunes traps, and deepens the survivors into concrete alternative approaches. Use on /adhd or "ADHD mode"; from `analysis` for its other-shapes objective (always on an epic spec, on trigger for an issue spec); and from `issue-spec` when Step 3.5 is stuck between build-and-don't-build, or Step 4 hits a design question the existing code can't answer. Skip for syntax, lookups, bugs with a known root cause, and closed phrasing ("quick", "standard", "canonical"). Keywords - alternative approaches, other shapes, third move, brainstorm, ideate, what else could this be, are we sure this is the right shape.
 argument-hint: "<the problem or the change — plus any context that constrains the answer>"
 ---
 
@@ -23,7 +23,7 @@ folded together, the critic strangles the generator and you get neither.
 > strict generate/critique split, the frame table, the trap flag) is adapted from the
 > MIT-licensed **ADHD** skill by Udit Akhourii — <https://github.com/UditAkhourii/adhd>,
 > which also ships a Node/TS library and CLI. Adapted here for FSD: four FSD-shaped frames
-> added, and two entry contexts (spec and review) with their own convergence gates. The
+> added, and two entry contexts (spec and analysis) with their own convergence gates. The
 > upstream package is deliberately **not** a dependency — the Agent tool runs the same
 > loop with nothing to install.
 >
@@ -51,7 +51,7 @@ This skill is expensive — 8 sub-agent calls, 5 to 10x a single answer. Do not 
 that when a direct answer is better.
 
 **Step 1. Explicit invocation.** If the user typed `/adhd`, asked for ADHD mode, or **any
-skill dispatched this deliberately** — `review` as its alternatives lens, `issue-spec` from
+skill dispatched this deliberately** — `analysis` for its other-shapes objective, `issue-spec` from
 a Step 3.5 stall or a Step 4 design question — **skip the rest and go to Phase 1.** The
 caller already chose this instrument; re-gating it here would let the self-judge below abort
 a run the caller committed to (a third-move question can read as low-stakes, and an issue
@@ -200,70 +200,58 @@ divergence surfaced a genuinely live fork the user should rule on, it goes to
 [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), not as a
 neutral menu. Rejected branches are one line each. Do not paste the wide set into the spec.
 
-### B. Review context — the ALTERNATIVES lens
+### B. Analysis context — objective 3, *other shapes*
 
-**When.** [`review`](../review/SKILL.md) dispatches this lens **on trigger, never by
-default** — it is not part of the standing lens set, because after the code exists most
-alternatives are expensive regret. It fires when the caller asks for it, or when the
-change trips the pre-flight gate on its own: new public API surface, a new pattern /
-capability / block kind, a schema or scope decision, or a spec whose *considered and dropped*
-weighed no real alternative.
+**When.** [`analysis`](../analysis/SKILL.md) dispatches this for its *other shapes*
+objective. That skill owns when. Wrap-altitude analysis may dispatch it too, when what
+the build revealed reopens the shape. `review` does not run it.
 
-**Scope: alternatives only.** In this context the skill reports *other shapes the change
-could have taken*. It does not report bugs (correctness lens), bloat (restraint lens), or
-pattern conflicts (coherence lens).
+**Scope: alternatives only.** Report *other shapes this could take*. Not bugs, not bloat, not
+pattern conflicts.
 
-**When divergence turns one of those up, return it — routed, not dropped.** Do not write it
-as an alternatives row, and **do not try to hand it to the sibling lens**: the lenses run in
-parallel as independent sub-agents, so the one you'd hand it to has no channel to receive it
-and may already have returned. Put it in a separate **Routed findings** list, tagged with the
-lens it belongs to, and return that alongside your rows. The coordinator's dedupe step is
-where it gets merged with that lens's own findings or attributed on its own — which keeps it
-from being double-counted without letting it vanish. Divergence is sometimes the only pass
-that walks into a given defect; a finding this lens can't file itself still has to survive.
+**When divergence turns one of those up, return it — routed, not dropped.** Don't write it as
+an alternatives row. Put it in a separate **Routed findings** list, tagged with what it is
+(a defect, bloat, a coherence break), and return that alongside your rows; analysis carries it
+into its own *Routed findings* for the author or `review`. Divergence is sometimes the only
+pass that walks into a given defect, so it has to survive.
 
 **The switch test.** An alternative earns a row only if **all four** hold:
 
-1. **Materially different shape** — a different block kind, primitive, or layer. A
-   variation on the same design is not an alternative.
-2. **Concretely describable** — you can name the blocks, files, or surface it would be,
-   in two sentences. "Could be more elegant" is not a candidate.
+1. **Materially different shape** — a different block kind, primitive, layer, or (at epic
+   altitude) a different division of the set. A variation on the same design is not an
+   alternative.
+2. **Concretely describable** — you can name the blocks, files, surface, or issues it would
+   be, in two sentences. "Could be more elegant" is not a candidate.
 3. **Wins on a named axis** — less public surface, fewer moving parts, removes a whole
    class of edge case, drops a dependency. Name the axis; don't gesture at "cleaner".
-4. **Switch cost stated honestly** — what moving to it costs *now*, given what's built.
-   An alternative whose switch cost exceeds what it wins still earns its row, but say so
-   plainly and mark it as a note for next time.
+4. **Switch cost stated honestly** — at spec altitude, what adopting it costs the plan; at
+   wrap, what moving to it costs given what's built.
 
-**Severity is `note` by default, and never `must-fix`.** The approach shipped; this lens
-informs the next one. The one exception: if an alternative exists *because* the current
-shape is actually broken or incoherent, that is the correctness or coherence lens's
-finding — return it as a **routed finding** tagged with that lens instead of an alternatives
-row. The coordinator sets its severity, which is how a real break can still come out as
-must-fix even though this lens can't raise one.
+**The author decides, not this skill.** Survivors go back through the analysis disposition
+(fold · record · open) and, for an issue, through `issue-spec` Step 3.5's necessity bar —
+divergence widens the options, it never launders one past the gate.
 
 **"The current approach is the right shape" is a valid and common verdict.** Say it in one
-line and stop. Padding a review with three shapes nobody will build is exactly the noise
-`review`'s no-padding guardrail exists to prevent.
+line and stop.
 
-**Output** (merges into `review`'s single ranked table):
+**Output** (becomes analysis's objective 3):
 
 ```
-### Alternatives lens
+### Other shapes
 
-**Verdict:** <Current shape is right | N alternative(s) worth recording> — <one sentence>.
+**Verdict:** <Current shape is right | N alternative(s) worth weighing> — <one sentence>.
 
-| # | Alternative | Wins on | Switch cost now | Sev |
-|---|-------------|---------|-----------------|-----|
-| 1 | <2-sentence shape> | <named axis> | <honest> | note |
+| # | Alternative | Wins on | Switch cost | Recommend |
+|---|-------------|---------|-------------|-----------|
+| 1 | <2-sentence shape> | <named axis> | <honest> | <fold / record / ask> |
 
 **Traps flagged:** <attractive-but-wrong branches, one line of reason each>. (Omit if none.)
 
-**Routed findings** — not alternatives; for the coordinator to classify and dedupe against
-the named lens. (Omit if none.)
+**Routed findings** — not alternatives. (Omit if none.)
 
-| Finding | Belongs to | Why it's not an alternative |
+| Finding | What it is | Why it's not an alternative |
 |---------|-----------|-----------------------------|
-| <short> | correctness / restraint / coherence | <one line> |
+| <short> | defect / bloat / coherence | <one line> |
 ```
 
 ## Output shape (direct invocation)

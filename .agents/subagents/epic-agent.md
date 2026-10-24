@@ -73,12 +73,20 @@ Take the single action the dispatch calls for:
   obeys — and the coordination seams). *What's already here* cites each predecessor by its exact
   prior anchor and says what the set keeps, amends or supersedes.
   Cite real PR/Linear history where no repository artifact exists; no invented paths or backfill.
-  Keep authored figures, assets, and POCs with this set. Run
-  [`reuse-review`](../skills/reuse-review/SKILL.md) on the epic-spec before opening the PR;
-  a reuse or extend verdict on an Adds item treated as new is above the bar
+  Keep authored figures, assets, and POCs with this set.
+
+  **Before you open the PR, get the set analysed.** Dispatch a fresh `general-purpose`
+  sub-agent (Opus) to run [`analysis`](../../.agents/skills/analysis/SKILL.md) at spec altitude
+  on the drafted set, with the research you did and the Linear project. That analyst also runs
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the set, and its reuse objective reads
+  those verdicts. A reuse or extend verdict on an Adds item treated as new is above the bar
   ([`orchestration.md`](../../docs/contributing/orchestration.md#compose-existing-pieces)).
-  Open the epic PR and link it from Linear; do not publish a full-content mirror. Return
-  handles for human sign-off.
+  Dispose as that skill's Altitude 1 says; a fold here is the objective, the division into
+  issues, or a cross-cutting call, and its disposition test is the same as spec review's. One
+  line under the PR sign-off: the verdict and what it changed. It costs no review rounds.
+
+  Open the epic PR and link it from
+  Linear; do not publish a full-content mirror. Return handles for human sign-off.
   Approval must bind to the reviewed head; no agent approval or stale-label bypass.
   The coordinator schedules a separate authorized MERGE-ONLY assignment before children start,
   unless the owner merged the PR themselves: that merge is the approval.
@@ -207,6 +215,7 @@ epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (canonical set and review PR linked from Linear: yes/added)
 objective: <one line>   approved_head: <SHA/none>   merged: <observed yes/no>
 did: <one line — created | updated (folded feedback / refreshed: <what moved>) | refreshed: <what moved | nothing> | end-state POC>
+analysis: <on create: verdict · folded N · recorded N · open N | n/a>
 head: <the commit the set now sits on — the PR body's images are pinned to it>
 pins: none | <the <img> lines, when the body could not carry them and a person has to paste>
 spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>

@@ -68,7 +68,7 @@ Other skills the spec author should reach for when relevant:
 - **`settle-claim`** — the review-time sibling of `prototype`, and the two are not interchangeable. `prototype` is **exploratory and yours**: you're undecided, and you build to *learn* (Step 4). `settle-claim` is **adversarial and contested**: a review thread turns on a factual claim about how the system behaves, prose has already failed on it, and a throwaway POC returns a CONFIRMED / REFUTED verdict with evidence (Step 6.5's fourth disposition). Reach for it the *second* time a claim is argued — that's the circuit breaker on the flip-flopping loop, not a last resort.
 - **`adhd`** — when the candidate set itself is too narrow, which is a different complaint from being undecided within it. `prototype` and `settle-claim` both **judge candidates you already hold**; `adhd` **generates the set**, by fanning out isolated sub-agents under cognitive frames (including four FSD-shaped ones — subtract-then-add, user-space only, wrong block kind, the trace) and converging on a shortlist with an opinion. Its two triggers here are Step 3.5's *third move* stall and a Step 4 design question where you suspect the two shapes on the table aren't the only two. It costs 8 sub-agent calls, so it is a decision-point instrument, not a default step. Whatever survives goes **back through Step 3.5's necessity bar** — divergence widens the options, it never launders one past the gate.
 - **`improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction is filed as an issue through `issue-manager` and named in `SPEC.md`'s debt table, *Leaves* row — *"<area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `improve-codebase-architecture`" (FIX-N).*
-- **`reuse-review`** — required at Step 5, and again at Step 6.5 after a fold that moves Adds.
+- **`reuse-review`** — required on every spec. The Step 4.5 analyst runs it for the reuse objective, and it runs again at Step 6.5 after a fold that moves Adds.
   Separate from `second-look`. The rule it checks is
   [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
@@ -83,7 +83,7 @@ Either way the decisions land in `DECISIONS.md` as cards and on `SPEC.md`'s sign
 
 ## Workflow
 
-Run research (Steps 1–3), necessity/refinement (3.5), draft `SPEC.md` and `DECISIONS.md` with their artifacts (4), validate (5), then publish one ready spec PR and Linear links (6). Review, reframe the issue, and present (6.5–8). Record the initial draft in `DECISIONS.md → How it got here`.
+Run research (Steps 1–3), necessity/refinement (3.5), draft `SPEC.md` and `DECISIONS.md` with their artifacts (4), get the draft analysed by a fresh sub-agent (4.5), validate (5), then publish one ready spec PR and Linear links (6). Review, reframe the issue, and present (6.5–8). Record the initial draft in `DECISIONS.md → How it got here`.
 
 ### Step 1: Pull the Linear Issue
 
@@ -421,13 +421,29 @@ How this workflow's research feeds the set:
   The *how we'll know it's met* and *what changes* figures are not optional; the rest are drawn where position carries the
   meaning ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)).
 
+### Step 4.5: Analysis — is this the right work?
+
+Dispatch a **fresh `general-purpose` sub-agent (Opus)** — not you; you already chose the
+direction — to run [`analysis`](../analysis/SKILL.md) at spec altitude. Give it the drafted
+`SPEC.md` and `DECISIONS.md`, the Linear issue, the returns from Agents C and D, your Step 3.5
+answers (question 7's job list included), and the epic's retained set if the issue has one.
+
+The analyst runs [`reuse-review`](../reuse-review/SKILL.md) on the *Builds on / Adds* table
+for the reuse objective; there is no separate reuse step. A **reuse X** or **extend X** verdict
+on an item the spec treated as new is a fold. Don't skip it because Agent E grades the debt,
+and don't fold it into a `second-look`.
+
+Dispose of each finding as that skill's Altitude 1 says (fold / record / open). A fold is a
+re-draft before Step 5, so validation checks the direction you publish. Write `DECISIONS.md` →
+*Analysis* from the return: the date, the watermark, the verdict, one line per objective, and
+each finding's disposition, including a clean "right approach". This step costs no review rounds.
+
 ### Step 5: Validate the Spec
 
 Validators check `SPEC.md` and `DECISIONS.md` — the diff, the docs line, *what's already here*,
 Builds on / Adds, and the debt — against current code/docs, not approved intent alone.
 
-Launch the validation agents in parallel. **Also dispatch `reuse-review`** (below) in
-that same parallel batch — it is not Agent E and not `second-look`.
+Launch the validation agents in parallel. `reuse-review` already ran inside Step 4.5.
 
 #### Agent E: Technical Validation
 Launch a `feature-dev:code-architect` sub-agent to review the spec for:
@@ -471,16 +487,6 @@ against what is being built, which is the undersell this check exists to catch. 
 
 A finding here is fixed in `SPEC.md` before publishing: widen the goal, or keep it and state
 the gap as the hardest sign-off line. Never argue it away in the reply.
-
-#### Reuse review (required, every spec)
-
-Dispatch [`reuse-review`](../reuse-review/SKILL.md) on this spec, in parallel with
-Agents E, F, and I. It searches the code for each Builds on / Adds row. A verdict of
-**reuse X** or **extend X** on an item the spec treated as new is spec-level: fold it
-before publishing. Canonical:
-[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
-Do not skip this because Agent E already graded the debt, and do not fold it into a
-`second-look`.
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
@@ -542,6 +548,7 @@ Publish canonical content in the repository; Linear carries status and links, no
      and the debt's sign-off lines are not decisions and do not count: they are what approval
      already certifies ([`orchestration.md`](../../../docs/contributing/orchestration.md) → the
      bar), stated so the size and the net are visible. When the smaller goal is what ships, that is a live fork and it counts. If the combined total exceeds three, fix the upstream spec rather than lengthening the ask. Keep Linear pointed at the current review artifact.
+   - **Analysis, one line** under the sign-off: the verdict and what it changed, linking `DECISIONS.md` → *Analysis*.
    - **`## Reviewers · look here`** — one to three items, each naming the document and the question, plus what is deliberately not here.
    - **The links line** — the two documents, Linear, the epic, predecessors, and the spec merge contract.
    - **The collapsed contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it. A second collapsed block, **engineering calls**, only when the filters dropped a decision.

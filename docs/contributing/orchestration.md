@@ -54,6 +54,8 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   - `scout` (Haiku) — read-only status/handle fetches.
   - `spec-implementer` (Opus) — implements one slice of an approved spec, planning its own build.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
+  - an **analyst** (Opus, a fresh sub-agent running the `analysis` skill) — asks whether a
+    drafted spec, or a wrapped epic, is the right work. See [Analysis and review](#analysis-and-review).
 - **Workflow scripts** — the parts of a lifecycle that are pure mechanism, as deterministic
   control flow instead of prose a coordinator re-derives each wake. Both live in
   `.agents/workflows/` and share one verification harness (`node .agents/workflows/verify.mjs`,
@@ -592,6 +594,34 @@ so `merge` is completion. For a **multi-PR** issue (the implementer's PR plan), 
 merges the assembled end-to-end goal runs, and only its PASS marks the issue done** — the last
 merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for the exact step.
 
+## Analysis and review
+
+Two different jobs. [`review`](../../.agents/skills/review/SKILL.md) looks for flaws in the
+work, and PR feedback, Codex, and spec-PR review rounds are review too.
+[`analysis`](../../.agents/skills/analysis/SKILL.md) asks whether it is the right work; that
+skill holds the seven objectives and both altitudes. Its reuse objective is answered by
+`reuse-review` ([Compose existing pieces](#compose-existing-pieces)), not by a second search.
+On an implementation, a mechanism the spec doesn't list is a flaw, so `review` keeps its own
+reuse lens.
+
+Analysis runs at two points:
+
+| Point | Dispatched by | What it does with the answer |
+|---|---|---|
+| **A drafted spec, before the direction gate** — issue or epic | `issue-spec` Step 4.5; `epic-agent` on Create | The author folds what changes the approach, records the rest in `DECISIONS.md` → *Analysis*, and puts a fork only the user can decide in *Open*. An epic spec always gets the `adhd` alternatives pass; an issue spec only on trigger |
+| **Epic wrap**, after the lessons worker | `epic-lifecycle` EPIC_WRAP | A comment on the Linear epic, concerns filed as issues. Never gates the wrap |
+
+**The analyst is never the author.** It is a fresh sub-agent, so it judges a direction it
+has no stake in. The author still disposes of each finding, using the bar below; the
+*Analysis* section shows the human what was folded and what was set aside.
+
+**Spec review doesn't redo it.** Reviewers treat `DECISIONS.md` → *Analysis* as settled
+unless a thread brings a new fact the analysis didn't have.
+
+**Analysis costs no review rounds.** It happens during authoring, before the spec PR is put
+to reviewers, so it does not count against the two-round budget below. Each run records its
+date, and the next analysis reads it as the "since when" for new factors.
+
 ## Spec review: the bar and the convergence rule
 
 A spec PR exists to answer **one** question: *is this the right approach?* It is a
@@ -787,8 +817,9 @@ spec-level (fold). Worked examples live in the skill, not here.
 
 It runs through the plumbing that already reviews specs — not a new lifecycle:
 
-- `issue-spec` Step 5, before the spec PR opens; Step 6.5 again after a fold that moves Adds
-- `epic-agent`, after authoring the epic-spec and after a fold that moves the set's Adds
+- inside the [analysis](#analysis-and-review) dispatch, before the spec PR opens: `issue-spec`
+  Step 4.5, and `epic-agent` on Create. Analysis's reuse objective reads its verdicts rather
+  than searching again. It runs again at Step 6.5, or in `epic-agent`, after a fold that moves Adds
 - `review`'s reuse lens, on spec/epic targets and on implementation changes
 - `epic-pm`, once per spec at the approval gate, separately from its `second-look` pass
 
