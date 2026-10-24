@@ -1079,7 +1079,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
       // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-      // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
       const metadata = {
         ...(given ?? {}),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
@@ -1677,7 +1676,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // What a model asked beside the message is a caller's, as on any filing:
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
-    // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
     const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: await filingProjectStampOf(ctx) };
     const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
     const { metadata: _metadata, input: _input, ...rest } = filing;
