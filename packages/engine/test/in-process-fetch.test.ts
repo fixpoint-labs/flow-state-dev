@@ -81,6 +81,26 @@ describe("createInProcessFetch", () => {
     expect(received).toBe(sent);
   });
 
+  it("hands over a Request from another class by its URL, not as a stringified object", async () => {
+    // A host's Request need not be this realm's global one: `@hono/node-server`
+    // brings its own, and a test that installs DOM globals swaps the global.
+    // Taken for a string, it would read as "/[object Request]" and answer 404.
+    let received: unknown;
+    const fetcher = createInProcessFetch({
+      ...echoRouter,
+      GET: async (req, ctx) => {
+        received = req;
+        return Response.json({ method: "GET", path: ctx.params.path });
+      }
+    });
+    const foreign = { url: "http://x.invalid/api/flows/sessions", method: "GET", headers: new Headers() };
+    expect(foreign instanceof Request).toBe(false);
+    const res = await fetcher(foreign as unknown as Request);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ method: "GET", path: ["sessions"] });
+    expect(received).toBe(foreign);
+  });
+
   it("answers 405 for a method the router does not handle, HEAD included", async () => {
     const fetcher = createInProcessFetch(echoRouter);
     for (const method of ["PUT", "HEAD", "OPTIONS"]) {
