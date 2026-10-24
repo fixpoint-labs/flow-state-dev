@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { Command } from "commander";
-import { createInMemoryStores, runAction, type FlowState, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, createInProcessFetch, runAction, type FlowState, type StoreRegistry } from "@flow-state-dev/engine";
 import { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { executeRunCommand, registerRunCommand } from "../src/commands/run";
 import { executeChatCommand, registerChatCommand } from "../src/commands/chat";
@@ -69,9 +69,7 @@ async function http(router: Router, method: "GET" | "POST", path: string, body?:
     init.body = JSON.stringify(body);
     init.headers = { "content-type": "application/json" };
   }
-  const res = await router[method](new Request(`http://app.local/api/flows/${path}`, init), {
-    params: { path: path.split("/").filter((s) => s.length > 0) },
-  });
+  const res = await createInProcessFetch(router)(`/api/flows/${path}`, init);
   const text = await res.text();
   let json: any;
   try {
