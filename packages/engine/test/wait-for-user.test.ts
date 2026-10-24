@@ -59,7 +59,7 @@ function askingFlow(seen: string[]): FlowInstance {
       }
     }
   });
-  return defineFlow({ kind: "asking", actions: { ask: { block: sequencer({ name: "s" }).step(work).step(ask) } } })({ id: "asking" });
+  return defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(work).step(ask) } } })({ id: "asking" });
 }
 
 function harness(flow: FlowInstance) {
@@ -86,7 +86,7 @@ async function park(h: ReturnType<typeof harness>, flow: FlowInstance, input: un
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
-    actionName: "ask",
+    actionName: "run",
     input,
     userId: USER,
     sessionId: SESSION,
