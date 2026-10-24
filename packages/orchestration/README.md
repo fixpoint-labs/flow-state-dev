@@ -511,7 +511,10 @@ A notice waits for the request that filed its task while that request is running
 parked on a person or a wait. The entry holds the notice back the way `defer` does (below). The
 request sends what it held as it ends; once it parks, the session's pass runs about two seconds
 later and sends it then, past its resend backoff. A wait in the filing request therefore reads the ending
-first. Before it runs `block`, the entry takes the notice in one conditional write (the board's
+first. A filing request whose server died mid-run holds it only until the engine can tell: once its
+heartbeat has been silent past the stale-request threshold, a pass sends it, and the stale-request
+sweep that marks the request interrupted brings the session's pass forward to then. With the
+defaults that is within about 90 seconds of the request's last heartbeat. Before it runs `block`, the entry takes the notice in one conditional write (the board's
 optional `takeNotice`, which both built-in backings implement), so a wait that reads the task and
 the notice never both deliver the same ending. A notice whose `block` threw stays owed, and the
 next copy takes it over; a copy that finds the notice taken by a request that hasn't ended,

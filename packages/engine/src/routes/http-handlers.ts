@@ -12,7 +12,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
-import { detectInterruptedRequests } from "../execution/request-recovery";
+import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -384,7 +384,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         options.staleThresholdMs ?? runtimeConfig.requestHost?.staleThresholdMs,
       // Same grace the periodic sweeper runs with, so a restart cannot reap a
       // queued row the running server would have left alone.
-      queuedGraceMs: runtimeConfig.queuedGraceMs
+      queuedGraceMs: runtimeConfig.queuedGraceMs,
+      // A request reaped here owes its session's passes now (FIX-2166).
+      wakeEntriesOf: internalEntriesFrom(options.registry)
     }).then((interrupted) => {
       if (interrupted.length > 0) {
         console.warn(

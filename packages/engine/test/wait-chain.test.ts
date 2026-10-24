@@ -207,6 +207,51 @@ describe("whether a request has stopped running its own work", () => {
       unreadable: false
     });
   });
+
+  describe("a request whose process died before the sweep marked it (FIX-2166)", () => {
+    // Its record still reads `in_progress`; only its heartbeat stopped.
+    const NOW = 1_000_000;
+    const THRESHOLD = 60_000;
+    const inProgress = (id: string) => ({ id, status: "in_progress", sessionId: "s" });
+    const entries: Record<string, { lastHeartbeatAt: number; queuedAt?: number }> = {
+      beating: { lastHeartbeatAt: NOW - 10_000 },
+      // Last beat just inside the threshold: a request on a live peer, between beats.
+      atThreshold: { lastHeartbeatAt: NOW - THRESHOLD },
+      stopped: { lastHeartbeatAt: NOW - THRESHOLD - 1 },
+      // Queued for an external worker: nothing beats for it yet, and it is not dead.
+      queued: { lastHeartbeatAt: NOW - 10 * THRESHOLD, queuedAt: NOW - 10 * THRESHOLD }
+    };
+    const waitsWith = (heartbeat?: { staleThresholdMs: number }) =>
+      createRequestWaits({
+        provider: { ...provider([]), loadSuspension: async () => null as never },
+        deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
+        userId: "u",
+        requestId: "r",
+        own: undefined,
+        sessionId: "s",
+        readRequest: async (id) => inProgress(id) as never,
+        ...(heartbeat !== undefined
+          ? { heartbeat: { readEntry: async (id) => entries[id], staleThresholdMs: heartbeat.staleThresholdMs, now: () => NOW } }
+          : {})
+      });
+
+    it("reads it as stopped once its heartbeat is stale past the sweep's threshold, and no sooner", async () => {
+      // A notice held for it is sent then, rather than when the sweep gets to it.
+      expect(await waitsWith({ staleThresholdMs: THRESHOLD }).running!(["beating", "atThreshold", "stopped", "queued", "unregistered"])).toEqual({
+        beating: true,
+        atThreshold: true,
+        stopped: false,
+        queued: true,
+        // No entry is no proof its process is gone: the record answers.
+        unregistered: true
+      });
+    });
+
+    it("reads the record alone where heartbeats can't say: a stale entry there is a healthy request", async () => {
+      // A flow with heartbeats off never beats, so every entry of it looks stale.
+      expect(await waitsWith().running!(["stopped"])).toEqual({ stopped: true });
+    });
+  });
 });
 
 describe("the stamp a waited dispatch leaves on its child", () => {

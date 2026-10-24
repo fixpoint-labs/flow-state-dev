@@ -16,7 +16,7 @@
  * executor's heartbeat always lands inside it.
  */
 import { detectInterruptedRequests } from "./request-recovery";
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
@@ -52,6 +52,12 @@ export type CreateStaleRequestSweeperOptions = {
    * Default: 10000 (10s) — matches `runAction`'s default.
    */
   registryHeartbeatMs?: number;
+  /**
+   * The internal entries of the flow a request ran on, so a request this sweep
+   * marks interrupted brings its session's wakes forward (FIX-2166). See
+   * `detectInterruptedRequests`.
+   */
+  wakeEntriesOf?: (record: RequestRecord) => readonly string[];
   logger?: RuntimeLogger;
 };
 
@@ -82,6 +88,7 @@ export function createStaleRequestSweeper(
     staleThresholdMs = DEFAULT_THRESHOLD_MS,
     queuedGraceMs,
     registryHeartbeatMs = DEFAULT_REGISTRY_HEARTBEAT_MS,
+    wakeEntriesOf,
     logger = DEFAULT_RUNTIME_LOGGER
   } = options;
 
@@ -114,7 +121,13 @@ export function createStaleRequestSweeper(
   let inFlight: Promise<unknown> | undefined;
   const tick = (): void => {
     if (disposed || inFlight !== undefined) return;
-    inFlight = detectInterruptedRequests({ stores, staleThresholdMs, queuedGraceMs, logger })
+    inFlight = detectInterruptedRequests({
+      stores,
+      staleThresholdMs,
+      queuedGraceMs,
+      ...(wakeEntriesOf !== undefined ? { wakeEntriesOf } : {}),
+      logger
+    })
       .catch((err) => {
         logRuntimeEvent(
           logger,
