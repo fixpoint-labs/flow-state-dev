@@ -9,7 +9,7 @@
 | **filed a coding task that made changes** | The task completes on the judge's verdict. Nobody accepts the work | The task waits on them for review, with the commits and the judge's verdict shown as information, not approval. *Resolve* (accepted) completes it with no second coding run |
 | **asks for changes on that work** | Can't. They file a follow-up task, which starts cold | Their words go to the next run, which continues the same coding session on the same try, and it comes back for review |
 | **gets a run with no changes, or a failed one** | Completes, or fails its try | The same: no changes completes, a failure fails the try |
-| **leaves the review unanswered** | n/a | At the person-stop deadline, 7 days by default, the task completes, its output saying no review came ([D2](DECISIONS.md#d2)) |
+| **leaves the review unanswered** | n/a | At the person-stop deadline, 7 days by default, the task completes, its output saying no review came, so a screen shows it as *not reviewed*, never as approved ([D2](DECISIONS.md#d2)) |
 | **cancels the task while it waits** | n/a | The review closes, no run starts, and the branch and its kept files stay |
 | **builds a host that didn't ask for review** (DevTeam's `coder`, the conductor lab) | Runs complete on the verdict | Unchanged. Review is a manager option the host turns on ([D1](DECISIONS.md#d1)) |
 
