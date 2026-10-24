@@ -651,7 +651,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "request_status") {
         return await handleGetRequestStatus(request, route, {
           registry: options.registry,
-          stores
+          stores,
+          tenantId,
+          principal
         });
       }
 

@@ -36,4 +36,10 @@ export type RequestStatusSnapshot = {
   lastHeartbeatAt?: number;
   /** Convenience: `Date.now() - startedAtMs` at the time of the read. */
   ageMs: number;
+  /**
+   * The session the request runs in. Absent for a request sent without a
+   * session. Lets a caller holding only a request id continue or retry it,
+   * since those routes are addressed by session.
+   */
+  sessionId?: string;
 };
