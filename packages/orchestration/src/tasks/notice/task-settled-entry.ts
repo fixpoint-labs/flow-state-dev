@@ -186,6 +186,10 @@ async function takeFor(
  * Reads the row committed (`readCommittedTask`): an ending another request
  * wrote after this one first read the board is not in its snapshot.
  *
+ * On a board whose ref has no `takeNotice` (a custom ref), nothing records
+ * the take: the queued copy can run beside this request, and only the
+ * acknowledgement (`noteSeen`) keeps the notice from being heard twice.
+ *
  * @returns The notice taken, with the dependents its ending cancelled named,
  *   or `undefined` when the row doesn't owe it or another request holds it.
  */
