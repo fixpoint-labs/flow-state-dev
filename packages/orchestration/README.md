@@ -866,7 +866,7 @@ included: "a finished task takes no message; file a follow-up"), `cancel_takes_n
 check runs before the write, so a refused call writes nothing. A cancel through the tool writes
 `cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
 
-On a board that starts work now, `createTask` starts a task as soon as it is filed. Pass
+On a board that starts work on filing, `createTask` starts a task as soon as it is filed. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
 ready row as soon as it's written, the way a Workforce conversation does; `taskToolActions(collectionId,
 resolve, roster, { dispatches: true })` does the same for the actions. On such a board a task
@@ -980,10 +980,10 @@ refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the
 [Task board → Waiting on a task](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-task)
 for the refusals.
 
-`wait` and `deadline` are in `getTask`'s schema only on a board that dispatches, also resumes
-waits, and runs on a host that can hold a wait: pass
+`wait` and `deadline` are in `getTask`'s schema only on a board that starts work on filing, also
+resumes waits, and runs on a host that can hold a wait: pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
-the board hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
+the board also hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
 session's `onTaskSettled` request resumes the waiting turn when its task ends; after a crash the
 session's wake sends it again), and the host has durable execution, a running durability sweeper
 and a store that keeps wakes (`canHoldWait`). `resumesWaits` defaults to `false`. A composing
