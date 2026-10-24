@@ -853,7 +853,7 @@ completed. Nothing keeps a request open while it waits, so a server restart lose
 A task that already ended is returned at once. If no `onTaskSettled` request for that ending
 has started yet, the wait returns the ending, and no notice is sent for it.
 
-While an `onTaskSettled` request for that ending is still running, `getTask` returns this
+While an `onTaskSettled` request for that ending is still running or parked, `getTask` returns this
 instead of the task:
 
 ```ts
@@ -861,25 +861,24 @@ instead of the task:
 ```
 
 `message` names the task, says its ending comes to the conversation as a notice, and tells the
-model not to wait on it again. The session hears that ending once, from the notice. If that
-request fails, the notice is sent again, and a wait gets the same answer until it is handled.
-Once the notice has been handled, nothing more is coming, so a wait returns the task, output
-and all.
+model not to wait on it again. The session hears that ending once, from the notice. If the
+`onTaskSettled` request fails, it runs again, and a wait keeps getting `arrivesAsNotice` until one
+succeeds. After that, a wait returns the task, output and all.
 
 You'll see it when your turn parks between filing a task and waiting on it, or when a second
-turn waits on a task the first one filed, while the notice is still being handled. Say a turn
-files a task, then waits for a person's approval. The task finishes during that wait, and the
-conversation hears it from `onTaskSettled`. After the approval, the same turn waits on the
-task. If the notice is still running, it gets `arrivesAsNotice`. If the notice is done, it gets
-the task.
+turn waits on a task the first one filed. Say a turn files a task, then waits for a person's
+approval. The task finishes during that wait, and `onTaskSettled` picks up its ending. After the
+approval, the same turn waits on the task. It gets `arrivesAsNotice` if `onTaskSettled` hasn't
+finished with that ending yet, and the task if it has. The timing isn't yours to pick, so handle
+both answers.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
 cancelled: the task runs on, and you can wait on it again. If it ends while your request is
 running, your next `getTask` on it returns the ending. If your request parks or ends first, you
 [hear about it](#hearing-how-a-task-ended) once, the usual way.
-If it parked, waiting on it again after the turn resumes returns `arrivesAsNotice` while that
-notice is still being handled, and the task once it has been. A worker you're
+If it parked, waiting on it again after the turn resumes gets `arrivesAsNotice` or the task, by
+the same rule as above. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 

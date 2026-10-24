@@ -283,7 +283,9 @@ export function takenNoticePatch(
  * owed; `undefined` when no other request took it. A wait answers that the
  * ending arrives as a notice while that notice is being delivered: still owed
  * (under way, or its taker failed and it goes again), or cleared by a taker
- * that still runs (a host may acknowledge before the turn it wakes). Once it
+ * that still runs (a host may acknowledge before the turn it wakes). A taker
+ * that is parked (waiting on a person, say) still counts as handling it, so a
+ * wait answers `arrivesAsNotice` until that taker ends. Once it
  * is cleared and its taker has ended, it has been heard and nothing more is
  * coming (FIX-2181): the wait answers with the row, as a read of it does.
  */

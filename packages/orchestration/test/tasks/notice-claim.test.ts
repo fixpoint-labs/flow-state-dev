@@ -39,6 +39,7 @@ import {
   stepModel,
   toolResults,
   until,
+  untilTakersEnded,
   USER,
   waitAgain,
   waitCall,
@@ -96,11 +97,12 @@ async function eventually(check: () => boolean, withinMs: number): Promise<void>
 
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Until the row's notice is delivered: the notice turn ran and acknowledged it. */
+/** Until the row's notice is delivered: the notice turn ran, acknowledged it and ended. */
 async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: FlowInstance): Promise<void> {
   for (const deadline = Date.now() + 5_000; owedMarkers((await rows(state, flow))[0]!).length > 0; await settle(10)) {
     if (Date.now() > deadline) throw new Error("the notice was never acknowledged");
   }
+  await untilTakersEnded(state, (await rows(state, flow))[0]!);
 }
 
 describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {

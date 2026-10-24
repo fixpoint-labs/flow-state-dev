@@ -32,6 +32,7 @@ import {
   stepModel,
   toolResults,
   until,
+  untilTakersEnded,
   waitAgain,
   waitCall,
   waitedTaskId,
@@ -76,7 +77,7 @@ async function eventually(check: () => boolean, withinMs: number, what: string):
   }
 }
 
-/** Until `taskId`'s notice is delivered: the notice turn ran and cleared its marker. */
+/** Until `taskId`'s notice is delivered: the notice turn ran, cleared its marker and ended. */
 async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parameters<typeof rows>[1], taskId: string): Promise<void> {
   const owed = (row: { metadata?: Record<string, unknown> } | undefined) =>
     Object.entries(row?.metadata ?? {}).some(([key, value]) => key.startsWith("noticeOwed:") && value !== null);
@@ -84,6 +85,7 @@ async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parame
     if (Date.now() > deadline) throw new Error(`${taskId}'s notice was never acknowledged`);
     await new Promise((r) => setTimeout(r, 10));
   }
+  await untilTakersEnded(state, (await rows(state, flow)).find((row) => row.id === taskId)!);
 }
 
 /** Wait until the model has been called `n` times: the turn is past the steps before them. */
