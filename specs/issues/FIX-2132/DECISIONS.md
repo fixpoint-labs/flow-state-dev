@@ -69,7 +69,7 @@ hooks or `ledgers`. Only then does nothing in the coding flow resume, and the ed
   `updateTask({ message })`, answers nothing (ER-8): it is kept on the task, and the run the answer
   starts takes it. The claim gate refuses a held row, so no run starts beside the hold.
 - **A cancel** closes the question with the row (ER-8). No turn is owed, so the manager starts
-  nothing; its branch and kept files stay, as they do today. FIX-2133's cancel leg proves the hold closes.
+  nothing; its branch and kept files stay, and a regression assertion beside `stopsOnAbort` proves it. FIX-2133's cancel leg proves the hold closes.
 - **At the deadline the manager adds nothing.** ER-8's deadline write releases the hold with a
   "no answer came" steer and owes the turn like an answer, so the next run goes ahead in the same
   session, as the [epic decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them) (owner, 2026-10-24).
@@ -149,7 +149,7 @@ For the implementer; none of these changes the approach. Recorded verbatim from 
   move onto the turn generation.
 
 - **Cut to the coding-run delta** (the epic's other-shapes analysis, 2026-10-24): legs c, d and e
-  went, since cancel, the deadline and line answering are FIX-2133's to prove; two regressions and
+  went, since cancel, the deadline and line answering are FIX-2133's to prove; three regressions (a cancel keeping the branch and kept files among them) and
   FIX-2133's reconciler stayed, and the door change dropped to none. It still merges before FIX-2131,
   which deletes `awaitReview`, and keeps the FIX-2163 edge.
 
