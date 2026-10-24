@@ -1,5 +1,334 @@
 # @flow-state-dev/orchestration
 
+## 0.4.0
+
+### Minor Changes
+
+- ad0babd: A person's running turn can hear the tasks that finished while the worker answered (FIX-2159). `defineAgentWorkerFlow({ answerAgain: true })` says each such result in that same request, under the delegate's name, and the worker answers again with it; pass a block instead to change what the worker is told (`finishedTasksAnswerAgain({ message })`, or your own sequencer around `takeFinishedTasks`). The worker's answer after its plan and these share one cap, `MAX_ANSWERS_AGAIN` (3 per request). Orchestration exports `takeOwedNotice`, which takes an owed notice in the running request's name through the same take record `onTaskSettled` uses.
+- e457697: A task row can be an ask (`Task.ask`: the gate its asking turn parks on, and a deadline). The write that ends an asked row also sets `Task.resumeOwed`, on both built-in backings; `TaskFilter.resumeOwed` matches those rows, and the optional `TaskCollectionRef.clearResumeOwed` clears the marker (change kind `resume_settled`). Rows that are not asks are unchanged (FIX-1816).
+- 082693f: Ask follow-ups (FIX-1816): `createTaskToolsCapability` and `taskToolsForTurn` take `{ resumesAsks }`, off by default, so an existing caller of either no longer offers `waitForResponse` until it passes `resumesAsks: true` for a board whose runner calls `resumeOwedAsks` (Workforce's conversation board does); `listTasks` marks an asked row `asked: true`; and `addTaskAndWait` files its row once across a crash, counts the deadline from the filing, answers with a row that completed just before its timeout's cancel, keeps a caller-supplied id but adopts a row under it only when the same call filed it (an ask's gate id now ends in a per-filing nonce, so read it from `row.ask.gateId`, never rebuild it with `askGateId`), and on a re-drive reports the outcome its gate recorded.
+- e00a3b0: The task tools' roster type is renamed `WorkerRoster` → `AssigneeRoster`, the name for who a board's tasks can be assigned to. Its shape is unchanged (`has(assignee)`, `describe()`), so updating the import is the whole migration. The new `AssigneeRosterSource` is either a fixed `AssigneeRoster` or a function of the running block's context that is read on each call that checks an assignee, for a board whose team changes while it is in use. `createTaskToolsCapability(resolver, roster?)` and both `taskToolActions` overloads accept it (FIX-1794).
+
+  A durable task ledger can take `defineTaskCollection({ recordEnding })`, a pure function that is handed every write recording how a task ended (completed, errored, retried, parked, cancelled) inside that same write, and whose `metadata` the row keeps. There is one ending signal on both backings. The ending is detected once, where every write passes, and each recorder runs there in the ending's own write: orchestration's resume recorder first (`Task.resumeOwed` on an asked row's ending, unchanged), then the declared `recordEnding`. `awaitReview(..., { quiet: true })` tells the recorders a park asks nobody anything (FIX-1794).
+
+- 4cdc088: A task board declares whether its drain waits on its tasks: `taskBoard({ mode })`, `"plan"` by default, or `"delegation"`, read back as `board.mode` (with `board.onReview` beside it). A plan board runs every task inline and waits on each; a delegation board hands every task to another session through a dispatcher assignee and waits on none. `taskBoard()` refuses a board whose assignees contradict its mode, naming the fix, and `goalSeekLoop()` refuses a delegation board and an `onReview: "exit"` board (FIX-2076).
+
+  Migration, at upgrade, for teams outside the repo:
+
+  - A board with a dispatcher assignee adds `mode: "delegation"`, the fix its refusal names. A board that mixed inline and dispatching assignees splits into a plan board and a delegation board.
+  - `dispatchedTaskPredicate` is removed: use the board's `mode`.
+
+  The task tools now answer a wrapping ref's own refusal, `TaskWriteRefusedError` (exported from `@flow-state-dev/orchestration/tasks`), as a soft `{ ok: false, error: "<code>: <message>" }`, with nothing written.
+
+- 5492a77: A board can start work on another worker now: on a board that dispatches (a Workforce conversation's, or one built with `{ dispatches: true }`), a task is handed over as soon as it is filed, and one filed held waits until it is released. Filing a task never waits: it refuses `waitForResponse` and `timeoutMs` by name. The wait names are renamed with no alias (`canHoldAsk` → `canHoldWait`, and the rest of the `Ask` names to `Wait`) (FIX-1875).
+- 6819520: A task board that starts a row on another worker now **dispatches** it; **hand-off** means only passing work that is already under way (FIX-1876).
+
+  - The board's ending for "every remaining row is running in a dispatch run" is now `terminationReason: "dispatched"` (was `"handed-off"`). A log stored before the upgrade still carries `"handed-off"` for the same ending, so a reader of `task-board-meta` items should take both.
+  - The row-dispatch block's output is now `{ dispatched: true, taskId, sessionId, requestId, adopted }` (was `handedOff: true`).
+
+  The old exports are gone, with no alias, so an import of one fails to compile and names it:
+
+  - `@flow-state-dev/orchestration`: `createHandOff` → `createRowDispatch`, `HandOffOptions` → `RowDispatchOptions`, `HandOffAssignee` → `DispatchingAssignee`, `handedOffTaskPredicate` → `dispatchedTaskPredicate`, `assertHandOffBoardSupported` → `assertDispatchBoardSupported`, `assertHandOffBlockSupported` → `assertDispatchEntrySupported`, and the board handle's `handedOff` → `dispatchers`. The board's internal dispatch blocks keep their names (`<board>-hand-off-<assignee>`, `<board>-hand-off-fallback`), since a recorded route decision names them and a request resumed across the upgrade must reselect the same route.
+  - `@flow-state-dev/core` and `@flow-state-dev/engine`: no export changes. Definition-time and run-time refusals say a block "dispatches to task:…" where they said it "hands off to task:…".
+
+  The task-board page's "Assignees that hand off" section is now "Assignees that dispatch"; the old anchor still lands on it.
+
+- 2ce15c7: Every ending of a delegated task reaches the session that filed it once, on any flow, and nothing a board owes waits for someone to touch it (FIX-2078).
+
+  - **`onTaskSettled`.** A board that hands rows out records each ending's notice in the ending's own write and sends it to the filing session's `onTaskSettled` internal action. Build that action with `taskSettledEntry({ block })` (exported with `taskSettledInputSchema` from `@flow-state-dev/orchestration`): it takes each notice once, runs your block, and acknowledges it. A filed task now records the session that filed it (`Task.filer`, server-written).
+  - **Cancels are heard.** A cancel the filer didn't make itself through its own task tool now sends a `cancelled` notice, and a failure or cancel notice names the dependents it cancelled (`cancelled`). A waited-on task resumes its waiter and sends no notice; a retry sends none.
+  - **Due times.** Each owed notice has a due time, two seconds after its ending (`NOTICE_DUE_MS`). The board's pass resends only what is past due, and on a durable host the engine's wake pays it when due, after a crash too. One pass runs at a time per session; a pass asked for while one runs waits its turn.
+  - **Workforce:** a final task failure goes to the Error Reporter's intake with its ending, before the notice is acknowledged, as the task occurrence it already dedupes. A report marker stored by an older version is sent once and dropped. A ready row starts on its own, without a touch.
+  - **Upgrade.** Call `backfillBoardWakes(stores, { userCell })` (`@flow-state-dev/workforce`) once at host start, after the router is built: it owes a wake for every session holding a notice, report or split settle stored before this release, so its pass pays it without a touch. It is idempotent (a wake coalesces, and a pass that finds nothing clears it), and reads every user's conversation rows, so a host with many users runs it once, as a migration step. Shift Manager calls it at start.
+  - **Core:** `RequestHost.wakes` (owe, read, settle, `maxDebtAgeMs`), present on durable hosts whose stores keep wakes, and `TaskBinding.requiresInternal`.
+  - **Task tools:** a task's metadata from a caller (a tool call or a `_tasks` action) can't set or clear a notice marker. `cancelTask` answers `{ ok: true, cancelled: [ids] }` when its cancel also cancelled dependents. A notice its entry keeps refusing is resent with a doubling gap, up to 5 minutes.
+
+  Migration, at upgrade, for teams outside the repo:
+
+  - `resumeOwedWaits` is removed: the board's due-time wake pays an owed resume and a cancel owed.
+  - A board that hands rows out (a dispatcher assignee, or a delegation board) on a flow with no `onTaskSettled` internal action is refused when the flow is built. Add `internal: { actions: { onTaskSettled: taskSettledEntry({ block }) } }`.
+  - An `onTaskSettled` handler now receives `cancelled` endings.
+
+- 04ff39d: The task tools are now five: the filer's `createTask`, `getTask`, `listTasks` and `updateTask`, and the worker's `reportProgress` (FIX-2081). `addTask`, `assignTask`, `completeTask`, `failTask`, `cancelTask` and `readTask` are removed, as tools and as `<tool>_<board>` actions; no tool finishes a task. `updateTask({ id, ...fields })` takes flat fields with one rule each: `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts`, a hold and a release change only before a task first starts, and `status: "cancelled"` lands until it finishes. A refusal names the fields and the state (`field_locked_after_start`, `task_finished`). `reportProgress({ statusNote?, output? })` writes a status note and a checkpoint on the task its turn holds; `createReportProgress` builds it, and a checkpoint stays the task's output when the task completes. A task filed from a task turn carries `filedByTask`, and `listTasks` filters on it.
+
+  In Workforce, a worker gives work only to its delegates, in a task session too: a piece for any other worker is refused with `unknown_assignee`. `delegates: all` delegates to the whole roster, read on each call. A coordinator's own turn has `addDelegate`, `removeDelegate` and `setFallback` only when its file sets `editsOwnDelegates: true`; every worker with a board has `listDelegates`. The DevTool's task row actions follow the new tools.
+
+- fe5df7d: A request waits on a task it filed with `getTask({ id, wait: true, deadline? })`, now or in a later request, and gets the task back once it ends or as it stands at the deadline. The deadline cancels nothing: the task runs on, and an ending that lands while the request still runs reaches it on its next `getTask`; one it never reads goes to `onTaskSettled`, once. A task's own request may wait too, and waits nest up to five deep, counted live: the waits above the request and any already below the task it waits on. A wait's deadline is a wake on the waiting session, so a restart keeps it (FIX-2082).
+
+  - `dispatcher({ wait: true })` waits for the request it starts and outputs `{ status: "completed" | "failed" | "running", output?, error?, requestId }`.
+  - On a plan board a row filed `session: "new"` runs in a session of its own through `taskBoard({ newSession })`, and the drain waits on it. A plan board may hold dispatchers, whose rows it waits on; a plan board's dispatcher with `wait: false`, and a delegation board's with `wait: true`, are refused. In Workforce, a worker's step filed `session: "new"` runs in a new session of the same worker.
+  - `canHoldWait(ctx)`, `dispatchWaitResultSchema` and `DispatchWaitResult` are exported from `@flow-state-dev/core`; `RequestHost.waits.ended(requestIds)` says whether a request has stopped running its work, and `checkWait` (orchestration) runs a wait's checks alone.
+  - Hosts set a wait's deadline bounds with `waitDeadlines: { defaultMs, minMs, maxMs }` (5 minutes, 1 s, 24 h by default). A wait needs a store that keeps wakes.
+
+  Migration, at upgrade, for teams outside the repo:
+
+  - `dispatchTask`'s `wait` and `timeoutMs` are removed: file with `createTask`, then `getTask({ id, wait: true, deadline })`. `deadline` replaces `timeoutMs` and cancels nothing.
+  - `dispatchAndWait`, `DispatchAndWaitOptions`, `DispatchAndWaitResult`, `DispatchRef`, `DispatchTarget` and `DEFAULT_WAIT_TIMEOUT_MS`, `MIN_WAIT_TIMEOUT_MS`, `MAX_WAIT_TIMEOUT_MS` are removed: use `waitOnTask(ctx, board, id, { key })` from `@flow-state-dev/orchestration/task-board`.
+  - `TaskInit.wait`, `TaskDispatchOptions.wait` and `taskToolsForTurn`'s `taskTurnInstead` are removed.
+  - `parkOnWait` takes a `deadline` (epoch ms) instead of `timeoutMs` and returns the `WaitOutcome` instead of throwing; `WaitEndedError` and `WaitStoppedError` are removed.
+
+- 17444fe: On a board that hands tasks off, `setAssignee` now declines `immutable-assignee` only while an attempt holds the task (`in_progress` or `parked`). A pending or blocked task can change hands, and its next claim hands it to the new assignee; `unpark` a parked task to move it. A finished task declines `terminal`, as on any board (FIX-1780).
+- 0b37a7f: A person can send a running coding run a message (FIX-1690). `manager.messageDoor({ drain })` builds a public action that takes `{ message }` on the run's own session: it stops a running attempt, and the next attempt resumes the same coding session with the message in its prompt. `drain` names an `internal` entry on the flow that runs the board's drain; the door dispatches it into the session that claimed the row, so every attempt stays in the run's session. A run waiting on a question, between attempts, about to start one, or that didn't stop in time keeps the message for its next attempt and answers `kept`. A refusal (never started, finished, a harness that can't resume) fails the request with `TurnRefused`. The manager registers a new `turns` collection, so a capability that claims the `turns` accessor is now refused.
+
+  In orchestration, `awaitReview(id, feedback, { forTurn: true })` parks a running row for a person's turn. It runs only from `in_progress`, and the claim that follows its `unpark` is counted in the new `turnReentries` field and not charged against `maxAttempts`.
+
+- f292079: A task now settles when its turn ends: a message to its session no longer holds it open and isn't part of it (while the task's turn is running, it's answered after that turn), with no claim on the task, so it can't report progress and its error doesn't fail the attempt. `TaskEndRules.workQueued` and the `"queued"` value of `waitingOn` are removed; a stored row waiting on `"queued"` reads as answered and waiting on its filed work, and `backfillBoardWakes` owes its session the check that settles it with the answer it kept. Steer open work with `updateTask({ message })` (FIX-2103).
+- f5b5457: Removed `dispatchAndExecuteBlock` and `taskLoopBack`, `classifierDispatcher` and `eventDispatcher`, and the default `taskTools` capability (FIX-2057). An import of a removed export fails to compile and names it.
+
+  - `dispatchAndExecuteBlock` and `taskLoopBack` are gone; `taskBoard()` is the claim loop. Removed exports: `dispatchAndExecuteBlock`, `DispatchAndExecuteOptions`, `DispatchAndExecuteResult`, `taskLoopBack`, `defaultTaskLoopUntil`, `DEFAULT_TASK_LOOP_MAX_ITERATIONS`, `TaskLoopBackOptions`, `TaskLoopBackHandle`. If you drove `dispatchAndExecuteBlock` in a sequencer `loopBack`, use `taskBoard({ workers, collection }).drain` instead.
+  - `classifierDispatcher` and `eventDispatcher` are gone; `fifoDispatcher`, `topologicalDispatcher` and `priorityDispatcher` remain. Removed exports: `classifierDispatcher`, `ClassifyFn`, `ClassifierDispatcherOptions`, `eventDispatcher`, `EventDispatcherOptions`. To pick a task by your own rule, write a `TaskDispatcher` whose `claim` calls `collection.claim(workerId, { eligibility })`.
+  - The own-state "delegation board" is gone: the default `taskTools` capability that kept a board on the host generator's own state. The task tools now always run over the board your resolver returns. Removed exports: `taskTools`, `defaultOwnStateResolver`, `DELEGATION_BOARD_FIELD`, `delegationBoardSchema`. `createTaskToolsCapability(resolver, roster?, options?)` and `buildTaskToolsList(resolver, roster?, nameSuffix?)` now require the resolver. Where you wrote `uses: [taskTools]`, pass `createTaskToolsCapability(resolver)` with a resolver for your board.
+
+- 16bb676: Skill sub-agents are removed: a `SKILL.md` that declares `agents:` is refused when it loads, `createSkillsLibrary` drops its `workerModelId`, `maxTotalTasks`, `maxEnqueuedTasks`, `agentRegistry`, `materializeAgent`, `capabilityCatalog` and `toolSeatFence` options and the `delegation` and `guidance` binding keys, and `runBoard`, `materializeWorker`, `buildUserMessage`, `workerInputSchema`, `DEFAULT_WORKER_PROMPT` and `FLOOR_WORKER_KEY` are gone, so delegate to workers through the task board and its task tools instead (FIX-1814).
+- c4150e7: A person's message on a finished task reopens it: task collections gain `reopen(id)`, the harness manager's door reopens a finished run when its board names `reopenIn`, a worker's reply in a finished task's session on a Workforce conversation board reopens that task, and Shift Manager's task composer takes a message on a finished task (FIX-1764).
+- d1a4cab: A task board's seat is an assignee: `TaskSeat`, `TaskSeatRegistry`, `TaskSeatAddress` and `HandOffSeat` are `TaskAssignee`, `TaskAssigneeRegistry`, `TaskAssigneeAddress` and `HandOffAssignee`, with no aliases (FIX-1796).
+- 2ab7ea2: A coordinator now hands each message to a delegate by filing a routed task: an ordinary task on the conversation's board with `session: "ongoing"`, `resultTo: "conversation"` and one attempt, worked on the delegate flow's `work` entry. Posts are gone. (FIX-2083) What to change or expect:
+
+  - A delegate is a worker whose flow takes tasks. Declare `work` with `workerTaskEntry({ name, turn })`; the turn is still handed `{ message }`. Removed: `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostOnFinished`, `delegatedPostSchema` and `DelegatedPost`. `delegatedPostHistory` is now `routedTaskHistory`: give it as the `work` turn's generator `history` to show the model the conversation's recent lines.
+  - Removed: `defineCoordinatorFlow`'s `delegateFlows`, `defineSessionBoard`'s `postFlows` and `posts`, and `posts`/`both` in what `listDelegates` says a delegate `takes` (now `tasks` or `nothing`). A worker on a flow that takes no task can't be added as a delegate.
+  - A judgment coordinator hands a message on with `createTask` and the routing settings (`session: "ongoing"`, `resultTo: "conversation"`, and `target` for a workstream's record); the server attaches the message as written. `DispatchPostForm` is removed. On a turn routing a message, `createTask` refuses a `session` other than `"ongoing"` (`routed_session_ongoing`) and `held`, `deps` or `followUpOf` (`routed_task_starts_now`). `createTask` takes `target`, set at filing only; `updateTask` refuses `session`, `resultTo` and `target` (`filing_setting_fixed`). `getTask` shows a task's `session`, `resultTo` and `target`.
+  - Removed: the `dispatchTask` tool and its `dispatchTask_<board>` action, which the DevTool's Tasks tab no longer offers on a row. On a board that dispatches, `createTask` starts a task as soon as it is filed; release a held one with `updateTask({ id, status: "pending" })`, with its `assignee` in the same write if it needs one, and wait with `getTask({ id, wait: true })`. Removed with it: `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall` and `TaskInit.dispatchCall` (a stored row's is dropped when read), and the `already-dispatched` write decline. On a conversation's board, a task filed with no assignee where several delegates take tasks now waits unassigned instead of being refused `assignee_required`; a scheduled fire that names no assignee there is refused, naming why, so unassigned rows don't pile up. Teams outside the repo rewrite their `dispatchTask` calls at upgrade.
+  - Removed: `taskLedgers({ taskTurn })`. A routed turn is a task turn, and a `taskLedgers` resolver is handed the claimed task's id as its fourth argument.
+  - A delegate that files work for a message answers once that work has ended, and a second message to a busy delegate waits until the first ends; in a workstream's session that holds across conversations. A round's deadline is a wake on the coordinator's session where the host keeps wakes, so it survives a restart.
+  - A post row stored before this release reads as a routed task, through the retired-shape map's `post` entry, which is now on.
+  - The coordinator's line when nobody takes a message reads `Nobody took this message: …`.
+
+- edc3197: A task row can carry `sealed`, a payload written once by the code that files it and packed to its worker as `TaskWorkerInput.sealed`; no task tool or update can set or change it, and `TaskFilter.sealed` matches on its plain values. (FIX-1872)
+- 97894aa: A flow can check every new session's initial state with `session.createCheck`, refuse caller-seeded fields with `session.serverOwned`, and fix a field for a session's life by declaring it `.readonly()` in its session `stateSchema`; `listSessions({ state })` and the list route's `state.<field>` filter select sessions by a readonly field. On a flow that binds its sessions this way (a readonly field or a create check), an initial state that fails the `stateSchema` is refused on every path that creates a session; other flows keep it as sent. A dispatcher's `session: { key, state }` and a task dispatcher's `state` create the child session with that state. `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).
+- b552b50: A dispatched task now settles once, when its work is over (FIX-2077): after its request, the background work that request started and the background work the flow's `onFinished` started have ended, with no task it filed still open or still owing its ending. Until then the row stays `in_progress`, and the new `Task.waitingOn` says what holds it (`"filed"`, `"person"` or `"wait"`). A row that waits has no lease, so a task that stops to ask a person or to wait on an event is no longer reclaimed and run again when its lease runs out. The output is the latest `reportProgress` checkpoint, else the last answer that counts; a message's answer never is.
+
+  Orchestration adds `taskRequestAdmission`, `noteTaskAnswer` and `afterTaskCheck` for a request that works on a waiting task, `endRules` on `createTaskGate` and `taskLedgers`, and `setWaitingOn` on `TaskCollectionRef` (optional; a hand-written ref without it keeps the lease as before). Core adds `onRequestEnded` (`@flow-state-dev/core/types`), a framework-facing hook the engine runs after a request's last drain, on every way it ends.
+
+  In Workforce a split task no longer parks: it stays running while its pieces are open, and its output is its worker's answer like any task's, not `{ answer, pieces }`. Read a piece's result from its own row (`listTasks({ filedByTask })`, `getTask`). A failed piece no longer fails its task by itself: the turn its ending wakes decides, and only a turn that throws fails the attempt. A worker that ignores a failed piece completes its task anyway. The `settleSplitTask` and `cancelSplitPieces` entries and the `splitParent` session field are gone; a split parked before the upgrade reads as running and settles when its pieces end.
+
+- 2f342f6: Words sent into an open task now take one path, `updateTask({ id, message })`, and a finished task's output never changes (FIX-2086).
+
+  - **Steer an open task.** `updateTask`'s `message` (tool and `updateTask_<board>` action), sent alone (`message_takes_no_edits` otherwise), keeps the message on the task (`Task.steers`, at most 20; `getTask` lists them as `steers`). A task that hasn't started gets every message in its first brief; a running request takes it before its next model call (`createSteerContext`); a task waiting on work it filed gets a turn now; one that lands after the last model call, even while the task settles, gets one more turn first (`taskLedgers({ endRules: { steerTurn } })`, with `complete`'s new `refuseUntakenSteers` guard, reason `untaken-steers`; on Workforce, `steerTurnEntry` declared under `STEER_TURN_ENTRY`). No attempt is used. A message taken mid-run shows in the task's session as a line from its sender (`showTakenSteers`). The collection write is `TaskCollectionRef.steer`, with `takeSteers` for the request holding the claim; the change kind is `"steered"`.
+  - **Correct a finished task with a follow-up.** `updateTask({ message })` on a finished task is refused (`task_finished: a finished task takes no message; file a follow-up`). `getTask` shows the latest completed follow-up as `current: { id, output }`, and `listTasks` rows carry `current: { id }`.
+  - **A line in a task's session.** On the built-in `agent` flow, a line in an open task's session is a steer from the user (`{ steered: <taskId> }`), with no reply beside it; in a finished one it is an ordinary turn and the task doesn't change.
+  - **Coding runs.** `harnessSessionDoor({ board, harness, onSteered?, talkTimeoutMs? })` is a coding flow's one door: a steer while the task or a follow-up is open, talk (one run resuming the confirmed coding session, outside any attempt, holding the checkout) once all have finished. Its refusals are `not-started`, `cannot-continue`, `steer-limit`, `finished` and `not-supported`, the last three worded as Workforce's door words them (`LINE_STEER_REFUSALS`, `steerFromLine`). A steer reaches the run's next step in the same request and attempt; with `harnessManager({ stopsOnAbort: true })` it stops the running step once the harness has confirmed a session.
+
+  **Migration.**
+
+  - `TaskCollectionRef.reopen`, `Task.reopened`, the worker input's `reopened` and the `"reopened"` change kind are removed: file a follow-up, `createTask({ goal, followUpOf: id })`. A stored row with `reopened: true` reads unmarked; still open, it carries one steer pointing at the latest line in its session.
+  - `Task.parkedForTurn` and `awaitReview`'s `forTurn` are removed: send `updateTask({ id, message })`. A stored row parked for a turn reads as `pending`, its next attempt uncharged.
+  - `harnessMessageDoor`, a manager's `messageDoor`, `messageDoorInputSchema`, `messageDoorOutputSchema`, `TurnRefused`, `TurnRefusalReason`, a board's `reopenIn`, and the types `HarnessMessageDoorOptions`, `MessageDoorAction`, `MessageDoorBoard`, `MessageDoorOptions`, `MessageDoorOutput`, `DoorRunIdentity` are removed: declare `harnessSessionDoor` as the coding flow's `message` action. `harnessManager` now returns a `TaskWorker`.
+  - The harness manager's `turns` collection is no longer written or read. Run `upgradeKeptTurns(stores, { userCell, ledgers })` once at host start to write each kept line no attempt took onto its task as a steer. Shift Manager's DevTeam host runs it at every start; a second run adds nothing.
+
+- edb3d46: `getOrCreateTaskCollection` now has two backings, `state` and `resource` (FIX-960). The
+  `sequencer` and `request` backings merge into `state`: write `backing: "state", state: ref` where you wrote
+  `backing: "sequencer", sequencer: ref`, and `backing: "state"` with no `state` where you wrote
+  `backing: "request"`. Default slots are unchanged (`tasks` on a passed ref, the `collectionId` on
+  the request), so stored tasks stay where they are. Renamed exports:
+  `createSequencerBackedTaskCollection` → `createStateBackedTaskCollection`,
+  `SequencerBackedOptions` (field `sequencer` → `state`) → `StateBackedOptions`, and
+  `SequencerBackingSpec` / `RequestBackingSpec` → `StateBackingSpec`. `taskBoard` options are
+  unchanged.
+- 872a088: A task board's dispatcher can now choose its entry and its session for each row (FIX-1872). Give a `task` dispatcher an `action` of `{ among, by }` and `by` picks, per row, one of the entries listed in `among`; every listed entry is checked when the flow is defined, and an answer outside the list fails that row with `no-entry`. Give it a `session` of `{ by }` and it answers, per row, `{ key }` for a child session or `{ id }` for a session that already exists. An existing session is delivered into and never created: a missing one, or one the running user can't reach on this flow, fails the row with `session-not-found` or `session-not-addressable`. A string `action` and the `"per-task"`, `"per-worker"` and `{ key }` policies behave as before.
+- 437727e: `createTask` now takes `input` as a JSON object. A string, number or array is refused at the tool's schema, so a model that would have sent the payload as a JSON string is told to send the object instead (FIX-1965).
+- 6f5a697: The task tools gain `answerTask` and `addTask`'s `followUpOf`, and `createParkOnQuestion` builds a worker's `parkOnQuestion`, so a task can stop on a question, take its answer without spending a retry, and be followed up in the same session (FIX-1817).
+- 2e8f640: A handed-off task now names the run working it: its row carries `run: { sessionId, requestId, attempt }`, written by the run before its worker starts and published as a `run_linked` task change, and a mailbox board's `readBoard` and browser read both return it. `TaskCollectionRef` gains a required `linkRun` verb, so a hand-written collection must implement it (FIX-1668).
+- 30aa133: A task can now be handed to the worker its assignee names, including one hired after the host started (FIX-1778).
+
+  - core: a task dispatcher's `flowKind` may be a function of the task (`TaskFlowTarget`), resolved once per hand-over; an empty answer refuses it `flow-not-found`. A task entry may declare `from` to take tasks from more than one ledger; such an entry runs queued unless it sets its own concurrency. A function `flowKind` requires `session: "per-task"`.
+  - orchestration: `taskLedgers({ name, resolve })` builds that `from`, resolving each dispatch's ledger by id and refusing an unknown one before any row is read. A board's `defaultWorker` may now be a task dispatcher, handing a task over under its own assignee. Tasks record `createdBy` (the user whose request added them, server-only), which a hand-over passes to a per-task target as `filedBy`.
+  - workforce: `createWorkerLookup({ instanceAt, declared })` says which worker a name means for the running caller, from the live registry; its `flowKind` plugs into a board's fallback and `filingCheck` into a mailbox's new `checkAssignee` option, which refuses `fileTask` for a name no worker holds. `mailboxTaskLists(ids)` lets a worker take tasks from mailbox lists, and the `agent` kind's new `taskLists` option gives it a `work` task entry over them.
+
+- 7052203: A task now runs by the settings it was filed with, and nothing waits on work that will never finish (FIX-2080).
+
+  - **`held` replaces `blocked`.** A held task is filed but doesn't start until it is released. `TaskCollection.block` / `unblock` become `hold` / `release`, the `"blocked"` status and `listTasks` filter value become `"held"`, `Task.undispatched` / `TaskInit.undispatched` become `held`, change kinds `blocked` / `unblocked` / `dispatched` become `held` / `released`, and the board's `counts.blocked` becomes `counts.held`. Stored `blocked` rows and recorded-not-started rows read as `held`; a `blocked` row's reason moves to `metadata.heldReason`, and a release starts it even if it had been retried.
+  - **`blockTask` is removed.** Use `updateTask({ taskId, patch: { status: "held" } })` to hold a task before it starts, and `"pending"` to release it. `addTask` on a dispatching board files the task held.
+  - **`patchSettings`** changes `held`, `deps` and `maxAttempts` until a task first starts, and declines `started` after.
+  - **Dependencies are checked at filing.** A dependency on another board, on an ended task, or one that closes a loop throws `TaskFilingRefusedError` (`dependency_not_on_board`, `dependency_ended`, `dependency_loop`) and files nothing. To wait on another board, use a wait or a held task. A Workforce batch that names one id twice is refused (`duplicate_task_id`).
+  - **Every board cancels the open dependents of a failed or cancelled task**, labelled `skipped`, with `causedBy`. `createCascadeSkipDependents` is removed; drop its `.tap()`. Plan-and-execute and supervisor now also cancel a cancelled step's dependents. A plan whose dependencies name no task, or loop, fails the run; a replanned task that depends on a failed one is filed skipped.
+  - **Workforce:** a follow-up into a busy session waits, then runs when the open task ends, instead of being refused. The follow-up refusal code `follow_up_of_unfinished` is now `follow_up_of_unrun`: a follow-up of a task that never ran with a worker is refused, from the tools and from the board's ref alike. Code filing through the board's ref can set `session: "new" | "ongoing"` and `resultTo: "filer" | "conversation"` (one attempt; a wait on it is refused). When a task fails, is retried or is cancelled, the open pieces it filed are cancelled.
+
+- 96ff077: A turn waiting on another worker's task now says **wait** everywhere; **ask** means only a question to a person (FIX-1876). The old exports are gone, with no alias, so an import of one fails to compile and names it:
+
+  - `@flow-state-dev/core`: `ASK_GATE_REASON` → `WAIT_GATE_REASON`, `isAskGate` → `isWaitGate`, `AskGateBinding` → `WaitGateBinding`, `AskOutcome` → `WaitOutcome`, `AskEndingErrorCode` → `WaitEndingErrorCode`, `parkOnAsk` → `parkOnWait`, `ParkOnAskInput` → `ParkOnWaitInput`, `parseAskOutcome` → `parseWaitOutcome`, `recordedAskOutcome` → `recordedWaitOutcome`, `RequestHost.resumeAsk` → `RequestHost.resumeWait`, `RequestHost.hasAskSweeper` → `RequestHost.hasWaitSweeper`, `ResumeAskInput` → `ResumeWaitInput`, `ResumeAskResult` → `ResumeWaitResult`.
+  - `@flow-state-dev/orchestration`: `resumeOwedAsks` → `resumeOwedWaits`, `askGateId` → `waitGateId`, the task tools' `resumesAsks` option → `resumesWaits`, a row's `Task.ask` → `Task.wait`, `listTasks` marks a waited-on row `waitedOn: true` instead of `asked: true`, and `parkOnQuestion` on a task a turn is waiting on is refused with `waited_on_task` instead of `asked_task`.
+  - `@flow-state-dev/engine`: the request host's `askResume` → `waitResume` and `askSweeper` → `waitSweeper` (`RuntimeConfig.requestHost`).
+
+  A wait parked before the upgrade resumes after it: a gate stored with the reason `"ask"` is still a wait gate (the public resume route still answers not-found for it), and a row stored with `ask` reads as `wait`. The run-once keys (`fsd.ask.*`), the gate id prefix (`ask:`) and a task notice's `asked` flag keep their spelling, so a replay across the upgrade finds what it recorded.
+
+- 721a811: A task-board worker can now read its own claim. `currentWorkerClaim(ctx)` returns the ticket inside a worker the board runs inline and inside a worker reached through a task entry, and `undefined` outside one. A worker's task-tool writes are limited to the task it holds, so a write naming a different task is refused. The observation ledger and the tool cache's `sourceTask` now record the worker's task.
+
+  `currentWorkerClaim` now takes the block context. A claim reads back only in the request that took it: a request the worker starts or resumes in the same process (a message, a dispatch, a resumed turn) gets `undefined`. Code that called `currentWorkerClaim()` with no argument must pass its `ctx`.
+
+  `taskLedgers` takes `taskTurn: false` for an entry whose run answers the user rather than the task's filer. Such a run keeps its claim but is not a task turn: it can wait on work it dispatches, and it doesn't get `parkOnQuestion`. Workforce's delegated-post entry sets it, so a post run behaves as it did before (FIX-1047).
+
+### Patch Changes
+
+- 5c8a130: A task's ending reaches the session that filed it once, on the defaults too: a `getTask({ id, wait: true })` that reads a task already ended no longer races that task's `onTaskSettled`. A notice now waits while the request that filed its task is running (not while it is parked on a person or a wait); that request sends what it held as it ends, and once it parks the session's pass sends it. `taskSettledEntry` takes a notice in one conditional write before it runs your block, and a copy never takes a notice from a request that hasn't ended. A wait that finds the notice taken returns `{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task. Task collection refs gain an optional `takeNotice(id, notice, take)`, which both built-in backings implement; a ref without it admits notices as before. A filing's `metadata` can no longer carry notice records (FIX-2123).
+- cb364e8: A `getTask({ id, wait: true })` on a task whose ending the session already heard as a notice now returns the task, with its output, instead of `arrivesAsNotice` (FIX-2181). `arrivesAsNotice` still answers while that notice is being delivered: still owed, or acknowledged by an `onTaskSettled` request that is still running.
+- 10ded49: A stopped or timed-out ask whose own cancel of its task fails no longer leaves the task open for good. The failed cancel is recorded on the row as `Task.cancelOwed`, and the next `resumeOwedAsks` touch cancels the row. Whatever ends the row clears the marker, and that ending owes the stopped turn no resume. Both built-in backings implement the new optional `TaskCollectionRef.markCancelOwed` (change kind `cancel_owed`), and `TaskFilter.cancelOwed` matches marked rows. A failed cancel no longer surfaces as a tool error on a timed-out ask: the call still answers `wait_timed_out` (FIX-1844).
+- be1bddf: A worker can ask a colleague and carry on the same turn with the answer (FIX-1816). `addTask` takes `waitForResponse` and `timeoutMs` (five minutes by default, 30 seconds to an hour, refused outside that as `wait_timeout_out_of_range` and never clamped) on a turn whose host can hold an ask: durable execution and a running durability sweeper, which the request host now reports as `RequestHost.hasAskSweeper` (a router answers for its own sweeper, which `DurabilitySweeper.timesOutAsks()` reports). Anywhere else `addTask` is unchanged and adds no tool. An asked task's ending resumes the turn that waits on it, through the same notice every ending sends, and wakes no new turn. The task notice module (`recordEnding`, `owedNotices`, `decideNotice` and the rest) moved from Workforce into `@flow-state-dev/orchestration/tasks`. `isTaskTurn(ctx)` is true on a turn that is itself working a task, and an ask there is refused as `wait_unavailable`. Orchestration's root exports `isTaskTurn`, `TASK_SESSION_TASK_KEY`, `resumeOwedAsks` and `taskToolsForTurn`; the rest of the ask mechanism (`addTaskAndWait`, which refuses a host that can't bound the ask, `canHoldAsk`, `askGateId` and the timeout bounds) is on `@flow-state-dev/orchestration/task-board`.
+- 3221d05: A dispatched task's background work that errors now fails its attempt (FIX-2088), as if its request had thrown: the task runs again while it has attempts left, otherwise it fails with an error naming the step (`Background work "<step>" failed: ...`). It counts in every request working the task, including steps `onCompleted` and `onFinished` start and a step a default `.waitForSideChain()` already drained. The request itself still reports `completed`. A cancel never fails the task this way, and a step that failed before a suspension counts only if its rerun on the resume fails too. Make a step best-effort by catching inside it.
+
+  Core adds `RequestEnding.backgroundFailures` and the `BackgroundFailure` type (`@flow-state-dev/core/types`), and `RequestSideChainPool.failures()`; the engine hands a request's background failures to its request-end hooks. In Workforce, a failed `afterAnswer` step (such as a memory capture) fails a task's attempt too, except in a task filed `resultTo: "conversation"`, where it is logged and the task keeps its answer. Conversation turns are unchanged. A step a timed-out `.waitForSideChain({ timeoutMs })` stopped waiting on is still waited for before the request ends, and its failure counts and is logged, with `failOnError` too; `drainScope` takes an `abandoned` signal for this. The MOAT bash provider's purge of stale containers now logs a failure instead of throwing it.
+
+- 70cfac9: `cascadeSkipDependents` no longer labels a task `skipped`, or skips that task's dependents, when its cancel was declined because the task had already been settled by something else (FIX-985).
+- 5d94e61: A filing's dependency check reads each dependency as stored now, so a dependency another request failed or cancelled while the filing ran is refused `dependency_ended` at filing, and nothing is stored, as the docs say. Before, the filing was accepted and a cascade cancelled it moments later (FIX-2114).
+- b234f0d: A drain cancels a dependent stuck behind a crash-owed cascade before it decides to exit, and a refused batch files nothing (FIX-2096).
+- ad5df6f: Durable execution is on by default wherever stores persist (FIX-2063). `createFlowState` over filesystem, SQLite or Postgres stores now installs the checkpoint durability provider without `durable: true`; over in-memory stores it still installs none unless `durable: true` is set. `resolveDurabilityProvider({ stores, durable })` exports the rule for hosts that build `createFlowApiRouter` or call `runAction` themselves, and the in-memory checkpoint and suspension stores declare `persists: false`.
+
+  `ctx.suspend()` on a host without durable execution now throws an error that names the rule and the setting to change, instead of "requires a DurabilityProvider". The durability sweeper arms for a pending stop's deadline as it does for a wait's, and reads the store's deadlines once at start.
+
+  A no-config `fsdev run` now writes to `.fsdev/data/fsdev.db` (the SQLite file `fsdev dev` reads) instead of JSON files under `.fsdev/data`, and runs as `devuser`, the DevTool's default user (exported as `DEFAULT_LOCAL_USER_ID` from `@flow-state-dev/core`), instead of `cli-user`. `fsdev run` and `fsdev chat` use `devuser` as the default user with a config too. A run that stops for a person exits 0 with a `suspended` NDJSON event, `result.suspended` in `--capture`, and a waiting report on stderr. The no-config `fsdev dev` router is durable and sweeps. `--store filesystem` on `fsdev run` and `fsdev dev` keeps the JSON-file store, single-process.
+
+  **Migration.** An app on persisting stores that never set `durable` now:
+
+  - writes a checkpoint at every step of every sequencer (sequencers already default to `durable: true`),
+  - resumes a request that crashed instead of rerunning it,
+  - holds a raw `ctx.suspend()` until it is answered, where it used to fail the request,
+  - runs the durability sweeper wherever it serves a router: a lease and a scan of pending stops on each tick, even when nothing waits.
+
+  Set `durable: false` on `createFlowState` to keep the old behavior. Sessions a no-config `fsdev run` wrote as JSON files are not read by the SQLite default; pass `--store filesystem` to read them. Scripts that look up CLI sessions by `cli-user` should use `devuser`, or pass `--user cli-user`.
+
+- 3ee61e5: A failure's or a cancel's notice names every dependent its ending cancelled, as the docs say, also when another request filed the dependent after the failing worker's run had read the board. `onTaskSettled` cancels such a dependent before it runs your block and adds it to the notice's `cancelled`. Before, the notice named none, and the dependent was cancelled later with no notice of its own, so the filer never heard of it (FIX-2136).
+- f12089e: A follow-up task's result now goes where its root task's went: a follow-up of a task filed `resultTo: "conversation"` lands as the delegate's reply, with one attempt, and a follow-up that names `resultTo` is refused `follow_up_takes_no_result_to`. In a Workforce conversation, the failure or cancel of a conversation-result task with no routed brief, such as that follow-up, now shows as a line, and wakes the coordinator's turn under judgment or best-fit routing (FIX-2122).
+- 35bec56: A follow-up task now runs in the session its root task ran in when that task was filed `session: "ongoing"` or for a workstream: its row carries the root's `session`, `target` and `targetSessionId`, and a follow-up that names a `target` is refused `follow_up_takes_no_target` (FIX-2111).
+- 3b40ca1: `getTask` names the dependents a failure or a cancel cancelled when its answer is how the filer hears that ending: a wait that finds the task already ended, a wait the ending resumes, or a read of an ending held for a wait that lapsed. The answer carries `cancelled` beside `task`, as the notice it replaces would have. Before, the notice was dropped and nothing named them (FIX-2138).
+- 809cebd: `harnessManager` can read each run's board from its claim (FIX-1866). Give it `ledgers`, a resolver typed like `taskLedgers`'s, and the task's entry hands it the claim on its input as `claim: { collectionId, partition, incarnationId }`; every read and write is still fenced against the row at that ledger and partition. Runs are kept apart by board and partition (`runBoardSegment`). On such a board a refused run ends the task `errored` instead of `cancelled`, and a question parks the task on the board itself, with the answer reaching the next attempt's prompt. A completed run's output now carries `answer`, `branch`, `commits` and `judged`, and `isDone` reads the run's `answer`. An optional `judge` (a host block and a confidence floor) reads a run on such a board after `isDone` passes; `harnessDrainBudgetMs` takes `judge: true` to reserve its time. A fixed board runs as before.
+
+  Orchestration's `fail` takes `noRetry: true` to end a task `errored` on this failure even when it has attempts left.
+
+- c4d9743: A request parked on a person or on another wait no longer holds the ending of a task whose `getTask({ id, wait: true })` reached its deadline. The filing session's pass, woken at the park, lets the ending go: `onTaskSettled` hears it within seconds of the park, as it already hears a task the parked request filed. A wait on the task after the resume usually answers `arrivesAsNotice`; one that reads it in the couple of seconds before the pass takes the notice gets the ending inline instead. Either way the session hears it once. While the request runs, its next `getTask` on the task still gets the ending, as before. A request whose state the host can't read is treated as parked here too, as it already is for a held notice (FIX-2170).
+- 90a5e64: A task's notice held while the request that filed the task was running now reaches the filer about two seconds after that request parks on a person or a wait, rather than at the notice's next resend, which could be up to 5 minutes away once its backoff had grown. The park owes the filer's pass one wake and reads no row. In Workforce, a drain parked on a step that runs in a session of its own now resumes within seconds when the step ends while the drain is still parking, rather than at the wait's deadline (FIX-2149).
+- d356f52: `listTasks` (the task tool and its `listTasks_<board>` action) now answers each task's `run` link, the run working it or the one that last did, so a task list can open it (FIX-1792).
+- 24744af: On a Workforce conversation's board, a task runs one turn at a time in its session: while one of its turns waits on a step it filed for itself in a session of its own, a notice's turn and a steer's turn wait until it answers, instead of planning beside it and stalling the task. `taskSettledEntry` takes `defer`, and `resendNowPatch` is exported (FIX-2113).
+- 311a6d5: `@flow-state-dev/orchestration/tasks` no longer reaches `node:module` or `node:url`, so a browser bundle can import it. Core adds two subpaths, `@flow-state-dev/core/blocks/handler` and `@flow-state-dev/core/blocks/sequencer`, that expose the block builders without the main entry's Node-only model resolver (FIX-1608).
+- 69a9e29: `awaitReview` with no reason now clears the task's `feedback` instead of leaving the previous note in place, so a failed attempt's error text no longer reads as the reason a parked task is waiting (FIX-1505).
+- 12bf045: A `defineTaskCollection` with `partitionBy` keeps its rows in the user's own cell even on a flow that isolates its user state (`isolateUserState`), so a task entry on another flow finds the row it was handed (FIX-1794).
+- 726de78: A plan board's drain that fails after handing a row to a session of its own now fails its request, naming the row, whatever `onError` says, instead of waiting with no signal (FIX-2104).
+- d348ae7: `getTask({ id, wait: true })` on a row a plan board's drain handed to another session and waits on is now refused with `wait_on_plan_step`, which tells the agent to wait on the plan instead, for as long as the drain waits, deadlines included. Before, a wait that landed at one of the drain's deadlines took the row's wait slot and failed the plan (FIX-2105).
+- dd2563b: Task tools gain `readTask`, which returns one task whole: its goal, input, status, and what it came back with (its result, its error, or the question it is parked on). `listTasks` still lists without results. `taskToolActions` exposes it as `readTask_<board>`. A conversation board now shows a browser the question a task parked on a question waits on (`feedback`, with `parkedOnQuestion`). Shift Manager's shift summary lists tasks parked on a question for the user under Needs you, and its DevTeam chief of staff answers from what a finished task found (FIX-1972).
+- 60c8192: `getItems()`, `RequestRecord.items` and item subscriptions return `RuntimeItem`, which is `OutputItem` plus trace rows: `block_trace`, `router_decision`, `state_snapshot` and `generator_step` (FIX-2054). Only types change. Runtime behaviour is the same.
+
+  These signatures return or pass `RuntimeItem`, which can break code that expects `OutputItem`:
+
+  - `ResponseEmitterHandle.getItems()` and the `subscribeToItems` listener and filter (core).
+  - `ResponseEmitter.getItems()`, `RequestRecord.items` and `RequestStore.persistItems` (engine).
+  - The `testItems` selectors that don't filter by type: `all()`, `sideChain()`, `main()`, `byAgent()` and `byVisibility()` (testing). They return trace rows when given them.
+
+  To upgrade, type arrays and callbacks that receive these values as `RuntimeItem`, imported from `@flow-state-dev/core`. Where code needs an `OutputItem`, filter out the trace rows with a type guard:
+
+  ```ts
+  import type { RuntimeItem } from "@flow-state-dev/core";
+  import type { OutputItem } from "@flow-state-dev/core/items";
+
+  const TRACE = new Set([
+    "block_trace",
+    "router_decision",
+    "state_snapshot",
+    "generator_step",
+  ]);
+  const isOutputItem = (item: RuntimeItem): item is OutputItem =>
+    !TRACE.has(item.type);
+
+  const visible = emitter.getItems().filter(isOutputItem);
+  ```
+
+  `.waitForCondition` predicates and `wakeOn` filters keep their `OutputItem` types. These signatures accept `RuntimeItem` as well as `OutputItem`: `resolveItemVisibility` and `collapseToCanonicalLog` (contracts, re-exported by core), `testItems` (testing), and the filter that `onTaskChangeFor` returns (orchestration). Existing callers need no change.
+
+  `RequestStreamStore` and `createRequestStreamStore` (client) take the row type as a parameter, defaulting to `OutputItem`, so existing stores are unchanged. A store seeded with trace rows is created as `createRequestStreamStore<RuntimeItem>()`, and its `getSorted()`, `getRaw()`, `getById()` and `getOwnedBy()` return `RuntimeItem`.
+
+- d994f51: `createSkillActivator` takes an optional `evaluator` for tier 3, with `skillEvaluator(model)` and `skillQuestions` to build one (FIX-1559). The evaluator picks one skill or none from the same catalog the classifier would see, and its pick is final: no confidence threshold, no fallback to the classifier. Without it, activation is unchanged.
+- afb512f: `skillEvaluator(model, { recentMessages: N })` lets the skill activator's evaluator see the last N turns before the message, so follow-ups like "yes, do that" activate the skill an earlier offer was about (FIX-1595).
+- 09e3705: Skill names that are Windows device names (`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) are now refused, so a skill with one of those names stops loading until it is renamed (FIX-1456).
+- eb66ddd: A worker on a task can split it into pieces for any worker on the user's roster that takes tasks, not only its own delegates; an unassigned piece still goes to its only delegate, and the chain limits still apply. A split task now completes with `{ answer, pieces }`: the answer of the turn the last piece's ending woke, with the pieces' outputs under it. It settles only once every piece has ended and its ending has been heard. When it settles with no such turn (a settle replayed after a restart), the output is `{ pieces }` alone, as before. On a task turn, a worker files its pieces and ends the turn: each piece's ending wakes the task (FIX-1997).
+- cd180d7: Stopping a paused request now ends it `aborted` and records its gate with the new `stopped` suspension status, a turn paused on an ask cancels the asked task instead of waiting for it, and a durable host now runs the durability sweeper even without `durabilityRetention`, so a paused request past its `expiresAt` expires and an ask past its deadline times out, while pruning still waits for a retention policy (FIX-1816).
+- 9edbfa2: A worker can now end its task on the current attempt without writing the ending itself: throw `TaskEndsForGoodError` (from `@flow-state-dev/orchestration/task-board`) naming the task it holds (`taskId`), and the board's error recorder ends that row under the worker's claim, `errored` with no retry by default or `cancelled` with `{ ending: "cancelled" }`. A marker naming any other row, such as one rethrown by a board nested inside the worker, is an ordinary failure.
+
+  Harness Manager's refused run uses it: the manager no longer fails or cancels its own row, and the board records the ending. The outcome is unchanged (`errored` on a board read from the claim, `cancelled` on the fixed board). `HarnessRunRefused` now extends `TaskEndsForGoodError`, and its constructor takes a second argument, `{ taskId, ending }` (FIX-2090).
+
+- 9cd314d: `defineTaskCollection` accepts `partitionBy` on a `user`-scoped collection, keeping one set of rows per partition so each conversation's board reads, claims, waits on and settles only its own tasks while a board's hand-off carries the partition (core's task dispatch envelope gains an optional `partition`) to a task entry on another flow, whose gate and `taskLedgers` resolver read the row there (FIX-1794).
+- 7035b4c: `createTask` takes an optional `title`, a short label for the task apart from its `goal`, and `listTasks` answers it when a task has one (FIX-1974). A task filed without a title is still labelled by its goal.
+- 912ae98: A durable task board's task tools can now run as flow actions (`taskToolActions(board)`, or `boardActions: true` in a `MAILBOX.md`), and the DevTool's Tasks tab opens a task's full record and runs those actions from the row, showing a refusal as a refusal (FIX-1629).
+- 78178a9: A partitioned ledger now takes the bare user id from the user scope, not the user record's storage key, when the session names no user (FIX-1790).
+- da86f88: A `getTask({ id, wait: true })` on a task that already ended returns it at once, and that answer is the filer's delivery: when the flow's `onTaskSettled` waits behind the turn that filed the task, as Workforce's turns make it, the ending's notice request still runs but no longer calls your block. Task collection refs gain an optional `dropNoticeReadByWait(id)`, which both built-in backings implement; a ref without it keeps the old behaviour (FIX-2112).
+- 98b90a6: Workers can be data: `createWorkerInstallation` gives a worker flow a create check that names the session's worker once, `resolveWorker` loads it each turn, `createWorkerHireBlocks` writes the user's roster, and `createWorkforceClient` finds or starts a session with a worker. `writeShared` now names the worker the turn loaded, not a `seatId` setting. `createSkillsLibrary` takes `partitionBy` to keep one catalog per party on one flow copy (FIX-1788).
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [be1bddf]
+- Updated dependencies [3221d05]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [89af7db]
+- Updated dependencies [7d4158f]
+- Updated dependencies [5492a77]
+- Updated dependencies [6819520]
+- Updated dependencies [ad5df6f]
+- Updated dependencies [211679a]
+- Updated dependencies [dd80e01]
+- Updated dependencies [2ce15c7]
+- Updated dependencies [5181ddb]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [e71ea1a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [fe5df7d]
+- Updated dependencies [423a405]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [f9995b1]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b808784]
+- Updated dependencies [849f6ec]
+- Updated dependencies [028af6f]
+- Updated dependencies [eb831f8]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [db7df1c]
+- Updated dependencies [968faa6]
+- Updated dependencies [653549d]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [9510a03]
+- Updated dependencies [adbcf0b]
+- Updated dependencies [1027b98]
+- Updated dependencies [1cfd80c]
+- Updated dependencies [3b0161c]
+- Updated dependencies [385d01e]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [60c8192]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [295e96a]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b552b50]
+- Updated dependencies [a021cd1]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [e11764a]
+- Updated dependencies [872a088]
+- Updated dependencies [9cd314d]
+- Updated dependencies [30aa133]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [96ff077]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes
