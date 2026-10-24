@@ -25,6 +25,11 @@ export function ThreadCard({
   const column = statusColumn(task);
   const button = "border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
   const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
+  const viewThread = (
+    <button type="button" className={button} onClick={() => onOpen(task.id)}>
+      View thread
+    </button>
+  );
   return (
     <section
       aria-label={`Thread: ${task.title}`}
@@ -61,17 +66,11 @@ export function ThreadCard({
                 </button>
               </>
             ) : null}
-            <button type="button" className={button} onClick={() => onOpen(task.id)}>
-              View thread
-            </button>
+            {viewThread}
           </div>
         ) : null}
       </div>
-      {column === "working" || column === "resolved" ? (
-        <button type="button" className={button} onClick={() => onOpen(task.id)}>
-          View thread
-        </button>
-      ) : null}
+      {column === "working" || column === "resolved" ? viewThread : null}
     </section>
   );
 }

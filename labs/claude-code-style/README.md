@@ -93,8 +93,8 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left.
 | Kind | Files | Lines |
 |---|---:|---:|
 | Configuration | 16 | 301 |
-| React UI | 20 | 1333 |
+| React UI | 20 | 1326 |
 | Small flows | 0 | 0 |
-| Fixtures (deleted at wiring) | 1 | 500 |
+| Fixtures (deleted at wiring) | 1 | 470 |
 | Checks (not app code) | 6 | 671 |
 <!-- inventory:end -->

@@ -1,20 +1,12 @@
 import type { TaskRow } from "../adapter";
-import { columnOf, type Column } from "../lib/columns";
+import { COLUMNS, columnOf } from "../lib/columns";
 import { cn } from "../lib/utils";
 
 /** A harness's name as a card and row tag it. */
 const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
 
-/** What a thread's status line says first, by its column. */
-const LINE_LABEL: Record<Exclude<Column, "pinned">, string> = {
-  working: "Working",
-  waiting: "Waiting on you",
-  review: "Ready for review",
-  resolved: "Resolved",
-};
-
 /** The thread's column, ignoring pins: a pinned thread keeps its status icon and line. */
-export const statusColumn = (task: TaskRow) => columnOf(task, false) as Exclude<Column, "pinned">;
+export const statusColumn = (task: TaskRow) => columnOf(task, false);
 
 /**
  * A thread's status icon: a ring while it works, a filled dot when it needs
@@ -41,10 +33,12 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
 /** A run that completed at the review deadline: resolved, but never approved. */
 const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
 
-/** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …", "Resolved · not reviewed". */
+/** "Working · Comparing SLA tiers", "Waiting on you · Which region…", "Failed · …", "Resolved · not reviewed": the column's board label, then the note. */
 export function statusLine(task: TaskRow): string {
   if (notReviewed(task)) return "Resolved · not reviewed";
-  const label = task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : LINE_LABEL[statusColumn(task)];
+  const column = statusColumn(task);
+  const label =
+    task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : COLUMNS.find((c) => c.id === column)!.label;
   const note = task.waitingOn?.prompt ?? task.statusNote;
   return note ? `${label} · ${note}` : label;
 }
