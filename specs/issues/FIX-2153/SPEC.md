@@ -51,7 +51,7 @@ never the lab's own state. With the lab's answer-again source off, step 4 must f
 | **Signal** | 0 *New session* asks for a project, and the header shows the one you pick · 1 your line shows · 2 the main session's own text shows before any task row · 3 two task rows show, both filed by this session · 4 a result card shows while the turn's working indicator is on, and text after it in the same turn names the result; the card, the indicator and that text all carry the request id of your first `respond`, so a second request started by the settled notice does not count · 5 after you ask to stop the other task, its row reads `cancelled` through `listTasks` · **Harness leg**, run after the five: 6 ask for a one-line change to a file in the project; a coding task row shows, runs through Claude Code, and settles `completed`; its work view shows the harness's steps; the change is on the run's branch of the project's repository, and the lab's own checkout is untouched |
 | **Input** | "Compare two vendors and write a summary": one quick research task and one long one. The skill tells the main session to keep working after it files them, so the turn outlasts the quick task. A different ask with one quick and one long task must pass too; a run where the turn ends before the quick task does, or the long task ends before you ask to stop it, is a bad input, not a FAIL: the check records it and reruns, up to three times |
 | **Anti-game** | Don't assert on fixtures, the adapter's return values, or the lab's React state. Don't cancel through the public `updateTask` action from the test |
-| **Control that must fail** | The lab with its `answerAgain` source block left out in the lab's config. FAIL on signal 4: the result then arrives in a second request after the turn. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL. And a session created with no project: the composer stays closed and asks, and no run starts anywhere: FAIL on signals 0 and 6 if anything runs in the lab's own checkout |
+| **Control that must fail** | The lab with `answerAgain` left off the main worker's flow in the lab's config. FAIL on signal 4: the result then arrives in a second request after the turn. No package carries a switch for the control. And the inventory check with a planted `src/glue.ts`: FAIL. And a session created with no project: the composer stays closed and asks, and no run starts anywhere: FAIL on signals 0 and 6 if anything runs in the lab's own checkout |
 
 ## What changes
 
@@ -106,26 +106,26 @@ flowchart LR
   B --> R["researcher's task session"]
   R -->|"settles"| N["settled notice"]
   N -.->|"on the board"| B
-  M -->|"answer ends · the lab's answerAgain block calls takeFinishedTasks"| L{"settled during the turn?"}
+  M -->|"answer ends · answerAgain: true calls takeFinishedTasks"| L{"settled during the turn?"}
   L -->|"yes · the package's answer-again step answers once more, under its cap"| M
   M -->|"items"| V["main thread · result card"]
   B -->|"listTasks"| P["tasks pane"]
 ```
 
-The main session runs on the agent worker flow with one lab block in its `answerAgain` source
-slot (FIX-2159). When the answer ends, the package's one answer-again step asks that block, which
-calls the exported `takeFinishedTasks` handler for tasks this session filed that settled while
+The main session runs on the agent worker flow with `answerAgain: true` (FIX-2159, merged as
+[#3823](https://github.com/fixpoint-labs/flow-state-dev/pull/3823)), so the lab writes no block for it. When the answer ends, the package's one answer-again step
+runs its pre-built `finishedTasksAnswerAgain`, which calls `takeFinishedTasks` for tasks this session filed that settled while
 the turn ran. If it returns a message, the package answers again in the same request with those
-results, under the step's one exported cap; if it returns nothing, the turn ends. The check runs after the last model call, so a task that settles during that call is
+results, under `MAX_ANSWERS_AGAIN` (3, shared with the plan); if it returns nothing, the turn ends. The check runs after the last model call, so a task that settles during that call is
 still caught. The take is not the lab's: it goes through FIX-2078's one ending path with the
 durable "taken in request R" mark ([ER-6](../../epics/FIX-2152/DECISIONS.md#who-owns-what)),
 moving the notice's handling and acknowledgement into this request, so the queued
 `onTaskSettled` notice for the same ending skips and the main session hears each ending once.
-The lab supplies only the source block; the package, not the lab, goes back to the worker's turn. The result card is drawn from the item the take emits.
+The lab only turns it on; the package, not the lab, goes back to the worker's turn. The result card is drawn from the item the take emits.
 
 ## What stays as it is
 
-- **The worker model.** The main worker is a `manager`, on the agent worker flow with the lab's `answerAgain` source block in its slot. No new kind of worker, no coordinator. It has no file or bash tools: it works in text and hands code to the coding worker, so no sandbox directory is set for it.
+- **The worker model.** The main worker is a `manager`, on the agent worker flow with `answerAgain: true`. No new kind of worker, no coordinator. It has no file or bash tools: it works in text and hands code to the coding worker, so no sandbox directory is set for it.
 - **Skills don't start workers.** A skill tells the model to `createTask` for a delegate.
 - **Shift Manager**, its shell and its app contract. This lab copies the setup; it changes neither.
 - **Core and engine.** Nothing here goes below workforce and orchestration.
@@ -138,7 +138,7 @@ The lab supplies only the source block; the package, not the lab, goes back to t
 | The agent flow's planned turn, delegation board, and `resultTo: "filer"` | **Builds on.** The main session works and delegates |
 | `listTasks` rows with `statusNote` and `run.sessionId`; `updateTask` cancel and steer (FIX-2081, FIX-2086) | **Builds on.** The pane, a task's work, and step 5 |
 | `useSession` items, streaming and `abortRequest` | **Builds on.** The main thread and its Stop button |
-| A worker running on a flow you wrote (`flow:` in `WORKER.md`, `workerFlows`, `defineSessionBoard`) | **Builds on.** The main worker adds only an `answerAgain` source block, no flow of its own ([epic D2](../../epics/FIX-2152/DECISIONS.md#d2)) |
+| A worker running on a flow you wrote (`flow:` in `WORKER.md`, `workerFlows`, `defineSessionBoard`) | **Builds on.** The main worker sets only `answerAgain: true`, no flow or block of its own ([epic D2](../../epics/FIX-2152/DECISIONS.md#d2)) |
 | `@flow-state-dev/design-system`, the `packages/ui` registry, `fsdev dev --app` | **Builds on.** The only theme, the copied components, the launch |
 | `projectWorkspace()` (`workforce/src/projects/project-workspace.ts`): a harness run works in its workstream's project, its conversation's (`filingProjectId`, copied at hand-over), or the one its task names, else refuses `no-project` | **Builds on.** A task the main session files inherits the session's project through `filingProjectId`, so delegates work where the session does with no new mechanism |
 | `harnessManager({ harness, workspace, ledgers })`, `localWorkspaceHost`, and the Claude Code and Codex harness blocks | **Builds on.** The lab's one coding worker flow, which builds a manager per harness and runs each task through the one its worker's `harness` setting names (`settingsOf`, `workforce/src/hire.ts`), under 200 lines ([epic ER-9](../../epics/FIX-2152/DECISIONS.md#who-owns-what)) |
@@ -159,7 +159,7 @@ The lab supplies only the source block; the package, not the lab, goes back to t
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One private lab under `labs/` with its inventory check and one small coding worker flow and one `answerAgain` source block; the epic's evidence. The fixtures and their adapter bodies, deleted at wiring (the closure checks it) |
+| **Adds** | One private lab under `labs/` with its inventory check and one small coding worker flow; the epic's evidence. The fixtures and their adapter bodies, deleted at wiring (the closure checks it) |
 | **Leaves** | The same task-row-to-view shaping (status, note, worker, run session) lives in Shift Manager, here, and soon FIX-2154, and each lab carries its own inventory check. ER-3 forbids sharing between labs; the closure prices it ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3788#issuecomment-6375045433)). The registry has no sessions list or tasks pane, so the lab writes both |
 
 **Net: up, by one private lab.** It is what the epic exists to produce.

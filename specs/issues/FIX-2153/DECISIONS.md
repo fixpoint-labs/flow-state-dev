@@ -83,14 +83,12 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
   the view that lists it, never stored. FIX-2157 adds threads mode as the *Projects* entry
   and a status-board pane that reads the same `listTasks` rows. The *Projects* view shows
   disabled until then.
-- **Session mode adds one block, not a flow: the main worker's `answerAgain` source.** When the
-  answer ends, the package's answer-again step asks it; it calls `takeFinishedTasks` for tasks
-  that settled while the turn ran and returns a message or nothing, and the package answers
-  again in the same request under its one cap (epic D2, the product owner's call; FIX-2159's shape). It is built at wiring and must stay
-  under 200 lines. `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
+- **Session mode adds no flow and no block: the main worker sets `answerAgain: true`.** When
+  the answer ends, the package's answer-again step runs `finishedTasksAnswerAgain`, which calls
+  `takeFinishedTasks` for tasks that settled while the turn ran, and the package answers again in
+  the same request under `MAX_ANSWERS_AGAIN` (epic D2, the product owner's call; FIX-2159, #3823). `researcher` is a worker file on the agent flow; the skill is a `SKILL.md`.
   The take it calls is FIX-2159's, on FIX-2078's one path with the "taken in request R" mark, so
-  the deferred notice skips and each ending is heard once (ER-6). The lab owns only the
-  source block. The front end needs no change for it: the card reads the item the take emits.
+  the deferred notice skips and each ending is heard once (ER-6). The lab only turns it on. The front end needs no change for it: the card reads the item the take emits.
 - **The inventory check is owned here** (ER-1). It classifies every tracked file under the lab
   as config, UI or flow by path, counts lines, writes the README table, and fails on any file
   it can't classify and on a flow over 200 lines. Its negative control plants `src/glue.ts`
@@ -142,7 +140,7 @@ directory that isn't a project, which is a new mechanism, so it would be filed a
 - **Product owner's answers:** the mode comes from the view you're in (*Sessions* or
   *Projects*), not from a choice at *New session*. A result reaches the running turn through
   a turn that answers again at its end. It was first written as the lab's own flow looping back;
-  FIX-2159's spec moved the loop into the package, so the lab supplies only the source block. The take stays FIX-2159's, on FIX-2078's one
+  FIX-2159's spec moved the loop into the package, and its merge (#3823) ships the source, so the lab only sets `answerAgain: true`. The take stays FIX-2159's, on FIX-2078's one
   path, so an ending is heard once; the epic's D2 is amended to match.
 - **Product lead's second ask:** a working directory per session (D3, with the gap that lets
   an ordinary session open on a project) and a coding harness on delegated workers only. The
