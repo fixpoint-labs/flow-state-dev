@@ -753,7 +753,7 @@ the engine's answer route (`answerSuspension` in `@flow-state-dev/client`); `wai
 a read convenience, never where a screen lists what waits for a user. Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
-  own fence (`cancelTask`), so an answer that arrives at the same moment is told the stop is
+  own fence (`cancelAndResume`), so an answer that arrives at the same moment is told the stop is
   resolved. The run resumes with `waitForUser` returning `{ cancelled: true }` and runs to its
   end holding no claim: its progress writes are refused, nothing it returns is recorded, and a
   task it files is refused (`parent_cancelled`). Any other ending of the row (a cascade)

@@ -9,7 +9,7 @@
  * (`Task.resumeOwed`), in that same write, with the stop it is owed to kept
  * on the row. Two payers, as for a wait's resume:
  *
- * - **At once**, by the cancelling side: {@link cancelTask} writes the cancel
+ * - **At once**, by the cancelling side: {@link cancelAndResume} writes the cancel
  *   under the stop's own fence (`RequestHost.resumeWait`'s `first`), so an
  *   answer can't land between the cancel and its resume: once the cancel is
  *   written, it wins.
@@ -47,7 +47,7 @@ class CancelDeclined extends Error {}
  *
  * @returns The cancel's own outcome, as `collection.cancel` reports it.
  */
-export async function cancelTask(
+export async function cancelAndResume(
   ctx: BlockContext,
   collection: TaskCollectionRef,
   id: string,

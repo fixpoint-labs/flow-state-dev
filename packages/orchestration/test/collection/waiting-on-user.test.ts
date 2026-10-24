@@ -1,14 +1,14 @@
 /**
  * A task whose run waits for a user (FIX-2129), on both backings: the row's
  * record of the stop (`waitingFor`), the resume a cancel owes the parked run
- * (`resumeOwed`, the board's existing mark), who pays it (`cancelTask` at once,
+ * (`resumeOwed`, the board's existing mark), who pays it (`cancelAndResume` at once,
  * under the stop's fence; `payOwedResumes` on the next touch), and the filing
  * a cancelled task makes afterwards (refused).
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext, ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/types";
 import {
-  cancelTask,
+  cancelAndResume,
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
   ticketForClaim,
@@ -118,7 +118,7 @@ describe.each([
     expect(collection.get("t")!.waitingFor).toBeUndefined();
   });
 
-  it("cancelTask writes the cancel under the stop's fence, then the resume is paid and nothing stays owed", async () => {
+  it("cancelAndResume writes the cancel under the stop's fence, then the resume is paid and nothing stays owed", async () => {
     const { collection } = await waiting();
     const order: string[] = [];
     const host = hostThat(async (input) => {
@@ -127,25 +127,25 @@ describe.each([
       order.push(`resolved:${collection.get("t")!.status}`);
       return { ok: true };
     });
-    expect(await cancelTask(host.ctx, collection, "t", "stop")).toEqual({ outcome: "recorded" });
+    expect(await cancelAndResume(host.ctx, collection, "t", "stop")).toEqual({ outcome: "recorded" });
     // The row was cancelled inside the fence, before the stop resolved.
     expect(order).toEqual(["fence", "resolved:cancelled"]);
     expect(collection.get("t")).toMatchObject({ status: "cancelled" });
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
   });
 
-  it("cancelTask still cancels when an answer resolved the stop first, and owes nothing further", async () => {
+  it("cancelAndResume still cancels when an answer resolved the stop first, and owes nothing further", async () => {
     const { collection } = await waiting();
     const host = hostThat(async () => ({ ok: false, refused: "already-resolved", detail: "answered" }));
-    expect(await cancelTask(host.ctx, collection, "t")).toEqual({ outcome: "recorded" });
+    expect(await cancelAndResume(host.ctx, collection, "t")).toEqual({ outcome: "recorded" });
     expect(collection.get("t")!.status).toBe("cancelled");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
   });
 
-  it("cancelTask leaves the resume owed when the stop's request is busy", async () => {
+  it("cancelAndResume leaves the resume owed when the stop's request is busy", async () => {
     const { collection } = await waiting();
     const host = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
-    await cancelTask(host.ctx, collection, "t");
+    await cancelAndResume(host.ctx, collection, "t");
     expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, waitingFor: STOP });
   });
 

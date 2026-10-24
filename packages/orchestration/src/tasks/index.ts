@@ -226,7 +226,7 @@ export {
 // Filed work still holding a task (FIX-2077, rule 6).
 export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
 // A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.
-export { cancelTask, owesUserResume } from "./helpers/user-stop";
+export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";
