@@ -118,3 +118,20 @@ describe("the fixture's threads, on review", () => {
     expect(running).toBe(false);
   });
 });
+
+describe("the fixture's stop line, with punctuation in titles", () => {
+  it("cancels the thread whose file the line names, not the first one running", async () => {
+    const lab = createFixtureLab();
+    const { id } = await lab.openSession("threads", "project-vendor-notes");
+    let rows: TaskRow[] = [];
+    lab.watchTasks(id, (next) => (rows = next));
+    await lab.send(id, "Add code first.ts");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Add code second.ts");
+    await vi.advanceTimersByTimeAsync(1300);
+    await lab.send(id, "Stop second.ts");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rows.find((t) => t.title === "Add code second.ts")?.status).toBe("cancelled");
+    expect(rows.find((t) => t.title === "Add code first.ts")?.status).not.toBe("cancelled");
+  });
+});

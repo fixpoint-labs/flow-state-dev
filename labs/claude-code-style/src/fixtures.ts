@@ -285,8 +285,12 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
     // The running task the line names (by a word of its title), else the first one running.
     const runningTasks = s.tasks.filter((t) => t.status === "in_progress" || t.status === "held" || t.status === "parked");
-    const words = new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
-    const named = runningTasks.find((t) => t.title.toLowerCase().split(/\s+/).slice(1).some((word) => words.has(word)));
+    // One tokenizer for the line and the titles, so punctuation (`second.ts`) splits the same on both sides.
+    const tokens = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    const words = new Set(tokens(text));
+    // The task whose title shares the most words with the line, so `second.ts` beats a shared `ts`.
+    const score = (t: FixtureTask) => tokens(t.title).slice(1).filter((word) => words.has(word)).length;
+    const named = runningTasks.reduce<FixtureTask | undefined>((best, t) => (score(t) > (best ? score(best) : 0) ? t : best), undefined);
     const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
       play(s, stopScript(s, running));
