@@ -6,7 +6,7 @@
  * rail already knew before it was clicked (BR-5).
  *
  * **Instructions are one item read**, `getCollectionItemState(sessionId,
- * collectionRef, workerId)`, through the same `resourceClient` seam and the
+ * collectionRef, workerId)`, through the same `client` seam and the
  * same credential-less fallback `Roster` and `BoardColumns` ship with
  * (BR-27). It reuses their fence (`usePanelItem`, in `reads.ts`) rather than
  * hand-rolling a third read primitive, and `Roster`'s own `isWorker` /
@@ -64,10 +64,10 @@ export type WorkerDetailProps = {
    */
   readonly collectionRef?: string;
   /**
-   * The host's own resource client, so the read carries the host's transport
+   * The host's own client, so the read carries the host's transport
    * and its credential (BR-27). Pass a STABLE reference — see `Roster`.
    */
-  readonly resourceClient?: PanelItemSource;
+  readonly client?: PanelItemSource;
 };
 
 /**
@@ -108,9 +108,9 @@ function Instructions(props: {
 }
 
 export function WorkerDetail(props: WorkerDetailProps): ReactNode {
-  const { sessionId, kind, workerId, collectionRef = DEFAULT_ROSTER_REF, resourceClient } = props;
+  const { sessionId, kind, workerId, collectionRef = DEFAULT_ROSTER_REF, client } = props;
 
-  const source = usePanelSource(resourceClient);
+  const source = usePanelSource(client);
 
   return createElement(
     "div",

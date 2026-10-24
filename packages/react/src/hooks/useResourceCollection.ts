@@ -12,17 +12,16 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createResourceClient,
   type CollectionItemHandle,
   type CollectionItemState,
   type CollectionListPage,
   type CollectionSnapshotEntry,
   type CollectionSnapshotPrefetchedItem,
-  type ResourceClient
+  type ResourcesApi
 } from "@flow-state-dev/client";
 import type { SessionView } from "./useSession";
 import { useReadFence, type ReadFence } from "./useReadFence";
-import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 
 /**
  * Mutation actions available on the collection, shaped by declared permissions.
@@ -146,7 +145,7 @@ export function findCollectionEntry(
 
 function wrapItem<TClient>(
   raw: { topic: string; clientData?: unknown; content?: string },
-  client: ResourceClient,
+  client: ResourcesApi,
   sessionId: string | undefined,
   ref: string
 ): CollectionItemHandle<TClient> {
@@ -172,16 +171,8 @@ export function useResourceCollection<TClient = unknown>(
   session: SessionView,
   ref: string
 ): UseResourceCollectionResult<TClient> {
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  const apiPath = context.apiPath;
-
-  // FIX-427: hoist the client into a single useMemo. The previous hook
-  // instantiated `createResourceClient` twice per render.
-  const client = useMemo(
-    () => createResourceClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
+  // One memoized client per hook: the fence below keys on it.
+  const client = useClient().resources;
 
   const sessionId = session.sessionId;
 

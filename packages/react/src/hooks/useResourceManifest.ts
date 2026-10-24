@@ -7,12 +7,9 @@
  * here — manifests don't change at runtime.
  */
 import { useEffect, useMemo, useState } from "react";
-import {
-  createResourceClient,
-  type ResourceManifest
-} from "@flow-state-dev/client";
+import type { ResourceManifest } from "@flow-state-dev/client";
 import type { SessionView } from "./useSession";
-import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 
 const manifestCache = new Map<string, ResourceManifest>();
 const inFlight = new Map<string, Promise<ResourceManifest>>();
@@ -24,8 +21,7 @@ export type UseResourceManifestResult = {
 };
 
 export function useResourceManifest(session: SessionView): UseResourceManifestResult {
-  const { baseUrl, apiPath } = useFlowContext();
-  const client = useMemo(() => createResourceClient({ baseUrl, apiPath }), [baseUrl, apiPath]);
+  const client = useClient().resources;
   const flowKind = session.snapshot?.flowKind ?? session.flowKind;
   const sessionId = session.sessionId;
 

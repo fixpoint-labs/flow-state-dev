@@ -18,19 +18,18 @@ import {
   sessionQueryFor,
   type Client,
   type FlowListEntry,
-  type SessionClient,
+  type SessionsApi,
   type SessionSummary
 } from "@flow-state-dev/client";
 import { useFencedRead } from "../../internal/useFencedRead";
 import type { FlowNavigatorLeaf } from "./grouping";
 
 /**
- * The navigator reads two methods and no more, and the types say which. A host
- * passes the clients it already holds — with its own `fetcher`, so every
- * request carries whatever credential that transport adds.
+ * The navigator reads two methods of the one client and no more, and the type
+ * says which. A host passes the client it already holds — with its own
+ * `fetcher`, so every request carries whatever credential that transport adds.
  */
-export type FlowNavigatorFlowSource = Pick<Client, "listFlows">;
-export type FlowNavigatorSessionSource = Pick<SessionClient, "listSessions">;
+export type FlowNavigatorClient = Pick<Client, "flows"> & { readonly sessions: Pick<SessionsApi, "list"> };
 
 /** Stable empty lists, so a stale hold hands back the same reference each render. */
 const EMPTY_FLOWS: FlowListEntry[] = [];
@@ -50,12 +49,12 @@ export type FlowInventory = {
  * list is what tells a row how deep it goes, so a row that read it for itself
  * would turn one request into one per row.
  */
-export function useFlowInventory(source: FlowNavigatorFlowSource): FlowInventory {
+export function useFlowInventory(source: FlowNavigatorClient): FlowInventory {
   const { data, isLoading, error, refresh } = useFencedRead<readonly FlowListEntry[]>(
     [source],
     EMPTY_FLOWS,
     "Failed to load flows",
-    () => source.listFlows()
+    () => source.flows()
   );
   return { flows: data, isLoading, error, refresh };
 }
@@ -87,7 +86,7 @@ export type LeafSessions = {
  * separates those.
  */
 export function useLeafSessions(
-  source: FlowNavigatorSessionSource,
+  source: FlowNavigatorClient,
   leaf: FlowNavigatorLeaf,
   userId: string | undefined,
   /**
@@ -117,7 +116,7 @@ export function useLeafSessions(
     EMPTY_SESSIONS,
     "Failed to load sessions",
     () =>
-      source.listSessions({
+      source.sessions.list({
         // The branch itself is `client`'s, written once there. This passes the
         // one entry it already knows about, which is all the helper reads.
         ...sessionQueryFor(address, [{ id: address, cardinality }]),
