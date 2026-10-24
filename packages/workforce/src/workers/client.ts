@@ -27,9 +27,10 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKER_ID_STATE_KEY, WORKERS_RESOURCE } from "./keys";
+import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, SET_WORK_PROJECT_ACTION, STANDARD_WORKERS_RESOURCE, WORKER_ID_STATE_KEY, WORKERS_RESOURCE } from "./keys";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
+import type { SetWorkProjectOutput } from "../projects/work-project";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -115,6 +116,22 @@ export interface WorkforceClient {
    * reason and stores nothing.
    */
   standingRules(worker: string, input: StandingRulesActionInput): Promise<StandingRulesActionOutput>;
+  /**
+   * Set the project one of the user's own conversations with `worker` works
+   * in: its runs, and the tasks it files from now on. With no `sessionId`,
+   * the user's default conversation with the worker (created when there is
+   * none); with one, that session of the user's, such as a new session just
+   * created. A later call replaces the project; tasks already filed keep the
+   * one they were filed in. Rejects, storing nothing, for a project the user
+   * isn't a member of (a private one: isn't theirs), and for a session that
+   * isn't the user's own conversation: the project coordinator's, a task's,
+   * a delegate's or a workstream lead's.
+   */
+  setWorkProject(
+    worker: string,
+    project: { visibility: "shared" | "private"; id: string },
+    options?: { sessionId?: string }
+  ): Promise<SetWorkProjectOutput>;
 }
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
@@ -383,6 +400,11 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       const session = await client.ensureWorkerSession({ worker });
       const flow = flowOf(await readRoster((await roster()).id), worker);
       return (await runIn(flow, session.id, STANDING_RULES_ACTION, input)) as StandingRulesActionOutput;
+    },
+    setWorkProject: async (worker, project, setOptions) => {
+      const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
+      const flow = flowOf(await readRoster((await roster()).id), worker);
+      return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project })) as SetWorkProjectOutput;
     }
   };
   return client;

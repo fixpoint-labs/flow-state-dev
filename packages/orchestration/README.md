@@ -518,6 +518,26 @@ next copy takes it over; a copy that finds the notice taken by a request that ha
 running or parked, runs nothing. Holding needs a host that records which requests are running
 (durable execution, `requestHost.waits.running`); anywhere else a notice is admitted at once.
 
+**Taking a notice in a running request.** `takeOwedNotice(ctx, notice)` takes an owed notice in
+the running request's name, through the same take `onTaskSettled` uses, so a request can act on
+an ending before it finishes. It answers the notice, with `cancelled` naming the dependents its
+ending cancelled, or `undefined` when the row no longer owes it or another live request holds it.
+Handle it, then clear it on the row with `clearNotice` from `@flow-state-dev/orchestration/tasks`:
+
+```ts
+import { takeOwedNotice } from "@flow-state-dev/orchestration";
+import { clearNotice } from "@flow-state-dev/orchestration/tasks";
+
+const taken = await takeOwedNotice(ctx, notice);
+if (taken !== undefined) {
+  // act on taken.ending / taken.output; `ref` is the board's task collection
+  await ref.patchMetadata(taken.taskId, clearNotice(taken));
+}
+```
+
+Once cleared, the copy `onTaskSettled` queued finds nothing owed and runs nothing. If the request
+ends without clearing it, that copy takes it over and delivers it as usual.
+
 **Holding a notice back.** Give `taskSettledEntry` a `defer(ctx, notice)` when the session can be
 busy with something a notice must not run beside, such as a turn that is still under way. When it
 answers `true`, the entry runs nothing and acknowledges nothing: the notice stays owed, and the

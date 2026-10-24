@@ -11,7 +11,8 @@
  * of a project's files; `run-project.ts` for the one read of a coding run's
  * project and owner; `project-workspace.ts` for the run source a coding run
  * gets its files from; `project-mcp-tools.ts` and `mcp-credentials.ts` for the
- * MCP servers a run gets and each user's keys for them.
+ * MCP servers a run gets and each user's keys for them; `work-project.ts` for
+ * the action that sets the project a user's conversation works in.
  */
 
 export {
@@ -172,3 +173,12 @@ export {
   type ProjectWorkspaceOptions,
   type ProjectWorkspaceRefusalReason
 } from "./project-workspace";
+
+export {
+  defineSetWorkProjectBlock,
+  setWorkProjectAction,
+  setWorkProjectInputSchema,
+  setWorkProjectOutputSchema,
+  type SetWorkProjectInput,
+  type SetWorkProjectOutput
+} from "./work-project";

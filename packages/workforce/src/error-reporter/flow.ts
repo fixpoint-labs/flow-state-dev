@@ -12,10 +12,11 @@ import { MCP_CREDENTIALS_RESOURCE } from "../projects/mcp-credentials";
 import { readStandingRules } from "../standing-rules/rules-record";
 import { renderRules } from "../standing-rules/rules-list";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
+import { defineSetWorkProjectBlock, setWorkProjectInputSchema } from "../projects/work-project";
 import { markUserTurnStep } from "../standing-rules/user-turn";
 import { turnConfigOf } from "../workers/verified-worker";
 import type { WorkerInstallation } from "../workers/installation";
-import { PROJECT_STATE_KEY } from "../workers/keys";
+import { PROJECT_STATE_KEY, SET_WORK_PROJECT_ACTION } from "../workers/keys";
 import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { reportOwedKey } from "../conversation-board/report-owed";
@@ -718,7 +719,14 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
       // It takes no input, runs only in a report's own session, and only for the operator.
       [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report, onErrored: releaseClaim },
-      [STANDING_RULES_ACTION]: standingRulesAction
+      [STANDING_RULES_ACTION]: standingRulesAction,
+      // Never on a report's session, which the reporter opens for its own work (FIX-2161).
+      [SET_WORK_PROJECT_ACTION]: {
+        inputSchema: setWorkProjectInputSchema,
+        block: defineSetWorkProjectBlock((id) =>
+          reportIdOfSession(id) === undefined ? undefined : "an error report's session, which the Error Reporter opens for its own work"
+        )
+      }
     },
     internal: {
       actions: {

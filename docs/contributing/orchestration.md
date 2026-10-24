@@ -467,19 +467,31 @@ approval nor merge. Agents still merge a spec only through MERGE-ONLY, after one
 other channels below has approved it, so this channel never lets an agent approve its own
 spec.
 
-**A merge-ready head has been reviewed.** Automated review runs when a PR is opened ready
-or leaves draft, so a PR marked ready in the same breath as its merge merges a head no
+**A merge-ready PR has been reviewed.** Automated review runs when a PR is opened ready
+or leaves draft, so a PR marked ready in the same breath as its merge merges code no
 reviewer saw. Take a PR out of draft when its work is ready for review, not when it is
-ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
-review and the required checks have returned on its current head.
+ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once an
+automated review has returned on the PR, any follow-up review you asked for has returned,
+and the required checks have passed on its current head. Later pushes don't need a fresh
+review of their own (see the next rule). The workflow scripts check only that some review
+returned. A pending follow-up holds a PR back only because whoever reports its readiness
+says not ready, so say it.
 
 **Codex is the automated reviewer; an agent never stands in for it.** Don't dispatch a
 Claude review agent to fill in for a missing bot review: it costs credits and duplicates
-what Codex does. Instead, make sure Codex has reviewed the current head. Grok usually asks
-for that review; if you notice a head with no Codex review first, comment `@codex review`
-on the PR yourself. Name what you're unsure of in the request ("pay special attention to:
-…" with the specific seams, races or invariants in doubt) rather than posting the bare
-command.
+what Codex does. Instead, make sure Codex has reviewed the PR once: the first head that is
+ready for review. Grok usually asks for that review; if you notice a PR with no Codex review,
+comment `@codex review` on the PR yourself. Name what you're unsure of in the request ("pay
+special attention to: …" with the specific seams, races or invariants in doubt) rather than
+posting the bare command.
+
+**Ask Codex again only when you have a concern.** Codex usage is limited, so don't request a
+review after every push. Fixes for review findings, docs, renames, test-only changes and
+small follow-ups ride on the first review. Request a follow-up review when a later push adds
+or reworks logic complex enough that you want another reader on it: new concurrency or
+timing, a changed persisted shape, an auth or routing decision, a rewritten core path. Name
+that concern in the request. Codex also reviews on its own when a draft is marked ready;
+don't request one on top of that.
 
 **Green means CI ran on this head and passed.** Read the `Typecheck & Test` check run on
 the PR's current head, never the combined commit status: Vercel posts `success` there for
@@ -796,7 +808,8 @@ project-content mirror. Do not migrate project lifecycle or historical closed sp
    This is an assignment to an existing worker, not a new workflow action.
 3. **The worker executes only that authorized spec merge.** Re-read human approval,
    the current head, required repository checks/approvals, and required review-thread
-   policy, and confirm an automated review has returned on the current head sha.
+   policy, and confirm an automated review has returned on the PR (any head), plus any
+   follow-up review that was requested.
    If any requirement is unmet, return the specific blocker without merging.
    Merge with an **atomic expected-head precondition** matching the supplied reviewed
    SHA (for example, `gh pr merge <PR> --match-head-commit <SHA>`); a prior head read

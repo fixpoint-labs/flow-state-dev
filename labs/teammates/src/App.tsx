@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
-import type { LabAdapter, WorkerRow } from "./adapter";
+import type { LabAdapter, ProjectRow, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
+import { Runs } from "./components/Runs";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
 
 /**
  * The screen: the workers on the left, the chosen worker's one conversation
- * in the center, and its talk with the other workers on the right. The app
- * opens on the first worker on the roster.
+ * in the center, and its talk with the other workers on the right. A worker
+ * that takes tasks only has no conversation; the center shows its runs. The
+ * app opens on the first worker on the roster.
  */
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
   const [talkOpen, setTalkOpen] = useState(true);
@@ -18,11 +21,13 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   useEffect(() => {
     let live = true;
     void (async () => {
-      const roster = await adapter.listWorkers();
-      const ids = await Promise.all(roster.map((w) => adapter.openConversation(w.id)));
+      const [roster, projectRows] = await Promise.all([adapter.listWorkers(), adapter.listProjects()]);
+      const talking = roster.filter((w) => !w.takesTasks);
+      const ids = await Promise.all(talking.map((w) => adapter.openConversation(w.id)));
       if (!live) return;
       setWorkers(roster);
-      setSessions(Object.fromEntries(roster.map((w, i) => [w.id, ids[i]])));
+      setProjects(projectRows);
+      setSessions(Object.fromEntries(talking.map((w, i) => [w.id, ids[i]])));
       setSelected((current) => current ?? roster[0]?.id);
     })();
     return () => {
@@ -39,11 +44,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       style={{ gridTemplateColumns: talkOpen ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
       <WorkersList adapter={adapter} workers={workers} sessions={sessions} selected={selected} nameOf={nameOf} onSelect={setSelected} />
-      {worker && sessionId ? (
+      {worker?.takesTasks ? (
+        <Runs adapter={adapter} worker={worker} workers={workers} sessions={sessions} projects={projects} nameOf={nameOf} />
+      ) : worker && sessionId ? (
         <Conversation
           adapter={adapter}
           worker={worker}
           sessionId={sessionId}
+          projects={projects}
           nameOf={nameOf}
           talkOpen={talkOpen}
           onToggleTalk={() => setTalkOpen((open) => !open)}

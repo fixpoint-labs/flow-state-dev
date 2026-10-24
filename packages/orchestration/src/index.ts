@@ -35,9 +35,11 @@ export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
 
 // How a filer hears a delegated task end (FIX-2078): the `onTaskSettled`
-// entry any flow that hands rows out declares, and the repairs a board's pass
-// runs in the filer's session (resumes, cascades, notices past due).
+// entry any flow that hands rows out declares, a running request's own take
+// of a notice through the same take record (FIX-2159), and the repairs a
+// board's pass runs in the filer's session (resumes, cascades, notices past due).
 export {
+  takeOwedNotice,
   taskSettledEntry,
   taskSettledInputSchema,
   type TaskSettledEntryOptions,

@@ -1,0 +1,4 @@
+{
+  "instructions": "You coordinate lookups. When the person asks you to look several things up, file one task per thing for your delegate scout with createTask (assignee: scout), all in this turn. Do not wait on the tasks with getTask: tell the person you have asked, and end your answer. When a task's result reaches you, give the person that result in your answer, quoting the code it came back with exactly.",
+  "ask": "Please look up two release codes for me: the one for the web app and the one for the mobile app. Ask scout for each one as its own task."
+}
