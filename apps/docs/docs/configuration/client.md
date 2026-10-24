@@ -76,7 +76,7 @@ Every call and stream the client makes uses it, `transcribe` included. In React,
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `userId` | `string` | required | The user every call acts as. The server still resolves the principal from your auth hook; this is the client's claim. |
+| `userId` | `string` | required | The user every call acts as. With sign-in on, the server identifies the caller from the request's credentials instead. |
 | `baseUrl` | `string` | required unless `fetcher` is set | Where the FlowState routes are mounted, minus the mount: the origin plus any base path. `""` is the page's own origin; pass an absolute URL such as `http://localhost:3000` in Node. The client appends `apiPath` itself. See [Choosing `baseUrl`](#choosing-baseurl). |
 | `apiPath` | `string` | `"/api/flows"` | Where the server mounts the flow API. Set it to the server's mount when that differs, such as a Node host's `basePath`. See [Choosing `apiPath`](#choosing-apipath). |
 | `fetcher` | `ClientFetch` | global `fetch` | The `fetch` every call and stream goes through. See [Adding credentials](#adding-credentials) and [Calling an engine in the same process](#calling-an-engine-in-the-same-process). |

@@ -10,11 +10,9 @@ Works in Node, the browser, edge runtimes. No React dependency. No DOM dependenc
 pnpm add @flow-state-dev/client
 ```
 
-## One client
+## Creating a client
 
-`createClient` builds the one client an app needs. It holds two things: the
-user every call acts as, and the transport every call and stream goes
-through. Flows, sessions, resources and requests all hang off it.
+`createClient` builds a client for one user and one server. It holds the user every call acts as and the transport every call and stream goes through. Flows, sessions, resources and requests all hang off it.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -103,7 +101,7 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 | Method | What it does |
 |--|--|
 | `status()` | The request's lifecycle state now. |
-| `wait({ pollMs?, timeoutMs? })` | Resolves once the request has settled: it is not `in_progress`, and the server holds no live run of it. A run that stops for a person settles at `suspended`. A request you just continued or resumed is waited for, not read back as it was. |
+| `wait({ pollMs?, timeoutMs? })` | Resolves once the request has settled: it is not `in_progress`, and the server holds no live run of it. A run that stops for a person settles at `suspended`. |
 | `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
@@ -122,9 +120,7 @@ stop's `allow` set is a 409.
 ### After a crash
 
 A host that crashed or restarted leaves its running requests behind.
-`fsd.requests.interrupted()` lists the user's: it asks the server to mark stale
-runs first, then reads every interrupted record, so a request an earlier sweep
-marked is listed too, until it is continued, retried or removed.
+`fsd.requests.interrupted()` lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued or removed.
 
 ```ts
 // Saved the id? Use it.
@@ -175,7 +171,7 @@ with no web server, and a credentialed one streams with its credentials.
 
 ## Stream state store
 
-A request's `stream` hands you raw event callbacks. If you want those events folded into a ready-to-render item list — sorted, with streaming text accumulated and resumed or crash-recovered duplicate emissions collapsed — without writing your own reducer, use the request stream store. It's the same accumulator the React hooks use, lifted out so non-React consumers (a Node script, a custom UI framework, the DevTool) can share one tested reducer.
+A request's `stream` hands you raw event callbacks. To get those events as a sorted, ready-to-render item list, with streaming text accumulated and repeated emissions collapsed, use the request stream store. It's the accumulator the React hooks use, so it works in a Node script or a custom UI.
 
 ```ts
 import { createRequestStreamStore, bindStoreToCallbacks } from "@flow-state-dev/client";
@@ -332,7 +328,7 @@ the flow is wired up.
 
 ## Public API
 
-- `createClient({ userId, baseUrl?, apiPath?, fetcher? })` — The one client:
+- `createClient({ userId, baseUrl?, apiPath?, fetcher? })` — A client for one user and one server:
   - `flows()`, `capabilities()`
   - `flow(address)` — `send`, `createSession`, `request(id)`
   - `sessions` — `list`, `get`, `requests`, `children`, `state`, `updateMetadata`, `delete`, `stream`, and `debug` (DevTool reads; the server must opt in)

@@ -34,7 +34,7 @@ Server:                                Client:
 Two routes, both scoped to the caller, list requests a crash or restart left `interrupted`:
 
 - `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers the requests that call marked.
-- `GET /api/flows/users/:userId/interrupted-requests` lists every `interrupted` request of the user's, whoever marked it, and changes nothing. A request stays listed until it is continued, retried or removed.
+- `GET /api/flows/users/:userId/interrupted-requests` lists every `interrupted` request of the user's, whoever marked it, and changes nothing. A request stays listed until it is continued or removed.
 
 Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. From the client, [`fsd.requests.interrupted()`](/docs/api/client#fsdrequestsinterruptedoptions) calls both and hands back request handles you can `continue()` or `retry()`. See [After a crash](/docs/client/overview#after-a-crash).
 

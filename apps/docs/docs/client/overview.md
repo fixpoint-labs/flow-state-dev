@@ -8,9 +8,9 @@ sidebar_position: 1
 
 If you're building a React app, see [Client > React](/docs/client/react); the React package wraps this client with hooks and renderers. This page covers using the client directly, for scripts, tests, workers and non-React UIs.
 
-## One client
+## Creating a client
 
-`createClient` builds the one client an app needs. It holds the user every call acts as and the transport every call goes through. Flows, sessions, resources and requests all hang off it.
+`createClient` builds a client for one user and one server. It holds the user every call acts as and the transport every call goes through. Flows, sessions, resources and requests all hang off it.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -123,7 +123,7 @@ for (const lost of await fsd.requests.interrupted()) {
 }
 ```
 
-Each entry is a request handle already addressed to its own flow, plus `sessionId`, `flowKind`, `actionName` and `interruptedAt`. A request stays in the list until it is continued, retried or removed, so calling `interrupted()` again lists it again.
+Each entry is a request handle already addressed to its own flow, plus `sessionId`, `flowKind`, `actionName` and `interruptedAt`. A request stays in the list until it is continued or removed, so calling `interrupted()` again lists it again.
 
 Only an `interrupted` request can be continued; any other answers `409`. Use `resume` for a `suspended` one. A request that has no session can't be continued or retried, and the call rejects before anything is sent. [Durable execution](/docs/advanced/durable-execution) covers what replays and what runs again.
 
@@ -220,7 +220,7 @@ const flows = await fsd.flows();
 const rows = await fsd.sessions.list(sessionQueryFor("engineer-a", flows));
 ```
 
-It returns `{ flowId: address }` for a copy of a collection flow and `{ flowKind: address }` otherwise. An address the flow list doesn't carry reads as a singleton. Spread it into `fsd.sessions.list` alongside any other filter.
+It returns `{ flowId: address }` for a copy of a collection flow and `{ flowKind: address }` otherwise. An address missing from the flow list is treated as a single-copy flow's kind. Spread it into `fsd.sessions.list` alongside any other filter.
 
 ### Dispatched runs
 

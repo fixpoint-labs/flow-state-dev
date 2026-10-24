@@ -82,7 +82,7 @@ await sent.wait();
 - `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.
 - SSE responses stream, and an `AbortSignal` in `init` reaches the route.
 
-The router treats an in-process call like any HTTP request. Credentials ride the request headers and go through your `resolvePrincipal`; being in the same process grants nothing extra. `createServerApp()` dispatches through the same function, so the routes, checks and answers match what a remote client gets.
+The routes, checks and answers are the same as over HTTP. Credentials ride the request headers and go through your `resolvePrincipal`; being in the same process grants nothing extra.
 
 ---
 

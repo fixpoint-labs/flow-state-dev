@@ -10,7 +10,7 @@ For a walkthrough, see [Client > Overview](/docs/client/overview). This page is 
 
 ## `createClient(options)`
 
-Builds the one client an app needs. Every call it makes acts as one user and goes through one transport.
+`createClient` builds a client for one user and one server. Every call it makes acts as that user and goes through one transport.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -142,7 +142,7 @@ The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this u
 
 ## `fsd.requests.interrupted(options?)`
 
-Lists the client's user's interrupted requests: requests a host lost in a crash or restart. It asks the server to mark runs that have gone stale first, then reads every interrupted record. A request stays in the list until it is continued, retried or removed.
+Lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued or removed.
 
 ```ts
 for (const lost of await fsd.requests.interrupted()) {
