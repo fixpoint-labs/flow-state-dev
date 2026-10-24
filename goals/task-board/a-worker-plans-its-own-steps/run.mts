@@ -65,7 +65,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; assertions: string[] }>
     patches: [
       {
         module: "packages/workforce/src/agent-worker-flow.ts",
-        from: String.raw`const run = board !== undefined \? board\.planned\(answeredRun\) : answeredRun;`,
+        // The plan's second source (`answerAgain`, FIX-2159) rides along; the control drops both.
+        from: String.raw`const run = board !== undefined \? board\.planned\(answeredRun, answerAgain\) : answeredRun;`,
         to: "const run = answeredRun;"
       },
       {

@@ -42,7 +42,8 @@
  * ({@link takenNoticePatch}). A wait's drop and that take are writes to the
  * same row, each conditional on the other not having happened, so exactly one
  * goes through: a wait leaves a taken marker alone ({@link deliveredByWait})
- * and answers that the ending arrives as a notice ({@link deliveredAsNotice}). A
+ * and answers that the ending arrives as a notice ({@link noticeTakenByAnother}),
+ * until the request that took it has delivered it and ended. A
  * taken marker is still owed, and the filer's pass still sends it again: a
  * copy finds it taken and runs nothing while the request that took it runs,
  * and takes it over once that request has ended without clearing it (its
@@ -277,16 +278,23 @@ export function takenNoticePatch(
 }
 
 /**
- * Whether the ending `row` holds reaches its filer as a notice (FIX-2123): a
- * request other than `requestId` (the one asking) took the notice owed for
- * that ending, whether it is delivering it now, has delivered it, or failed
- * and leaves it to be sent again. A wait answers so, not with the ending: the
- * notice is the filer's one hearing of it.
+ * The request other than `requestId` (the one asking) that took the notice
+ * for the ending `row` holds (FIX-2123), and whether that notice is still
+ * owed; `undefined` when no other request took it. A wait answers that the
+ * ending arrives as a notice while that notice is being delivered: still owed
+ * (under way, or its taker failed and it goes again), or cleared by a taker
+ * that still runs (a host may acknowledge before the turn it wakes). A taker
+ * that is parked (waiting on a person, say) still counts as handling it, so a
+ * wait answers `arrivesAsNotice` until that taker ends. Once it
+ * is cleared and its taker has ended, it has been heard and nothing more is
+ * coming (FIX-2181): the wait answers with the row, as a read of it does.
  */
-export function deliveredAsNotice(row: Task, requestId: string): boolean {
-  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return false;
+export function noticeTakenByAnother(row: Task, requestId: string): { readonly by: string; readonly owed: boolean } | undefined {
+  if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return undefined;
   const by = takerOf(row, row.attempts, row.status);
-  return by !== undefined && by !== requestId;
+  if (by === undefined || by === requestId) return undefined;
+  const key = markerKey(row.attempts, row.status);
+  return { by, owed: isMarker(key, (row.metadata ?? {})[key]) };
 }
 
 /**

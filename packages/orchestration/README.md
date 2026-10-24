@@ -963,11 +963,14 @@ deadline is milliseconds from the call, five minutes by default, within the host
 block isn't called for it: a task's notice waits while the request that filed it runs, so a wait
 in that request reads the ending first. If the notice was taken by `onTaskSettled` before the wait
 reads the task (the filing request was parked, or another request waits), the wait returns
-`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task, whether that notice is
-still being handled or done: the notice is how the session hears that ending. At the deadline the task runs on and nothing is cancelled. If it ends while the
+`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task until `onTaskSettled` has handled that ending, including while a failed notice
+waits to be sent again. A notice turn that is parked, waiting on a person for example, still counts
+as handling it, so a wait answers `arrivesAsNotice` until that turn ends. The notice is how the
+session hears that ending. After that, a wait returns the task as `getTask` does, with its output.
+At the deadline the task runs on and nothing is cancelled. If it ends while the
 waiting request is still running, that request's next `getTask` on it returns the ending. If
 the request parks or ends first, the ending goes to `onTaskSettled`, once, and a wait on it after the
-resume returns `arrivesAsNotice`. When the answer
+resume returns `arrivesAsNotice` or the task by the same rule. When the answer
 is how the session hears that a task failed or was cancelled, in place of its notice, it carries
 `cancelled` beside `task`: the dependents that ending cancelled, as the notice would have named
 them. Any other `getTask` answer leaves them to the notice. Waits nest: a
