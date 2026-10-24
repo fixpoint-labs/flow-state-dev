@@ -3633,6 +3633,7 @@ check('INVARIANT: no merge gate for a PR the automated review has not returned o
   const fix = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true, ...shas } } })
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: undefined, repairReviewedHeadSha: undefined })), [], 'repair PR with no review evidence')
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: null })), [], 'repair PR no review has returned on')
+  assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r2', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }], 'repair PR pushed past the review rides on it')
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
 })
 

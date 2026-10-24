@@ -2123,7 +2123,7 @@ const PR_STATE_SCHEMA = {
     repairReviewedHeadSha: {
       type: ['string', 'null'],
       description:
-        "repairHeadSha itself if ANY completed automated review of the repair PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. repairReadyToMerge counts only when this equals a non-null repairHeadSha.",
+        "repairHeadSha itself if ANY completed automated review of the repair PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. repairReadyToMerge counts only when this and repairHeadSha are both non-null.",
     },
     /** The repair PR was closed WITHOUT merging — otherwise `AWAITING_FIX` idles with nothing to dispatch. */
     repairClosedUnmerged: { type: 'boolean' },
