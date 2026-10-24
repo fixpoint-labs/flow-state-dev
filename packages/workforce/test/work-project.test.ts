@@ -74,7 +74,8 @@ function filerFlow(installation: WorkerInstallation) {
 /**
  * The delegates' flow. A turn asks `runProjectOf` and keeps its answer; a
  * turn holding a task whose goal starts "split" files one piece for
- * `eng.coder` through its own board first, once.
+ * `eng.coder` through its own board first, once, and one whose goal starts
+ * "plan" files a step for itself in a session of its own, once.
  */
 function takerFlow(installation: WorkerInstallation, runs: Run[]) {
   const board = defineSessionBoard({ installation, flowKind: "taker" });
@@ -84,15 +85,18 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
     inputSchema: doorInput,
     uses: [projectWorkspaceCapability],
     resources: { ...installation.resources, ...board.resources },
-    execute: async (_input, rawCtx) => {
+    execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       const worker = (await installation.resolveWorker(rawCtx, "taker")).id;
       const held = (await heldTask(ctx))?.row;
+      // The answer turn after a step runs holding the same task: record only the first.
+      if (input.message.startsWith("The steps you filed for yourself have ended")) return "answered";
       runs.push({
         worker,
         sessionId: ctx.session.identity.id,
         state: { ...(ctx.session.state as object) },
-        goal: held?.goal,
+        // A step in a session of its own arrives as its goal, holding no conversation task.
+        goal: held?.goal ?? input.message.trim(),
         answer: view(await runProjectOf(ctx as never))
       });
       if (held !== undefined && held.goal.startsWith("split") && !split.has(held.id)) {
@@ -100,21 +104,27 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
         const ref = await board.board.resolver(ctx as never);
         await ref!.addTask({ goal: `piece of ${held.goal}`, assignee: "eng.coder" });
       }
+      if (held !== undefined && held.goal.startsWith("plan") && !split.has(held.id)) {
+        split.add(held.id);
+        const ref = await board.board.turnResolver(ctx as never);
+        await ref!.addTask({ id: "s-own", goal: `step of ${held.goal}`, assignee: worker, session: "new" });
+      }
       return "asked";
     }
   });
+  const planned = board.planned(turn);
   return defineFlow({
     kind: "taker",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
     actions: {
-      respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message },
+      respond: { inputSchema: doorInput, block: planned, userMessage: (i: { message: string }) => i.message },
       ...board.actions,
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
     },
-    internal: { actions: board.entries(turn) },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
+    internal: { actions: board.entries(planned) },
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn: planned }) } }
   } as never);
 }
 
@@ -143,7 +153,9 @@ async function boot() {
       taker: { flow: takerFlow(installation, runs), roles: ["contributor", "manager"] },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
-    models: { generators: { "coordinator-judgment": judgment } }
+    models: { generators: { "coordinator-judgment": judgment } },
+    // A step in a session of its own parks its request until the step ends.
+    durable: true
   });
   const settled = async () => {
     const deadline = Date.now() + 10_000;
@@ -247,6 +259,16 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(ongoing.answer).toEqual(inApollo);
     // One hop further down: the piece it filed while holding the task.
     expect(h.answerOf("piece of split the work")).toEqual(inApollo);
+  });
+
+  it("ongoing step: a step that delegate files for itself in a session of its own runs in the project too", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const lead = (await alice.ensureWorkerSession({ worker: "lead" })).id;
+    await alice.setWorkProject("lead", apollo);
+    await h.file("alice", lead, "plan the work", { assignee: "eng.taker", session: "ongoing", resultTo: "conversation" });
+    expect(h.answerOf("plan the work")).toEqual(inApollo);
+    expect(h.answerOf("step of plan the work")).toEqual(inApollo);
   });
 
   it("not-a-member: a reader of the project who may not work in it is refused, another user's private project isn't found, and nothing is stored", async () => {

@@ -12,7 +12,7 @@ import { MCP_CREDENTIALS_RESOURCE } from "../projects/mcp-credentials";
 import { readStandingRules } from "../standing-rules/rules-record";
 import { renderRules } from "../standing-rules/rules-list";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
-import { setWorkProjectAction } from "../projects/work-project";
+import { defineSetWorkProjectBlock, setWorkProjectInputSchema } from "../projects/work-project";
 import { markUserTurnStep } from "../standing-rules/user-turn";
 import { turnConfigOf } from "../workers/verified-worker";
 import type { WorkerInstallation } from "../workers/installation";
@@ -720,7 +720,13 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       // It takes no input, runs only in a report's own session, and only for the operator.
       [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report, onErrored: releaseClaim },
       [STANDING_RULES_ACTION]: standingRulesAction,
-      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
+      // Never on a report's session, which the reporter opens for its own work (FIX-2161).
+      [SET_WORK_PROJECT_ACTION]: {
+        inputSchema: setWorkProjectInputSchema,
+        block: defineSetWorkProjectBlock((id) =>
+          reportIdOfSession(id) === undefined ? undefined : "an error report's session, which the Error Reporter opens for its own work"
+        )
+      }
     },
     internal: {
       actions: {

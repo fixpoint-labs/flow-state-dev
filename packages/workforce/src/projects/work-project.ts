@@ -64,35 +64,49 @@ function refuse(message: string): never {
   throw new Error(`Refused: ${message}`);
 }
 
-/** The action's block. */
-export const setWorkProjectBlock = handler({
-  name: "set-work-project",
-  inputSchema: setWorkProjectInputSchema,
-  outputSchema: setWorkProjectOutputSchema,
-  resources: { ...PROJECT_ROW_RESOURCES },
-  execute: async (input, ctx) => {
-    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-    if (typeof state[WORKER_ID_STATE_KEY] !== "string") refuse("this session runs no worker, so it has no project to set.");
-    for (const [key, what] of LINKED) {
-      if (state[key] !== undefined) refuse(`this is ${what}. Its project can't be set.`);
+/**
+ * The action's block, refusing too each session `otherSession` names as not
+ * the user's own conversation: sessions a flow's own code opens, which carry
+ * none of the fields above (the Error Reporter's report sessions).
+ *
+ * @param otherSession What a session that isn't the user's own conversation
+ *   is, by its id, for the refusal; `undefined` admits it.
+ */
+export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => string | undefined = () => undefined) {
+  return handler({
+    name: "set-work-project",
+    inputSchema: setWorkProjectInputSchema,
+    outputSchema: setWorkProjectOutputSchema,
+    resources: { ...PROJECT_ROW_RESOURCES },
+    execute: async (input, ctx) => {
+      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      if (typeof state[WORKER_ID_STATE_KEY] !== "string") refuse("this session runs no worker, so it has no project to set.");
+      for (const [key, what] of LINKED) {
+        if (state[key] !== undefined) refuse(`this is ${what}. Its project can't be set.`);
+      }
+      const other = otherSession(ctx.session.identity.id);
+      if (other !== undefined) refuse(`this is ${other}. Its project can't be set.`);
+      const user = ctx.user?.identity?.userId;
+      const owner = ctx.session.identity.userId;
+      if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
+      const { visibility, id } = input.project;
+      const stored = await projectRowsAt(ctx, visibility).getOptional(id);
+      if (stored === undefined) {
+        refuse(
+          visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`
+        );
+      }
+      const row = projectRowSchema.parse(stored.state);
+      const allowed = visibility === "private" ? row.ownerUserId === user : isMember(row, user);
+      if (!allowed) refuse(`not-a-member: "${user}" is not a member of project "${id}", so this conversation can't work in it.`);
+      await ctx.session.patchState({ [WORK_PROJECT_STATE_KEY]: projectRef(input.project) });
+      return { project: input.project };
     }
-    const user = ctx.user?.identity?.userId;
-    const owner = ctx.session.identity.userId;
-    if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
-    const { visibility, id } = input.project;
-    const stored = await projectRowsAt(ctx, visibility).getOptional(id);
-    if (stored === undefined) {
-      refuse(
-        visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`
-      );
-    }
-    const row = projectRowSchema.parse(stored.state);
-    const allowed = visibility === "private" ? row.ownerUserId === user : isMember(row, user);
-    if (!allowed) refuse(`not-a-member: "${user}" is not a member of project "${id}", so this conversation can't work in it.`);
-    await ctx.session.patchState({ [WORK_PROJECT_STATE_KEY]: projectRef(input.project) });
-    return { project: input.project };
-  }
-});
+  });
+}
+
+/** The action's block, for a flow whose every session runs a worker for its user. */
+export const setWorkProjectBlock = defineSetWorkProjectBlock();
 
 /** The action, as a worker flow declares it under `SET_WORK_PROJECT_ACTION`. */
 export const setWorkProjectAction = { inputSchema: setWorkProjectInputSchema, block: setWorkProjectBlock };

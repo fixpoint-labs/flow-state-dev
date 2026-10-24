@@ -175,6 +175,7 @@ export {
 } from "./project-workspace";
 
 export {
+  defineSetWorkProjectBlock,
   setWorkProjectAction,
   setWorkProjectBlock,
   setWorkProjectInputSchema,

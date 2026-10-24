@@ -765,7 +765,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const workstream = filingWorkstreamOf(ctx.session.state);
-      const project = filingProjectOf(ctx.session.state);
+      // The session's project, or, in a delegate's ongoing session, the held task's (FIX-2161).
+      const project = (await filingProjectStampOf(ctx)) ?? undefined;
       return {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
