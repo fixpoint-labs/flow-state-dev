@@ -547,7 +547,10 @@ is how an epic of five directionally-sound specs turns into fifty review rounds.
 The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
-spec-review round budget".
+spec-review round budget". Every spec and the epic-spec also get
+[`reuse-review`](../reuse-review/SKILL.md) — `issue-spec` Step 5 / 6.5 for children,
+`epic-agent` for the epic — kept separate from `second-look`. The rule is
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 **The budget arithmetic is the `epic-wake` script's, not yours** — one `atReviewBudget()`
 covering issue specs and the epic PR alike, so the three things that make it misfire (counting

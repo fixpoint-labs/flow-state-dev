@@ -115,6 +115,12 @@ default here is **cut**, at both altitudes:
   with the trim named in a line. Record `restraint: <issue> · cut: <what> · kept: <why>` in
   `.orchestration/epic.md` so a later fold doesn't re-fire it. **A `direct` (bug) row has no spec
   and gets no pass.**
+- **Reuse review, same gate, separate dispatch.** Dispatch
+  [`reuse-review`](../reuse-review/SKILL.md) on that same issue ID — not as part of
+  `second-look`. One pass per spec (and once on the epic-spec when it first becomes
+  approval-ready). A reuse or extend verdict on an Adds item treated as new is a cut
+  routed the same way. Record `reuse: <issue> · fold: <what> · new: <why>`. The rule is
+  [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 Cuts are proposed to a spec, never applied to one here — the coordinator edits nothing outside
 `.orchestration/`.

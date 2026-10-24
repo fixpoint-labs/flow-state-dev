@@ -3,7 +3,7 @@
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
 (`epic-lifecycle`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
-`cross-spec-review`, `spec-poc`, `settle-claim`) and the worker sub-agents (`issue-worker`,
+`cross-spec-review`, `spec-poc`, `settle-claim`, `reuse-review`) and the worker sub-agents (`issue-worker`,
 `epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
 instead of each restating the shared concepts. When a concept here changes, it changes here.
 
@@ -753,6 +753,44 @@ So the discipline is ours, not theirs:
   (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+- **Compose existing pieces** (next section) — the Builds on / Adds table, and `reuse-review`
+  on every spec and epic.
+
+## Compose existing pieces
+
+The bar is **powerful yet elegant**: we use the blocks and pieces we already have, and we
+do not add a second way to do the same thing. A new mechanism is allowed only when it is
+**built on** those pieces — composed from the five block kinds, existing primitives, and
+existing records — not invented beside them.
+
+This is the package-mechanism form of tenet 2. The job-level form (a public method, tool,
+action or entry that does a job something already does) stays
+[`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+job" and `issue-spec` Step 3.5 question 7. This section is the *how we build* rule those
+do not cover: a second cap, a second marker that means the same reservation, a second
+hold-release path, a hook that reimplements a `sequencer` / `doWhile` / handler
+composition we already wrap.
+
+**What a spec or epic owes.** Every item it adds to a package names the existing block,
+primitive or mechanism it considered, and either how it is composed from it or why that
+piece does not fit. The Adds list is as short as possible. The debt line counts any
+second way of doing an existing thing. The table lives in `SPEC.md` → *What's already
+here, and the debt*
+([`spec-template.md`](spec-template.md#whats-already-here-and-the-debt),
+[`epic-spec-template.md`](epic-spec-template.md)).
+
+**What review owes.** Every spec and every epic gets a dedicated
+[`reuse-review`](../../.agents/skills/reuse-review/SKILL.md), kept separate from
+`second-look`. It searches the code for each Adds item and returns **reuse X**, **extend
+X**, or **genuinely new**. A reuse or extend verdict the spec treated as new is
+spec-level (fold). Worked examples live in the skill, not here.
+
+It runs through the plumbing that already reviews specs — not a new lifecycle:
+
+- `issue-spec` Step 5, before the spec PR opens; Step 6.5 again after a fold that moves Adds
+- `epic-agent`, after authoring the epic-spec and after a fold that moves the set's Adds
+- `review`'s reuse lens, on spec/epic targets and on implementation changes
+- `epic-pm`, once per spec at the approval gate, separately from its `second-look` pass
 
 ## Spec retention and authority
 

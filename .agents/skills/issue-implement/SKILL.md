@@ -351,6 +351,9 @@ This is the critical quality gate. **Invoke `review`** on the change (the implem
 
 - **Coherence** (`audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
 - **Restraint** (`second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
+- **Reuse** (`reuse-review`) — each Adds item against existing blocks and pieces; a second
+  mechanism is spec-level. Separate from Restraint. Canonical:
+  [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 - **Correctness** — bugs and logic errors + the second-path checklist (BP-035). Changesets (BP-022) are opt-in, so the lens flags a fragment that is present and wrong, never a missing one.
 - **Completeness** (a spec is in scope) — every spec requirement built and nothing extra, **red demonstrated** (the failing output captured before the fix — and, for a check with no before-state, the blast radius: what was broken, which checks went red, and that nothing else did — per assertion, with every claimed outcome asserted), and the **goal proven** on a real model (or the documented "no goal check applies" justification; for bugs, diagnose's real-path confirmation).
 
@@ -384,8 +387,8 @@ Present the completed work:
 4. **Goal verdict**: when the spec named a goal check, the spec's goal sentence, the check that was run (command/path), that it used a real model, the control's FAIL (command and the assertions it named), and its PASS verdict with the evidence it checked, plus a line confirming no *not done if* state holds — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
 5. **Deviations**: anything that differed from the spec and why
 6. **Test results**: full typecheck and test output, plus the red/green evidence (failing output captured before the fix/implementation, passing output after) for each new behavioural or regression test — per the confirm-red gate. A check with no before-state carries its blast radius instead: what was broken, which checks went red, and that nothing else did. "Tests pass" alone is not evidence.
-7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, correctness, completeness — plus alternatives if the change tripped its trigger) and how the must-fix / should-fix items were resolved. Alternatives rows are always notes: carry them into the summary as *"a shape worth weighing next time"*, never as unfinished work on this PR
-8. **Restraint & subtraction**: what the restraint lens (`second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
+7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, reuse, correctness, completeness — plus alternatives if the change tripped its trigger) and how the must-fix / should-fix items were resolved. Alternatives rows are always notes: carry them into the summary as *"a shape worth weighing next time"*, never as unfinished work on this PR
+8. **Restraint & subtraction**: what the restraint lens (`second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038); separately, what the reuse lens (`reuse-review`) flagged as a second mechanism and what was folded into an existing piece
 9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:

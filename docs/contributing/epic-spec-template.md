@@ -90,6 +90,9 @@ is not a schedule.
   That question can only be asked here.
 - **The set's debt** in `SPEC.md` — something the set overlaps and doesn't name, or adds and
   doesn't list.
+- **Builds on / Adds** in that same section — an Adds item that does not name the existing
+  piece it considered, or that is a second mechanism for something we already have
+  ([`orchestration.md`](orchestration.md#compose-existing-pieces)).
 - A cross-cutting decision in `DECISIONS.md` — shared surface, naming, sequencing, contracts.
 - A rule in `DECISIONS.md` → *Who owns what* with no owner, or two.
 - A missing issue the objective implies, or one in the set that doesn't serve it.
@@ -261,7 +264,9 @@ Sections, in order:
 8. **What's already here, and the debt** — the issue spec's section
    ([`spec-template.md`](spec-template.md#whats-already-here-and-the-debt)) for the set as a
    whole: what already exists across the area, prior epic-level designs the set keeps, amends
-   or supersedes, and the set's net debt. A child's own lineage and debt stay in its spec.
+   or supersedes, the set's **Builds on / Adds** table, and the set's net debt. A child's own
+   lineage and debt stay in its spec. The compose-existing-pieces rule is
+   [`orchestration.md`](orchestration.md#compose-existing-pieces).
 9. **Sign off** — one-liners with no figures; the trade-offs stay beside their cards, and only
    the PR body pins them. The goal first, the debt second, then the objective and the
    cross-cutting calls that pass the filters, each linking its card, each with *If wrong:*.
@@ -388,6 +393,10 @@ Sections, in order:
 > | Apps' own duplicate defences | **Replaces.** An app that does nothing special no longer needs one |
 > | FIX-680 D3: each app owns all reconnect machinery | **Amended** for the default by [D3](DECISIONS.md#d3); apps' own policies stay as overrides, not a second reconnect actor |
 > | FIX-681's rule against durable per-client state | **Kept**, as [ER-1](DECISIONS.md#who-owns-what) and ER-4 |
+>
+> | Adds | Existing piece considered | Why it doesn't fit / how composed |
+> |---|---|---|
+> | One shipped backoff default (FIX-777) | Apps' own reconnect policies | Extends: a default they override in one line. Not a second reconnect actor ([D2](DECISIONS.md#d2), ER-1) |
 >
 > | The debt | |
 > |---|---|

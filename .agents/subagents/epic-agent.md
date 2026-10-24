@@ -73,8 +73,12 @@ Take the single action the dispatch calls for:
   obeys — and the coordination seams). *What's already here* cites each predecessor by its exact
   prior anchor and says what the set keeps, amends or supersedes.
   Cite real PR/Linear history where no repository artifact exists; no invented paths or backfill.
-  Keep authored figures, assets, and POCs with this set. Open the epic PR and link it from
-  Linear; do not publish a full-content mirror. Return handles for human sign-off.
+  Keep authored figures, assets, and POCs with this set. Run
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the epic-spec before opening the PR;
+  a reuse or extend verdict on an Adds item treated as new is above the bar
+  ([`orchestration.md`](../../docs/contributing/orchestration.md#compose-existing-pieces)).
+  Open the epic PR and link it from Linear; do not publish a full-content mirror. Return
+  handles for human sign-off.
   Approval must bind to the reviewed head; no agent approval or stale-label bypass.
   The coordinator schedules a separate authorized MERGE-ONLY assignment before children start,
   unless the owner merged the PR themselves: that merge is the approval.
@@ -131,9 +135,11 @@ Take the single action the dispatch calls for:
   **Fold only what's above the bar.** The epic-spec is a direction artifact, so the same
   spec-review bar applies to it ([`orchestration.md`](../../docs/contributing/orchestration.md)
   → "Spec review: the bar and the convergence rule"): fold feedback that changes the epic's
-  objective or a cross-cutting decision. Feedback about one issue's internals is that issue's,
-  not the epic's — report it back for routing rather than absorbing it into the epic-spec, and
-  never rewrite the epic's prose around a line-level nit.
+  objective or a cross-cutting decision. A `reuse-review` verdict of reuse or extend on an
+  Adds item treated as new is above the bar. After a fold that moves the set's Adds, re-run
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the new head. Feedback about one
+  issue's internals is that issue's, not the epic's — report it back for routing rather than
+  absorbing it into the epic-spec, and never rewrite the epic's prose around a line-level nit.
 
   **The epic PR carries its own two-round budget**, and the coordinator holds the counter
   (`reviewRounds`, historically `epic_review_rounds`) because you can't persist state across dispatches. So report your

@@ -68,6 +68,9 @@ Other skills the spec author should reach for when relevant:
 - **`settle-claim`** — the review-time sibling of `prototype`, and the two are not interchangeable. `prototype` is **exploratory and yours**: you're undecided, and you build to *learn* (Step 4). `settle-claim` is **adversarial and contested**: a review thread turns on a factual claim about how the system behaves, prose has already failed on it, and a throwaway POC returns a CONFIRMED / REFUTED verdict with evidence (Step 6.5's fourth disposition). Reach for it the *second* time a claim is argued — that's the circuit breaker on the flip-flopping loop, not a last resort.
 - **`adhd`** — when the candidate set itself is too narrow, which is a different complaint from being undecided within it. `prototype` and `settle-claim` both **judge candidates you already hold**; `adhd` **generates the set**, by fanning out isolated sub-agents under cognitive frames (including four FSD-shaped ones — subtract-then-add, user-space only, wrong block kind, the trace) and converging on a shortlist with an opinion. Its two triggers here are Step 3.5's *third move* stall and a Step 4 design question where you suspect the two shapes on the table aren't the only two. It costs 8 sub-agent calls, so it is a decision-point instrument, not a default step. Whatever survives goes **back through Step 3.5's necessity bar** — divergence widens the options, it never launders one past the gate.
 - **`improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction is filed as an issue through `issue-manager` and named in `SPEC.md`'s debt table, *Leaves* row — *"<area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `improve-codebase-architecture`" (FIX-N).*
+- **`reuse-review`** — required at Step 5, and again at Step 6.5 after a fold that moves Adds.
+  Separate from `second-look`. The rule it checks is
+  [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 ## Interactivity — one skill, two modes
 
@@ -234,7 +237,10 @@ The incentive gradient of this workflow pulls toward producing a spec: that's th
    - **How to find them.** Search by what the code does, not where it lives: `graft` for callers and similar signatures, then the job's nouns and verbs across `packages/` (for "wait for a result": `wait`, `park`, `resume`, `await`, `answer`). The package you are touching is the one place you can't stop.
    - **Record the list in `SPEC.md → What's already here`**, with the closest entry named and the count stated: *"this would be the Nth way to <job>."* "None" is a claim like any other (BP-003): it carries the searches that found nothing. Calling the job *new* is a claim too, and it needs the same searches. "Messaging is a new job" was how a seventh way to reach a worker got counted as the first.
 
-   Then compare the change to the closest entry:
+   Then compare the change to the closest entry. The package-mechanism form of the same
+   bar — a second cap, marker, release path, or a hook beside a block composition — is
+   [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)
+   and lands in `SPEC.md`'s Builds on / Adds table; do not restate it here.
    - **It differs only by a flag, or only in what the caller does** → it is a parameter on that entry, not a new method or a new kind. Extend it, or fold both into one. Name it by the variable, not the scenario: `wait`, not `ask`.
    - **It differs in what the recipient or the mechanism does** → name the option on the closest entry that would carry that difference (a setting, a session to run in, a payload field), and show why that option can't work. Only then does it earn its own name. "The recipient behaves differently" is a setting until shown otherwise: a post "would start cold" was a reason to keep a separate entry, until a session-by-id option on the task was added a day later.
    - **Two existing entries already do the job the same way** → say so, and file the fold through `issue-manager` (it dedupes against existing issues): a job-scoped `audit-coherence` run, then the fold. Name the issue in `SPEC.md`'s debt table, *Leaves* row; a note with no issue has no owner once the spec merges.
@@ -385,10 +391,15 @@ How this workflow's research feeds the set:
   searches), what Agent A mapped the change touching, and Agent B's predecessors — each prior
   design by its exact anchor, kept, amended or superseded in part or whole. Several
   predecessors is normal; never rewrite their history or require backlink edits, and don't
-  treat approved intent as shipped behaviour. The debt table comes from the same research:
+  treat approved intent as shipped behaviour. The **Builds on / Adds** table is required:
+  every item added to a package names the existing piece considered and why it doesn't fit
+  or how it is composed from it
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
+  The debt table comes from the same research:
   what the change **removes** (tenet 3), what it **adds** that a later reader would call
   debt — each with why it is accepted now and the issue filed through `issue-manager` that
-  pays it, unless it is permanent by design — and what it **leaves**. The **Net** follows
+  pays it, unless it is permanent by design — and what it **leaves**. A second way of doing
+  an existing thing counts as debt and weights the Net. The **Net** follows
   from the tables, and it is the sign-off's debt line; *up* is allowed, never quiet.
 - **`DECISIONS.md` is the sign-off surface in full.** At most three cards, each a business
   decision (the filters in `asking-for-decisions.md`), with *Instead of · Because · Locks
@@ -412,9 +423,11 @@ How this workflow's research feeds the set:
 
 ### Step 5: Validate the Spec
 
-Validators check `SPEC.md` and `DECISIONS.md` — the diff, the docs line, *what's already here* and the debt — against current code/docs, not approved intent alone.
+Validators check `SPEC.md` and `DECISIONS.md` — the diff, the docs line, *what's already here*,
+Builds on / Adds, and the debt — against current code/docs, not approved intent alone.
 
-Launch the validation agents in parallel:
+Launch the validation agents in parallel. **Also dispatch `reuse-review`** (below) in
+that same parallel batch — it is not Agent E and not `second-look`.
 
 #### Agent E: Technical Validation
 Launch a `feature-dev:code-architect` sub-agent to review the spec for:
@@ -458,6 +471,16 @@ against what is being built, which is the undersell this check exists to catch. 
 
 A finding here is fixed in `SPEC.md` before publishing: widen the goal, or keep it and state
 the gap as the hardest sign-off line. Never argue it away in the reply.
+
+#### Reuse review (required, every spec)
+
+Dispatch [`reuse-review`](../reuse-review/SKILL.md) on this spec, in parallel with
+Agents E, F, and I. It searches the code for each Builds on / Adds row. A verdict of
+**reuse X** or **extend X** on an item the spec treated as new is spec-level: fold it
+before publishing. Canonical:
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
+Do not skip this because Agent E already graded the debt, and do not fold it into a
+`second-look`.
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
@@ -552,7 +575,7 @@ Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec
 
 For each piece of feedback ask the only question that matters at this altitude: **does acting on this change the approach?** Then pick exactly one:
 
-- **Fold in (spec-level).** The approach, decision, debt verdict, or scope are wrong or incomplete. Re-draft the affected documents per 6.5.2 and reply on the thread; keep Linear links current, not a content mirror.
+- **Fold in (spec-level).** The approach, decision, debt verdict, or scope are wrong or incomplete. A `reuse-review` verdict of reuse X or extend X on an Adds item treated as new is this disposition. Re-draft the affected documents per 6.5.2 and reply on the thread; keep Linear links current, not a content mirror.
 - **Note for the implementer (the default).** Everything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", or a detail the spec left to the implementer on purpose. Record it **verbatim** in **`DECISIONS.md → Notes from review`**, and reply once saying it's recorded for implementation rather than baked into the design. **Do not rewrite the design prose around it** — that pretends the spec can settle something it can't, and it's what turns a sound spec into a churning one.
 - **Drop.** Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase. Reply once with the pointer or the correction. No spec edit, no review note.
 - **Settle (empirical dispute — only once a loop has formed).** A **factual claim about how the system behaves** — "a router can't do that", "the store won't preserve ordering there", "that capability doesn't compose with a sequencer's state" — that has now been **asserted and counter-asserted at least twice**, where the spec's approach *depends* on it and running code can decide it. You can't fold it (you'd be guessing which side is right) and you can't note it (the approach rests on it), so **settle it with a POC** — see 6.5.3. **Requesting a settlement costs zero review rounds**, and the spec keeps converging while it runs.
@@ -579,7 +602,7 @@ changes only wording moves no figure: below the bar is below the bar. Re-render 
 touch. **The people table and the sign-off in `SPEC.md` are surfaces too** — a card that
 changed and a sign-off line that didn't is the same defect.
 
-**Canonical; `issue-implement` 10.6 points here.** Re-draft when direction changes or the artifact grows beyond ~1.3× its opening/last-redraft size (cumulative, not round-over-round). A `Re-draft:` trailer records that baseline. Rewrite affected sections into one coherent account, not a contradictory addendum; reconcile every affected section, including the docs line, *what's already here, and the debt*, and figures. Keep Linear links current, not a content mirror. Record a direction pivot in `DECISIONS.md → How it got here` with its reason; growth-only redrafts and review notes do not earn a pivot. After merge, use a new amendment PR and renewed approval for material direction changes.
+**Canonical; `issue-implement` 10.6 points here.** Re-draft when direction changes or the artifact grows beyond ~1.3× its opening/last-redraft size (cumulative, not round-over-round). A `Re-draft:` trailer records that baseline. Rewrite affected sections into one coherent account, not a contradictory addendum; reconcile every affected section, including the docs line, *what's already here, and the debt*, and figures. Keep Linear links current, not a content mirror. Record a direction pivot in `DECISIONS.md → How it got here` with its reason; growth-only redrafts and review notes do not earn a pivot. After merge, use a new amendment PR and renewed approval for material direction changes. **After a fold that moves Adds or *What's already here*, re-run [`reuse-review`](../reuse-review/SKILL.md) on the new head before pushing.**
 
 #### 6.5.3 Settle an empirical dispute with a POC (non-blocking)
 
