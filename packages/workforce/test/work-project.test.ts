@@ -245,6 +245,18 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("follow up first")).toEqual(inApollo);
   });
 
+  it("legacy follow-up in a project: a follow-up of a task the project coordinator filed before rows kept their project stays in the coordinator's project", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const pc = (await alice.ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: apollo })).id;
+    const first = await h.file("alice", pc, "first", { assignee: "eng.taker" });
+    expect(h.answerOf("first")).toEqual(inApollo);
+    // A row from before the board wrote the conversation's project over the one an input named.
+    await h.unstamp("alice", first, { project: beta });
+    await h.file("alice", pc, "follow up first", { followUpOf: first, input: { project: beta } });
+    expect(h.answerOf("follow up first")).toEqual(inApollo);
+  });
+
   it("waiting: a task filed under one project and assigned after the change still runs in the first", async () => {
     const h = await withProjects();
     const alice = h.client("alice");

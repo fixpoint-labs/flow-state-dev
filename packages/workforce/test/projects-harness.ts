@@ -267,15 +267,18 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const sessionsWith = (field: string, value: string) =>
     runtime.stores.session.list({ parentage: "all", state: { [field]: value } });
 
-  /** Take the project stamp off a row of `user`'s conversation ledger, as a row stored before rows carried one. */
-  const unstamp = async (user: string, taskId: string) => {
+  /**
+   * Take the project stamp off a row of `user`'s conversation ledger, as a row
+   * stored before rows carried one; `input`, given, replaces the row's input.
+   */
+  const unstamp = async (user: string, taskId: string, input?: unknown) => {
     const scope = `${user}:~org:${ORG}`;
     const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
     const found = Object.entries(entries).find(([, value]) => (value.state as { id?: unknown }).id === taskId);
     if (found === undefined) throw new Error(`no row "${taskId}" on ${user}'s ledger`);
     const [key, { state }] = found;
     const { [FILED_PROJECT]: _stamp, ...metadata } = ((state as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>;
-    await runtime.stores.resourceState.set("user", scope, key, { ...state, metadata } as never, "any");
+    await runtime.stores.resourceState.set("user", scope, key, { ...state, metadata, ...(input === undefined ? {} : { input }) } as never, "any");
   };
 
   return {
