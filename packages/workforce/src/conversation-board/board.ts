@@ -373,6 +373,20 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
 }
 
 /**
+ * The project a row filed here runs in (FIX-2161), as the stamp to write on
+ * the row and the address to write over a project its input names, so a
+ * guess is not refused `other-project`: a follow-up's root row's project,
+ * then the session's own, then the one the filing inherits (a held task's
+ * stamp in a delegate's ongoing session).
+ */
+async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp: string | null; own: ProjectAddressRef | undefined }> {
+  const stamp = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
+  const inherited = stamp === null ? undefined : parseProjectRef(stamp);
+  const own = isStamped(root) ? inherited : (filingProjectAddressOf(ctx.session.state) ?? inherited);
+  return { stamp, own };
+}
+
+/**
  * The project a task's session is handed (FIX-2161): the one its row was
  * stamped with when it was filed, so a task waiting on the board keeps it
  * when its conversation's project changes; none for a row filed with none.
@@ -1082,7 +1096,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // A follow-up runs in its root's session, so it keeps the root's
       // project even after the conversation's changes (FIX-2161).
       const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
-      const project = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
+      const { stamp: project, own } = await filedProjectFor(ctx, root);
       // The filing turn's hop count, which the task's turn starts at (FIX-2106).
       // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
       const metadata = {
@@ -1091,10 +1105,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [FILED_HOP]: turnHopMark(ctx),
         [FILED_PROJECT]: project
       };
-      const input = ownProjectIn(
-        init.input,
-        isStamped(root) ? (project === null ? undefined : parseProjectRef(project)) : filingProjectAddressOf(ctx.session.state)
-      );
+      const input = ownProjectIn(init.input, own);
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
       if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);
@@ -1314,7 +1325,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const fileReservedStep = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
       const { id, markAdded } = reserved;
       const metadata = callerMetadata(init.metadata);
-      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      // The project the step's own session is handed, so a guess in its input
+      // matches it (FIX-2161).
+      const input = ownProjectIn(init.input, (await filedProjectFor(ctx)).own);
       // A step a task session plans is that task's, server-written (FIX-2081).
       const owner = await pieceOwnerOf(ctx);
       const added = await plan.addTask({
@@ -1686,8 +1699,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: await filingProjectStampOf(ctx) };
-    const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
+    const { stamp, own } = await filedProjectFor(ctx);
+    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: stamp };
+    const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = filing;
     const init: TaskInit & { id: string } = {
       ...rest,

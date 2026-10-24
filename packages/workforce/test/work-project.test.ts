@@ -102,7 +102,13 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
       if (held !== undefined && held.goal.startsWith("split") && !split.has(held.id)) {
         split.add(held.id);
         const ref = await board.board.resolver(ctx as never);
-        await ref!.addTask({ goal: `piece of ${held.goal}`, assignee: "eng.coder" });
+        // The delegate names a project of its own: the board writes the one it
+        // works in over the guess, so the piece isn't refused other-project.
+        await ref!.addTask({
+          goal: `piece of ${held.goal}`,
+          assignee: "eng.coder",
+          input: { message: "piece", project: { visibility: "shared", id: "beta" } }
+        });
       }
       if (held !== undefined && held.goal.startsWith("plan") && !split.has(held.id)) {
         split.add(held.id);
@@ -272,7 +278,8 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(ongoing.state).not.toHaveProperty("taskId");
     expect(ongoing.state).not.toHaveProperty("filingProjectId");
     expect(ongoing.answer).toEqual(inApollo);
-    // One hop further down: the piece it filed while holding the task.
+    // One hop further down: the piece it filed while holding the task, naming
+    // another project, which the board wrote over.
     expect(h.answerOf("piece of split the work")).toEqual(inApollo);
   });
 
