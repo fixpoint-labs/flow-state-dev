@@ -140,8 +140,9 @@ Then the gate's backstop could go; the generation stays either way.
   `REOPENED_SOURCES` path), which FIX-2129 turns green; the controls `duplicate-item` and
   `drop-question-arm` fail it too. Every child's acceptance is the reconciler green with its kind
   present. A sweep rule in `rules.mjs` keeps it so: nothing outside the Inbox read (`reads.ts` and
-  the package read it calls) reads a board row's `question` for listing, or calls
-  `deriveSuspensions`.
+  the package read it calls) builds an Inbox list, from a board row's `question` or from
+  `deriveSuspensions`. Other uses of `deriveSuspensions` stay allowed, such as `send.ts` telling a
+  request waiting on a person from one waiting on other work, and `react`'s `useSuspensions`.
 - **A line answers the oldest open question**, in one server-side home: orchestration's
   `steerFromLine` (`tasks/steers.ts`), which harness-manager's session door and workforce's steer
   share, writes the line through the one question write as the answer to the row's oldest open
