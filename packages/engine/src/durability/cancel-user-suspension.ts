@@ -21,6 +21,12 @@
  * before it resolves: the board's write that cancels the task. An answer that
  * arrives meanwhile finds the lease held, and then the suspension resolved.
  *
+ * `taskCancelled` says the task the run works is cancelled with this stop. It
+ * is recorded on the suspension's resume data, so the continued run, and a
+ * re-drive of it, asks nobody again: a later wait for a user resolves
+ * `cancelled` at once. Without it only this stop ends, and the run's next
+ * wait for a user suspends as usual.
+ *
  * A suspension already recorded `cancelled` whose request is still parked is a
  * cancel whose continuation never started (a crash after the write): it is
  * continued, as the sweep's re-drive continues it.
@@ -39,6 +45,14 @@ export type CancelOwner = {
 };
 
 type Refusal = Extract<ResumeWaitResult, { ok: false }>;
+
+/** The resume data a cancel of the run's task records (see the module header). */
+const TASK_CANCELLED = { taskCancelled: true } as const;
+
+/** Whether a cancelled suspension's resume data says its task was cancelled with it. */
+export function cancelledWithTask(data: unknown): boolean {
+  return typeof data === "object" && data !== null && (data as { taskCancelled?: unknown }).taskCancelled === true;
+}
 
 const notFound = (address: SuspensionAddress): Refusal => ({
   ok: false,
@@ -63,7 +77,8 @@ export async function cancelUserSuspension(
   deps: WaitResumeDeps,
   address: SuspensionAddress,
   owner: CancelOwner,
-  first?: () => Promise<void>
+  first?: () => Promise<void>,
+  options?: { readonly taskCancelled?: boolean }
 ): Promise<ResumeWaitResult> {
   const request = await deps.stores.request.get(address.requestId);
   if (
@@ -78,7 +93,7 @@ export async function cancelUserSuspension(
   // A request that finished has had its stops cleaned up; its log still names one it asked, resolved.
   if (gate === null && loggedUserStop(request, address.suspensionId)) return resolved(address, `was resolved, and its request is "${request.status}"`);
   if (gate === null || isWaitGate(gate) || !isUserSuspension(gate)) return notFound(address);
-  if (gate.status === "cancelled") return continueCancelled(deps, address);
+  if (gate.status === "cancelled") return continueCancelled(deps, gate);
 
   const result = await resumeUnderLease<Refusal>(deps, {
     requestId: address.requestId,
@@ -94,6 +109,7 @@ export async function cancelUserSuspension(
       return { suspension: current };
     },
     action: "reject",
+    ...(options?.taskCancelled === true ? { data: TASK_CANCELLED } : {}),
     resumedBy: "cancel",
     status: "cancelled"
   });
@@ -122,7 +138,8 @@ async function parkedOn(deps: WaitResumeDeps, gate: SuspensionRecord): Promise<t
 }
 
 /** Continue a request whose suspension is already recorded `cancelled`, if it is still parked on it. */
-async function continueCancelled(deps: WaitResumeDeps, address: SuspensionAddress): Promise<ResumeWaitResult> {
+async function continueCancelled(deps: WaitResumeDeps, gate: SuspensionRecord): Promise<ResumeWaitResult> {
+  const address = { requestId: gate.requestId, suspensionId: gate.suspensionId };
   const result = await continueUnderLease<Refusal>(deps, {
     requestId: address.requestId,
     holder: "cancel",
@@ -133,7 +150,9 @@ async function continueCancelled(deps: WaitResumeDeps, address: SuspensionAddres
       if (request === undefined || !PARKED.includes(request.status) || (latest !== undefined && latest !== address.suspensionId)) {
         return { refusal: resolved(address, "was cancelled, and its request has moved on") };
       }
-      return { resumeContext: { suspensionId: address.suspensionId, action: "reject", resumedBy: "cancel" } };
+      return {
+        resumeContext: { suspensionId: address.suspensionId, action: "reject", data: gate.resumeData, resumedBy: "cancel" }
+      };
     }
   });
   if (result.ok) return { ok: true };

@@ -35,7 +35,12 @@ import { ownsRecord, type OwnerIdentity } from "./record-owner";
 export type WaitResumeOperation = (
   input: (
     | { gateId: string; outcome: WaitOutcome }
-    | { suspension: SuspensionAddress; outcome: { readonly cancelled: true }; first?: () => Promise<void> }
+    | {
+        suspension: SuspensionAddress;
+        outcome: { readonly cancelled: true };
+        first?: () => Promise<void>;
+        taskCancelled?: boolean;
+      }
   ) & {
     /** The running request's identity, server-derived. */
     owner: {
@@ -54,7 +59,9 @@ export function createWaitResumeOperation(deps: WaitResumeDeps): WaitResumeOpera
   return async (input) => {
     // A wait for a user to cancel (FIX-2129): found by its address, in any
     // session of this principal's.
-    if ("suspension" in input) return cancelUserSuspension(deps, input.suspension, input.owner, input.first);
+    if ("suspension" in input) {
+      return cancelUserSuspension(deps, input.suspension, input.owner, input.first, { taskCancelled: input.taskCancelled });
+    }
     const { gateId, outcome, owner } = input;
     const notFound: ResumeWaitResult = {
       ok: false,

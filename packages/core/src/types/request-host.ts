@@ -105,6 +105,13 @@ export type ResumeWaitInput =
        * nothing and is rethrown.
        */
       readonly first?: () => Promise<void>;
+      /**
+       * The task the run works is cancelled with this stop: the continued
+       * run asks nobody again, so a later wait for a user in it resolves
+       * `cancelled` at once. Absent, only this stop ends, and the run's next
+       * wait for a user suspends as usual.
+       */
+      readonly taskCancelled?: boolean;
     };
 
 /**
@@ -308,8 +315,9 @@ export interface RequestHost {
    * the block reads `{ cancelled: true }` and runs to its end. A suspension
    * already recorded `cancelled` whose request is still parked (a crash after
    * the write) is continued. It is the cancel's debt payment: a board pays it
-   * when a task waiting on a user is cancelled, and to end one stop of a task
-   * that goes on. The request may be in another session; it must be this
+   * when a task waiting on a user is cancelled (with `taskCancelled: true`, so
+   * the run asks nobody again), and to end one stop of a task that goes on
+   * (without it). The request may be in another session; it must be this
    * principal's. `already-resolved` when an answer, a deadline or a stop got
    * there first, `busy` while another resume holds the request.
    *

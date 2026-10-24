@@ -759,7 +759,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       waitResume({
         ...("gateId" in input
           ? { gateId: input.gateId, outcome: input.outcome }
-          : { suspension: input.suspension, outcome: input.outcome, ...(input.first !== undefined ? { first: input.first } : {}) }),
+          : {
+              suspension: input.suspension,
+              outcome: input.outcome,
+              ...(input.first !== undefined ? { first: input.first } : {}),
+              ...(input.taskCancelled === true ? { taskCancelled: true } : {})
+            }),
         owner: {
           sessionId: identity.sessionId,
           userId: identity.userId,

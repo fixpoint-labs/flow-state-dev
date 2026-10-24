@@ -439,7 +439,9 @@ export async function redriveResolvedGate(
       // A cancel continues as a rejection; the turn reads the gate's
       // recorded `cancelled` as its resolution (FIX-2129).
       if (current.status === "cancelled") {
-        return { resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy } };
+        return {
+          resumeContext: { suspensionId: current.suspensionId, action: "reject", data: current.resumeData, resumedBy: current.resolvedBy }
+        };
       }
       if (!isWaitGate(current)) {
         // Only a `stopped` non-wait gate is owed here: the stop recorded on the

@@ -164,6 +164,7 @@ import { createReactiveDispatcher, createCascadeController } from "./reactive-di
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
+import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
 /**
  * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
@@ -3768,8 +3769,9 @@ export async function createExecutionContext<
           }
           // A run resumed because its task was cancelled asks nobody again
           // (FIX-2129): a later wait for a user resolves `cancelled` at once
-          // and opens no item.
-          if (resumeCtx.resolution === "cancelled" && isUserSuspension(suspendOpts)) {
+          // and opens no item. One stop cancelled while the task goes on
+          // leaves the next wait to suspend as usual.
+          if (resumeCtx.resolution === "cancelled" && cancelledWithTask(resumeCtx.data) && isUserSuspension(suspendOpts)) {
             throw new SuspensionRejectedError(suspendOpts.suspensionId ?? generateId("susp"), "cancel", undefined, {
               cancelled: true
             });

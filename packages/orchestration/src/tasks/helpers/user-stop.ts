@@ -66,6 +66,7 @@ export async function cancelAndResume(
     resumed = await resumeWait({
       suspension: { requestId: row.waitingFor.requestId, suspensionId: row.waitingFor.suspensionId },
       outcome: { cancelled: true },
+      taskCancelled: true,
       first: async () => {
         outcome = await collection.cancel(id, reason, options);
         if (outcome.outcome !== "recorded") throw new CancelDeclined();
@@ -96,7 +97,8 @@ export async function payOwedUserResume(ctx: BlockContext, row: Task): Promise<b
   if (stop == null || resumeWait === undefined) return false;
   const result = await resumeWait({
     suspension: { requestId: stop.requestId, suspensionId: stop.suspensionId },
-    outcome: { cancelled: true }
+    outcome: { cancelled: true },
+    taskCancelled: true
   });
   if (result.ok || result.refused === "already-resolved") return true;
   if (result.refused === "gate-not-found") {

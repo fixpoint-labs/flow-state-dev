@@ -131,16 +131,18 @@ export async function handleAnswerSuspension(
   // Who answered is the signed-in caller, never a field of the body.
   const resumedBy = ctx.principal?.userId ?? owner.userId;
   const deps = { provider, continueRequest: (options: Parameters<InboundTransportHost["continueRequest"]>[0]) => ctx.host.continueRequest(options) };
-  type Refusal = { status: string };
+  type Refusal = { status: string; expiredAt?: number };
   for (const deadline = Date.now() + BUSY_WAIT_MS; ; ) {
     const resumed = await resumeUnderLease<Refusal>(deps, {
       requestId: route.requestId,
       holder: "answer",
       // Re-read under the lease: a cancel, a deadline or a stop that resolved
-      // it first wins, and this answer is told so.
+      // it first wins, and this answer is told so. So does a deadline that
+      // passed while the answer waited out another resume.
       admit: async () => {
         const current = await provider.loadSuspension(route.requestId, suspensionId);
         if (current === null || current.status !== "pending") return { refusal: { status: current?.status ?? "gone" } };
+        if (current.expiresAt != null && current.expiresAt <= Date.now()) return { refusal: { status: "expired", expiredAt: current.expiresAt } };
         const parked = await parkedOn(ctx.stores, current);
         if (parked !== true) return { refusal: { status: parked } };
         return { suspension: current };
@@ -166,6 +168,10 @@ export async function handleAnswerSuspension(
         continue;
       }
       if (resumed.refusal.status === "busy") break;
+      if (resumed.refusal.expiredAt !== undefined) {
+        await expireUnderLease(provider, suspension);
+        return jsonResponse(410, { error: `Suspension "${suspensionId}" expired at ${resumed.refusal.expiredAt}` });
+      }
       return alreadyResolved(suspensionId, resumed.refusal.status);
     }
     // Another resume holds the request: wait for it, then answer with what it did.

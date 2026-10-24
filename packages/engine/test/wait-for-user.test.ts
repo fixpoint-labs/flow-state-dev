@@ -28,7 +28,7 @@ const OWNER = { userId: USER, tenantId: undefined, orgId: DEFAULT_ORG_ID };
 /**
  * A flow whose `ask` action does its work (a step that completes), then waits
  * for the user as its input says, and returns what came back. `twice` asks a
- * second time after the first comes back.
+ * second time, in a later step, after the first comes back.
  */
 function askingFlow(seen: string[]): FlowInstance {
   const work = handler({
@@ -48,8 +48,7 @@ function askingFlow(seen: string[]): FlowInstance {
       try {
         const first = await ctx.waitForUser(input.options as never);
         seen.push(`first:${JSON.stringify(first)}`);
-        if (input.twice === true) seen.push(`second:${JSON.stringify(await ctx.waitForUser(input.options as never))}`);
-        return first;
+        return input.twice === true ? { again: input.options } : first;
       } catch (error) {
         if (error instanceof SuspensionTimeoutError) {
           seen.push("deadline");
@@ -59,7 +58,20 @@ function askingFlow(seen: string[]): FlowInstance {
       }
     }
   });
-  return defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(work).step(ask) } } })({ id: "asking" });
+  const again = handler({
+    name: "again",
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    execute: async (input: { again?: WaitForUserOptions }, ctx) => {
+      if (input?.again === undefined) return input;
+      const second = await ctx.waitForUser(input.again as never);
+      seen.push(`second:${JSON.stringify(second)}`);
+      return second;
+    }
+  });
+  return defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(work).step(ask).step(again) } } })({
+    id: "asking"
+  });
 }
 
 function harness(flow: FlowInstance) {
@@ -175,13 +187,13 @@ describe("waitForUser: a deadline", () => {
 });
 
 describe("waitForUser: a cancel (the board's debt payment)", () => {
-  it("resolves the stop cancelled and continues it: the block reads { cancelled: true }, and a later wait in the run is cancelled at once", async () => {
+  it("a task's cancel resolves the stop cancelled and continues it: the block reads { cancelled: true }, and a later wait in the run is cancelled at once", async () => {
     const seen: string[] = [];
     const flow = askingFlow(seen);
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, { options: { kind: "input", prompt: "Which region?" }, twice: true });
 
-    expect(await cancelUserSuspension(h.deps, gate, OWNER)).toEqual({ ok: true });
+    expect(await cancelUserSuspension(h.deps, gate, OWNER, undefined, { taskCancelled: true })).toEqual({ ok: true });
     await h.drain();
 
     expect(seen).toEqual(["work", 'first:{"cancelled":true}', 'second:{"cancelled":true}']);
@@ -191,6 +203,22 @@ describe("waitForUser: a cancel (the board's debt payment)", () => {
     expect((await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId)).toEqual([]);
     // A second payment, and an answer after it, find it resolved.
     expect(await cancelUserSuspension(h.deps, gate, OWNER)).toMatchObject({ ok: false, refused: "already-resolved" });
+  });
+
+  it("cancelling one stop of a task that goes on leaves the run's next wait for a user to suspend as usual (FIX-2133's entry point)", async () => {
+    const seen: string[] = [];
+    const flow = askingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, { options: { kind: "input", prompt: "Which region?" }, twice: true });
+
+    expect(await cancelUserSuspension(h.deps, gate, OWNER)).toEqual({ ok: true });
+    await h.drain();
+
+    expect(seen).toEqual(["work", 'first:{"cancelled":true}']);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    const [second] = (await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId);
+    expect(second).toMatchObject({ kind: "input", status: "pending" });
+    expect(second!.suspensionId).not.toBe(gate.suspensionId);
   });
 
   it("is refused as not found for another principal's stop, and for a stop that isn't a user's", async () => {
@@ -293,6 +321,22 @@ describe("the answer route (D2)", () => {
     // A stop that names no user's suspension is not found, as a missing one is.
     expect((await answerRoute(h, requestId, { ...body, suspensionId: "susp_missing" })).status).toBe(404);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
+  });
+
+  it("refuses an answer that waited past the stop's deadline for another resume to finish (410), recording nothing", async () => {
+    const seen: string[] = [];
+    const flow = askingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, { options: { kind: "approval", prompt: "Ship?", deadline: 300 } });
+    // Another resume holds the request's lease when the answer arrives, until past the deadline.
+    const lease = await h.provider.acquireLease(requestId, { holder: "other", durationMs: 10_000 });
+    const answer = answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "approve" });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await h.provider.releaseLease(requestId, lease!.leaseId);
+    expect((await answer).status).toBe(410);
+    await h.drain();
+    expect(seen).toEqual(["work"]);
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("expired");
   });
 
   it("checks the answer against the stop's own actions and schema", async () => {

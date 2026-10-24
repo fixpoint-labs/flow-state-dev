@@ -109,7 +109,7 @@ describe.each([
     await collection.cancel("t");
     const busy = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
     expect((await payOwedResumes(busy.ctx, collection)).stillOwed).toEqual(["t"]);
-    expect(busy.calls).toEqual([{ suspension: { requestId: STOP.requestId, suspensionId: STOP.suspensionId }, outcome: { cancelled: true } }]);
+    expect(busy.calls).toEqual([{ suspension: { requestId: STOP.requestId, suspensionId: STOP.suspensionId }, outcome: { cancelled: true }, taskCancelled: true }]);
     expect(collection.get("t")!.resumeOwed).toBe(true);
 
     const paid = hostThat(async () => ({ ok: true }));

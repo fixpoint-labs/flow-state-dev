@@ -268,6 +268,32 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
     }
   }, 20_000);
 
+  it("refuses a piece a delegate's ongoing session files once its task, cancelled while it waited on the user, runs on (FIX-2129)", async () => {
+    // An ongoing session keeps no task id of its own: the task its resumed
+    // run works is found by the run link on the row, which still names this
+    // request once the cancel has ended the row.
+    const h = bootSplitHost({ durable: true });
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1", session: "ongoing" }];
+      h.controls.plans.s1 = [{ goal: "[slow:3000] Book the hall", assignee: "eng.tasker" }];
+      h.controls.waitForUserBeforeFiling.add("s1");
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      expect(await h.until(async () => (await one(h, "Plan the offsite")).waitingOn === "user")).toBe(true);
+      const top = await one(h, "Plan the offsite");
+      expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
+      expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);
+      await h.settled();
+
+      expect(h.controls.answered).toEqual([{ worker: "s1", answer: { cancelled: true } }]);
+      expect((await one(h, "Plan the offsite")).status).toBe("cancelled");
+      expect(h.controls.refusals.find((r) => r.worker === "s1")).toMatchObject({ error: "TaskFilingRefusedError", message: expect.stringMatching(/^parent_cancelled:/) });
+      expect(await h.rowsNamed("alice", "[slow:3000] Book the hall")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 20_000);
+
   it("cancels the open piece a running task filed within seconds of the conversation cancelling the task", async () => {
     const h = bootSplitHost();
     try {
