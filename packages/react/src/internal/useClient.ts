@@ -23,9 +23,8 @@ export function useClient(overrides: { userId?: string; baseUrl?: string; apiPat
     () =>
       createClient({
         userId,
-        // No base URL means the page's own origin, unless a fetcher (an
-        // in-process one) decides where calls go.
-        baseUrl: baseUrl ?? (fetcher === undefined ? "" : undefined),
+        // No base URL means the page's own origin, with or without a fetcher.
+        baseUrl: baseUrl ?? "",
         apiPath,
         fetcher
       }),

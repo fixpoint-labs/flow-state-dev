@@ -610,7 +610,7 @@ describe("BoardList · the stream carries the read's credential, to the read's o
     );
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
     await waitFor(() =>
-      expect(host.sent.map((s) => new URL(s.url).pathname)).toEqual(
+      expect(host.sent.map((s) => new URL(s.url, window.location.href).pathname)).toEqual(
         expect.arrayContaining([`/api/flows/sessions/${SESSION}/stream`, `/api/flows/sessions/${SESSION}/resources/${BOARD}`])
       )
     );

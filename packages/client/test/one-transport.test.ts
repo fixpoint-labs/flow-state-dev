@@ -101,7 +101,7 @@ describe("one client is one transport", () => {
       "/api/flows/sessions/sess_1/stream",
       "/api/flows/users/u1/stream"
     ]) {
-      expect(seen.some((url) => new URL(url).pathname === route), route).toBe(true);
+      expect(seen.some((url) => url.split("?")[0] === route), route).toBe(true);
     }
   });
 });
