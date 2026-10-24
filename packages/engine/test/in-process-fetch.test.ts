@@ -101,6 +101,44 @@ describe("createInProcessFetch", () => {
     expect(received).toBe(foreign);
   });
 
+  it("applies init to a Request of either class the way new Request(request, init) does", async () => {
+    // A wrapper that forwards a Request while adding headers or a signal must
+    // not lose it: a Request of another class taken for a string would read as
+    // "/[object Request]" and answer 404, its headers and body gone.
+    const seen: Array<{ path: string[] | undefined; token: string | null; body: string }> = [];
+    const fetcher = createInProcessFetch({
+      ...echoRouter,
+      POST: async (req, ctx) => {
+        seen.push({ path: ctx.params.path, token: req.headers.get("x-token"), body: await req.text() });
+        return new Response(null, { status: 201 });
+      }
+    });
+    const foreign = () => ({
+      url: "http://x.invalid/api/flows/chat/actions/send",
+      method: "POST",
+      headers: new Headers({ "x-token": "from-request" }),
+      body: new Response("payload").body,
+      signal: new AbortController().signal
+    });
+    const real = () =>
+      new Request("http://x.invalid/api/flows/chat/actions/send", {
+        method: "POST",
+        headers: { "x-token": "from-request" },
+        body: "payload"
+      });
+    const override = { headers: { "x-token": "from-init" } };
+
+    for (const make of [foreign, real]) {
+      expect((await fetcher(make() as unknown as Request, {})).status).toBe(201);
+      expect((await fetcher(make() as unknown as Request, override)).status).toBe(201);
+    }
+    const expected = [
+      { path: ["chat", "actions", "send"], token: "from-request", body: "payload" },
+      { path: ["chat", "actions", "send"], token: "from-init", body: "payload" }
+    ];
+    expect(seen).toEqual([...expected, ...expected]);
+  });
+
   it("answers 405 for a method the router does not handle, HEAD included", async () => {
     const fetcher = createInProcessFetch(echoRouter);
     for (const method of ["PUT", "HEAD", "OPTIONS"]) {
