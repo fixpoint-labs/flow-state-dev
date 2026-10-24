@@ -21,6 +21,7 @@
 export {
   createWorkforceClient,
   type RosterEntry,
+  type WorkerSessionEntry,
   type WorkforceClient,
   type WorkforceClientOptions
 } from "./workers/client";

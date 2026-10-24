@@ -305,6 +305,18 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     expect(await h.sessionsWith("projectId", "shared/nope")).toEqual([]);
     expect((await h.sessionsWith("projectId", "shared/apollo")).length).toBe(0);
   });
+
+  it("no-project-session · is not one of her conversations with the coordinator: she reaches it through its project (FIX-2158)", async () => {
+    const h = await boot();
+    const project = await h.coordinator("alice");
+    const app = h.client("alice");
+    // Listed before her default conversation exists: the project session is top-level and names the worker.
+    expect(await app.listWorkerSessions(PROJECT_COORDINATOR)).toEqual([]);
+    const main = await app.ensureWorkerSession({ worker: PROJECT_COORDINATOR });
+    const listed = await app.listWorkerSessions(PROJECT_COORDINATOR);
+    expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([[main.id, true]]);
+    expect(listed.map((entry) => entry.session.id)).not.toContain(project);
+  });
 });
 
 describe("its delegates (BR-21a, BR-21b)", () => {

@@ -812,14 +812,13 @@ there. When you only want to check, `findWorkerSession` takes the same argument 
 session or nothing. Both throw `No worker "<id>" on your roster.` for a worker that isn't on
 the user's roster.
 
-Both are built on the session client, which you can call directly. Use it to start a second
-conversation with the same worker:
+A user can hold more than one conversation with the same worker. Start another with the
+session client, naming the worker in `workerId`:
 
 ```ts
 import { createSessionClient } from "@flow-state-dev/client"
 
 const sessions = createSessionClient({ baseUrl })
-const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { workerId: "researcher" } })
 const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { workerId: "researcher" } })
 ```
 
@@ -831,6 +830,27 @@ one, and it must run on this flow. A worker that isn't yours is refused with the
 as one that doesn't exist. A session created without a worker is refused. `workerId` is a
 readonly field of the session's state: nothing can change it after the create. It works the way
 a project does in [Example: one session per project](../fundamentals/state-and-scopes.md#example-one-session-per-project).
+
+To show the user all their conversations with a worker, call `listWorkerSessions`:
+
+```ts
+const conversations = await workforce.listWorkerSessions("researcher")
+// [{ session: { id: "…", flowKind: "agent", … }, isDefault: true },
+//  { session: { id: "…", flowKind: "agent", … }, isDefault: false }]
+```
+
+Each entry is a `WorkerSessionEntry`: the `session` summary, and `isDefault`, which marks the
+conversation `ensureWorkerSession` returns. That one comes first. The rest follow by latest
+activity, most recent first. The list holds only the calling user's sessions on the worker's
+current flow. It never creates a session. Before the first `ensureWorkerSession`, no entry is
+marked default, and the list holds only conversations the user started with `createSession`, if
+any. It throws the same roster error as the other two calls.
+
+Some sessions with a worker are not conversations and are left out: the session a task handed to
+the worker runs in (reach it through the task), a coordinator conversation's session with one of
+its delegates, a [workstream](./projects.md#workstreams)'s lead session, and your [project coordinator](./projects.md#talking-to-a-project)'s session for a project
+(`ensureWorkerSession({ worker, projectId })`). So is a session on a flow the worker ran on before
+you moved it. Entries carry no title, and opening one is an ordinary action on `session.id`.
 
 **3. Talk to it.** An ordinary action on that session:
 

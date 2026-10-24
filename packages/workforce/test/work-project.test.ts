@@ -205,6 +205,22 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("look at the repo")).toEqual(inApollo);
   });
 
+  it("listWorkerSessions lists a session with workProjectId: both conversations set to a project, not the coordinator's own", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const main = await alice.ensureWorkerSession({ worker: "main" });
+    const other = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "main" });
+    expect(await alice.setWorkProject("main", apollo)).toEqual({ project: apollo });
+    expect(await alice.setWorkProject("main", beta, { sessionId: other })).toEqual({ project: beta });
+    const listed = (await alice.listWorkerSessions("main")).map((entry) => [entry.session.id, entry.isDefault]);
+    expect(listed).toHaveLength(2);
+    expect(listed).toContainEqual([main.id, true]);
+    expect(listed).toContainEqual([other, false]);
+    // The project coordinator's session for a project is still left out.
+    const coordinator = await alice.ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: apollo });
+    expect((await alice.listWorkerSessions(PROJECT_COORDINATOR)).map((entry) => entry.session.id)).not.toContain(coordinator.id);
+  });
+
   it("change: a task filed before the change keeps its project, and one filed after takes the new one", async () => {
     const h = await withProjects();
     const alice = h.client("alice");

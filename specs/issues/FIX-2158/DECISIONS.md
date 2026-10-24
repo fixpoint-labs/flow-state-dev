@@ -45,8 +45,10 @@ It comes down to threads mode: listing task runs shows every thread twice.
 - **The default is found by its derived id**, the one `ensureWorkerSession` creates, so a session a
   person opened at a random id before the derived address existed is listed, not default.
 - **Current flow only**, as `find` does. A session on a worker's former flow refuses new turns.
-- **Every page is read.** The client pages through the listing; a person with many sessions gets
-  all of them.
+- **Every row is read.** The client asks the listing once with no `limit`, which every store
+  answers with every row (as `findWorkerSession` reads today), so a person with many sessions gets
+  all of them. It does not page by offset: rows ordered by activity move between pages while their
+  sessions change. *(Amended at implementation, PR #3814: the first draft said the client pages.)*
 - **Its type and field names are the implementer's**, beyond `listWorkerSessions` and a default
   mark on each entry.
 

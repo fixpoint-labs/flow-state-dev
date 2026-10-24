@@ -1,5 +1,6 @@
 /**
- * `createWorkforceClient`: find or start a session with a worker, from an app.
+ * `createWorkforceClient`: find or start a session with a worker, or list a
+ * user's conversations with one, from an app.
  *
  * Built on the session and resource clients, with no endpoint of its own. The
  * user's roster is read through a session of the roster flow (one per user),
@@ -26,7 +27,7 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, SET_WORK_PROJECT_ACTION, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, SET_WORK_PROJECT_ACTION, STANDARD_WORKERS_RESOURCE, WORKER_ID_STATE_KEY, WORKERS_RESOURCE } from "./keys";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
@@ -56,6 +57,13 @@ export type RosterEntry = {
   teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
+};
+
+/** One of a user's conversations with a worker, as {@link WorkforceClient.listWorkerSessions} returns it. */
+export type WorkerSessionEntry = {
+  session: SessionSummary;
+  /** True for the conversation `findWorkerSession({ worker })` returns. */
+  isDefault: boolean;
 };
 
 /** A user's roster, and their sessions with each worker. */
@@ -93,6 +101,15 @@ export interface WorkforceClient {
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
   /**
+   * The user's top-level sessions with `worker` on its current flow, opened
+   * at any id. The default (`findWorkerSession({ worker })`) comes first and
+   * is marked; the rest follow by latest activity. A task's session, a
+   * delegate session, a workstream lead's session and the project
+   * coordinator's session for one project are left out. Never creates the
+   * default. Throws when the worker isn't on the user's roster.
+   */
+  listWorkerSessions(worker: string): Promise<WorkerSessionEntry[]>;
+  /**
    * Read or edit the user's standing rules with `worker`, in that user's
    * session with the worker. The worker's flow must declare the rules action
    * (its inventory row says `rules: true`). A refused write rejects with the
@@ -122,9 +139,28 @@ function stateOf(session: SessionSummary): Record<string, unknown> {
   return state !== null && typeof state === "object" ? (state as Record<string, unknown>) : {};
 }
 
-function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: readonly T[]): T | undefined {
-  return [...rows].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0];
+type Timed = { updatedAt: number; createdAt: number };
+
+/** Latest activity first. */
+const byRecent = (a: Timed, b: Timed): number => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt;
+
+function mostRecent<T extends Timed>(rows: readonly T[]): T | undefined {
+  return [...rows].sort(byRecent)[0];
 }
+
+/**
+ * Whether `row` carries no criteria key but the ones `named` holds. A session
+ * carrying another is a task's, a conversation's delegate, a workstream's
+ * lead, or the project coordinator's for one project, which only its
+ * coordinator's sessions carry.
+ */
+function carriesOnly(row: SessionSummary, named: ReadonlySet<string>): boolean {
+  const state = stateOf(row);
+  return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
+}
+
+/** The criteria keys a lookup by worker alone names. */
+const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
 
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
@@ -260,7 +296,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       // A session naming a conversation is only ever a dispatch run of it; a
       // top-level one is a caller's, from before a create naming one was refused.
       if (Object.hasOwn(state, FILING_SESSION_STATE_KEY) && row.parentSessionId == null) return false;
-      return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
+      return carriesOnly(row, named);
     });
     if (criteria.workstreamId === undefined) return mostRecent(matching);
     // A workstream's entry names its lead's session, and is the one source of
@@ -344,6 +380,21 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         if (error instanceof ClientHttpError && error.status === 409) return sessions.getSession(sessionId);
         throw error;
       }
+    },
+    listWorkerSessions: async (worker) => {
+      const { id, orgId } = await roster();
+      const flow = flowOf(await readRoster(id), worker);
+      const criteria = { worker };
+      const [defaultId, rows] = await Promise.all([
+        deriveWorkerSessionId({ userId, orgId, flow, criteria }),
+        // Top-level only, the listing's default: a task's or a delegate's
+        // session is a dispatch run. No limit, so this one answer is every row.
+        sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) })
+      ]);
+      return rows
+        .filter((row) => carriesOnly(row, WORKER_ONLY))
+        .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId) || byRecent(a, b))
+        .map((session) => ({ session, isDefault: session.id === defaultId }));
     },
     standingRules: async (worker, input) => {
       const session = await client.ensureWorkerSession({ worker });
