@@ -521,8 +521,8 @@ export async function handleCheckInterruptedRequests(
  * call changed, so a request the startup sweep or the periodic sweeper marked
  * first never appears in it. This is the read: it lists every request record
  * of the path's user whose status is `interrupted`, whoever marked it, and the
- * same records on every call until each is continued, retried or removed. It
- * sweeps nothing.
+ * same records on every call until each is continued or removed. It sweeps
+ * nothing.
  *
  * Records are filtered at the store by user, status and tenant (BP-033), then
  * each passes the listing rule `/active-requests` uses (`listingAdmits`): the
