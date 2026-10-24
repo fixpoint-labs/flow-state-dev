@@ -2065,15 +2065,14 @@ Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask` a
 `createTask_tasks`, `updateTask_tasks`, `listTasks_tasks` and so on. A turn working a task also
 has `reportProgress` (the `progress` entry of the session board), which is not an action.
 
-An assignee must be one of the conversation's delegates whose flow takes tasks, in a task
-session too. Any other is
-answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
+An assignee must be one of the running session's delegates whose flow takes tasks, in a task
+session as in a conversation. Any other assignee is answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
 `createTask` starts a task in its task session, which belongs to you.
 Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. `createTask` with
 `held: true` files it held; it starts when `updateTask` releases it (`status: "pending"`). Before
 a task starts, `updateTask` can change any of its fields, its assignee included; after, only a
-cancel lands. `createTask` returns once the task is stored, without waiting for it to run. Unless
+cancel or a message lands. `createTask` returns once the task is stored, without waiting for it to run. Unless
 a turn waits on it with `getTask({ id, wait: true })`, the conversation hears once when the task
 ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks). On a host
@@ -2093,18 +2092,23 @@ A worker can also file tasks naming **itself**: each is a **step**, kept on the 
 `plan` ledger, never handed to a session. When its turn ends, the same request works the steps one
 at a time, each a turn of the worker on the step's brief and the results of its `deps`, then the
 worker answers once more, told how every step ended; that answer is the request's result (a task's
-result in a task session). A request with no step costs nothing more. On the built-in `agent` and
-`coordinator` flows a worker's turn has the task tools for its steps whatever its delegates; your
-own flow gets steps by wrapping its turn in the kit's `planned(turn)`. Only the worker's own turn
-files a step (an action naming the worker is refused), the turn that answers files none, a step
-isn't waited on, held or finished by a call, and `updateTask` doesn't move a step to a
-delegate or a delegate's task to the worker. A step filed `session: "new"` runs in a new
-session of the same worker, through its own `work` entry. The request waits for it before the
-next step, which sees its result. `"ongoing"` is refused, and so is `"new"` on a flow that takes
-no task of its own. Steps count toward the 100 tasks under a top task and add no depth, except
-a step in its own session, which is one board deeper. Any worker's turn, a task's included, can
-wait on a task it filed with `getTask({ id, wait: true })`, up to five waits deep.
-See
+result in a task session). A request with no step costs nothing more.
+
+- **Who gets them.** On the built-in `agent` and `coordinator` flows a worker's turn has the task
+  tools for its steps whatever its delegates; your own flow gets steps by wrapping its turn in the
+  kit's `planned(turn)`.
+- **Who files them.** Only the worker's own turn files a step (an action naming the worker is
+  refused), and the turn that answers files none.
+- **What a call can't do.** A step isn't waited on, held or finished by a call, and `updateTask`
+  doesn't move a step to a delegate or a delegate's task to the worker.
+- **A step in its own session.** A step filed `session: "new"` runs in a new session of the same
+  worker, through its own `work` entry. The request waits for it before the next step, which sees
+  its result. `"ongoing"` is refused, and so is `"new"` on a flow that takes no task of its own.
+- **Limits.** Steps count toward the 100 tasks under a top task and add no depth, except a step in
+  its own session, which is one board deeper.
+
+Any worker's turn, a task's included, can wait on a task it filed with
+`getTask({ id, wait: true })`, up to five waits deep. See
 [Working in steps](https://flow-state.dev/docs/workforce/delegating-work#working-in-steps).
 
 ### Splitting a task

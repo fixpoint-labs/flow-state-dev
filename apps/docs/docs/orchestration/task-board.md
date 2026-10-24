@@ -94,18 +94,13 @@ A board either runs its tasks or hands them out, and you say which with `mode`. 
 - **`"plan"`** (the default) waits on every task. When the drain returns, every task it could run has ended. Most plan boards run every task inline, as the patterns do; a plan board can also [hand a row to another session](#a-plan-board-that-hands-a-row-over) and wait on it there.
 - **`"delegation"`** hands every task to another session through an [assignee that dispatches](#assignees-that-dispatch), and the drain waits on none of them: it returns once each task is on its way, and the session working a task settles it.
 
-A board has one mode, so its assignees all agree with it. `taskBoard()` throws when they don't, naming the board, the assignee and the fix:
-
-- a plan board whose dispatcher says `wait: false`: drop `wait`, or declare `mode: "delegation"`;
-- a delegation board whose dispatcher says `wait: true`: drop `wait`, or drop `mode`;
-- a delegation board with an assignee that runs inline, named, the uniform `workers` block, or the `defaultWorker`: put a dispatcher there, or move that work to a plan board;
-- a delegation board with no dispatcher at all: drop `mode`.
+A board has one mode, so its assignees all agree with it; `taskBoard()` throws when they don't. See [What the board requires](#what-the-board-requires).
 
 `board.mode` reads the mode back. A [goal-seek loop](./goal-seek-loop.md) refuses a delegation board, because its judge would rule on work that is still running.
 
 ## Worker registry
 
-Two ways to provide workers:
+Provide workers in either of these shapes:
 
 - **Single uniform worker**: one block runs every claimed task. Pass it directly as `workers`.
 - **Registry**: a `{ [assignee]: block }` map. Each task carries `assignee: "name"`; the substrate dispatches to the matching worker.
@@ -142,7 +137,7 @@ const board = taskBoard({
 
 There is no `defaultWorker` unless you pass one.
 
-The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `createTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
+The task tools can refuse a bad assignee when the task is filed instead, given a roster; see [Changing tasks from outside a run](#changing-tasks-from-outside-a-run). Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
 On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
@@ -189,8 +184,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"blocked-by-failures"`: at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `held` waiting on a release.
 - `"retry-budget-exhausted"`: the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"dispatched"`: every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
-  Older logs report `"handed-off"` for the same thing.
-- `"parked-for-review"`: the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
+- `"parked-for-review"`: the board stopped because the work it has left is waiting on a person. It is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, or is `held`. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
 
@@ -256,7 +250,7 @@ A worker can park a task with `awaitReview` when it needs a human to look at som
 
 That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow. Nothing shortens the wait, though it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` even when nothing failed.
 
-`counts.parked` does not tell that board apart from one that hit a real failure. A parked task and a failed task can sit on the same board, and when they do `blocked-by-failures` is the accurate answer: the failure is there, and answering the review will not clear it. A check that sees `parked` above zero and reads no further has just missed the errored task beside it.
+`counts.parked` does not tell that board apart from one that hit a real failure. A parked task and a failed task can sit on the same board, and when they do `blocked-by-failures` is the accurate answer: the failure is there, and answering the review will not clear it.
 
 So read the whole of `counts`, and know what it still cannot settle. A board whose only outstanding work is a question for a person has `parked` above zero with `errored`, `cancelled`, and `held` all at zero. Past that the counts run out: a task queued behind the parked one is plain `pending`, and a task in `in_progress` may be running elsewhere or may have been abandoned when its worker died. Separating those means reading the tasks, not the counts: `listTasks` through [the board's capability](#commanding-the-board-with-its-capability), then checking what each pending task's `deps` are waiting for.
 
@@ -380,13 +374,102 @@ Then the board run fails, after every other task has finished. `onError: "skip"`
 `undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
 
 - **On a task store you wrote yourself.** A store built against `TaskCollectionRef` keeps no record of which write landed, so the board can never answer better than `undetermined`. There is no way to opt in.
-- **On rows a persistent store already held.** Rows written by an earlier release of the board carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
+- **On rows a persistent store already held.** Rows written by an earlier release of the board carry no record of which write landed, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
 
 A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
 
 On an [assignee that dispatches](#assignees-that-dispatch) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself, again regardless of `onError`.
 
 Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
+
+## Collection backing
+
+A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
+
+- **Request (default)**: tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
+- **Durable (resource-backed)**: tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
+- **Sequencer**: tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+- **Factory**: tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
+
+```ts
+// Request default: nothing to restate.
+const board = taskBoard({ name: "research", workers });
+
+// Sequencer opt-in: single-invocation, per-call state.
+const board = taskBoard({
+  name: "one-shot",
+  collection: { backing: "sequencer", collectionId: "one-shot" },
+  workers,
+});
+```
+
+### A task store of your own
+
+For a custom or externally managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`. If you write that ref by hand, `complete` and `fail` should accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown.
+
+A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
+
+Containment is not a substitute for the guards. It fires on a throw. A stale write the state machine happens to permit, such as a worker reporting success on a task another worker has since taken over, doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards to protect your data. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+
+Write provenance is optional for a hand-written ref. A ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
+
+### Durable boards that survive across turns
+
+When a board's tasks must persist past the request, say a user's standing to-do list or an org-wide work queue, declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
+
+```ts
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { z } from "zod";
+
+const todos = defineTaskCollection({
+  id: "todos",
+  scope: "user",
+  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
+});
+
+const board = taskBoard({ name: "todos", collection: todos, workers });
+```
+
+`id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
+
+#### A board per conversation, worked on another flow
+
+A `session`-scoped board with `sharedToLineage: true` can hand rows to a session on its own flow. It can't hand them to another flow: a task run there starts a lineage of its own, so it never finds the row. A `user`-scoped board does cross flows, but then every session of that user shares one set of rows, and one conversation's board runs another conversation's tasks.
+
+To keep a board per conversation and still hand its rows to another flow, give a `user`-scoped collection a `partitionBy` function:
+
+```ts
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
+});
+```
+
+Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board dispatches a row, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
+
+On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
+
+```ts
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
+import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
+
+const from = taskLedgers({
+  name: "conversation-work",
+  resolve: async (ledgerId, ctx, partition) => {
+    const collection = resolveResourceCollection(ctx, ledgerId);
+    if (ledgerId !== work.id || collection === undefined || partition === undefined) return undefined;
+    return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: work.id, collection, partition });
+  },
+});
+```
+
+The function is handed the running session's server-set identity, `{ sessionId, lineageId, userId, orgId, tenantId }`, and nothing a caller sends. Return a value a caller can't set. A session id is reused when a session is deleted and created again, so a partition built from the id alone hands the new session its predecessor's rows. `lineageId` is minted when the session's record is created, so the two together name one life of the session, and a recreated session starts with an empty board.
+
+The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
 
 ## Bounding how much work a board takes on
 
@@ -482,7 +565,7 @@ const bounded = await getOrCreateTaskCollection({
 
 `board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 
-`createApplyReplan` is one of the blocks that can land on either side of that line, and it takes two shapes:
+`createApplyReplan` is one of the blocks that can land on either side of that line:
 
 - With `capability: board.capability`, it reads and writes through the board's own reference, so the board's bounds apply.
 - With only `name`, it resolves a request-backed collection under that id and enforces no bounds, because nothing in its options identifies which board it is writing to.
@@ -520,95 +603,6 @@ const unbounded = taskBoard({ name: "streaming", workers, maxEnqueuedTasks: null
 ```
 
 Omitting an option is not an off switch; it reapplies the default. `null` is the off switch. Otherwise each option takes a positive integer, and `0`, a negative, a fraction, `NaN`, `Infinity`, or an enqueue bound above the lifetime ceiling all throw when the board is constructed.
-
-## Collection backing
-
-A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
-
-- **Request (default)**: tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
-- **Durable (resource-backed)**: tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
-- **Sequencer**: tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
-- **Factory**: tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
-
-```ts
-// Request default: nothing to restate.
-const board = taskBoard({ name: "research", workers });
-
-// Sequencer opt-in: single-invocation, per-call state.
-const board = taskBoard({
-  name: "one-shot",
-  collection: { backing: "sequencer", collectionId: "one-shot" },
-  workers,
-});
-```
-
-### A task store of your own
-
-For a custom or externally managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`. If you write that ref by hand, `complete` and `fail` should accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown.
-
-A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
-
-Containment is not a substitute for the guards. It fires on a throw. A stale write the state machine happens to permit, such as a worker reporting success on a task another worker has since taken over, doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards to protect your data. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
-
-Write provenance is the one part you can skip. Maintaining it correctly means reproducing a bounded receipt log and its eviction flag, and the mutator that does that is internal to the two built-in backings and isn't a documented extension point. A hand-written ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
-
-### Durable boards that survive across turns
-
-When a board's tasks must persist past the request, say a user's standing to-do list or an org-wide work queue, declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
-
-```ts
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-import { z } from "zod";
-
-const todos = defineTaskCollection({
-  id: "todos",
-  scope: "user",
-  stateSchema: z.object({ topic: z.string() }), // the task `input` payload
-});
-
-const board = taskBoard({ name: "todos", collection: todos, workers });
-```
-
-`id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
-
-#### A board per conversation, worked on another flow
-
-A `session`-scoped board with `sharedToLineage: true` can hand rows to a session on its own flow. It can't hand them to another flow: a task run there starts a lineage of its own, so it never finds the row. A `user`-scoped board does cross flows, but then every session of that user shares one set of rows, and one conversation's board runs another conversation's tasks.
-
-To keep a board per conversation and still hand its rows to another flow, give a `user`-scoped collection a `partitionBy` function:
-
-```ts
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-
-const work = defineTaskCollection({
-  id: "work",
-  scope: "user",
-  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
-});
-```
-
-Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board dispatches a row, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
-
-On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
-
-```ts
-import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
-
-const from = taskLedgers({
-  name: "conversation-work",
-  resolve: async (ledgerId, ctx, partition) => {
-    const collection = resolveResourceCollection(ctx, ledgerId);
-    if (ledgerId !== work.id || collection === undefined || partition === undefined) return undefined;
-    return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: work.id, collection, partition });
-  },
-});
-```
-
-The function is handed the running session's server-set identity, `{ sessionId, lineageId, userId, orgId, tenantId }`, and nothing a caller sends. Return a value a caller can't set. A session id is reused when a session is deleted and created again, so a partition built from the id alone hands the new session its predecessor's rows. `lineageId` is minted when the session's record is created, so the two together name one life of the session, and a recreated session starts with an empty board.
-
-The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
 
 ## Commanding the board with its capability
 
@@ -690,7 +684,7 @@ Every rule is checked inside the write, so a task that starts between your read 
 
 - **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
 - **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
-- **Waiting on tasks it filed.** A turn starts with the message while those tasks keep running. On a Workforce conversation's board, a session runs one turn of a task at a time. If another of the task's turns is waiting on a step it filed for itself in a session of its own, the message's turn waits until that turn answers. So does the turn that a finished task wakes.
+- **Waiting on tasks it filed.** A turn starts with the message while those tasks keep running. On a Workforce conversation's board, a session runs one turn of a task at a time. While another of the task's turns waits on a step it filed in a session of its own, the message's turn waits until that turn answers, and so does any turn a finished task wakes.
 - **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
 
 The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
@@ -1098,6 +1092,13 @@ An entry with `from` that a board in the same flow also dispatches to is refused
 - **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees dispatch within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
 - **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
+The mode and the assignees must agree, on any board. `taskBoard()` throws when they don't, naming the board, the assignee and the fix:
+
+- a plan board whose dispatcher says `wait: false`: drop `wait`, or declare `mode: "delegation"`;
+- a delegation board whose dispatcher says `wait: true`: drop `wait`, or drop `mode`;
+- a delegation board with an assignee that runs inline, named, the uniform `workers` block, or the `defaultWorker`: put a dispatcher there, or move that work to a plan board;
+- a delegation board with no dispatcher at all: drop `mode`.
+
 `defineFlow()` throws for a flow that holds the board and declares no [`onTaskSettled`](#hearing-how-a-task-ended) internal entry, for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board dispatches to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards dispatching to the same entry, for an entry with `from` that a board in the same flow also dispatches to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a dispatched worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
 A board that dispatches tasks fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or held task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
@@ -1149,7 +1150,7 @@ The field is written just before the worker's first step. If the write is refuse
 
 `run` lasts until the task is next claimed. A completed, failed or cancelled task keeps the run that last worked it, so you can open that session and see what happened. The claim that starts the next attempt clears it, so between a dispatch and the new run's start the task has no `run`.
 
-Read it as "which run", not "is it running". Whether work is live is the task's `status` and the run's request. Rows stored before this field existed have no `run`; treat that the same as a task whose run hasn't started. Tasks whose worker runs inline, in the drain itself, never get one.
+Read it as "which run", not "is it running". Whether work is live is the task's `status` and the run's request. A task with no `run` reads as one whose run hasn't started. Tasks whose worker runs inline, in the drain itself, never get one.
 
 Nothing a caller or a model sets can write `run`. Naming a session doesn't grant access to it: opening the session or aborting the request still goes through the server's owner check.
 
@@ -1189,8 +1190,8 @@ The entry belongs on the flow that holds the board, even when the board hands it
 
 ### Giving another worker work
 
-On a board that dispatches, one that starts a ready task as soon as it's written, such as a
-conversation's board in Workforce, `createTask` starts the work at once:
+Some boards start work on filing: something starts a ready task as soon as it's written, as on a
+conversation's board in Workforce. On such a board, `createTask` starts the work at once:
 
 ```ts
 createTask({ goal: "Draft the release note", assignee: "writer" })
@@ -1245,7 +1246,7 @@ your turn carries on with the task as it stands, usually still `in_progress`. No
 cancelled: the task runs on, and you can wait on it again. If it ends while your request is
 running, your next `getTask` on it returns the ending. If your request parks or ends first, you
 [hear about it](#hearing-how-a-task-ended) once, the usual way.
-If it parked, waiting on it again after the turn resumes returns `arrivesAsNotice`. A worker you're
+If your request parked, waiting on the task again after the turn resumes returns `arrivesAsNotice`. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
@@ -1280,8 +1281,7 @@ Waiting needs a board that wakes a waiting turn, and a server with durable execu
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup) and a store that
 keeps [wakes](/docs/advanced/durable-execution#wakes). Where it can't wait, `getTask` isn't
 offered `wait`. For a board of your own, pass `{ dispatches: true }` to
-`createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesWaits: true` only when the board also
+`createTaskToolsCapability` only when the board [starts work on filing](#giving-another-worker-work), and add `resumesWaits: true` only when the board also
 hands its tasks out, so the flow holding it declares [`onTaskSettled`](#hearing-how-a-task-ended).
 When a waited-on task ends, the filing session's `onTaskSettled` request resumes the waiting
 turn; after a crash, the [wake](/docs/advanced/durable-execution#wakes) sends it again.
@@ -1290,13 +1290,6 @@ Stopping a conversation while its turn waits ends the turn and cancels the task.
 the task a waiting turn is working ends that turn too, with no further model call. A task you
 wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's
 limits apply. The `getTask_<board>` action reads without waiting.
-
-**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action.
-File a new task with `createTask`, which starts it on a board that dispatches, and release a held
-one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
-`deadline` takes the place of `timeoutMs`.
-
-**Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
 
 ### A plan board that hands a row over
 
@@ -1341,7 +1334,7 @@ that session finishes it. When the dispatch itself threw, nothing may be running
 
 ## Stream items emitted
 
-A board run produces two item streams:
+A board run produces these item streams:
 
 - `task-change`: one item per task transition (`added`, `claimed`, `completed`, `errored`, `cancelled`, and more). Keyed by `${collectionId}/${taskId}`, so the latest change for a task replaces the previous one.
 - `task-board-meta`: board-level state, keyed by `collectionId`. Emitted twice per run, once with `status: "active"` at start and once with `status: "completed"` at end. The completed item carries `terminationReason` and the `counts` snapshot.
@@ -1349,6 +1342,19 @@ A board run produces two item streams:
 Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
 
 A board that could not record a result emits one more item, `task-board-recorder-failure`. It carries no key, so each failure in a run is its own entry rather than replacing the last. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
+
+## Migrating
+
+**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action.
+File a new task with `createTask`, which starts it on a board that starts work on filing, and release a held
+one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
+`deadline` takes the place of `timeoutMs`.
+
+**Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
+
+**Reading older logs.** A stored `task-board-meta` item may use another name for the [`"dispatched"`](#termination-onidle-modes) termination reason.
+
+Older logs report `"handed-off"` for the same thing.
 
 ## See also
 

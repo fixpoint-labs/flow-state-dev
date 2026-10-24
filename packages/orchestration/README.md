@@ -822,7 +822,7 @@ import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 ```
 
 `taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
-`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's fifth tool, `reportProgress`, is built apart
+`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's own tool, `reportProgress`, is built apart
 ([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
 returns or throws.
 `createTaskToolsCapability(resolver, roster?)` points them at a
@@ -840,8 +840,13 @@ answers it when a task has one, and a task filed without one is labelled by its 
 without starting it until `updateTask` releases it. A task filed from a turn that is working a
 task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
 
-`updateTask({ id, ...fields })` takes its fields flat, each with one rule, checked inside the
-collection's guarded write (`patchSettings`), so a task that starts between a read and the write
+For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
+dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
+`tools:`. Any block can be a tool, and only the finalized result re-enters the
+caller's history.
+
+`updateTask({ id, ...fields })` takes its fields flat, each with one rule, checked as part of the
+write (`patchSettings`), so a task that starts between a read and the write
 is refused, not edited:
 
 | Field | Allowed |
@@ -949,11 +954,6 @@ backing reported no decline", not "the write happened". For the two built-in
 backings those coincide, but a custom ref that reports nothing is carried past
 rather than having a verdict synthesized for it.
 
-For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
-dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
-`tools:`. Any block can be a tool, and only the finalized result re-enters the
-caller's history.
-
 ### Waiting for a task's answer
 
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
@@ -992,7 +992,7 @@ layer that builds its own capability gets the same per-turn list from
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, message? }, checked?)`, from
+- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, ownBoard?, message? }, checked?)`, from
   `@flow-state-dev/orchestration/task-board`, waits on a task already filed from inside a
   block with a stable identity. `key` is what the wait is recorded under with the request (a
   tool call's logical id), and `step` the model step it belongs to (one wait per step). It runs
@@ -1001,8 +1001,7 @@ Two functions sit under the option, for a layer that builds its own board surfac
   `wait_*` refusal, or `{ ok: false, error: "wait_ended_the_request" }` when a person stopped
   the request or its own task was cancelled. `waitAgain: true` waits again at each deadline, as
   a plan board's drain does on a row it handed over. Each new park counts the chain again,
-  except a drain's (`ownBoard: true`): its wait already exists, and refusing it would only leave
-  the plan waiting on nothing.
+  except a drain's own wait (`ownBoard: true`), which is not counted again.
 - `checkWait(ctx, collection, taskId, options)` runs the same checks without waiting: the
   refusal, or the checked wait to pass to `waitOnTask` as `checked`, which then doesn't check
   again. A drain uses it to refuse a row before it hands the row over.
@@ -1022,11 +1021,11 @@ dispatch itself threw, nothing may be running it, so it stays `in_progress` unti
 lapses and the plan's next run claims it again. A `getTask({ id, wait: true })` on a row the
 drain handed over is refused `wait_on_plan_step` for as long as the drain waits on it, deadlines
 included, so no other wait can take the slot the plan waits with. Declare
-the board's pass entry on the flow: without it, the board still builds, and the drain hears a
+the board's `onTaskSettled` entry on the flow: without it, the board still builds, and the drain hears a
 row's ending at its next check-in, up to the host's default wait deadline later.
 
 A waiting turn whose task has ended is resumed by the board's pass, which the filing session's
-`onTaskSettled` runs (`payBoardDebts`, above). The same pass cancels each task whose wait was
+`onTaskSettled` runs (`payBoardDebts`, under [Task board](#task-board)). The same pass cancels each task whose wait was
 stopped while its own cancel failed (`Task.cancelOwed`), and releases a wait slot that lapsed
 for a request that has since ended, so an ending held for that request reaches `onTaskSettled`
 even when its process died. Until that pass runs, a cancelled task's worker may keep running.
@@ -1062,7 +1061,7 @@ refuses to move it to another worker, and the answer reaches the session that as
 and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
 turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
 (at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
-task carries as its output (`checkpointed: true`). Neither changes the task's status. When the
+task carries as its output (`Task.checkpointed: true`; `getTask` shows `checkpoint: true`). Neither changes the task's status. When the
 task completes, a checkpoint stays as its output; a failed attempt keeps it for the next one. On a
 finished task it answers `task_finished` and writes nothing. The collection side is
 `TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
@@ -1123,8 +1122,7 @@ request takes mid-run shows in the task's session as a line from its sender
 Rows written before steers existed read in their new shape, with nothing to run. A row stored with
 `reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
 at the latest line in its session, so its next turn reads it. A row stored `parked` for a
-person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged. See
-`retired-shapes`.
+person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged.
 
 ## Skills
 
