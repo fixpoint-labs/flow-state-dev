@@ -267,9 +267,12 @@ export interface RequestHandle {
   /** Its lifecycle state now. */
   status(): Promise<RequestStatusSnapshot>;
   /**
-   * Resolves with the status once the request leaves `in_progress`, reading
-   * it every `pollMs` (default 250). Past `timeoutMs` (default: never) it
-   * rejects with a `ClientHttpError` of status 0.
+   * Resolves with the status once the request has settled: it is not
+   * `in_progress` and the server holds no live run of it, so a request just
+   * continued or resumed is waited for rather than read back as it was. A run
+   * that stops for a person settles at `suspended`. Reads every `pollMs`
+   * (default 250); past `timeoutMs` (default: never) it rejects with a
+   * `ClientHttpError` of status 0.
    */
   wait(options?: { pollMs?: number; timeoutMs?: number }): Promise<RequestStatusSnapshot>;
   /** Ask the server to stop it. A finished request answers 409. */
@@ -742,7 +745,10 @@ function requestHandle(
       const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
       for (;;) {
         const snapshot = await status();
-        if (snapshot.status !== "in_progress") return snapshot;
+        // A continued or resumed run is registered before its route answers, and
+        // keeps the status it was carried on from until it gets its turn: while
+        // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
+        if (snapshot.status !== "in_progress" && snapshot.lastHeartbeatAt === undefined) return snapshot;
         if (Date.now() >= until) clientError(`Request "${id}" did not finish in ${waitOptions?.timeoutMs} ms`);
         await new Promise((resolve) => setTimeout(resolve, pollMs));
       }

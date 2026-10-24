@@ -29,9 +29,11 @@ export type RequestStatusSnapshot = {
   /** Wall-clock time the request reached a terminal status, if any. */
   completedAtMs?: number;
   /**
-   * Most recent registry heartbeat, in ms since epoch. Populated only
-   * while the request is `in_progress` AND the registry still has its
-   * entry; absent for terminal statuses or after the entry was removed.
+   * Most recent registry heartbeat, in ms since epoch. Populated while the
+   * registry holds a live run of the request: one `in_progress`, or one
+   * just continued or resumed that still shows the status it was carried
+   * on from until it gets its turn. Absent once the run settles and its
+   * entry is removed.
    */
   lastHeartbeatAt?: number;
   /** Convenience: `Date.now() - startedAtMs` at the time of the read. */

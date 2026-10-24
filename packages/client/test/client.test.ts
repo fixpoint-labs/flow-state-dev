@@ -222,6 +222,35 @@ describe("request handle", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("waits past the status a request was carried on from while the server still holds its run", async () => {
+    // The continue route answers once the run is registered, before it gets its
+    // turn: the record still says `interrupted`, with a live heartbeat beside it.
+    const reads = [
+      { id: "req_1", status: "interrupted", sessionId: "sess_1" },
+      { id: "req_1", status: "interrupted", sessionId: "sess_1", lastHeartbeatAt: 1 },
+      { id: "req_1", status: "in_progress", sessionId: "sess_1", lastHeartbeatAt: 2 },
+      { id: "req_1", status: "completed", sessionId: "sess_1" }
+    ];
+    const fetcher = routed({
+      "GET /status": () => json(reads.shift()),
+      "POST /continue": () => json({ requestId: "req_1" })
+    });
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
+
+    const continued = await request.continue();
+
+    await expect(continued.wait({ pollMs: 1 })).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("resolves a wait on a stop once the server holds no run of it", async () => {
+    const fetcher = routed({
+      "GET /status": () => json({ id: "req_1", status: "suspended", sessionId: "sess_1" })
+    });
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
+
+    await expect(request.wait({ pollMs: 1, timeoutMs: 100 })).resolves.toMatchObject({ status: "suspended" });
+  });
+
   it("aborts, and a refusal carries the route's status", async () => {
     const fetcher = routed({ "POST /abort": () => new Response("already terminal", { status: 409 }) });
     const refused = await createClient({ userId: "u1", baseUrl: "", fetcher })
