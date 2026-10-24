@@ -17,7 +17,10 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    // Enter that ends an input method's composition (CJK and the like) picks the text; it doesn't send.
+    // Safari fires that Enter after compositionend, so isComposing is false there; keyCode 229 still marks it.
+    const composing = event.nativeEvent.isComposing || event.keyCode === 229;
+    if (event.key === "Enter" && !event.shiftKey && !composing) {
       event.preventDefault();
       send();
     }

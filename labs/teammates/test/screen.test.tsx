@@ -182,4 +182,26 @@ describe("the teammates screen", () => {
     expect(await within(conversation()).findByText("Work in relay.")).toBeTruthy();
     await waitFor(() => expect(within(conversation()).getAllByRole("button", { name: /Task for coder/ })).toHaveLength(2), { timeout: 2000 });
   });
+
+  it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
+    render(<App adapter={fast()} />);
+    const leadBox = (await screen.findByLabelText("Message lead")) as HTMLTextAreaElement;
+    fireEvent.change(leadBox, { target: { value: "For lead only" } });
+    fireEvent.click(workerRow("researcher"));
+    const researcherBox = (await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement;
+    expect(researcherBox.value).toBe("");
+  });
+
+  it("doesn't send when Enter ends an input method's composition", async () => {
+    render(<App adapter={fast()} />);
+    const box = await screen.findByLabelText("Message lead");
+    fireEvent.change(box, { target: { value: "日本語" } });
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    // Safari: the committing Enter arrives after compositionend, marked only by keyCode 229.
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect((box as HTMLTextAreaElement).value).toBe("日本語");
+    expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(false);
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("日本語"))).toBe(true));
+  });
 });
