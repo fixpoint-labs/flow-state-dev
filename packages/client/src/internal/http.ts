@@ -58,7 +58,8 @@ export function createTransport(options: TransportOptions): Transport {
     if (!response.ok) {
       throw new ClientHttpError(
         `Request failed (${response.status}) ${response.statusText || ""}`.trim(),
-        { status: response.status, body: await readBody(response) }
+        // The body is only a diagnostic here: an unreadable one must not hide the status.
+        { status: response.status, body: parseBody(await response.text().catch(() => "")) }
       );
     }
     return response;
@@ -74,7 +75,8 @@ export function createTransport(options: TransportOptions): Transport {
       { ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) } },
       query
     );
-    return (await readBody(response)) as TValue;
+    // A body that fails to arrive rejects: read as empty, it would pass for an absent record.
+    return parseBody(await response.text()) as TValue;
   };
 
   return { fetcher, url, json, raw };
@@ -166,8 +168,7 @@ function normalizeBaseUrl(baseUrl: string | undefined): string {
   return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 }
 
-async function readBody(response: Response): Promise<unknown> {
-  const text = await response.text().catch(() => "");
+function parseBody(text: string): unknown {
   if (text.trim().length === 0) return undefined;
   try {
     return JSON.parse(text);

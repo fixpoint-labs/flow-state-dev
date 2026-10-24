@@ -67,6 +67,35 @@ describe("createClient", () => {
   });
 });
 
+/** A response whose headers arrived but whose body stream fails mid-read. */
+function brokenBody(status: number): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("connection reset"));
+    }
+  });
+  return new Response(body, { status, headers: { "content-type": "application/json" } });
+}
+
+describe("a body that fails to read", () => {
+  it("rejects a successful call instead of resolving it as an absent record", async () => {
+    // `getCollectionItemState` answers `null` for an absent topic; a 200 whose
+    // body never arrived must not read as one.
+    const fetcher = routed({ "GET /resources/notes/a": () => brokenBody(200) });
+    const read = createClient({ userId: "u1", fetcher }).resources.getCollectionItemState("sess_1", "notes", "a");
+    await expect(read).rejects.toThrow("connection reset");
+  });
+
+  it("still reports a refusal with its status when the refusal's body is unreadable", async () => {
+    const fetcher = routed({ "GET /resources/notes/a": () => brokenBody(503) });
+    const refused = await createClient({ userId: "u1", fetcher })
+      .resources.getCollectionItemState("sess_1", "notes", "a")
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ClientHttpError);
+    expect((refused as ClientHttpError).status).toBe(503);
+  });
+});
+
 describe("flow(address).send", () => {
   it("posts the action with the client's user, and returns a request handle", async () => {
     const fetcher = routed({
