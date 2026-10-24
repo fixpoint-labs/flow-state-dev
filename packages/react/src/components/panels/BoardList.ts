@@ -17,7 +17,7 @@
  */
 import { createElement, useMemo, type ReactNode } from "react";
 import { cardRows, type BoardCard, type BoardCardRow } from "./cards";
-import { usePanelRows, type PanelLiveSource } from "./reads";
+import { usePanelRows, type PanelLiveSource, type PanelRowSource } from "./reads";
 import { usePanelSource } from "./usePanelSource";
 import { bareList, labelStyle, note, panelStyle, retryLine, rowStyle } from "./chrome";
 
@@ -60,11 +60,14 @@ type BoardListCommonProps = {
  *   one, the panel uses the nearest `FlowProvider`'s user, `baseUrl` and
  *   `fetcher`.
  * - `live`: read the board again whenever the session keeps a change to it.
+ *
+ * A live list's client must be able to stream (`sessions`): the stream goes
+ * through the same client as the read, so it carries the read's credential to
+ * the read's origin. A client that only reads takes no `live`.
  */
-type BoardListTransportProps = {
-  readonly client?: PanelLiveSource;
-  readonly live?: boolean;
-};
+type BoardListTransportProps =
+  | { readonly client?: PanelLiveSource; readonly live?: boolean }
+  | { readonly client: PanelRowSource; readonly live?: false };
 
 export type BoardListProps = BoardListCommonProps & BoardListTransportProps;
 
@@ -127,7 +130,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? source : undefined
+    live ? (source as PanelLiveSource) : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

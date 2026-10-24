@@ -72,19 +72,19 @@ const page = (...topics: string[]) => ({
 
 function flowSource() {
   const { calls, fn } = heldMethod<FlowListEntry[]>();
-  return { calls, listFlows: fn };
+  return { calls, listFlows: fn, flows: fn };
 }
 function sessionSource() {
   const { calls, fn } = heldMethod<SessionSummary[]>();
-  return { calls, listSessions: fn };
+  return { calls, listSessions: fn, sessions: { list: fn } };
 }
 function rowSource() {
   const { calls, fn } = heldMethod<ReturnType<typeof page>>();
-  return { calls, listCollectionItems: fn };
+  return { calls, listCollectionItems: fn, resources: { listCollectionItems: fn } };
 }
 function itemSource() {
   const { calls, fn } = heldMethod<{ topic: string; clientData?: unknown } | null>();
-  return { calls, getCollectionItemState: fn };
+  return { calls, getCollectionItemState: fn, resources: { getCollectionItemState: fn } };
 }
 
 const kinds = (flows: readonly FlowListEntry[]) => flows.map((f) => f.kind);

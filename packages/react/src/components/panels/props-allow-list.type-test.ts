@@ -50,9 +50,10 @@ type Assignable<T, U> = [T] extends [U] ? true : false;
 type IsTrue<T extends true> = T;
 type IsFalse<T extends false> = T;
 type Where = { sessionId: string; boardRef: string };
-type HostClient = NonNullable<BoardListProps["client"]>;
+type HostClient = Extract<NonNullable<BoardListProps["client"]>, { sessions: unknown }>;
 type ReadOnlyClient = NonNullable<BoardColumnsProps["client"]>;
 
 export type LiveWithHostClient = IsTrue<Assignable<Where & { client: HostClient; live: boolean }, BoardListProps>>;
+export type ReadOnceWithReadOnlyClient = IsTrue<Assignable<Where & { client: ReadOnlyClient }, BoardListProps>>;
 export type LiveOnTheProvider = IsTrue<Assignable<Where & { live: true }, BoardListProps>>;
 export type LiveWithoutAStream = IsFalse<Assignable<Where & { client: ReadOnlyClient; live: true }, BoardListProps>>;

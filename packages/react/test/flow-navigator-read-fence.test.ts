@@ -31,18 +31,16 @@ const leaf = (address: string): FlowNavigatorLeaf => ({
 function deferredSource() {
   const pending: { address: string; release: (rows: SessionSummary[]) => void }[] = [];
 
-  return {
-    pending,
-    listSessions: vi.fn(
-      (options?: { flowId?: string; flowKind?: string }) =>
-        new Promise<SessionSummary[]>((resolve) => {
-          pending.push({
-            address: options?.flowId ?? options?.flowKind ?? "?",
-            release: resolve,
-          });
-        })
-    ),
-  };
+  const listSessions = vi.fn(
+    (options?: { flowId?: string; flowKind?: string }) =>
+      new Promise<SessionSummary[]>((resolve) => {
+        pending.push({
+          address: options?.flowId ?? options?.flowKind ?? "?",
+          release: resolve,
+        });
+      })
+  );
+  return { pending, listSessions, sessions: { list: listSessions } };
 }
 
 describe("useLeafSessions · a response outliving its leaf", () => {
