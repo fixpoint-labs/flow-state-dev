@@ -25,6 +25,16 @@ const SCRATCH = goalTmpDir("one-task");
 const MODEL = gatewayModel(goalModel());
 /** The notice's due time after an ending (orchestration's `NOTICE_DUE_MS`). */
 const NOTICE_DUE_MS = 2_000;
+/** Leg b's window past the due time when the filing request had stopped (ended or parked) at the kill. */
+const NOTICE_SLACK_MS = 2_000;
+/**
+ * Leg b's window past the due time when the kill caught the filing request mid-turn. Its notice is
+ * held until that request is known gone: its heartbeat stale past the stale threshold, or the stale
+ * or startup sweep marking it interrupted (FIX-2166). With the defaults (10 s heartbeat, 60 s
+ * threshold, 30 s sweep) that is about 50 to 92 s after the kill: the bound the owner accepted on
+ * 2026-10-24. A seconds-scale bound is FIX-2169's.
+ */
+const MID_TURN_SLACK_MS = 100_000;
 const say = (s: string) => console.error(`[one-task ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown, n = 400) => JSON.stringify(value)?.slice(0, n);
 
@@ -354,19 +364,31 @@ async function walk(failures: string[], tell: Tell, report: string[]): Promise<v
       }
       const writerSession = R.run?.sessionId;
       const before = admittedRequests(store, writerSession).length;
+      // Which case the kill hit, read from the stored record the dead server left: the request
+      // that filed the research had ended or parked, or still read `in_progress`, running its turn.
+      const filing = (ended as { filer?: { requestId?: string } }).filer?.requestId;
+      const filingStatus = filing === undefined ? undefined : requests(store).find((r) => r.id === filing)?.status;
+      if (filingStatus === undefined) return [`b:killed — can't tell the case: the research row's filing request ${filing ?? "(none named)"} has no stored record`];
+      const midTurn = filingStatus === "in_progress";
+      const slack = midTurn ? MID_TURN_SLACK_MS : NOTICE_SLACK_MS;
       const patches = control?.leg === "b" ? control.patches : [];
       const second = await serve(`b-${attempt}-restarted`, store, tree, patches);
       const back = Date.now();
       try {
-        // No action on any board: only a wake can pay what is owed.
-        await new Promise((r) => setTimeout(r, NOTICE_DUE_MS + 10_000));
+        // No action on any board: only a wake can pay what is owed. Watch the whole window, even
+        // after a first hearing (mid-turn, several release paths land across it), then a further
+        // 10 s for a second hearing.
+        const due = Math.max(back, (ended.completedAt ?? back) + NOTICE_DUE_MS);
+        const until = due + slack;
+        while (Date.now() < until) await new Promise((r) => setTimeout(r, 1_000));
+        await new Promise((r) => setTimeout(r, 10_000));
         if (patches.length > 0) assertPatched(patches, REPO_ROOT, second.mark);
         const heard = admittedRequests(store, writerSession);
-        const due = Math.max(back, (ended.completedAt ?? back) + NOTICE_DUE_MS);
         const at = heard[0]?.createdAt;
-        if (heard.length === 0 || at === undefined || at - due > 2_000) f.push(`b:hears-in-due-time — ${heard.length} onTaskSettled in writer's session after the restart; the first ${at === undefined ? "never" : `${at - due} ms past its due time`}`);
+        const which = midTurn ? `killed mid-turn (filing request ${filing} ${filingStatus}), window due + ${slack / 1000} s` : `killed after the filing request ${filingStatus}, window due + ${slack / 1000} s`;
+        if (heard.length === 0 || at === undefined || at - due > slack) f.push(`b:hears-in-due-time — ${which}: ${heard.length} onTaskSettled in writer's session after the restart; the first ${at === undefined ? "never" : `${at - due} ms past its due time`}`);
         if (heard.length + before !== 1) f.push(`b:once — writer heard researcher's ending ${heard.length + before} time(s) (${before} before the kill)`);
-        report.push(`b attempt ${attempt}: killed with ${ended.id} ended and its notice owed; restarted ${back - k.killedAt} ms later; due ${due - back} ms after the restart; heard ${at === undefined ? "never" : `${at - due} ms past due`}`);
+        report.push(`b attempt ${attempt}: ${which}; ${ended.id} ended and its notice owed; restarted ${back - k.killedAt} ms after the kill; due ${due - back} ms after the restart; heard ${at === undefined ? "never" : `${at - due} ms past due (${at - k.killedAt} ms after the kill)`}`);
       } finally {
         await second.served.stop();
       }
