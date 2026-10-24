@@ -417,7 +417,7 @@ export interface Client {
      * The user's interrupted requests: a request a host lost in a crash or a
      * restart. Asks the server to sweep stale ones first, then reads every
      * interrupted record, so a request an earlier sweep marked is listed too,
-     * on every call, until it is continued, retried or removed.
+     * on every call, until it is continued or removed.
      * `staleThresholdMs` can only widen the server's own threshold.
      */
     interrupted(options?: { staleThresholdMs?: number }): Promise<InterruptedRequest[]>;
