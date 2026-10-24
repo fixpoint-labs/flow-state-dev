@@ -126,6 +126,13 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 2 on shift · 2 streams");
   });
 
+  it("an Inbox that didn't load says so in the summary, never 0 need you, which reads as all clear", () => {
+    const s = { ...snapshot([row("A", "in_progress")]), inbox: { ok: false, failure: { message: "asks offline" } } } as LoadedSnapshot;
+    const line = tasksSummary(s);
+    expect(line).toBe("1 in flight · Inbox didn't load · 0 on shift · 1 stream");
+    expect(line).not.toMatch(/need/);
+  });
+
   it("the empty Inbox names the runs still going (BR-19, I8)", () => {
     const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
     expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(

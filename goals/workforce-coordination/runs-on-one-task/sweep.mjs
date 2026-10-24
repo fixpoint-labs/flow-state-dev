@@ -187,7 +187,7 @@ function forwarderPlant(root) {
 
 /**
  * A second list of what waits on the user, in each shape the Inbox rule reads: an Inbox item
- * built outside the Inbox read (a typed literal, and a cast), a session's suspensions derived
+ * built outside the Inbox read (a typed literal, a cast, shorthand properties and a spread), a session's suspensions derived
  * through a renamed import, and a board row's questions read and destructured.
  */
 function inboxPlants() {
@@ -199,8 +199,10 @@ function inboxPlants() {
       text:
         'import type { InboxItem } from "./inbox";\nimport type { Ask } from "./reads";\n' +
         'export function myList(asks: Ask[]): InboxItem[] {\n  return asks.map((ask) => ({ source: "suspension", id: "x", since: 0, ask }));\n}\n' +
-        'export const one = (ask: Ask) => ({ source: "suspension", id: "y", since: 0, ask }) as InboxItem;\n',
-      expect: 2,
+        'export const one = (ask: Ask) => ({ source: "suspension", id: "y", since: 0, ask }) as InboxItem;\n' +
+        'export function short(ask: Ask): InboxItem {\n  const source = "suspension";\n  const id = "z";\n  const since = 0;\n  return { source, id, since, ask };\n}\n' +
+        'const base = { source: "suspension" as const };\nexport const spread = (ask: Ask): InboxItem => ({ ...base, id: "w", since: 0, ask });\n',
+      expect: 4,
     },
     {
       rule: "inbox",

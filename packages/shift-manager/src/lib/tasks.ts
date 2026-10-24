@@ -44,11 +44,14 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  */
 export function tasksSummary(snapshot: LoadedSnapshot): string {
   const inFlight = openRows(snapshot).filter((row) => !isQueued(row));
-  const waiting = snapshot.inbox.ok ? snapshot.inbox.value.length : 0;
+  // An Inbox that didn't load says so: a count of 0 would read as all clear.
+  const waiting = snapshot.inbox.ok
+    ? `${snapshot.inbox.value.length} ${snapshot.inbox.value.length === 1 ? "needs" : "need"} you`
+    : "Inbox didn't load";
   const counts = shiftCounts(workerStates(snapshot));
   return [
     `${inFlight.length} in flight`,
-    `${waiting} ${waiting === 1 ? "needs" : "need"} you`,
+    waiting,
     `${counts["on shift"]} on shift`,
     plural(new Set(inFlight.map((row) => row.holderSessionId)).size, "stream", "streams"),
   ].join(" · ");

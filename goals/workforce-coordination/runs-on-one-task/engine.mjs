@@ -522,15 +522,24 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
   // definition: a finding, not a rule that read nothing.
   if (inboxItemType === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
-  const isInboxItem = (node) =>
-    typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem") ||
-    (inboxItemType !== undefined && checker.isTypeAssignableTo(checker.getTypeAtLocation(node), inboxItemType));
+  // The assignability arm reads only a literal whose own type is known and carries a `source`: a
+  // spread of an `any` value types the literal `any`, which every slot accepts.
+  const isInboxItem = (node) => {
+    if (typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem")) return true;
+    if (inboxItemType === undefined) return false;
+    const own = checker.getTypeAtLocation(node);
+    if (own.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) || own.getProperty("source") === undefined) return false;
+    return checker.isTypeAssignableTo(own, inboxItemType);
+  };
   const inboxScanned = { items: 0, derive: 0, rowFields: 0 };
   for (const sf of ownFiles) {
     const path = rel(sf);
     const visit = (node) => {
       let what;
-      if (ts.isObjectLiteralExpression(node) && node.properties.some((p) => ts.isPropertyAssignment(p) && p.name.getText(sf) === "source")) {
+      // Any syntax that can give the literal a `source`: assigned, shorthand, quoted or computed, or a spread.
+      const mayHoldSource = (p) =>
+        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "source"));
+      if (ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldSource)) {
         if (isInboxItem(node)) {
           inboxScanned.items++;
           what = "builds an Inbox item";
