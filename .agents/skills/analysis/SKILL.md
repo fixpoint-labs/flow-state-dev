@@ -23,7 +23,7 @@ Where the process runs this:
 
 ## The objectives
 
-Every analysis answers all six, in this order. **One line is enough when the answer is
+Every analysis answers all seven, in this order. **One line is enough when the answer is
 clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is not analysis.
 
 1. **Reuse.** Did we build (or are we about to build) a mechanism we already had? Don't
@@ -43,12 +43,28 @@ clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is no
    Linear issues and features created or changed since the watermark (see "The watermark"),
    merged PRs in the same area, a prior-art change. Name each and whether it moves anything.
 5. **Necessity.** Should this exist at all, and at this size? What is the leaner version?
-6. **Major concerns.** Anything else that would make a senior engineer stop — a promise we
+6. **Developer ergonomics.** How many "WTFs" would a developer say on meeting this? Read it as
+   a newcomer to the SDK: write the few lines they'd write for the common case (or use the
+   spec's diff, if it shows the change in use), starting from their first import. Count what
+   they must learn before that code works: entry points, concepts, options. Then name each
+   surprise:
+   - two things that look like they do the same job
+   - a name that doesn't say what the thing does, or breaks the pattern of its siblings
+   - something you must know before the obvious thing works
+   - an entry point that exists because of how we built it, not because of what the
+     developer is doing
+
+   The job check (`issue-spec` question 7) counts the ways to do *one* job. This looks across
+   jobs at the whole surface a developer meets. Five separate `create…Client` constructors
+   can each pass the job check and still be five things to learn before the first call. A
+   surprise the change adds, or makes worse, is a finding. One it only walks past is filed as
+   an issue and named in the spec's debt table, *Leaves* row.
+7. **Major concerns.** Anything else that would make a senior engineer stop — a promise we
    can't keep, a direction that fights the philosophy, a cost nobody priced. Not line-level
    flaws: those are `review`'s, and a defect you walk into goes in as a routed finding (below).
 
 Read [`docs/philosophy.md`](../../../docs/philosophy.md) first; tenets 2–4 are the yardstick
-for objectives 1, 3 and 5.
+for objectives 1, 3, 5 and 6.
 
 ## Not this skill
 
@@ -116,8 +132,9 @@ PR's job audit and ledger rows, and Linear since the watermark.
 
 **The questions turn backward.** Was this a good idea, judged against what we now know? Did
 the build hold the approved direction, or drift from it? Would we do it this way again, given
-how other frameworks do it and what has been filed since? Is there a major concern the next
-epic should start from?
+how other frameworks do it and what has been filed since? Did the epic leave a developer with
+more to learn or fewer surprises: entry points and concepts before and after? Is there a major
+concern the next epic should start from?
 
 **Output:**
 
@@ -144,7 +161,8 @@ follow-up work, and the issue is how it gets done.
 3. Other shapes — <the strongest alternative and why it loses / wins; or adhd's verdict>
 4. New factors — <N issues/PRs since the watermark; the ones that move anything>
 5. Necessity — <should exist at this size / the leaner version>
-6. Concerns — <the major ones; or "none">
+6. Ergonomics — <entry points and concepts to learn for the common case; each surprise; or "none: <the code a developer writes>">
+7. Concerns — <the major ones; or "none">
 
 | Finding | Objective | Changes the approach? | Disposition |
 |---------|-----------|-----------------------|-------------|
@@ -153,11 +171,11 @@ follow-up work, and the issue is how it gets done.
 (Omit if none.)
 ```
 
-"Right approach" with six clean lines is a valid and common result. Say it and stop.
+"Right approach" with seven clean lines is a valid and common result. Say it and stop.
 
 ## Guardrails
 
-- **Not a review.** Don't list line-level flaws, naming, or missing tests. A defect you find
+- **Not a review.** Don't list line-level flaws, internal naming, or missing tests. A public name a developer meets is objective 6's. A defect you find
   goes under *Routed findings*, never as an analysis finding.
 - **Don't relitigate without a new fact.** At wrap, a decision a human signed off is reopened
   only by something the sign-off didn't have — a new factor (objective 4), a prior-art

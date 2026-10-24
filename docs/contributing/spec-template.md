@@ -709,7 +709,9 @@ review notes left for the implementer. Sections, in order:
 > 3. **Other shapes** — client-side dedupe; weaker, recorded in *Considered and dropped*.
 > 4. **New factors** — 6 issues since the watermark; none touches the stream path.
 > 5. **Necessity** — earns its place: the duplicates are billed tokens, not a cosmetic issue.
-> 6. **Concerns** — none. Recorded, nothing folded.
+> 6. **Ergonomics** — nothing new to learn: a reconnecting client resumes with no extra code,
+>    and the optional query param uses the name the SSE spec already teaches.
+> 7. **Concerns** — none. Recorded, nothing folded.
 >
 > ## How it got here
 >

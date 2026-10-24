@@ -599,7 +599,7 @@ merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for th
 Two different jobs. [`review`](../../.agents/skills/review/SKILL.md) looks for flaws in the
 work, and PR feedback, Codex, and spec-PR review rounds are review too.
 [`analysis`](../../.agents/skills/analysis/SKILL.md) asks whether it is the right work; that
-skill holds the six objectives and both altitudes. Its reuse objective is answered by
+skill holds the seven objectives and both altitudes. Its reuse objective is answered by
 `reuse-review` ([Compose existing pieces](#compose-existing-pieces)), not by a second search.
 On an implementation, a mechanism the spec doesn't list is a flaw, so `review` keeps its own
 reuse lens.
