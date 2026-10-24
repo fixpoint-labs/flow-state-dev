@@ -103,7 +103,7 @@ expects to run for days. Then the coordinator gets a tool, and that is a gap.
 |---|---|
 | **Instead of** | (a) One worker flow per harness, a hire picking by its `flow:` line. (b) A harness on the main session too |
 | **Because** | The harness is a slot fixed when a flow is built, and one flow copy serves every worker on it (DevTeam's `coder.mts`); so one flow builds a manager per harness and routes each task by the worker's own `harness` setting, which the hire already passes (`settingsOf`). That is config only, with no package change, and one flow instead of (a)'s two (epic ER-9, amended on review). (b) breaks the epic's D2 loop, which owns the main session's turn |
-| **Locks in** | No new mechanism: the flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. A run that produced changes waits under *Ready for review*, with the judge's verdict shown as information, not approval; one with no changes lands in *Resolved*, and a failed one is errored. Harness-manager completes a run on its own check today, so the review wait is a gap that blocks step 6 (product's call, overturning a draft that skipped review). Not needed: FIX-1990, since a run asks the person, never a teammate |
+| **Locks in** | No new mechanism: the flow wraps `harnessManager` with `projectWorkspace()`, as `coder` does. A harness thread's question holds its task, so *Waiting on you* and step 3's answer work unchanged. A run that produced changes waits under *Ready for review*, with the judge's verdict shown as information, not approval; one with no changes lands in *Resolved*, and a failed one is errored. Harness-manager completes a run on its own check today, so the review wait is a gap that blocks step 6 (product's call, overturning a draft that skipped review). Not needed: FIX-1990, since a run asks the person, never a teammate. **Amended 2026-10-24 ([FIX-2163](https://github.com/fixpoint-labs/flow-state-dev/pull/3819) D2):** a harness thread's run that completes at the review deadline lands in *Resolved* with a required *not reviewed* mark, read from the task output's `review: "deadline"`; only `"accepted"` reads as approved. This doesn't depend on FIX-2129. A plain thread has no such signal yet; that is gap [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165), and the lab doesn't infer one |
 
 **What would change my mind:** the gap proving large at its spec. Then that is raised with a
 size on this PR's successor, not worked around by skipping review.
@@ -184,6 +184,9 @@ size on this PR's successor, not worked around by skipping review.
 For the implementer, recorded and not folded:
 - An unanswered review that completes at the deadline lands in *Resolved* beside accepted ones.
   Make it tell apart on the row, from the task row only, if FIX-2129's record of the stop allows.
+  **Amended 2026-10-24 (FIX-2163 D2):** for a harness thread the *not reviewed* mark is required,
+  read from the task output's `review: "deadline"` (see D5). For a plain thread, see gap FIX-2165;
+  the lab doesn't infer a signal.
 - Keep the `taskRow → column` projection a pure function in a leaf module with a table test,
   free of React, so it can sit beside Shift Manager's `columns.ts` and move later.
 - Consider splitting the adapter into a task port and a pins port, and `resolve` and
