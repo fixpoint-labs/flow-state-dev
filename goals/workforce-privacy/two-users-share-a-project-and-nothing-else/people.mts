@@ -13,7 +13,7 @@
  */
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Client, ResourceClient, SessionClient, SessionSummary } from "@flow-state-dev/client";
+import type { Client, FlowHandle, SessionSummary } from "@flow-state-dev/client";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 
@@ -38,7 +38,7 @@ interface WorkforceClient {
 export interface Shipped {
   client: typeof import("@flow-state-dev/client");
   workforce: {
-    createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): WorkforceClient;
+    createWorkforceClient(client: Client): WorkforceClient;
     deriveWorkerSessionId(input: { userId: string; orgId: string; flow: string; criteria: { worker: string } }): Promise<string>;
   };
 }
@@ -70,10 +70,12 @@ export async function loadShipped(root: string, options: { tolerateMissing?: boo
 export interface Connected {
   person: Person;
   workforce: WorkforceClient;
-  sessions: SessionClient;
-  resources: ResourceClient;
-  /** An action client on `flowKind`, as this person. `bodyUserId` forges the body's user id (the bearer stays theirs). */
-  flow(flowKind: string, bodyUserId?: string): Client;
+  /** The flows the install hosts, as this person reads them. */
+  flows: Client["flows"];
+  sessions: Client["sessions"];
+  resources: Client["resources"];
+  /** `flowKind`'s actions, as this person. `bodyUserId` forges the body's user id (the bearer stays theirs). */
+  flow(flowKind: string, bodyUserId?: string): FlowHandle;
   /** The oracle: the install's routes, read as this person. */
   routes: LabRoutes;
 }
@@ -86,12 +88,17 @@ export function connect(shipped: Shipped, origin: string, person: Person): Conne
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.client.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    workforce: shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-    sessions: shipped.client.createSessionClient(transport),
-    resources: shipped.client.createResourceClient(transport),
-    flow: (flowKind, bodyUserId) => shipped.client.createClient({ flowKind, userId: bodyUserId ?? person.userId, ...transport }),
+    workforce: shipped.workforce.createWorkforceClient(client),
+    flows: () => client.flows(),
+    sessions: client.sessions,
+    resources: client.resources,
+    // A forged body user is another client over the same credential: the probe a person's own client never sends.
+    flow: (flowKind, bodyUserId) =>
+      (bodyUserId === undefined ? client : shipped.client.createClient({ userId: bodyUserId, ...transport })).flow(flowKind),
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
   };
 }
@@ -126,14 +133,14 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(400)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;

@@ -25,7 +25,7 @@
  * in `goals/kitchen-sink-talk/agent-replies-in-the-mailbox/run.mts`, not here.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FlowState } from "@flow-state-dev/engine";
+import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";
 
 // Each case boots the whole app afresh, and the first import is cold.
 vi.setConfig({ testTimeout: 60_000 });
@@ -56,14 +56,11 @@ async function bootApp(control = ""): Promise<Router> {
 }
 
 async function call(router: Router, method: "GET" | "POST", segments: string[], body?: unknown, query = "") {
-  const res = await router[method](
-    new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+  const res = await createInProcessFetch(router)(`/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
       method,
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path: segments } },
-  );
+    });
   return { status: res.status, text: await res.text() };
 }
 

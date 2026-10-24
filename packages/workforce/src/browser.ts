@@ -23,7 +23,7 @@ export {
   type RosterEntry,
   type WorkerSessionEntry,
   type WorkforceClient,
-  type WorkforceClientOptions
+  type WorkforceClientSource
 } from "./workers/client";
 export {
   deriveWorkerSessionId,

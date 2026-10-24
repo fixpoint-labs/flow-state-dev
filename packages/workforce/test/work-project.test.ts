@@ -8,6 +8,7 @@
  * keeps what it answered; every assertion reads that answer or the client's,
  * never a stored key.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -151,7 +152,7 @@ async function boot() {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   };
-  const client = (user: string) => createWorkforceClient({ userId: user, fetcher: h.fetcherFor(user, ORG) });
+  const client = (user: string) => createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, ORG) }));
   const createProject = async (user: string, input: Record<string, unknown>) =>
     h.ok(user, "lab", await h.openSession(user, "lab"), "createProject", input);
   /** File `goal` from `session` (on the coordinator flow) and wait for every run it starts. */

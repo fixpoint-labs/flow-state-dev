@@ -373,11 +373,7 @@ function ArtifactDialogBody({
       lastSelectionRef.current = null;
       setStreamState({ action: actionId, prefix, suffix, accumulated: "" });
 
-      const client = createClient({
-        flowKind: "rich-text-component",
-        userId,
-        baseUrl,
-      });
+      const richText = createClient({ userId, baseUrl: baseUrl ?? "" }).flow("rich-text-component");
 
       const input = { text: targetText, ...extra };
 
@@ -392,7 +388,7 @@ function ArtifactDialogBody({
 
       void (async () => {
         try {
-          const response = await client.sendActionStream(actionId, input);
+          const response = await richText.send(actionId, input, { stream: true });
           let acc = "";
           let done = false;
           const handle = createSSEClientFromResponse({

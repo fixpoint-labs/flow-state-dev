@@ -765,7 +765,7 @@ Each row names the run that took it. Under `per-worker` or a shared `key`, sever
 To open the run, read the session first. An assignee can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
 ```ts
-const session = await client.getSession(task.run.sessionId);
+const session = await fsd.sessions.get(task.run.sessionId);
 const flowKind = session.flowId; // the run's flow, never the board's
 ```
 
@@ -1248,7 +1248,7 @@ A worker that can't go on without an answer calls `parkOnQuestion({ question })`
 `answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
 
 ```ts
-await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+await fsd.flow(flowKind).send("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
 It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.

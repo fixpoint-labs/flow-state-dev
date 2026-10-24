@@ -53,9 +53,10 @@ To talk to it, find or start a session with the worker, then send to the flow it
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl });
+const fsd = createClient({ userId, baseUrl });
+const workforce = createWorkforceClient(fsd);
 const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
-await createClient({ flowKind: session.flowKind, userId, baseUrl }).sendAction("respond", { message }, { sessionId: session.id });
+await fsd.flow(session.flowKind).send("respond", { message }, { sessionId: session.id });
 ```
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
@@ -760,7 +761,7 @@ An app reads and edits them through the workforce client:
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl });
+const workforce = createWorkforceClient(fsd); // fsd: your app's client from @flow-state-dev/client
 const { version } = await workforce.standingRules("eng-lead", { op: "read" });
 await workforce.standingRules("eng-lead", { op: "add", version, text: "Name the project first." });
 ```
@@ -1612,12 +1613,11 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   in that project, as for a project's conversation above:
 
   ```ts
-  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
-  const sessions = createSessionClient({ baseUrl, fetcher }); // from @flow-state-dev/client
+  const workforce = createWorkforceClient(fsd); // fsd: your app's client
   // A worker's one conversation, at the first job that needs files
   await workforce.setWorkProject("lead", { visibility: "shared", id: "apollo" });
   // A new session, after the user picks a project
-  const session = await sessions.createSession({ flowKind: "lab-main", userId, state: { workerId: "main" } });
+  const session = await fsd.flow("lab-main").createSession({ state: { workerId: "main" } });
   await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
   ```
 
@@ -1821,10 +1821,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
     replacing each field given;
   - `fire({ id })` returns `{ id }` and deletes the row.
 - **From an app.** `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, takes the
-  transport options `createSessionClient` takes: `baseUrl`, `apiPath`, and `fetcher`, a
-  `(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>` used for every request. Wrap
-  `fetch` to add the caller's credential, such as an `Authorization` header, and pass the same
-  `fetcher` to `createClient`. The server decides who the caller is with `resolvePrincipal` on
+  app's client from `createClient` and reads and writes through it, as that client's user and
+  over its transport. To send the caller's credential, give `createClient` a `fetcher` that wraps
+  `fetch` and adds it, such as an `Authorization` header; every workforce call then carries it
+  too. The server decides who the caller is with `resolvePrincipal` on
   `createFlowState`. See [Authentication](https://flow-state.dev/docs/server/authentication),
   [Host adapters](https://flow-state.dev/docs/server/host-adapters) for serving it, and
   [Serving it to your users](https://flow-state.dev/docs/workforce/overview#serving-it-to-your-users).
@@ -1834,7 +1834,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
   // fetcher: wraps fetch to add the caller's credential, as described above
-  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+  const fsd = createClient({ userId, baseUrl, fetcher });
+  const workforce = createWorkforceClient(fsd);
 
   const roster = await workforce.roster();
   // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
@@ -1843,11 +1844,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
 
-  const research = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
-  const { status, request } = await research.sendAction("respond", { message: "Summarize the launch notes." }, {
+  const sent = await fsd.flow(session.flowKind).send("respond", { message: "Summarize the launch notes." }, {
     sessionId: session.id,
   });
-  // status: "in_progress" | "completed" | "failed" | "incomplete"; use request.id to connect to its stream
+  const { status } = await sent.wait(); // or follow it live with sent.stream({ ... })
   ```
 
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
@@ -2046,7 +2046,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `minConfidence` where there are some). When best fit's evaluator call failed and it asked again
   as a language model, `evaluationFailed` carries the evaluator's error. Render it apart from the
   conversation's lines. App code
-  reads the records with `createSessionClient(...).listSessionRequests(sessionId, { includeItems: true })`,
+  reads the records with `fsd.sessions.requests(sessionId, { includeItems: true })`,
   keeping each request's `items` whose `type` is `"component"` and `component` is
   `COORDINATOR_ROUTE`; the record is the item's `data`. Without `includeItems: true` there are no
   `items` to read.
@@ -2289,11 +2289,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-<<<<<<< HEAD
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `listWorkerSessions(worker)` (the user's conversations with the worker as `WorkerSessionEntry` rows, `{ session, isDefault }`, the default first, then by latest activity) and `standingRules(worker, input)` (see [Standing rules](#standing-rules)), over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
-=======
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `standingRules(worker, input)` (see [Standing rules](#standing-rules)) and `setWorkProject(worker, { visibility, id }, { sessionId? })` (see [Projects](#projects)), over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
->>>>>>> origin/main
+| `createWorkforceClient(fsd)` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `listWorkerSessions(worker)` (the user's conversations with the worker as `WorkerSessionEntry` rows, `{ session, isDefault }`, the default first, then by latest activity), `standingRules(worker, input)` (see [Standing rules](#standing-rules)) and `setWorkProject(worker, { visibility, id }, { sessionId? })` (see [Projects](#projects)), through the client it is given (any `createClient` client; it reads `userId`, `flow`, `sessions` and `resources`). `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
 | `RULE_TOOLS`, `MAX_RULES`, `MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `STANDING_RULES_RESOURCE` | The four rule tools' names, the list's limits (20 and 300), the flow action `standingRules` calls, the `agentName` a rule write's line carries, and the resource the list is kept under. All but `STANDING_RULES_RESOURCE` are also exported from `./browser`. |
 | `SET_WORK_PROJECT_ACTION` / `setWorkProjectAction` / `WORK_PROJECT_STATE_KEY` | The action `setWorkProject` calls (`"setWorkProject"`), the action itself for a worker flow of your own to declare under that name, and the server-owned session-state field it writes (`"workProjectId"`, `<visibility>/<id>`). The two constants are also exported from `./browser`. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |

@@ -1,7 +1,7 @@
 /** What this run proves is `goal.md` beside this file. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient, type Client } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY, createWorkforceClient, type StandingRulesActionOutput } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -89,7 +89,8 @@ const endsWith = (reply: string, marker: string) => edges(reply).endsWith(marker
 class SignedIn {
   readonly routes: LabRoutes;
   readonly workforce: ReturnType<typeof createWorkforceClient>;
-  readonly sessions: ReturnType<typeof createSessionClient>;
+  /** The person's one client: their user, their credential. */
+  readonly client: Client;
   constructor(
     readonly person: Person,
     origin: string,
@@ -100,8 +101,8 @@ class SignedIn {
       return fetch(input, { ...init, headers });
     };
     this.routes = labRoutes(origin, { userId: person.userId, bearer: person.bearer });
-    this.workforce = createWorkforceClient({ userId: person.userId, baseUrl: origin, fetcher });
-    this.sessions = createSessionClient({ baseUrl: origin, fetcher });
+    this.client = createClient({ userId: person.userId, baseUrl: origin, fetcher });
+    this.workforce = createWorkforceClient(this.client);
   }
 
   /** The roster entry whose id is `worker` or ends in `.worker`. */
@@ -115,7 +116,7 @@ class SignedIn {
   /** A brand-new conversation with `worker`, opened as Shift Manager opens one. */
   async fresh(worker: { id: string; flow: string }): Promise<string> {
     const sessionId = `conv_goal_${Math.random().toString(16).slice(2, 14)}`;
-    await this.sessions.createSession({ flowKind: worker.flow, userId: this.person.userId, sessionId, state: { [WORKER_ID_STATE_KEY]: worker.id } });
+    await this.client.flow(worker.flow).createSession({ sessionId, state: { [WORKER_ID_STATE_KEY]: worker.id } });
     return sessionId;
   }
 

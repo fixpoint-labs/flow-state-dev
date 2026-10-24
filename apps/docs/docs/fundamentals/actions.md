@@ -44,13 +44,17 @@ Each action has:
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const client = createClient({ flowKind: "my-app", userId: "user_1" });
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
+const app = fsd.flow("my-app");
 
 // New session (auto-created)
-await client.sendAction("chat", { message: "Hello!" });
+const sent = await app.send("chat", { message: "Hello!" });
 
 // Existing session
-await client.sendAction("chat", { message: "Hello!" }, { sessionId: "sess_123" });
+await app.send("chat", { message: "Hello!" }, { sessionId: "sess_123" });
+
+// Wait for it to settle, or follow it live with sent.stream({ ... })
+const { status } = await sent.wait();
 ```
 
 ### From React
@@ -98,14 +102,16 @@ Step by step:
 
 ## Typed actions
 
-For compile-time type safety, use `createTypedClient` — it generates action methods from your flow definition:
+For compile-time type safety, pass your flow's type to `fsd.flow`. Action names and inputs are then checked against the flow definition:
 
 ```ts
-import { createTypedClient } from "@flow-state-dev/client";
+import type { myFlow } from "./flows/my-app";
 
-const client = createTypedClient({ flow: myFlow, userId: "user_1" });
+const app = fsd.flow<typeof myFlow>("my-app");
 
-await client.actions.chat({ message: "Hello!" });     // Type-checked
-await client.actions.reset({});                         // Type-checked
-await client.actions.invalid({ message: "Hello!" });   // TypeScript error
+await app.send("chat", { message: "Hello!" });     // Type-checked
+await app.send("reset", {});                       // Type-checked
+await app.send("invalid", { message: "Hello!" }); // TypeScript error
 ```
+
+Use `import type` so the flow's server code stays out of a browser bundle.

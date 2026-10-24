@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MockGeneratorInstance } from "@flow-state-dev/testing";
 import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conversation-board-harness";
 import { RULE_TOOLS, STANDING_RULES_LINE } from "../src/standing-rules/keys";
 import { MAX_RULES } from "../src/standing-rules/rules-list";
@@ -379,18 +380,15 @@ describe("whose rules they are (V1, V5, BR-9 to BR-14)", () => {
     const h = boot();
     const talk = await agentSession(h, "alice", "otto");
     await h.client("alice").standingRules("otto", { op: "add", version: 0, text: "Kept." });
-    const router = (await h.state.getRouter()) as any;
+    const inProcess = createInProcessFetch(h.state);
     /** A resource-API call on the record, as a browser makes it. Its status. */
     const browser = async (method: string, path: string[], body?: unknown) => {
       const url = `http://localhost/api/flows/${path.map(encodeURIComponent).join("/")}`;
-      const res: Response = await router[method](
-        new Request(url, {
+      const res: Response = await inProcess(url, {
           method,
           headers: { "content-type": "application/json", "x-user": "alice" },
           ...(body === undefined ? {} : { body: JSON.stringify(body) })
-        }),
-        { params: { path } }
-      );
+        });
       return res.status;
     };
     const topic = `standing-rules/${encodeUserSegment("otto")}`;

@@ -31,9 +31,7 @@ function mount(flows: FlowListEntry[], props: Record<string, unknown>) {
   render(
     createElement(FlowNavigator, {
       onSelectSession: () => {},
-      client: { listFlows } as never,
-      sessionClient: { listSessions } as never,
-      userId: "u",
+      client: { flows: listFlows, sessions: { list: listSessions } } as never,
       ...props,
     } as never)
   );

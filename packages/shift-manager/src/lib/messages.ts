@@ -61,7 +61,7 @@ export function useMessages(
   readerSessionId: string | null,
   readAt: number,
 ): { rows: WorkerMessageRow[] | undefined; failure: Failure | undefined; reread: () => void } {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [rows, setRows] = useState<WorkerMessageRow[] | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
@@ -69,7 +69,7 @@ export function useMessages(
     if (readerSessionId === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readEveryCollectionPage(clients.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
+    readEveryCollectionPage(client.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
       .then(toMessageRows)
       .then((value) => {
         if (closed) return;
@@ -86,7 +86,7 @@ export function useMessages(
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, readerSessionId, readAt, reads]);
+  }, [client, readerSessionId, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { rows, failure: rows === undefined ? failure : undefined, reread };
 }

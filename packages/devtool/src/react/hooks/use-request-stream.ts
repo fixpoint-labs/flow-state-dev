@@ -19,7 +19,6 @@ import {
   type RequestStreamHandle,
   type RequestStreamStore,
 } from "@flow-state-dev/client";
-import { connectRequestStream } from "../lib/client";
 import { useDevTool } from "../context/devtool-context";
 
 export type StreamStatus = "idle" | "connecting" | "streaming" | "completed" | "failed" | "disconnected";
@@ -102,8 +101,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
   // thing to keep in step. In the connect effect's deps because a stream is a
   // live connection — leaving instance A for B and returning must not be served
   // by the socket A opened.
-  const { baseUrl, config, workspaceToken } = useDevTool();
-  const bearerToken = config.bearerToken;
+  const { client, workspaceToken } = useDevTool();
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -209,7 +207,9 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
 
     const binder = bindStoreToCallbacks(store, { onChange });
 
-    const handle = connectRequestStream(flowId, requestId, {
+    // On the instance that owns the request, with its trace items.
+    const handle = client.flow(flowId).request(requestId).stream({
+      includeTrace: true,
       startingAfter,
       lastEventId,
       ...binder,
@@ -230,7 +230,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         setError(err.message);
         setStreamStatus("disconnected");
       },
-    }, baseUrl, bearerToken);
+    });
 
     handleRef.current = handle;
 
@@ -244,7 +244,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowId, workspaceToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
+  }, [flowId, workspaceToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, client, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
   // The snapshot and the status are replaced in an effect, so in the render in
   // which `requestId` changes they still describe the previous request. Hand

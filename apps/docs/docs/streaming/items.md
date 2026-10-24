@@ -486,10 +486,14 @@ If you're not using React, the client SDK provides direct SSE access:
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const client = createClient({ flowKind: "my-app", userId: "user_1" });
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
-// sendAction returns the request it started; connect to its stream with request.id
-const { request } = await client.sendAction("chat", { message: "Hello" });
+// send resolves to the request it started; follow its events with stream()
+const sent = await fsd.flow("my-app").send("chat", { message: "Hello" });
+sent.stream({
+  onItemAdded: (event) => { /* a new item */ },
+  onContentDelta: (event) => { /* a text chunk */ },
+});
 ```
 
 See [Client Overview](/docs/client/overview) for the full client API.

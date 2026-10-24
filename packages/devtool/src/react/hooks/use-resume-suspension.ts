@@ -2,14 +2,15 @@
  * Resolves a durable-execution suspension by approving or rejecting it
  * (FIX-141 operator UI).
  *
- * Wraps the client's `recoveryClient.resumeSuspension` — transport lives in
+ * Wraps a request's `resume()` on the DevTool's client — transport lives in
  * the client, this hook only manages the in-flight / error UI state. The
  * owning instance and `requestId` come from the selected RECORD, so the resume
  * re-enters the exact copy that suspended — not the DevTool's synthetic
  * `__devtool__` address, and not whichever copy of the kind is registered.
  */
 import { useCallback, useState } from "react";
-import type { ResumeSuspensionResult } from "@flow-state-dev/client";
+/** The resumed run: the request that carries on (the suspended one, under its own id), and the one it carries on from. */
+export type ResumeSuspensionResult = { requestId: string; originalRequestId: string };
 import { useDevTool } from "../context/devtool-context";
 
 export type ResumeArgs = {
@@ -34,7 +35,7 @@ export type UseResumeSuspensionResult = {
  * success without re-reading state synchronously.
  */
 export function useResumeSuspension(): UseResumeSuspensionResult {
-  const { recoveryClient } = useDevTool();
+  const { client } = useDevTool();
   const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,18 +44,14 @@ export function useResumeSuspension(): UseResumeSuspensionResult {
       setIsResuming(true);
       setError(null);
       try {
-        return await recoveryClient.resumeSuspension(
-          // The client's address slot keeps its historical name; the value is
-          // the exact owning instance.
-          args.flowId,
-          args.requestId,
-          {
-            suspensionId: args.suspensionId,
-            action: args.action,
-            data: args.data,
-            resumedBy: args.resumedBy
-          }
-        );
+        // Addressed to the exact owning instance.
+        const resumed = await client.flow(args.flowId).request(args.requestId).resume({
+          suspensionId: args.suspensionId,
+          action: args.action,
+          data: args.data,
+          resumedBy: args.resumedBy
+        });
+        return { requestId: resumed.id, originalRequestId: args.requestId };
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to resume");
         throw err;
@@ -62,7 +59,7 @@ export function useResumeSuspension(): UseResumeSuspensionResult {
         setIsResuming(false);
       }
     },
-    [recoveryClient]
+    [client]
   );
 
   return { resume, isResuming, error };

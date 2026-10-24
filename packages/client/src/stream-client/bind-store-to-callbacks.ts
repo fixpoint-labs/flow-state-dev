@@ -1,7 +1,7 @@
 /**
  * Adapter that turns a `RequestStreamStore` into a `RequestSSECallbacks` set —
  * the single deduplicated event→state reducer. Spread the result into
- * `createSSEClient` (GET-by-id) or `createSSEClientFromResponse` (inline POST
+ * a request's `stream()` (GET-by-id) or `createSSEClientFromResponse` (inline POST
  * Response); each SSE callback mutates the store and signals `onChange(kind)`
  * so the consumer can flush a snapshot on its own schedule (RAF or immediate).
  *

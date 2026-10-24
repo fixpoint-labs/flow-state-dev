@@ -78,7 +78,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -478,7 +478,7 @@ function buildHost(filename: string) {
 
   const connect = async () => {
     const runtime = await state.getRuntime();
-    const http = httpActions((await state.getRouter()) as never, USER);
+    const http = actingAs((await state.getRouter()) as never, USER);
     /** Every stored row of the user's conversation ledgers, from the store. */
     const rows = async (): Promise<Task[]> =>
       Object.values(await runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, "tasks/")).map((value) => value.state as Task);

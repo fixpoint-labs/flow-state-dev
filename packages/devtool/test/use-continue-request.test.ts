@@ -59,8 +59,19 @@ function itemAddedEvent(item: unknown, requestId = "req_1") {
   };
 }
 
+/** A client whose `flow(id).request(id).continue(options)` reports its address and options to `continueMock`. */
+function clientReporting(continueMock: ReturnType<typeof vi.fn>) {
+  return {
+    flow: (flowId: string) => ({
+      request: (requestId: string) => ({
+        continue: (options: unknown) => continueMock({ flowId, requestId, ...(options as object) }),
+      }),
+    }),
+  } as unknown as Pick<import("@flow-state-dev/client").Client, "flow">;
+}
+
 describe("useContinueRequest", () => {
-  let recoveryClient: { continueStream: ReturnType<typeof vi.fn> };
+  let continueMock: ReturnType<typeof vi.fn>;
   const fakeResponse = {
     ok: true,
     headers: new Headers({ "content-type": "text/event-stream" }),
@@ -69,14 +80,14 @@ describe("useContinueRequest", () => {
   beforeEach(() => {
     devToolState.workspaceToken = 1;
     calls.length = 0;
-    recoveryClient = { continueStream: vi.fn().mockResolvedValue(fakeResponse) };
+    continueMock = vi.fn().mockResolvedValue(fakeResponse);
   });
 
-  it("addresses the continuation to the owning instance, in the client's flowKind slot", async () => {
+  it("addresses the continuation to the owning instance, streaming its trace", async () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems,
@@ -89,10 +100,10 @@ describe("useContinueRequest", () => {
 
     // The DevTool always wants trace items for the resumed portion so the
     // Trace tab can show what ran (FIX-865 gap fix).
-    expect(recoveryClient.continueStream).toHaveBeenCalledWith({
-      flowKind: "demo",
-      sessionId: "sess_1",
+    expect(continueMock).toHaveBeenCalledWith({
+      flowId: "demo",
       requestId: "req_1",
+      stream: true,
       includeTrace: true,
     });
   });
@@ -102,7 +113,7 @@ describe("useContinueRequest", () => {
     const existing = [makeItem("m1", 0)];
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems,
@@ -128,7 +139,7 @@ describe("useContinueRequest", () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems,
@@ -158,7 +169,7 @@ describe("useContinueRequest", () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems,
@@ -187,14 +198,14 @@ describe("useContinueRequest", () => {
 
   it("marks the row as continuing before the POST resolves, not after", async () => {
     let resolvePost!: (r: Response) => void;
-    recoveryClient.continueStream.mockReturnValue(
+    continueMock.mockReturnValue(
       new Promise<Response>((resolve) => {
         resolvePost = resolve;
       }),
     );
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
@@ -216,10 +227,10 @@ describe("useContinueRequest", () => {
   });
 
   it("clears the continuing flag if the POST rejects", async () => {
-    recoveryClient.continueStream.mockRejectedValue(new Error("network down"));
+    continueMock.mockRejectedValue(new Error("network down"));
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
@@ -238,11 +249,11 @@ describe("useContinueRequest", () => {
       headers: new Headers({ "content-type": "application/json" }),
       body: { cancel: vi.fn().mockResolvedValue(undefined) },
     } as unknown as Response;
-    recoveryClient.continueStream.mockResolvedValue(jsonResponse);
+    continueMock.mockResolvedValue(jsonResponse);
     const onSettled = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
@@ -263,7 +274,7 @@ describe("useContinueRequest", () => {
     const onSettled = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
@@ -293,7 +304,7 @@ describe("useContinueRequest", () => {
     const onItems = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems,
@@ -333,7 +344,7 @@ describe("useContinueRequest", () => {
     const onSettled = vi.fn();
     const { result } = renderHook(() =>
       useContinueRequest({
-        recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+        client: clientReporting(continueMock),
         flowId: "demo",
         sessionId: "sess_1",
         onItems: vi.fn(),
@@ -360,7 +371,7 @@ describe("useContinueRequest", () => {
 
   it("ignores a /continue response that resolves after the caller switched session", async () => {
     let resolvePost!: (r: Response) => void;
-    recoveryClient.continueStream.mockReturnValue(
+    continueMock.mockReturnValue(
       new Promise<Response>((resolve) => {
         resolvePost = resolve;
       }),
@@ -370,7 +381,7 @@ describe("useContinueRequest", () => {
     const { result, rerender } = renderHook(
       ({ sessionId }) =>
         useContinueRequest({
-          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          client: clientReporting(continueMock),
           flowId: "demo",
           sessionId,
           onItems,
@@ -407,7 +418,7 @@ describe("useContinueRequest", () => {
     const { result, rerender } = renderHook(
       ({ sessionId }) =>
         useContinueRequest({
-          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          client: clientReporting(continueMock),
           flowId: "demo",
           sessionId,
           onItems: vi.fn(),
@@ -438,7 +449,7 @@ describe("useContinueRequest", () => {
     // its stream into a workspace the operator has re-entered. The visit token
     // is what makes the round trip visible.
     let resolvePost!: (r: Response) => void;
-    recoveryClient.continueStream.mockReturnValue(
+    continueMock.mockReturnValue(
       new Promise<Response>((resolve) => {
         resolvePost = resolve;
       }),
@@ -448,7 +459,7 @@ describe("useContinueRequest", () => {
     const { result, rerender } = renderHook(
       ({ flowId }) =>
         useContinueRequest({
-          recoveryClient: recoveryClient as unknown as import("@flow-state-dev/client").RecoveryClient,
+          client: clientReporting(continueMock),
           flowId,
           sessionId: "sess_1",
           onItems,

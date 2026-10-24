@@ -25,6 +25,7 @@ export type ParsedFlowRoute =
   | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
   | { kind: "check_interrupted_requests"; userId: string }
+  | { kind: "list_interrupted_requests"; userId: string }
   | { kind: "get_resource_content"; sessionId: string; ref: string }
   | { kind: "get_collection_item_content"; sessionId: string; ref: string; topic: string }
   | { kind: "create_collection_item"; sessionId: string; ref: string }

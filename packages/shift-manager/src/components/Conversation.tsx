@@ -131,7 +131,7 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { clients, refresh, answered, snapshot } = useLab();
+  const { client, refresh, answered, snapshot } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
@@ -188,7 +188,7 @@ export function Conversation({
         try {
           // A first line opens the conversation at the worker's derived address before the door's request runs in it.
           const target = await conversation.ensure();
-          return await sendTurn(clients, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
+          return await sendTurn(client, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
             onHeld: () => {
               // The session holds the line: read it back now, so it is drawn while the reply is in flight.
               reread();

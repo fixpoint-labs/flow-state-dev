@@ -331,23 +331,21 @@ The exact interface may evolve. Check the `@flow-state-dev/engine` package sourc
 Some apps don't carry a session id around. The natural identity of a session is whatever combination of inputs the user just chose — a ticker and a date, a project id and a branch, a customer id and a quarter. For those apps, set `title` and `metadata` at create time and resolve sessions by filtering the list.
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "" });
+const fsd = createClient({ userId: "user_1", baseUrl: "" });
 
 type RunKey = { ticker: string; date: string };
 
-async function resolveSession(flowKind: string, userId: string, key: RunKey) {
-  const list = await sessions.listSessions({ flowKind, userId });
+async function resolveSession(flowKind: string, key: RunKey) {
+  const list = await fsd.sessions.list({ flowKind }); // this client's user's sessions
   const match = list.find(
     (s) =>
       s.metadata?.ticker === key.ticker && s.metadata?.date === key.date,
   );
   if (match) return match.id;
 
-  const created = await sessions.createSession({
-    flowKind,
-    userId,
+  const created = await fsd.flow(flowKind).createSession({
     title: `${key.ticker} · ${key.date}`,
     metadata: key,
   });
@@ -366,13 +364,9 @@ When the natural identity of a session is something you already have, you can us
 The id has to carry everything that tells one session from another. Session storage keys off the tenant and the session id, nothing else: `userId` and `flowKind` are fields on the record, not part of the key. So inside one tenant, two users deriving the same ticker and date land on the same session, and so do two flows. The second caller gets a `409` for a session that isn't theirs, and reading that session back returns the other user's or the other flow's record, or a `403` in an app that configures authentication. Derive the id from enough to keep them apart:
 
 ```ts
-const sessionId = [flowKind, userId, key.ticker, key.date].join("-");
+const sessionId = [flowKind, fsd.userId, key.ticker, key.date].join("-");
 
-const created = await sessions.createSession({
-  flowKind,
-  userId,
-  sessionId,
-});
+const created = await fsd.flow(flowKind).createSession({ sessionId });
 ```
 
 Pick a separator your components can't contain, or hash them, so that two different component sets can't join into the same string.

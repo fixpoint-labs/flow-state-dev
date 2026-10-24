@@ -20,7 +20,7 @@ const calls: string[] = [];
 
 const refreshes: number[] = [];
 vi.mock("../src/lib/lab-data", () => {
-  const lab = { clients: { userId: "alice" }, refresh: async () => void refreshes.push(Date.now()) };
+  const lab = { client: { userId: "alice" }, refresh: async () => void refreshes.push(Date.now()) };
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/conversation-tasks", () => ({

@@ -1,4 +1,5 @@
 /** The legs. Assertions are tagged `<leg>:<name>`. See goal.md. */
+import type { Client, CreateClientOptions } from "@flow-state-dev/client";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,16 +17,10 @@ type SessionSummary = { id: string; flowKind: string };
 /** The shipped clients, as the checkout under test exports them. */
 export interface Shipped {
   client: {
-    createClient(options: { flowKind: string; userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
-      sendAction(action: string, input: unknown, options: { sessionId: string }): Promise<{ request: { id: string } }>;
-      getRequestStatus(requestId: string): Promise<{ status: string }>;
-    };
-    createSessionClient(options: { baseUrl?: string; fetcher?: typeof fetch }): {
-      createSession(options: { flowKind: string; userId: string; sessionId?: string; state?: Record<string, unknown> }): Promise<{ id: string }>;
-    };
+    createClient(options: CreateClientOptions): Client;
   };
   workforce: {
-    createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
+    createWorkforceClient(client: Client): {
       roster(): Promise<Array<{ id: string; flow: string; standard: boolean }>>;
       ensureWorkerSession(criteria: { worker: string }): Promise<SessionSummary>;
     };
@@ -44,8 +39,8 @@ export async function loadShipped(root: string): Promise<Shipped> {
 export interface Connected {
   person: Person;
   workforce: ReturnType<Shipped["workforce"]["createWorkforceClient"]>;
-  sessions: ReturnType<Shipped["client"]["createSessionClient"]>;
-  flow(flowKind: string): ReturnType<Shipped["client"]["createClient"]>;
+  sessions: Client["sessions"];
+  flow(flowKind: string): ReturnType<Client["flow"]>;
   routes: LabRoutes;
 }
 
@@ -56,11 +51,13 @@ export function connect(shipped: Shipped, origin: string, person: Person): Conne
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.client.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    workforce: shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-    sessions: shipped.client.createSessionClient(transport),
-    flow: (flowKind) => shipped.client.createClient({ flowKind, userId: person.userId, ...transport }),
+    workforce: shipped.workforce.createWorkforceClient(client),
+    sessions: client.sessions,
+    flow: (flowKind) => client.flow(flowKind),
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
   };
 }
@@ -98,14 +95,14 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;
@@ -250,7 +247,7 @@ export type Row = {
 export async function rosterSessionOf(who: Connected): Promise<string> {
   const found = (await who.routes.sessions()).find((s) => (s.flowKind ?? s.flowId) === ROSTER_FLOW && s.parentSessionId == null);
   if (found !== undefined) return found.id;
-  return (await who.sessions.createSession({ flowKind: ROSTER_FLOW, userId: who.person.userId })).id;
+  return (await who.flow(ROSTER_FLOW).createSession()).id;
 }
 
 /** The person's message log, read through their roster session. */

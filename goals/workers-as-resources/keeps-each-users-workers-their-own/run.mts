@@ -14,7 +14,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, type FlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { createWorkforceClient, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
@@ -77,24 +77,26 @@ function host(dbFile: string) {
   /** What one user reaches through this host: the shipped clients, nothing else. */
   const as = (user: string) => {
     const transport = { fetcher: fetcher(user) };
-    const sessions = createSessionClient(transport);
-    const workforce = createWorkforceClient({ userId: user, ...transport });
+    // One client per user.
+    const fsd = createClient({ userId: user, ...transport });
+    const sessions = fsd.sessions;
+    const workforce = createWorkforceClient(fsd);
     /** One action, followed to its end: its status, its output and its error. */
     const act = async (flowKind: string, sessionId: string, action: string, input: unknown) => {
-      const actions = createClient({ flowKind, userId: user, ...transport });
-      const started = await actions.sendAction(action, input, { sessionId });
+      const actions = fsd.flow(flowKind);
+      const started = await actions.send(action, input, { sessionId });
       const until = Date.now() + 15_000;
-      let status = (await actions.getRequestStatus(started.request.id)).status;
+      let status = (await actions.request(started.id).status()).status;
       while (status === "in_progress") {
         if (Date.now() > until) throw new Error(`${action} on ${sessionId} never settled`);
         await new Promise((resolve) => setTimeout(resolve, 10));
-        status = (await actions.getRequestStatus(started.request.id)).status;
+        status = (await actions.request(started.id).status()).status;
       }
-      const listed = await sessions.listSessionRequests(sessionId, { includeResultOutput: true, limit: 100 });
-      const found = listed.find((request) => request.id === started.request.id);
+      const listed = await sessions.requests(sessionId, { includeResultOutput: true, limit: 100 });
+      const found = listed.find((request) => request.id === started.id);
       return { status, output: JSON.stringify(found?.result?.output ?? null), error: found?.result?.error?.message ?? null };
     };
-    return { sessions, workforce, act };
+    return { sessions, workforce, act, flow: (flowKind: string) => fsd.flow(flowKind) };
   };
   return { registry, as, close: () => (stores as unknown as { close(): void }).close() };
 }
@@ -123,7 +125,7 @@ await runGoal(async (failures) => {
   // ---- leg a: Alice forks, hires and talks --------------------------------
   const alice = first.as(fixture.alice);
   await alice.workforce.roster(); // her roster session
-  const [rosterSession] = await alice.sessions.listSessions({ flowKind: ROSTER_FLOW, userId: fixture.alice });
+  const [rosterSession] = await alice.sessions.list({ flowKind: ROSTER_FLOW, userId: fixture.alice });
   if (rosterSession === undefined) return { failures: ["a:roster — Alice has no roster session"], evidence: "" };
   const forked = await alice.act(ROSTER_FLOW, rosterSession.id, "fork", { from: standard.onAgent, id: fork.id });
   if (forked.status !== "completed") failures.push(`a:fork — fork ended ${forked.status}: ${forked.error}`);
@@ -202,20 +204,20 @@ await runGoal(async (failures) => {
     // Refused outright: nothing found.
   }
   if (hireSession !== undefined) {
-    if (!(await refused(() => bob.sessions.getSession(hireSession.id)))) {
+    if (!(await refused(() => bob.sessions.get(hireSession.id)))) {
       failures.push(`b:open — Bob opened Alice's session ${hireSession.id}`);
     }
     if (!(await refused(() => bob.act("agent", hireSession.id, "respond", { message: "hello" })))) {
       failures.push(`b:run — Bob ran a turn in Alice's session ${hireSession.id}`);
     }
   }
-  if (!(await refused(() => bob.sessions.createSession({ flowKind: "agent", userId: fixture.bob, state: { workerId: hire.id } })))) {
+  if (!(await refused(() => bob.flow("agent").createSession({ state: { workerId: hire.id } })))) {
     failures.push(`b:create — Bob's create naming Alice's ${hire.id} wrote a session`);
   }
-  if (!(await refused(() => alice.sessions.createSession({ flowKind: "agent", userId: fixture.alice })))) {
+  if (!(await refused(() => alice.flow("agent").createSession()))) {
     failures.push("b:no-worker — a session was created on agent with no worker");
   }
-  if (!(await refused(() => alice.sessions.createSession({ flowKind: RESEARCH, userId: fixture.alice, state: { workerId: hire.id } })))) {
+  if (!(await refused(() => alice.flow(RESEARCH).createSession({ state: { workerId: hire.id } })))) {
     failures.push(`b:other-flow — Alice's ${hire.id}, which runs on agent, got a session on ${RESEARCH}`);
   }
   const deskSession = sessionOf.get(standard.onAgent);

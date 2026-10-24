@@ -50,7 +50,7 @@ export function TasksPanel({
   /** List only the active tasks, with the done and the errored each folded into a closed group. */
   activeOnly?: boolean;
 }) {
-  const { clients, refresh } = useLab();
+  const { client, refresh } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   const [polls, setPolls] = useState(0);
   // The last read's standing, and when a task last moved.
@@ -67,7 +67,7 @@ export function TasksPanel({
     if (sessionId === null || worker.kind === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readConversationTasks(clients, worker.kind, sessionId)
+    readConversationTasks(client, worker.kind, sessionId)
       .then((tasks) => {
         if (closed) return;
         setRead({ tasks });
@@ -86,7 +86,7 @@ export function TasksPanel({
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, refresh, worker.kind, sessionId, readAt, polls]);
+  }, [client, refresh, worker.kind, sessionId, readAt, polls]);
 
   if (sessionId === null || worker.kind === null) {
     return (

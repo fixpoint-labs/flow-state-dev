@@ -243,7 +243,7 @@ the `topic` and `coordinate` labels described below. Sort a listing on
 `parentSessionId` to group each conversation's runs under it.
 
 ```ts
-const sessions = await sessionClient.listSessions({
+const sessions = await fsd.sessions.list({
   flowKind: "reports",
   include: "dispatch-runs",
 });
@@ -430,7 +430,7 @@ That returns the run's own requests, with the item log for each when you ask for
 it (`?include_items=true`). A finished request also carries a `result` with its
 error, if any, and the action's return value when you ask for that too
 (`?include_result_output=true`). See
-[`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
+[`fsd.sessions.requests`](/docs/api/client#sessionsrequestssessionid-options)
 for the shape.
 
 A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`

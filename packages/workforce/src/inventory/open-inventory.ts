@@ -115,8 +115,9 @@ export interface OpenInventoryOptions {
    *
    * ```ts
    * const run = (req) =>
-   *   createClient({ flowKind: req.flowKind, userId: req.userId })
-   *     .sendAction(req.action, req.input, { sessionId: req.sessionId, orgId: req.orgId });
+   *   createClient({ baseUrl, userId: req.userId })
+   *     .flow(req.flowKind)
+   *     .send(req.action, req.input, { sessionId: req.sessionId });
    * ```
    *
    * **It must reject when the action fails.** A door that hands back a failed

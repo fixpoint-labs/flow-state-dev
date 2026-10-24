@@ -248,7 +248,7 @@ function Brief({ gaps }: { gaps: Gaps }) {
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
-  const { clients, snapshot, refresh } = useLab();
+  const { client, snapshot, refresh } = useLab();
   const { row } = task;
   const workers =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
@@ -276,7 +276,7 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       blocked={blocked}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       send={async (message) => {
-        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
+        const sent = await sendTurn(client, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
           onStarted: task.noteSent,
         });
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.

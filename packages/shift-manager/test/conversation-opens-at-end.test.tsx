@@ -11,7 +11,7 @@ import { Conversation } from "../src/components/Conversation";
 import { toWorker } from "../src/lib/reads";
 
 vi.mock("../src/lib/lab-data", () => ({
-  useLab: () => ({ clients: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),
+  useLab: () => ({ client: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),
 }));
 vi.mock("../src/lib/conversation", () => ({
   senderOf: () => undefined,

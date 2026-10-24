@@ -44,7 +44,7 @@ import { ownConversationLedger } from "../../../packages/workforce/src/conversat
 import {
   gatewayModel,
   goalAttempts,
-  httpActions,
+  actingAs,
   keysServing,
   loadFixture,
   runGoal,
@@ -280,7 +280,7 @@ async function attempt(resolver: ModelResolver, failures: string[], tell: { over
   const timing = new Timing();
   const app = await startApp(resolver, timing);
   try {
-    const http = httpActions(app.router as never, OWNER);
+    const http = actingAs(app.router as never, OWNER);
     const session = await http.open("agent", { workerId: MAIN });
     const sent = await http.call("POST", ["agent", session, "actions", "respond"], { userId: OWNER, input: { message: fixture.ask } });
     if (sent.status !== 202) throw new Error(`the ask was refused (${sent.status}): ${sent.text}`);

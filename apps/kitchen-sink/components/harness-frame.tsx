@@ -24,7 +24,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createClient, createSessionClient, type Client, type SessionClient } from "@flow-state-dev/client";
+import { createClient, type Client } from "@flow-state-dev/client";
 import { Plus } from "lucide-react";
 
 import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
@@ -35,11 +35,11 @@ import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 const SESSION_PARAM = "session";
 
-/** The flow list the navigator reads. */
-export type HarnessFlowSource = Pick<Client, "listFlows">;
-
-/** Where the frame reads and creates sessions. */
-export type HarnessSessionSource = Pick<SessionClient, "listSessions" | "createSession">;
+/**
+ * The slice of the one client the frame reads and writes: the flow list and
+ * session listing the navigator reads, and a flow's session create.
+ */
+export type HarnessClient = Pick<Client, "userId" | "flows" | "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
 
 export interface HarnessFrameProps {
   /** The mode's name, at the top of the rail. */
@@ -52,19 +52,16 @@ export interface HarnessFrameProps {
   readonly models: ModelChoices;
   /** The mode's session view for the picked session. Filled by the mode's own issue. */
   readonly stream?: (sessionId: string) => ReactNode;
-  /** The flow list the navigator reads. Defaults to this app's server; stable. */
-  readonly flowSource?: HarnessFlowSource;
-  /** Where sessions are listed and created. Defaults to this app's server; stable. */
-  readonly sessionSource?: HarnessSessionSource;
+  /** Where flows and sessions are listed and created. Defaults to this app's server, as its user; stable. */
+  readonly client?: HarnessClient;
 }
 
 /** A harness mode's rail and stream slot. */
-export function HarnessFrame({ label, flowKind, note, models, stream, flowSource, sessionSource }: HarnessFrameProps) {
-  const flows = useMemo(
-    () => flowSource ?? createClient({ flowKind, userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
-    [flowSource, flowKind],
+export function HarnessFrame({ label, flowKind, note, models, stream, client: hostClient }: HarnessFrameProps) {
+  const client = useMemo<HarnessClient>(
+    () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
+    [hostClient],
   );
-  const sessions = useMemo(() => sessionSource ?? createSessionClient({ baseUrl: "" }), [sessionSource]);
   const sections = useMemo<readonly FlowNavigatorSection[]>(() => [{ label: "Sessions", kinds: [flowKind] }], [flowKind]);
 
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -88,7 +85,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, flowSource
     const named = new URLSearchParams(window.location.search).get(SESSION_PARAM);
     if (named === null) return;
     let current = true;
-    sessions.listSessions({ flowKind, userId: KITCHEN_SINK_USER_ID }).then(
+    client.sessions.list({ flowKind, userId: KITCHEN_SINK_USER_ID }).then(
       (rows) => {
         if (current && rows.some((row) => row.id === named)) setSelected((picked) => picked ?? named);
       },
@@ -99,7 +96,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, flowSource
     return () => {
       current = false;
     };
-  }, [sessions, flowKind]);
+  }, [client, flowKind]);
 
   const handleNewSession = useCallback(async () => {
     if (picked === null) return;
@@ -108,7 +105,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, flowSource
     try {
       // Born with its model: the flow refuses a session that names none, and
       // no later write can change it.
-      const created = await sessions.createSession({ flowKind, userId: KITCHEN_SINK_USER_ID, state: { model: picked } });
+      const created = await client.flow(flowKind).createSession({ state: { model: picked } });
       open(created.id);
       refreshLeaf.current?.();
     } catch (cause) {
@@ -116,7 +113,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, flowSource
     } finally {
       setCreating(false);
     }
-  }, [sessions, flowKind, open, picked]);
+  }, [client, flowKind, open, picked]);
 
   const slots = useMemo(
     () => ({
@@ -181,9 +178,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, flowSource
         <div className="min-h-0 flex-1 overflow-y-auto py-1" style={RAIL_THEME}>
           <FlowNavigator
             sections={sections}
-            client={flows}
-            sessionClient={sessions}
-            userId={KITCHEN_SINK_USER_ID}
+            client={client}
             selectedSessionId={selected}
             onSelectSession={open}
             slots={slots}

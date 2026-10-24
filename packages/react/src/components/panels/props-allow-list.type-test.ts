@@ -41,34 +41,19 @@ export type PhantomBoardProp = NoneOf<Exclude<PublishedBoard, keyof BoardColumns
 export type PhantomListProp = NoneOf<Exclude<PublishedList, KeysOf<BoardListProps>>>;
 
 /**
- * A live list that reads through the host's own client names the transport
- * its stream is sent with (FIX-1622 BR-16). Without it the stream would go out
- * without the read's credential, be refused, and leave the list reading once
- * with nothing on screen to say so; so that shape does not compile.
+ * A live list reads and streams through one client (FIX-1622 BR-16): the host
+ * passes the client, or none and the provider's is used. A client that can't
+ * stream (no `sessions`) is refused, so a live list never reads through one
+ * transport and streams through another.
  */
 type Assignable<T, U> = [T] extends [U] ? true : false;
 type IsTrue<T extends true> = T;
 type IsFalse<T extends false> = T;
 type Where = { sessionId: string; boardRef: string };
-type HostClient = NonNullable<BoardColumnsProps["resourceClient"]>;
-type HostFetch = NonNullable<BoardListProps["fetcher"]>;
+type HostClient = Extract<NonNullable<BoardListProps["client"]>, { sessions: unknown }>;
+type ReadOnlyClient = NonNullable<BoardColumnsProps["client"]>;
 
-export type LiveWithHostTransport = IsTrue<
-  Assignable<Where & { resourceClient: HostClient; fetcher: HostFetch; live: boolean }, BoardListProps>
->;
-export type ReadOnceWithHostClient = IsTrue<Assignable<Where & { resourceClient: HostClient }, BoardListProps>>;
+export type LiveWithHostClient = IsTrue<Assignable<Where & { client: HostClient; live: boolean }, BoardListProps>>;
+export type ReadOnceWithReadOnlyClient = IsTrue<Assignable<Where & { client: ReadOnlyClient }, BoardListProps>>;
 export type LiveOnTheProvider = IsTrue<Assignable<Where & { live: true }, BoardListProps>>;
-/**
- * A host client that reads another origin names that origin too, so the
- * stream follows the session on the same server; and a client read without
- * `live` takes no origin it would never use.
- */
-export type LiveWithHostTransportElsewhere = IsTrue<
-  Assignable<Where & { resourceClient: HostClient; fetcher: HostFetch; baseUrl: string; live: boolean }, BoardListProps>
->;
-export type LiveOnAnotherOrigin = IsTrue<Assignable<Where & { baseUrl: string; live: true }, BoardListProps>>;
-export type OriginWithoutLive = IsFalse<Assignable<Where & { resourceClient: HostClient; baseUrl: string }, BoardListProps>>;
-export type LiveWithoutTransport = IsFalse<Assignable<Where & { resourceClient: HostClient; live: true }, BoardListProps>>;
-export type MaybeLiveWithoutTransport = IsFalse<
-  Assignable<Where & { resourceClient: HostClient; live: boolean }, BoardListProps>
->;
+export type LiveWithoutAStream = IsFalse<Assignable<Where & { client: ReadOnlyClient; live: true }, BoardListProps>>;

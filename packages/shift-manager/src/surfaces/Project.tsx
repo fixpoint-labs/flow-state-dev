@@ -149,18 +149,18 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
 
 /** The Lab's project setup, read once per connection; `retry` reads it again after a failure. */
 function useProjectSetup(): { setup: Read<ProjectSetup | null>; retry: () => void } {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [read, setRead] = useState<Read<ProjectSetup | null>>(undefined);
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let closed = false;
-    readProjectSetup(clients)
+    readProjectSetup(client)
       .then((value) => !closed && setRead({ value }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
-  }, [clients, tries]);
+  }, [client, tries]);
   const retry = useCallback(() => setTries((n) => n + 1), []);
   return { setup: read, retry };
 }
@@ -420,7 +420,7 @@ function EntryView({
   workers: readonly Worker[];
   gaps: Gaps;
 }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const back = (
     <button
       type="button"
@@ -441,7 +441,7 @@ function EntryView({
       </div>
     );
   }
-  if (entry.owner === clients.userId) {
+  if (entry.owner === client.userId) {
     const worker = leadWorker(entry, roster, workers);
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="project-entry-own" data-workstream-id={entry.id}>
@@ -493,18 +493,18 @@ function EntryDetails({
   readerSessionId: string;
   back: ReactNode;
 }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [report, setReport] = useState<Read<string | null>>(undefined);
   useEffect(() => {
     let closed = false;
-    readEntryReport(clients, readerSessionId, address, entry)
+    readEntryReport(client, readerSessionId, address, entry)
       .then((value) => !closed && setReport({ value }))
       .catch((error: unknown) => !closed && setReport({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clients, readerSessionId, entry.key]);
+  }, [client, readerSessionId, entry.key]);
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-2 p-4 text-sm" data-testid="project-entry-details" data-workstream-id={entry.id}>
       {back}
@@ -568,8 +568,8 @@ function OwnBoards({
   workers: readonly Worker[];
   readAt: number;
 }) {
-  const { clients } = useLab();
-  const own = entries.filter((entry) => entry.owner === clients.userId && entry.sessionId !== null);
+  const { client } = useLab();
+  const own = entries.filter((entry) => entry.owner === client.userId && entry.sessionId !== null);
   if (own.length === 0) {
     return (
       <EmptyState title="No board" testId="project-board-none">

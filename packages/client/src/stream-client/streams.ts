@@ -1,5 +1,10 @@
 /**
- * SSE stream clients for request, session and optional user stream consumption.
+ * SSE stream readers for request, session and user streams.
+ *
+ * The openers here take a resolved URL and the fetcher of the client that
+ * opens them: `createClient` is their only caller, so every stream goes
+ * through the one transport a client holds. `createSSEClientFromResponse` is
+ * the pure reader for a stream a POST already returned (inline streaming).
  */
 import { toError } from "@flow-state-dev/contracts/helpers";
 import type {
@@ -7,10 +12,8 @@ import type {
   SessionStreamEvent,
   UserStreamEvent
 } from "@flow-state-dev/core/items";
-import { buildFlowApiUrl, resolveFetch } from "../internal/http";
 import type {
   ClientFetch,
-  ClientTransportOptions,
   RequestSSECallbacks,
   RequestStreamHandle,
   SessionSSECallbacks,
@@ -18,28 +21,24 @@ import type {
   UserSSECallbacks,
   UserStreamHandle
 } from "../types";
+import { ClientHttpError } from "../types";
 
-/**
- * Configuration for canonical request-stream SSE client creation.
- */
-export type CreateSSEClientOptions = RequestSSECallbacks &
-  ClientTransportOptions & {
-    url: string;
-    lastEventId?: string;
-    startingAfter?: number;
-    dedupWindowSize?: number;
-  };
+/** Where an opener connects, and through what: the opening client's transport. */
+type StreamTarget = {
+  fetcher: ClientFetch;
+  /** The stream's URL, query included. */
+  url: string;
+};
 
-/**
- * Configuration for optional user-stream SSE client creation.
- */
-export type CreateUserSSEClientOptions = UserSSECallbacks &
-  ClientTransportOptions & {
-    url: string;
-    lastEventId?: string;
-    startingAfter?: number;
-    dedupWindowSize?: number;
-  };
+/** Resume options a request or user stream takes. */
+export type StreamResumeOptions = {
+  /** Resume after this event id (sent as `Last-Event-ID`). Ignored when `startingAfter` is set. */
+  lastEventId?: string;
+  /** Resume after this sequence number. */
+  startingAfter?: number;
+  /** How many recent event keys are remembered to drop a duplicate. Default 1000. */
+  dedupWindowSize?: number;
+};
 
 type Frame = {
   id?: string;
@@ -114,8 +113,9 @@ export function createSSEClientFromResponse(
   let lastEventId: string | undefined;
 
   if (!options.response.ok) {
-    const error = new Error(
-      `SSE response failed (${options.response.status}) ${options.response.statusText || ""}`.trim()
+    const error = new ClientHttpError(
+      `SSE response failed (${options.response.status}) ${options.response.statusText || ""}`.trim(),
+      { status: options.response.status, body: undefined }
     );
     queueMicrotask(() => options.onError?.(error));
     return {
@@ -173,28 +173,20 @@ export function createSSEClientFromResponse(
 }
 
 /**
- * Creates a request-stream SSE client that parses frames and dispatches typed callbacks.
+ * Opens a request stream: parses frames and dispatches typed callbacks.
+ * Internal; `request.stream()` is the public way in.
  */
-export function createSSEClient(options: CreateSSEClientOptions): RequestStreamHandle {
-  const fetcher = resolveFetch(options.fetcher);
+export function openRequestStream(
+  target: StreamTarget,
+  options: RequestSSECallbacks & StreamResumeOptions
+): RequestStreamHandle {
+  const { fetcher, url } = target;
   const controller = new AbortController();
   const deduper = createSlidingEventDeduper(
     options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
   );
   let closed = false;
   let lastEventId = options.lastEventId;
-
-  const url = buildFlowApiUrl({
-    baseUrl: options.baseUrl,
-    apiPath: options.apiPath,
-    path: options.url,
-    query:
-      options.startingAfter === undefined
-        ? undefined
-        : {
-            starting_after: options.startingAfter
-          }
-  });
 
   void consumeSSE({
     fetcher,
@@ -260,30 +252,20 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
 }
 
 /**
- * Creates a user-stream SSE client for optional capability-gated updates.
+ * Opens the user stream for optional capability-gated updates.
+ * Internal; `client.stream()` is the public way in.
  */
-export function createUserSSEClient(
-  options: CreateUserSSEClientOptions
+export function openUserStream(
+  target: StreamTarget,
+  options: UserSSECallbacks & StreamResumeOptions
 ): UserStreamHandle {
-  const fetcher = resolveFetch(options.fetcher);
+  const { fetcher, url } = target;
   const controller = new AbortController();
   const deduper = createSlidingEventDeduper(
     options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
   );
   let closed = false;
   let lastEventId = options.lastEventId;
-
-  const url = buildFlowApiUrl({
-    baseUrl: options.baseUrl,
-    apiPath: options.apiPath,
-    path: options.url,
-    query:
-      options.startingAfter === undefined
-        ? undefined
-        : {
-            starting_after: options.startingAfter
-          }
-  });
 
   void consumeSSE({
     fetcher,
@@ -347,9 +329,7 @@ export function createUserSSEClient(
  * Configuration for following a whole session over
  * `GET /api/flows/sessions/:sessionId/stream`.
  */
-export type CreateSessionSSEClientOptions = SessionSSECallbacks &
-  ClientTransportOptions & {
-    sessionId: string;
+export type SessionStreamOptions = SessionSSECallbacks & {
     /**
      * A server time to start from: one an earlier connection heard
      * (`handle.lastAt`), or the session snapshot's `at` when the stream follows a
@@ -367,7 +347,7 @@ export type CreateSessionSSEClientOptions = SessionSSECallbacks &
     itemTypes?: string[];
     /** Reconnect backoff: `initialDelayMs` (default 1000) doubling to `maxDelayMs` (default 30000). */
     retry?: { initialDelayMs?: number; maxDelayMs?: number };
-  };
+};
 
 /**
  * Answers that mean the stream is not there for this caller: refused, absent,
@@ -377,7 +357,8 @@ export type CreateSessionSSEClientOptions = SessionSSECallbacks &
 const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 409, 501]);
 
 /**
- * Follow a whole session: every finished item any request in it keeps, and a
+ * Follow a whole session (internal; `client.sessions.stream()` is the public
+ * way in): every finished item any request in it keeps, and a
  * notice whenever its unfinished runs change.
  *
  * The connection is expected to drop: the network, a host's time limit, the
@@ -394,13 +375,17 @@ const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404
  * A 401, 403, 404, 409 or 501 stops the client for good, quietly: `onStop`
  * fires, `onError` does not, and nothing is retried.
  */
-export function createSessionSSEClient(
-  options: CreateSessionSSEClientOptions
+export function openSessionStream(
+  target: {
+    fetcher: ClientFetch;
+    /** The stream's URL for one connection: the opener adds the query. */
+    url: (query: { since?: number; session_created_at?: number; item_types?: string }) => string;
+  },
+  options: SessionStreamOptions
 ): SessionStreamHandle {
-  const fetcher = resolveFetch(options.fetcher);
+  const { fetcher } = target;
   const initialDelayMs = options.retry?.initialDelayMs ?? 1_000;
   const maxDelayMs = options.retry?.maxDelayMs ?? 30_000;
-  const path = `/api/flows/sessions/${encodeURIComponent(options.sessionId)}/stream`;
   const itemTypes =
     options.itemTypes === undefined || options.itemTypes.length === 0
       ? undefined
@@ -428,12 +413,7 @@ export function createSessionSSEClient(
     controller = current;
     try {
       const response = await fetcher(
-        buildFlowApiUrl({
-          baseUrl: options.baseUrl,
-          apiPath: options.apiPath,
-          path,
-          query: { since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }
-        }),
+        target.url({ since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }),
         { method: "GET", headers: { accept: "text/event-stream" }, signal: current.signal }
       );
       if (SESSION_STREAM_STOP_STATUSES.has(response.status)) {
@@ -577,7 +557,10 @@ async function consumeSSE(options: {
     });
 
     if (!response.ok) {
-      throw new Error(`SSE request failed (${response.status}) ${response.statusText || ""}`.trim());
+      throw new ClientHttpError(
+        `SSE request failed (${response.status}) ${response.statusText || ""}`.trim(),
+        { status: response.status, body: await response.text().catch(() => undefined) }
+      );
     }
 
     await readSSEBody({
