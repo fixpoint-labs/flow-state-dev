@@ -90,7 +90,8 @@ Then the deadline fails the task for good, and the work stays on its branch.
 - **FIX-2132's sweep line** ("`waitForUser` has none in `harness-manager`") becomes "one, the
   review step"; its D1's "the manager itself suspends no request" becomes "suspends only for a
   review of a run's changes, when the host turns it on". Questions still never suspend. This
-  merges after FIX-2132.
+  merges after FIX-2132. FIX-2132's D1 and its sweep line carry the same amendment, dated, in
+  this PR: its implementation keeps no `waitForUser` reference, and this one's makes it one.
 - **No new screen work here.** The lab's board, *Resolve* and *Request changes* are FIX-2157's;
   they answer through FIX-2129's route.
 
@@ -121,5 +122,7 @@ Then the deadline fails the task for good, and the work stays on its branch.
   run with commits, behind a host option; accept completes with no run, a revision goes round the
   steer step on the same try, and the deadline completes the run marked unreviewed. Builds on
   FIX-2129, FIX-2131 and FIX-2132; a POC re-checked FIX-2137's fix for this shape.
+- **Review round 1** — FIX-2132's D1 and its sweep line amended in this PR, with a dated note,
+  so the two merged specs agree and each implementation knows its sweep count (FSD Architect).
 
 **Open: none.**
