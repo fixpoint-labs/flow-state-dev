@@ -221,7 +221,7 @@ export interface CoordinatorFlowOptions {
    * flow's user-scoped storage by its copy, as it does the agent flow's.
    * Omitted, the agent's defaults.
    */
-  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
+  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists" | "answerAgain">;
   /**
    * How long a round waits for its answers, in whole milliseconds, before it
    * closes without the ones still out and its answers go back out. Only a

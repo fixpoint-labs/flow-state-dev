@@ -402,7 +402,11 @@ A behavior none of these rules explains is a bug in the model.
    dependents.
 7. Every ending of a delegated task, a failure included, reaches its filer once, as its result
    setting says: the waiting request, or `onTaskSettled`. Set to the filer's conversation, it
-   lands there under the assignee's name.
+   lands there under the assignee's name. An ending that lands while a turn a person's own
+   message started is running can be taken by that turn after it answers (`takeFinishedTasks`,
+   through the agent flow's `answerAgain`): said there under the assignee's name, through the
+   same take record and handling as `onTaskSettled`, and the worker answers again with it in the
+   same request (FIX-2159). No other turn takes one.
 8. Every debt has a due time. The settling side pays it, a pass or a touch resends what is past
    due, and the durability sweeper pays it when due. The first two are its fast paths; a resend
    pays it if still owed.

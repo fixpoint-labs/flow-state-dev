@@ -86,6 +86,7 @@ import { routedTaskHistory } from "./coordinator/routed-brief";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
+import { finishedTasksAnswerAgain } from "./conversation-board/take-finished";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
@@ -351,6 +352,32 @@ export interface AgentWorkerFlowOptions {
    * Omitted, the flow's sequence is exactly what it is today.
    */
   afterAnswer?: BlockDefinition<any, any>;
+  /**
+   * Answer again, in the same request, with the tasks that finished while the
+   * worker answered (FIX-2159). After the worker answers, this block runs; when
+   * it returns `{ message }`, the worker answers again about that message, and
+   * the block runs again after that answer. Its input is the worker's answer.
+   *
+   * - `true` uses the package's pre-built block
+   *   ({@link finishedTasksAnswerAgain}): it takes what finished
+   *   ({@link takeFinishedTasks}), says each result as a line under its
+   *   delegate's name, and tells the worker to use them.
+   * - A block replaces it, to change what the worker is told:
+   *   `finishedTasksAnswerAgain({ message })`, or a sequencer of your own
+   *   around `takeFinishedTasks`.
+   *
+   * It feeds the one answer-again step the worker's plan already runs, so the
+   * answer after the plan and these count toward one cap,
+   * {@link MAX_ANSWERS_AGAIN} answers again per request. The take hands
+   * over nothing outside a turn a user's own message started, so in a
+   * task's turn, or a turn a notice or another worker's message started,
+   * results arrive after the turn as before. Only on an installation, where
+   * the worker files tasks.
+   *
+   * Omitted, a turn answers once (and again after its plan), and every
+   * result is heard after the turn.
+   */
+  answerAgain?: true | BlockDefinition<any, any>;
   /**
    * Run workers as data: one copy of this flow for every worker, each
    * session naming its worker when it is created (the installation's create
@@ -1240,7 +1267,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // On an installation, every turn runs with its plan (FIX-2076 D1, D2): a
   // step the worker files for itself is worked after the turn, in the same
   // request, one turn of `answeredRun` each, and the worker answers once more.
-  const run = board !== undefined ? board.planned(answeredRun) : answeredRun;
+  // The app's `answerAgain` is the step's second source (FIX-2159).
+  const answerAgain = options.answerAgain === true ? finishedTasksAnswerAgain() : options.answerAgain;
+  const run = board !== undefined ? board.planned(answeredRun, answerAgain) : answeredRun;
 
   // On an installation the copy declares every document a worker may be
   // granted, and each turn's model reaches only its worker's: the
