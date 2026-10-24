@@ -1621,18 +1621,18 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
   ```
 
-  Without `sessionId` it sets the user's default conversation with the worker, creating it if
-  there is none. With one, it sets that session, which must be the user's and run that worker. It resolves to
-  `{ project }`. Calling it again replaces the project. Tasks already filed keep the project they
+  Without `sessionId` it sets the user's default conversation with the worker, creating it if there
+  is none. With one, it sets that session, which must be the user's and run that worker. It resolves
+  to `{ project }`. Calling it again replaces the project. Tasks already filed keep the project they
   were filed in, including one still waiting on the board and one handed to a delegate's ongoing
-  session, with what that delegate files while working it. A run already started stays where it
-  is. Nothing clears it. A
-  refusal rejects with an `Error` whose message starts `Refused:`, and nothing is stored: a shared
-  project the user isn't a member of (`not-a-member`), a private project that isn't theirs or a
-  project that doesn't exist, a project coordinator's, a task's, a delegate's or a workstream
-  lead's session, each named, and a session of another worker than the one named. Membership is checked again on every run. The action is
-  `setWorkProject` (`SET_WORK_PROJECT_ACTION`, input `{ project: { visibility, id }, worker? }`): the
-  `agent`, `coordinator` and Error Reporter flows declare it, and a worker flow of your own adds
+  session, with what that delegate files while working it. A run already started stays where it is.
+  Nothing clears it. A refusal rejects with an `Error` whose message starts `Refused:`, and nothing
+  is stored: a shared project the user isn't a member of (`not-a-member`), a private project that
+  isn't theirs or a project that doesn't exist, a project coordinator's, a task's, a delegate's or a
+  workstream lead's session, each named, and a session of another worker than the one named.
+  Membership is checked again on every run. The action is `setWorkProject`
+  (`SET_WORK_PROJECT_ACTION`, input `{ project: { visibility, id } }`): the `agent`, `coordinator`
+  and Error Reporter flows declare it, and a worker flow of your own adds
   `[SET_WORK_PROJECT_ACTION]: setWorkProjectAction` to its `actions`. A project coordinator's
   conversation takes its project from `ensureWorkerSession({ worker, projectId })` instead.
 

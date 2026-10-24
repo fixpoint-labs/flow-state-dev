@@ -183,18 +183,6 @@ async function withProjects() {
   return h;
 }
 
-/** Take the project stamp off the row of `taskId`, as a row stored before rows carried one. */
-async function unstamp(h: { runtime: { stores: { resourceState: any } } }, taskId: string) {
-  const store = h.runtime.stores.resourceState;
-  const scope = `alice:~org:${ORG}`;
-  const entries = await store.getByPrefix("user", scope, "tasks/");
-  const [key, entry] = Object.entries(entries as Record<string, { state: { id: string; metadata?: Record<string, unknown> } }>).find(
-    ([, value]) => value.state.id === taskId
-  )!;
-  const { filedInProject: _stamp, ...metadata } = entry.state.metadata ?? {};
-  await store.set("user", scope, key, { ...entry.state, metadata }, "any");
-}
-
 describe("a user's conversation with a worker, set to a project", () => {
   it("default: the worker's one conversation, set after it has talked, files a task that runs in the project", async () => {
     const h = await withProjects();
@@ -251,7 +239,7 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Filed with no conversation project, naming Apollo, as rows were before the stamp.
     const first = await h.file("alice", lead, "first", { assignee: "eng.taker", input: { project: apollo } });
     expect(h.answerOf("first")).toEqual(inApollo);
-    await unstamp(h, first);
+    await h.unstamp("alice", first);
     await alice.setWorkProject("lead", beta);
     await h.file("alice", lead, "follow up first", { followUpOf: first, input: { project: apollo } });
     expect(h.answerOf("follow up first")).toEqual(inApollo);
@@ -265,6 +253,20 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Two delegates take tasks, so a task with no assignee waits on the board.
     const waiting = await h.file("alice", lead, "waiting", {});
     expect(h.runs).toHaveLength(0);
+    await alice.setWorkProject("lead", beta);
+    await h.ok("alice", COORDINATOR_FLOW, lead, "updateTask_tasks", { id: waiting, assignee: "eng.taker" });
+    await h.settled();
+    expect(h.answerOf("waiting")).toEqual(inApollo);
+  });
+
+  it("legacy waiting: a task filed before rows kept their project, assigned after a change, still runs in its project", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const lead = (await alice.ensureWorkerSession({ worker: "lead" })).id;
+    // Filed with no conversation project, naming Apollo, as rows were before the stamp.
+    const waiting = await h.file("alice", lead, "waiting", { input: { project: apollo } });
+    expect(h.runs).toHaveLength(0);
+    await h.unstamp("alice", waiting);
     await alice.setWorkProject("lead", beta);
     await h.ok("alice", COORDINATOR_FLOW, lead, "updateTask_tasks", { id: waiting, assignee: "eng.taker" });
     await h.settled();

@@ -22,6 +22,7 @@ import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { FILED_PROJECT } from "../src/conversation-board/board-entries";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
@@ -266,9 +267,21 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const sessionsWith = (field: string, value: string) =>
     runtime.stores.session.list({ parentage: "all", state: { [field]: value } });
 
+  /** Take the project stamp off a row of `user`'s conversation ledger, as a row stored before rows carried one. */
+  const unstamp = async (user: string, taskId: string) => {
+    const scope = `${user}:~org:${ORG}`;
+    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+    const found = Object.entries(entries).find(([, value]) => (value.state as { id?: unknown }).id === taskId);
+    if (found === undefined) throw new Error(`no row "${taskId}" on ${user}'s ledger`);
+    const [key, { state }] = found;
+    const { [FILED_PROJECT]: _stamp, ...metadata } = ((state as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>;
+    await runtime.stores.resourceState.set("user", scope, key, { ...state, metadata } as never, "any");
+  };
+
   return {
     stores,
     runtime,
+    unstamp,
     installation,
     call,
     openSession,

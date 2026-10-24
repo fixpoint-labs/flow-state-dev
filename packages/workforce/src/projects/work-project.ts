@@ -38,7 +38,10 @@ import { projectRef } from "./workstream-ref";
 
 /**
  * What the action takes: the project, by visibility and id, and the worker
- * the caller means the session to run, which it must.
+ * the caller means the session to run, which it must. `worker` is a check on
+ * the caller's intent, which the workforce client always sends, not a
+ * boundary: a caller that leaves it out sets whichever of its own sessions it
+ * names.
  */
 export const setWorkProjectInputSchema = z.object({ project: projectAddressSchema, worker: z.string().min(1).optional() }).strict();
 
