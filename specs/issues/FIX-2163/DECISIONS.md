@@ -61,6 +61,10 @@ Then the deadline fails the task for good, and the work stays on its branch.
   count `readRunCommits` already reads, and the output's `commits`. Kept files and an
   uncommitted tree don't count. The test is of the branch, so a revised run is reviewed again
   even if it adds no commit.
+  **Only a verified zero skips review.** `readRunCommits` answers zero when git can't read the
+  checkout or the base (a fallback built for reporting), so the review step needs a read that
+  tells "no commits" apart from "couldn't tell". When it can't tell, the run waits for review,
+  and its prompt says the commits couldn't be read. Review is never skipped as a fallback.
 - **Where it sits:** the settle step, after the judge. *not-done* fails the try and *ask* holds on
   a question, both as today (FIX-2132). A *done* run, one under the judge's floor, or one with no
   judge goes to review when it has changes and the option is on. A run with no changes completes.
@@ -127,5 +131,6 @@ Then the deadline fails the task for good, and the work stays on its branch.
 - **Product review** — D1 and D2 agreed, on one condition folded into D2: a run completed at the
   deadline never reads as approved; its output says so, and FIX-2157's board marks it *not reviewed*.
   Scoped to harness runs on the architect's review; plain threads' signal filed as FIX-2165.
+- **Codex, round 1** — an unreadable commit count no longer skips review: only a verified zero does.
 
 **Open: none.**
