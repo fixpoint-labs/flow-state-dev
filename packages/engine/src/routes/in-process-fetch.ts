@@ -46,6 +46,18 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * True for a `Request` from any class: an object carrying a string `url` and
+ * `method`. A `URL` or string has no `url` field, so it is never mistaken for one.
+ */
+function isRequestLike(input: RequestInfo | URL): input is Request {
+  return (
+    typeof input === "object" &&
+    typeof (input as Request).url === "string" &&
+    typeof (input as Request).method === "string"
+  );
+}
+
+/**
  * Decoded segments after the mount prefix, e.g. `/api/flows/chat/send` →
  * `["chat","send"]`, or `null` when `pathname` is not under the prefix.
  * `pathname` is the raw URL path; each segment is decoded once, the same shape
@@ -90,13 +102,15 @@ export function createInProcessFetch(
   return async (input, init) => {
     // A Request with nothing to add is passed through as is: a host hands over
     // its runtime's own Request (`@hono/node-server`'s lightweight one), which
-    // must reach the router untouched, body stream included.
+    // must reach the router untouched, body stream included. It is recognized
+    // by shape, not `instanceof`: the host's Request class need not be this
+    // realm's global one (a test that installs DOM globals replaces it).
     const request =
-      input instanceof Request
-        ? init === undefined
-          ? input
-          : new Request(input, init)
-        : new Request(new URL(String(input), INTERNAL_ORIGIN), init);
+      init === undefined && isRequestLike(input)
+        ? input
+        : input instanceof Request
+          ? new Request(input, init)
+          : new Request(new URL(String(input), INTERNAL_ORIGIN), init);
 
     let router: FlowApiRouter;
     try {
