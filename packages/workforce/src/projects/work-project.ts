@@ -106,7 +106,7 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
 }
 
 /** The action's block, for a flow whose every session runs a worker for its user. */
-export const setWorkProjectBlock = defineSetWorkProjectBlock();
+const setWorkProjectBlock = defineSetWorkProjectBlock();
 
 /** The action, as a worker flow declares it under `SET_WORK_PROJECT_ACTION`. */
 export const setWorkProjectAction = { inputSchema: setWorkProjectInputSchema, block: setWorkProjectBlock };

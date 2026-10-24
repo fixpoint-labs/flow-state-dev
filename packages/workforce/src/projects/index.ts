@@ -177,7 +177,6 @@ export {
 export {
   defineSetWorkProjectBlock,
   setWorkProjectAction,
-  setWorkProjectBlock,
   setWorkProjectInputSchema,
   setWorkProjectOutputSchema,
   type SetWorkProjectInput,

@@ -31,7 +31,6 @@ import {
 import { heldTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
-import { PROJECT_ROW_RESOURCES } from "../src/projects/project-address";
 import { runProjectOf } from "../src/projects/run-project";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootProjectsHost, ORG } from "./projects-harness";
@@ -46,29 +45,6 @@ type Run = { worker: string; sessionId: string; state: Record<string, unknown>; 
 function view(found: Awaited<ReturnType<typeof runProjectOf>>) {
   if (found.kind === "refused") return { kind: "refused", reason: found.reason };
   return { kind: "found", project: `${found.visibility}/${found.project.id}`, owner: found.owner };
-}
-
-/** A workstream lead's flow: an app's own worker flow, declaring the action as every worker flow does. */
-function filerFlow(installation: WorkerInstallation) {
-  const board = defineSessionBoard({ installation, flowKind: "filer" });
-  const door = handler({
-    name: "filer-run",
-    inputSchema: doorInput,
-    resources: { ...installation.resources },
-    execute: async (_input, ctx) => (await installation.resolveWorker(ctx, "filer")).id
-  });
-  return defineFlow({
-    kind: "filer",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources, ...PROJECT_ROW_RESOURCES },
-    actions: {
-      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      ...board.actions,
-      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
-    },
-    internal: { actions: { ...board.entries(door), [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() } }
-  } as never);
 }
 
 /**
@@ -149,13 +125,16 @@ async function boot() {
   const runs: Run[] = [];
   const projects = defineProjectBlocks();
   const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] });
-  const filerRef = { kind: "filer", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
   const h = await bootProjectsHost({
     standardWorkers,
     projectCoordinator: PROJECT_COORDINATOR,
-    lab: (installation) => ({ ...projects.actions, ...defineWorkstreamBlocks({ installation, leadFlows: [filerRef] }).actions }),
+    lab: (installation) => ({ ...projects.actions, ...defineWorkstreamBlocks({ installation, leadFlows: [leadRef] }).actions }),
+    // The harness's own `lead` flow is the workstream lead: an app's own worker
+    // flow, declaring the action as every worker flow does.
+    lead: () => ({ [SET_WORK_PROJECT_ACTION]: setWorkProjectAction }),
+    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
     flows: (installation) => ({
-      filer: { flow: filerFlow(installation), roles: ["manager"] },
       taker: { flow: takerFlow(installation, runs), roles: ["contributor", "manager"] },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
@@ -323,8 +302,7 @@ describe("a user's conversation with a worker, set to a project", () => {
     const task = h.runs[0]!.sessionId;
     await expect(alice.setWorkProject("eng.taker", beta, { sessionId: task })).rejects.toThrow(/a task's session/);
 
-    const roster = await h.openSession("alice", "workforce-roster");
-    await h.ok("alice", "workforce-roster", roster, "hire", { id: "alice-filer", flow: "filer", settings: { delegates: ["eng.taker"] } });
+    await h.hire("alice", "alice-filer", "lead", ORG, { delegates: ["eng.taker"] });
     const opened = (await h.ok("alice", "lab", await h.openSession("alice", "lab"), "openWorkstream", {
       project: apollo,
       id: "ws",
