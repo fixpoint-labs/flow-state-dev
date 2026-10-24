@@ -23,7 +23,7 @@ session or the filer's steer, carries the work on on the same attempt.**
 | **The real need** | The issue's objective, as the epic's amendment reads it: a question holds its task and a review suspends ([D1 *Applied to questions*](../../epics/FIX-2058/DECISIONS.md#d1)); both show in the Inbox and are answered one way. The epic's legs a and b for these two kinds, and its rules ER-4 and ER-5 ([FIX-2058](../../epics/FIX-2058/DECISIONS.md#who-owns-what)) |
 | **Smaller, and rejected** | "The four calls are deleted and `waitForUser` is documented." Met while the filer has no way to answer and a review shows in the Inbox as a question or not at all |
 | **Bigger, and not this issue's** | The hold itself, its one write, its deadline and its re-entry (FIX-2133) · a coding run's question (FIX-2132) · the filer told of the question by a message (FIX-2070) · the five kinds proved together (FIX-2134) |
-| **Not done if** | A model's question on a task turn suspends its request · a `waitForUser` review lists as an approval or a question · a steer answers an approval or a review · a steer naming no question answers one · the filer's steer answers a routed task's question · a plain message to a waiting task's session answers it · a task tool still answers a suspension · the check answered through the store |
+| **Not done if** | A model's question on a task turn suspends its request · a `waitForUser` review lists as an approval or a question · a steer answers an approval or a review · a steer naming no question answers one · the filer's steer answers a routed task's question · a plain message to a waiting task's session answers it · a task tool still answers a suspension · a board waiting only on a person spins · the check answered through the store |
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,8 @@ flowchart LR
   A --> I["Shift Manager's snapshot · one item each, kind named"]
   I --> B["leg b · filer's steer · leg c · Inbox · leg d · session line"]
   I --> W["leg e · a steer into the review is kept"]
-  N["leg g · input on a turn with no task row"] -->|"answer as the result · no-answer at the deadline"| P
+  Q["leg h · a board waiting only on a person"] -->|"blocked · no spin"| P
+  N["leg g · input on a turn with no task row"] -->|"answer as the result · no-answer at a set deadline · waits with none"| P
   B -->|"one more turn, same attempt · first answer wins · item closes"| P["PASS · goal met"]
   W -->|"item stays · one more turn takes the steer"| P
   C["control · the session line sent as a turn"] -.-> B
@@ -44,10 +45,10 @@ way a person or a filer does, never through the store.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/asks-a-person-one-way/` · model-free (`n/a`, scripted turns call the real tools) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: the snapshot lists one held `question` item and one `review` item; `getTask` shows the asking task running with no lease and one open question, the reviewed one waiting on a person, and no row `parked`. b: the filer's `updateTask` naming the question answers it; the task takes exactly one more turn, `attempts` stays 1, that turn's brief holds the answer, and the item leaves the list; an Inbox answer after it is told the question is answered. A filer's steer naming no question leaves the item listed, and so does one to a routed task's question. c: the snapshot lists the review as `review`; the Inbox's verdict resumes the block on its attempt, and a revision request's words reach the next model call as a steer. d: a line the user types in the task's session is written as `updateTask` from the user naming the open question, and answers a second question; `sendMessage({ to: { task } })` to a task waiting on a review queues and answers nothing (rule 10). e: a steer into a waiting review leaves its item listed; once the Inbox answers, the task takes one more turn before it completes, and that turn's brief holds the steer. (No leg f: stores are reset, so no stored parked row is read; [owner](DECISIONS.md#owner-decisions).) g: on a turn with no task row, `waitForUser` input returns the person's answer as its result, and a no-answer result, not a throw, at its deadline; the model tool refuses `input` on a task turn and names `askQuestion`, while a block's own `ctx.waitForUser` input still suspends (FIX-2129). A task-turn step that calls `askQuestion` and `waitForUser` review together opens exactly one wait: the first to commit wins, the sibling returns a tool error naming it, and the row holds either an open question or a person suspension, never both. Sweep: `parkOnQuestion`, `answerTask`, `unparkAndDrain`, `awaitReview`, `unpark` and `onReview` have no references in package source, beyond the by-name refusal of `onReview` |
+| **Signal** | a: the snapshot lists one held `question` item and one `review` item; `getTask` shows the asking task running with no lease and one open question, the reviewed one waiting on a person, and no row `parked`. b: the filer's `updateTask` naming the question answers it; the task takes exactly one more turn, `attempts` stays 1, that turn's brief holds the answer, and the item leaves the list; an Inbox answer after it is told the question is answered. A filer's steer naming no question leaves the item listed, and so does one to a routed task's question. c: the snapshot lists the review as `review`, and FIX-2133's `reconcileInbox` is green with it present, listed from `readAsks` alone; the Inbox's verdict resumes the block on its attempt, and a revision request's words reach the next model call as a steer. d: a line the user types in the task's session goes to the server as a plain line, and FIX-2133's `steerFromLine` writes it from the user as the answer to the oldest open question, answering a second question; `sendMessage({ to: { task } })` to a task waiting on a review queues and answers nothing (rule 10). e: a steer into a waiting review leaves its item listed; once the Inbox answers, the task takes one more turn before it completes, and that turn's brief holds the steer. (No leg f: stores are reset, so no stored parked row is read; [owner](DECISIONS.md#owner-decisions).) g: on a turn with no task row, `waitForUser` input returns the person's answer as its result; with the host's person-stop deadline set (the model's tool takes no `deadline`), a no-answer result, not a throw, at it; with the setting unset, past the sweeper's interval the request is still suspended and its item still listed; the model tool refuses `input` on a task turn and names `askQuestion`, while a block's own `ctx.waitForUser` input still suspends (FIX-2129). A task-turn step that calls `askQuestion` and `waitForUser` review together opens exactly one wait: the first to commit wins, the sibling returns a tool error naming it, and the row holds either an open question or a person suspension, never both. h: a `complete-or-blocked` board whose only open rows are one waiting on a review and one held on a question, neither with a deadline, reports `blocked` on its first idle pass, far under its iteration limit, and both rows stay as they were. Sweep: `parkOnQuestion`, `answerTask`, `unparkAndDrain`, `awaitReview`, `unpark` and `onReview` have no references in package source, beyond the by-name refusal of `onReview` |
 | **Input** | "Which region?" from a model turn; "Does this draft read right?" from a block. Any prompt passes the same way |
 | **Anti-game** | Don't assert on the suspension store or on rows written by hand. Read through the snapshot and `getTask` |
-| **Control that must fail** | `GOAL_CONTROL=composer-sends-turn` (the session line sent as a message) fails leg d on *answers a second question*. Today's `main` fails leg a (the task parks; no review item) and the sweep |
+| **Control that must fail** | `GOAL_CONTROL=composer-sends-turn` (the session line sent as a message) fails leg d on *answers a second question*. `GOAL_CONTROL=count-person-waits` (the active-worker count excuses nothing) fails leg h on *reports `blocked`*. Today's `main` fails leg a (the task parks; no review item) and the sweep |
 
 ## What changes
 
@@ -95,7 +96,7 @@ finds). A changeset with a migration note covering each public item
 ```mermaid
 flowchart LR
   F["filer · updateTask, question named"] --> Q["ER-8's one write · FIX-2133"]
-  U["user · a line in the task's session, written as updateTask by the composer"] --> Q
+  U["user · a line in the task's session, answered by the server's steerFromLine"] --> Q
   I["Inbox · as the user"] --> Q
   I --> R["the review's pending state · FIX-2129"]
   M["sendMessage to the waiting session"] -->|"queues · rule 10"| Z["answered after, outside the task"]
@@ -131,13 +132,13 @@ steer. The steer cap leaves room for every open question's answer, by
 | [FIX-2056 D3](../../epics/FIX-2056/DECISIONS.md#d3), FIX-2080's map, with its `parked-for-turn` entry: a parked row reads pending, uncharged | **Unchanged:** no entry for parked rows; stores are reset ([owner](DECISIONS.md#owner-decisions)) |
 | FIX-2087's task-surface sweep, allowing `answerTask` and `parkOnQuestion` | **Amended:** both allowances go; `askQuestion` and `waitForUser` join `reportProgress` as a worker's own tools |
 | FIX-2129's rule that a message to a session waiting on a person queues (rule 10), and its pinned test | **Kept.** The session line answers as a steer, not as a message |
-| FIX-2086's session door: a line in an open task's session is a steer | **Kept** for a running task. For a task with an open question, Shift Manager's task-session composer writes `updateTask` naming it, as the user, instead of sending a turn |
+| FIX-2086's session door: a line in an open task's session is a steer | **Kept** for a running task. For a task with an open question, Shift Manager's task-session composer sends the plain line and the server's `steerFromLine` answers the oldest open question with it (FIX-2133), instead of sending a turn |
 | `PERSON_REASONS` in Shift Manager and the Lab send's `stopOf` | **Replaced** by ER-1's predicate |
 
 | The debt | |
 |---|---|
-| **Removes** | `parkOnQuestion` and its capability, `answerTask` and its action, `awaitReview`, `unpark`, `unparkAndDrain`, `onReview` and the drain's park exit, the `parked` status as a write, `parkedOnQuestion` and `answered`, Chief of Staff's parked list, two person-stop checks, two sweep allowances |
-| **Adds** | Two model tools in `parkOnQuestion`'s slot: `askQuestion`, onto ER-8's ask, and FIX-2129's `waitForUser` for approvals, reviews and, with no task row, input · the session composer's steer naming the open question. All permanent by design |
+| **Removes** | `parkOnQuestion` and its capability, `answerTask` and its action, `awaitReview`, `unpark`, `unparkAndDrain`, `onReview`, the drain's park exit (its excusal moves onto ER-1's predicate and ER-8's hold), the `parked` status as a write, `parkedOnQuestion` and `answered` (each deleted name joins `PERSON_STOPS_REMOVED` in the same PR: `answerTask`, `parkOnQuestion`, `awaitReview`, `unparkAndDrain`, `unpark`, and `onReview` beyond its refusal; [FIX-2134 D2](../FIX-2134/DECISIONS.md#d2)), `Task.turnReentries` and its discount in `shouldRetryOnFail` (its writer, the park's `unparkPatch(answer)`, goes, and with stores reset the retired-shape map's `parked-for-turn` increment goes too), Chief of Staff's parked list, two person-stop checks, two sweep allowances |
+| **Adds** | Two model tools in `parkOnQuestion`'s slot: `askQuestion`, onto ER-8's ask, and FIX-2129's `waitForUser` for approvals, reviews and, with no task row, input · the session composer sending a plain line, which the server answers with (FIX-2133's `steerFromLine`); no listing source. All permanent by design |
 | **Leaves** | harness-manager's inbox and `answerQuestion()` (FIX-2132) · FIX-1851, which closes as superseded |
 
 **Net: down.** Two parks, two unparks and a tool become a hold, a suspension and a steer.
@@ -147,7 +148,7 @@ steer. The steer cap leaves room for every open question's answer, by
 | Surface | Fate |
 |---|---|
 | The `parked` status (and `awaiting_review`, its older name), its transitions, the claim refusal for a parked row, the claim reason `parked` | **Removed** as a write, as a read and from the public status. No stored row is read ([owner](DECISIONS.md#owner-decisions)) |
-| `counts.parked` and the drain's rungs on it (board meta, check board, quiescence, the goal-seek loop) | **Removed.** A task waiting on a person is running, with its claim (FIX-2129) or held with no lease (ER-8) |
+| `counts.parked` and the drain's rungs on it (board meta, check board, quiescence, the goal-seek loop) | **Removed,** and the park exit's excusal **moved.** A task waiting on a person is running, with its claim (FIX-2129) or held with no lease (ER-8). The active-worker count (`activeWorkerCount` in `task-board/shared.ts`) excuses a row ER-1's predicate or ER-8's hold marks, and the in-flight count keeps it, so a `complete-or-blocked` board whose only open rows wait on a person reports `blocked` (`quiescence.ts`), not `drained`, and never spins to its iteration limit, which with no deadline it would never leave |
 | `onReview` and the drain's park exit | **Removed.** A board built with `onReview` is refused by name |
 | `parkOnQuestion`, `createParkOnQuestion`, `parkedOnQuestion`, `answered` | **Removed.** `askQuestion` and `waitForUser` take the tool's slot |
 | `answerTask`, its action, `unpark`, `unparkAndDrain`, `awaitReview` | **Removed** |
@@ -173,8 +174,8 @@ status go; two tools come. If wrong: a second path to a person survives somewher
 1. **[D1](DECISIONS.md#d1) · A steer answers only a held question it names; approvals and reviews
    are answered in the Inbox.** If wrong: a user types "looks good" and the review still waits.
 
-**Open: none of this issue's.** What a held question does at its deadline is the epic's open
-question, FIX-2133's to build ([Open](../../epics/FIX-2058/DECISIONS.md#open)).
+**Open: none of this issue's.** A held question goes ahead from its brief at a set deadline
+([epic, decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)), FIX-2133's to build.
 **Merges after FIX-2132** ([why](DECISIONS.md#decided-not-asked)).
 
 Feature · `orchestration`, `workforce`, `patterns`, `devtool`, `react`, `ui`, `shift-manager` · large · epic FIX-2058 · blocked by FIX-2063, FIX-2129, FIX-2133, FIX-2056, FIX-2132 (builds in parallel; merges after it)

@@ -10,7 +10,7 @@
 | **filed the coding work** | Sees the task *parked*; the answer starts a new try and spends a retry | Sees the task held on the question, with its text; no retry is spent |
 | **types a line into the run's session while it waits** | The line waits for the next try; the question still waits | The line answers the question, as the Inbox's answer does, and the next run continues the same coding session with it. No run starts beside the hold |
 | **cancels the task while it waits** | The task cancels; the harness inbox row stays open | The item closes, no further run starts, and the work already done stays on its branch and in its kept files |
-| **leaves the question unanswered** | It waits for good | At its deadline, 7 days by default, the next run continues the same coding session, told no answer came, and goes ahead from its brief. This follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open); if the owner picks "fail", that try fails instead |
+| **leaves the question unanswered** | It waits for good | It waits until someone answers it or the task is cancelled: a question has no deadline unless the host sets one. At a set deadline, the next run continues the same coding session, told no answer came, and goes ahead from its brief. The epic decided this ([decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) |
 | **runs the conductor lab** | Answers with the lab's `answer` action, onto the harness inbox | Answers through the board's `updateTask` action, as the Inbox does; `status` lists tasks held on questions |
 
 A run's own question, the judge's *ask* and a saved-work mismatch all ask the same way.
@@ -25,18 +25,16 @@ carries the work on in the same coding session, on the same try, with no finishe
 | **The real need** | The concept's *Inbox items*, last paragraph: "Its question ends the run, and its task holds on the question. The answer, a steer, starts the next run in the same coding session, using no attempt." The epic's legs a and b for this kind ([FIX-2058](../../epics/FIX-2058/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "The harness inbox is deleted and the question parks on the board." Met while the answer still spends a try, and the Inbox still can't show the question |
 | **Bigger, and not this issue's** | The hold itself, its answer action and its deadline ([FIX-2133](https://linear.app/fixpoint-labs/issue/FIX-2133), ER-8); questions and reviews from every other flow, and removing the board's `awaitReview` API (FIX-2131; this issue moves harness-manager's own calls); the filer told of the question (FIX-2070); the five kinds together (FIX-2134) |
-| **Not done if** | The answer starts a new try · the next run starts a fresh coding session · a line starts a run while the task holds · a cancel loses the work done · the harness inbox still answers a question · the check ran with trace observability on only |
+| **Not done if** | The answer starts a new try · the next run starts a fresh coding session · a line starts a run while the task holds · a harness run's verdict becomes a stop anywhere but the ask module · the harness inbox still answers a question · the check ran with trace observability on only |
 
 ```mermaid
 flowchart LR
   H["Shift Manager coder · durable SQLite host · traces off"] --> A["leg a · the run asks"]
-  A --> I["the Inbox · one question item"]
+  A --> I["the Inbox · one question item · the reconciler green"]
   I --> B["leg b · answer it there"]
-  I --> C["leg c · a line in the session answers it · leg d · cancel"]
-  I --> E["leg e · nobody answers by the deadline"]
+  I --> R["regressions · a line answers it · a line mid-run ends only that run · a cancel keeps the work"]
   B -->|"same try · same coding session · each run once"| P["PASS · goal met"]
-  C -->|"no run beside it · item closes · work kept"| P
-  E -->|"same try · same session · told no answer came"| P
+  R -->|"no run beside the hold"| P
   K["control · the answer starts a new try"] -.-> B
   B -.->|"under the control"| F["must FAIL · leg b, attempts stays 1"]
 ```
@@ -45,12 +43,11 @@ The check reads the Inbox, the task through `getTask`, the checkout, and what ea
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/` · real model, Claude Code through the devteam harness, for legs a and b; legs c, d and e on the devteam harness stub · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows the open question, `attempts` 1, no lease; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; no harness run is handed the same prompt twice; the task completes and the item closes. A second question in the same try passes the same way. c: a line typed in the run's session while it holds answers the question: the item closes, `attempts` stays 1, and the next run resumes the confirmed session with the line as the answer. A steer naming no question, the filer's steer or `updateTask({ message })`, answers nothing: the task still holds and no harness run starts, and the run the answer starts has that steer too. A line while a run works ends that run, not the request (`stopsOnAbort`). With two open questions on the row, a line answers only the oldest: its item closes, the task still holds on the other with its item open, and no harness run starts. d: the first run commits a unique change and writes a kept file before it asks; a cancel closes the item, no harness run starts after it, and both the commit on the branch and the kept file are still there. e: with the question's deadline shortened through FIX-2133's test hook, the item closes after the first board touch past the deadline (the debt pass runs on a touch), `attempts` stays 1, the next run resumes the confirmed session and is told no answer came, and the task completes. Sweep: `answerQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source; harness-manager's `askQuestion` export and its inbox import path have none; and `awaitReview`, `HarnessRunParked` and `waitForUser` have none in `harness-manager` (*amended 2026-10-24:* FIX-2163's implementation later allows exactly one `waitForUser` reference, its review step; this issue's implementation keeps none) |
-| **If the owner picks "fail"** | Leg e flips: at the deadline `attempts` goes to 2, that try resumes the same session, and after the last try the task fails for good with its item closed. Nothing else in this spec moves |
+| **Goal check** | `goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/` · real model, Claude Code through the devteam harness, for legs a and b, the ones only a real coding run can show; the three regressions on the devteam harness stub · run by the implementer at completion · verdict in the implementation PR |
+| **Signal** | a: the snapshot lists one `question` item with the run's text; `getTask` shows the open question, `attempts` 1, no lease; the checkout lease is free. b: after the Inbox answer, `attempts` stays 1, the next run resumes the session id the first confirmed, and a fact only the first run learned (LAB-154's technique) lands in the checkout; no harness run is handed the same prompt twice; the task completes and the item closes. A second question in the same try passes the same way. FIX-2133's reconciler is green with the coding question present. Regressions: a line typed in the run's session while it holds answers it, through FIX-2133's `steerFromLine`, and the next run resumes the confirmed session; a line while a run works ends that run, not the request (`stopsOnAbort`); cancelling a task whose coding run is held on a question leaves its branch's commit and its kept files in place. Cancel itself, the deadline and which question a line answers are FIX-2133's to prove (its legs d and e). Sweep: `answerQuestion`, `inboxCollection`, `parkOnBoardQuestion` and `announce` have no references in package or lab source; harness-manager's `askQuestion` export and its inbox import path have none; and `awaitReview`, `HarnessRunParked` and `waitForUser` have none in `harness-manager` (*amended 2026-10-24:* FIX-2163's implementation later allows exactly one `waitForUser` reference, its review step; this issue's implementation keeps none) |
 | **Input** | A coding task whose brief forces one question; for the second-question case, one that forces two in a row |
 | **Anti-game** | Don't assert on store internals or the run record; answer the way the Inbox does, never through the store. Run with `FSDEV_TRACE_OBSERVABILITY=0`, so a suspension added later can't pass on a traces-on replay |
-| **Control that must fail** | `GOAL_CONTROL=new-attempt` fails leg b on *`attempts` stays 1*. `GOAL_CONTROL=fresh-session` fails legs b and e on *resumes the session the first confirmed*. `GOAL_CONTROL=reset-on-cancel` fails leg d on *the commit and the kept file are still there*. Today's `main` fails leg a (no Inbox item) and the sweep |
+| **Control that must fail** | `GOAL_CONTROL=new-attempt` fails leg b on *`attempts` stays 1*. `GOAL_CONTROL=fresh-session` fails leg b on *resumes the session the first confirmed*. Today's `main` fails leg a (no Inbox item) and the sweep |
 
 ## What changes
 
@@ -127,8 +124,8 @@ twice. A host's own harness block may still suspend, and that path needs FIX-213
 
 | The debt | |
 |---|---|
-| **Removes** | The harness inbox (`inbox.ts`, ten exports), `announce`, `parkOnBoardQuestion`, harness-manager's `awaitReview` calls and `HarnessRunParked`, the inbox fold in the prompt, the conductor lab's `answer` action, a retry spent per answer |
-| **Adds** | An ask step in the manager's loop; a run count on the run record, named in the marker's path. Both permanent by design |
+| **Removes** | The harness inbox (`inbox.ts`, ten exports), `announce` (refused by name), `parkOnBoardQuestion`, harness-manager's four `awaitReview` sites and `HarnessRunParked`, the inbox fold in the prompt, the conductor lab's `answer` action (LAB-154's check moves to `updateTask`), a retry spent per answer. Each deleted name joins `PERSON_STOPS_REMOVED` in the same PR: harness-manager's `answerQuestion`, `parkOnBoardQuestion`, `inboxCollection` ([FIX-2134 D2](../FIX-2134/DECISIONS.md#d2)) |
+| **Adds** | One ask-step module in place of the three park sites (`manager.ts`'s verdict arm and fixed-board review, and `parkOnMismatch`): the one place a harness run's verdict becomes a stop, for this issue and FIX-2163's review alike, so no third path; the claim-time ticket carried into the run, the subtle part, since a fixed-board run holds no `state.claim`; the marker path, the run counter and its incarnation binding; `run.answers` read from the row in `buildPrompt`, a public phase-API change. Permanent by design. The manager's attempt-only ownership checks (three in `manager.ts`, one in `run-record.ts`) move onto FIX-2133's ticket fence or check its turn generation, since two turns now share an attempt |
 | **Leaves** | The run record's `parked` outcome word, until FIX-2071's renames |
 
 **Net: down.** One of the three ask paths the epic counts goes, with ten exports and an option, and
@@ -142,12 +139,11 @@ and try, nothing run twice. If wrong: coding questions stay off-screen, or each 
 **[The debt](#whats-already-here-and-the-debt), net down:** the harness inbox and its option go;
 one step comes. If wrong: a host loses a status read it built on the inbox.
 
-1. **[D1](DECISIONS.md#d1) · FIX-2137 stays a blocker.** The manager's own path never suspends,
+1. **[D1](DECISIONS.md#d1) · FIX-2137 stays a blocker.** The manager's own path never suspends for a question (FIX-2163 adds a review that does, behind a host option),
    but a host's harness block may, and its resume needs FIX-2137. Engineering, decided; it would
    flip only if no host-supplied block or callback in the manager chain could suspend. FIX-2137 is
    merged, so the edge is satisfied. If wrong: nothing; the edge no longer delays anything.
 
-**Open: none of its own.** At the deadline it follows the epic's [open call](../../epics/FIX-2058/DECISIONS.md#open),
-written against "goes ahead"; leg e flips if the owner picks "fail".
+**Open: none of its own.** At a set deadline it goes ahead, as the [epic decided](../../epics/FIX-2058/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them).
 
 Feature · `harness-manager`, conductor lab, a goal check · medium · epic FIX-2058 · blocked by FIX-2133, FIX-2137, FIX-2056
