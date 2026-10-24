@@ -209,7 +209,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-6 · an Error with a message shows that message", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail(new Error("sessions down")));
@@ -219,7 +219,7 @@ describe("useLeafSessions · what it shows", () => {
   it("BR-7 · a failure that is not an Error shows the session list's own text", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), false, true)
     );
     await waitFor(() => expect(source.calls).toHaveLength(1));
     await act(async () => source.calls[0]!.fail({ status: 500 }));
@@ -230,7 +230,7 @@ describe("useLeafSessions · what it shows", () => {
     const source = sessionSource();
     const { rerender } = renderHook(
       ({ tick }: { tick: number }) =>
-        useLeafSessions(source as never, { ...leaf("worker-a"), tick } as never, "u", false, true),
+        useLeafSessions(source as never, { ...leaf("worker-a"), tick } as never, false, true),
       { initialProps: { tick: 0 } }
     );
     await settle();
@@ -245,7 +245,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-13 · a leaf mounted closed asks for nothing and reports no sessions, loading, no error", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), false, false)
     );
     await settle();
 
@@ -258,7 +258,7 @@ describe("useLeafSessions · the closed leaf", () => {
   it("BR-14 · refreshing a closed leaf sends no request", async () => {
     const source = sessionSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("worker-a"), "u", false, false)
+      useLeafSessions(source as never, leaf("worker-a"), false, false)
     );
     await settle();
 

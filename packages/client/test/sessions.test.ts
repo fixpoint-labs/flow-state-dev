@@ -76,6 +76,21 @@ describe("client.sessions", () => {
     );
   });
 
+  it("lists the client's own user's sessions unless it names another user", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
+    const client = createClient({ userId: "u 1", baseUrl: "", fetcher });
+
+    await client.sessions.list();
+    await client.sessions.list({ flowKind: "demo" });
+    await client.sessions.list({ userId: "u2" });
+
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/flows/sessions?userId=u+1",
+      "/api/flows/sessions?flowKind=demo&userId=u+1",
+      "/api/flows/sessions?userId=u2"
+    ]);
+  });
+
   it("sends a listing's state filter as one state.<field> parameter per field", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher });

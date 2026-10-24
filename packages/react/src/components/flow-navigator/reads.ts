@@ -29,7 +29,7 @@ import type { FlowNavigatorLeaf } from "./grouping";
  * says which. A host passes the client it already holds — with its own
  * `fetcher`, so every request carries whatever credential that transport adds.
  */
-export type FlowNavigatorClient = Pick<Client, "flows" | "userId"> & { readonly sessions: Pick<SessionsApi, "list"> };
+export type FlowNavigatorClient = Pick<Client, "flows"> & { readonly sessions: Pick<SessionsApi, "list"> };
 
 /** Stable empty lists, so a stale hold hands back the same reference each render. */
 const EMPTY_FLOWS: FlowListEntry[] = [];
@@ -88,7 +88,6 @@ export type LeafSessions = {
 export function useLeafSessions(
   source: FlowNavigatorClient,
   leaf: FlowNavigatorLeaf,
-  userId: string | undefined,
   /**
    * Ask the listing for the sessions a dispatcher ran work in as well
    * (FIX-1440). Part of the read's identity: turning it on is a different
@@ -112,15 +111,15 @@ export function useLeafSessions(
   if (visit.open !== isOpen) setVisit({ open: isOpen, token: isOpen ? {} : null });
 
   const { data, isLoading, error, refresh } = useFencedRead<readonly SessionSummary[]>(
-    [source, address, cardinality, userId, includeDispatchRuns, visit.token],
+    [source, address, cardinality, includeDispatchRuns, visit.token],
     EMPTY_SESSIONS,
     "Failed to load sessions",
     () =>
       source.sessions.list({
         // The branch itself is `client`'s, written once there. This passes the
         // one entry it already knows about, which is all the helper reads.
+        // No user: the client lists its own user's sessions.
         ...sessionQueryFor(address, [{ id: address, cardinality }]),
-        ...(userId === undefined ? {} : { userId }),
         // Omitted unless asked for, so the request this hook has always sent
         // is the request it still sends by default.
         ...(includeDispatchRuns ? { include: "dispatch-runs" as const } : {})

@@ -409,7 +409,6 @@ function describeDispatchRun(
 /** What every leaf row needs to read its sessions and draw them. */
 type LeafContext = {
   readonly source: FlowNavigatorClient;
-  readonly userId: string | undefined;
   readonly selectedSessionId: string | undefined;
   readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
@@ -515,7 +514,6 @@ function LeafRow(props: {
   const state = useLeafSessions(
     context.source,
     leaf,
-    context.userId,
     context.includeDispatchRuns,
     isOpen
   );
@@ -663,9 +661,6 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
 
   const leafContext: LeafContext = {
     source,
-    // The client's own user: the navigator lists the sessions of whoever
-    // the client acts as.
-    userId: source.userId,
     selectedSessionId: props.selectedSessionId,
     includeDispatchRuns: props.includeDispatchRuns ?? false,
     onSelectSession: props.onSelectSession,

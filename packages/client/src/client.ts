@@ -441,7 +441,9 @@ export function createClient(options: CreateClientOptions): Client {
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
       const { state, ...rest } = listOptions;
-      const query: Record<string, QueryValue> = { ...rest };
+      // The client's own user unless the call names another: a host without
+      // sign-in narrows nothing, so no filter would list every user's.
+      const query: Record<string, QueryValue> = { ...rest, userId: rest.userId ?? userId };
       for (const [field, value] of Object.entries(state ?? {})) query[`state.${field}`] = value;
       const payload = await t.json<{ sessions: SessionSummary[] }>("/api/flows/sessions", undefined, query);
       return payload.sessions;
