@@ -255,12 +255,18 @@ export function createRequestWaits(inputs: {
   // An `in_progress` record whose heartbeat stopped past the stale threshold
   // is a request whose process died before the sweep marked it interrupted
   // (FIX-2166). No entry reads as the record says: a request with no
-  // registration is no proof that its process is gone, and neither is an
-  // entry with no heartbeat recorded (a custom registry's): both fail safe.
+  // registration is no proof that its process is gone, nor is an entry with
+  // no heartbeat recorded (a custom registry's), nor a registry that can't be
+  // read: each fails safe, to the record's answer.
   const stillBeating = async (requestId: string): Promise<boolean> => {
     const heartbeat = inputs.heartbeat;
     if (heartbeat === undefined) return true;
-    const entry = await heartbeat.readEntry(requestId);
+    let entry: Pick<ActiveRequestEntry, "lastHeartbeatAt" | "queuedAt"> | undefined;
+    try {
+      entry = await heartbeat.readEntry(requestId);
+    } catch {
+      return true;
+    }
     if (entry === undefined || entry.lastHeartbeatAt == null) return true;
     return isFresh(entry, heartbeat.now(), heartbeat.staleThresholdMs);
   };

@@ -250,6 +250,26 @@ describe("whether a request has stopped running its own work", () => {
       });
     });
 
+    it("reads the record alone when the registry can't be read: a lookup that fails is no proof its process is gone", async () => {
+      // Read as stopped, a live request would have its notice sent and its
+      // lapsed slots released while it still runs.
+      const blip = createRequestWaits({
+        provider: { ...provider([]), loadSuspension: async () => null as never },
+        deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
+        userId: "u",
+        requestId: "r",
+        own: undefined,
+        sessionId: "s",
+        readRequest: async (id) => inProgress(id) as never,
+        heartbeat: {
+          readEntry: async () => Promise.reject(new Error("registry unavailable")),
+          staleThresholdMs: THRESHOLD,
+          now: () => NOW
+        }
+      });
+      expect(await blip.running!(["live"])).toEqual({ live: true });
+    });
+
     it("reads the record alone where heartbeats can't say: a stale entry there is a healthy request", async () => {
       // A flow with heartbeats off never beats, so every entry of it looks stale.
       expect(await waitsWith().running!(["stopped"])).toEqual({ stopped: true });
