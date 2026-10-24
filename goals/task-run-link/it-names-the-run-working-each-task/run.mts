@@ -65,7 +65,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -257,7 +257,7 @@ await runGoal(async (failures) => {
   try {
     const runtime = await state.getRuntime();
     const router = (await state.getRouter()) as any;
-    const { call, act, open } = httpActions(router, USER_ID);
+    const { call, act, open } = actingAs(router, USER_ID);
     /** Every stored row of the user's conversation ledger, read from the store, not through the board. */
     const storedRows = async (): Promise<Task[]> =>
       Object.values(await runtime.stores.resourceState.getByPrefix("user", `${USER_ID}:~org:${ORG_ID}`, "tasks/")).map(

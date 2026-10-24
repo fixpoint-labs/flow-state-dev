@@ -205,7 +205,7 @@ export type ChildSessionStatus =
  * One body of background work running under a conversation.
  *
  * A ChildSession is a child session that outlives the turn that started it, so
- * its history is read with {@link SessionClient.listSessionRequests} — the
+ * its history is read with `sessions.requests` — the
  * same call a conversation's own turns are read with.
  *
  * The wire sends a named field set rather than a whole session record, so this

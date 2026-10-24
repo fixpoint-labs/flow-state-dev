@@ -224,7 +224,7 @@ describe("client.sessions", () => {
   });
 });
 
-describe("client.sessions.listChildSessions", () => {
+describe("client.sessions.children", () => {
   const CHILD: ChildSessionSummary = {
     id: "dsx_9f3a",
     parentSessionId: "sess_1",

@@ -32,7 +32,7 @@ import {
   goalAttempts,
   goalModel,
   goalTmpDir,
-  httpActions,
+  actingAs,
   keysServing,
   loadFixture,
   modulePatchEnv,
@@ -191,7 +191,7 @@ await runGoal(async (failures, tell) => {
   const host = startHost(db);
   const notes: string[] = [];
   try {
-    const http = httpActions((await host.getRouter()) as any, USER_ID);
+    const http = actingAs((await host.getRouter()) as any, USER_ID);
     const conv = await http.open("desk", { workerId: DESK });
 
     /** Every task the person filed from the desk: the only rows the conversation ledger may hold. */

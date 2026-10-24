@@ -21,6 +21,7 @@
  * Controls: GOAL_CONTROL=mailbox-left  the desk's old MAILBOX.md and one removed export planted in the
  *                                      tree: must FAIL at a:no-mailbox-file and b:after, and nothing else
  */
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -148,14 +149,11 @@ await runGoal(async (failures) => {
       const dbFile = join(goalTmpDir("every-coordinator-is-a-worker-file"), "desk.sqlite");
       const app = await startConvertedDesk(TREE, dbFile);
       const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-        const res = await app.router[method](
-          new Request(`http://converted-desk.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+        const res = await createInProcessFetch(app.router)(`http://converted-desk.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
             method,
             headers: { "content-type": "application/json", accept: "text/event-stream" },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          }),
-          { params: { path: segments } },
-        );
+          });
         return { status: res.status, text: await res.text() };
       };
       /** Until no request is running, three reads in a row. Not graded. */

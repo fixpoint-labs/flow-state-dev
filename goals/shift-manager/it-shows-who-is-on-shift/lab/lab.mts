@@ -52,7 +52,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { httpActions, type GoalRouter } from "../../../lib/http-actions.mts";
+import { actingAs } from "../../../lib/client-actions.mts";
 import { workerDoor } from "../../../lib/worker-door.mts";
 import { installWorkers } from "../../../lib/workers.mts";
 
@@ -265,7 +265,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
   // ---- the spread: filed on the lead's conversation's board -----------------
-  const http = httpActions((await flowState.getRouter()) as unknown as GoalRouter, SHIFT_LAB_USER_ID);
+  const http = actingAs((await flowState.getRouter()), SHIFT_LAB_USER_ID);
   const conversation = await http.open(LEAD_KIND, { [WORKER_ID_STATE_KEY]: lead.id });
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
   const idOf = (name: string) => seats.find((s) => s.name === name)!.id;

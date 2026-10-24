@@ -32,8 +32,8 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 /** The shipped clients, as the checkout under test exports them. */
 export interface ScriptedClients {
-  client: { createClient(options: Record<string, unknown>): any; createSessionClient(options: Record<string, unknown>): any };
-  workforce: { createWorkforceClient(options: Record<string, unknown>): any };
+  client: { createClient(options: Record<string, unknown>): any };
+  workforce: { createWorkforceClient(client: unknown): any };
 }
 
 /** Load the shipped clients from the checkout at `root`. */
@@ -60,11 +60,13 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       return fetch(input, { ...init, headers });
     };
     const transport = { baseUrl: o.origin, fetcher };
+    // One client per person: their user, their credential.
+    const client = o.shipped.client.createClient({ userId: person.userId, ...transport });
     return {
       person,
-      sessions: o.shipped.client.createSessionClient(transport),
-      workforce: o.shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-      flow: (flowKind: string) => o.shipped.client.createClient({ flowKind, userId: person.userId, ...transport }),
+      sessions: client.sessions,
+      workforce: o.shipped.workforce.createWorkforceClient(client),
+      flow: (flowKind: string) => client.flow(flowKind),
       get: (path: string) => fetcher(`${o.origin}/api/flows${path}`),
     };
   };
@@ -75,33 +77,33 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const client = who.flow(flowKind);
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error), startedAt, endedAt: Date.now() };
     }
     let status = "timed-out";
     for (const until = Date.now() + 60_000; Date.now() < until; await sleep(25)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
     const endedAt = Date.now();
-    const listed = (await who.sessions.listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
+    const listed = (await who.sessions.requests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message, startedAt, endedAt };
   };
 
   /** Open a conversation with `worker` on the coordinator flow, as an app opens one. */
   const conversation = async (who: Connected, worker: string): Promise<string> =>
-    (await who.sessions.createSession({ flowKind: "coordinator", userId: who.person.userId, state: { workerId: worker } })).id as string;
+    (await who.flow("coordinator").createSession({ state: { workerId: worker } })).id as string;
 
   /** The tool outputs one request's turn produced, in order, read through the session's items. */
   const toolOutputs = async (who: Connected, sessionId: string, requestId: string | null): Promise<Array<{ name: string; output: any }>> => {
     if (requestId === null) return [];
-    const state = await who.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["tool_output"], limit: 500 });
+    const state = await who.sessions.state(sessionId, { includeItems: true, itemTypes: ["tool_output"], limit: 500 });
     return ((state.items ?? []) as any[])
       .filter((item) => item.requestId === requestId)
       .map((item) => ({ name: String(item.toolCall?.name ?? ""), output: parsed(item.output ?? item.error ?? null) }));
@@ -218,8 +220,8 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const dA = await conversation(alice, "desk.lead");
     const hers = `alice-${word()}`;
     const roster =
-      ((await alice.sessions.listSessions({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as Array<{ id: string }>)[0]?.id ??
-      ((await alice.sessions.createSession({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as { id: string }).id;
+      ((await alice.sessions.list({ flowKind: ROSTER, userId: PEOPLE.alice.userId })) as Array<{ id: string }>)[0]?.id ??
+      ((await alice.flow(ROSTER).createSession()) as { id: string }).id;
     const hired = await act(alice, ROSTER, roster, "hire", { id: hers, flow: "agent", description: "Does Alice's errands." });
     const added = await act(alice, "coordinator", dA, "addDelegate", { worker: hers });
     const w = word();
