@@ -145,7 +145,7 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import type { ProjectAddressRef } from "../projects/workstream-ref";
+import { parseProjectRef, type ProjectAddressRef } from "../projects/workstream-ref";
 import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
@@ -1079,15 +1079,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
       const given = callerMetadata(init.metadata);
+      // A follow-up runs in its root's session, so it keeps the root's
+      // project even after the conversation's changes (FIX-2161).
+      const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+      const project = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
       // The filing turn's hop count, which the task's turn starts at (FIX-2106).
       // And the project it is filed in, which it keeps if the conversation's changes (FIX-2161).
       const metadata = {
         ...(given ?? {}),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
         [FILED_HOP]: turnHopMark(ctx),
-        [FILED_PROJECT]: await filingProjectStampOf(ctx)
+        [FILED_PROJECT]: project
       };
-      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      const input = ownProjectIn(
+        init.input,
+        isStamped(root) ? (project === null ? undefined : parseProjectRef(project)) : filingProjectAddressOf(ctx.session.state)
+      );
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
       if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);

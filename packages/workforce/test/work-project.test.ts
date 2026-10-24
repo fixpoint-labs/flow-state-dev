@@ -232,6 +232,21 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("second")).toEqual(inBeta);
   });
 
+  it("follow-up: a follow-up filed after the change runs in its root's session, in the root's project", async () => {
+    const h = await withProjects();
+    const alice = h.client("alice");
+    const lead = (await alice.ensureWorkerSession({ worker: "lead" })).id;
+    await alice.setWorkProject("lead", apollo);
+    const first = await h.file("alice", lead, "first");
+    await alice.setWorkProject("lead", beta);
+    // Named either way, the follow-up works where its root's session works.
+    await h.file("alice", lead, "follow up in apollo", { followUpOf: first, input: { project: apollo } });
+    await h.file("alice", lead, "follow up in beta", { followUpOf: first, input: { project: beta } });
+    expect(h.answerOf("follow up in apollo")).toEqual(inApollo);
+    expect(h.answerOf("follow up in beta")).toEqual(inApollo);
+    expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);
+  });
+
   it("waiting: a task filed under one project and assigned after the change still runs in the first", async () => {
     const h = await withProjects();
     const alice = h.client("alice");
