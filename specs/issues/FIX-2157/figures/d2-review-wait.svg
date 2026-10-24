@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what Ready for review and Resolve are. Chosen: the thread&#x27;s task waits on a review the thread worker&#x27;s model asks for with FIX-2131&#x27;s waitForUser tool, and Resolve answers it. Instead of: a resolved mark the lab keeps over completed tasks. It comes down to the first row: where a thread&#x27;s state lives; on the task, every app can read it and Shift Manager&#x27;s empty In review column gets a source; as a lab mark, the lab holds a task&#x27;s state. The second row is the price: the review rests on the model following its instructions, where a mark needs nothing asked. The third row: Request changes comes for free as a revision steer, where a mark needs a follow-up through the main session. No gap either way. Flips if: the model skips the review step too often; then a worker setting is a package gap, and the lab still keeps no mark."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What makes a thread ready for review, and what does Resolve do?</text>
+  <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+  <text class="t-h c-code" x="228" y="112">A review the task waits on</text>
+  <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="592" y="112">A resolved mark the lab keeps</text>
+  <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+  <rect class="bar" x="16" y="134" width="4" height="62"/>
+  <text class="t-lbl" x="32" y="156">WHERE THE</text>
+  <text class="t-lbl" x="32" y="169">THREAD&#x27;S STATE LIVES</text>
+  <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+  <text class="mark plus" x="228" y="162">+</text>
+  <text class="t-b" x="248" y="161">On the task</text>
+  <text class="t-s" x="248" y="179">every app reads it, Shift Manager too</text>
+  <text class="mark minus" x="592" y="162">−</text>
+  <text class="t-b" x="612" y="161">In the lab</text>
+  <text class="t-s" x="612" y="179">a task&#x27;s state the package can&#x27;t see</text>
+  <text class="t-lbl" x="32" y="218">WHAT IT RESTS ON</text>
+  <text class="mark minus" x="228" y="224">−</text>
+  <text class="t-b" x="248" y="223">The model asking for review</text>
+  <text class="t-s" x="248" y="241">FIX-2131&#x27;s tool, told to in WORKER.md</text>
+  <text class="mark plus" x="592" y="224">+</text>
+  <text class="t-b" x="612" y="223">The task completing</text>
+  <text class="t-s" x="612" y="241">nothing to ask</text>
+  <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  <text class="t-lbl" x="32" y="276">REQUEST CHANGES</text>
+  <text class="mark plus" x="228" y="282">+</text>
+  <text class="t-b" x="248" y="281">The review&#x27;s revision verdict</text>
+  <text class="t-s" x="248" y="299">its words are a steer the work takes</text>
+  <text class="mark minus" x="592" y="282">−</text>
+  <text class="t-b" x="612" y="281">A follow-up turn</text>
+  <text class="t-s" x="612" y="299">ask the main session to reopen it</text>
+  <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+  <text class="t-b" x="32" y="371">The thread worker asks with waitForUser review</text>
+  <text class="t-s" x="32" y="389">Resolve and Request changes are its two answers</text>
+  <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+  <text class="t-b" x="494" y="371">The model skips the review step too often</text>
+  <text class="t-s" x="494" y="389">then a worker setting is a gap; still no lab mark</text>
+</svg>
