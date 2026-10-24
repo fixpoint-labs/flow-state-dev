@@ -30,6 +30,11 @@
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
  *
+ * A person's running turn may take a notice itself after it answers
+ * (FIX-2159, `./take-finished`): it runs this same handling
+ * ({@link settleTakenNotice}) in its own request and says the line there, and
+ * the copy queued here then finds the notice cleared.
+ *
  * A notice that arrives while the conversation is replying waits for the
  * reply to end, then runs (BR-27): the engine's `defer` patience. At most 32
  * notices wait on a conversation in a process; the engine refuses the next,
@@ -217,6 +222,43 @@ async function reportFailure(ctx: BlockContext, notice: TaskNotice): Promise<voi
 }
 
 /**
+ * The part of a notice's handling every taker of it runs, before what it
+ * says: free its session, end its chain count, and report a final failure
+ * (throws when the intake didn't take it, so the notice stays owed).
+ */
+async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise<void> {
+  await onEnding(ctx, notice);
+  await reportFailure(ctx, notice);
+}
+
+/**
+ * Dedupe a notice and acknowledge it (clear its marker): `true` the first
+ * time this conversation acts on it. The point of no return is the dedupe
+ * write: a copy that takes the notice over after it finds the key seen and
+ * says nothing (at most once).
+ */
+async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+  const first = await noteSeen(ctx, noticeKey(notice));
+  await ref.patchMetadata(row.id, clearNotice(notice));
+  return first === true;
+}
+
+/**
+ * A notice a person's running turn took itself (FIX-2159), handled as
+ * `onTaskSettled` handles one: the same steps, in the same order, so the
+ * ending is heard once whichever request took it. Only what is said
+ * differs: the caller says the line in its own request rather than waking a
+ * turn. `true` when this is the first time the conversation acts on it, so
+ * the line is the caller's to say. Throws when the Error Reporter didn't take
+ * a final failure: the notice stays taken by the running request, and the
+ * queued copy takes it over once that request ends.
+ */
+export async function settleTakenNotice(ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<boolean> {
+  await beforeAcknowledge(ctx, notice);
+  return acknowledgeOnce(ctx, ref, row, notice);
+}
+
+/**
  * The turn a notice wakes. In a task session whose task waits on its pieces,
  * its answer is noted as the task's result for the check at the request's end
  * (FIX-2077); anywhere else the note is nothing.
@@ -323,21 +365,19 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
-      await onEnding(ctx, notice);
-      await reportFailure(ctx, notice);
+      await beforeAcknowledge(ctx, notice);
       if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.asked !== true) {
         return settleConversationResult(ctx, ref, row, notice);
       }
-      const first = await noteSeen(ctx, noticeKey(notice));
       // Acknowledged here, once reported and deduped, before what it wakes: the
       // check at this request's end reads a piece whose notice is still owed as
       // holding its task (FIX-2077).
-      await ref.patchMetadata(row.id, clearNotice(notice));
+      const first = await acknowledgeOnce(ctx, ref, row, notice);
       const decision = decideNotice(notice, options.policy(ctx));
       // A waited-on row's turn, or a retry's next attempt: the pass's, which
       // resumes it or starts it. Every copy runs it; the pass is one at a time.
       if (decision.act === "resume-wait" || decision.act === "run-board") return { act: "run-board" };
-      if (first !== true) return { act: "none" };
+      if (!first) return { act: "none" };
       return {
         act: decision.act,
         text: noticeText(notice, row),

@@ -70,6 +70,17 @@ export {
   steerTurnEntry,
   type SteerTurnEntryOptions
 } from "./conversation-board/steer";
+// A person's running turn hears the tasks that finished while it answered
+// (FIX-2159): the take, the pre-built `answerAgain` source, and the cap on
+// answers again in one request.
+export {
+  finishedTaskSchema,
+  finishedTasksAnswerAgain,
+  takeFinishedTasks,
+  type FinishedTask,
+  type FinishedTasksAnswerAgainOptions
+} from "./conversation-board/take-finished";
+export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
 export {
   backfillBoardWakes,
   type BoardWakeBackfillOptions,

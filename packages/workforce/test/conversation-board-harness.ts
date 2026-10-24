@@ -24,7 +24,7 @@ import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "
 import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
@@ -166,6 +166,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
+  answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   stores?: StoreRegistry;
   /** Told the names of the tools each model call is handed, by the calling block's name. */
   observeTools?: (blockName: string | undefined, names: string[], input: unknown) => void;
@@ -264,7 +266,11 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   });
   const tasker = taskerFlow(installation, runs, options.holds ?? new Map());
   const helper = helperFlow(installation);
-  const agent = defineAgentWorkerFlow({ installation, ...(options.agent ?? {}) });
+  const agent = defineAgentWorkerFlow({
+    installation,
+    ...(options.agent ?? {}),
+    ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain })
+  });
   const coordinator = defineCoordinatorFlow({
     installation,
     routeModel: "typesafe-ai/jev",

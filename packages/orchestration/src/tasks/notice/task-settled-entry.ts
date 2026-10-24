@@ -40,6 +40,7 @@ import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-sta
 import { z } from "zod";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
+import { readCommittedTask } from "../collection/read-committed";
 import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
@@ -146,6 +147,57 @@ export async function withCascadeNamed(
 }
 
 /**
+ * Take `notice` for the running request (FIX-2123), in one conditional write,
+ * so a wait's drop and this delivery can't both go through: the notice with
+ * the dependents its ending cancelled named, ready to handle. `"busy"` when a
+ * request that hasn't ended, running or parked, took it first: that request
+ * is delivering it. `"gone"` when the write found it no longer owed, or held
+ * by another request. A taker that ended without clearing it (its block
+ * failed) is taken over.
+ */
+async function takeFor(
+  ctx: BlockContext,
+  board: { ref: TaskCollectionRef; delivery: DeclaredDelivery },
+  row: Task,
+  notice: TaskSettledInput
+): Promise<TaskSettledInput | "busy" | "gone"> {
+  const own = ctx.request.identity.id;
+  const taker = noticeTakenBy(row, notice);
+  if (taker !== undefined && taker !== own && !(await hasEnded(ctx, taker))) return "busy";
+  if (board.ref.takeNotice !== undefined) {
+    const took = await board.ref.takeNotice(row.id, notice, {
+      by: own,
+      ...(taker !== undefined && taker !== own ? { replacing: taker } : {})
+    });
+    if (took.outcome !== "recorded") return "gone";
+  }
+  return withCascadeNamed(board, row, notice);
+}
+
+/**
+ * Take an owed notice in the running request, in its name (FIX-2159), the way
+ * `onTaskSettled` takes one before its block runs: through the row's take
+ * record, never the hold on a running filer, so the copy `onTaskSettled`
+ * queued finds it taken and runs nothing while this request runs, takes it
+ * over if this request ends without clearing it, and finds it gone once it
+ * is cleared. The caller handles the notice and clears it
+ * ({@link clearNotice}), as the entry's block and acknowledgement do.
+ *
+ * Reads the row committed (`readCommittedTask`): an ending another request
+ * wrote after this one first read the board is not in its snapshot.
+ *
+ * @returns The notice taken, with the dependents its ending cancelled named,
+ *   or `undefined` when the row doesn't owe it or another request holds it.
+ */
+export async function takeOwedNotice(ctx: BlockContext, notice: TaskSettledInput): Promise<TaskSettledInput | undefined> {
+  const board = await boardOf(ctx, notice.boardId);
+  const row = board === undefined ? undefined : await readCommittedTask(board.ref, notice.taskId);
+  if (board === undefined || row === undefined || !isNoticeOwed(row, notice)) return undefined;
+  const taken = await takeFor(ctx, board, row, notice);
+  return typeof taken === "string" ? undefined : taken;
+}
+
+/**
  * Build the `onTaskSettled` internal entry: spread it as
  * `internal: { actions: { onTaskSettled: taskSettledEntry({ block }) } }`.
  */
@@ -195,22 +247,12 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
         return { owed: false };
       };
       if (busy || heldFor !== undefined) return notNow(heldFor);
-      // Taken in one conditional write before the block runs (FIX-2123), so a
-      // wait's drop and this delivery can't both go through. Taken by a request
-      // that hasn't ended, running or parked: it is delivering it, and this
-      // copy runs nothing (recorded as turned away, so the notice doesn't age
-      // out while it is delivered). Taken by one that ended without clearing
-      // it (its block failed): this copy takes it over.
-      const taker = noticeTakenBy(row, notice);
-      if (taker !== undefined && taker !== own && !(await hasEnded(ctx, taker))) return notNow();
-      if (board!.ref.takeNotice !== undefined) {
-        const took = await board!.ref.takeNotice(row.id, notice, {
-          by: own,
-          ...(taker !== undefined && taker !== own ? { replacing: taker } : {})
-        });
-        if (took.outcome !== "recorded") return { owed: false };
-      }
-      return { owed: true, notice: await withCascadeNamed(board!, row, notice) };
+      const taken = await takeFor(ctx, board!, row, notice);
+      // Being delivered by a request that hasn't ended: recorded as turned
+      // away, so the notice doesn't age out while it is delivered.
+      if (taken === "busy") return notNow();
+      if (taken === "gone") return { owed: false };
+      return { owed: true, notice: taken };
     }
   });
 
