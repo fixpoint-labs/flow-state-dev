@@ -108,7 +108,7 @@ export interface WorkforceClient {
    * one they were filed in. Rejects, storing nothing, for a project the user
    * isn't a member of (a private one: isn't theirs), and for a session that
    * isn't the user's own conversation: the project coordinator's, a task's,
-   * a delegate's or a workstream lead's.
+   * a delegate's or a workstream lead's, or one running another worker.
    */
   setWorkProject(
     worker: string,
@@ -353,7 +353,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     setWorkProject: async (worker, project, setOptions) => {
       const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
       const flow = flowOf(await readRoster((await roster()).id), worker);
-      return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project })) as SetWorkProjectOutput;
+      return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
     }
   };
   return client;

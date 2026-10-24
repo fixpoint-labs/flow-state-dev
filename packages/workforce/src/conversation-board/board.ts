@@ -131,6 +131,7 @@ import {
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
   TASK_ID_STATE_KEY,
+  WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
 import { FILED_HOP, FILED_PROJECT, PIECE_OF, DISPATCH_ENTRY } from "./board-entries";
@@ -145,7 +146,8 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { parseProjectRef, type ProjectAddressRef } from "../projects/workstream-ref";
+import { projectAddressSchema } from "../projects/collections";
+import { parseProjectRef, projectRef, type ProjectAddressRef } from "../projects/workstream-ref";
 import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
@@ -380,6 +382,10 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
  * stamp in a delegate's ongoing session).
  */
 async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp: string | null; own: ProjectAddressRef | undefined }> {
+  if (root !== undefined && !isStamped(root)) {
+    const legacy = legacyProjectOf(ctx.session.state, root);
+    return { stamp: legacy === undefined ? null : projectRef(legacy), own: legacy };
+  }
   const stamp = isStamped(root) ? (filedProjectOf(root) ?? null) : await filingProjectStampOf(ctx);
   const inherited = stamp === null ? undefined : parseProjectRef(stamp);
   const own = isStamped(root) ? inherited : (filingProjectAddressOf(ctx.session.state) ?? inherited);
@@ -387,16 +393,32 @@ async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp:
 }
 
 /**
+ * The project a row filed before rows carried the stamp was filed in
+ * (FIX-2161): its conversation's as it stood then, before a user could set
+ * one (`workProjectId`), else the one its input names, which its session's
+ * run read. `undefined` for none.
+ */
+function legacyProjectOf(state: unknown, row: Pick<Task, "input">): ProjectAddressRef | undefined {
+  const { [WORK_PROJECT_STATE_KEY]: _set, ...before } = (state ?? {}) as Record<string, unknown>;
+  const conversation = filingProjectAddressOf(before);
+  if (conversation !== undefined) return conversation;
+  const named = projectAddressSchema.safeParse((row.input as { project?: unknown } | null | undefined)?.project);
+  return named.success ? named.data : undefined;
+}
+
+/**
  * The project a task's session is handed (FIX-2161): the one its row was
  * stamped with when it was filed, so a task waiting on the board keeps it
  * when its conversation's project changes; none for a row filed with none.
- * A row filed before rows carried the stamp takes its conversation's, as
- * before (BP-030).
+ * A row filed before rows carried the stamp takes its conversation's as it
+ * stood then, before a user could set one (BP-030).
  */
 async function handedProjectOf(ctx: BlockContext, taskId: string): Promise<string | undefined> {
   const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
   const row = ref?.get(taskId);
-  return isStamped(row) ? filedProjectOf(row) : filingProjectOf(ctx.session.state);
+  if (isStamped(row)) return filedProjectOf(row);
+  const { [WORK_PROJECT_STATE_KEY]: _set, ...before } = (ctx.session.state ?? {}) as Record<string, unknown>;
+  return filingProjectOf(before);
 }
 
 /**
