@@ -24,7 +24,8 @@ A durable sequencer shaped like the manager: `coding-run` (a side effect counted
 store) → `review` (`ctx.suspend` with `human_input`, standing in for FIX-2129's
 `waitForUser({ kind: "review" })`) → `loopBack` to `coding-run` on a revision → `report`. Two
 cases, each with traces off and on: accept at once; revise, then accept. Answers go through
-`continueRequest`, as the resume route does.
+`continueRequest`, as the resume route does. The `loopBack` here stands in for the manager's steer step and its
+loop back (FIX-2086), which the real chain uses for a revision.
 
 ## What it showed · 2026-10-23, on `main` at `31d68caa`
 

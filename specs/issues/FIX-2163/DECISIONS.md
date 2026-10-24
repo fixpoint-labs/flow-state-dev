@@ -108,6 +108,12 @@ Then the deadline fails the task for good, and the work stays on its branch.
 | A separate review timeout on the manager | The product rule: the person-stop deadline is the only clock. Two clocks for one wait |
 | Review every *done* run, changes or not | A run with nothing on its branch has nothing to review, and the lab sends it straight to *Resolved* (FIX-2157 D5) |
 
+## Notes from review
+
+For the implementer; none of these changes the approach. Recorded verbatim from #3819.
+
+- **Cursor, one commit read:** "`decide` already has full `RunCommits` via `commitsOf()`. When building the review prompt here, reuse that snapshot rather than calling `readRunCommits` again in settle—cheap relative to the harness, but it's an easy accidental duplication given only `commits` count is on `decided.output` today." *The snapshot must also carry whether the read was verified (Codex, round 1), so reuse means one read that answers both.*
+
 <a name="settled"></a>
 ## Settled
 

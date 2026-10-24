@@ -180,6 +180,6 @@ wait is FIX-2129's. If wrong: a second way to wait for a review grows in harness
 2. **[D2](DECISIONS.md#d2) · At the person-stop deadline, an unreviewed run completes, and its
    output says no review came.** If wrong: a week-old change is marked done that nobody looked at.
 
-**Open: none.** D2 is the one to weigh: it decides what a forgotten review does.
+**Open: none.** Both are decided. D2 costs the most if it's wrong, because it decides what a forgotten review does.
 
 Feature · `harness-manager`, a goal check · medium · epic FIX-2152 · blocked by FIX-2129, FIX-2131, FIX-2132 (FIX-2137 merged)
