@@ -315,7 +315,7 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a self-contained recovery client.
+Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
 
 ### `<ApprovalRenderer>`
 
@@ -443,7 +443,7 @@ While a leaf is open, `leafToolbar` is called with the leaf's `kind`, `address` 
 
 A row's actions, whatever `rowTrailing` and `leafToolbar` return for it, are hidden until the pointer is over the row or keyboard focus is inside it. They stay shown on the selected row. On a touch screen with no hover they are always shown. Hidden actions keep their space, so nothing on the row shifts when they appear, and they stay in the tab order, so tabbing to one reveals it.
 
-You can't pin an action visible. Only a session row's label is yours to set: it shows the session's `title`, which you set through the session client's `createSession` or `updateSessionMetadata`. Put a status your users need at a glance there. A session with no title shows its id instead, shortened to its prefix and last six characters (`sess_…8a71aa`) when the server generated it. Any other id, such as one you supplied, shows in full. Hover a session row to see its full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
+You can't pin an action visible. Only a session row's label is yours to set: it shows the session's `title`, which you set through the client's `flow(address).createSession` or `sessions.updateMetadata`. Put a status your users need at a glance there. A session with no title shows its id instead, shortened to its prefix and last six characters (`sess_…8a71aa`) when the server generated it. Any other id, such as one you supplied, shows in full. Hover a session row to see its full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
 Each level of the tree indents by the width of the expand arrow, so a row's arrow sits under its parent's label. Labels at the same level line up, whether or not the row can expand. A dashed line runs down from each open row past everything under it. Set `--fsd-nav-guide` to colour the lines, or to `transparent` to hide them. They take no space either way. Left unset, they draw in a translucent grey.
 

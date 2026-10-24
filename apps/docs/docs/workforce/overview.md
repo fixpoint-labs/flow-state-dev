@@ -165,7 +165,7 @@ The resolver returns `{ userId, orgId }` from the verified credential, or `null`
 
 `serve()` runs a long-lived Node server. Next.js and Vercel have their own adapters; [Host adapters](../server/host-adapters.md) lists them.
 
-In the browser or in Node, give the client a `fetcher` that adds the credential. Pass the same one to every client your app opens. The Workforce pages use `createWorkforceClient`, `createClient`, `createSessionClient` and `createSessionSSEClient`, and every other client in `@flow-state-dev/client` takes it too (see [Client options](../configuration/client.md#fields)). A client without it is refused with 401.
+In the browser or in Node, give `createClient` a `fetcher` that adds the credential. Every call and stream the client makes goes through it, and so does every call of a workforce client built on it (see [Client options](../configuration/client.md#adding-credentials)). A call without the credential is refused with 401.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -179,9 +179,10 @@ const fetcher = (input: RequestInfo | URL, init?: RequestInit) => {
   return fetch(input, { ...init, headers });
 };
 
-const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+const fsd = createClient({ userId, baseUrl, fetcher });
+const workforce = createWorkforceClient(fsd);
 const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
-const lead = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
+await fsd.flow(session.flowKind).send("respond", { message: "Where are we on the launch?" }, { sessionId: session.id });
 ```
 
 Actions run as the user and organization your resolver returns; the client's `userId` doesn't override it.

@@ -58,6 +58,34 @@ Point the client at a custom mount by passing the same value as `apiPath`, eithe
 
 ---
 
+## Calling flows in the same process
+
+Sometimes the caller and the engine share a process: a script, a test, a queue worker, a CLI. `createInProcessFetch` from `@flow-state-dev/engine` gives that caller a fetch-shaped function that hands each request straight to the engine, with no web server and no port.
+
+```ts
+import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
+import { support } from "./flows/support";
+
+const flowState = createFlowState({ flows: { support } });
+
+const fsd = createClient({ userId: "user_1", fetcher: createInProcessFetch(flowState) });
+const sent = await fsd.flow("support").send("reply", { text: "Hi" });
+await sent.wait();
+```
+
+`createInProcessFetch(app, { basePath? })` takes a `FlowState` or a router from `createFlowApiRouter`, and returns `(input, init?) => Promise<Response>`. Pass it as a client's `fetcher`, or as `FlowProvider`'s.
+
+- Only the URL's path is read. The origin is ignored, and a relative path works.
+- `basePath` is where the API is mounted, `"/api/flows"` by default. Match it to the client's `apiPath`. A path outside it answers `404`.
+- Each call waits for the stores to initialize. If they failed to, it answers `500 { error: "Server failed to initialize" }`.
+- `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.
+- SSE responses stream, and an `AbortSignal` in `init` reaches the route.
+
+The router treats an in-process call like any HTTP request. Credentials ride the request headers and go through your `resolvePrincipal`; being in the same process grants nothing extra. `createServerApp()` dispatches through the same function, so the routes, checks and answers match what a remote client gets.
+
+---
+
 ## Choosing an adapter
 
 Walk it in this order:

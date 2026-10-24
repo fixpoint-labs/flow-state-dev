@@ -192,12 +192,20 @@ export const { GET, POST, PATCH, DELETE } = router;
 
 ### Calling the router in process
 
-`createInProcessFetch(app, { basePath? })` turns a `FlowState` (or a router) into a fetch-shaped function, `(input, init?) => Promise<Response>`, that dispatches to the engine in this process, with no web server. Pass it as a client's `fetcher`:
+`createInProcessFetch(app, { basePath? })` takes a `FlowState` or a router and returns a fetch-shaped function, `(input, init?) => Promise<Response>`, that hands each request to the engine in this process, with no web server. Its usual home is a client's `fetcher`:
 
 ```ts
 import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 
-const flowState = createFlowState({ flows: { support }, stores: { default: { primary: stores } } });
+const flowState = createFlowState({ flows: { support } });
+const fsd = createClient({ userId: "u1", fetcher: createInProcessFetch(flowState) });
+await fsd.flow("support").send("reply", { text: "Hi" });
+```
+
+You can also call it directly, as you would `fetch`:
+
+```ts
 const fetcher = createInProcessFetch(flowState);
 const res = await fetcher("/api/flows/support/actions/reply", {
   method: "POST",
@@ -206,7 +214,13 @@ const res = await fetcher("/api/flows/support/actions/reply", {
 });
 ```
 
-Only the URL's path is read; its origin is ignored, and a relative path works. Each call waits for store init (`500 { error: "Server failed to initialize" }` if it failed), picks the router handler by method (`405` for any other, `HEAD` included), and takes the route from the path under `basePath` (default `"/api/flows"`; `404` outside it). The `Request` reaches the router unchanged, so SSE bodies stream and an `AbortSignal` passed in `init` reaches the route. The router sees an ordinary HTTP request (`source: "http"`): credentials ride the request headers, and there is no trust shortcut for in-process callers. `@flow-state-dev/node`'s `createServerApp` dispatches through the same function.
+- Only the URL's path is read. The origin is ignored, and a relative path works.
+- `basePath` is the mount, `"/api/flows"` by default. A path outside it answers `404`.
+- Each call waits for store init. A failed init answers `500 { error: "Server failed to initialize" }`.
+- `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.
+- SSE bodies stream, and an `AbortSignal` passed in `init` reaches the route.
+
+The router treats the call as an ordinary HTTP request (`source: "http"`): credentials ride the request headers, and being in the same process grants nothing. `@flow-state-dev/node`'s `createServerApp` dispatches through the same function, so the answers match what a remote caller gets.
 
 The registry indexes instances by id and `get(id)` is an exact lookup: a singleton is found by its kind, a collection member only by its own id, and a miss is `undefined` with no first-registered fallback. Ids are unique across the registry, so a duplicate id, a singleton under a custom id, or a kind mixing singleton and collection instances throws `FlowIdentityConflictError` at `register`. See the [Engine API](https://flow-state.dev/docs/api/server#createflowregistry) and [server setup](https://flow-state.dev/docs/server/setup#addressing-an-instance).
 
@@ -1156,9 +1170,9 @@ The server runs three coordinated mechanisms so a dropped SSE connection doesn't
 Two user-addressed routes cover requests a crash left behind:
 
 - `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers only the requests **that call** marked `interrupted`. A request the startup pass or the sweeper marked first is not in it.
-- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them, and the same records on every call until each is continued, retried or removed. It sweeps nothing. Poke `check-interrupted` first when you want an answer that doesn't wait for the next sweep.
+- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them. It changes nothing, so it returns the same records on every call until each is continued, retried or removed. Call `check-interrupted` first for an answer that doesn't wait for the next sweep; the client's `requests.interrupted()` does both.
 
-Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take (the kind for a singleton, the instance id for a collection member); a record written before instance ids falls back to its `flowKind`. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
+Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take: the kind for a singleton, the instance id for a collection member. A record that names no instance carries its `flowKind` there. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
 
 ```ts
 createFlowApiRouter({

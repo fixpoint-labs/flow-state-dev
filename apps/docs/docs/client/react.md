@@ -41,6 +41,27 @@ Renderers map item types to React components:
 
 Nested providers merge renderers (child keys override parent keys).
 
+### Connection
+
+`FlowProvider` also takes `baseUrl`, `apiPath` and `fetcher`, and every hook and component under it calls through one client built from them and `userId`. A `fetcher` that adds an `Authorization` header gives every read and stream that credential:
+
+```tsx
+const fetcher = useMemo(
+  () => (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return fetch(input, { ...init, headers });
+  },
+  [token],
+);
+
+<FlowProvider flowKind="my-app" userId={userId} fetcher={fetcher}>
+  <MyUI />
+</FlowProvider>
+```
+
+Pass a stable reference. A nested provider inherits its parent's. See [Client options](/docs/configuration/client#flowprovider).
+
 ## Hooks
 
 ### `useFlow` — Session Lifecycle
