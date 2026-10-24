@@ -191,7 +191,7 @@ const withRuns = await fsd.sessions.list({
 | `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. Any other value answers `400`. |
 | `state` | `Record<string, string>` | Only sessions whose readonly state fields hold these values. Needs `flowKind` or `flowId`; a field that isn't readonly on that flow is refused. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
-Without `include`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Rows belonging to another principal, organization or tenant are absent either way.
+Without `include`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
 
 ### `sessions.children(parentSessionId, options?)`
 

@@ -31,7 +31,7 @@ Server:                                Client:
 
 ### Finding interrupted requests
 
-Two routes, both scoped to the caller, list requests a crash or restart left `interrupted`:
+These routes list requests a crash or restart left `interrupted`. Both are scoped to the caller:
 
 - `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers the requests that call marked.
 - `GET /api/flows/users/:userId/interrupted-requests` lists every `interrupted` request of the user's, whoever marked it, and changes nothing. A request stays listed until it is continued or removed.

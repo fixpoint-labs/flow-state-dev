@@ -105,17 +105,18 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 | `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
-| `resume({ suspensionId, action, data?, resumedBy? })` | Answer a pending stop. The run carries on under the same id. `{ stream: true }` returns its SSE `Response`. |
+| `resume({ suspensionId, action, data?, resumedBy? })` | Answer a pending suspension. The run carries on under the same id. `{ stream: true }` returns its SSE `Response`. |
 | `stream(callbacks)` | Follow the request's events (below). |
 
-`continue` and `retry` need the request's session. The handle reads it from one
-status call and keeps it. A request with no session rejects before any call.
+`continue` and `retry` need the request's session. A handle from `send` or
+`requests.interrupted()` already knows it; one from `request(id)` reads it from
+one status call and keeps it. A request with no session rejects before any call.
 
 `resume`'s `action` is one of `"approve" | "reject" | "submit" | "skip"`.
 `submit` carries a typed payload in `data`, which the server validates against
-the stop's `resumeSchema` (an invalid payload is a 400 with path-keyed
+the suspension's `resumeSchema` (an invalid payload is a 400 with path-keyed
 `validationErrors`). `skip` declines an optional step. An action outside the
-stop's `allow` set is a 409.
+suspension's `allow` set is a 409.
 
 ### After a crash
 
