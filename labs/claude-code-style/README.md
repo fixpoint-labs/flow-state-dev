@@ -48,7 +48,7 @@ fixtures are deleted and each verb calls the package.
 |---|---|
 | The sessions list and *New session* | FIX-2158, a user's sessions of one worker |
 | The project picker and a session's project | FIX-2161, an ordinary session opened on a project |
-| A result card inside a running turn | FIX-2159, the lab's `answerAgain` source block (built at wiring) |
+| A result card inside a running turn | FIX-2159, `answerAgain: true` on the main worker (set at wiring) |
 | Sending, interrupting, the thread and the tasks pane | `respond`, aborting a request, session items, `listTasks` |
 
 ## What this app adds

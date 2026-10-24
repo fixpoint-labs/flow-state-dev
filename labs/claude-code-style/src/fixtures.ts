@@ -158,7 +158,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       statusNote: undefined,
       work: [...task.work, { kind: "assistant", id: nextId("w"), text: summary }],
     });
-    // fixture: stands in for the lab's answerAgain source block (FIX-2159): the take shows as an item in the running request.
+    // fixture: stands in for the main worker's `answerAgain: true` (FIX-2159): the take shows as an item in the running request.
     push(s, {
       kind: "result",
       id: nextId("r"),
