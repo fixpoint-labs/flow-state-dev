@@ -38,7 +38,7 @@ The command does three things:
 2. **Starts an HTTP server** that routes `/api/flows/*` to the flow API router and serves the DevTool UI for everything else.
 3. **Opens your browser** pointing at the DevTool.
 
-Flow data persists to `.fsdev/data/` on disk, so sessions survive restarts.
+Flow data persists to `.fsdev/data/fsdev.db` on disk, the file `fsdev run` writes to as well, so sessions survive restarts and a run from `fsdev run` that paused for approval shows up here to answer.
 
 For production, `fsdev serve` runs the same flow API and MCP endpoints with no DevTool UI and binds `0.0.0.0:$PORT`. See the [CLI API](/docs/api/cli) for its options and the loopback-bind guard.
 

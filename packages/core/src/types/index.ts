@@ -164,7 +164,7 @@ export type {
   ResolvedPrincipal
 } from "./auth";
 
-export { DEFAULT_ORG_ID, isValidOrgId } from "./auth";
+export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./auth";
 
 export type {
   ScheduleConfig,

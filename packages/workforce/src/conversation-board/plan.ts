@@ -15,6 +15,14 @@
  *   then the worker answers once more, told how every step ended, a failed one
  *   included. That answer is the request's result. A request that filed no
  *   step runs the turn alone and costs nothing more.
+ * - **One answer-again step, two sources** (FIX-2159). The answer after the
+ *   plan is one source of the step that answers again after the turn; a flow
+ *   may pass a second (`planned(turn, answerAgain)`), a block whose
+ *   `{ message }` the worker answers again about in the same request: the
+ *   agent flow's `answerAgain`, which hears the tasks that finished while the
+ *   worker answered. After each answer the step asks its sources again, and
+ *   answers while one asks something, at most {@link MAX_ANSWERS_AGAIN} times
+ *   in a request, the plan's answer included. After the last, no source runs.
  * - **The answering turn files no step for itself.** Its filing is refused,
  *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
  *   files for a delegate is dispatched as usual.
@@ -120,6 +128,25 @@ const PLAN_SEEN_STATE = "planSeen";
  * this recorded decision, not a fresh read of the ledger.
  */
 const PLAN_OWED_STATE = "planOwed";
+
+/**
+ * The most times one request answers again after its turn (FIX-2159): the
+ * answer after its plan and each answer a source asked for count alike, so a
+ * source that always has a message can't loop a turn forever. After the last
+ * one no source runs, and what it would have taken stays for after the turn.
+ * Apart from core's `maxSteps`, which counts model calls in one answer, and
+ * the board's pass rounds, which count drains.
+ */
+export const MAX_ANSWERS_AGAIN = 3;
+
+/** Request state: how many times this request answered again. */
+const ANSWERS_AGAIN_STATE = "answersAgain";
+
+/** Request state: what this round's sources asked the worker to answer about, in order. */
+const ANSWER_ROUND_MESSAGES_STATE = "answerRoundMessages";
+
+/** Request state: the plan's ended steps were put to the worker once, so its source has nothing more. */
+const PLAN_BRIEFED_STATE = "planBriefed";
 
 /** Whether the running request is in its answering turn. */
 export function isAnsweringTurn(ctx: BlockContext): boolean {
@@ -243,10 +270,14 @@ function answerMessage(steps: readonly Task[]): string {
 export interface Planning {
   /**
    * The turn, with its plan: `{ message }` in, the answer out. Wrapping the
-   * same turn twice returns the same block, and a planned turn is returned
-   * as it is.
+   * same turn twice (with the same `answerAgain`) returns the same block, and
+   * a planned turn is returned as it is.
+   *
+   * @param answerAgain A second source for the answer-again step (FIX-2159),
+   *   beside the plan: a block run after each answer, whose `{ message }`, when
+   *   it returns one, the worker answers again about in the same request.
    */
-  planned(turn: BlockDefinition<any, any>): BlockDefinition<any, any>;
+  planned(turn: BlockDefinition<any, any>, answerAgain?: BlockDefinition<any, any>): BlockDefinition<any, any>;
   /** Whether any turn on the flow was wrapped: only then is a worker offered its steps. */
   wired(): boolean;
 }
@@ -269,7 +300,7 @@ export interface PlanningOptions {
 
 /** Build one flow's planning. */
 export function definePlanning(options: PlanningOptions = {}): Planning {
-  const byTurn = new WeakMap<object, BlockDefinition<any, any>>();
+  const byTurn = new WeakMap<object, Map<object | undefined, BlockDefinition<any, any>>>();
   const plannedBlocks = new WeakSet<object>();
   let wired = false;
 
@@ -286,7 +317,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
 
   /**
    * After the drain: end any step left open (one whose dependency failed, so
-   * it can never run), mark the request as answering, and brief the turn.
+   * it can never run), and brief the answer: the plan's message.
    */
   const briefAnswer = handler({
     name: "plan-brief-answer",
@@ -303,8 +334,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       const ended = (own?.list() ?? [])
         .filter((row) => isTerminalStatus(row.status) && !seen.has(row.id))
         .sort((a, b) => a.createdAt - b.createdAt);
-      // A step that threw left its mark: the answering turn is no step.
-      await ctx.request.patchState({ [PLAN_ANSWERING_STATE]: true, [PLAN_STEPPING_STATE]: false } as never);
+      await ctx.request.patchState({ [PLAN_BRIEFED_STATE]: true } as never);
       return { message: answerMessage(ended) };
     }
   });
@@ -342,7 +372,8 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     execute: async (_input, ctx) => {
       const own = await ownPlanLedger(ctx as never);
       const workable = (own?.list() ?? []).filter(isWorkable);
-      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0 } as never);
+      // The answer-again step starts afresh for this turn: nothing briefed, nothing answered again yet.
+      await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0, [PLAN_BRIEFED_STATE]: false, [ANSWERS_AGAIN_STATE]: 0, [ANSWER_ROUND_MESSAGES_STATE]: [] } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
       if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx as never);
     }
@@ -362,9 +393,76 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
   const owesPlan = (_answer: unknown, ctx: unknown): boolean =>
     ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_OWED_STATE] === true;
 
-  const planned = (turn: BlockDefinition<any, any>): BlockDefinition<any, any> => {
+  /** The plan's source: due once, when the turn left steps to work. */
+  const planDue = (value: unknown, ctx: unknown): boolean =>
+    owesPlan(value, ctx) &&
+    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_BRIEFED_STATE] !== true;
+
+  /** Keep what a source asked the worker to answer about, when it asked anything. */
+  const keepMessage = handler({
+    name: "answer-again-keep-message",
+    inputSchema: z.unknown(),
+    execute: async (value, ctx) => {
+      const message = (value as { message?: unknown } | null | undefined)?.message;
+      if (typeof message !== "string" || message.trim() === "") return;
+      const kept = ((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWER_ROUND_MESSAGES_STATE] ?? []) as string[];
+      await ctx.request.patchState({ [ANSWER_ROUND_MESSAGES_STATE]: [...kept, message] } as never);
+    }
+  });
+
+  const roundSchema = z.object({ answer: z.unknown(), again: z.boolean().optional() });
+  const roundEndSchema = z.object({ answer: z.unknown(), again: z.boolean(), message: z.string().optional() });
+
+  /**
+   * The round's sources have run: when any asked something, mark the request
+   * as answering (an answering turn files no step for itself, and is no step),
+   * count the answer, and brief it.
+   */
+  const briefRound = handler({
+    name: "answer-again-brief",
+    inputSchema: roundSchema,
+    outputSchema: roundEndSchema,
+    execute: async (value, ctx): Promise<z.infer<typeof roundEndSchema>> => {
+      const state = (ctx.request.state ?? {}) as Record<string, unknown>;
+      const messages = (state[ANSWER_ROUND_MESSAGES_STATE] ?? []) as string[];
+      if (messages.length === 0) return { answer: value.answer, again: false };
+      await ctx.request.patchState({
+        [ANSWERS_AGAIN_STATE]: Number(state[ANSWERS_AGAIN_STATE] ?? 0) + 1,
+        // Consumed, so the next round does not ask these again.
+        [ANSWER_ROUND_MESSAGES_STATE]: [],
+        [PLAN_ANSWERING_STATE]: true,
+        // A step that threw left its mark: the answering turn is no step.
+        [PLAN_STEPPING_STATE]: false
+      } as never);
+      return { answer: value.answer, again: true, message: messages.join("\n\n") };
+    }
+  });
+
+  /**
+   * The round's answer, and whether to look again. At the cap, no: a further
+   * round would run a source.
+   */
+  const answeredAgain = handler({
+    name: "answer-again-answered",
+    inputSchema: z.unknown(),
+    outputSchema: roundEndSchema,
+    execute: (answer, ctx): z.infer<typeof roundEndSchema> => {
+      const answered = Number((ctx.request.state as Record<string, unknown> | undefined)?.[ANSWERS_AGAIN_STATE] ?? 0);
+      return { answer, again: answered < MAX_ANSWERS_AGAIN };
+    }
+  });
+
+  /** The request's answer: the last one the worker gave. */
+  const lastAnswer = handler({
+    name: "answer-again-last",
+    inputSchema: roundSchema,
+    outputSchema: z.unknown(),
+    execute: (value) => value.answer
+  });
+
+  const planned = (turn: BlockDefinition<any, any>, answerAgain?: BlockDefinition<any, any>): BlockDefinition<any, any> => {
     if (plannedBlocks.has(turn)) return turn;
-    const known = byTurn.get(turn);
+    const known = byTurn.get(turn)?.get(answerAgain);
     if (known !== undefined) return known;
 
     const brief = handler({
@@ -389,19 +487,44 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       // In order: each step sees the one before it end.
       concurrency: 1
     });
-    let answer = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
+    // The plan's source: drain the steps, then how each ended.
+    const planSource = sequencer({ name: `${turn.name}-plan-answer`, inputSchema: z.unknown() })
       .tap(notePlanStart)
       .tap(board.drain)
       .step(briefAnswer)
+      .tap(keepMessage);
+    // Each source in turn: the plan's, once, then the flow's.
+    let sources = sequencer({ name: `${turn.name}-answer-again-sources`, inputSchema: z.unknown() })
+      .tapIf(planDue, planSource);
+    if (answerAgain !== undefined) {
+      // Handed the worker's last answer.
+      const source = sequencer({ name: `${turn.name}-answer-again-source`, inputSchema: z.unknown() }).step(answerAgain).tap(keepMessage);
+      sources = sources.tap((value: { answer?: unknown }) => value.answer, source);
+    }
+    const answering = sequencer({ name: `${turn.name}-answer-again-turn`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
       .tap(endAnswer)
-      .tap(endPlanWaiting);
-    if (options.afterPlan !== undefined) answer = answer.tap(options.afterPlan);
+      .step(answeredAgain);
+    // One round: the sources, then one answer about everything they asked.
+    const round = sequencer({ name: `${turn.name}-answer-again-round`, inputSchema: roundSchema })
+      .tap(sources)
+      .step(briefRound)
+      .stepIf((value: { again: boolean }) => value.again, (value: { message?: string }) => ({ message: value.message ?? "" }), answering);
+    // Another round while the last one answered under the cap. At the cap
+    // `again` is false, so no further source runs.
+    let again = sequencer({ name: `${turn.name}-answer-again`, inputSchema: roundSchema })
+      .doWhile((value: { again?: boolean }) => value.again === true, round)
+      .tapIf(owesPlan, endPlanWaiting);
+    if (options.afterPlan !== undefined) again = again.tapIf(owesPlan, options.afterPlan);
+    const answers = again.step(lastAnswer);
     const block = sequencer({ name: `${turn.name}-planned`, inputSchema: z.object({ message: z.string() }) })
       .step(turn)
       .tap(decidePlan)
-      .stepIf(owesPlan, (value: unknown) => value, answer);
-    byTurn.set(turn, block);
+      // A request with no plan and no source runs the turn alone.
+      .stepIf((value: unknown, ctx: unknown) => answerAgain !== undefined || owesPlan(value, ctx), (answer: unknown) => ({ answer }), answers);
+    const forTurn = byTurn.get(turn) ?? new Map<object | undefined, BlockDefinition<any, any>>();
+    forTurn.set(answerAgain, block);
+    byTurn.set(turn, forTurn);
     plannedBlocks.add(block);
     wired = true;
     return block;

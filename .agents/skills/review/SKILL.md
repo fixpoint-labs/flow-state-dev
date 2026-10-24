@@ -2,7 +2,7 @@
 name: review
 context: fork
 agent: general-purpose
-description: The single definition of how we review — looking for flaws in the work (whether it is the right approach is `analysis`). Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
+description: The single definition of how we review — looking for flaws in the work (whether it is the right approach is `analysis`). Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), reuse (compose existing pieces), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
 argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 ---
 
@@ -24,11 +24,12 @@ set together and merges the results.
 |---|---|---|---|
 | **Coherence** | Does it cohere with the philosophy and the patterns around it? | `audit-coherence` | change + codebase |
 | **Restraint** | Should this exist? overbuilt / YAGNI / 80-20? | `second-look` | change + codebase |
+| **Reuse** | Does each Adds item compose an existing piece, or add a second mechanism? | `reuse-review` | spec / epic / change (not a codebase slice) |
 | **Correctness** | Bugs, logic errors, and the second-path checklist (BP-035)? | code-reviewer sub-agent (below) | change |
 | **Completeness** | All of the spec built, nothing extra, red shown, goal proven? | spec-compliance sub-agent (below) | change **with a spec** |
 | **Depth** *(optional)* | Shallow modules introduced or nearby? | `improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
 
-Coherence, Restraint, and Depth are standalone skills — **dispatch them; don't
+Coherence, Restraint, Reuse, and Depth are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
 so their prompts live below.
 
@@ -36,12 +37,19 @@ so their prompts live below.
 ([`orchestration.md`](../../../docs/contributing/orchestration.md#analysis-and-review)).
 Other shapes (`adhd`) belong there. On a shipped change, run `analysis` directly.
 
+**Reuse is not Restraint.** Restraint asks whether *this* surface earns its keep.
+Reuse asks whether an Adds item is a *duplicate mechanism* — a second cap, marker,
+release path, or a hook where block composition would do. The rule is
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
+
 ## Resolve target & select lenses
 
-- **A change (PR / branch / working diff):** Coherence + Restraint + Correctness, plus
+- **A change (PR / branch / working diff):** Coherence + Restraint + Reuse + Correctness, plus
   **Completeness when a spec or agent-brief is in scope** (pass it in). Depth optional.
-- **A codebase slice / area:** Coherence + Restraint + Depth. (Correctness and
-  Completeness need a diff / spec — skip.)
+- **A spec or epic PR / retained spec:** Coherence + Restraint + **Reuse** (required). The
+  reuse lens is how every spec and epic gets this pass; do not fold it into Restraint.
+- **A codebase slice / area:** Coherence + Restraint + Depth. (Correctness,
+  Completeness, and Reuse need a diff / spec — skip.)
 
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
@@ -63,13 +71,15 @@ approving adds a way to do a job". A bug-route change has no spec, so everything
      the most consequential: a coherence break usually means reshaping the approach, not
      patching lines.
    - **Restraint** → run `second-look` on the target.
+   - **Reuse** → run `reuse-review` on the target (spec, epic, or implementation
+     change). Do not skip it on a spec because Restraint already ran.
    - **Correctness** → the prompt below.
    - **Completeness** (change with a spec) → the prompt below.
    - **Depth** (if selected) → run `improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
    - **Claude model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness**
-     on **Sonnet** — they check decided work. **Coherence** and **Restraint** keep the
-     judgment tier (Opus); **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
+     on **Sonnet** — they check decided work. **Coherence**, **Restraint** and **Reuse** keep
+     the judgment tier (Opus); **Depth** inherits its skill's tier. In **OMP**, use the native dispatch below
      instead; the lens selection and criteria are unchanged.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
@@ -90,6 +100,7 @@ only native roles, frozen inputs, leaf fences, and result validation.
 |---|---|---|
 | Coherence | `fsd-coherence` | `@fsd_design_review` |
 | Restraint | `fsd-restraint` | `@fsd_design_review` |
+| Reuse | `fsd-coherence`, explicitly assigned **Reuse only** | `@fsd_design_review` |
 | Correctness | `fsd-correctness` | `@fsd_code_review` |
 | Completeness | `fsd-completeness` | `@fsd_code_review` |
 | Depth | `fsd-coherence`, explicitly assigned **Depth only** | `@fsd_design_review` |
@@ -157,7 +168,7 @@ const reviewSchema = {
   required: ["reviewedRevision", "lens", "verdict", "summary", "findings", "blockers"],
   properties: {
     reviewedRevision: { type: "string", const: reviewedRevision },
-    lens: { enum: ["coherence", "restraint", "correctness", "completeness", "depth"] },
+    lens: { enum: ["coherence", "restraint", "reuse", "correctness", "completeness", "depth"] },
     verdict: { enum: ["clean", "findings", "blocked"] },
     summary: text,
     findings: {
@@ -179,7 +190,7 @@ const reviewSchema = {
 };
 const reviewTasks = selectedLenses.map(lens => ({
   name: `Fsd${lens[0].toUpperCase()}${lens.slice(1)}`,
-  agent: lens === "depth" ? "fsd-coherence" : `fsd-${lens}`,
+  agent: (lens === "depth" || lens === "reuse") ? "fsd-coherence" : `fsd-${lens}`,
   task: `# Target\n${reviewBrief}\nReviewed revision: ${reviewedRevision}
 # Change
 Read only. Apply the ${lens} lens from the shared review skill, not the full loop.
@@ -277,7 +288,7 @@ to its summary.
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
-  Restraint = `second-look`, Depth = `improve-codebase-architecture`.
+  Restraint = `second-look`, Reuse = `reuse-review`, Depth = `improve-codebase-architecture`.
 - **Dedupe.** Overlapping lenses produce one merged finding, never repeats.
 - **Don't pad.** A lens that finds nothing says so in one line; "appropriately scoped /
   coherent" is a valid, common verdict.

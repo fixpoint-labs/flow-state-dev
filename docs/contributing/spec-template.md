@@ -38,7 +38,8 @@ and how it will be proved. See [`SPEC.md` → The goal](#the-goal-and-how-well-k
 
 **The debt is stated, never implied.** `SPEC.md` names what already exists that the change
 touches or overlaps, what it removes, what it adds that someone will later call debt, and the
-net. The net is a sign-off line. See
+net. Every package addition names the existing piece it considered
+([`orchestration.md`](orchestration.md#compose-existing-pieces)). The net is a sign-off line. See
 [`SPEC.md` → What's already here, and the debt](#whats-already-here-and-the-debt).
 
 **The pictures carry the meaning; the prose reads them.** Both documents open on a table or
@@ -118,6 +119,9 @@ answering one question: **is this the right approach?**
 - **The debt** in `SPEC.md` → *What's already here, and the debt* — an existing primitive,
   method or prior design the change overlaps and doesn't name; something it adds that is debt
   and isn't listed; a net verdict the tables don't support.
+- **Builds on / Adds** in that same section — an Adds item that does not name the existing
+  piece it considered, or that is a second mechanism for something we already have
+  ([`orchestration.md`](orchestration.md#compose-existing-pieces)).
 - A case a person would hit that the people table misses, when it would **invalidate** the
   design.
 - Scope — a deliverable that shouldn't ship, or one that's missing.
@@ -365,7 +369,8 @@ check" is a statement with a reason, never a blank.
 ### What's already here, and the debt
 
 The section that lets a reader trust the change doesn't quietly make the codebase worse. It
-has three parts, in order.
+has four parts, in order. The compose-existing-pieces rule those parts enforce is
+[`orchestration.md`](orchestration.md#compose-existing-pieces) — do not restate it here.
 
 1. **What's already here** — a table: already here · what this does with it. One row for every
    existing primitive, method, pattern or prior design the change touches or overlaps, and the
@@ -379,18 +384,26 @@ has three parts, in order.
      changes for callers. Several predecessors is normal; a dependency is not a supersession,
      and changing one decision does not supersede a whole spec. When the design has no
      retained file, cite its real PR or Linear source; never invent a local path.
-2. **The debt** — a table with three rows, each a list:
+2. **Builds on / Adds** — a table, one row per item this spec adds to a package (a hook, a
+   cap, a marker, a record, a path, a public method): **Adds** · **Existing piece considered** ·
+   **Why that doesn't fit, or how this is composed from it**. The Adds list is as short as
+   possible. An empty table is allowed when the spec only removes or extends; "none" still
+   carries the searches. A dedicated [`reuse-review`](../../.agents/skills/reuse-review/SKILL.md)
+   checks each row against the code.
+3. **The debt** — a table with three rows, each a list:
    - **Removes** — what goes: code, a helper, a second way of doing the job, a special case
      (tenet 3). A spec that removes nothing says so.
    - **Adds** — everything a later reader would call debt: a second way to do a job, a
      compatibility shim or a branch kept for old callers, a special case, a workaround for
      something upstream, a cleanup deferred. Each with why it is accepted now, and — unless it
      is permanent by design — the filed issue that pays it. A shim with no issue has no owner
-     once the spec merges.
+     once the spec merges. **A second way of doing an existing thing counts here**, even when
+     the Builds on / Adds row argues it is composed — the debt line is where the count lives.
    - **Leaves** — debt already in the area that this change doesn't pay, with its issue when
      one exists. Naming it is how a reviewer knows it was seen rather than missed.
-3. **Net** — one line: **down**, **flat** or **up**, and the reason in a clause. This is the
-   debt line on the sign-off. *Up* is allowed; it is never quiet.
+4. **Net** — one line: **down**, **flat** or **up**, and the reason in a clause. This is the
+   debt line on the sign-off. *Up* is allowed; it is never quiet. Any second way of doing an
+   existing thing weights the net toward **up** unless a matching Remove pays it.
 
 > # FIX-775 · Resume a stream after a disconnect
 >
@@ -503,6 +516,10 @@ has three parts, in order.
 > | FIX-701 D2: recover by replaying the whole response | **Amended**, reconnect delivery only, by [D1](DECISIONS.md#d1). Its no-cursor path is kept ([D3](DECISIONS.md#d3)). Cursor clients must persist the last item ID |
 > | FIX-702's rule that a finished request can't be reattached | **Superseded in part** by [D2](DECISIONS.md#d2), for clients that were attached. Never-attached clients are still refused |
 >
+> | Adds | Existing piece considered | Why it doesn't fit / how composed |
+> |---|---|---|
+> | Two encodings of one cursor (header + query param) | Sequence numbers; the stream seam | Composed: resume reads existing sequence numbers at the existing seam. The second encoding is one cursor, two transports ([D1](DECISIONS.md#d1)), not a second resume |
+>
 > | The debt | |
 > |---|---|
 > | **Removes** | The client's dedupe helper and its tests |
@@ -574,8 +591,8 @@ review notes left for the implementer. Sections, in order:
    when there is nothing in it and say **Open: none** at the bottom instead.
 6. **Analysis** — what the [`analysis`](../../.agents/skills/analysis/SKILL.md) pass
    found before the spec went to review: the date, the watermark it read new factors from,
-   the verdict, one line per objective, and each finding's disposition (folded · recorded ·
-   open). Always present, including when the verdict is "right approach"; the next analysis
+   the verdict, one line per objective (the reuse line links *Builds on / Adds*, whose
+   verdicts it reads), and each finding's disposition (folded · recorded · open). Always present, including when the verdict is "right approach"; the next analysis
    reads its date. See [`orchestration.md`](orchestration.md#analysis-and-review).
 7. **How it got here** — one line per meaningful turn, newest last: draft, each review round
    that moved a decision, each settlement. A round that changed only prose earns no line.
@@ -683,8 +700,9 @@ review notes left for the implementer. Sections, in order:
 >
 > 2026-08-14 · watermark 2026-08-02 (issue filed) · **Right approach.**
 >
-> 1. **Reuse** — the persisted item log and its sequence allocator already exist; the spec
->    filters at the serialization seam over them. Nothing new to build underneath.
+> 1. **Reuse** — `reuse-review`: both *Adds* rows extend existing pieces (the persisted item
+>    log, the sequence allocator); none is new. See
+>    [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 > 2. **Prior art** — the SSE spec's own reconnection model resumes by event id with no
 >    per-client state on the server, and so do the two event-streaming libraries checked
 >    (links in the analysis return). Confirms D3.

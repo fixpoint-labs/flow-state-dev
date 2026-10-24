@@ -1693,6 +1693,10 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       continueRequest: h.cont
     });
     try {
+      // The start reads the gates once, to arm for a deadline already in the
+      // store (FIX-2063 D3); what follows is the tick's own read.
+      await vi.advanceTimersByTimeAsync(0);
+      listSpy.mockClear();
       await vi.advanceTimersByTimeAsync(601_000);
       const pendingReads = listSpy.mock.calls.filter(([filter]) => filter?.status === "pending");
       expect(pendingReads).toHaveLength(1);
@@ -1718,6 +1722,11 @@ describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", 
       continueRequest: h.cont
     });
     try {
+      // The one read at start (FIX-2063 D3) finds no deadline, so nothing is
+      // read again until the interval.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listSpy).toHaveBeenCalledTimes(1);
+      listSpy.mockClear();
       await vi.advanceTimersByTimeAsync(599_000);
       expect(listSpy).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(2_000);

@@ -415,7 +415,10 @@ own worker when it is hired or edited.
 A worker flow declares the installation's session (`session: installation.session()`), so every
 session names its worker in a readonly `workerId`, checked when the session is created, and loads
 that worker on every turn with `installation.resolveWorker(ctx, flowKind)`. `hireWorkforce` refuses a
-worker flow that doesn't declare it.
+worker flow that doesn't declare it. The same session state (`installation.sessionStateShape`)
+carries `workProjectId` (`WORK_PROJECT_STATE_KEY`), the project a user set their own conversation
+to work in, as `<visibility>/<id>`. Only the `setWorkProject` action writes it, and a create that
+seeds it is refused with a 400 naming the field (see [Projects](#projects)).
 
 A worker takes a user's message through its flow's **door**: the one public action the flow
 declares with `userMessage` and a `{ message }` input. `openInventory` writes it on the worker's
@@ -641,14 +644,15 @@ Spell it `instructions`.
 
 ### Composing capabilities into the built-in worker flow
 
-`defineAgentWorkerFlow` takes three more app-level options beyond its catalog, skills and model
-choices. All three are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
+`defineAgentWorkerFlow` takes four more app-level options beyond its catalog, skills and model
+choices. All four are optional. `defineAgentWorkerFlow()` with no arguments builds the stock
 worker.
 
 | Option | What it does |
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string and cannot change the answer. A failure in it never fails a conversation turn; in a task it fails the attempt, except in a task whose result goes to the conversation (`resultTo: "conversation"`), where it is logged and the task keeps its answer. Absent, nothing runs after the answer. |
+| `answerAgain` | `true`, or a block run after each answer. When it returns `{ message }`, the worker answers again in the same request with that message as its input. `true` hands the worker the tasks it filed that finished while it answered; see [Answering again with finished tasks](#answering-again-with-finished-tasks). Takes effect only on a flow built with `installation`. Absent, a turn answers once (and again after its plan), and every task result is heard after the turn. |
 | `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the user's other flows. Every worker on `agent` shares the one copy, so a user's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
@@ -774,6 +778,104 @@ read it and can't write it. A fork starts with none, and a worker moved to anoth
 leaves its rules behind. If the list can't be read, the turn runs without it and says so in a
 status line. See
 [Standing rules](https://flow-state.dev/docs/workforce/standing-rules).
+
+#### Answering again with finished tasks
+
+A worker that hands tasks to its delegates hears their results after its reply, each as a line in
+the conversation and a turn of its own. With `answerAgain: true`, a result that lands while the
+worker is still answering shows up in that same request, and the worker answers again with it.
+
+```ts
+const agent = defineAgentWorkerFlow({ installation, catalog: appTools, answerAgain: true });
+```
+
+After the worker answers a user's message, each task the conversation filed whose ending hasn't
+been heard yet, usually one that finished while the worker answered, is said once, as a line under
+the delegate's name:
+
+```text
+Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+```
+
+The worker is then told:
+
+```text
+These tasks you handed out finished while you answered:
+
+- Task "Look up the code" (t-1) completed by scout: The code is rc-4f2a.
+
+Use their results now: answer again, building on what you already said.
+```
+
+Its next text comes after the line, in the same request. A task that ends during that answer is
+picked up the same way once it finishes. A result handed over inside the turn isn't said again
+after it, and wakes no extra turn.
+
+The endings handed over are completions, final failures, cancels the worker didn't make itself,
+and parks that ask a question, for a task whose result goes back to the filer (the default). A task
+filed with `resultTo: "conversation"`, a retry, and a task some request waits on with
+`getTask({ wait: true })` keep their usual path.
+
+To change the wording, pass `finishedTasksAnswerAgain({ message })` instead of `true`:
+
+```ts
+import { defineAgentWorkerFlow, finishedTasksAnswerAgain } from "@flow-state-dev/workforce";
+
+const agent = defineAgentWorkerFlow({
+  installation,
+  catalog: appTools,
+  answerAgain: finishedTasksAnswerAgain({
+    message: (finished) => `Done while you answered:\n${finished.map((f) => f.line).join("\n")}`,
+  }),
+});
+```
+
+For full control, build your own block around `takeFinishedTasks`. It takes what finished, says
+each line in the conversation, and returns `FinishedTask[]`: `{ taskId, ending, worker?, line }`,
+where `ending` is `"completed"`, `"errored"`, `"parked"` or `"cancelled"` and `worker` is the
+delegate the line was said under. It returns `[]` when nothing finished.
+
+```ts
+import { handler, sequencer } from "@flow-state-dev/core";
+import { defineAgentWorkerFlow, takeFinishedTasks, type FinishedTask } from "@flow-state-dev/workforce";
+
+const agent = defineAgentWorkerFlow({
+  installation,
+  catalog: appTools,
+  answerAgain: sequencer({ name: "lab-answer-again" })
+    .step(takeFinishedTasks)
+    .step(
+      handler({
+        name: "lab-finished-message",
+        execute: (finished: FinishedTask[]) =>
+          finished.length === 0
+            ? {}
+            : { message: `Done while you answered:\n${finished.map((f) => f.line).join("\n")}` },
+      })
+    ),
+});
+```
+
+Any block works as `answerAgain`. Its input is the worker's latest answer. It
+returns `{ message?: string }`; a non-empty `message` makes the worker answer again, and `{}` ends
+it.
+
+Limits:
+
+- At most `MAX_ANSWERS_AGAIN` (3) answers again per request. The answer the worker gives after its
+  own plan of steps counts toward the same cap. When the plan and `answerAgain` both have something
+  in the same round, the worker answers once about both.
+- An answering-again turn files no step for the worker itself. A task it files for a delegate is
+  dispatched as usual.
+- Only a turn started by a user's own message to the worker (`respond`) takes anything. In a
+  task's turn, a turn a task's ending woke, or a turn another worker's message started,
+  `takeFinishedTasks` returns `[]` and results arrive after the turn.
+- A result that lands during a long answer waits until that answer ends. One that lands after the
+  last check arrives after the turn.
+- A final failure the [Error Reporter](#error-reporter) hasn't picked up yet is heard after the turn.
+- Each result is said at most once. If the process dies after a result is taken and before its line
+  is said, the line is dropped.
+- `defineCoordinatorFlow`'s `agent` options don't take `answerAgain`.
 
 ## Worker flows and blocks from files
 
@@ -1488,10 +1590,11 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   the repository of the project the run works for, with the project's files beside the checkout, or
   the project's files alone when it has no repository. A run in a workstream's session, or a task
   session filed from one, works for that workstream, and is refused `not-the-owner` when the run's
-  owner isn't the workstream's. A task session filed from a project's conversation works in that
-  project, and one filed from a conversation with no project works in the project its task names
-  as `input.project`, for that project's members only (`not-a-member`). A task filed from a
-  workstream or a project's conversation that names a project in `input.project` is filed naming
+  owner isn't the workstream's. A task session filed from a project's conversation, or from a
+  conversation set to a project with `setWorkProject`, works in that project, and one filed from a
+  conversation with no project works in the project its task names as `input.project`, for that
+  project's members only (`not-a-member`). A task filed from a workstream, a project's conversation
+  or a conversation set to a project that names a project in `input.project` is filed naming
   that conversation's project instead, and a worker filing there is told that project in its
   task tools' context, so it has no project to name. `no-project` when none applies. The block that asks it
   must hold `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
@@ -1503,6 +1606,35 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
     uses: [projectWorkspaceCapability],
   });
   ```
+
+- **`setWorkProject`**, on the workforce client, sets the project one of the user's own
+  conversations with a worker works in. From then on its coding runs, and every task it files, work
+  in that project, as for a project's conversation above:
+
+  ```ts
+  const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+  const sessions = createSessionClient({ baseUrl, fetcher }); // from @flow-state-dev/client
+  // A worker's one conversation, at the first job that needs files
+  await workforce.setWorkProject("lead", { visibility: "shared", id: "apollo" });
+  // A new session, after the user picks a project
+  const session = await sessions.createSession({ flowKind: "lab-main", userId, state: { workerId: "main" } });
+  await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
+  ```
+
+  Without `sessionId` it sets the user's default conversation with the worker, creating it if
+  there is none. With one, it sets that session, which must be the user's. It resolves to
+  `{ project }`. Calling it again replaces the project. Tasks already filed keep the project they
+  were filed in, including one still waiting on the board and one handed to a delegate's ongoing
+  session, with what that delegate files while working it. A run already started stays where it
+  is. Nothing clears it. A
+  refusal rejects with an `Error` whose message starts `Refused:`, and nothing is stored: a shared
+  project the user isn't a member of (`not-a-member`), a private project that isn't theirs or a
+  project that doesn't exist, and a project coordinator's, a task's, a delegate's or a workstream
+  lead's session, each named. Membership is checked again on every run. The action is
+  `setWorkProject` (`SET_WORK_PROJECT_ACTION`, input `{ project: { visibility, id } }`): the
+  `agent`, `coordinator` and Error Reporter flows declare it, and a worker flow of your own adds
+  `[SET_WORK_PROJECT_ACTION]: setWorkProjectAction` to its `actions`. A project coordinator's
+  conversation takes its project from `ensureWorkerSession({ worker, projectId })` instead.
 
 - **`projectMcpTools(servers, { operator })`** is a resolver for a coding harness's per-run
   tools, in `claudeCodeAgent`'s `mcpTools` shape. It finds the run's project and owner the way
@@ -2122,7 +2254,8 @@ It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSes
 `ROSTER_FLOW`, `WORKER_ID_STATE_KEY`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE`, `COORDINATOR_JUDGMENT` (the
 coordinator's own turn's answer name, which its messages carry as `agentName`) and
 `sessionIdOfFiling` (the conversation a board row was filed in), `RULE_TOOLS`, `MAX_RULES`,
-`MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `MESSAGE_WORKER_TOOL` (the
+`MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `SET_WORK_PROJECT_ACTION`,
+`WORK_PROJECT_STATE_KEY`, `MESSAGE_WORKER_TOOL` (the
 tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATTERN`,
 `WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, the same values the root exports, and reaches no Node built-in.
 
@@ -2132,6 +2265,9 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 |--------|-------------|
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
+| `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
+| `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` built from the lines, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
+| `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |
 | `workforceManifestSources({ roster, inventory })` | The `workers` source on its own, for an app assembling its own manifest registry. |
@@ -2148,8 +2284,9 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)` and `standingRules(worker, input)` (see [Standing rules](#standing-rules)), over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)`, `standingRules(worker, input)` (see [Standing rules](#standing-rules)) and `setWorkProject(worker, { visibility, id }, { sessionId? })` (see [Projects](#projects)), over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
 | `RULE_TOOLS`, `MAX_RULES`, `MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `STANDING_RULES_RESOURCE` | The four rule tools' names, the list's limits (20 and 300), the flow action `standingRules` calls, the `agentName` a rule write's line carries, and the resource the list is kept under. All but `STANDING_RULES_RESOURCE` are also exported from `./browser`. |
+| `SET_WORK_PROJECT_ACTION` / `setWorkProjectAction` / `WORK_PROJECT_STATE_KEY` | The action `setWorkProject` calls (`"setWorkProject"`), the action itself for a worker flow of your own to declare under that name, and the server-owned session-state field it writes (`"workProjectId"`, `<visibility>/<id>`). The two constants are also exported from `./browser`. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
@@ -2201,7 +2338,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
 | `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
-| `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
+| `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to or was set to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
 | `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there (`{ tasks, runEntry, filingFlow, filingSession }`), for a door over the session's run (`harnessSessionDoor`'s `board`). A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |

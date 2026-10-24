@@ -204,7 +204,8 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
 | `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
 | `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
-| `review`                  | The single definition of how we review — looking for **flaws in the work**. Composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
+| `review`                  | The single definition of how we review — looking for **flaws in the work**. Composes coherence + restraint + reuse + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
+| `reuse-review`            | Dedicated reuse pass on every spec and epic (and on implementation via `review`): each Adds item against existing blocks and pieces. Separate from `second-look`. Verdict per item: reuse X, extend X, or genuinely new |
 | `analysis`                | Asks whether this is the right work, distinct from review. Six objectives — reuse, prior art, other shapes, new factors, necessity, major concerns — on a drafted spec before the direction gate and at epic wrap. Canonical: [`orchestration.md`](docs/contributing/orchestration.md#analysis-and-review) |
 | `adhd`                    | Parallel divergent ideation — fan out isolated sub-agents under cognitive frames (incl. four FSD ones: subtract-then-add, user-space only, wrong block kind, the trace), score, prune traps, deepen the survivors into concrete alternative approaches. Generates the candidate set; every other review skill judges candidates you already hold. Two entries: `issue-spec` (Step 3.5's *third move* stall, Step 4's design question) and `analysis`'s **other shapes** objective (always on an epic spec, on trigger for an issue spec). 8 sub-agent calls (5 diverge + 3 deepen) — a decision-point instrument, not a default step. Adapted from the MIT-licensed [UditAkhourii/adhd](https://github.com/UditAkhourii/adhd) |
 | `polish-docs`             | The docs editor — a corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges docs for readability and navigation (unafraid to rewrite/move); run standalone on a section or the whole site, and auto-dispatched at epic wrap as a draft docs-cleanup PR |
@@ -243,7 +244,7 @@ the project-spec exception above is unchanged.
 
 ## Automated PR review is Codex
 
-Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR's current head; if it hasn't and Grok hasn't asked, comment `@codex review` yourself and name the areas you're unsure of so it pays special attention to them. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
+Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR once, on its first ready head; if it hasn't and Grok hasn't asked, comment `@codex review` yourself and name the areas you're unsure of so it pays special attention to them. **Don't re-request after every push** — Codex usage is limited. Ask again only when a later push adds logic complex enough that you have a real concern, and name it. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
 
 ## Asking for sign-off
 

@@ -21,6 +21,7 @@ This repo accumulates bloat because AI-generated code gets reviewed hard for cor
 | Line-level cleanup, dedup, dead lines | `/simplify` |
 | Whole-codebase depth refactors | `improve-codebase-architecture` |
 | Pattern conflicts / redundancy / philosophy drift | `audit-coherence` |
+| **A second mechanism beside an existing block or piece** — cap, marker, hook, release path | `reuse-review` |
 | **Other shapes this could have taken** — generating alternative approaches | `adhd` |
 
 Second-look operates **above** line level: the approach, the requirements that drove it, and the API/abstraction surface. It does not chase individual lines.

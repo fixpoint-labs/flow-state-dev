@@ -1473,6 +1473,9 @@ export interface ResourceStateStore {
  * `stepHistory` — those are explicitly out of scope (see FIX-401 spec).
  */
 export interface CheckpointStore {
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
+  readonly persists?: boolean;
+
   /** Overwrite the latest checkpoint for this sequencer instance. */
   write(checkpoint: SequencerCheckpoint): Promise<void>;
 
@@ -1526,6 +1529,9 @@ export interface TraceStore {
  * created by ctx.suspend() for later resolution via the resume endpoint.
  */
 export interface SuspensionStore {
+  /** `false` when this store keeps nothing past the process. Absent means it persists. */
+  readonly persists?: boolean;
+
   /** Create or update a suspension record. */
   set(record: SuspensionRecord): Promise<void>;
 

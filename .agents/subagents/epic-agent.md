@@ -77,10 +77,13 @@ Take the single action the dispatch calls for:
 
   **Before you open the PR, get the set analysed.** Dispatch a fresh `general-purpose`
   sub-agent (Opus) to run [`analysis`](../../.agents/skills/analysis/SKILL.md) at spec altitude
-  on the drafted set, with the research you did and the Linear project. Dispose as that skill's
-  Altitude 1 says; a fold here is the objective, the division into issues, or a cross-cutting
-  call. One line under the PR sign-off: the verdict and what it changed. It costs no review
-  rounds.
+  on the drafted set, with the research you did and the Linear project. That analyst also runs
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the set, and its reuse objective reads
+  those verdicts. A reuse or extend verdict on an Adds item treated as new is above the bar
+  ([`orchestration.md`](../../docs/contributing/orchestration.md#compose-existing-pieces)).
+  Dispose as that skill's Altitude 1 says; a fold here is the objective, the division into
+  issues, or a cross-cutting call, and its disposition test is the same as spec review's. One
+  line under the PR sign-off: the verdict and what it changed. It costs no review rounds.
 
   Open the epic PR and link it from
   Linear; do not publish a full-content mirror. Return handles for human sign-off.
@@ -140,9 +143,11 @@ Take the single action the dispatch calls for:
   **Fold only what's above the bar.** The epic-spec is a direction artifact, so the same
   spec-review bar applies to it ([`orchestration.md`](../../docs/contributing/orchestration.md)
   → "Spec review: the bar and the convergence rule"): fold feedback that changes the epic's
-  objective or a cross-cutting decision. Feedback about one issue's internals is that issue's,
-  not the epic's — report it back for routing rather than absorbing it into the epic-spec, and
-  never rewrite the epic's prose around a line-level nit.
+  objective or a cross-cutting decision. A `reuse-review` verdict of reuse or extend on an
+  Adds item treated as new is above the bar. After a fold that moves the set's Adds, re-run
+  [`reuse-review`](../skills/reuse-review/SKILL.md) on the new head. Feedback about one
+  issue's internals is that issue's, not the epic's — report it back for routing rather than
+  absorbing it into the epic-spec, and never rewrite the epic's prose around a line-level nit.
 
   **The epic PR carries its own two-round budget**, and the coordinator holds the counter
   (`reviewRounds`, historically `epic_review_rounds`) because you can't persist state across dispatches. So report your

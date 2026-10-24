@@ -46,7 +46,7 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
-export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
+export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
 export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {

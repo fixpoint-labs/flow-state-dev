@@ -184,7 +184,9 @@ the artifact carries more product surface than one artifact should.
 is a public method, tool, action, entry, verb or resume path, or a fallback that finds what a
 primitive should hand over (a lookup around a claim the caller can't see). A fallback has a
 second fix as well: it belongs in the primitive (tenet 5). Other docs link to this definition
-rather than restating it. Two rules:
+rather than restating it. The package-mechanism form — a second cap, marker, release
+path, or a hook beside a block composition — is
+[`orchestration.md`](orchestration.md#compose-existing-pieces). Two rules:
 
 - **The reduction is the default, and it is the engineer's call.** Extend the closest existing
   entry with an option ([`issue-spec`](../../.agents/skills/issue-spec/SKILL.md) Step 3.5,

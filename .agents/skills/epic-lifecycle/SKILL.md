@@ -489,8 +489,8 @@ The epic-specific delta:
    blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
    returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
    `settlingInFlight` claim, if any. The coordinator holds the *link*, not the spec text.
-   The *other* issues keep moving. For any issue **ready to merge** — its current head
-   reviewed and checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+   The *other* issues keep moving. For any issue **ready to merge** — its PR reviewed
+   and its current head checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
    — surface it and stop there (merge is the user's).
 5. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
    table** — each issue's spec PR, each issue's impl PR#(s), and the epic PR —
@@ -548,7 +548,10 @@ is how an epic of five directionally-sound specs turns into fifty review rounds.
 The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
-spec-review round budget".
+spec-review round budget". Every spec and the epic-spec also get
+[`reuse-review`](../reuse-review/SKILL.md) — inside the analysis dispatch (`issue-spec` Step 4.5, and again at 6.5 after a fold) for children,
+`epic-agent`'s analysis dispatch for the epic — kept separate from `second-look`. The rule is
+[`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 
 **The budget arithmetic is the `epic-wake` script's, not yours** — one `atReviewBudget()`
 covering issue specs and the epic PR alike, so the three things that make it misfire (counting

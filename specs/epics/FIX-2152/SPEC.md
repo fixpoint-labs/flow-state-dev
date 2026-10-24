@@ -48,7 +48,7 @@ flowchart LR
 | **Anti-game** | Assert on what a person sees in the browser, and on task rows read through public task actions. Never on a lab's own state. Leg a also asserts each ending is heard once: no second notice turn answers a result the running turn already took |
 | **Control that must fail** | Leg a with the lab flow's loop-back off ([D2](DECISIONS.md#d2)): step 4 lands after the turn. Leg b with B's `sendMessage` dropped from its tools: A never hears B. Leg c with the main worker's delegates removed: no thread starts |
 
-**Lead measure:** scripted steps that pass on `main` with a real model, of 14 (5, 5 and 4). **0 today.**
+**Lead measure:** scripted steps that pass on `main` with a real model, of 18 (7, 6 and 5). **0 today.**
 
 ## What's in the box
 
@@ -70,11 +70,13 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2157](https://linear.app/fixpoint-labs/issue/FIX-2157) · Claude Code-style lab, threads mode | A second mode of FIX-2153's app: the main session hands everything to background threads, and the right pane is a status board. Spec after FIX-2153's | FIX-2153; FIX-2056 and FIX-2058 (wiring only) |
 | [FIX-2154](https://linear.app/fixpoint-labs/issue/FIX-2154) · Grok Bot-style lab | The same, second. Rides worker messaging (FIX-1989), written against FIX-2070's names | FIX-2056 (wiring only); FIX-2070, whose message row its worker-talk view reads; the gaps it files |
 | [FIX-2158](https://linear.app/fixpoint-labs/issue/FIX-2158) · list a person's sessions of one worker | A list on the workforce client, and the concept line that the derived conversation is the default, not the only one ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | Two public pieces for FIX-2153's lab flow: a take-and-acknowledge for a settled notice on the one ending path, and an answer-again hook. The loop itself stays in the lab ([D2](DECISIONS.md#d2), amended) | — |
+| [FIX-2159](https://linear.app/fixpoint-labs/issue/FIX-2159) · a result reaches a running turn | A take-and-acknowledge for a settled notice on the one ending path, and an `answerAgain` source slot on `defineAgentWorkerFlow`. The answer-once-more step `Planning.planned` already runs becomes one shared step with one exported cap, and it runs the loop; FIX-2153's lab passes only the source block that calls the take ([D2](DECISIONS.md#d2), amended; [ER-6](DECISIONS.md#who-owns-what)) | — |
+| [FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161) · a session opens on a project | An ordinary session of any worker can open on a project the person may work in (a member of a shared project or the owner of a private one; reading isn't enough, since `projectWorkspace()` refuses a reader), and a worker's default conversation can carry a project, a server-written field the screen sets through a client call and never lab config (BP-031), checked as the roster owner, the person whose worker it is, so a lab's runs work in that project's checkout ([ER-8](DECISIONS.md#who-owns-what)). Today only the project coordinator's session can | — |
 | [FIX-2156](https://linear.app/fixpoint-labs/issue/FIX-2156) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
-Two labs, one with two modes, two gaps known before review, and a closure. fsd-architect checked
-both gaps against `main` and agreed their shape; each lab's spec may add more.
+Two labs, one with two modes, three gaps, and a closure. fsd-architect checked the first two
+against `main` and agreed their shape. FIX-2161 came from FIX-2153's spec, when the working directory
+was added ([ER-8](DECISIONS.md#who-owns-what)). Each lab's spec may add more.
 
 ## How the issues flow into each other
 
@@ -85,7 +87,10 @@ flowchart LR
   N["FIX-2070 · Messages · consumed"] -.-> B
   G1["FIX-2158 · list a person's sessions of one worker"] -->|"the session list"| A["FIX-2153 · Claude Code-style lab"]
   G1 -->|"the session list"| T
-  G2["FIX-2159 · a flow can take a settled notice and answer again"] -->|"the public take for step 4's lab flow"| A
+  G2["FIX-2159 · a flow can take a settled notice"] -->|"the public take for step 4's lab flow"| A
+  G3["FIX-2161 · a session opens on a project"] -->|"the session's project"| A
+  G3 -->|"the session's project"| T
+  G3 -->|"each worker's project"| B
   I["FIX-2058 · one Inbox · consumed"] -.-> T
   A -->|"the app, its mode switch and its task reads"| T["FIX-2157 · threads mode"]
   A -->|"the inventory check and the setup pattern"| B["FIX-2154 · Grok Bot-style lab"]
@@ -124,21 +129,22 @@ code.
 | `messageWorker` and `onWorkerMessage` (FIX-1989); `sendMessage` and `receive` (FIX-2070, planned) | **Builds on.** FIX-2154 is written against FIX-2070's names |
 | The agent flow's planned turn (`board.planned`), where one worker does work and files work | **Builds on.** The main session that works and delegates |
 | A worker's sessions: the derived default conversation, and any other session on its flow, which the create check already accepts (`workforce/src/workers/installation.ts`) | **Extended** by FIX-2158's list. Workstreams (FIX-1883, opened by `openWorkstream` or a coordinator) are not used: they need a project and a lead ([D3](DECISIONS.md#d3)) |
+| `@flow-state-dev/harness-manager`'s `harnessManager`, with a harness slot, and `projectWorkspace()`, which runs a task in its session's project (DevTeam's `coder` flow) | **Builds on.** Delegated workers on Claude Code or Codex, one lab flow that routes to a manager per harness, working in the session's project ([ER-8, ER-9](DECISIONS.md#who-owns-what)) |
 | `@flow-state-dev/design-system` and the `packages/ui` registry | **Builds on.** The labs' only theme and components |
 
 | The debt | |
 |---|---|
-| **Adds** | Two private labs under `labs/` · one list call on the workforce client · a public take and an answer-again hook on the ending path (D2) |
+| **Adds** | Two private labs under `labs/` · one list call on the workforce client · a public take on the ending path and an `answerAgain` source slot on `defineAgentWorkerFlow`, with `Planning.planned`'s answer-once-more step extracted as one shared step under one exported cap (D2) · an ordinary session that opens on a project (FIX-2161) |
 | **Removes** | Nothing |
 
-**Net: up, by two labs and two package entries.** The labs are the evidence the epic exists to
+**Net: up, by two labs and four package entries.** The labs are the evidence the epic exists to
 produce. Each package entry is a gap the labs proved, and the next app gets it for nothing.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 14 steps, with a real model,
+**[The goal](#the-goal-and-how-well-know-its-met):** three scripts, 18 steps, with a real model,
 and an inventory with no *other* row. **[The debt](#whats-already-here-and-the-debt):** up, by
-two labs and two package entries.
+two labs and four package entries.
 
 1. **[D1](DECISIONS.md#d1) · A gap that blocks a lab's script is a child of this epic and is
    built here.** If wrong: the epic grows by package work that another epic should own.
@@ -153,5 +159,5 @@ two labs and two package entries.
 and the merge of this PR approves it. Session-to-session messaging (FIX-2160) is filed outside
 this epic for the owner to place.
 
-Epic · 2 labs (one in two modes), 2 known gaps and a closure · Workforce: Shift Manager · Goal 1, validate through
+Epic · 2 labs (one in two modes), 3 known gaps and a closure · Workforce: Shift Manager · Goal 1, validate through
 real usage · Goal 4, keep the foundation honest

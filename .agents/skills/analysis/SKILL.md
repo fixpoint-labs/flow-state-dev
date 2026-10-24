@@ -26,11 +26,13 @@ Where the process runs this:
 Every analysis answers all six, in this order. **One line is enough when the answer is
 clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is not analysis.
 
-1. **Reuse.** Did we build (or are we about to build) a mechanism we already had? Name the
-   closest existing primitive, method, pattern or package entry that does the same job, and
-   say why it does or doesn't serve. Search by what the code *does*, across packages (`graft`
-   for callers and signatures, then the job's verbs). "None" carries the searches that found
-   nothing (BP-003).
+1. **Reuse.** Did we build (or are we about to build) a mechanism we already had? Don't
+   search for this yourself. At spec altitude, run [`reuse-review`](../reuse-review/SKILL.md)
+   on the spec's *Builds on / Adds* table and read its verdicts (reuse X · extend X ·
+   genuinely new). At wrap, read the lessons PR's job audit. Answer with the verdicts that move
+   the direction, and link the table. A **reuse** or **extend** verdict on an item the spec
+   treated as new is a fold. The rule is
+   [`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces).
 2. **Prior art.** How do other frameworks solve this — at least two, named, with links
    (`WebSearch`). Did any take a materially different approach, and is theirs better on an
    axis we care about? Agent-workflow frameworks first (LangGraph, Mastra, Temporal, Inngest,
@@ -47,6 +49,16 @@ clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is no
 
 Read [`docs/philosophy.md`](../../../docs/philosophy.md) first; tenets 2–4 are the yardstick
 for objectives 1, 3 and 5.
+
+## Not this skill
+
+| Job | Use instead |
+|-----|-------------|
+| Flaws in a change: bugs, gaps against the spec, drift, bloat | [`review`](../review/SKILL.md) |
+| Whether one change's surface earns its keep | [`second-look`](../second-look/SKILL.md) |
+| Each Adds item against existing pieces | [`reuse-review`](../reuse-review/SKILL.md), which objective 1 runs and reads |
+| How our *process* did across an epic | [`distill-lessons`](../distill-lessons/SKILL.md) |
+| The codebase research a spec is written from | `issue-spec` Steps 2–3 |
 
 ## The watermark
 

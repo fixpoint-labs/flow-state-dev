@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
-import { FILED_HOP } from "../src/conversation-board/board-entries";
+import { FILED_HOP, FILED_PROJECT } from "../src/conversation-board/board-entries";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
   const result = await host.act(userId, conv, "createTask_tasks", input);
@@ -259,24 +259,30 @@ describe("what a filing can't name (BR-8)", () => {
         board: "elsewhere",
         partition: "someone-else",
         owner: "bob",
-        metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" }, note: "kept" }
+        metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" }, note: "kept", [FILED_PROJECT]: "shared/elsewhere" }
       });
       expect(filed.ok).toBe(true);
       const rows = await host.rows("alice");
       expect(rows).toHaveLength(1);
       const filing = await host.filingOf("alice", conv);
       const row = await host.row("alice", filing, filed.taskId!);
-      // The one marker on it is the board's own: the filing turn's hop count (FIX-2106).
-      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: null, lines: 0 } });
+      // The markers on it are the board's own: the filing turn's hop count (FIX-2106), and the
+      // project it was filed in, none here, whatever the caller named (FIX-2161).
+      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: null, lines: 0 }, [FILED_PROJECT]: null });
       // No start was owed, so nothing ran: the row has no assignee.
       await host.settled();
       expect(host.runs).toEqual([]);
       // An update can't reach a marker either.
       await host.act("alice", conv, "updateTask_tasks", {
         id: filed.taskId,
-        metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored" }, extra: 1 }
+        metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored" }, extra: 1, [FILED_PROJECT]: "shared/elsewhere" }
       });
-      expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({ note: "kept", extra: 1, [FILED_HOP]: { hop: 0, chain: null, lines: 0 } });
+      expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({
+        note: "kept",
+        extra: 1,
+        [FILED_HOP]: { hop: 0, chain: null, lines: 0 },
+        [FILED_PROJECT]: null
+      });
     } finally {
       await host.dispose();
     }

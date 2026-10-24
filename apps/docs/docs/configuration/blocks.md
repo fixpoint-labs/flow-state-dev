@@ -159,7 +159,7 @@ Plus the [shared fields](#shared-fields).
 | `activeStatusMessage` | string or fn | — | Status when the sequencer starts. |
 | `container` | object | — | UI container metadata. |
 
-`durable: true` on the sequencer writes checkpoints. Crash recovery and `ctx.suspend()` also need `durable: true` on `createFlowState` and `durable: true` on the action. See [Durable execution](/docs/advanced/durable-execution).
+On a host with durable execution (on by default wherever stores persist), a sequencer checkpoints at each step. Set `durable: false` to opt it out. See [Durable execution](/docs/advanced/durable-execution).
 
 ## Router
 

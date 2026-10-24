@@ -80,6 +80,23 @@ export const ROUTED_FROM_STATE_KEY = "routedFrom";
 export const PROJECT_STATE_KEY = "projectId";
 
 /**
+ * The session-state field that names the project a user's own conversation
+ * with a worker works in (FIX-2161): a new session of the worker, or the
+ * worker's one default conversation. `projectRef` form,
+ * `<visibility>/<projectId>`. Written only by the {@link SET_WORK_PROJECT_ACTION}
+ * action, which checks the user is a member of the project, and declared
+ * server-owned, so no create can seed it. Not readonly: the user can set
+ * another project later, and the tasks already filed keep the one they were
+ * filed in. Never on a project coordinator's, a task's, a delegate's or a
+ * workstream lead's session, which take their project from where they were
+ * created, filed or opened.
+ */
+export const WORK_PROJECT_STATE_KEY = "workProjectId";
+
+/** The action that sets {@link WORK_PROJECT_STATE_KEY} on the session it runs in. Every worker flow declares it. */
+export const SET_WORK_PROJECT_ACTION = "setWorkProject";
+
+/**
  * The session-state field that names the workstream a task session works
  * for: the one its filer leads, or its filer's own, carried down at each
  * hand-over from the session that filed the task (`workstreamRef` form). Set

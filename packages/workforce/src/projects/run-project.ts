@@ -8,11 +8,15 @@
  *
  * 1. the workstream the run's session leads, or the one its task was filed
  *    from (`workstreamId` / `filingWorkstreamId`);
- * 2. the project the task was filed from (`filingProjectId`);
- * 3. the project the held task names in `input.project`, by visibility and id.
+ * 2. the session's own project: the project coordinator's (`projectId`), the
+ *    one its user set (`workProjectId`), or the one its task was filed from
+ *    (`filingProjectId`);
+ * 3. the held task's: the project its row was stamped with when it was filed
+ *    (a delegate's ongoing session has none of its own), else the one it
+ *    names in `input.project`, by visibility and id.
  *
  * Every step reads stored, server-written data (BP-031): the session's
- * readonly fields, the workstream entry, the project row and the row the
+ * server-written fields, the held row's filing stamp, the workstream entry, the project row and the row the
  * claim gate verified for this run. The owner is the request's resolved user,
  * checked against the workstream's owner or the project's members, never a
  * field of the task or a hand-over's payload.
@@ -22,12 +26,13 @@ import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { RunSourceRefusal } from "@flow-state-dev/workspace";
 import { filingProjectAddressOf, filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
-import { heldTask } from "../conversation-board/held-task";
+import { filedProjectOf, heldTask } from "../conversation-board/held-task";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { projectAddressSchema, projectRowSchema, type ProjectAddress, type ProjectRow, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
 import { projectRowsAt, workstreamsAt, type MissingCollection } from "./project-address";
 import { workstreamEntryKey } from "./workstream-collections";
-import { parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { parseProjectRef, parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
 /**
  * Why a run's project lookup refused. The refusal's `message` names the
@@ -58,7 +63,8 @@ export interface RunProject {
  * @returns The project, its visibility and the run's owner, or a refusal.
  */
 export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
-  const named = await namedProjectOf(ctx);
+  const held = (await heldTask(ctx as unknown as BlockContext))?.row;
+  const named = namedProjectOf(held);
   if (named.kind === "malformed") return named.refusal;
   // The session's project address is the one the board writes on a task it
   // files (`filingProjectAddressOf`), so the two can't disagree.
@@ -70,6 +76,13 @@ export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject |
   if (filedIn !== undefined) {
     if (own === undefined) return refused("no-project", `this run's session names project "${filedIn}", which names no project.`);
     return otherProject(named, own) ?? fromProject(ctx, own);
+  }
+  // The project the held task was filed in (FIX-2161), kept on its row.
+  const stamped = filedProjectOf(held);
+  if (stamped !== undefined) {
+    const address = parseProjectRef(stamped);
+    if (address === undefined) return refused("no-project", `the task was filed in project "${stamped}", which names no project.`);
+    return otherProject(named, address) ?? fromProject(ctx, address);
   }
   if (named.kind === "named") return fromProject(ctx, named.address);
   return refused(
@@ -92,9 +105,8 @@ type NamedProject =
  * link names this request (`heldTask`). Never the dispatch's payload. A run
  * outside a conversation's task session names none.
  */
-async function namedProjectOf(ctx: LooseBlockContext): Promise<NamedProject> {
-  const held = await heldTask(ctx as unknown as BlockContext);
-  const input = held?.row.input as { project?: unknown } | null | undefined;
+function namedProjectOf(held: Task | undefined): NamedProject {
+  const input = held?.input as { project?: unknown } | null | undefined;
   if (input == null || typeof input !== "object" || input.project == null) return { kind: "none" };
   const parsed = projectAddressSchema.safeParse(input.project);
   if (parsed.success) return { kind: "named", address: parsed.data };

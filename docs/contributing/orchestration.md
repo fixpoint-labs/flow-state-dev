@@ -3,7 +3,7 @@
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
 (`epic-lifecycle`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
-`cross-spec-review`, `spec-poc`, `settle-claim`) and the worker sub-agents (`issue-worker`,
+`cross-spec-review`, `spec-poc`, `settle-claim`, `reuse-review`) and the worker sub-agents (`issue-worker`,
 `epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
 instead of each restating the shared concepts. When a concept here changes, it changes here.
 
@@ -469,19 +469,31 @@ approval nor merge. Agents still merge a spec only through MERGE-ONLY, after one
 other channels below has approved it, so this channel never lets an agent approve its own
 spec.
 
-**A merge-ready head has been reviewed.** Automated review runs when a PR is opened ready
-or leaves draft, so a PR marked ready in the same breath as its merge merges a head no
+**A merge-ready PR has been reviewed.** Automated review runs when a PR is opened ready
+or leaves draft, so a PR marked ready in the same breath as its merge merges code no
 reviewer saw. Take a PR out of draft when its work is ready for review, not when it is
-ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
-review and the required checks have returned on its current head.
+ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once an
+automated review has returned on the PR, any follow-up review you asked for has returned,
+and the required checks have passed on its current head. Later pushes don't need a fresh
+review of their own (see the next rule). The workflow scripts check only that some review
+returned. A pending follow-up holds a PR back only because whoever reports its readiness
+says not ready, so say it.
 
 **Codex is the automated reviewer; an agent never stands in for it.** Don't dispatch a
 Claude review agent to fill in for a missing bot review: it costs credits and duplicates
-what Codex does. Instead, make sure Codex has reviewed the current head. Grok usually asks
-for that review; if you notice a head with no Codex review first, comment `@codex review`
-on the PR yourself. Name what you're unsure of in the request ("pay special attention to:
-…" with the specific seams, races or invariants in doubt) rather than posting the bare
-command.
+what Codex does. Instead, make sure Codex has reviewed the PR once: the first head that is
+ready for review. Grok usually asks for that review; if you notice a PR with no Codex review,
+comment `@codex review` on the PR yourself. Name what you're unsure of in the request ("pay
+special attention to: …" with the specific seams, races or invariants in doubt) rather than
+posting the bare command.
+
+**Ask Codex again only when you have a concern.** Codex usage is limited, so don't request a
+review after every push. Fixes for review findings, docs, renames, test-only changes and
+small follow-ups ride on the first review. Request a follow-up review when a later push adds
+or reworks logic complex enough that you want another reader on it: new concurrency or
+timing, a changed persisted shape, an auth or routing decision, a rewritten core path. Name
+that concern in the request. Codex also reviews on its own when a draft is marked ready;
+don't request one on top of that.
 
 **Green means CI ran on this head and passed.** Read the `Typecheck & Test` check run on
 the PR's current head, never the combined commit status: Vercel posts `success` there for
@@ -587,7 +599,10 @@ merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for th
 Two different jobs. [`review`](../../.agents/skills/review/SKILL.md) looks for flaws in the
 work, and PR feedback, Codex, and spec-PR review rounds are review too.
 [`analysis`](../../.agents/skills/analysis/SKILL.md) asks whether it is the right work; that
-skill holds the six objectives and both altitudes.
+skill holds the six objectives and both altitudes. Its reuse objective is answered by
+`reuse-review` ([Compose existing pieces](#compose-existing-pieces)), not by a second search.
+On an implementation, a mechanism the spec doesn't list is a flaw, so `review` keeps its own
+reuse lens.
 
 Analysis runs at two points:
 
@@ -599,6 +614,9 @@ Analysis runs at two points:
 **The analyst is never the author.** It is a fresh sub-agent, so it judges a direction it
 has no stake in. The author still disposes of each finding, using the bar below; the
 *Analysis* section shows the human what was folded and what was set aside.
+
+**Spec review doesn't redo it.** Reviewers treat `DECISIONS.md` → *Analysis* as settled
+unless a thread brings a new fact the analysis didn't have.
 
 **Analysis costs no review rounds.** It happens during authoring, before the spec PR is put
 to reviewers, so it does not count against the two-round budget below. Each run records its
@@ -765,6 +783,45 @@ So the discipline is ours, not theirs:
   (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+- **Compose existing pieces** (next section) — the Builds on / Adds table, and `reuse-review`
+  on every spec and epic.
+
+## Compose existing pieces
+
+The bar is **powerful yet elegant**: we use the blocks and pieces we already have, and we
+do not add a second way to do the same thing. A new mechanism is allowed only when it is
+**built on** those pieces — composed from the five block kinds, existing primitives, and
+existing records — not invented beside them.
+
+This is the package-mechanism form of tenet 2. The job-level form (a public method, tool,
+action or entry that does a job something already does) stays
+[`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+job" and `issue-spec` Step 3.5 question 7. This section is the *how we build* rule those
+do not cover: a second cap, a second marker that means the same reservation, a second
+hold-release path, a hook that reimplements a `sequencer` / `doWhile` / handler
+composition we already wrap.
+
+**What a spec or epic owes.** Every item it adds to a package names the existing block,
+primitive or mechanism it considered, and either how it is composed from it or why that
+piece does not fit. The Adds list is as short as possible. The debt line counts any
+second way of doing an existing thing. The table lives in `SPEC.md` → *What's already
+here, and the debt*
+([`spec-template.md`](spec-template.md#whats-already-here-and-the-debt),
+[`epic-spec-template.md`](epic-spec-template.md)).
+
+**What review owes.** Every spec and every epic gets a dedicated
+[`reuse-review`](../../.agents/skills/reuse-review/SKILL.md), kept separate from
+`second-look`. It searches the code for each Adds item and returns **reuse X**, **extend
+X**, or **genuinely new**. A reuse or extend verdict the spec treated as new is
+spec-level (fold). Worked examples live in the skill, not here.
+
+It runs through the plumbing that already reviews specs — not a new lifecycle:
+
+- inside the [analysis](#analysis-and-review) dispatch, before the spec PR opens: `issue-spec`
+  Step 4.5, and `epic-agent` on Create. Analysis's reuse objective reads its verdicts rather
+  than searching again. It runs again at Step 6.5, or in `epic-agent`, after a fold that moves Adds
+- `review`'s reuse lens, on spec/epic targets and on implementation changes
+- `epic-pm`, once per spec at the approval gate, separately from its `second-look` pass
 
 ## Spec retention and authority
 
@@ -820,7 +877,8 @@ project-content mirror. Do not migrate project lifecycle or historical closed sp
    This is an assignment to an existing worker, not a new workflow action.
 3. **The worker executes only that authorized spec merge.** Re-read human approval,
    the current head, required repository checks/approvals, and required review-thread
-   policy, and confirm an automated review has returned on the current head sha.
+   policy, and confirm an automated review has returned on the PR (any head), plus any
+   follow-up review that was requested.
    If any requirement is unmet, return the specific blocker without merging.
    Merge with an **atomic expected-head precondition** matching the supplied reviewed
    SHA (for example, `gh pr merge <PR> --match-head-commit <SHA>`); a prior head read

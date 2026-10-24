@@ -12,10 +12,11 @@ import { MCP_CREDENTIALS_RESOURCE } from "../projects/mcp-credentials";
 import { readStandingRules } from "../standing-rules/rules-record";
 import { renderRules } from "../standing-rules/rules-list";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
+import { defineSetWorkProjectBlock, setWorkProjectInputSchema } from "../projects/work-project";
 import { markUserTurnStep } from "../standing-rules/user-turn";
 import { turnConfigOf } from "../workers/verified-worker";
 import type { WorkerInstallation } from "../workers/installation";
-import { PROJECT_STATE_KEY } from "../workers/keys";
+import { PROJECT_STATE_KEY, SET_WORK_PROJECT_ACTION } from "../workers/keys";
 import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { reportOwedKey } from "../conversation-board/report-owed";
@@ -414,13 +415,10 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (row !== undefined && (autoFile.includes(row.errorClass) || autoFile.includes(row.source))) {
         return { decision: "file", ...draft };
       }
-      if (ctx.suspend === undefined) {
-        throw new Error("An error report waits for the operator's answer, and this Lab runs without durable execution.");
-      }
       const seen = row?.count ?? 1;
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
-        const answer = await ctx.suspend({
+        const answer = await ctx.suspend!({
           reason: "human_input",
           // The question's heading in Inbox; `data.title` is the issue title it files under.
           title: `Error report: ${draft.title}`,
@@ -721,7 +719,14 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
       // It takes no input, runs only in a report's own session, and only for the operator.
       [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report, onErrored: releaseClaim },
-      [STANDING_RULES_ACTION]: standingRulesAction
+      [STANDING_RULES_ACTION]: standingRulesAction,
+      // Never on a report's session, which the reporter opens for its own work (FIX-2161).
+      [SET_WORK_PROJECT_ACTION]: {
+        inputSchema: setWorkProjectInputSchema,
+        block: defineSetWorkProjectBlock((id) =>
+          reportIdOfSession(id) === undefined ? undefined : "an error report's session, which the Error Reporter opens for its own work"
+        )
+      }
     },
     internal: {
       actions: {

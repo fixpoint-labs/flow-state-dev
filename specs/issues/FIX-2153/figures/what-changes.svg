@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 600" role="img" aria-label="The session-mode screen. Left: a Sessions and Projects switch at the top, with Sessions chosen, then the sessions list, with a New session button, each row a conversation with the one main worker, its title, its age, and a dot when its turn is running. Center: the main thread, with the session's project named in its header. Your message, then the main session's own work, then two lines where it started background tasks, then a result card from the first task that arrived while the turn is still running, then more of the turn's text that uses the result, and the composer with a Stop button while the turn runs. Right: the background tasks pane, read only, one row per task with its status, its last progress note and the worker doing it; one row is done, one is running. You talk only to the main session. The view sets the mode: Sessions is session mode, and the Projects view, threads mode, comes later with a status board in the right pane."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .sel   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .res   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-p   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-m   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .c-code { fill:var(--code); } .c-acc { fill:var(--accent); } .c-gone { fill:var(--gone); }
+    .dot-run { fill:var(--accent); } .dot-done { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
+
+  <g id="sessions">
+    <rect class="pane" x="0" y="0" width="200" height="600"/>
+    <rect class="sel" x="16" y="10" width="82" height="22"/>
+    <text class="t-lbl c-acc" x="30" y="25">SESSIONS</text>
+    <rect class="box" x="102" y="10" width="82" height="22"/>
+    <text class="t-lbl" x="116" y="25">PROJECTS</text>
+    <rect class="box" x="16" y="38" width="168" height="30"/>
+    <text class="t-b" x="28" y="58">+ New session</text>
+    <rect class="sel" x="8" y="82" width="184" height="44"/>
+    <circle class="dot-run" cx="22" cy="98" r="4"/>
+    <text class="t-b" x="32" y="102">Compare two vendors</text>
+    <text class="t-s" x="32" y="118">running · now</text>
+    <text class="t-p" x="32" y="150">Draft the launch note</text>
+    <text class="t-s" x="32" y="166">2h ago</text>
+    <text class="t-p" x="32" y="198">Fix the onboarding copy</text>
+    <text class="t-s" x="32" y="214">yesterday</text>
+    <text class="t-s" x="16" y="580">one main worker · many sessions</text>
+  </g>
+
+  <g id="thread">
+    <text class="t-b" x="220" y="26">Compare two vendors</text>
+    <text class="t-s" x="372" y="26">in project: vendor-notes</text>
+    <text class="t-lbl" x="590" y="26">SESSION MODE</text>
+    <line class="rule" x1="200" y1="42" x2="690" y2="42"/>
+    <rect class="box" x="400" y="56" width="276" height="44"/>
+    <text class="t-p" x="412" y="74">Compare Acme and Globex for us,</text>
+    <text class="t-p" x="412" y="90">and write a one-page summary.</text>
+    <text class="t-p" x="220" y="124">I'll write the outline myself and research</text>
+    <text class="t-p" x="220" y="140">both vendors in the background.</text>
+    <text class="t-m" x="220" y="166">▸ createTask · Research Acme → researcher</text>
+    <text class="t-m" x="220" y="184">▸ createTask · Research Globex → researcher</text>
+    <text class="t-p" x="220" y="210">Outline: 1. Price  2. Support  3. Risks …</text>
+    <rect class="res" x="220" y="226" width="456" height="58"/>
+    <text class="t-lbl c-code" x="232" y="244">BACKGROUND RESULT · RESEARCH ACME · DONE</text>
+    <text class="t-p" x="232" y="262">Acme: $40/user, 24h support, SOC 2 since 2024.</text>
+    <text class="t-s" x="232" y="276">arrived while this turn was running</text>
+    <text class="t-p" x="220" y="308">Acme's research is in. Section 1 now reads: Acme</text>
+    <text class="t-p" x="220" y="324">costs $40 per user …</text>
+    <text class="t-s c-acc" x="220" y="350">● working · 0:42</text>
+    <rect class="box" x="220" y="500" width="456" height="72"/>
+    <text class="t-s" x="234" y="522">Reply to the main session…</text>
+    <rect class="box" x="612" y="540" width="52" height="22"/>
+    <text class="t-b c-gone" x="622" y="556">Stop</text>
+    <text class="t-s" x="220" y="590">you talk only to the main session</text>
+  </g>
+
+  <g id="tasks">
+    <rect class="pane" x="690" y="0" width="250" height="600"/>
+    <text class="t-lbl" x="706" y="26">BACKGROUND TASKS · 2</text>
+    <rect class="box" x="706" y="38" width="218" height="66"/>
+    <circle class="dot-done" cx="720" cy="56" r="4"/>
+    <text class="t-b" x="730" y="60">Research Acme</text>
+    <text class="t-s c-code" x="730" y="76">done</text>
+    <text class="t-s" x="730" y="94">researcher</text>
+    <rect class="sel" x="706" y="114" width="218" height="66"/>
+    <circle class="dot-run" cx="720" cy="132" r="4"/>
+    <text class="t-b" x="730" y="136">Research Globex</text>
+    <text class="t-s c-acc" x="730" y="152">running · "reading pricing pages"</text>
+    <text class="t-s" x="730" y="170">researcher</text>
+    <text class="t-lbl" x="706" y="210">OPEN A ROW TO READ ITS WORK</text>
+    <text class="t-s" x="706" y="228">read only: to stop or steer it,</text>
+    <text class="t-s" x="706" y="244">ask the main session</text>
+    <text class="t-s" x="706" y="580">Projects view: a status board here</text>
+  </g>
+</svg>

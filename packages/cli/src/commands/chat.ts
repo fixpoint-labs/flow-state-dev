@@ -3,12 +3,12 @@
  * flow-state project. Resolves the runtime the same way `fsdev run` does (the
  * shared prelude), binds a default target, and runs the read-eval loop.
  */
-import { mkdir } from "node:fs/promises";
 import type { Command } from "commander";
 import {
   createFlowRegistry,
   createModelResolver,
   ownsRecord,
+  resolveDurabilityProvider,
   resolveInProcessPrincipal,
   type FlowRegistry,
   type RequestRecord,
@@ -16,7 +16,6 @@ import {
   type RuntimeLoggerLevel,
   type StoreRegistry,
 } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
@@ -28,6 +27,7 @@ import { createBuiltinRegistry } from "../chat/registry";
 import { createPlainTextRenderer } from "../chat/render";
 import { runChatLoop, type SessionGuard } from "../chat/loop";
 import { collectValues } from "../cli-options";
+import { openLocalStores } from "../local-store";
 import {
   askFlowState,
   resolveCliPrincipal,
@@ -43,7 +43,7 @@ export function registerChatCommand(program: Command): void {
     .description("Start an interactive chat session over a flow")
     .option("-s, --session <id>", "Resume an engine session for the initially bound flow")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
-    .option("-u, --user <id>", "Run turns as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
+    .option("-u, --user <id>", "Run turns as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or devuser (the DevTool's local user) if the app has none or you pass --org")
     .option("--org <id>", "Run turns in this organization and skip the app's resolver")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file (repeatable, resolved from cwd)", collectValues, undefined)
@@ -158,6 +158,8 @@ export async function executeChatCommand(
   let baseRuntimeConfig: RuntimeConfig | undefined;
   let configDefault: string | undefined;
   let runtimeSnapshot: { source: string; store: string };
+  // Where a turn held on a stop is answered, said in the chat notice.
+  let answerAt = "Answer it in a server on these stores.";
   // Set only for resources this command owns: the config's FlowState, or a
   // discovery-path SQLite store we opened. Injected stores stay caller-owned.
   let dispose: (() => Promise<void>) | undefined;
@@ -199,13 +201,15 @@ export async function executeChatCommand(
     registry.registerMany(resolved.flows);
     const discovered = registry;
     askPrincipal = (question) => resolveInProcessPrincipal({ registry: discovered }, question);
+    // The store `fsdev run` and `fsdev dev` share, so a stop a turn makes is
+    // answered in the DevTool. Durable by the one engine rule, set below.
     if (options.stores !== undefined) {
       stores = options.stores;
     } else {
-      await mkdir(".fsdev/data", { recursive: true });
-      const sqlite = createSQLiteStores({ filename: ".fsdev/data/fsdev.db" });
-      stores = sqlite;
-      dispose = async () => sqlite.close();
+      const local = await openLocalStores();
+      stores = local.stores;
+      answerAt = `Answer it in fsdev dev, which reads this store: ${local.dataLine}.`;
+      dispose = async () => local.close();
     }
     runtimeSnapshot = { source: "discovery", store: ".fsdev/data/fsdev.db (SQLite)" };
   }
@@ -240,10 +244,12 @@ export async function executeChatCommand(
       baseRuntimeConfig.logger = logger;
     }
 
+    // With an app config, the app's runtime decides durability; without one, it
+    // is on wherever the stores persist, as for `fsdev run` and `fsdev dev`.
     const runtimeConfig: RuntimeConfig =
       baseRuntimeConfig !== undefined
         ? { ...baseRuntimeConfig, modelResolver, logger }
-        : { modelResolver, logger };
+        : { modelResolver, logger, durabilityProvider: resolveDurabilityProvider({ stores }) };
 
     // Session guard (§4.4): reject an existing session owned by another flow
     // instance, or whose completed-request history belongs to one.
@@ -313,6 +319,7 @@ export async function executeChatCommand(
       renderer,
       stores,
       runtimeConfig,
+      answerAt,
       // Asked per turn, for that turn's target, as HTTP asks per request.
       principalFor: (target, text) =>
         resolveCliPrincipal(

@@ -157,6 +157,16 @@ import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 
+/**
+ * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
+ * (durable execution is on wherever stores persist) and the host setting.
+ */
+const SUSPEND_NEEDS_DURABILITY =
+  "stopping for a person needs durable execution, which is on by default wherever stores persist. " +
+  "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
+  "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
+  "(tests only: they are lost when the process ends). Nothing was held.";
+
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
     record.journal = [];
@@ -3702,10 +3712,11 @@ export async function createExecutionContext<
             return resumeCtx.data;
           }
         }
+        // The one place a host without durable execution refuses a stop
+        // (FIX-2063): every host reaches it, so none guards on durability
+        // itself. Worded beside the wait refusal, so either teaches the setting.
         if (!options.durabilityEnabled) {
-          throw new Error(
-            "ctx.suspend() requires a DurabilityProvider. Configure one in your server options."
-          );
+          throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });

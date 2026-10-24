@@ -191,7 +191,8 @@ whether it waits, and the budget. To answer a send, the recipient sends to its s
 `inReplyTo`; the reply lands in the session that sent the original, even if that session's task has
 ended.
 
-**Where it lands:** the recipient's conversation with this user, except that a message to the worker
+**Where it lands:** the recipient's default conversation with this user (to the project
+coordinator from work in a project, that project's conversation), except that a message to the worker
 that filed your task lands in the session that filed it, and one to a task in that task's session.
 It never changes the brief or stops the request working the task. To an open task, it's
 conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
@@ -401,7 +402,11 @@ A behavior none of these rules explains is a bug in the model.
    dependents.
 7. Every ending of a delegated task, a failure included, reaches its filer once, as its result
    setting says: the waiting request, or `onTaskSettled`. Set to the filer's conversation, it
-   lands there under the assignee's name.
+   lands there under the assignee's name. An ending that lands while a turn a person's own
+   message started is running can be taken by that turn after it answers (`takeFinishedTasks`,
+   through the agent flow's `answerAgain`): said there under the assignee's name, through the
+   same take record and handling as `onTaskSettled`, and the worker answers again with it in the
+   same request (FIX-2159). No other turn takes one.
 8. Every debt has a due time. The settling side pays it, a pass or a touch resends what is past
    due, and the durability sweeper pays it when due. The first two are its fast paths; a resend
    pays it if still owed.

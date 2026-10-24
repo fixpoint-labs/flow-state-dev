@@ -7,6 +7,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
 import { boardAboveOf } from "./board-above";
+import { FILED_PROJECT } from "./board-entries";
+import { filingProjectOf } from "./filing-session";
 import { conversationLedgerAt } from "./ledger";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 
@@ -46,4 +48,29 @@ export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollection
  */
 export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
   return (await heldTask(ctx))?.row.id ?? stringAt(ctx, TASK_ID_STATE_KEY);
+}
+
+/**
+ * The project a task's row was stamped with when it was filed (FIX-2161), in
+ * `projectRef` form: `undefined` for a row filed with no project, and for a
+ * row filed before rows carried the stamp (see {@link isStamped}).
+ */
+export function filedProjectOf(row: Pick<Task, "metadata"> | undefined): string | undefined {
+  const stamp = row?.metadata?.[FILED_PROJECT];
+  return typeof stamp === "string" ? stamp : undefined;
+}
+
+/** Whether a task's row carries the project stamp, even an empty one: one filed before rows carried it doesn't (BP-030). */
+export function isStamped(row: Pick<Task, "metadata"> | undefined): boolean {
+  return row?.metadata != null && Object.hasOwn(row.metadata, FILED_PROJECT);
+}
+
+/**
+ * The project a task filed now in the running session is stamped with: the
+ * session's own (`filingProjectOf`), else, in a delegate's ongoing session,
+ * which has none of its own, the stamp on the task this request holds, so a
+ * piece filed there carries its project on. `null` for none.
+ */
+export async function filingProjectStampOf(ctx: BlockContext): Promise<string | null> {
+  return filingProjectOf(ctx.session.state) ?? filedProjectOf((await heldTask(ctx))?.row) ?? null;
 }

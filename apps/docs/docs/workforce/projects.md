@@ -631,10 +631,10 @@ harnessManager({
 `projectWorkspace` finds the project a run works in, in this order:
 
 1. The workstream the task came from, when it was filed from one.
-2. The project the task came from, when it was filed from a project's conversation.
-3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
+2. The project the task came from, when it was filed from a project's conversation, or from a conversation [set to work in a project](#setting-the-project-a-conversation-works-in).
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation with no project, such as the user's own coordinator until it's set to one.
 
-A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`. A worker filing from one is told which project it works in, so it doesn't have to name one.
+A task filed from a workstream, a project's conversation or a conversation set to a project is stored naming that project, whatever the filer put in `input.project`. A worker filing from one is told which project it works in, so it doesn't have to name one.
 
 The run is refused, before any file is read, when:
 
@@ -656,6 +656,49 @@ A coordinator filing for a coding worker from a conversation with no project nam
 ```
 
 Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
+
+### Setting the project a conversation works in
+
+A user's own conversation with a worker can be set to work in one of their projects. From then on, its coding runs and every task it files work in that project, so nobody has to name it in `input.project`. Set it from the app with the workforce client's `setWorkProject`:
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+const sessions = createSessionClient({ baseUrl, fetcher });
+// A worker's one conversation, at the first job that needs files
+await workforce.setWorkProject("lead", { visibility: "shared", id: "apollo" });
+// A new session, after the user picks a project
+const session = await sessions.createSession({ flowKind: "lab-main", userId, state: { workerId: "main" } });
+await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
+```
+
+Without `sessionId`, it sets the user's default conversation with that worker, creating the conversation if there isn't one. With `sessionId`, it sets that session, which must be the user's own. It resolves to `{ project: { visibility, id } }`. A new session takes two calls, as above: create it, then set its project. A create that puts `workProjectId` in `state` is refused with a 400 naming the field.
+
+Calling it again with another project replaces the first. Tasks already filed keep the project they were filed in, including one still waiting on the board for a delegate and one handed to a delegate's ongoing session, along with whatever that delegate files while working it. A run that has already started stays where it is. There's no way to clear the project: once set, the conversation always has one.
+
+The worker flows the package ships take the call as they are: `agent`, `coordinator` and the [Error Reporter](./error-reporter.md)'s flow. A worker flow of your own declares the action under its name:
+
+```ts
+import { SET_WORK_PROJECT_ACTION, setWorkProjectAction } from "@flow-state-dev/workforce";
+
+defineFlow({
+  // ...
+  actions: { respond, ...board.actions, [SET_WORK_PROJECT_ACTION]: setWorkProjectAction },
+});
+```
+
+A refused call rejects with an `Error` whose message starts `Refused:`, and nothing is stored:
+
+| Refused when | The message says |
+|---|---|
+| The project is shared and the user isn't one of its members | `not-a-member` |
+| The user has no private project with that id | `you have no private project "<id>"` |
+| The organization has no shared project with that id | `this organization has no project "<id>" you can read` |
+| The session is a project coordinator's, a task's, a delegate's or a workstream lead's | Which of those it is. Each of them works in the project it was created, filed or opened in. |
+
+Membership is checked again on every run, so a user removed from the project can't run work there through a conversation set to it earlier. A project coordinator's conversation gets its project from `ensureWorkerSession({ worker, projectId })`, as in [Talking to a project](#talking-to-a-project).
 
 ### Tools a project's coding work gets
 

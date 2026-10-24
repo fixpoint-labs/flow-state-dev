@@ -76,3 +76,16 @@ export const FILED_MARKER = "filedFrom";
  * reads its session's count, as before (BP-030).
  */
 export const FILED_HOP = "filedAtHop";
+
+/**
+ * The metadata key on a task's row naming the project it was filed in
+ * (FIX-2161), in `projectRef` form: the filing session's project
+ * (`filingProjectOf`), or, in a delegate's ongoing session, the stamp on the
+ * task that session holds. The hand-over copies it onto the task session as
+ * `filingProjectId`, and a held row's run reads it, so a task keeps its
+ * project when its conversation's project changes. Server-written by the
+ * filing; a caller's filing or patch never reaches it. `null` on a row filed
+ * with no project. **Absent** on a row filed before rows carried it, whose
+ * hand-over reads its conversation's project, as before (BP-030).
+ */
+export const FILED_PROJECT = "filedInProject";

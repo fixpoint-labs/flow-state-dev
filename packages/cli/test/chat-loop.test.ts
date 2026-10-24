@@ -35,6 +35,7 @@ describe("runChatLoop — per-turn session guard", () => {
       renderer: createPlainTextRenderer(output),
       stores: {} as never,
       runtimeConfig: {},
+      answerAt: "Answer it in a server on these stores.",
       principalFor: () => Promise.reject(new Error("principalFor should not run")),
       runtime: { source: "test", store: "test" },
       // Guard rejects: simulates a foreign-flow request appended by another process.

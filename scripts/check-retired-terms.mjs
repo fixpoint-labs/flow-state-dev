@@ -213,6 +213,13 @@ export const EXCEPTIONS = [
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
   },
   {
+    id: "claude-code-threads",
+    terms: ["thread"],
+    where: (path) => path.startsWith("labs/claude-code-style/workforce/"),
+    strip: /\bthreads?\b/gi,
+    why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
+  },
+  {
     id: "old-page-redirect",
     terms: ["mailbox"],
     where: (path) => path === "apps/docs/docusaurus.config.ts",
