@@ -73,6 +73,7 @@ import { deliveredByWait, holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_C
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
+import { requestStates } from "./request-states";
 import { admittedTaskOf } from "../../task-board/task-request";
 import { TASK_SESSION_TASK_KEY } from "../../task-board/task-turn";
 
@@ -735,9 +736,11 @@ export async function releaseEndedWaits(
 ): Promise<number | undefined> {
   const lapsed = collection.list().filter((row) => row.wait?.lapsed === true && row.wait.requestId !== undefined);
   if (lapsed.length === 0) return undefined;
-  const ended = ctx.requestHost?.waits?.ended;
-  if (ended === undefined || collection.releaseWait === undefined) return undefined;
-  const answers = await ended(lapsed.map((row) => row.wait!.requestId!));
+  if (ctx.requestHost?.waits?.ended === undefined || collection.releaseWait === undefined) return undefined;
+  const states = await requestStates(
+    ctx,
+    lapsed.map((row) => row.wait!.requestId!)
+  );
   let next: number | undefined;
   // Look again at this slot later, unless it is past the age every debt ends at.
   const lookAgain = (row: Task, why: string): void => {
@@ -758,7 +761,7 @@ export async function releaseEndedWaits(
   };
   for (const row of lapsed) {
     const requestId = row.wait!.requestId!;
-    if (answers[requestId] !== true) {
+    if (states?.[requestId] !== "ended") {
       lookAgain(row, "its request still runs or is parked");
       continue;
     }

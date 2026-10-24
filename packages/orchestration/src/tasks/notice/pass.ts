@@ -34,6 +34,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
 import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
+import { requestStates } from "../helpers/request-states";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
@@ -205,9 +206,8 @@ export async function payBoardDebts(
  * which requests are running, where no notice is held for one.
  */
 async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, rows: readonly Task[]): Promise<Set<string>> {
-  const running = ctx.requestHost?.waits?.running;
   const held = new Set<string>();
-  if (running === undefined) return held;
+  if (ctx.requestHost?.waits?.running === undefined) return held;
   for (const row of rows) {
     for (const notice of owedNotices(row, ref.collectionId)) {
       const heldFor = heldWhileRunning(row, notice);
@@ -216,8 +216,8 @@ async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, 
   }
   if (held.size === 0) return held;
   try {
-    const stillRunning = await running([...held]);
-    return new Set([...held].filter((id) => stillRunning[id] !== true));
+    const states = await requestStates(ctx, [...held]);
+    return new Set([...held].filter((id) => states?.[id] === "parked" || states?.[id] === "ended"));
   } catch (error) {
     log("a pass couldn't read whether the requests its notices were held for still run: they wait for their next resend", {
       error: (error as Error).message
