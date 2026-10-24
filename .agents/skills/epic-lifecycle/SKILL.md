@@ -488,8 +488,8 @@ The epic-specific delta:
    blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
    returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
    `settlingInFlight` claim, if any. The coordinator holds the *link*, not the spec text.
-   The *other* issues keep moving. For any issue **ready to merge** — its current head
-   reviewed and checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+   The *other* issues keep moving. For any issue **ready to merge** — its PR reviewed
+   and its current head checked, per [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
    — surface it and stop there (merge is the user's).
 5. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
    table** — each issue's spec PR, each issue's impl PR#(s), and the epic PR —
