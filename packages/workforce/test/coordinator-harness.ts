@@ -25,7 +25,8 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import {
   createMockModelResolver,
   mockEvaluationModel,
@@ -387,19 +388,19 @@ export function bootHost(options: HostOptions = {}) {
   };
 
   /** An app's workforce client for `userId`, talking to this host's router. */
+  const inProcess = createInProcessFetch(state);
   const client = (userId: string) =>
-    createWorkforceClient({
-      userId,
-      fetcher: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const router = (await state.getRouter()) as any;
-        const url = new URL(String(input), "http://localhost");
-        const headers = new Headers(init?.headers);
-        headers.set("x-user", userId);
-        const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-        const method = (init?.method ?? "GET").toUpperCase();
-        return router[method](new Request(url, { ...init, headers }), { params: { path } });
-      }
-    });
+    createWorkforceClient(
+      createClient({
+        userId,
+        // This host's router in-process, as `userId`.
+        fetcher: (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("x-user", userId);
+          return inProcess(input, { ...init, headers });
+        }
+      })
+    );
 
   return {
     installation,

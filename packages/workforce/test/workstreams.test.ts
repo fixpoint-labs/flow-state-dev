@@ -12,6 +12,7 @@
  * try it by every path a user has: the app's action, the lead's tool, and flow
  * code writing the collection directly from a registered flow.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -340,7 +341,7 @@ describe("opening a workstream", () => {
     await h.ok("alice", "lead", stalled, "respond", { message: "still here" });
     expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     expect((await client.findWorkerSession({ worker: "alice-lead", workstreamId: address }))?.id).toBe(named);
     expect((await client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).id).toBe(named);
   });
@@ -352,7 +353,7 @@ describe("opening a workstream", () => {
     await h.ok("alice", "lab", await h.lab("alice"), "plantStalledOpen", { id: "checkout", lead: "alice-lead" });
     const stray = await h.openSession("alice", "lead", { workerId: "alice-lead", workstreamId: workstreamRef(address) });
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     expect(await client.findWorkerSession({ worker: "alice-lead", workstreamId: address })).toBeUndefined();
     await expect(client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).rejects.toThrow(
       /no lead session yet.*openWorkstream/
@@ -381,7 +382,7 @@ describe("opening a workstream", () => {
     await h.hire("bob", "bob-lead", "lead");
     expect((await h.tryOpenSession("bob", "lead", { workerId: "bob-lead", workstreamId: ref })).status).toBe(404);
 
-    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
     const found = await client.findWorkerSession({ worker: "alice-lead", workstreamId: { project: apollo, id: "checkout" } });
     expect(found?.id).toBe(out.workstream.sessionId);
     // A lookup that doesn't name the workstream never returns its session.

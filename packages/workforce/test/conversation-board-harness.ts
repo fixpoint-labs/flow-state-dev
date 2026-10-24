@@ -20,7 +20,8 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -435,18 +436,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       .map((item) => ({ agentName: item.agentName as string | undefined, text: textOf(item) }));
 
   /** An app's workforce client for `userId`, talking to this host's router. */
+  const inProcess = createInProcessFetch(state);
   const client = (userId: string) =>
-    createWorkforceClient({
-      userId,
-      fetcher: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = new URL(String(input), "http://localhost");
-        const headers = new Headers(init?.headers);
-        headers.set("x-user", userId);
-        const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-        const method = (init?.method ?? "GET").toUpperCase();
-        return (await router())[method](new Request(url, { ...init, headers }), { params: { path } });
-      }
-    });
+    createWorkforceClient(
+      createClient({
+        userId,
+        // This host's router in-process, as `userId`.
+        fetcher: (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("x-user", userId);
+          return inProcess(input, { ...init, headers });
+        }
+      })
+    );
 
   /**
    * Make every new request on `actionName` fail to be written, as a store

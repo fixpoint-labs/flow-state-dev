@@ -2,7 +2,7 @@
  * `createWorkforceClient`: find or start a session with a worker, or list a
  * user's conversations with one, from an app.
  *
- * Built on the session and resource clients, with no endpoint of its own. The
+ * Built on the one client (`createClient`), with no endpoint of its own. The
  * user's roster is read through a session of the roster flow (one per user),
  * which declares the two worker collections; a worker's sessions are listed by
  * their readonly `workerId` and created with it as initial state, which the
@@ -12,11 +12,8 @@
  */
 import {
   ClientHttpError,
-  createClient,
-  createResourceClient,
-  createSessionClient,
   readEveryCollectionPage,
-  type ClientFetch,
+  type Client,
   type SessionSummary
 } from "@flow-state-dev/client";
 import {
@@ -32,14 +29,12 @@ import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
 
-/** The transport options `createSessionClient` takes, plus the user the client acts for. */
-export type WorkforceClientOptions = {
-  /** The user whose roster and sessions this client reads. With authentication, the signed-in user. */
-  userId: string;
-  baseUrl?: string;
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
+/**
+ * The slice of the one client a workforce client reads and writes through.
+ * Its user is the one whose roster and sessions are read: with
+ * authentication, the signed-in user.
+ */
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -167,19 +162,12 @@ const ACTION_POLL_MS = 100;
 const ACTION_TIMEOUT_MS = 30_000;
 
 /**
- * Build a workforce client.
+ * Build a workforce client over the one client, as that client's user.
  *
- * @param options The user, and the transport options `createSessionClient` takes.
+ * @param fsd The app's client (`createClient`): its user, transport and credential.
  */
-export function createWorkforceClient(options: WorkforceClientOptions): WorkforceClient {
-  const transport = {
-    ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
-    ...(options.apiPath !== undefined ? { apiPath: options.apiPath } : {}),
-    ...(options.fetcher !== undefined ? { fetcher: options.fetcher } : {})
-  };
-  const sessions = createSessionClient(transport);
-  const resources = createResourceClient(transport);
-  const { userId } = options;
+export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClient {
+  const { sessions, resources, userId } = fsd;
 
   /**
    * The user's roster session, and the organization it was created in. Found
@@ -191,11 +179,9 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
   const roster = (): Promise<{ id: string; orgId: string }> =>
     (rosterSession ??= (async () => {
-      const listed = mostRecent(await sessions.listSessions({ flowKind: ROSTER_FLOW, userId }));
+      const listed = mostRecent(await sessions.list({ flowKind: ROSTER_FLOW, userId }));
       const detail =
-        listed !== undefined
-          ? await sessions.getSession(listed.id)
-          : await sessions.createSession({ flowKind: ROSTER_FLOW, userId });
+        listed !== undefined ? await sessions.get(listed.id) : await fsd.flow(ROSTER_FLOW).createSession();
       return { id: detail.id, orgId: detail.orgId };
     })().catch((error: unknown) => {
       rosterSession = undefined;
@@ -267,7 +253,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
    */
   const atDerived = async (criteria: WorkerSessionCriteria, flow: string, orgId: string): Promise<SessionSummary | undefined> => {
     const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
-    const rows = await sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) });
+    const rows = await sessions.list({ flowKind: flow, userId, state: criteriaState(criteria) });
     return rows.find((row) => row.id === sessionId);
   };
 
@@ -282,7 +268,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     if (derivable(criteria)) return atDerived(criteria, flow, orgId);
     const filter = criteriaState(criteria);
     const named = new Set(Object.keys(filter));
-    const rows = await sessions.listSessions({
+    const rows = await sessions.list({
       flowKind: flow,
       userId,
       state: filter,
@@ -308,17 +294,16 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
 
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
-    const actions = createClient({ flowKind: flow, userId, ...transport });
-    const started = await actions.sendAction(action, input, { sessionId });
-    const requestId = started.request.id;
+    const started = await fsd.flow(flow).send(action, input, { sessionId });
+    const requestId = started.id;
     const until = Date.now() + ACTION_TIMEOUT_MS;
-    let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"] = started.status;
+    let status: Awaited<ReturnType<typeof started.status>>["status"] = started.response.status;
     while (status === "in_progress") {
       if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
       await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
-      status = (await actions.getRequestStatus(requestId)).status;
+      status = (await started.status()).status;
     }
-    const listed = await sessions.listSessionRequests(sessionId, { status, includeResultOutput: true, limit: 100 });
+    const listed = await sessions.requests(sessionId, { status, includeResultOutput: true, limit: 100 });
     const found = listed.find((request) => request.id === requestId);
     if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}.`);
     if (found === undefined) throw new Error(`${action} finished, but its answer could not be read.`);
@@ -366,9 +351,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       }
       const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
       try {
-        return await sessions.createSession({
-          flowKind: flow,
-          userId,
+        return await fsd.flow(flow).createSession({
           sessionId,
           // Every criteria key is a readonly field the session starts with, so
           // a later lookup by the same criteria finds it.
@@ -377,7 +360,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       } catch (error) {
         // A racing call created it first: the store's create-if-absent let
         // one write win, and this is that session.
-        if (error instanceof ClientHttpError && error.status === 409) return sessions.getSession(sessionId);
+        if (error instanceof ClientHttpError && error.status === 409) return sessions.get(sessionId);
         throw error;
       }
     },
@@ -389,7 +372,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         deriveWorkerSessionId({ userId, orgId, flow, criteria }),
         // Top-level only, the listing's default: a task's or a delegate's
         // session is a dispatch run. No limit, so this one answer is every row.
-        sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) })
+        sessions.list({ flowKind: flow, userId, state: criteriaState(criteria) })
       ]);
       return rows
         .filter((row) => carriesOnly(row, WORKER_ONLY))
