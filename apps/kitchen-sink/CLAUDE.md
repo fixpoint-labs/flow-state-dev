@@ -13,7 +13,8 @@ pnpm test         # Run tests
 pnpm test:watch   # Watch mode
 ```
 
-`pnpm dev` is just `next dev`. Workspace packages are consumed as TypeScript
+`pnpm dev` runs `WATCHPACK_POLLING=true next dev`, setting Watchpack's polling
+mode before Next loads its watcher. Workspace packages are consumed as TypeScript
 source — their `package.json` `exports` point at `./src` in the workspace (the
 built `./dist` is swapped in at publish time via `publishConfig`), and
 `next.config.mjs` lists every workspace package in `transpilePackages`. So

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "WATCHPACK_POLLING=true next dev",
     "build": "pnpm fsdev gen && next build",
     "migrate": "tsx scripts/migrate.ts",
     "vercel-build": "cd ../.. && pnpm install && pnpm packages:build && cd apps/kitchen-sink && pnpm fsdev gen && next build && tsx scripts/migrate.ts",

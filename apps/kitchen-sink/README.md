@@ -19,6 +19,8 @@ pnpm --filter @flow-state-dev/kitchen-sink dev
 
 The app runs at [http://localhost:3000](http://localhost:3000). Every model it uses goes through the Vercel AI Gateway, so `AI_GATEWAY_API_KEY` is required for real answers. `OPENAI_API_KEY` is optional and only enables voice. [Environment variables](#environment-variables) covers the rest.
 
+The dev command uses polling for Next's route-file watcher. Workspace source edits still reload through HMR.
+
 To serve on another port, set `PORT`:
 
 ```bash
