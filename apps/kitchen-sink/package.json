@@ -39,6 +39,7 @@
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/vercel": "workspace:*",

@@ -137,7 +137,7 @@ URL the shims POST back into). The index lives in Postgres alongside
 the rest of the stores, so `FSD_DB_URL` / `DATABASE_URL` is required too.
 
 Profile selection: `lib/flowstate.ts` declares a `prod` (Postgres) and a
-`dev` (in-memory) store profile. It defaults to `prod` whenever a database
+`dev` (SQLite, `.fsdev/data/flowstate.db`) store profile. It defaults to `prod` whenever a database
 URL (`FSD_DB_URL` / `DATABASE_URL`) is configured — the deployed/Vercel case —
 and to `dev` otherwise (local dev with no DB). Set `FSD_ENV=prod` / `FSD_ENV=dev`
 to override the default explicitly. The scheduler index only resolves under

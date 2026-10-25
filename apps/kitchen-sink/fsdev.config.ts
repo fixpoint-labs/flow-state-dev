@@ -9,7 +9,7 @@
  * behind `@flow-state-dev/vercel/next`.
  *
  * Profile selection: `FSD_ENV` picks the active profile, falling back to
- * `defaultProfile: "dev"` (in-memory) for local development and CI. Production
+ * `defaultProfile: "dev"` (SQLite) for local development and CI. Production
  * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
  *
  * Run a flow from the CLI without the browser (from this directory):
@@ -22,6 +22,7 @@ import { createFlowState, inMemoryStores, filesystemStores, type FlowState } fro
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
@@ -156,13 +157,17 @@ const flowstate = createFlowState({
     : undefined,
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },
-    // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
-    // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
+    // The local profile persists to SQLite (`.fsdev/data/flowstate.db`) so
+    // sessions and hired workers survive a restart. `STORE_TYPE=memory` opts
+    // into ephemeral in-memory stores (tests, e2e); `STORE_TYPE=filesystem`
+    // keeps the JSON-file store.
     dev: {
       primary:
-        process.env.STORE_TYPE === "filesystem"
-          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-          : inMemoryStores(),
+        process.env.STORE_TYPE === "memory"
+          ? inMemoryStores()
+          : process.env.STORE_TYPE === "filesystem"
+            ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+            : sqliteStores({ filename: path.join(process.cwd(), ".fsdev", "data", "flowstate.db") }),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured

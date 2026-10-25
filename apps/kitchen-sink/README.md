@@ -153,7 +153,7 @@ This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both
 
 ### Hiring while the app runs
 
-Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
+Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). Locally it is still there after `pnpm build && pnpm start`, because the default store is a SQLite file at `.fsdev/data/flowstate.db`. Set `STORE_TYPE=memory` for a store that starts empty each time, or point `FSD_DB_URL` at a database.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
@@ -218,7 +218,7 @@ In local development the mode uses the checkout the server runs from. To point i
 
 **The plan panel** shows what Claude Code recorded of its to-do list for the session's latest turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete, and why. A turn where Claude Code kept no to-do list says "No plan recorded for this turn." Claude Code keeps one when the job is big enough to plan, or when you ask it to. Nothing in the panel starts work.
 
-Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across a restart.
+Sessions, and the conversations they're bound to, are kept across a restart in the default SQLite store. Set `STORE_TYPE=memory` to start empty each time.
 
 ## Codex mode
 
@@ -306,7 +306,7 @@ Most are optional. These are the ones you're likely to set:
 | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 | `KITCHEN_SINK_HARNESS_UNSANDBOXED` | Set to `1` to run the coding harness modes (Claude Code, Codex and Cursor) without their sandbox. Each mode's card then says so, and the mode stays available on a machine where the sandbox can't start. Without the sandbox a run is not confined to its worktree: it can write anywhere the server's OS user can, the repository's `.git` included, and run any command, and Claude Code still asks for no approval. Unset, every run is sandboxed, and a mode whose sandbox can't start here is unavailable. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
-| `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
+| `STORE_TYPE` | The default keeps sessions and hired workers in a SQLite file, `.fsdev/data/flowstate.db`, across restarts. `memory` starts empty each time, and `filesystem` keeps JSON files in `.fsdev/data` instead. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |
