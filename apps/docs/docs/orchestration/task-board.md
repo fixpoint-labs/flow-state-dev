@@ -745,7 +745,7 @@ A worker that can't go on without an answer calls `parkOnQuestion({ question })`
 `answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
 
 ```ts
-await fsd.flow(flowKind).send("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+await fsd.flow(boardFlowKind).send("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId }) // the flow and session the board is on
 ```
 
 It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.
