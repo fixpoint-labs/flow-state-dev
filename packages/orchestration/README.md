@@ -1280,13 +1280,13 @@ const items = inboxItems({
   suspensions, // asks a reader found in sessions
   flowOf,      // the flow that owns a session
 });
-await createInboxClient(client).answer(items[0], { action: "approve" });
+await createInboxClient(client).answer(items[0], { approved: true });
 ```
 
-- **One item per task row** that waits on the user. A task's run stopped by `ctx.waitForUser` lists from its row, never a second time from the run's session.
-- **One item per suspension** that no row claims, such as a user's ask in a session of their own.
-- **`answerable`** says whether the Inbox can answer the item, and `unanswerable` says why not. `answer` routes by the hold's source: a suspension goes to the engine's answer route (`client.flow(..).request(..).answer(..)`), which records who answered.
-- **`reconcileInbox(items, truth)`** checks a list against reads made apart from it: the sessions' suspended requests (`suspensionTruthOf`) and the board's rows (`rowTruthOf`). It is green when nothing is missing, duplicated, orphaned or reopened, every item is answerable, and every task run's stop matches the hold on its row.
+- **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
+- **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
+- **Each hold** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its holds is.
+- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }`. `answer` sends a task run's stop to the engine's answer route, which records who answered. Questions and confirms are refused until tasks can hold them.
 
 ## Documentation
 

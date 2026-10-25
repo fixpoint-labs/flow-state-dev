@@ -505,10 +505,10 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   }
   // ---- inbox · one item type, built in one place (FIX-2133) -----------------------------------
   // Read by type: an object literal typed as orchestration's `InboxItem` (its contextual type, a cast
-  // included), or one whose own type carries an item's `source`, `holds` and `answerable` however
+  // included), or one whose own type carries an item's `task`, `holds` and `answerable` however
   // its properties are written (shorthand, spread). Allowed only in a function `INBOX_READ` names:
   // an item is the only thing an Inbox can draw, so building one is the only way to list one.
-  const INBOX_MODULE = "packages/orchestration/src/inbox/index.ts";
+  const INBOX_MODULE = "packages/orchestration/src/inbox/types.ts";
   const declaredIn = (sym, module, name) => (sym?.declarations ?? []).some((d) => rel(d.getSourceFile()) === module && (name === undefined || d.name?.getText?.() === name));
   const typeDeclaredIn = (type, module, name) => {
     if (type === undefined) return false;
@@ -519,7 +519,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
   // definition: a finding, not a rule that read nothing.
   if (inboxItemDecl === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
-  const ITEM_SHAPE = ["source", "holds", "answerable"];
+  const ITEM_SHAPE = ["task", "holds", "answerable"];
   // A literal typed `any` or `unknown` (a spread of an `any` value) is no item: every slot accepts it.
   const isInboxItem = (node) => {
     if (typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem")) return true;
@@ -531,10 +531,10 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   for (const sf of ownFiles) {
     const path = rel(sf);
     const visit = (node) => {
-      // Any syntax that can give the literal a `source`: assigned, shorthand, quoted or computed, or a spread.
-      const mayHoldSource = (p) =>
-        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "source"));
-      if (inboxItemDecl !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldSource) && isInboxItem(node)) {
+      // Any syntax that can give the literal an item's `holds`: assigned, shorthand, quoted or computed, or a spread.
+      const mayHoldHolds = (p) =>
+        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "holds"));
+      if (inboxItemDecl !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldHolds) && isInboxItem(node)) {
         inboxScanned.items++;
         const key = `${packageOf(path)}:${recorderOf(node)}`;
         if (!(key in INBOX_READ) && !isMarked(lineText(sf, node))) {

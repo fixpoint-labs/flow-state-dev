@@ -59,12 +59,12 @@
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-import type { ResumeAction } from "@flow-state-dev/core/types";
+import { waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { answerSuspension, inboxItems, type InboxItem, type InboxWaitingFor } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, type InboxAnswer, type InboxItem, type InboxRow } from "@flow-state-dev/orchestration/inbox";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -196,7 +196,7 @@ export type BoardRow = {
    * The stop a row waiting on the user waits on (FIX-2129), or `null`. The
    * Inbox lists the task's item from it.
    */
-  waitingFor: InboxWaitingFor | null;
+  waitingFor: NonNullable<InboxRow["waitingFor"]> | null;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -471,7 +471,7 @@ function strings(value: unknown): string[] {
  * missing its request, its suspension, an ask the Inbox knows or a prompt
  * reads as none, never a guess.
  */
-function toWaitingFor(value: unknown): InboxWaitingFor | null {
+function toWaitingFor(value: unknown): NonNullable<InboxRow["waitingFor"]> | null {
   const requestId = text(field(value, "requestId"));
   const suspensionId = text(field(value, "suspensionId"));
   const asks = field(value, "kind");
@@ -586,7 +586,7 @@ export function inboxSection(
         flowId: ask.flowId,
         requestId: ask.item.requestId,
         suspensionId: ask.item.suspensionId,
-        kind: ask.kind === "approval" ? "approval" : "input",
+        kind: waitForUserKindOf(ask.item) ?? "input",
         prompt: ask.item.message,
         ...(ask.item.title ? { title: ask.item.title } : {}),
         since: ask.since,
@@ -1001,13 +1001,28 @@ export function createLabReader(client: Client): LabReader {
 
   // The answer route (FIX-2129): the Lab sets who answered, and checks the
   // ask is this user's before it reads it.
+  const inbox = createInboxClient(client);
   const resume: LabReader["resume"] = async (ask, answer) => {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
-    // Orchestration's one answer call for a suspension, which the Inbox's item routes to.
-    await answerSuspension(
-      client,
-      { kind: "suspension", flowId: ask.flowId, sessionId: ask.sessionId, requestId: ask.item.requestId, suspensionId: ask.item.suspensionId },
-      answer,
+    // Orchestration's one answer call, as the Inbox makes it for an item's hold:
+    // the card's resolution read as the answer its ask takes.
+    const asks = waitForUserKindOf(ask.item) ?? "input";
+    const typed: InboxAnswer =
+      asks === "approval"
+        ? { approved: answer.action === "approve", ...(answer.data === undefined ? {} : { data: answer.data }) }
+        : answer.action === "skip"
+          ? { skipped: true }
+          : { value: answer.data };
+    await inbox.answerHold(
+      {
+        id: ask.item.suspensionId,
+        source: { kind: "suspension", flowId: ask.flowId, sessionId: ask.sessionId, requestId: ask.item.requestId, suspensionId: ask.item.suspensionId },
+        ask: { kind: asks, prompt: ask.item.message },
+        openedAt: ask.since,
+        answerable: true,
+        unanswerable: null,
+      },
+      typed,
     );
   };
 

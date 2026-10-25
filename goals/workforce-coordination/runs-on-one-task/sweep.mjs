@@ -204,11 +204,11 @@ function inboxPlants() {
       path: "packages/shift-manager/src/lib/__planted_inbox_item__.ts",
       text:
         'import type { InboxItem } from "@flow-state-dev/orchestration/inbox";\n' +
-        `export function myList(ids: string[]): InboxItem[] {\n  return ids.map((id) => ({ id, source: "suspension", ${fields} }));\n}\n` +
-        `export const one = (id: string) => ({ id, source: "suspension", ${fields} }) as InboxItem;\n` +
-        'export function short(id: string): InboxItem {\n  const source = "suspension";\n  const holds: InboxItem["holds"] = [];\n  const answerable = true;\n  return { id, source, task: null, holds, since: 0, answerable, unanswerable: null };\n}\n' +
-        `const base = { source: "suspension" as const };\nexport const spread = (id: string): InboxItem => ({ ...base, id, task: null, holds: [], since: 0, answerable: true, unanswerable: null });\n` +
-        `export const loose = (id: string) => ({ id, source: "row", ${fields} });\n`,
+        `export function myList(ids: string[]): InboxItem[] {\n  return ids.map((id) => ({ id, ${fields} }));\n}\n` +
+        `export const one = (id: string) => ({ id, ${fields} }) as InboxItem;\n` +
+        'export function short(id: string): InboxItem {\n  const task = null;\n  const holds: InboxItem["holds"] = [];\n  const answerable = true;\n  return { id, task, holds, since: 0, answerable, unanswerable: null };\n}\n' +
+        `const base = { holds: [] as InboxItem["holds"], task: null };\nexport const spread = (id: string): InboxItem => ({ ...base, id, since: 0, answerable: true, unanswerable: null });\n` +
+        `export const loose = (id: string) => ({ id, ${fields} });\n`,
       expect: 5,
     },
   ];

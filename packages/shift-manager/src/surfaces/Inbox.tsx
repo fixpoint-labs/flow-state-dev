@@ -165,7 +165,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     aria-selected={isSelected}
                     data-testid="inbox-item"
                     data-item-id={item.id}
-                    data-source={item.source}
+                    data-source={item.holds[0]!.source.kind}
                     data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
                     data-session-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.sessionId : undefined}
                     className={cn(
@@ -201,7 +201,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
-        ) : selected.source === "row" ? (
+        ) : selected.holds[0]!.source.kind === "row" ? (
           <HeldQuestions item={selected} gaps={gaps} />
         ) : (
           <AskDetail
