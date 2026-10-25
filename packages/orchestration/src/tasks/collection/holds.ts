@@ -74,6 +74,18 @@ export function steerPlacesTaken(row: Pick<Task, "status" | "holds" | "steers">)
 }
 
 /**
+ * Refuse a midway ask {@link askProblem} names, at the collection's `ask`
+ * entry in both backings, as filing refuses one: an ask that opened nothing
+ * would still drop the turn's lease.
+ *
+ * @throws {Error} naming the problem
+ */
+export function assertAskable(asks: readonly HoldAsk[]): void {
+  const problem = askProblem(asks);
+  if (problem !== undefined) throw new Error(`[tasks] ask: ${problem}, so the task can't be held on them. Nothing was written.`);
+}
+
+/**
  * Why `asks` can't be asked, or `undefined` when they can: none, a prompt
  * empty or past {@link MAX_HOLD_PROMPT} characters, or more than a row takes
  * ({@link MAX_STEERS}, the places their answers reserve).
@@ -194,7 +206,7 @@ export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
       return { patch: { steers: next.steers, ...released(task, next) } };
     }
     case "deadline": {
-      const due = openRowHolds(task).filter((hold) => hold.due !== undefined && hold.due <= change.at);
+      const due = holdsDue(task, change.at);
       if (due.length === 0) return "unchanged";
       const closing: TaskSteer[] = due.map((hold) => ({
         id: `deadline:${hold.id}`,

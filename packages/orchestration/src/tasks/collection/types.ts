@@ -1003,11 +1003,12 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * A touch of the board (FIX-2133): close every open question past the due
    * time a host set, with the board's "no answer came" steer, which lets the
    * work go on as an answer would. A question with no due time is never
-   * closed here. Returns how many rows it wrote.
+   * closed here. Returns the ids of the rows it wrote, so a board wakes only
+   * those.
    *
    * Optional: both built-in backings implement it.
    */
-  payHoldDeadlines?(): Promise<number>;
+  payHoldDeadlines?(): Promise<string[]>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one

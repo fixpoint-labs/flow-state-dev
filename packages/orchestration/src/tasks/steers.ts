@@ -6,7 +6,7 @@
  * count.
  */
 import type { Task } from "./schema/task";
-import { openRowHolds, steerPlacesTaken, type HoldAnswer } from "./collection/holds";
+import { hasOpenHold, openRowHolds, steerPlacesTaken, type HoldAnswer } from "./collection/holds";
 import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */
@@ -86,6 +86,9 @@ export function steerWrite(
  * took is left, so the same read after a crash still finds it.
  */
 export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | undefined {
+  // A held row's steers, and the answers that released it (`turnOwed`), are
+  // the next turn's (FIX-2133): the turn that asked takes none of them.
+  if (hasOpenHold(task) || task.turnOwed === true) return undefined;
   const steers = task.steers ?? [];
   if (!steers.some((steer) => steer.takenBy !== task.attempts)) return undefined;
   return {

@@ -7,7 +7,7 @@
  * signed-in user (FIX-2133 D1). The routing lives here and nowhere else.
  */
 import { ClientHttpError, type Client } from "@flow-state-dev/client";
-import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, RowHoldSource } from "./types";
 
 /** The engine's resume action and data for a suspension hold's answer. */
@@ -29,7 +29,7 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
   throw new Error(`An answer to a ${kind} hold doesn't take ${JSON.stringify(answer)}`);
 }
 
-/** How long the board's answer is waited on, and how often its request is looked at. */
+/** How long the board's answer is waited on, and how often the request's wait looks at it. */
 const ANSWER_TIMEOUT_MS = 30_000;
 const ANSWER_POLL_MS = 150;
 
@@ -50,13 +50,14 @@ async function answerRowHold(client: Client, source: RowHoldSource, holdId: stri
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
     throw error;
   }
-  const until = Date.now() + ANSWER_TIMEOUT_MS;
-  let status = (await flow.request(requestId).status()).status;
-  while (status === "in_progress") {
-    if (Date.now() > until) throw new Error("The answer was sent, and the board didn't say in time whether it took it.");
-    await new Promise((resolve) => setTimeout(resolve, ANSWER_POLL_MS));
-    status = (await flow.request(requestId).status()).status;
+  let status: RequestStatus;
+  try {
+    status = (await flow.request(requestId).wait({ pollMs: ANSWER_POLL_MS, timeoutMs: ANSWER_TIMEOUT_MS })).status;
+  } catch (error) {
+    if (error instanceof ClientHttpError && error.status === 0) throw new Error("The answer was sent, and the board didn't say in time whether it took it.");
+    throw error;
   }
+  // The status carries no output: the session's listing does.
   const listed = await client.sessions.requests(sessionId, { status, includeResultOutput: true, limit: 100 });
   const found = listed.find((request) => request.id === requestId);
   if (status !== "completed") throw new Error(found?.result?.error?.message ?? `The board's answer ended ${status}.`);

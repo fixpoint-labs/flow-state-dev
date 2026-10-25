@@ -530,6 +530,25 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
+  it("a question answered before the asking request ends still owes the next turn: the asking request settles nothing", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      const asked = await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      if (asked.ok) await ledger.answer!("t1", { hold: asked.holds[0]!, message: "signup_date", from: "user", by: "u1" });
+      return "a partial answer";
+    });
+    await h.run();
+    const row = (await h.row())!;
+    expect(row).toMatchObject({ status: "in_progress", attempts: 1, turn: 1, turnOwed: true });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+
+    h.setBehaviour(async () => "the whole answer");
+    const turn = (await h.reclaim())!;
+    expect(turn).toMatchObject({ attempts: 1, turn: 2 });
+    await h.run(turn);
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: "the whole answer" });
+  });
+
   it("a durable turn replayed after a stop asks once: the replay gets the first ask back, not the questions twice", async () => {
     const h = await harness();
     // The request store's memo, as a durable host's `runOnce` keeps it across a resume's replay.

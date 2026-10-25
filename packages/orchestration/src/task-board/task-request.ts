@@ -116,6 +116,12 @@ interface Admitted {
   /** No request-end seam: the check runs where the answer is noted. */
   readonly inline: boolean;
   /**
+   * This request asked questions midway (FIX-2133): its turn is over, and the
+   * row is the next turn's once they're answered, even when the last answer
+   * lands before this request ends.
+   */
+  asked?: boolean;
+  /**
    * The task's own request (its entry, or that entry's resume), rather than a
    * later one admitted for it while it waits (a notice, a steer's turn).
    */
@@ -316,8 +322,9 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
     return undefined;
   }
   // The turn asked questions (FIX-2133): it ends unsettled, and the last
-  // answer owes the next turn. Nothing more is this request's to write.
-  if (openRowHolds(row).length > 0) return undefined;
+  // answer owes the next turn, answered by now or not. Nothing more is this
+  // request's to write.
+  if (record.asked === true || openRowHolds(row).length > 0) return undefined;
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];
   if (failsTheAttempt(ending.status) || background !== undefined) {
@@ -710,6 +717,9 @@ export async function askMidway(
   const key = `task-board:ask-midway:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}:${JSON.stringify(asks)}`;
   const asked = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();
   // The turn is over: its lease is gone, and nothing renews it again.
-  if (asked.ok) record?.renewal?.stop();
+  if (asked.ok && record !== undefined) {
+    record.asked = true;
+    record.renewal?.stop();
+  }
   return asked;
 }

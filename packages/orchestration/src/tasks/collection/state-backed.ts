@@ -26,7 +26,7 @@ import {
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type { FilingStamp, TaskSettingsPatch } from "./internal";
-import { hasOpenHold, holdWrite, newRowHolds, type HoldChange } from "./holds";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,
@@ -767,6 +767,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async ask(id, asks, askOptions) {
       requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a CAS replay opens the same holds.
       const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
@@ -784,11 +785,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async payHoldDeadlines() {
       const at = now();
-      let paid = 0;
+      const paid: string[] = [];
       for (const row of Object.values(readTasks()) as Task[]) {
-        if (holdWrite(row, { op: "deadline", at }) === "unchanged") continue;
+        if (holdsDue(row, at).length === 0) continue;
         const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
-        if (outcome.outcome === "recorded") paid += 1;
+        if (outcome.outcome === "recorded") paid.push(row.id);
       }
       return paid;
     },

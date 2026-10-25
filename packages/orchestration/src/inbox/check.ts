@@ -103,6 +103,8 @@ export function rowTruthOf(rows: readonly InboxRow[]): RowTruth[] {
     const answered = new Set((row.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
     const suspensionHolds: string[] = [];
     const rowHolds: string[] = [];
+    // Open holds re-derived here on purpose, not through `openRowHolds`: the
+    // truth stays independent of the predicate it checks.
     for (const hold of row.holds ?? []) {
       if (hold.actor !== "user") continue;
       if (hold.source.kind === "suspension") suspensionHolds.push(hold.source.suspensionId);

@@ -245,6 +245,21 @@ describe.each([
       expect(board.get("t4")).toMatchObject({ status: "completed", attempts: 1, output: "done" });
     });
 
+    it("an ask with no questions is refused, and leaves the turn's lease as it was", async () => {
+      const { board } = await make();
+      await board.addTask({ id: "t4", goal: "g" });
+      const claimed = (await board.claim("w", { leaseDurationMs: 10_000 }))!;
+      await expect(board.ask!("t4", [], { claim: ticketForClaim("tasks", claimed) })).rejects.toThrow(/no question was asked/);
+      expect(board.get("t4")!.leaseUntil).toBe(claimed.leaseUntil);
+    });
+
+    it("the asking turn takes no answer as a steer: the answers are the next turn's", async () => {
+      const { board, ticket, hold } = await askedMidway();
+      await board.answer!("t4", user(hold, "signup_date"));
+      expect(await board.takeSteers!("t4", { claim: ticket, takenIn: "step:asking" })).toMatchObject({ taken: [] });
+      expect(board.get("t4")!.steers?.every((steer) => steer.takenIn === undefined)).toBe(true);
+    });
+
     it("an admission that takes the owed turn is that turn's claim: the generation moves and the claim's mark clears", async () => {
       const { board, clock, ticket, hold } = await askedMidway();
       await board.answer!("t4", user(hold, "signup_date"));
@@ -278,9 +293,10 @@ describe.each([
       const due = await make({ holdDueMs: 5_000 });
       const t5 = await due.board.addTask({ id: "t5", goal: "g", questions: [ask(CSV)] });
       expect(t5.holds![0]!.due).toBe(1_000 + 5_000);
-      expect(await due.board.payHoldDeadlines!()).toBe(0);
+      expect(await due.board.payHoldDeadlines!()).toEqual([]);
       due.clock.at += 5_000;
-      expect(await due.board.payHoldDeadlines!()).toBe(1);
+      // The rows it paid, so a board wakes only those.
+      expect(await due.board.payHoldDeadlines!()).toEqual(["t5"]);
       expect(openHolds(due.board.get("t5")!)).toEqual([]);
       expect(due.board.get("t5")!.steers).toMatchObject([{ from: "board", message: NO_ANSWER_CAME, answers: t5.holds![0]!.id }]);
       expect(await due.board.claim("w")).toMatchObject({ id: "t5", attempts: 1 });
@@ -289,7 +305,7 @@ describe.each([
       const t6 = await none.board.addTask({ id: "t6", goal: "g", questions: [ask(CSV)] });
       expect(t6.holds![0]!.due).toBeUndefined();
       none.clock.at += 30 * 86_400_000;
-      expect(await none.board.payHoldDeadlines!()).toBe(0);
+      expect(await none.board.payHoldDeadlines!()).toEqual([]);
       expect(holdIds(none.board.get("t6"))).toEqual([t6.holds![0]!.id]);
       expect(await none.board.claim("w")).toBeNull();
     });

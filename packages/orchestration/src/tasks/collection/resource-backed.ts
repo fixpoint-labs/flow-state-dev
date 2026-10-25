@@ -144,7 +144,7 @@ import {
   parkPatch,
   unparkPatch,
 } from "./internal";
-import { hasOpenHold, holdWrite, newRowHolds, type HoldChange } from "./holds";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
@@ -1132,6 +1132,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async ask(id, asks, askOptions) {
       requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a retried write opens the same holds.
       const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
@@ -1153,11 +1154,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // Rows another process filed are read too, so their deadlines are paid.
       await adoptUnknownRows(mirror, options.collection);
       const at = now();
-      let paid = 0;
+      const paid: string[] = [];
       for (const row of listAll() as Task[]) {
-        if (holdWrite(row, { op: "deadline", at }) === "unchanged") continue;
+        if (holdsDue(row, at).length === 0) continue;
         const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
-        if (outcome.outcome === "recorded") paid += 1;
+        if (outcome.outcome === "recorded") paid.push(row.id);
       }
       return paid;
     },

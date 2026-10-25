@@ -1261,9 +1261,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async payHoldDeadlines() {
-              const owed = ref.list().filter((row) => nextHoldDue(row) !== undefined).map((row) => row.id);
               const paid = await ref.payHoldDeadlines!();
-              if (paid > 0) for (const id of owed) await goOnAfterAnswer(id);
+              // Only the rows whose questions just closed go on.
+              for (const id of paid) await goOnAfterAnswer(id);
               return paid;
             }
           }),
