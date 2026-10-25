@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 424" role="img" aria-label="D2, which dollar figures Usage shows. Chosen: only where the spend was billed. Instead of: every figure, at API prices. Decides it: a subscription run is not charged per token, so a dollar figure there reads as a charge. The price: no API-dollar comparison on a subscription. API-key runs show tokens and cost either way. Locks in: each harness entry carries its billing. Flips if: planning in API dollars is wanted, then a separate labelled column."
+<svg viewBox="0 0 940 424" role="img" aria-label="D2, which dollar figures Usage shows. Chosen: only a billed charge the vendor reported. Instead of: every figure, including price-table estimates and the cost Claude Code reports on a subscription. Decides it: the epic forbids a guess, so no estimate is shown and where nothing was reported the view says not reported. The price: most rows show tokens only; Claude Code on an API key reports cost. Tokens are always shown. Locks in: cost only on a reported api-key charge; Codex, Cursor and model calls show tokens only. Flips if: Jake wants API-dollar estimates to plan, then a separate labelled estimate column."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -40,55 +40,55 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Only where billed</text>
+    <text class="t-h c-code" x="228" y="112">Vendor-reported, billed</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Every figure, at API prices</text>
+    <text class="t-h c-lost" x="592" y="112">Every figure, incl. estimates</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A SUBSCRIPTION</text>
-    <text class="t-lbl" x="32" y="169">RUN</text>
+    <text class="t-lbl" x="32" y="156">THE EPIC&#x27;S RULE</text>
+    <text class="t-lbl" x="32" y="169">NO GUESSES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Tokens, no dollar figure</text>
-    <text class="t-s" x="248" y="179">nobody is charged per token</text>
+    <text class="t-b" x="248" y="161">No estimate, no subscription dollars</text>
+    <text class="t-s" x="248" y="179">&quot;not reported&quot; where none came</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Claude's cost figure shown</text>
-    <text class="t-s" x="612" y="179">reads as a charge nobody paid</text>
+    <text class="t-b" x="612" y="161">Price-table guesses shown</text>
+    <text class="t-s" x="612" y="179">and a charge nobody paid</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">COMPARING IN</text>
-    <text class="t-lbl" x="32" y="231">API DOLLARS</text>
+    <text class="t-lbl" x="32" y="218">DOLLARS ON</text>
+    <text class="t-lbl" x="32" y="231">MOST ROWS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Not on a subscription</text>
-    <text class="t-s" x="248" y="241">tokens are the common unit</text>
+    <text class="t-b" x="248" y="223">Tokens only, mostly</text>
+    <text class="t-s" x="248" y="241">Claude Code on a key reports cost</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Every worker in dollars</text>
-    <text class="t-s" x="612" y="241">a planning figure</text>
+    <text class="t-b" x="612" y="223">A dollar figure on every row</text>
+    <text class="t-s" x="612" y="241">a planning number</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">AN API-KEY RUN</text>
+    <text class="t-lbl" x="32" y="280">TOKENS</text>
     <text class="mark tie" x="228" y="286">=</text>
-    <text class="t-b" x="248" y="285">Tokens and cost, with basis</text>
-    <text class="t-s" x="248" y="303">reported, or ≈ estimated</text>
+    <text class="t-b" x="248" y="285">Always shown</text>
+    <text class="t-s" x="248" y="303">vendor-reported in every mode</text>
     <text class="mark tie" x="592" y="286">=</text>
-    <text class="t-b" x="612" y="285">Tokens and cost, with basis</text>
+    <text class="t-b" x="612" y="285">Always shown</text>
     <text class="t-s" x="612" y="303">the same</text>
     <line class="row" x1="16" y1="318" x2="924" y2="318"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="355">LOCKS IN</text>
-    <text class="t-b" x="32" y="375">A harness entry carries billing</text>
-    <text class="t-s" x="32" y="393">api-key shows cost; subscription and unknown don't</text>
+    <text class="t-b" x="32" y="375">Cost only on a reported api-key charge</text>
+    <text class="t-s" x="32" y="393">Codex, Cursor and model calls: tokens only</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="355">FLIPS IF</text>
-    <text class="t-b" x="494" y="375">Jake plans harness choice in API dollars</text>
-    <text class="t-s" x="494" y="393">then a separate, labelled at-API-prices column</text>
+    <text class="t-b" x="494" y="375">Jake wants API-dollar estimates to plan</text>
+    <text class="t-s" x="494" y="393">then a separate, labelled estimate column</text>
   </g>
 </svg>
