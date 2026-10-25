@@ -32,7 +32,7 @@
  * per conversation and a delivery that fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FlowState } from "@flow-state-dev/engine";
+import { createInProcessFetch, type FlowState } from "@flow-state-dev/engine";
 
 import { delegateOfRun } from "@/lib/workforce-shell";
 
@@ -66,14 +66,11 @@ async function bootApp(control?: string): Promise<Router> {
 }
 
 async function call(router: Router, method: "GET" | "POST", segments: string[], body?: unknown, query = "") {
-  const res = await router[method](
-    new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+  const res = await createInProcessFetch(router)(`/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
       method,
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    }),
-    { params: { path: segments } },
-  );
+    });
   return { status: res.status, text: await res.text() };
 }
 

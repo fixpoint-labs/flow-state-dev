@@ -8,7 +8,7 @@ import { serve, type ServeHandle } from "@flow-state-dev/node";
 
 /**
  * A served Lab: where it answers and how to stop it. `baseUrl` is the origin;
- * the FSD clients add `/api/flows` themselves.
+ * the FSD client add `/api/flows` themselves.
  */
 export type ServedLab = { baseUrl: string; handle: ServeHandle };
 

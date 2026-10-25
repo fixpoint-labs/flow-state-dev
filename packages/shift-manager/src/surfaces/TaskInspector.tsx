@@ -136,14 +136,14 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
 
 /** The plan and files the run recorded, read once per open (BR-19, BR-20). */
 function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [work, setWork] = useState<RecordedWork | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     setFailure(undefined);
-    readRecordedWork(clients, run)
+    readRecordedWork(client, run)
       .then((read) => {
         if (live) setWork(read);
       })
@@ -153,7 +153,7 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
     return () => {
       live = false;
     };
-  }, [clients, run, attempt]);
+  }, [client, run, attempt]);
 
   if (failure !== undefined) {
     return (

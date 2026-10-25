@@ -39,6 +39,7 @@
  *           GOAL_CONTROL=answers-go-on  (the coordinator read with `rounds: 1`: must FAIL at answers and quiet, and nothing else)
  *           GOAL_CONTROL=no-org         (the host's resolvePrincipal left out: must FAIL at org, and nothing else)
  */
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -161,14 +162,11 @@ await runGoal(async (failures) => {
   const { startFreshHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
   const app = await startFreshHost(TREE, controlSeams());
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-    const res = await app.router[method](
-      new Request(`http://fresh-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+    const res = await createInProcessFetch(app.router)(`http://fresh-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
-      { params: { path: segments } },
-    );
+      });
     return { status: res.status, text: await res.text() };
   };
   /** The person's conversation with the coordinator, opened the way a page opens one. */

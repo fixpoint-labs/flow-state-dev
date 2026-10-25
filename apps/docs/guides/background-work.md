@@ -74,20 +74,20 @@ Read next: **[Background jobs with BullMQ](/guides/background-jobs-bullmq)** for
 A **dispatch** sends one unit of work to an entry the flow declares, and it runs in a session of its own. Its requests don't show up in the starting session's request list. You reach a run two ways: list the flow's sessions with its dispatch runs included, or ask one conversation which runs were started from it.
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient();
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
 // Every dispatch run on the flow, beside the conversations people started.
-const all = await sessions.listSessions({
+const all = await fsd.sessions.list({
   flowKind: "research",
   include: "dispatch-runs",
 });
 
 // Or: the dispatch runs started from one conversation, one row each.
-const started = await sessions.listChildSessions("sess_abc");
+const started = await fsd.sessions.children("sess_abc");
 const first = started[0];
-const runs = first === undefined ? [] : await sessions.listSessionRequests(first.id);
+const runs = first === undefined ? [] : await fsd.sessions.requests(first.id);
 ```
 
 A run's `id` is a session id, so every session read works on it.
@@ -214,7 +214,7 @@ Read next: **[Dispatched work](/docs/server/background-work)** for the HTTP surf
 
 Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
 
-- Attach live with `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
-- Read a session's requests with `listSessionRequests`, and the dispatch runs started from it with `listChildSessions`. See [Client API](/docs/api/client).
+- Attach live with a request handle's `stream()`, or `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
+- Read a session's requests with `fsd.sessions.requests`, and the dispatch runs started from it with `fsd.sessions.children`. See [Client API](/docs/api/client).
 - Reconnect and resume from a sequence number rather than replaying from zero. See [Connection resilience](/docs/server/connection-resilience).
 - Inspect any of it block by block in the [DevTool](/docs/devtool/overview).

@@ -19,7 +19,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -103,18 +103,15 @@ async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {
       return user == null ? null : { userId: user, orgId: ORG };
     }
   } as never);
-  const router = (await state.getRouter()) as any;
+  const inProcess = createInProcessFetch(state);
   const stores: StoreRegistry = (await state.getRuntime()).stores;
 
   const call = async (method: "GET" | "POST", user: string, path: string[], body?: unknown, query = ""): Promise<Answer> => {
-    const response = await router[method](
-      new Request(`http://test/api/flows/${path.join("/")}${query}`, {
+    const response = await inProcess(`http://test/api/flows/${path.join("/")}${query}`, {
         method,
         headers: { "content-type": "application/json", "x-verified-user": user },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path } }
-    );
+      });
     const text = await response.text();
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };

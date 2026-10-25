@@ -72,7 +72,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -302,7 +302,7 @@ function buildHost(filename: string) {
 
   const connect = async () => {
     // The router is what runs the durability sweeper.
-    const http = httpActions((await state.getRouter()) as never, USER);
+    const http = actingAs((await state.getRouter()) as never, USER);
     const runtime = await state.getRuntime();
     /** Every task row in the user's cell, from every ledger: anything else there (chain records) is left out. */
     const rows = async (): Promise<Array<Task & { key: string }>> =>

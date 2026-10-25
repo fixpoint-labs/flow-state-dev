@@ -176,18 +176,18 @@ An answer's first line also names the message it answers: `Message msg_… from 
 Every message is kept in a log in the user's own scope, one row per message, readable from the browser. Read it through any of the user's sessions on a flow that declares it: the roster flow, the built-in worker flow, the coordinator flow, or a flow built with `defineSessionBoard`.
 
 ```ts
-import { createResourceClient, readEveryCollectionPage } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
 import {
   WORKER_MESSAGES_RESOURCE,
   createWorkforceClient,
   workerMessageRowSchema,
 } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl });
-const resources = createResourceClient({ baseUrl });
+const fsd = createClient({ userId, baseUrl });
+const workforce = createWorkforceClient(fsd);
 
 const session = await workforce.ensureWorkerSession({ worker: "researcher" });
-const items = await readEveryCollectionPage(resources, session.id, WORKER_MESSAGES_RESOURCE);
+const items = await readEveryCollectionPage(fsd.resources, session.id, WORKER_MESSAGES_RESOURCE);
 const messages = items.flatMap((item) => {
   const row = workerMessageRowSchema.safeParse(item.clientData);
   return row.success ? [row.data] : [];

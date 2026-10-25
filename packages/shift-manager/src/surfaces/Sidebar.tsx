@@ -411,7 +411,7 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const { snapshot, refresh, clients } = useLab();
+  const { snapshot, refresh, client } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
 
@@ -582,12 +582,12 @@ export function Sidebar({
               )}
               <span
                 className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
-                title={clients.userId}
-                aria-label={`Signed in as ${clients.userId}`}
+                title={client.userId}
+                aria-label={`Signed in as ${client.userId}`}
                 data-testid="footer-user"
                 data-look="avatar"
               >
-                {initialsOf(clients.userId)}
+                {initialsOf(client.userId)}
               </span>
             </p>
           </footer>

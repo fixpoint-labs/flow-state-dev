@@ -29,10 +29,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
-  ActionConfig,
   ActionInputSchema,
-  FlowActionInput,
-  InferScopeStateFromConfig,
   SuspensionRecord,
   SuspensionStatus
 } from "@flow-state-dev/core/types";
@@ -53,21 +50,10 @@ export type ClientFetch = (
 export type QueryValue = string | number | boolean | undefined;
 
 /**
- * Shared transport options for HTTP/SSE clients.
- */
-export type ClientTransportOptions = {
-  baseUrl?: string;
-  /**
-   * Where the server mounts the flow API, after `baseUrl`. Default
-   * `"/api/flows"`. Set it to the server's mount when that differs, such as
-   * the Node host's `basePath`.
-   */
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
-
-/**
- * Error type thrown for non-2xx HTTP responses.
+ * The one error type a client throws. `status` is the server's HTTP status,
+ * or `0` when the client refused before sending anything (a missing id, a
+ * request with no session to continue, a `wait` that timed out). `body` is
+ * the server's parsed answer, or `{ error }` for a status-0 refusal.
  */
 export class ClientHttpError extends Error {
   readonly status: number;
@@ -219,7 +205,7 @@ export type ChildSessionStatus =
  * One body of background work running under a conversation.
  *
  * A ChildSession is a child session that outlives the turn that started it, so
- * its history is read with {@link SessionClient.listSessionRequests} — the
+ * its history is read with `sessions.requests` — the
  * same call a conversation's own turns are read with.
  *
  * The wire sends a named field set rather than a whole session record, so this
@@ -492,74 +478,6 @@ export type SessionStateSnapshotResponse = {
 };
 
 /**
- * A minimal structural type accepted by the typed flow client helper.
- *
- * Pass a flow INSTANCE (the result of calling the factory `defineFlow`
- * returns) and the client binds its `id` — the address that reaches exactly
- * that copy. A singleton definition is accepted too, since its instance's id
- * is its kind; a collection definition alone is not an address, and the
- * client refuses it rather than guessing a member.
- */
-export type FlowLike = {
-  kind: string;
-  /** The instance's address. Absent on a definition, whose singleton id is its kind. */
-  id?: string;
-  /** Present on a definition or instance produced by `defineFlow`. */
-  cardinality?: "singleton" | "collection";
-  actions: Record<string, ActionConfig>;
-  request?: unknown;
-  session?: unknown;
-  user?: unknown;
-  org?: unknown;
-};
-
-/**
- * Optional execution options for action calls.
- */
-export type SendActionOptions = {
-  sessionId?: string;
-  requestId?: string;
-  metadata?: Record<string, unknown>;
-};
-
-/**
- * Typed action-method map derived from a flow's action definitions.
- */
-export type TypedActionMethods<TFlow extends FlowLike> = {
-  [TAction in keyof TFlow["actions"] & string]: (
-    input: FlowActionInput<TFlow["actions"][TAction]>,
-    options?: SendActionOptions
-  ) => Promise<ExecuteActionResponse>;
-};
-
-type FlowStateMap<TFlow extends FlowLike> = {
-  request: InferScopeStateFromConfig<TFlow["request"]>;
-  session: InferScopeStateFromConfig<TFlow["session"]>;
-  user: InferScopeStateFromConfig<TFlow["user"]>;
-  org: InferScopeStateFromConfig<TFlow["org"]>;
-};
-
-/**
- * Typed flow-bound client surface layered over generic action/session APIs.
- */
-export type FlowClient<TFlow extends FlowLike> = {
-  /** The bound instance's address — its id. */
-  flowKind: string;
-  userId: string;
-  sendAction: (
-    action: string,
-    input: unknown,
-    options?: SendActionOptions
-  ) => Promise<ExecuteActionResponse>;
-  /** Signal the server to abort an in-progress request. */
-  abortRequest: (requestId: string) => Promise<void>;
-  actions: TypedActionMethods<TFlow>;
-  state: {
-    getSnapshot: (sessionId: string) => Promise<SessionStateSnapshotResponse>;
-  };
-};
-
-/**
  * Handle returned by request-stream SSE connections.
  */
 export interface RequestStreamHandle {
@@ -621,8 +539,7 @@ export type RequestSSECallbacks = {
    * server closes after a pre-transition failure), so a caller that only
    * clears its "in flight" state from `onRequestStatus`/`onError` would
    * otherwise get stuck. Only implemented by `createSSEClientFromResponse`
-   * today — the reconnecting GET client (`createSSEClient`) has its own
-   * retry lifecycle and does not fire this.
+   * today — a request's own `stream()` does not fire this.
    */
   onClose?: () => void;
 };

@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
-import { createLabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
 import { serveLab } from "./helpers/serve-lab";
 
@@ -74,12 +74,12 @@ describe("the fsd profile", () => {
     const served = await serveLab(lab.state);
     try {
       const devtool = lab.state.meta.devtool;
-      const clients = createLabClients({
+      const client = connect({
         baseUrl: served.baseUrl,
         userId: devtool?.userId ?? "devuser",
         ...(devtool?.bearerToken === undefined ? {} : { bearerToken: devtool.bearerToken }),
       });
-      const snapshot = await createLabReader(clients).read();
+      const snapshot = await createLabReader(client).read();
       if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
       if (!snapshot.projects.ok) throw new Error(snapshot.projects.failure.message);
       const rows = snapshot.projects.value.rows;

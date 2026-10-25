@@ -21,7 +21,7 @@
  * Controls: GOAL_CONTROL=unpartitioned | no-follow-up (each runs the legs it must fail)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
  * Legs:     GOAL_LEGS=a,c,d,e (default: all)
- * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
+ * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; under a control, only while the first turn never filed)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -500,7 +500,9 @@ await runGoal(async () => {
       const alice: Person = { label: "Alice", ...owner };
       const shipped = await loadShipped(checkout.root);
       // Retry until it first passes, over the model's flakiness: each attempt is a fresh store and a fresh Lab.
-      const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
+      // Under a control an attempt whose first turn never filed plainly (`e:filed`,
+      // `e:filed-without-waiting`) leaves no notice to grade, so it is tried again, up to 3.
+      const attempts = Number(process.env.GOAL_ATTEMPTS ?? 3);
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const label = `${control?.name ?? "plain"}-${attempt}`;
         const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
@@ -523,6 +525,7 @@ await runGoal(async () => {
         for (const failure of graded.failures) say(`e attempt ${attempt}: ${failure}`);
         results.e = { ...graded, notes: [`attempt ${attempt} of ${attempts}`, ...graded.notes] };
         if (graded.failures.length === 0) break;
+        if (control !== undefined && !graded.failures.some((f) => f.startsWith("e:filed"))) break;
       }
       evidence.push(`DevTeam's chief of staff (${COS}) on ${cosModel}`);
     }

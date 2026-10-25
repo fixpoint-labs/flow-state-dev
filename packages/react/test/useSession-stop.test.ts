@@ -21,24 +21,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 
-const { connections, sessionClientMock, clientMock } = vi.hoisted(() => ({
+const { connections, sessionsMock, flowMock } = vi.hoisted(() => ({
   connections: [] as Array<{
     callbacks: Record<string, ((e: unknown) => void) | undefined>;
     closed: boolean;
   }>,
-  sessionClientMock: {
-    getSession: vi.fn(),
-    getSessionState: vi.fn(),
-    listSessionRequests: vi.fn()
+  sessionsMock: {
+    get: vi.fn(),
+    state: vi.fn(),
+    requests: vi.fn()
   },
-  clientMock: {
-    sendActionStream: vi.fn(),
-    abortRequest: vi.fn()
+  flowMock: {
+    send: vi.fn(),
+    abort: vi.fn()
   }
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
+  const { fakeClient } = await import("./support/fake-client");
   const makeSSE = (options: Record<string, ((e: unknown) => void) | undefined>) => {
     const rec = { callbacks: options, closed: false };
     connections.push(rec);
@@ -46,11 +47,11 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   };
   return {
     ...actual,
-    createSSEClient: makeSSE,
     createSSEClientFromResponse: makeSSE,
-    createRecoveryClient: () => ({}),
-    createSessionClient: () => sessionClientMock,
-    createClient: () => clientMock
+    createClient: () =>
+      // A FRESH client per call, like the real factory: the hook memoizes its
+      // client on its transport, so a singleton here would hide a backend change.
+      fakeClient({ sessions: { ...sessionsMock }, flow: flowMock, requestStream: makeSSE })
   };
 });
 
@@ -136,16 +137,16 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
   beforeEach(() => {
     connections.length = 0;
     vi.resetAllMocks();
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
       createdAt: 0,
       updatedAt: 0
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([]));
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    clientMock.abortRequest.mockResolvedValue(undefined);
+    sessionsMock.state.mockResolvedValue(snapshot([]));
+    sessionsMock.requests.mockResolvedValue([]);
+    flowMock.abort.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -154,9 +155,9 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
 
   it("a stop pressed while the turn's POST is still out stops the turn once the server has it", async () => {
     const post = deferred<Response>();
-    clientMock.sendActionStream.mockReturnValue(post.promise);
+    flowMock.send.mockReturnValue(post.promise);
     // The server doesn't have the request yet, so the first abort reaches nothing.
-    clientMock.abortRequest.mockRejectedValueOnce(new Error("Abort request failed (404)"));
+    flowMock.abort.mockRejectedValueOnce(new Error("Abort request failed (404)"));
 
     const { result } = await mountIdle();
 
@@ -164,12 +165,12 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     act(() => {
       send = result.current.sendAction("turn", { prompt: "begin" });
     });
-    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+    const requestId = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
 
     await act(async () => {
       await result.current.abortRequest();
     });
-    expect(clientMock.abortRequest).toHaveBeenCalledWith(requestId);
+    expect(flowMock.abort).toHaveBeenCalledWith(requestId);
 
     // The server answers the POST: the request exists now and is running.
     const response = sseResponse();
@@ -180,8 +181,8 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
 
     // The stop reaches the request now that it exists, and the turn is not
     // picked back up: no stream is attached, and the hook is not streaming.
-    expect(clientMock.abortRequest).toHaveBeenCalledTimes(2);
-    expect(clientMock.abortRequest).toHaveBeenLastCalledWith(requestId);
+    expect(flowMock.abort).toHaveBeenCalledTimes(2);
+    expect(flowMock.abort).toHaveBeenLastCalledWith(requestId);
     expect(connections).toHaveLength(0);
     expect(response.body!.cancel).toHaveBeenCalled();
     expect(result.current.isStreaming).toBe(false);
@@ -190,7 +191,7 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
 
   it("a stop pressed on a turn picked up on mount stops it", async () => {
     // A reload mid-turn: the hook finds the running request and attaches to it.
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
@@ -198,8 +199,8 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
       updatedAt: 0,
       latestRequestId: "req_running"
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage("req_running")]));
-    sessionClientMock.listSessionRequests.mockResolvedValue([
+    sessionsMock.state.mockResolvedValue(snapshot([userMessage("req_running")]));
+    sessionsMock.requests.mockResolvedValue([
       { id: "req_running", flowKind: "demo", actionName: "turn", userId: "devuser", status: "in_progress" }
     ]);
 
@@ -212,19 +213,19 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
       await result.current.abortRequest();
     });
 
-    expect(clientMock.abortRequest).toHaveBeenCalledWith("req_running");
+    expect(flowMock.abort).toHaveBeenCalledWith("req_running");
     expect(connections.at(-1)!.closed).toBe(true);
     expect(result.current.isStreaming).toBe(false);
   });
 
   it("a stop mid-stream still reads as stopped after a snapshot taken before the server recorded it, without doubling once it has", async () => {
-    clientMock.sendActionStream.mockResolvedValue(sseResponse());
+    flowMock.send.mockResolvedValue(sseResponse());
     const { result } = await mountIdle();
 
     await act(async () => {
       await result.current.sendAction("turn", { prompt: "begin" });
     });
-    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+    const requestId = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
     expect(result.current.isStreaming).toBe(true);
 
     await act(async () => {
@@ -234,14 +235,14 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
 
     // A consumer re-reads the session as the turn stops streaming. The read
     // lands before the engine has written its own stop record.
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
+    sessionsMock.state.mockResolvedValue(snapshot([userMessage(requestId)]));
     await act(async () => {
       await result.current.refresh();
     });
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
 
     // A later read holds the engine's stop record: that one stands alone.
-    sessionClientMock.getSessionState.mockResolvedValue(
+    sessionsMock.state.mockResolvedValue(
       snapshot([userMessage(requestId), serverStopItem(requestId)])
     );
     await act(async () => {
@@ -253,16 +254,16 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
   });
 
   it("a stop that lost the race to the turn's end does not keep claiming the turn was stopped", async () => {
-    clientMock.sendActionStream.mockResolvedValue(sseResponse());
+    flowMock.send.mockResolvedValue(sseResponse());
     const { result } = await mountIdle();
 
     await act(async () => {
       await result.current.sendAction("turn", { prompt: "begin" });
     });
-    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+    const requestId = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
 
     // The turn finished first: the server refuses the stop, and refuses it again.
-    clientMock.abortRequest.mockRejectedValue(await conflict());
+    flowMock.abort.mockRejectedValue(await conflict());
     await act(async () => {
       await result.current.abortRequest();
     });
@@ -270,36 +271,36 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(0);
 
     // The server's account of the finished turn wins at the next read.
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
+    sessionsMock.state.mockResolvedValue(snapshot([userMessage(requestId)]));
     await act(async () => {
       await result.current.refresh();
     });
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(0);
   });
   it("a stop that lands just after the turn was resumed is sent again, and stops the running turn", async () => {
-    clientMock.sendActionStream.mockResolvedValue(sseResponse());
+    flowMock.send.mockResolvedValue(sseResponse());
     const { result } = await mountIdle();
 
     await act(async () => {
       await result.current.sendAction("turn", { prompt: "begin" });
     });
-    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+    const requestId = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
 
     // The first stop meets a gate that was just resumed; the second reaches the running turn.
-    clientMock.abortRequest.mockRejectedValueOnce(await conflict());
+    flowMock.abort.mockRejectedValueOnce(await conflict());
     await act(async () => {
       await result.current.abortRequest();
     });
 
-    expect(clientMock.abortRequest).toHaveBeenCalledTimes(2);
+    expect(flowMock.abort).toHaveBeenCalledTimes(2);
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
   });
 
   it("a stop pressed during the POST that the finished turn refuses leaves no stop behind", async () => {
     const post = deferred<Response>();
-    clientMock.sendActionStream.mockReturnValue(post.promise);
+    flowMock.send.mockReturnValue(post.promise);
     // The server doesn't have the request yet, so the first abort reaches nothing.
-    clientMock.abortRequest.mockRejectedValueOnce(new Error("Abort request failed (404)"));
+    flowMock.abort.mockRejectedValueOnce(new Error("Abort request failed (404)"));
 
     const { result } = await mountIdle();
 
@@ -307,7 +308,7 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     act(() => {
       send = result.current.sendAction("turn", { prompt: "begin" });
     });
-    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+    const requestId = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
 
     await act(async () => {
       await result.current.abortRequest();
@@ -315,8 +316,8 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
 
     // By the time the POST answers, the turn has finished: the server refuses the stop.
-    clientMock.abortRequest.mockRejectedValue(await conflict());
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
+    flowMock.abort.mockRejectedValue(await conflict());
+    sessionsMock.state.mockResolvedValue(snapshot([userMessage(requestId)]));
     await act(async () => {
       post.resolve(sseResponse());
       await send;

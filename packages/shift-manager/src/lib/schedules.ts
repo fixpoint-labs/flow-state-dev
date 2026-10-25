@@ -64,14 +64,14 @@ export function useScheduledWork(
   readerSessionId: string | null,
   readAt: number
 ): { schedules: ScheduledWork[] | undefined; failure: Failure | undefined; reread: () => void } {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [schedules, setSchedules] = useState<ScheduledWork[] | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
     if (readerSessionId === null) return;
     let closed = false;
-    runAction(clients, ROSTER_FLOW, readerSessionId, LIST_SCHEDULES_ACTION, {})
+    runAction(client, ROSTER_FLOW, readerSessionId, LIST_SCHEDULES_ACTION, {})
       .then(({ output }) => {
         if (closed) return;
         setSchedules(toScheduledWork(output));
@@ -83,7 +83,7 @@ export function useScheduledWork(
     return () => {
       closed = true;
     };
-  }, [clients, readerSessionId, readAt, reads]);
+  }, [client, readerSessionId, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { schedules, failure: schedules === undefined ? failure : undefined, reread };
 }

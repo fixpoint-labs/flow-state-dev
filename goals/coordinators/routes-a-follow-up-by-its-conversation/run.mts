@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { EvaluationModel, FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import {
   createWorkerInstallation,
   defineAgentWorkerFlow,
@@ -129,13 +129,13 @@ type App = Awaited<ReturnType<typeof startApp>>;
 /** Reads and writes through the app's own router, as the person. */
 function reader(app: App) {
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-    const res = await (app.router as any)[method](
-      new Request(`http://followup.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+    const res = await createInProcessFetch(app.router as never)(
+      `/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`,
+      {
         method,
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path: segments } }
+      }
     );
     return { status: res.status as number, text: (await res.text()) as string };
   };

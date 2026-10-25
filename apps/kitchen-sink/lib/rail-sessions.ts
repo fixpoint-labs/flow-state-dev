@@ -10,34 +10,34 @@
  * criteria's keys and so never returns a delegate's session). Each row reads
  * as the coordinator's id, the name the user knows it by.
  */
-import type { SessionClient, SessionSummary } from "@flow-state-dev/client";
+import type { Client, SessionSummary } from "@flow-state-dev/client";
 import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 import { isCoordinatorFlow, SHELL_COORDINATORS } from "./workforce-shell";
 
+/** What the rail's navigator reads: the client's user, its flow list, and its session listing. */
+export type RailClient = Pick<Client, "userId" | "flows"> & { readonly sessions: Pick<Client["sessions"], "list"> };
+
 /**
- * The session source the rail's navigator reads through.
+ * The client the rail's navigator reads through: the page's own, with the
+ * coordinator flow's listing replaced.
  *
- * @param client The page's session client; a stable reference, so the navigator's reads stay fenced on it.
+ * @param client The page's client; a stable reference, so the navigator's reads stay fenced on it.
  * @param workforce The user's workforce client, which finds or starts their conversation with a coordinator.
- * @returns A source whose coordinator-flow listing is one conversation per declared coordinator.
+ * @returns A client whose coordinator-flow listing is one conversation per declared coordinator.
  */
-export function railSessions(
-  client: Pick<SessionClient, "listSessions">,
-  workforce: Pick<WorkforceClient, "ensureWorkerSession">,
-): Pick<SessionClient, "listSessions"> {
-  return {
-    listSessions: async (options) => {
-      const flow = options?.flowKind;
-      if (flow === undefined || !isCoordinatorFlow(flow)) return await client.listSessions(options);
-      return await Promise.all(
-        SHELL_COORDINATORS.map(
-          async (worker): Promise<SessionSummary> => ({
-            ...(await workforce.ensureWorkerSession({ worker })),
-            title: worker,
-          }),
-        ),
-      );
-    },
+export function railSessions(client: RailClient, workforce: Pick<WorkforceClient, "ensureWorkerSession">): RailClient {
+  const list: RailClient["sessions"]["list"] = async (options) => {
+    const flow = options?.flowKind;
+    if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
+    return await Promise.all(
+      SHELL_COORDINATORS.map(
+        async (worker): Promise<SessionSummary> => ({
+          ...(await workforce.ensureWorkerSession({ worker })),
+          title: worker,
+        }),
+      ),
+    );
   };
+  return { userId: client.userId, flows: () => client.flows(), sessions: { list } };
 }

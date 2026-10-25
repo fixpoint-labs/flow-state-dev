@@ -109,18 +109,20 @@ function connect(shipped: Shipped, origin: string, person: Person) {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.createClient({ userId: person.userId, ...transport });
   return {
-    sessions: shipped.createSessionClient(transport),
-    flow: (flowKind: string) => shipped.createClient({ flowKind, userId: person.userId, ...transport }),
+    sessions: client.sessions,
+    flow: (flowKind: string) => client.flow(flowKind),
   };
 }
 
 /** Send an action and wait until it stops running; `suspended` counts as stopped. */
 async function act(who: ReturnType<typeof connect>, flowKind: string, sessionId: string, action: string, input: unknown, timeoutMs = 120_000) {
   const client = who.flow(flowKind);
-  const requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+  const requestId = (await client.send(action, input, { sessionId })).id;
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(300)) {
-    const status = (await client.getRequestStatus(requestId).catch(() => undefined))?.status;
+    const status = (await client.request(requestId).status().catch(() => undefined))?.status;
     if (status !== undefined && !["pending", "queued", "in_progress", "running"].includes(status)) return { requestId, status };
   }
   return { requestId, status: "timed-out" };
@@ -173,8 +175,8 @@ async function attempt(o: {
   let served = await o.serve(`${o.label}-before`);
   let alice = connect(o.shipped, served.origin, o.alice);
   const roster =
-    (await alice.sessions.listSessions({ flowKind: "workforce-roster", userId: o.alice.userId }))[0]?.id ??
-    (await alice.sessions.createSession({ flowKind: "workforce-roster", userId: o.alice.userId })).id;
+    (await alice.sessions.list({ flowKind: "workforce-roster", userId: o.alice.userId }))[0]?.id ??
+    (await alice.flow("workforce-roster").createSession()).id;
   for (const [id, instructions] of [
     [colleague, fixture.colleague.replaceAll("{word}", secret)],
     [asker, fixture.asker],
@@ -182,7 +184,7 @@ async function attempt(o: {
     const hired = await act(alice, "workforce-roster", roster, "hire", { id, flow: "agent", description: "Release team.", instructions, settings: { model: o.model } });
     if (hired.status !== "completed") throw new Error(`hiring ${id} ended ${hired.status}`);
   }
-  const conv = (await alice.sessions.createSession({ flowKind: "agent", userId: o.alice.userId, state: { workerId: asker } })).id;
+  const conv = (await alice.flow("agent").createSession({ state: { workerId: asker } })).id;
   const added = await act(alice, "agent", conv, "addDelegate", { worker: colleague });
   if (added.status !== "completed") throw new Error(`addDelegate ended ${added.status}`);
 
@@ -190,7 +192,7 @@ async function attempt(o: {
   const ask = (ASK_RECORDED ? fixture.askRecorded : fixture.ask).replaceAll("{colleague}", colleague);
   say(`${o.label}: "${ask}" (the word is ${secret})`);
   const client = alice.flow("agent");
-  const asked = (await client.sendAction("respond", { message: ask }, { sessionId: conv })).request.id;
+  const asked = (await client.send("respond", { message: ask }, { sessionId: conv })).id;
   const sentAt = Date.now();
   let killedAfterMs = -1;
   for (const until = Date.now() + 180_000; Date.now() < until; await sleep(40)) {
@@ -300,7 +302,10 @@ await runGoal(async () => {
   say(`building Shift Manager's pages`);
   const pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
-  const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
+  // Under a control an attempt is graded once the asker's request parked before the kill. One
+  // that didn't (the keeper ended first, so the wait returned inline and nothing waited) grades
+  // nothing, so it is tried again, up to 5 attempts.
+  const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 5));
   let result: Graded = { failures: ["no attempt ran"], notes: [], path: "none" };
   for (let n = 1; n <= attempts; n += 1) {
     const label = `${control?.name ?? "plain"}-${n}`;
@@ -318,6 +323,8 @@ await runGoal(async () => {
     for (const note of result.notes) say(`attempt ${n}: ${note}`);
     say(`attempt ${n} of ${attempts}: ${result.failures.length === 0 ? "PASS" : `FAIL (${[...new Set(result.failures.map((f) => f.split(" — ")[0]))].join(", ")})`}`);
     if (result.failures.length === 0) break;
+    // A control stops early only on a graded attempt; an ungraded one (never parked) is retried.
+    if (control !== undefined && !result.failures.some((f) => f.startsWith("kill:suspended "))) break;
     // A model that never asked is the model's flakiness; a mechanism failure fails every attempt the same way.
   }
 

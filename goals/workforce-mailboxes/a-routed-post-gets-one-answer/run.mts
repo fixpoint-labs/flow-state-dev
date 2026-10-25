@@ -48,6 +48,7 @@
  *           GOAL_CONTROL=no-context   (the agent flow replaced by one whose turn is shown no lines)
  * Live:     GOAL_LIVE=1 (needs AI_GATEWAY_API_KEY)
  */
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -212,14 +213,11 @@ type Line = { author?: string; text: string };
 /** Reads through the host's own router, the routes a page reads. */
 function reader(app: RoutedHost, owner: string) {
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
-    const res = await app.router[method](
-      new Request(`http://routed-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
+    const res = await createInProcessFetch(app.router)(`http://routed-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,
         headers: { "content-type": "application/json", accept: "text/event-stream" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path: segments } }
-    );
+      });
     return { status: res.status, text: await res.text() };
   };
   return {

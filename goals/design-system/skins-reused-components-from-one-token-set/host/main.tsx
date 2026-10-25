@@ -151,8 +151,8 @@ const sessions = [
   { id: "sess-1", flowKind: "support", flowId: "support", userId: "demo", title: "Refund for order 118", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
   { id: "sess-2", flowKind: "support", flowId: "support", userId: "demo", title: "Password reset", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
 ];
-const flowClient = { listFlows: async () => flows } as never;
-const sessionClient = { listSessions: async () => sessions } as never;
+/** The navigator's client: the flow list and the session listing it reads, as one user. */
+const navigatorClient = { userId: "u1", flows: async () => flows, sessions: { list: async () => sessions } } as never;
 
 const seats = [
   { topic: "billing", clientData: { workerId: "billing", flow: "agent", instructions: "Handle refunds." } },
@@ -162,9 +162,9 @@ const cards = ["pending", "in_progress", "parked", "held", "completed"].map((sta
   topic: `card-${i}`,
   clientData: { id: `card-${i}`, status, title: `Card ${status}`, assignee: i % 2 ? "billing" : undefined },
 }));
-const rosterSource = { listCollectionItems: async () => ({ items: seats }) };
-const boardSource = { listCollectionItems: async () => ({ items: cards }) };
-const seatSource = { getCollectionItemState: async () => seats[0] };
+const rosterSource = { resources: { listCollectionItems: async () => ({ items: seats }) } } as never;
+const boardSource = { resources: { listCollectionItems: async () => ({ items: cards }) } } as never;
+const seatSource = { resources: { getCollectionItemState: async () => seats[0] } } as never;
 
 // --- page --------------------------------------------------------------------
 
@@ -286,22 +286,20 @@ function Page() {
               ]}
               selectedSessionId="sess-1"
               onSelectSession={() => {}}
-              client={flowClient}
-              sessionClient={sessionClient}
-              userId="demo"
+              client={navigatorClient}
             />
           </Part>
           <Part name="roster" component="Roster">
-            <Roster sessionId="sess-1" resourceClient={rosterSource} />
+            <Roster sessionId="sess-1" client={rosterSource} />
           </Part>
           <Part name="board-columns" component="BoardColumns">
-            <BoardColumns sessionId="sess-1" boardRef="support.queue" resourceClient={boardSource} />
+            <BoardColumns sessionId="sess-1" boardRef="support.queue" client={boardSource} />
           </Part>
           <Part name="board-list" component="BoardList">
-            <BoardList sessionId="sess-1" boardRef="support.queue" resourceClient={boardSource} />
+            <BoardList sessionId="sess-1" boardRef="support.queue" client={boardSource} />
           </Part>
           <Part name="seat-detail" component="WorkerDetail">
-            <WorkerDetail sessionId="sess-1" kind="agent" workerId="billing" resourceClient={seatSource} />
+            <WorkerDetail sessionId="sess-1" kind="agent" workerId="billing" client={seatSource} />
           </Part>
         </main>
       </SessionItemsProvider>

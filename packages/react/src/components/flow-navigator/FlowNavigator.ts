@@ -30,13 +30,8 @@ import {
   type FocusEvent,
   type ReactNode
 } from "react";
-import {
-  createClient,
-  createSessionClient,
-  type FlowListEntry,
-  type SessionSummary
-} from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
+import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
+import { useClient } from "../../internal/useClient";
 import {
   groupFlowsIntoSections,
   type FlowNavigatorKindGroup,
@@ -46,8 +41,7 @@ import {
 import {
   useFlowInventory,
   useLeafSessions,
-  type FlowNavigatorFlowSource,
-  type FlowNavigatorSessionSource,
+  type FlowNavigatorClient,
   type LeafSessions
 } from "./reads";
 import { arrangeSessionRows, type SessionRow } from "./dispatch-runs";
@@ -136,10 +130,10 @@ export type FlowNavigatorProps = {
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   /** The session to mark as current. Selection is the host's to keep. */
   readonly selectedSessionId?: string;
-  /** Falls back to the nearest `FlowProvider`'s `userId`. */
-  readonly userId?: string;
   /**
-   * The host's own client, so flow reads carry the host's transport.
+   * The host's own client, so every read carries the host's transport and
+   * its user. Without one, the navigator uses the nearest `FlowProvider`'s
+   * user, `baseUrl` and `fetcher`.
    *
    * Pass a STABLE reference — one held in a context or a `useMemo`, not an
    * object literal built during render. The reads are fenced on the client
@@ -147,9 +141,7 @@ export type FlowNavigatorProps = {
    * previous backend's rows; a fresh object every render reads as a rebuilt
    * client every render.
    */
-  readonly client?: FlowNavigatorFlowSource;
-  /** The host's own session client, so leaf reads carry the host's transport. Stable, as above. */
-  readonly sessionClient?: FlowNavigatorSessionSource;
+  readonly client?: FlowNavigatorClient;
   /**
    * Also list the sessions a dispatcher ran work in, drawn one level under the
    * session that started each one (FIX-1440).
@@ -177,9 +169,7 @@ export const flowNavigatorPropNames = [
   "onSelectSession",
   "sections",
   "selectedSessionId",
-  "sessionClient",
-  "slots",
-  "userId"
+  "slots"
 ] as const;
 
 /** The twisty's column. Every row reserves it, whether or not it can open. */
@@ -418,8 +408,7 @@ function describeDispatchRun(
 
 /** What every leaf row needs to read its sessions and draw them. */
 type LeafContext = {
-  readonly source: FlowNavigatorSessionSource;
-  readonly userId: string | undefined;
+  readonly source: FlowNavigatorClient;
   readonly selectedSessionId: string | undefined;
   readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
@@ -525,7 +514,6 @@ function LeafRow(props: {
   const state = useLeafSessions(
     context.source,
     leaf,
-    context.userId,
     context.includeDispatchRuns,
     isOpen
   );
@@ -646,52 +634,19 @@ function KindRow(props: {
 }
 
 /**
- * The clients the navigator reads through when the host supplied none.
- *
- * A component that always built its own would list flows successfully against
- * an authenticating deployment — that route is exempt from authorization — and
- * then fail every session read under it. So the host's clients win, and these
- * exist only for the unauthenticated case.
- */
-function useDefaultSources(
-  client: FlowNavigatorFlowSource | undefined,
-  sessionClient: FlowNavigatorSessionSource | undefined,
-  userId: string | undefined,
-  baseUrl: string | undefined,
-  apiPath: string | undefined
-): { flows: FlowNavigatorFlowSource; sessions: FlowNavigatorSessionSource } {
-  // Memoised so the fences below key on one stable object. A fresh client each
-  // render would retire and re-open every read, forever.
-  return useMemo(
-    () => ({
-      flows:
-        client ??
-        // `flowKind` is required to build a client and unused by `listFlows`,
-        // which addresses the server's whole registry.
-        createClient({ flowKind: "flow-navigator", userId: userId ?? "anonymous", baseUrl, apiPath }),
-      sessions: sessionClient ?? createSessionClient({ baseUrl, apiPath })
-    }),
-    [client, sessionClient, userId, baseUrl, apiPath]
-  );
-}
-
-/**
  * The rail. One mount, one flow-list read, one scroll container.
  */
 export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
-  const context = useFlowContext();
-  const userId = props.userId ?? context.userId;
   const slots = props.slots ?? {};
 
-  const sources = useDefaultSources(
-    props.client,
-    props.sessionClient,
-    userId,
-    context.baseUrl,
-    context.apiPath
-  );
+  // The host's client wins: a component that always built its own would list
+  // flows against an authenticating deployment (that route is exempt) and
+  // then fail every session read under it. The provider's is the
+  // unauthenticated case. Memoized, so the fences key on one stable object.
+  const providerClient = useClient();
+  const source: FlowNavigatorClient = props.client ?? providerClient;
 
-  const inventory = useFlowInventory(sources.flows);
+  const inventory = useFlowInventory(source);
   const views = useMemo(
     () => groupFlowsIntoSections(inventory.flows, props.sections),
     [inventory.flows, props.sections]
@@ -705,8 +660,7 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
   const answered = !inventory.isLoading && inventory.error === null;
 
   const leafContext: LeafContext = {
-    source: sources.sessions,
-    userId,
+    source,
     selectedSessionId: props.selectedSessionId,
     includeDispatchRuns: props.includeDispatchRuns ?? false,
     onSelectSession: props.onSelectSession,

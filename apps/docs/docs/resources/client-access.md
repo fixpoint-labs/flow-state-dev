@@ -428,28 +428,30 @@ Actions that weren't declared in the resource's `client.content` config will ret
 
 ## Non-React usage
 
-The `@flow-state-dev/client` package exports `createResourceClient` for direct HTTP access without React:
+Outside React, the client's `fsd.resources` makes the same calls:
 
 ```ts
-import { createResourceClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const resources = createResourceClient();
+const fsd = createClient({ userId: "user_1", baseUrl: "http://localhost:3000" });
 
 // Fetch content for a single resource
-const { content } = await resources.getResourceContent(sessionId, "soul");
+const soul = await fsd.resources.getResourceContent(sessionId, "soul");
 
 // Fetch content for a collection item
-const { content } = await resources.getCollectionItemContent(sessionId, "artifacts", "artifacts/readme.md");
+const readme = await fsd.resources.getCollectionItemContent(sessionId, "artifacts", "artifacts/readme.md");
 
 // Mutations
-await resources.createCollectionItem(sessionId, "artifacts", { topic: "new.md", content: "..." });
-await resources.updateResourceContent(sessionId, "artifacts", "artifacts/readme.md", { content: "..." });
-await resources.deleteCollectionItem(sessionId, "artifacts", "artifacts/old.md");
+await fsd.resources.createCollectionItem(sessionId, "artifacts", { topic: "new.md", content: "..." });
+await fsd.resources.updateResourceContent(sessionId, "artifacts", "artifacts/readme.md", { content: "..." });
+await fsd.resources.deleteCollectionItem(sessionId, "artifacts", "artifacts/old.md");
 ```
+
+Each read resolves to `{ ref, topic?, content }`. A refused call rejects with `ClientHttpError`, whose `status` is the server's answer (`403` for an action the resource doesn't grant, `404` for a resource with no `client` config). [`fsd.resources`](/docs/api/client#fsdresources) lists every method, including the collection reads.
 
 ## HTTP endpoints
 
-Under the hood, these hooks and clients talk to these endpoints:
+The hooks and the client call these endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|

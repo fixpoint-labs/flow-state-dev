@@ -4,16 +4,13 @@
  * `live` and `BoardList`'s, so both keep one meaning for when the stream
  * vouches for a session and when it has stopped.
  */
-import { createSessionSSEClient, type ClientFetch } from "@flow-state-dev/client";
+import type { SessionsApi } from "@flow-state-dev/client";
 import type { SessionItemEvent, SessionRunsChangedEvent } from "@flow-state-dev/core/items";
 
 export type FollowSessionOptions = {
   readonly sessionId: string;
-  readonly baseUrl?: string;
-  /** Where the server mounts the flow API; the provider's `apiPath`. */
-  readonly apiPath?: string;
-  /** The transport the stream is sent with, so it carries the view's credential. */
-  readonly fetcher?: ClientFetch;
+  /** The view's client: the stream goes through its transport, with the view's credential. */
+  readonly client: { readonly sessions: Pick<SessionsApi, "stream"> };
   readonly since?: number;
   readonly sessionCreatedAt?: number;
   readonly itemTypes?: string[];
@@ -39,11 +36,7 @@ export type FollowSessionOptions = {
 export function followSession(options: FollowSessionOptions): () => void {
   let following = false;
 
-  const handle = createSessionSSEClient({
-    sessionId: options.sessionId,
-    baseUrl: options.baseUrl,
-    apiPath: options.apiPath,
-    fetcher: options.fetcher,
+  const handle = options.client.sessions.stream(options.sessionId, {
     since: options.since,
     sessionCreatedAt: options.sessionCreatedAt,
     itemTypes: options.itemTypes,

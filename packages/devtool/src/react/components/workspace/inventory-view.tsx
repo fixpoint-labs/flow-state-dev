@@ -7,7 +7,7 @@
  * does not declare it shows no tab, never an empty table.
  *
  * Every request — the manifest and every page of the collection — goes
- * through the DevTool's shared `resourceClient`, so it carries the bearer
+ * through the DevTool's one client, so it carries the bearer
  * token like every other panel. The read is the production collection route,
  * never the debug one, so the tab works with the debug endpoints off. The
  * organization is the session's, decided by the server; the tab names none
@@ -44,14 +44,15 @@ const InventoryContext = createContext<string | null>(null);
  * the same failure on their own reads.
  */
 export function InventoryProvider({ sessionId, children }: { sessionId: string | null; children: ReactNode }) {
-  const { resourceClient } = useDevTool();
+  const { client } = useDevTool();
+  const resourceReads = client.resources;
   const [ref, setRef] = useState<string | null>(null);
 
   useEffect(() => {
     setRef(null);
     if (sessionId === null) return;
     let cancelled = false;
-    resourceClient
+    resourceReads
       .getResourceManifest(sessionId)
       .then((manifest) => {
         if (!cancelled) setRef(workerInventoryRef(manifest) ?? null);
@@ -62,7 +63,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
     return () => {
       cancelled = true;
     };
-  }, [resourceClient, sessionId]);
+  }, [resourceReads, sessionId]);
 
   return <InventoryContext.Provider value={ref}>{children}</InventoryContext.Provider>;
 }
@@ -85,19 +86,20 @@ export function InventoryTabContent({ sessionId }: { sessionId: string | null })
 
 /** The worker section, for a session whose inventory ref is already known. */
 function InventoryView({ sessionId, inventoryRef }: { sessionId: string; inventoryRef: string }) {
-  const { resourceClient } = useDevTool();
+  const { client } = useDevTool();
+  const resourceReads = client.resources;
   const [read, setRead] = useState<InventoryRead | null>(null);
 
   useEffect(() => {
     setRead(null);
     let cancelled = false;
-    void readEveryPage(resourceClient, sessionId, inventoryRef).then((next) => {
+    void readEveryPage(resourceReads, sessionId, inventoryRef).then((next) => {
       if (!cancelled) setRead(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [resourceClient, sessionId, inventoryRef]);
+  }, [resourceReads, sessionId, inventoryRef]);
 
   if (read === null) {
     return <p className="px-[18px] py-4 font-fs-mono text-[11.5px] text-fs-ink4">Reading the inventory…</p>;

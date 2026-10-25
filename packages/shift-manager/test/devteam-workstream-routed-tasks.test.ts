@@ -36,10 +36,11 @@ import type { GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-de
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { runAction } from "../src/lib/action";
-import { createLabClients, type LabClients } from "../src/lib/connection";
+import type { Client } from "@flow-state-dev/client";
+import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
 import { createLabReader, readerSessionId } from "../src/lib/reads";
-import { workforceClientFor } from "../src/lib/workforce";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "../teams/devteam/harness-stub.mts";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
@@ -248,21 +249,21 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
     ...(options.reporter === true ? { errorReporter: { harness: reportHarness, cwd: root } } : {}),
   });
   served = await serveLab(lab.state);
-  const clients: LabClients = createLabClients({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
-  await createLabReader(clients).read();
+  const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
+  await createLabReader(client).read();
   const reader = readerSessionId(ALICE.userId, "projects");
-  await runAction(clients, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: lead.id });
-  const workstream = (await readProject(clients, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
+  await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: lead.id });
+  const workstream = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
     .sessionId!;
-  const pc = (await workforceClientFor(clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-  await runAction(clients, "coordinator", pc, "respond", { message: FIRST_ASK });
+  const pc = (await createWorkforceClient(client).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
+  await runAction(client, "coordinator", pc, "respond", { message: FIRST_ASK });
   const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as Row[];
   const routedRow = async (body?: string) =>
     (await rows()).find((r) => r.sealed?.postId !== undefined && (body === undefined || r.sealed.body === body));
   const coderRow = async () => (await rows()).find((r) => r.sealed?.postId === undefined);
   const steer = async (id: string) =>
-    expect((await runAction(clients, "coordinator", pc, "updateTask_tasks", { id, message: STEER })).output).toEqual({ ok: true });
-  return { clients, workstream, pc, routedRow, coderRow, steer };
+    expect((await runAction(client, "coordinator", pc, "updateTask_tasks", { id, message: STEER })).output).toEqual({ ok: true });
+  return { client, workstream, pc, routedRow, coderRow, steer };
 }
 
 describe("a steer on a routed task in a workstream's session", () => {
@@ -345,8 +346,8 @@ describe("a routed task to a workstream from another conversation's board", () =
     // conversation with a board of its own, and the first one's task is still open in the workstream.
     const runtime = await lab!.state.getRuntime();
     await runtime.stores.session.delete(host.pc);
-    const again = (await workforceClientFor(host.clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-    await runAction(host.clients, "coordinator", again, "respond", { message: SECOND_ASK });
+    const again = (await createWorkforceClient(host.client).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
+    await runAction(host.client, "coordinator", again, "respond", { message: SECOND_ASK });
     const waiting = await eventually(async () => host.routedRow(SECOND_ASK), "the second routed task filed", 30_000);
     expect(waiting.targetSessionId).toBe(host.workstream);
 
@@ -420,7 +421,7 @@ describe("a routed task to the DevTeam's EM", () => {
     release.push(coderRuns.open);
     const host = await handOn({ id: EM, em: emModel(seen, false) }, coderRuns);
     await eventually(async () => ((await host.routedRow(FIRST_ASK))?.status === "completed" ? true : undefined), "the first routed task completed", 30_000);
-    await runAction(host.clients, "coordinator", host.pc, "respond", { message: SECOND_ASK });
+    await runAction(host.client, "coordinator", host.pc, "respond", { message: SECOND_ASK });
     await eventually(async () => ((await host.routedRow(SECOND_ASK))?.status === "completed" ? true : undefined), "the second routed task completed", 30_000);
     expect(seen.turns).toHaveLength(2);
     expect(seen.turns[1]).toContain("Recent lines in the conversation with project-coordinator before this message, oldest first:");

@@ -13,9 +13,9 @@ import { GAPS } from "../src/gaps";
 
 const read = vi.fn();
 const listSessions = vi.fn();
-// One object, as the provider hands one: a fresh `clients` each render would re-read forever.
+// One object, as the provider hands one: a fresh `client` each render would re-read forever.
 const lab = {
-  clients: { userId: "u_1", sessions: { listSessions } },
+  client: { userId: "u_1", sessions: { list: listSessions } },
   refresh: vi.fn(),
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };

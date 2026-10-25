@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
-import type { LabClients } from "../src/lib/connection";
+import type { Client } from "@flow-state-dev/client";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
@@ -79,7 +79,7 @@ async function open(path: string, snapshot: LabSnapshot = lab()) {
   fixture = snapshot;
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
   // A connection per page, as a fresh load makes: the roster read is shared per connection.
-  render(<App clients={{ userId: "u_test" } as unknown as LabClients} />);
+  render(<App connection={{ userId: "u_test" }} />);
   await screen.findByTestId("sidebar");
 }
 

@@ -41,7 +41,7 @@ import { z } from "zod";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import { readCommittedTask } from "../collection/read-committed";
-import { requestStates } from "../helpers/request-states";
+import { hasEnded, requestStates } from "../helpers/request-states";
 import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
@@ -89,16 +89,6 @@ export interface TaskSettledEntryOptions {
    * away. Default: never.
    */
   readonly defer?: (ctx: BlockContext, notice: TaskSettledInput) => Promise<boolean>;
-}
-
-/**
- * Whether a request of this session has stopped running (FIX-2123), as the
- * engine records it ({@link requestStates}). A host that keeps no such record
- * answers `true`: there a notice is admitted as it was before.
- */
-async function hasEnded(ctx: BlockContext, requestId: string): Promise<boolean> {
-  const states = await requestStates(ctx, [requestId]);
-  return states === undefined || states[requestId] === "ended";
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   handler,
   type FlowInstance,
 } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, createInProcessFetch } from "@flow-state-dev/engine";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
@@ -165,8 +165,7 @@ await runGoal(async (failures) => {
     const runtime = await state.getRuntime();
 
     const call = async (method: "GET" | "POST", path: string[], who: Who, body?: unknown) => {
-      const response = await router[method](
-        new Request(`http://goal/api/flows/${path.join("/")}`, {
+      const response = await createInProcessFetch(router as never)(`http://goal/api/flows/${path.join("/")}`, {
           method,
           headers: {
             "content-type": "application/json",
@@ -174,9 +173,7 @@ await runGoal(async (failures) => {
             "x-verified-org": who.org,
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        }),
-        { params: { path } },
-      );
+        });
       const text = await response.text();
       return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
     };

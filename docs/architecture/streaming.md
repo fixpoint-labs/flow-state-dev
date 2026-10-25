@@ -226,7 +226,7 @@ GET /stream?starting_after=42
 
 ## Session Stream
 
-`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through `createSessionSSEClient`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
+`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through the client's `sessions.stream`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
 
 | Event | Carries |
 |-------|---------|

@@ -797,14 +797,16 @@ entry names the flow it runs on, as `flow` (most run on `agent`).
 **2. Find or start the session.**
 
 ```ts
+import { createClient } from "@flow-state-dev/client"
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser"
 
-const workforce = createWorkforceClient({ userId, baseUrl })
+const fsd = createClient({ userId, baseUrl })
+const workforce = createWorkforceClient(fsd)
 const session = await workforce.ensureWorkerSession({ worker: "researcher" })
 ```
 
-`createWorkforceClient` takes the same options as `createSessionClient`. Its
-`ensureWorkerSession` returns the user's conversation with that worker, and creates it
+`createWorkforceClient` takes your app's client and calls through it, as that client's user.
+Its `ensureWorkerSession` returns the user's conversation with that worker, and creates it
 if there isn't one. Messages from [other workers](./messaging-workers.md) land in that
 conversation. It looks up the worker's flow for you. Two calls at once get the same
 session, not two. If you move a worker to another flow, the next call starts a new session
@@ -812,14 +814,11 @@ there. When you only want to check, `findWorkerSession` takes the same argument 
 session or nothing. Both throw `No worker "<id>" on your roster.` for a worker that isn't on
 the user's roster.
 
-A user can hold more than one conversation with the same worker. Start another with the
-session client, naming the worker in `workerId`:
+A user can hold more than one conversation with the same worker. Start another on the
+worker's flow, naming the worker in `workerId`:
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client"
-
-const sessions = createSessionClient({ baseUrl })
-const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { workerId: "researcher" } })
+const fresh = await fsd.flow("agent").createSession({ state: { workerId: "researcher" } })
 ```
 
 A session you start this way is a conversation of its own. `ensureWorkerSession` and
@@ -855,10 +854,7 @@ you moved it. Entries carry no title, and opening one is an ordinary action on `
 **3. Talk to it.** An ordinary action on that session:
 
 ```ts
-import { createClient } from "@flow-state-dev/client"
-
-const agent = createClient({ flowKind: session.flowKind, userId, baseUrl })
-await agent.sendAction("respond", { message }, { sessionId: session.id })
+const sent = await fsd.flow(session.flowKind).send("respond", { message }, { sessionId: session.id })
 ```
 
 A message that names a worker is refused. So is a turn on a session whose worker was fired, or
@@ -869,7 +865,7 @@ starting state, so a worker's flow refuses them: find or start the session with 
 make it the hook's active session.
 
 ```tsx
-const workforce = useMemo(() => createWorkforceClient({ userId, baseUrl }), [userId, baseUrl])
+const workforce = useMemo(() => createWorkforceClient(createClient({ userId, baseUrl })), [userId, baseUrl])
 const flow = useFlow({ flowKind: "agent" })
 
 useEffect(() => {

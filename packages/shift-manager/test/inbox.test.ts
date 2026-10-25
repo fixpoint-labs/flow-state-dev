@@ -9,9 +9,9 @@
  * items, never the session item log the Inbox reads its asks from.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { SessionRequestSummary } from "@flow-state-dev/client";
+import type { Client, SessionRequestSummary } from "@flow-state-dev/client";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
-import { createLabClients, type LabClients } from "../src/lib/connection";
+import { connect } from "../src/lib/connection";
 import {
   inboxItems,
   questionItemId,
@@ -184,19 +184,19 @@ type Loaded = Exclude<LabSnapshot, { refused: object } | { unreachable: object }
  * items. Not the session item log `readAsks` reads, and not the worker
  * inventory it picks sessions by.
  */
-async function readTruth(clients: LabClients): Promise<InboxTruth> {
-  const sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+async function readTruth(client: Client): Promise<InboxTruth> {
+  const sessions = await client.sessions.list({ include: "dispatch-runs" });
   const suspensions = [];
   for (const session of sessions) {
-    const requests = await clients.sessions.listSessionRequests(session.id, { status: "suspended", includeItems: true });
+    const requests = await client.sessions.requests(session.id, { status: "suspended", includeItems: true });
     suspensions.push(...suspensionTruthOf(session.id, requests, (reason) => PERSON_REASONS.has(reason)));
   }
   // No board in this Lab holds a question: the question arm's truth is empty, and an item there would be an orphan.
   return { suspensions, questions: [] };
 }
 
-async function inboxOnceSettled(clients: LabClients, count: number): Promise<{ items: InboxItem[]; snapshot: Loaded }> {
-  const reader = createLabReader(clients);
+async function inboxOnceSettled(client: Client, count: number): Promise<{ items: InboxItem[]; snapshot: Loaded }> {
+  const reader = createLabReader(client);
   return eventually(async () => {
     const snapshot = (await reader.read()) as Loaded;
     return snapshot.inbox?.ok && snapshot.inbox.value.length === count ? { items: snapshot.inbox.value, snapshot } : undefined;
@@ -206,12 +206,12 @@ async function inboxOnceSettled(clients: LabClients, count: number): Promise<{ i
 describe("reconcileInbox against a real Lab", () => {
   it("a user's own ask: listed once, answerable, green against the request listing", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     const sessionId = "s_ops_loner";
-    await clients.sessions.createSession({ flowKind: ASKER_FLOW, userId: clients.userId, sessionId, state: { workerId: "ops.loner" } });
-    await clients.actions(ASKER_FLOW).sendAction("ask", { what: "ship it" }, { sessionId });
-    const { items, snapshot } = await inboxOnceSettled(clients, 1);
-    const truth = await readTruth(clients);
+    await client.flow(ASKER_FLOW).createSession({ sessionId, state: { workerId: "ops.loner" } });
+    await client.flow(ASKER_FLOW).send("ask", { what: "ship it" }, { sessionId });
+    const { items, snapshot } = await inboxOnceSettled(client, 1);
+    const truth = await readTruth(client);
     expect(truth.suspensions).toHaveLength(1);
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
     // The section the sidebar counts and the Inbox draws is the asks read, listed through `inboxItems`.
@@ -223,10 +223,10 @@ describe("reconcileInbox against a real Lab", () => {
 
   it("a task run's approval (a delegate's routed task, source \"task\"): listed once but unanswerable, so red (today's gap)", async () => {
     const { baseUrl } = await lab();
-    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
-    await clients.actions(COORDINATOR_FLOW).sendAction("respond", { message: "ship it" }, { sessionId: "ops.desk" });
-    const { items } = await inboxOnceSettled(clients, 2);
-    const result = reconcileInbox(items, await readTruth(clients));
+    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
+    await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
+    const { items } = await inboxOnceSettled(client, 2);
+    const result = reconcileInbox(items, await readTruth(client));
     // Every other clause holds: the list is the truth, once each.
     expect(result).toMatchObject({ missing: [], duplicate: [], orphan: [], bothArms: [], reopened: [] });
     // The answerable clause fails: a stop for the user in a dispatched run has no route from the Inbox yet.

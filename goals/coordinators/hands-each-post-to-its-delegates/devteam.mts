@@ -18,6 +18,7 @@
  * The clients are loaded from the checkout under test, so a run on another
  * commit drives that commit's own clients.
  */
+import type { Client, CreateClientOptions } from "@flow-state-dev/client";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -39,17 +40,10 @@ type SessionSummary = { id: string; flowKind: string };
 /** The shipped clients, as the checkout under test exports them. */
 export interface Shipped {
   client: {
-    createClient(options: { flowKind: string; userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
-      sendAction(action: string, input: unknown, options: { sessionId: string }): Promise<{ request: { id: string } }>;
-      getRequestStatus(requestId: string): Promise<{ status: string }>;
-    };
-    createSessionClient(options: { baseUrl?: string; fetcher?: typeof fetch }): {
-      createSession(options: { flowKind: string; userId: string; sessionId?: string; state?: Record<string, unknown> }): Promise<{ id: string }>;
-      listSessions(options: { flowKind?: string; userId?: string }): Promise<Array<{ id: string; createdAt: number }>>;
-    };
+    createClient(options: CreateClientOptions): Client;
   };
   workforce: {
-    createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): {
+    createWorkforceClient(client: Client): {
       roster(): Promise<RosterEntry[]>;
       ensureWorkerSession(criteria: { worker: string }): Promise<SessionSummary>;
     };
@@ -67,8 +61,8 @@ export async function loadShipped(root: string): Promise<Shipped> {
 interface Connected {
   person: Person;
   workforce: ReturnType<Shipped["workforce"]["createWorkforceClient"]>;
-  sessions: ReturnType<Shipped["client"]["createSessionClient"]>;
-  flow(flowKind: string): ReturnType<Shipped["client"]["createClient"]>;
+  sessions: Client["sessions"];
+  flow(flowKind: string): ReturnType<Client["flow"]>;
   routes: LabRoutes;
 }
 
@@ -79,11 +73,13 @@ function connect(shipped: Shipped, origin: string, person: Person): Connected {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
+  // One client per person: their user, their credential.
+  const client = shipped.client.createClient({ userId: person.userId, ...transport });
   return {
     person,
-    workforce: shipped.workforce.createWorkforceClient({ userId: person.userId, ...transport }),
-    sessions: shipped.client.createSessionClient(transport),
-    flow: (flowKind) => shipped.client.createClient({ flowKind, userId: person.userId, ...transport }),
+    workforce: shipped.workforce.createWorkforceClient(client),
+    sessions: client.sessions,
+    flow: (flowKind) => client.flow(flowKind),
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
   };
 }
@@ -108,14 +104,14 @@ async function act(who: Connected, flowKind: string, sessionId: string, action: 
   const client = who.flow(flowKind);
   let requestId: string;
   try {
-    requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+    requestId = (await client.send(action, input, { sessionId })).id;
   } catch (error) {
     const status = (error as { status?: unknown }).status;
     return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error) };
   }
   let status = "timed-out";
   for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(400)) {
-    const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status;
+    const now = (await client.request(requestId).status().catch(() => undefined))?.status;
     if (now !== undefined && !RUNNING.has(now)) {
       status = now;
       break;
@@ -491,7 +487,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("d")) {
     const r = leg("d");
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const session = { id: conv.id, flowKind: kind };
     const roster = await alice.workforce.roster();
     const removeId = o.defaults[randomBytes(1)[0]! % Math.max(1, o.defaults.length)] ?? "eng.coder";
@@ -539,8 +535,8 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("f")) {
     const r = leg("f");
     const rosterKind = "workforce-roster";
-    const bobRoster = (await bob.sessions.listSessions({ flowKind: rosterKind, userId: o.bob.userId }))[0]?.id ??
-      (await bob.sessions.createSession({ flowKind: rosterKind, userId: o.bob.userId })).id;
+    const bobRoster = (await bob.sessions.list({ flowKind: rosterKind, userId: o.bob.userId }))[0]?.id ??
+      (await bob.flow(rosterKind).createSession()).id;
     const bobWorker = `bob-${word()}`;
     const hired = await act(bob, rosterKind, bobRoster, "hire", { id: bobWorker, flow: "agent", description: "Answers Bob's questions." });
     const bobs = await ownWorkers(bob);
@@ -550,7 +546,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     } else {
       r.notes.push(`Bob hired \`${bobWorker}\` on \`agent\`; Alice's roster ${(await ownWorkers(alice)).includes(bobWorker) ? "LISTS it" : "doesn't list it"}`);
       const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-      const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+      const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
       const missing = `nobody-${word()}`;
       const viaApp = await act(alice, kind, conv.id, "addDelegate", { worker: bobWorker });
       const viaAppMissing = await act(alice, kind, conv.id, "addDelegate", { worker: missing });
@@ -575,7 +571,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const ask = o.asks.f.replace("{worker}", bobWorker);
       let adds: Turn["tools"] = [];
       for (let attempt = 1; attempt <= 2 && adds.length === 0; attempt += 1) {
-        const where = attempt === 1 ? conv : await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+        const where = attempt === 1 ? conv : await alice.flow(kind).createSession({ state: { workerId: COS } });
         o.say(`leg f, attempt ${attempt}: "${ask}"`);
         const turn = await talk(turns, "f", alice, { id: where.id, flowKind: kind }, ask);
         adds = turn.tools.filter((t) => t.name === "addDelegate");
@@ -614,7 +610,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   if (o.legs.has("h")) {
     const r = leg("h");
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const session = { id: conv.id, flowKind: kind };
     const pick = <T,>(list: readonly T[]) => list[randomBytes(1)[0]! % list.length]!;
     const job = pick(o.asks.h.jobs);
@@ -696,7 +692,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   // hires no one. Last, so a hire it makes here can't sway another leg.
   if (o.legs.has("g")) {
     const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
-    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const conv = await alice.flow(kind).createSession({ state: { workerId: COS } });
     const theWord = word();
     const ask = o.asks.g.replace("{slug}", `cart-${hex()}`).replace("{word}", theWord);
     await askTheEm("g", { id: conv.id, flowKind: kind }, ask, theWord, await ownWorkers(alice));

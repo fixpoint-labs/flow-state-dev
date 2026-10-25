@@ -765,7 +765,7 @@ Each row names the run that took it. Under `per-worker` or a shared `key`, sever
 To open the run, read the session first. An assignee can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
 ```ts
-const session = await client.getSession(task.run.sessionId);
+const session = await fsd.sessions.get(task.run.sessionId);
 const flowKind = session.flowId; // the run's flow, never the board's
 ```
 
@@ -853,27 +853,32 @@ completed. Nothing keeps a request open while it waits, so a server restart lose
 A task that already ended is returned at once. If no `onTaskSettled` request for that ending
 has started yet, the wait returns the ending, and no notice is sent for it.
 
-Once an `onTaskSettled` request for that ending has started, whether it is still running or
-has finished, `getTask` returns this instead of the task:
+While an `onTaskSettled` request for that ending is still running or parked, `getTask` returns this
+instead of the task:
 
 ```ts
 { ok: true, taskId: "task_8f2", arrivesAsNotice: true, message: "…" }
 ```
 
 `message` names the task, says its ending comes to the conversation as a notice, and tells the
-model not to wait on it again. The session hears that ending once, from the notice.
+model not to wait on it again. The session hears that ending once, from the notice. If the
+`onTaskSettled` request fails, it runs again, and a wait keeps getting `arrivesAsNotice` until one
+succeeds. After that, a wait returns the task, output and all.
 
 You'll see it when your turn parks between filing a task and waiting on it, or when a second
 turn waits on a task the first one filed. Say a turn files a task, then waits for a person's
-approval. The task finishes during that wait, and the conversation hears it from
-`onTaskSettled`. After the approval, the same turn waits on the task and gets `arrivesAsNotice`.
+approval. The task finishes during that wait, and `onTaskSettled` picks up its ending. After the
+approval, the same turn waits on the task. It gets `arrivesAsNotice` if `onTaskSettled` hasn't
+finished with that ending yet, and the task if it has. The timing isn't yours to pick, so handle
+both answers.
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
 cancelled: the task runs on, and you can wait on it again. If it ends while your request is
 running, your next `getTask` on it returns the ending. If your request parks or ends first, you
 [hear about it](#hearing-how-a-task-ended) once, the usual way.
-If it parked, waiting on it again after the turn resumes returns `arrivesAsNotice`. A worker you're
+If it parked, waiting on it again after the turn resumes gets `arrivesAsNotice` or the task, by
+the same rule as above. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
@@ -1243,7 +1248,7 @@ A worker that can't go on without an answer calls `parkOnQuestion({ question })`
 `answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
 
 ```ts
-await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+await fsd.flow(flowKind).send("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
 ```
 
 It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.

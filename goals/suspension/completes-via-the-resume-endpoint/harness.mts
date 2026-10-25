@@ -12,6 +12,7 @@
  * Not typechecked by `goals/tsconfig.json` — its imports resolve against
  * apps/kitchen-sink. See goals/README.md → "Harnesses".
  */
+import { createInProcessFetch } from "@flow-state-dev/engine";
 import { flowstate } from "./lib/flowstate";
 
 const FLOW = "chat-agent";
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
       headers: { "content-type": "application/json", accept },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    const res = await router[method](req, { params: { path: segs } });
+    const res = await createInProcessFetch(router)(req);
     const text = await res.text();
     let json: any;
     try {

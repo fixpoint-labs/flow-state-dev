@@ -93,7 +93,7 @@ export function TaskSession() {
 
 /** The open run's items: one stored read, then its request's stream. */
 function RunItems({ run }: { run: OpenRun }) {
-  const { clients, snapshot } = useLab();
+  const { client, snapshot } = useLab();
   const task = useTask();
   const asks = asksOfTask(snapshot, task.row);
   const [stored, setStored] = useState<{ items: OutputItem[]; truncated: boolean } | undefined>(undefined);
@@ -114,11 +114,11 @@ function RunItems({ run }: { run: OpenRun }) {
     let stream: { close(): void } | undefined;
     setStored(undefined);
     setFailure(undefined);
-    readSessionItems(clients, run.sessionId)
+    readSessionItems(client, run.sessionId)
       .then((read) => {
         if (closed) return;
         setStored(read);
-        stream = followRequest(clients, run, {
+        stream = followRequest(client, run, {
           onItem: (item) => mergeIn([item]),
           onStatus: reportStatus,
           onError: (f) => {
@@ -133,7 +133,7 @@ function RunItems({ run }: { run: OpenRun }) {
       closed = true;
       stream?.close();
     };
-  }, [clients, run, attempt, reportStatus, mergeIn, failWith]);
+  }, [client, run, attempt, reportStatus, mergeIn, failWith]);
 
   // Follow each request in `sent` once the first read has landed, so its replay has
   // something to merge into, and re-read the session once when it leaves in_progress.
@@ -150,9 +150,9 @@ function RunItems({ run }: { run: OpenRun }) {
         settled.current.add(requestId);
         // Merged even if a newer send has re-run this effect since: the request
         // counts as settled, so no later follower brings its items.
-        readSessionItems(clients, run.sessionId).then((read) => mergeIn(read.items), failWith);
+        readSessionItems(client, run.sessionId).then((read) => mergeIn(read.items), failWith);
       };
-      return followRequest(clients, { flowId: run.flowId, requestId }, {
+      return followRequest(client, { flowId: run.flowId, requestId }, {
         onItem: (item) => mergeIn([item]),
         onStatus: (status) => {
           if (status !== "in_progress") settle();
@@ -164,7 +164,7 @@ function RunItems({ run }: { run: OpenRun }) {
       closed = true;
       for (const stream of streams) stream.close();
     };
-  }, [clients, run, sent, loaded, mergeIn, failWith]);
+  }, [client, run, sent, loaded, mergeIn, failWith]);
 
   // This task's items, then the same render filters `ItemsRenderer` applies:
   // a keyed snapshot shows its latest version only, and a container with its

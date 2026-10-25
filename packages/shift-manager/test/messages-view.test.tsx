@@ -12,7 +12,7 @@ vi.mock("@flow-state-dev/client", async (original) => ({
   ...(await original<typeof import("@flow-state-dev/client")>()),
   readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
 }));
-const lab = { clients: { userId: "u_1", resources: {} }, refresh: vi.fn() };
+const lab = { client: { userId: "u_1", resources: {} }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";

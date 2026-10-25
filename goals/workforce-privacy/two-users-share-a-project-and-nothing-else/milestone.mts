@@ -85,8 +85,8 @@ const lastSegment = (topic: string) => topic.slice(topic.lastIndexOf("/") + 1);
 
 /** The user's session on `flowKind` (the roster flow's, say), found or created through the session client. */
 export async function sessionOn(who: Connected, flowKind: string): Promise<string> {
-  const listed = mostRecent(await who.sessions.listSessions({ flowKind, userId: who.person.userId }));
-  return listed?.id ?? (await who.sessions.createSession({ flowKind, userId: who.person.userId })).id;
+  const listed = mostRecent(await who.sessions.list({ flowKind, userId: who.person.userId }));
+  return listed?.id ?? (await who.flow(flowKind).createSession()).id;
 }
 
 /** Fork `from` (or hire on its flow, when the commit has no fork action) under `id`, as `who`. */
@@ -108,7 +108,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
   // ---- m1 · setup, graded ------------------------------------------------------
   o.say("m1: Alice makes a worker of her own and gives it a word");
   r.via("m1", "action");
-  const flows = await alice.flow("workforce-roster").listFlows();
+  const flows = await alice.flows();
   const actionsOf = (kind: string) => [...new Set(flows.filter((f) => f.kind === kind).flatMap((f) => (Array.isArray(f.actions) ? (f.actions as string[]) : Object.keys(f.actions ?? {}))))];
   const forkFlow = flows.find((f) => actionsOf(f.kind).includes("fork"));
   const hireFlow = flows.find((f) => actionsOf(f.kind).includes("hire"));
@@ -196,10 +196,10 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
   else {
     const say = talkAction(actionsOf(aliceSession.flowKind))!;
     const before = new Set((await alice.routes.items(aliceSession.id, "")).map((i) => i.id));
-    const opened = await refusal(() => bob.sessions.getSession(aliceSession.id));
+    const opened = await refusal(() => bob.sessions.get(aliceSession.id));
     if (opened.status === undefined) r.fail("m2", `Bob opened Alice's worker session \`${aliceSession.id}\`: it came back to him`);
     else r.saw("m2", `Bob opening \`${aliceSession.id}\`: refused, ${opened.status}`);
-    const listed = await refusal(() => bob.sessions.listSessions({ flowKind: aliceSession.flowKind, userId: o.people.alice.userId }));
+    const listed = await refusal(() => bob.sessions.list({ flowKind: aliceSession.flowKind, userId: o.people.alice.userId }));
     if (Array.isArray(listed.value) && (listed.value as SessionSummary[]).some((s) => s.id === aliceSession.id)) r.fail("m2", "Bob listing sessions under Alice's user id gets her worker session");
     else r.saw("m2", `Bob listing under Alice's user id: ${listed.status === undefined ? `${(listed.value as unknown[]).length} sessions, not hers` : `refused, ${listed.status}`}`);
     const token = `bob-${hex(3)}`;
@@ -207,7 +207,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
       ["as himself", bob.flow(aliceSession.flowKind)],
       ["naming Alice's user id in the body", bob.flow(aliceSession.flowKind, o.people.alice.userId)],
     ] as const) {
-      const posted = await refusal(() => client.sendAction(say, { message: `${token} ${how}` }, { sessionId: aliceSession.id }));
+      const posted = await refusal(() => client.send(say, { message: `${token} ${how}` }, { sessionId: aliceSession.id }));
       if (posted.status === undefined) r.fail("m2", `Bob's post to Alice's worker session ${how} was accepted: ${JSON.stringify(posted.value).slice(0, 200)}`);
       else r.saw("m2", `Bob posting ${how}: refused, ${posted.status}`);
     }
@@ -294,18 +294,18 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     else r.saw("m4", `Bob's talk action naming \`${name}\`: refused (${viaTalk.error?.slice(0, 120)})`);
     // The worker binding is the readonly `workerId` the create's state seeds
     // (FIX-1788 D5; there is no separate link).
-    const seeded = await refusal(() => bob.sessions.createSession({ flowKind, userId: o.people.bob.userId, state: { workerId: name } }));
+    const seeded = await refusal(() => bob.flow(flowKind).createSession({ state: { workerId: name } }));
     if (seeded.status === undefined) r.fail("m4", `Bob created a session seeding \`workerId: ${name}\` in its state: \`${(seeded.value as { id: string }).id}\``);
     else r.saw("m4", `Bob's create seeding \`workerId: ${name}\`: refused, ${seeded.status}`);
-    const orgId = (await alice.sessions.getSession(aliceSession.id)).orgId;
+    const orgId = (await alice.sessions.get(aliceSession.id)).orgId;
     const reserved = await o.install.shipped.workforce.deriveWorkerSessionId({ userId: o.people.alice.userId, orgId, flow: facts.standard!.flow, criteria: { worker: facts.standard!.id } });
-    const atHers = await refusal(() => bob.sessions.createSession({ flowKind, userId: o.people.bob.userId, sessionId: reserved, state: { workerId: facts.bobWorker ?? facts.standard!.id } }));
+    const atHers = await refusal(() => bob.flow(flowKind).createSession({ sessionId: reserved, state: { workerId: facts.bobWorker ?? facts.standard!.id } }));
     if (atHers.status === undefined) r.fail("m4", `Bob created a session at \`${reserved}\`, the id Alice's own session with \`${facts.standard!.id}\` is derived to`);
     else r.saw("m4", `Bob's create at Alice's derived id \`${reserved}\`: refused, ${atHers.status}`);
-    const bound = await bob.sessions.listSessions({ flowKind, userId: o.people.bob.userId, state: { workerId: name } } as never).catch(() => []);
+    const bound = await bob.sessions.list({ flowKind, userId: o.people.bob.userId, state: { workerId: name } } as never).catch(() => []);
     if (bound.length > 0) r.fail("m4", `store: Bob holds session(s) on Alice's worker: ${bound.map((s) => s.id).join(", ")}`);
     else r.saw("m4", `store: Bob holds no session on \`${name}\``);
-    const taken = await refusal(() => alice.sessions.getSession(reserved));
+    const taken = await refusal(() => alice.sessions.get(reserved));
     if (taken.status === undefined) r.fail("m4", `store: a session now exists at Alice's derived id \`${reserved}\``);
     else r.saw("m4", `store: nothing exists at \`${reserved}\``);
   }
@@ -329,7 +329,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
   if (crossed.length > 0) r.fail("m5", `Alice in her second org lists her first org's session(s): ${crossed.map((s) => s.id).join(", ")}`);
   else r.saw("m5", `Alice's second-org sessions (${sessions2.length}) include none of her ${org1Sessions.length} first-org sessions`);
   const opened: string[] = [];
-  for (const id of org1Sessions.slice(0, 25)) if ((await refusal(() => alice2.sessions.getSession(id))).status === undefined) opened.push(id);
+  for (const id of org1Sessions.slice(0, 25)) if ((await refusal(() => alice2.sessions.get(id))).status === undefined) opened.push(id);
   if (opened.length > 0) r.fail("m5", `Alice in her second org opens first-org session(s): ${opened.join(", ")}`);
   else r.saw("m5", `each of ${Math.min(org1Sessions.length, 25)} first-org sessions: refused or not found in her second org`);
   const leaking: string[] = [];
@@ -340,7 +340,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
   if (leaking.length > 0) r.fail("m5", `first-org data (her word or worker) is in second-org session(s) ${leaking.join(", ")}`);
   else r.saw("m5", "store: no second-org session holds her first org's word or worker, in state or items");
   if (facts.aliceWorker !== undefined && aliceSession !== undefined) {
-    const named = await refusal(() => alice2.sessions.createSession({ flowKind: aliceSession.flowKind, userId: o.people.alice2.userId, state: { workerId: facts.aliceWorker } }));
+    const named = await refusal(() => alice2.flow(aliceSession.flowKind).createSession({ state: { workerId: facts.aliceWorker } }));
     if (named.status === undefined) r.fail("m5", `Alice in her second org created a session on her first org's worker \`${facts.aliceWorker}\``);
     else r.saw("m5", `a second-org create naming \`${facts.aliceWorker}\`: refused, ${named.status}`);
     const drawn = await o.install.screen("m5", o.people.alice2, false, "/roster", "alice-second-org-roster");

@@ -1,0 +1,8 @@
+{
+  "flow": "support",
+  "turns": ["My order #4412 arrived with a cracked lid."],
+  "approve": { "subject": "a replacement for order #4412", "kind": "approval" },
+  "answer": { "action": "approve" },
+  "expectedAnswer": "approved",
+  "hold": "refund-4412"
+}

@@ -92,37 +92,33 @@ flowRegistry.registerMany(hireWorkforce(installation));
 
 ## Talking to it
 
-Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker). If your server checks a credential, pass every client on this page the `fetcher` from [Serving it to your users](./overview.md#serving-it-to-your-users). Leave it out if it doesn't.
+Open a session with the coordinator and send it a message, as you would [any worker](./workers-on-disk.md#talking-to-a-worker). If your server checks a credential, give the client the `fetcher` from [Serving it to your users](./overview.md#serving-it-to-your-users). Leave it out if it doesn't.
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
+const fsd = createClient({ userId, baseUrl, fetcher });
+const workforce = createWorkforceClient(fsd);
 const session = await workforce.ensureWorkerSession({ worker: "support.help" });
 
-const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher });
-await help.sendAction("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
+const help = fsd.flow(session.flowKind);
+await help.send("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
 `ensureWorkerSession` returns your conversation with the coordinator, or starts it if you have none. Other workers' [messages](./messaging-workers.md) to the coordinator land in that same conversation.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this message` line the coordinator writes when no one takes a message carries no `agentName`.
 
-A delegate's answer arrives in a request of its own once the delegate's turn ends, so the `respond` request's stream never carries it. To wait for it, follow the whole session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), which delivers each finished item from any request in the session. Read the session's state for a start time, open the stream from it, then send the post, so nothing is missed. In place of the `sendAction` call above:
+A delegate's answer arrives in a request of its own once the delegate's turn ends, so the `respond` request's stream never carries it. To wait for it, follow the whole session with [`fsd.sessions.stream`](../api/client.md#following-a-session), which delivers each finished item from any request in the session. Read the session's state for a start time, open the stream from it, then send the post, so nothing is missed. In place of the `send` call above:
 
 ```ts
-import { createSessionClient, createSessionSSEClient } from "@flow-state-dev/client";
 import { COORDINATOR_JUDGMENT } from "@flow-state-dev/workforce/browser";
 
-const sessions = createSessionClient({ baseUrl, fetcher });
-const { at, sessionCreatedAt } = await sessions.getSessionState(session.id);
+const { at, sessionCreatedAt } = await fsd.sessions.state(session.id);
 
 const answer = new Promise<{ from: string; text: string }>((resolve, reject) => {
-  const stream = createSessionSSEClient({
-    sessionId: session.id,
-    baseUrl,
-    fetcher,
+  const stream = fsd.sessions.stream(session.id, {
     since: at,
     sessionCreatedAt,
     onItem: ({ item }) => {
@@ -145,13 +141,13 @@ const answer = new Promise<{ from: string; text: string }>((resolve, reject) => 
   }, 5 * 60_000);
 });
 
-await help.sendAction("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
+await help.send("respond", { message: "My laptop won't charge." }, { sessionId: session.id });
 const { from, text } = await answer; // from: "support.devices"
 ```
 
 `at` is the server time the state read began. The stream starts a few seconds before `since`, so it can deliver messages saved just before `at`, including an answer to an earlier message. Dropping anything older than `at` keeps that answer from passing as this one's.
 
-The example waits only for a delegate, and it takes the first delegate message after `at`, whichever of your messages it answers. So use it when this message is the only one in flight: if an earlier one is still with a delegate, or under `everyone` more answers to it are still coming, one of those can land first and be taken for this message's answer. If the coordinator's own turn answers the message, or nobody takes it, no delegate message comes, and the timeout rejects instead. Five minutes matches a round's default deadline. Resolve on those messages too if your app should show them. [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions) lists the stream's other options, such as `itemTypes` and `retry`. This is for scripts and server code. In a React view, use `useSession` with `live: true`, which already follows the session, rather than opening a second stream.
+The example waits only for a delegate, and it takes the first delegate message after `at`, whichever of your messages it answers. So use it when this message is the only one in flight: if an earlier one is still with a delegate, or under `everyone` more answers to it are still coming, one of those can land first and be taken for this message's answer. If the coordinator's own turn answers the message, or nobody takes it, no delegate message comes, and the timeout rejects instead. Five minutes matches a round's default deadline. Resolve on those messages too if your app should show them. [Following a session](../api/client.md#following-a-session) lists the stream's other options, such as `itemTypes` and `retry`. This is for scripts and server code. In a React view, use `useSession` with `live: true`, which already follows the session, rather than opening a second stream.
 
 ## Choosing how it routes
 
@@ -232,15 +228,15 @@ Your app changes a conversation's delegates. The coordinator's own turn changes 
 **From your app**, with the coordinator's actions on the conversation's session:
 
 ```ts
-await help.sendAction("addDelegate", { worker: "licenses", note: "Software license questions" }, { sessionId: session.id });
-await help.sendAction("removeDelegate", { worker: "support.accounts" }, { sessionId: session.id });
-await help.sendAction("setFallback", { worker: "licenses" }, { sessionId: session.id }); // { worker: null } clears it
-await help.sendAction("listDelegates", {}, { sessionId: session.id });
+await help.send("addDelegate", { worker: "licenses", note: "Software license questions" }, { sessionId: session.id });
+await help.send("removeDelegate", { worker: "support.accounts" }, { sessionId: session.id });
+await help.send("setFallback", { worker: "licenses" }, { sessionId: session.id }); // { worker: null } clears it
+await help.send("listDelegates", {}, { sessionId: session.id });
 ```
 
 `note` is optional. Best fit picks by it before the worker's description.
 
-Each action's output is the conversation's list as it stands after the call. `sendAction` doesn't hand back the output: find it in the request's `result` with [`sessions.listSessionRequests`](../api/client.md#sessionslistsessionrequestssessionid-options), passing `includeResultOutput: true`.
+Each action's output is the conversation's list as it stands after the call. `send` doesn't hand back the output: find it in the request's `result` with [`fsd.sessions.requests`](../api/client.md#sessionsrequestssessionid-options), passing `includeResultOutput: true`.
 
 ```json
 {
@@ -409,12 +405,10 @@ Import names from `@flow-state-dev/workforce/browser` in a client component; the
 Outside a renderer, read the records from the conversation's requests. Continuing the [example above](#talking-to-it):
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
 import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
 import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
 
-const sessions = createSessionClient({ baseUrl, fetcher });
-const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
+const requests = await fsd.sessions.requests(session.id, { includeItems: true });
 
 const records = requests
   .flatMap((request) => request.items ?? [])
@@ -425,14 +419,14 @@ const records = requests
   );
 ```
 
-Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `postId` and `round` say which message and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`sessions.listSessionRequests`](../api/client.md#sessionslistsessionrequestssessionid-options) for its other options.
+Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `postId` and `round` say which message and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`fsd.sessions.requests`](../api/client.md#sessionsrequestssessionid-options) for its other options.
 
 ## Handing out tasks
 
 A routed task gets your message an answer. When work has to be done instead, a coordinator can hand a **task** of its own making to one of its delegates, on its conversation's board. Handing out tasks works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
 
 ```ts
-await help.sendAction(
+await help.send(
   "createTask_tasks",
   { goal: "Audit our dependencies' licenses", assignee: "licenses" },
   { sessionId: session.id },
@@ -460,7 +454,7 @@ A task with no assignee goes to the conversation's only delegate that takes task
 Filed with `held: true`, it answers `{ ok: true, taskId, status: "held" }`, and the task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To release a held task, send `updateTask_tasks` with `status: "pending"`, and an `assignee` first if it has none:
 
 ```ts
-await help.sendAction("updateTask_tasks", { id: taskId, status: "pending" }, { sessionId: session.id });
+await help.send("updateTask_tasks", { id: taskId, status: "pending" }, { sessionId: session.id });
 ```
 
 `updateTask_tasks` with `status: "held"` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
@@ -503,7 +497,7 @@ A delegate working a task sometimes can't go on without you: which region, which
 Answer it from the conversation:
 
 ```ts
-await help.sendAction(
+await help.send(
   "answerTask_tasks",
   { taskId, answer: "Use eu-west." },
   { sessionId: session.id },
@@ -521,7 +515,7 @@ A task a coordinator is [waiting on](../orchestration/task-board.md#waiting-on-a
 Changed your mind, or forgot a detail? Send the task a message. It's kept on the task and reaches its delegate's work without starting over or using a retry:
 
 ```ts
-await help.sendAction(
+await help.send(
   "updateTask_tasks",
   { id: taskId, message: "Also flag anything under AGPL." },
   { sessionId: session.id },
@@ -534,8 +528,7 @@ Typing in the task's own session does the same. For a worker on the built-in `ag
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
-const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
-await licenses.sendAction("respond", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
+await fsd.flow(run.flowKind).send("respond", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
 // output: { steered: <the task's id> }
 ```
 
@@ -546,7 +539,7 @@ A finished task's session stays open, and the task stays as it ended. A line in 
 A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, file a follow-up task that names it:
 
 ```ts
-await help.sendAction(
+await help.send(
   "createTask_tasks",
   { goal: "Now write it up for the team", followUpOf: taskId },
   { sessionId: session.id },

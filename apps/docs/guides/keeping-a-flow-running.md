@@ -229,7 +229,7 @@ Webhook deliveries (with or without a `sessionId`) and schedule ticks run normal
 To get the result of dispatched work back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
-conversation. From your app, the client SDK's `listChildSessions` lists the sessions a
+conversation. From your app, the client's `fsd.sessions.children` lists the sessions a
 conversation's dispatches started. If the flow has to deliver into an existing session behind a
 custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
 retried.

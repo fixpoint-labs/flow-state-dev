@@ -1265,8 +1265,8 @@ await ctx.session.setMetadata({ title: "Sprint planning" });
 const { data: session } = useSession(sessionId);
 console.log(session?.title);  // "Sprint planning"
 
-// Or set externally via the session client
-await sessionClient.updateSessionMetadata(sessionId, { title: "Sprint planning" });
+// Or set it from outside, with the client (fsd = createClient({ ... }))
+await fsd.sessions.updateMetadata(sessionId, { title: "Sprint planning" });
 ```
 
 ---

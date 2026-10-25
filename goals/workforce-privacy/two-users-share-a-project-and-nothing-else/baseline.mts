@@ -29,7 +29,7 @@ export interface BaselineOptions {
 /** A session on `flowKind` for `who`, or why the baseline has none. */
 async function sessionFor(o: BaselineOptions, who: Person, flowKind: string): Promise<{ id?: string; why?: string }> {
   const c = o.install.as(who);
-  const made = await refusal(() => c.sessions.createSession({ flowKind, userId: who.userId } as never));
+  const made = await refusal(() => c.flow(flowKind).createSession());
   if (made.status !== undefined) return { why: `no \`${flowKind}\` session opens (${made.status}: ${made.error})` };
   return { id: (made.value as { id: string }).id };
 }

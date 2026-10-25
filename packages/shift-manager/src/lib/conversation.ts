@@ -71,16 +71,16 @@ interface Derived {
  * The worker's derived conversation id for the signed-in user.
  */
 function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
-  const { clients, snapshot } = useLab();
+  const { client, snapshot } = useLab();
   const orgId = snapshot !== undefined && "orgId" in snapshot ? snapshot.orgId : undefined;
   const flow = worker?.kind ?? null;
   const id = worker?.id;
   const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
-  const key = orgId === undefined || flow === null || id === undefined ? null : `${clients.userId}\n${orgId}\n${flow}\n${id}`;
+  const key = orgId === undefined || flow === null || id === undefined ? null : `${client.userId}\n${orgId}\n${flow}\n${id}`;
   useEffect(() => {
     if (key === null || orgId === undefined || flow === null || id === undefined) return;
     let closed = false;
-    derivedIdOf(key, { userId: clients.userId, orgId, flow, criteria: { worker: id } }).then(
+    derivedIdOf(key, { userId: client.userId, orgId, flow, criteria: { worker: id } }).then(
       (sessionId) => {
         if (!closed) setDerived({ key, id: sessionId });
       },
@@ -91,7 +91,7 @@ function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived 
     return () => {
       closed = true;
     };
-  }, [key, clients.userId, orgId, flow, id]);
+  }, [key, client.userId, orgId, flow, id]);
   if (key === null) return { id: null, failure: undefined };
   return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
 }
@@ -120,7 +120,7 @@ export interface WorkerConversation {
 
 /** `pinned` is the session the view found: that one, whatever the snapshot lists. */
 export function useWorkerConversation(worker: Worker, sessions: readonly SessionSummary[], pinned?: string): WorkerConversation {
-  const { clients } = useLab();
+  const { client } = useLab();
   const workforce = useWorkforce();
   const { id: derived, failure: underived } = useDerivedId(pinned === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
     if (sessionId === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readSessionItems(clients, sessionId)
+    readSessionItems(client, sessionId)
       .then((read) => {
         if (closed) return;
         setStored({ sessionId, read });
@@ -152,7 +152,7 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, sessionId, reads]);
+  }, [client, sessionId, reads]);
 
   const reread = useCallback(() => setReads((n) => n + 1), []);
   const ensure = useCallback(async () => {

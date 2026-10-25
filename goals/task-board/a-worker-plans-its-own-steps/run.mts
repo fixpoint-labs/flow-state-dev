@@ -32,7 +32,7 @@ import {
   goalAttempts,
   goalModel,
   goalTmpDir,
-  httpActions,
+  actingAs,
   keysServing,
   loadFixture,
   modulePatchEnv,
@@ -65,7 +65,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; assertions: string[] }>
     patches: [
       {
         module: "packages/workforce/src/agent-worker-flow.ts",
-        from: String.raw`const run = board !== undefined \? board\.planned\(answeredRun\) : answeredRun;`,
+        // The plan's second source (`answerAgain`, FIX-2159) rides along; the control drops both.
+        from: String.raw`const run = board !== undefined \? board\.planned\(answeredRun, answerAgain\) : answeredRun;`,
         to: "const run = answeredRun;"
       },
       {
@@ -190,7 +191,7 @@ await runGoal(async (failures, tell) => {
   const host = startHost(db);
   const notes: string[] = [];
   try {
-    const http = httpActions((await host.getRouter()) as any, USER_ID);
+    const http = actingAs((await host.getRouter()) as any, USER_ID);
     const conv = await http.open("desk", { workerId: DESK });
 
     /** Every task the person filed from the desk: the only rows the conversation ledger may hold. */
