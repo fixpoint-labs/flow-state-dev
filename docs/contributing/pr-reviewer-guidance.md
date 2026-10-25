@@ -303,40 +303,19 @@ ambiguous public guard surface, or a migration third parties didn't need" is a c
 owner can price. "The two guards would both have to be maintained" is a fact about our code,
 and it asks them to work out for themselves why that's bad.
 
-**Three is the ceiling, hardest first — and live forks count toward it.** Two ratified
-decisions and one fork is three; so is one ratified decision and two forks. Not a target —
-one decision and one fork is a healthy PR, and a change following an approved spec often has
-none. Past three, either the filters weren't applied or this PR carries more product surface
-than one PR should.
-
-> **On a spec PR the decisions in `DECISIONS.md` are what approval certifies, so none is
-> dropped — they are *sorted*.** The ones that pass both filters get a line here; the rest go
-> one bullet each in the collapsed engineering block. Nothing is hidden and nothing is approved
-> unseen. A decisions doc that yields six product decisions is one that put the owner in the
-> engineer's chair, and the fix for that is upstream in the spec
-> ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), not a longer list here.
+**Three is the ceiling, hardest first, and live forks count toward it**
+([`asking-for-decisions.md`](asking-for-decisions.md) → "Batching"). On a spec PR none of
+`DECISIONS.md` is dropped: what fails the filters moves one bullet each to the collapsed
+engineering block (same file → "Filtering is sorting, not hiding").
 
 ### The live forks — the full ask, below the ratified ones
 
-A decision the author can't settle alone gets more than two bullets. It takes the six-part
-shape from [`asking-for-decisions.md`](asking-for-decisions.md): the fork as a heading, plain
-terms, the trade-off, **your recommendation**, what would change your mind, and what being
-wrong costs. Canonical there; don't re-derive it here. Same subheading convention as the
-ratified ones, so all of block 3 skims as one list of headings — the fork's just names both
-options: *"Hard ceiling at three, or a soft one?"*
-
-Three rules keep it from swallowing the block:
-
-- **Zero to two per PR**, inside the ceiling of three above. Three forks is a signal the
-  change went too long without checking in; a fork the whole PR rests on should have been
-  raised before the PR existed.
-- **One to three sentences per part; ~200 words for the whole fork** — the per-fork row in
-  [`writing-for-humans.md`](writing-for-humans.md) → Budgets. A five-sentence recommendation
-  is an argument with itself on the page. Make the call, give the reason that actually
-  decided it, and stop.
-- **Never present a fork as neutral when you have a view.** That spends a round extracting
-  the view, and it isn't neutrality — it's asking the reader to build a position from less
-  information than you have.
+A decision the author can't settle alone takes the six-part shape from
+[`asking-for-decisions.md`](asking-for-decisions.md), canonical there. Same subheading
+convention as the ratified ones, so block 3 skims as one list of headings; the fork's names
+both options: *"Hard ceiling at three, or a soft one?"* **Zero to two per PR**, inside the
+ceiling; **~200 words for the whole fork** ([`writing-for-humans.md`](writing-for-humans.md)
+→ Budgets).
 
 A PR where nothing is open says so in one line, matched to its route (see "The layout"
 above): *this implements the approved direction* on a spec-backed change, and *nothing here

@@ -199,6 +199,8 @@ path, or a hook beside a block composition — is
   unless you can show why the option can't work; that showing is the trade-off. This holds on
   every surface that can add a way: a spec, a bug-route PR, and an implementation PR whose diff
   adds one its spec didn't name. That PR's *What's asked of you* can't say "nothing new".
+  The ask names the one type both ways write and the next likely variant
+  ([tenet 2](../philosophy.md#2-composition-over-features)); without them it isn't ready.
 
 ## When not to ask at all
 
