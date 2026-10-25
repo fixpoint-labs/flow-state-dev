@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "../src/emit";
+import { closeOpenText, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "../src/emit";
 
 /** A context standing inside a task scope, as the runtime provides one. */
 async function scopedContext() {
@@ -309,4 +309,78 @@ describe("scope characterization", () => {
       }
     });
   }
+});
+
+/**
+ * Cursor streams an answer, and its thinking, as a run of small chunks: one
+ * `assistant` or `thinking` wire message per few tokens. A chunk is not an item:
+ * a reader sees one paragraph, not one row per token.
+ */
+describe("streamed text arrives in chunks", () => {
+  type Ev = { type: string; item?: Record<string, unknown>; content?: unknown; delta?: string; itemId?: string };
+
+  async function run(events: Array<Parameters<typeof emitTranslatedEvent>[0]>, finish: "close" | "abort" | "none" = "close") {
+    const runtime = await createTestContext({});
+    const state = createEmitState();
+    for (const event of events) {
+      await emitTranslatedEvent(event, runtime.ctx as never, state, "cursor-agent");
+    }
+    if (finish === "close") await closeOpenText(runtime.ctx as never, state);
+    if (finish === "abort") await finalizeOpenItems(runtime.ctx as never, state, "cursor-agent");
+    const wire = runtime.response.getEvents() as Ev[];
+    const doneItems = wire.filter((e) => e.type === "item.done").map((e) => e.item!);
+    return { state, wire, doneItems };
+  }
+
+  const chunks = (kind: "message" | "reasoning", ...texts: string[]) => texts.map((text) => ({ kind, text }) as const);
+
+  it("makes one message item of consecutive chunks, in order", async () => {
+    const { wire, doneItems, state } = await run(chunks("message", "Yes", ".", " I'm here", " and working"));
+    expect(wire.filter((e) => e.type === "item.added")).toHaveLength(1);
+    expect(wire.filter((e) => e.type === "content.delta").map((e) => e.delta)).toEqual(["Yes", ".", " I'm here", " and working"]);
+    expect(doneItems).toHaveLength(1);
+    expect(doneItems[0]!.content).toEqual([{ type: "output_text", text: "Yes. I'm here and working" }]);
+    // The run's final message is the whole answer, not the last chunk of it.
+    expect(state.finalMessage).toBe("Yes. I'm here and working");
+  });
+
+  it("streams: a chunk is on the wire before the item is done", async () => {
+    const { wire } = await run(chunks("message", "Yes", "."), "none");
+    expect(wire.map((e) => e.type)).toEqual(["item.added", "content.added", "content.delta", "content.delta"]);
+  });
+
+  it("makes one reasoning item of consecutive thinking chunks, text in summary", async () => {
+    const { doneItems } = await run(chunks("reasoning", "The", " user is asking", " whether I work."));
+    expect(doneItems).toHaveLength(1);
+    expect(doneItems[0]!.type).toBe("reasoning");
+    expect(doneItems[0]!.summary).toEqual([{ type: "reasoning_text", text: "The user is asking whether I work." }]);
+    expect(doneItems[0]).not.toHaveProperty("content");
+  });
+
+  it("closes the thinking when the answer starts, so each is its own item", async () => {
+    const { doneItems } = await run([...chunks("reasoning", "hm", "m"), ...chunks("message", "Yes", ".")]);
+    expect(doneItems.map((i) => i.type)).toEqual(["reasoning", "message"]);
+    expect(doneItems[0]!.summary).toEqual([{ type: "reasoning_text", text: "hmm" }]);
+    expect(doneItems[1]!.content).toEqual([{ type: "output_text", text: "Yes." }]);
+  });
+
+  it("closes the text a tool call interrupts, and starts a new item after it", async () => {
+    const { doneItems } = await run([
+      ...chunks("message", "Let me", " look."),
+      { kind: "tool_call", callId: "c1", name: "shell", arguments: "{}" },
+      { kind: "tool_result", callId: "c1", name: "shell", arguments: "{}", output: "ok", isError: false },
+      ...chunks("message", "Found", " it."),
+    ]);
+    expect(doneItems.map((i) => i.type)).toEqual(["message", "tool_output", "message"]);
+    expect(doneItems[0]!.content).toEqual([{ type: "output_text", text: "Let me look." }]);
+    expect(doneItems[2]!.content).toEqual([{ type: "output_text", text: "Found it." }]);
+  });
+
+  it("keeps the text it has when the run ends early, marked incomplete, and not as the final message", async () => {
+    const { doneItems, state } = await run(chunks("message", "Half an", " answ"), "abort");
+    expect(doneItems).toHaveLength(1);
+    expect(doneItems[0]!.status).toBe("incomplete");
+    expect(doneItems[0]!.content).toEqual([{ type: "output_text", text: "Half an answ" }]);
+    expect(state.finalMessage).toBeNull();
+  });
 });
