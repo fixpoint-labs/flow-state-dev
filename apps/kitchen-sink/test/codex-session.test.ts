@@ -29,7 +29,7 @@ import type { ResolveCodexClient } from "@flow-state-dev/codex";
 import { CodexAgentAbortedError } from "@flow-state-dev/codex";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
-import { CODEX_SESSION, codexBlockOptions, codexClient, codexClientOptions, codexSessionFlow } from "@/lib/codex-mode";
+import { CODEX_SESSION, codexBlockOptions, codexClient, codexClientOptions, codexSessionFlow, type CodexMcpServer } from "@/lib/codex-mode";
 import { harnessFeeds } from "@/lib/harness-session-flow";
 import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
@@ -38,6 +38,9 @@ import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
 let scratch: string;
 let repo: string;
 let stateHome: string;
+
+const vercelMcp: CodexMcpServer = { name: "vercel", transport: { url: "https://example.invalid/mcp" } };
+const vercelOverrides = ['mcp_servers={"vercel"={url="https://example.invalid/mcp",enabled=false}}'];
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -285,22 +288,25 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
   it("a run takes neither the tier nor the MCP servers your own Codex settings name", () => {
     // Codex's overrides add to its settings, so each server is turned off by
     // name; an empty `mcp_servers` would leave every one of them on.
-    expect(codexClientOptions(process.env, ["vercel", "linear"]).config).toMatchObject({
+    const options = codexClientOptions(process.env, [vercelMcp, { name: "local.with.dots", transport: { command: "never-start-this" } }]);
+    expect(options.config).toMatchObject({
       service_tier: "default",
-      mcp_servers: { vercel: { enabled: false }, linear: { enabled: false } },
     });
+    expect(options.configOverrides).toEqual([
+      'mcp_servers={"vercel"={url="https://example.invalid/mcp",enabled=false},"local.with.dots"={command="never-start-this",enabled=false}}',
+    ]);
   });
 
   it("the SDK's client is built with the servers Codex lists, asked once", async () => {
     const asked: Array<Record<string, string>> = [];
     const resolve = codexClient(async (env) => {
       asked.push(env);
-      return ["vercel"];
+      return [vercelMcp];
     });
-    const first = (await resolve({} as never)) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    const first = (await resolve({} as never)) as unknown as { exec: { rawConfigOverrides?: string[] } };
     await resolve({} as never);
     expect(asked).toHaveLength(1);
-    expect(first.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+    expect(first.exec.rawConfigOverrides).toEqual(vercelOverrides);
   });
 
   it("a list Codex can't give is said in the session and asked again on the next run, never silently skipped", async () => {
@@ -308,31 +314,31 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     const resolve = codexClient(async () => {
       asked += 1;
       if (asked === 1) throw new Error("codex mcp list timed out");
-      return ["vercel"];
+      return [vercelMcp];
     });
     const notes: Array<{ message: string; transient?: boolean }> = [];
     const ctx = (signal: AbortSignal) =>
       ({ signal, emit: { status: (message: string, opts?: { transient?: boolean }) => notes.push({ message, transient: opts?.transient }) } }) as never;
-    const first = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
-    expect(first.exec.configOverrides).not.toHaveProperty("mcp_servers");
+    const first = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { rawConfigOverrides?: string[] } };
+    expect(first.exec.rawConfigOverrides).toBeUndefined();
     expect(notes).toEqual([{ message: expect.stringContaining("codex mcp list timed out"), transient: false }]);
-    const next = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    const next = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { rawConfigOverrides?: string[] } };
     expect(asked).toBe(2);
-    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+    expect(next.exec.rawConfigOverrides).toEqual(vercelOverrides);
   });
 
   it("a run stopped while the first MCP list is still coming stops then, and the list still serves the next run", async () => {
-    let finish: (names: readonly string[]) => void = () => {};
+    let finish: (names: readonly CodexMcpServer[]) => void = () => {};
     const resolve = codexClient(() => new Promise((done) => (finish = done)));
     const stop = new AbortController();
     const first = resolve({ signal: stop.signal } as never);
     stop.abort();
     await expect(first).rejects.toBeInstanceOf(CodexAgentAbortedError);
-    finish(["vercel"]);
+    finish([vercelMcp]);
     const next = (await resolve({ signal: new AbortController().signal } as never)) as unknown as {
-      exec: { configOverrides?: Record<string, unknown> };
+      exec: { rawConfigOverrides?: string[] };
     };
-    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+    expect(next.exec.rawConfigOverrides).toEqual(vercelOverrides);
   });
 
   it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {

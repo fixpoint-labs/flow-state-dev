@@ -72,7 +72,7 @@ beforeAll(async () => {
   sandboxFails = await HOST_CHECKS.sandboxFails(root, codexEnv());
 
   command = [
-    "echo planted=[$KITCHEN_SINK_PLANTED_SECRET]",
+    'echo "planted=[$KITCHEN_SINK_PLANTED_SECRET]"',
     "touch inside && echo wrote-inside",
     "echo x >> .git && echo wrote-git-pointer",
     `touch ${join(repo, ".git", "probe")} && echo wrote-git-data`,
@@ -143,7 +143,7 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
       input: { prompt: "run the command" },
       stores,
     });
-    expect(result.status).toBe("completed");
+    expect(result.status, JSON.stringify(result.items.filter((item) => item.type === "error"))).toBe("completed");
 
     const output = toolOutputs.join("\n");
     expect(output).toContain("planted=[]");
@@ -174,14 +174,21 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
     const config = join(process.env.CODEX_HOME!, "config.toml");
     writeFileSync(
       config,
-      ['model = "gpt-6.1-sol"', 'service_tier = "priority"', "", "[mcp_servers.vercel]", `url = "${baseUrl.replace(/\/v1$/, "")}/mcp"`, ""].join("\n"),
+      ['model = "unavailable-user-model"', 'service_tier = "priority"', "", "[mcp_servers.vercel]", `url = "${baseUrl.replace(/\/v1$/, "")}/mcp"`, ""].join("\n"),
     );
     try {
       const names = await userMcpServers(codexEnv());
-      expect(names).toEqual(["vercel"]);
+      expect(names).toEqual([{ name: "vercel", transport: { url: `${baseUrl.replace(/\/v1$/, "")}/mcp` } }]);
+      // Runtime/plugin inventories can include a server with no transport in
+      // config.toml. Disabling it must not create an invalid server entry.
+      const listed = [
+        ...names,
+        { name: "code-review", transport: { command: "must-never-start" } },
+        { name: "runtime.with.dots", transport: { url: `${baseUrl.replace(/\/v1$/, "")}/mcp` } },
+      ];
       // Listing asks the server how it signs in; only what the run does counts.
       mcpHits = 0;
-      const resolveCodexClient = createDefaultResolveCodexClient({ ...codexClientOptions(process.env, names), baseUrl, apiKey: "sk-scripted" });
+      const resolveCodexClient = createDefaultResolveCodexClient({ ...codexClientOptions(process.env, listed), baseUrl, apiKey: "sk-scripted" });
       const stores = createInMemoryStores();
       const before = requestsSeen.length;
       const result = await testFlow({
@@ -192,11 +199,11 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
         input: { prompt: "say done" },
         stores,
       });
-      expect(result.status).toBe("completed");
+      expect(result.status, JSON.stringify(result.items.filter((item) => item.type === "error"))).toBe("completed");
       const sent = requestsSeen.slice(before);
       expect(sent.length).toBeGreaterThan(0);
       for (const request of sent) {
-        expect(request.model).not.toBe("gpt-6.1-sol");
+        expect(request.model).not.toBe("unavailable-user-model");
         expect(request.service_tier).toBeUndefined();
       }
       // The server was never started, so it could neither fail nor say so.

@@ -66,16 +66,18 @@ export const CODEX_SESSION = flowKindOf(modeById("codex"));
 /**
  * The models Codex mode offers in New session, its default first. Kept by
  * hand, because Codex's SDK can't list models (FIX-1952 D3; FIX-1975 removes
- * this list once it can). Read off the pinned Codex's own catalog
- * (`codex debug models`, 0.152.1): the entries it marks to show, in its order.
+ * this list once it can). Updated from Codex 0.164.0's catalog and OpenAI's
+ * model availability docs. Availability still depends on the signed-in account.
  * When Codex ships or retires a model, edit this list.
  */
 export const CODEX_MODELS: readonly HarnessModel[] = [
+  { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
+  { id: "gpt-6-sol", label: "GPT-6-Sol" },
+  { id: "gpt-6-luna", label: "GPT-6-Luna" },
+  { id: "gpt-6-astra", label: "GPT-6-Astra" },
   { id: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
   { id: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
   { id: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
-  { id: "gpt-5.5", label: "GPT-5.5" },
-  { id: "gpt-5.2", label: "GPT-5.2" },
 ];
 
 /**
@@ -149,6 +151,12 @@ export function codexThreadOptions(): CodexThreadOptions {
   };
 }
 
+/** A listed MCP server and the transport needed to keep a disabled override valid. */
+export interface CodexMcpServer {
+  readonly name: string;
+  readonly transport: { readonly command: string } | { readonly url: string };
+}
+
 /**
  * The SDK's client options Codex mode runs with: the allowlisted environment,
  * the standard service tier, every MCP server in `mcpServers` turned off, and
@@ -164,19 +172,24 @@ export function codexThreadOptions(): CodexThreadOptions {
  */
 export function codexClientOptions(
   env: Record<string, string | undefined> = process.env,
-  mcpServers: readonly string[] = [],
+  mcpServers: readonly CodexMcpServer[] = [],
 ): CodexClientOptions {
   return {
     env: codexEnv(env),
     config: {
       service_tier: "default",
-      ...(mcpServers.length > 0
-        ? { mcp_servers: Object.fromEntries(mcpServers.map((name) => [name, { enabled: false }])) }
-        : {}),
       ...(codexSandboxed()
         ? { sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } }
         : {}),
     },
+    // The inventory can contain plugin/runtime servers absent from config.toml.
+    // Even a disabled entry needs a transport; quote names so dots remain literal.
+    ...(mcpServers.length > 0 ? {
+      configOverrides: [`mcp_servers={${mcpServers.map(({ name, transport }) => {
+        const [field, value] = "command" in transport ? ["command", transport.command] : ["url", transport.url];
+        return `${JSON.stringify(name)}={${field}=${JSON.stringify(value)},enabled=false}`;
+      }).join(",")}}`],
+    } : {}),
   };
 }
 
@@ -188,7 +201,7 @@ export function codexClientOptions(
  * for the next run.
  */
 export function codexClient(
-  listMcpServers: (env: Record<string, string>) => Promise<readonly string[]> = userMcpServers,
+  listMcpServers: (env: Record<string, string>) => Promise<readonly CodexMcpServer[]> = userMcpServers,
 ): ResolveCodexClient {
   let resolver: Promise<ResolveCodexClient> | undefined;
   return async (ctx) => {
@@ -326,7 +339,7 @@ function failureOf(result: ReturnType<typeof spawnSync>): string {
  * The MCP servers Codex's settings name, as Codex itself lists them
  * (`codex mcp list --json`) over `env`. Throws when Codex can't say.
  */
-export async function userMcpServers(env: Record<string, string>): Promise<readonly string[]> {
+export async function userMcpServers(env: Record<string, string>): Promise<readonly CodexMcpServer[]> {
   // Not `runCodex`: listing asks each server how it signs in, and this runs
   // on a turn, where a blocking wait would stall every other request.
   const program = await codexProgram(env);
@@ -341,9 +354,16 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
   );
   const listed = JSON.parse(stdout) as unknown;
   if (!Array.isArray(listed)) throw new Error("`codex mcp list --json` did not print a list");
-  return listed.flatMap((server) =>
-  typeof (server as { name?: unknown })?.name === "string" ? [(server as { name: string }).name] : [],
-  );
+  return listed.map((server: { name?: unknown; transport?: { type?: unknown; command?: unknown; url?: unknown } }) => {
+    if (typeof server?.name !== "string") throw new Error("`codex mcp list --json` returned a server without a name");
+    if (server.transport?.type === "stdio" && typeof server.transport.command === "string") {
+      return { name: server.name, transport: { command: server.transport.command } };
+    }
+    if (server.transport?.type === "streamable_http" && typeof server.transport.url === "string") {
+      return { name: server.name, transport: { url: server.transport.url } };
+    }
+    throw new Error(`Codex did not list a supported transport for MCP server ${server.name}`);
+  });
 }
 
 /** The host's own answers. */

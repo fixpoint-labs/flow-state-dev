@@ -289,6 +289,10 @@ describe("what each mode offers to pick", () => {
     expect(choices.reason).toBeNull();
     // A session from before the picker runs on it, never on the model your own Codex settings name.
     expect(choices.fallbackId).toBe(CODEX_DEFAULT_MODEL);
+    expect(choices.models.map((model) => model.id)).toEqual([
+      "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra",
+      "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+    ]);
   });
 
   it("Cursor: its own list with the mode's default preselected and first when unlisted; the default alone when the list fails", async () => {
