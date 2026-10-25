@@ -62,7 +62,8 @@ import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { workforceClientFor, type LabClients } from "./connection";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import type { Client } from "@flow-state-dev/client";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -322,10 +323,10 @@ export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][
  * and resume items, reduced by `react`'s `deriveSuspensions`. Inbox lists its
  * asks from this read.
  */
-export async function readPendingSuspensions(clients: LabClients, sessionId: string): Promise<PendingSuspension[]> {
+export async function readPendingSuspensions(client: Client, sessionId: string): Promise<PendingSuspension[]> {
   const items: OutputItem[] = [];
   for (let offset = 0, page = 0; page < MAX_PAGES; page += 1) {
-    const state = await clients.sessions.getSessionState(sessionId, {
+    const state = await client.sessions.state(sessionId, {
       includeItems: true,
       itemTypes: ["suspension", "suspension_resume"],
       offset,
@@ -550,12 +551,12 @@ export function readerSessionId(userId: string, flow: string): string {
  * Reading-session opens in flight, per client and flow, so reads that overlap
  * on one page (StrictMode replaying the boot) share one open rather than racing it.
  */
-const openingReaders = new WeakMap<LabClients, Map<string, Promise<void>>>();
+const openingReaders = new WeakMap<Client, Map<string, Promise<void>>>();
 
 /** Build the reader for one connection. */
-export function createLabReader(clients: LabClients): LabReader {
+export function createLabReader(client: Client): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
-  const workforce = workforceClientFor(clients);
+  const workforce = createWorkforceClient(client);
 
   /**
    * The user's own workers, off their roster: each id with the flow it runs
@@ -577,7 +578,7 @@ export function createLabReader(clients: LabClients): LabReader {
   const manifestFor = (flowKind: string, sessionId: string): Promise<ResourceManifest> => {
     let found = manifests.get(flowKind);
     if (found === undefined) {
-      found = clients.resources.getResourceManifest(sessionId);
+      found = client.resources.getResourceManifest(sessionId);
       // A failed read is not cached: Retry reads it again.
       found.catch(() => manifests.delete(flowKind));
       manifests.set(flowKind, found);
@@ -587,7 +588,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /** Every page of one collection, through one session. */
   const readCollection = (sessionId: string, ref: string) =>
-    readEveryCollectionPage(clients.resources, sessionId, ref, { limit: PAGE_SIZE });
+    readEveryCollectionPage(client.resources, sessionId, ref, { limit: PAGE_SIZE });
 
   /** A conversation's board: the user's whole ledger, read through the conversation, keeping its own partition's rows. */
   const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
@@ -755,8 +756,8 @@ export function createLabReader(clients: LabClients): LabReader {
     if (sessions.some((s) => s.parentSessionId == null && s.flowKind === flow)) return { sessions, failure: null };
     let failure: Failure | null = null;
     try {
-      let opening = openingReaders.get(clients);
-      if (opening === undefined) openingReaders.set(clients, (opening = new Map()));
+      let opening = openingReaders.get(client);
+      if (opening === undefined) openingReaders.set(client, (opening = new Map()));
       let open = opening.get(flow);
       if (open === undefined) {
         open = openReaderSession(flow).finally(() => opening!.delete(flow));
@@ -769,7 +770,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     let listed = sessions;
     try {
-      listed = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+      listed = await client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
     } catch {
       // The open landed or failed on its own; the next refresh lists it.
     }
@@ -785,18 +786,18 @@ export function createLabReader(clients: LabClients): LabReader {
    */
   const openReaderSession = async (flow: string): Promise<void> => {
     try {
-      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId, sessionId: readerSessionId(clients.userId, flow) });
+      await client.flow(flow).createSession({ sessionId: readerSessionId(client.userId, flow) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
-      const listed = await clients.sessions.listSessions({ userId: clients.userId });
+      const listed = await client.sessions.list({ userId: client.userId });
       if (listed.some((s) => s.parentSessionId == null && s.flowKind === flow)) return;
-      await clients.sessions.createSession({ flowKind: flow, userId: clients.userId });
+      await client.flow(flow).createSession();
     }
   };
 
   /** The pending user-asks in one session. */
   const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
-    const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
+    const pending = (await readPendingSuspensions(client, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
     return pending.map((view) => ({
       sessionId: session.id,
       workerId,
@@ -846,7 +847,7 @@ export function createLabReader(clients: LabClients): LabReader {
       failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     let sessions: SessionSummary[];
     try {
-      sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+      sessions = await client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
@@ -859,12 +860,12 @@ export function createLabReader(clients: LabClients): LabReader {
     try {
       const first = sessions[0];
       const opened = readers.failure;
-      if (first === undefined) return opened === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(opened);
-      orgId = (await clients.sessions.getSession(first.id)).orgId;
+      if (first === undefined) return opened === null ? { refused: { message: noOrganization(client.userId) } } : firstFailure(opened);
+      orgId = (await client.sessions.get(first.id)).orgId;
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
-    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId, "their session records none") } };
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(client.userId, "their session records none") } };
 
     const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
 
@@ -920,7 +921,7 @@ export function createLabReader(clients: LabClients): LabReader {
   // ask is this user's before it reads it.
   const resume: LabReader["resume"] = async (ask, answer) => {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
-    await clients.recovery.answerSuspension(ask.flowId, ask.item.requestId, {
+    await client.flow(ask.flowId).request(ask.item.requestId).answer({
       suspensionId: ask.item.suspensionId,
       action: answer.action,
       ...(answer.data === undefined ? {} : { data: answer.data }),

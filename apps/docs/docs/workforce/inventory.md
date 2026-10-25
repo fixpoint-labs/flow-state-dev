@@ -166,11 +166,11 @@ const registeredWorkers = handler({
 The collection can be read from a browser, with the same collection read your app's client code uses for any other resource. You read through a session, by the name that session's flow gave the collection in its `resources` map. That name is up to the flow, so look it up in the session's resource manifest by its pattern, `inventory/workers/*`:
 
 ```ts
-import { createResourceClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 
-const resources = createResourceClient({ baseUrl: "https://app.example.com" });
+const fsd = createClient({ userId, baseUrl: "https://app.example.com" });
 
-const manifest = await resources.getResourceManifest(rosterSessionId);
+const manifest = await fsd.resources.getResourceManifest(rosterSessionId);
 const workersRef = manifest.resources.find(
   (entry) => entry.pattern === "inventory/workers/*",
 )?.ref;
@@ -179,7 +179,7 @@ const workers: unknown[] = [];
 if (workersRef !== undefined) {
   let cursor: string | undefined;
   do {
-    const page = await resources.listCollectionItems(rosterSessionId, workersRef, { cursor });
+    const page = await fsd.resources.listCollectionItems(rosterSessionId, workersRef, { cursor });
     workers.push(...page.items.map((item) => item.clientData));
     cursor = page.nextCursor;
   } while (cursor !== undefined);

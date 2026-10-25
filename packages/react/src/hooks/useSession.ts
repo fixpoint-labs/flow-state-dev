@@ -5,13 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ClientHttpError,
   compareItemOrder,
-  createClient,
-  createRecoveryClient,
   createRequestStreamStore,
-  createSessionClient,
-  createSSEClient,
   createSSEClientFromResponse,
   type ExecuteActionResponse,
+  type FlowHandle,
   type RequestSSECallbacks,
   type RequestStreamHandle,
   type SessionDetail,
@@ -36,6 +33,7 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 import { followSession } from "../internal/followSession";
 import {
   isReducibleStateChange,
@@ -97,12 +95,12 @@ function abortItemIdOf(requestId: string): string {
  * disconnect that follows as "interrupted".
  */
 async function serverRefusedStop(
-  client: { abortRequest(requestId: string): Promise<unknown> },
+  flow: Pick<FlowHandle, "request">,
   requestId: string
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await client.abortRequest(requestId);
+      await flow.request(requestId).abort();
       return false;
     } catch (cause) {
       if (!(cause instanceof ClientHttpError && cause.status === 409)) return false;
@@ -508,7 +506,6 @@ export function useSession(
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
-  const apiPath = context.apiPath;
   const autoResume = options?.autoResume === true;
   const live = options?.live === true;
   const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
@@ -712,20 +709,11 @@ export function useSession(
     flushHandleRef.current = null;
   }, []);
 
-  const sessionClient = useMemo(
-    () => createSessionClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
-
-  const client = useMemo(
-    () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl, apiPath }),
-    [resolvedFlowKind, userId, baseUrl, apiPath]
-  );
-
-  const recoveryClient = useMemo(
-    () => createRecoveryClient({ baseUrl, apiPath }),
-    [baseUrl, apiPath]
-  );
+  // One client for every call and stream this view makes, memoized so a
+  // re-render keeps its streams open.
+  const fsd = useClient({ userId, baseUrl });
+  const sessionsApi = fsd.sessions;
+  const flow = useMemo(() => fsd.flow(resolvedFlowKind), [fsd, resolvedFlowKind]);
 
   /**
    * Fetch the single most recent request for this session.
@@ -742,7 +730,7 @@ export function useSession(
       return null;
     }
     try {
-      const list = await sessionClient.listSessionRequests(sessionId, { limit: 1 });
+      const list = await sessionsApi.requests(sessionId, { limit: 1 });
       const latest = list[0] ?? null;
       setLatestRequest(latest);
       return latest;
@@ -751,7 +739,7 @@ export function useSession(
       // session-level error. Consumers see the previous value.
       return null;
     }
-  }, [sessionId, sessionClient]);
+  }, [sessionId, sessionsApi]);
 
   /**
    * Re-read this session's background work.
@@ -773,7 +761,7 @@ export function useSession(
     const sequence = ++childSessionSequenceRef.current;
 
     try {
-      const rows = await sessionClient.listChildSessions(
+      const rows = await sessionsApi.children(
         sessionId,
         // Omitted entirely when the app named no page, so the route applies
         // its own default rather than being handed a number this side guessed.
@@ -804,7 +792,7 @@ export function useSession(
       // Keep the last known rows, but stop presenting them as current.
       setChildSessionsStale(true);
     }
-  }, [sessionId, sessionClient, childSessionLimit]);
+  }, [sessionId, sessionsApi, childSessionLimit]);
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
@@ -996,7 +984,7 @@ export function useSession(
     }
 
     if (!itemConfig.enabled) {
-      return sessionClient.getSessionState(sessionId, {
+      return sessionsApi.state(sessionId, {
         includeItems: false
       });
     }
@@ -1017,7 +1005,7 @@ export function useSession(
       const mergedItems: OutputItem[] = [];
 
       while (true) {
-        const page = await sessionClient.getSessionState(sessionId, {
+        const page = await sessionsApi.state(sessionId, {
           includeItems: true,
           itemTypes: itemConfig.itemTypes,
           offset,
@@ -1062,7 +1050,7 @@ export function useSession(
     throw new Error(
       `Session ${sessionId} changed during each of ${SNAPSHOT_READ_ATTEMPTS} reads of its history; try again.`
     );
-  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes]);
+  }, [sessionId, sessionsApi, itemConfig.enabled, itemConfig.itemTypes]);
 
   const refreshSnapshot = useCallback(async () => {
     if (sessionId === undefined) {
@@ -1072,7 +1060,7 @@ export function useSession(
     const read = beginSnapshotRead();
     try {
       const [nextDetail, nextSnapshot] = await Promise.all([
-        sessionClient.getSession(sessionId),
+        sessionsApi.get(sessionId),
         fetchSessionSnapshot()
       ]);
 
@@ -1083,7 +1071,7 @@ export function useSession(
     } catch (cause) {
       failSnapshotRead(read, cause);
     }
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
+  }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -1358,10 +1346,7 @@ export function useSession(
 
       const handle = inlineResponse !== undefined
         ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
-        : createSSEClient({
-            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-            baseUrl,
-            apiPath,
+        : flow.request(requestId).stream({
             startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
             ...sseCallbacks
           });
@@ -1371,9 +1356,7 @@ export function useSession(
     [
       itemConfig.includeTransient,
       itemConfig.itemTypes,
-      resolvedFlowKind,
-      baseUrl,
-      apiPath,
+      flow,
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
@@ -1391,7 +1374,7 @@ export function useSession(
     childSessionAppliedSequenceRef.current = 0;
     setChildSessions([]);
     setChildSessionsStale(false);
-  }, [sessionId, sessionClient]);
+  }, [sessionId, sessionsApi]);
 
   // The mount read. Besides a `live` view's run notices, this is the only
   // read that is not tied to a user interaction: it covers arriving at a
@@ -1451,7 +1434,7 @@ export function useSession(
         const read = beginSnapshotRead();
         reading = read;
         const [nextDetail, nextSnapshot] = await Promise.all([
-          sessionClient.getSession(sessionId),
+          sessionsApi.get(sessionId),
           fetchSessionSnapshot(),
           autoResume
             ? Promise.resolve(latestBeforeSnapshot)
@@ -1482,7 +1465,7 @@ export function useSession(
           // snapshot is still running. Under `allow` concurrency both can be
           // in flight at once, and a single-row read returns only the newer —
           // making the older one's absence prove nothing.
-          const requests = await sessionClient.listSessionRequests(sessionId, {
+          const requests = await sessionsApi.requests(sessionId, {
             status: "in_progress",
             limit: IN_PROGRESS_LOOKUP_LIMIT
           });
@@ -1562,7 +1545,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
+  }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
@@ -1619,8 +1602,7 @@ export function useSession(
     // the view as it would be without `live` (BR-16).
     const close = followSession({
       sessionId,
-      baseUrl,
-      apiPath,
+      client: fsd,
       since: snapshotAtRef.current,
       sessionCreatedAt: followedSessionCreatedAt,
       itemTypes: itemConfig.itemTypes,
@@ -1645,8 +1627,7 @@ export function useSession(
     sessionId,
     snapshotAppliedFor,
     followedSessionCreatedAt,
-    baseUrl,
-    apiPath,
+    fsd,
     takeLiveItem,
     itemConfig.enabled,
     itemConfig.includeTransient,
@@ -1735,7 +1716,7 @@ export function useSession(
       }
 
       try {
-        await client.abortRequest(targetId);
+        await flow.request(targetId).abort();
       } catch {
         // Network failure or a 409 against an already-terminal record both
         // land here. The local cleanup below still runs so the UI clears.
@@ -1759,7 +1740,7 @@ export function useSession(
       void refreshLatestRequest();
     },
     [
-      client,
+      flow,
       flushContentDeltas,
       injectSyntheticAbortItem,
       refreshSnapshot,
@@ -1835,15 +1816,16 @@ export function useSession(
       }
 
       try {
-        // Use sendActionStream to POST with Accept: text/event-stream.
+        // Send with `stream: true` to POST with Accept: text/event-stream.
         // On serverless (Vercel), this returns the SSE stream directly from
         // the POST response — keeping action execution and event delivery
         // on the same function instance. Falls back to 202 JSON + separate
         // GET stream for servers that don't support inline streaming.
-        const postResponse = await client.sendActionStream(action, input, {
+        const postResponse = await flow.send(action, input, {
           sessionId,
           requestId,
-          metadata: actionOptions?.metadata
+          metadata: actionOptions?.metadata,
+          stream: true
         });
 
         const accepted: ExecuteActionResponse = {
@@ -1861,7 +1843,7 @@ export function useSession(
         // don't pick the turn back up.
         if (stoppedRequestsRef.current.has(requestId)) {
           postResponse.body?.cancel().catch(() => {});
-          if (await serverRefusedStop(client, requestId)) {
+          if (await serverRefusedStop(flow, requestId)) {
             // The turn finished before the stop reached it: drop the view's
             // stop record and read the finished turn.
             stoppedRequestsRef.current.delete(requestId);
@@ -1906,7 +1888,7 @@ export function useSession(
     [
       sessionId,
       resolvedFlowKind,
-      client,
+      flow,
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot,
@@ -1946,7 +1928,7 @@ export function useSession(
     // accidental disconnect (browser reload, network drop). A refused stop
     // means the request finished first: the server's account of it stands,
     // so the view stops claiming a stop.
-    const refused = await serverRefusedStop(client, requestId);
+    const refused = await serverRefusedStop(flow, requestId);
     if (refused) stoppedRequestsRef.current.delete(requestId);
 
     // Close the SSE connection. On the server, request.signal fires
@@ -1963,7 +1945,7 @@ export function useSession(
     setIsStuck(false);
 
     if (!refused) injectSyntheticAbortItem(requestId);
-  }, [client, flushContentDeltas, injectSyntheticAbortItem]);
+  }, [flow, flushContentDeltas, injectSyntheticAbortItem]);
 
   const refresh = useCallback(async () => {
     // Refreshes the whole view, background work included. Under the
@@ -1995,14 +1977,11 @@ export function useSession(
     setError(null);
 
     try {
-      const { newRequestId } = await recoveryClient.retry({
-        // Re-enter through the record's OWNER, the instance that ran it. The
-        // stored kind is metadata; for a collection it names no instance, and
-        // for a legacy record the bound address is the singleton it implies.
-        flowKind: target.flowId ?? resolvedFlowKind,
-        sessionId,
-        requestId: target.id
-      });
+      // Re-enter through the record's OWNER, the instance that ran it. The
+      // stored kind is metadata; for a collection it names no instance, and
+      // for a legacy record the bound address is the singleton it implies.
+      const retried = await fsd.flow(target.flowId ?? resolvedFlowKind).request(target.id).retry();
+      const newRequestId = retried.id;
 
       activeRequestIdRef.current = newRequestId;
       attachToStream(newRequestId);
@@ -2018,7 +1997,8 @@ export function useSession(
   }, [
     sessionId,
     latestRequest,
-    recoveryClient,
+    fsd,
+    resolvedFlowKind,
     attachToStream,
     refreshLatestRequest,
     refreshChildSessions
@@ -2099,15 +2079,18 @@ export function useSession(
       // Mirrors sendAction's inline-streaming path — essential on serverless
       // where a separate GET stream can't reach the in-flight continuation.
       await performInlineReentry(args.requestId, () =>
-        recoveryClient.resumeSuspensionStream(resolvedFlowKind, args.requestId, {
-          suspensionId: args.suspensionId,
-          action: args.action,
-          data: args.data,
-          resumedBy: args.resumedBy ?? userId
-        })
+        flow.request(args.requestId).resume(
+          {
+            suspensionId: args.suspensionId,
+            action: args.action,
+            data: args.data,
+            resumedBy: args.resumedBy ?? userId
+          },
+          { stream: true }
+        )
       );
     },
-    [recoveryClient, resolvedFlowKind, userId, performInlineReentry]
+    [flow, userId, performInlineReentry]
   );
 
   const continueRequest = useCallback(
@@ -2115,10 +2098,10 @@ export function useSession(
       if (sessionId === undefined) return;
 
       await performInlineReentry(requestId, () =>
-        recoveryClient.continueStream({ flowKind: resolvedFlowKind, sessionId, requestId })
+        flow.request(requestId).continue({ stream: true })
       );
     },
-    [sessionId, recoveryClient, resolvedFlowKind, performInlineReentry]
+    [sessionId, flow, performInlineReentry]
   );
 
   const subscribeAudioDelta = useCallback(

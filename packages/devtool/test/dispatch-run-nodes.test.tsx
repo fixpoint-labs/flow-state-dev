@@ -18,7 +18,7 @@ const listSessionRequests = vi.fn();
 
 vi.mock("../src/react/context/devtool-context", () => ({
   DevToolProvider: ({ children }: { children: React.ReactNode }) => children,
-  useDevTool: () => ({ sessionClient: { listSessionRequests } }),
+  useDevTool: () => ({ client: { sessions: { requests: listSessionRequests } } }),
 }));
 
 import { DispatchRunNodes } from "../src/react/components/workspace/dispatch-run-nodes";

@@ -11,6 +11,7 @@
  * flow, which takes a conversation's tasks and leads a workstream. The coordinator's
  * judgment turn is scripted.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
@@ -173,7 +174,7 @@ async function boot(
     counting === undefined ? {} : { stores: counting.stores }
   );
   const lab = (user: string, org?: string) => h.openSession(user, "lab", undefined, org);
-  const client = (user: string, org?: string) => createWorkforceClient({ userId: user, fetcher: h.fetcherFor(user, org) });
+  const client = (user: string, org?: string) => createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, org) }));
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "apollo", title: "Apollo", members: ["bob"] });
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "notes", title: "My notes", visibility: "private" });
 

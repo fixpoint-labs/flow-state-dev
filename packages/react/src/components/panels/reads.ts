@@ -12,25 +12,32 @@ import { useMemo } from "react";
 import {
   compareItemOrder,
   readEveryCollectionPage,
-  type ClientFetch,
-  type ResourceClient
+  type ResourcesApi,
+  type SessionsApi
 } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { coalescedReads, followSession } from "../../internal/followSession";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 /**
- * The panels read one method and no more, and the type says which.
+ * The slice of the one client a panel reads, and the type says which method.
  *
- * A host passes the resource client it already holds — with its own `fetcher`,
- * so every request carries whatever credential that transport adds. A panel
- * that built its own client would read through no credential and fail against
- * any deployment that authenticates (BR-29).
+ * A host passes the client it already holds — with its own `fetcher`, so every
+ * request carries whatever credential that transport adds. A panel that built
+ * its own client would read through no credential and fail against any
+ * deployment that authenticates (BR-29).
  */
-export type PanelRowSource = Pick<ResourceClient, "listCollectionItems">;
+export type PanelRowSource = { readonly resources: Pick<ResourcesApi, "listCollectionItems"> };
 
 /** `WorkerDetail`'s read is one item, not a page — the method name says which (FIX-1500 BR-27). */
-export type PanelItemSource = Pick<ResourceClient, "getCollectionItemState">;
+export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getCollectionItemState"> };
+
+/**
+ * A live `BoardList`'s slice: the board read, and the session stream that says
+ * when to read it again. Both go through the one client, so the stream always
+ * carries the read's credential.
+ */
+export type PanelLiveSource = PanelRowSource & { readonly sessions: Pick<SessionsApi, "stream"> };
 
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
 export type PanelRow<TClient = unknown> = {
@@ -49,12 +56,6 @@ export type PanelRows<TClient = unknown> = {
 /** Stable empty list, so a stale hold hands back the same reference each render. */
 const EMPTY: PanelRow<never>[] = [];
 
-/** Where a live read hears about changes, and the transport the stream is sent with. */
-export type PanelLive = {
-  readonly baseUrl?: string;
-  readonly apiPath?: string;
-  readonly fetcher?: ClientFetch;
-};
 
 /**
  * Whether an item says a task on board `boardRef` changed. Two equality
@@ -84,16 +85,14 @@ function namesBoard(item: OutputItem, boardRef: string): boolean {
  * when to read, never what. A stream refused, missing or stopped leaves the
  * rows as they are, with no error.
  */
-function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): ReadDriver {
+function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveSource): ReadDriver {
   return (read) => {
     const heard = new Map<string, OutputItem>();
     const reads = coalescedReads(read);
 
     const close = followSession({
       sessionId,
-      baseUrl: live.baseUrl,
-      apiPath: live.apiPath,
-      fetcher: live.fetcher,
+      client,
       itemTypes: ["component"],
       onItem: ({ requestId, item }) => {
         if (!namesBoard(item, boardRef)) return;
@@ -139,25 +138,18 @@ export function usePanelRows<TClient = unknown>(
   ref: string,
   limit: number | undefined,
   failureMessage: string,
-  live?: PanelLive
+  live?: PanelLiveSource
 ): PanelRows<TClient> {
-  const liveBaseUrl = live?.baseUrl;
-  const liveApiPath = live?.apiPath;
-  const liveFetcher = live?.fetcher;
-  const isLive = live !== undefined;
   const driver = useMemo(
-    () =>
-      isLive
-        ? liveBoardDriver(sessionId, ref, { baseUrl: liveBaseUrl, apiPath: liveApiPath, fetcher: liveFetcher })
-        : undefined,
-    [isLive, sessionId, ref, liveBaseUrl, liveApiPath, liveFetcher]
+    () => (live === undefined ? undefined : liveBoardDriver(sessionId, ref, live)),
+    [live, sessionId, ref]
   );
   const { data, isLoading, error, refresh } = useFencedRead<readonly PanelRow<TClient>[]>(
     [source, sessionId, ref, limit],
     EMPTY,
     failureMessage,
     async (stillCurrent) => {
-      const items = await readEveryCollectionPage(source, sessionId, ref, { limit, keepReading: stillCurrent });
+      const items = await readEveryCollectionPage(source.resources, sessionId, ref, { limit, keepReading: stillCurrent });
       return items.map((item) => ({ topic: item.topic, clientData: item.clientData as TClient }));
     },
     { driver }
@@ -187,7 +179,7 @@ export function usePanelItem<TClient = unknown>(
     null,
     failureMessage,
     async () => {
-      const result = await source.getCollectionItemState(sessionId, ref, topic);
+      const result = await source.resources.getCollectionItemState(sessionId, ref, topic);
       // `result === null` is the ONLY absent case (the route's own contract).
       // A non-null result with no `clientData` is the collection's
       // metadata-only shape (`{ topic, storageKey, hint }`) — the topic

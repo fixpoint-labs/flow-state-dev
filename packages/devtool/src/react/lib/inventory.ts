@@ -19,7 +19,7 @@
  * Nothing here filters, joins against another registry, or decides what is
  * *live*. A row means *registered in this organization*, and the view says so.
  */
-import type { ResourceClient, ResourceManifest } from "@flow-state-dev/client";
+import type { ResourceManifest, ResourcesApi } from "@flow-state-dev/client";
 import { ClientHttpError, CollectionReadStoppedError, readEveryCollectionPage } from "@flow-state-dev/client";
 
 /** The worker inventory's published key pattern. */
@@ -81,13 +81,13 @@ function describeFailure(error: unknown): { httpStatus?: number; message: string
  * read so far.
  */
 export async function readEveryPage(
-  client: Pick<ResourceClient, "listCollectionItems">,
+  client: Pick<ResourcesApi, "listCollectionItems">,
   sessionId: string,
   ref: string,
 ): Promise<InventoryRead> {
   let pagesRead = 0;
   let rowsRead = 0;
-  const counted: Pick<ResourceClient, "listCollectionItems"> = {
+  const counted: Pick<ResourcesApi, "listCollectionItems"> = {
     listCollectionItems: async (...args) => {
       const page = await client.listCollectionItems(...args);
       pagesRead += 1;

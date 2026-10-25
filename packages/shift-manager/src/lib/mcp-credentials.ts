@@ -6,7 +6,8 @@
  * was set, never the key. A set sends the key once and gets back only when it
  * was set; nothing here keeps it.
  */
-import type { LabClients } from "./connection";
+import { withBearerToken } from "@flow-state-dev/devtool/react";
+import type { Connection } from "./connection";
 import type { Failure } from "./reads";
 
 /** One server the Lab offers, and when this user's key for it was set (`null`: not set). */
@@ -18,8 +19,15 @@ export type McpKeysRead = { servers: McpServerKey[] } | { none: true } | { failu
 /** Where the Lab's route lives, under the engine's own `/api/flows` mount: the route and this client both read it. */
 export const MCP_CREDENTIALS_PATH = "/api/flows/mcp-credentials";
 
-const pathOf = (clients: LabClients, server?: string) =>
-  `${clients.baseUrl ?? ""}${MCP_CREDENTIALS_PATH}${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
+const pathOf = (connection: Connection, server?: string) =>
+  `${connection.baseUrl ?? ""}${MCP_CREDENTIALS_PATH}${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
+
+/**
+ * The connection's fetch, its bearer token on every request. This is the
+ * Lab's own route, not a flow route, so it is called directly rather than
+ * through the client.
+ */
+const fetchAs = (connection: Connection): typeof fetch => withBearerToken(connection.bearerToken) ?? fetch;
 
 /** A failed answer's status and the Lab's message, never the request's body. */
 async function failureOf(response: Response): Promise<Failure> {
@@ -28,9 +36,9 @@ async function failureOf(response: Response): Promise<Failure> {
 }
 
 /** Read which servers the Lab offers and which of them this user has a key for. */
-export async function readMcpKeys(clients: LabClients): Promise<McpKeysRead> {
+export async function readMcpKeys(connection: Connection): Promise<McpKeysRead> {
   try {
-    const response = await clients.fetcher(pathOf(clients), { headers: { accept: "application/json" } });
+    const response = await fetchAs(connection)(pathOf(connection), { headers: { accept: "application/json" } });
     // A Lab that offers no MCP servers serves no such route.
     if (response.status === 404) return { none: true };
     if (!response.ok) return { failure: await failureOf(response) };
@@ -46,10 +54,10 @@ export async function readMcpKeys(clients: LabClients): Promise<McpKeysRead> {
  *
  * @returns `undefined` when the Lab took it, or why it refused.
  */
-export async function writeMcpKey(clients: LabClients, server: string, value: string | null): Promise<Failure | undefined> {
+export async function writeMcpKey(connection: Connection, server: string, value: string | null): Promise<Failure | undefined> {
   try {
-    const response = await clients.fetcher(
-      pathOf(clients, server),
+    const response = await fetchAs(connection)(
+      pathOf(connection, server),
       value === null
         ? { method: "DELETE", headers: { accept: "application/json" } }
         : {

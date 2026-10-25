@@ -59,10 +59,11 @@ A board is read through a session whose flow keeps it, by the key that flow keep
 
 ```tsx
 import { useMemo } from "react";
-import { createResourceClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 import { BoardColumns, Roster } from "@flow-state-dev/react";
 
 type ShellPanelsProps = {
+  userId: string;
   sessionId: string;
   // A conversation with a coordinator: a session on the `coordinator` flow.
   conversationId: string;
@@ -72,7 +73,7 @@ type ShellPanelsProps = {
   getToken: () => Promise<string>;
 };
 
-export function ShellPanels({ sessionId, conversationId, bootProblems, getToken }: ShellPanelsProps) {
+export function ShellPanels({ userId, sessionId, conversationId, bootProblems, getToken }: ShellPanelsProps) {
   const fetcher = useMemo<typeof fetch>(
     () => async (input, init) => {
       const headers = new Headers(init?.headers);
@@ -81,18 +82,18 @@ export function ShellPanels({ sessionId, conversationId, bootProblems, getToken 
     },
     [getToken],
   );
-  const resourceClient = useMemo(() => createResourceClient({ fetcher }), [fetcher]);
+  const client = useMemo(() => createClient({ userId, baseUrl: "", fetcher }), [userId, fetcher]);
 
   return (
     <>
-      <Roster sessionId={sessionId} problems={bootProblems} resourceClient={resourceClient} />
-      <BoardColumns sessionId={conversationId} boardRef="tasks" resourceClient={resourceClient} />
+      <Roster sessionId={sessionId} problems={bootProblems} client={client} />
+      <BoardColumns sessionId={conversationId} boardRef="tasks" client={client} />
     </>
   );
 }
 ```
 
-Pass the same `resourceClient` to both, built once. Leave it out and each panel builds its own client with the plain browser `fetch`. That sends a same-origin cookie but no `Authorization` header, so once your [resolver](../server/authentication.md) expects a bearer token, the panels' reads get a 401.
+Pass the same `client` to both, built once. Leave it out and each panel reads through the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`; with no `fetcher` there, that's the plain browser `fetch`. That sends a same-origin cookie but no `Authorization` header, so once your [resolver](../server/authentication.md) expects a bearer token, the panels' reads get a 401.
 
 `problems` is an optional list of workers your app wants flagged, such as ones it couldn't start, which your app hands to the browser itself. Workforce writes none: a standard worker that can't run stops `hireWorkforce` at startup, and a user's own worker that stops resolving refuses its next turn, naming why.
 
@@ -100,7 +101,7 @@ A board column is grouped by task status. An empty board says so, and names the 
 
 ### A board as a list
 
-`BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a user. It takes the same `sessionId`, `boardRef` and `resourceClient` as `BoardColumns`, plus `live` and the `fetcher` that goes with it. This example assumes a `fetcher` and a `resourceClient` built the way `ShellPanels` builds them above, once and shared:
+`BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a user. It takes the same `sessionId`, `boardRef` and `client` as `BoardColumns`, plus `live`. This example assumes a `client` built the way `ShellPanels` builds it above, once and shared:
 
 ```tsx
 import { BoardList } from "@flow-state-dev/react";
@@ -108,15 +109,14 @@ import { BoardList } from "@flow-state-dev/react";
 <BoardList
   sessionId={conversationId}
   boardRef="tasks"
-  resourceClient={resourceClient}
-  fetcher={fetcher}
+  client={client}
   live
 />
 ```
 
 With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed in a conversation is recorded in that conversation's session, so pass the conversation's id, as above. Each new task then shows up in every tab that has the list open.
 
-`fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads.
+The reads and the live stream both go through `client`, so the stream carries the same credential to the same server as the reads. A client that can only read (it has `resources.listCollectionItems` but no `sessions.stream`) can't take `live`, and TypeScript rejects that pair.
 
 Rows already on screen stay there while the list reads again.
 
@@ -184,6 +184,6 @@ These components render; they don't administer. There is no create-worker or inv
 
 The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, the instances under them, and the sessions the caller can see, with no organization filter. The flow list is answered without authentication, so every caller sees every flow your app defines and every worker declared in a `WORKER.md` file.
 
-A user's own workers aren't flows, so the navigator doesn't list them: read them with `createWorkforceClient(...).roster()`, as [Hiring and forking](./durable-hire.md#after-a-hire-refresh-the-roster) shows. In a multi-organization deployment, don't show end users a workers section that includes file-declared workers, because those are listed to everyone.
+A user's own workers aren't flows, so the navigator doesn't list them: read them with `createWorkforceClient(fsd).roster()`, as [Hiring and forking](./durable-hire.md#after-a-hire-refresh-the-roster) shows. In a multi-organization deployment, don't show end users a workers section that includes file-declared workers, because those are listed to everyone.
 
 **Which organization the panels show depends on how your deployment signs people in.** A session is bound to the organization of the identity your server resolves for the request. With no sign-in configured there is one organization, and you see it. If you hire into real organizations but have not given the app a way to identify the user viewing it, the panels read the default organization and come up empty. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers how a request gets its organization.

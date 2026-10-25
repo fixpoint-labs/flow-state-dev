@@ -60,7 +60,7 @@ import {
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { PERSON_REASONS, readPendingSuspensions } from "../../../packages/shift-manager/src/lib/reads.ts";
 import {
   REPO_ROOT,
@@ -68,7 +68,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -137,9 +137,9 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
   "public-resume": {
     patches: [
       {
-        module: "packages/client/src/recovery-client/recovery.ts",
-        from: String.raw`\$\{encodeURIComponent\(requestId\)\}/answer`,
-        to: "${encodeURIComponent(requestId)}/resume"
+        module: "packages/client/src/client.ts",
+        from: String.raw`\$\{base\}/answer`,
+        to: "${base}/resume"
       }
     ],
     legs: ["a"]
@@ -438,7 +438,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
     const runtime = await state.getRuntime();
     const router = (await state.getRouter()) as never as { POST: Function; GET: Function };
     goalRouter = router;
-    const http = httpActions(router as never, USER);
+    const http = actingAs(router as never, USER);
     const rows = async (): Promise<Task[]> =>
       Object.values(await runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, "tasks/")).map((value) => value.state as Task);
     const byId = async (id: string) => (await rows()).find((r) => r.id === id);
@@ -492,7 +492,7 @@ async function runOf(run: Run, id: string) {
   const session = sessionId === undefined ? undefined : ((await run.h.runtime.stores.session.get(sessionId)) as { flowId?: string; flowKind?: string } | null);
   return { row, sessionId, requestId: row?.run?.requestId, flowId: session?.flowId ?? session?.flowKind ?? "doer" };
 }
-const clients = () => createLabClients({ baseUrl: "http://goal", userId: USER });
+const clients = () => connect({ baseUrl: "http://goal", userId: USER });
 /** The Inbox's pending read of a task session: Shift Manager's own, filtered as its Inbox filters it. */
 async function pendingIn(sessionId: string | undefined) {
   if (sessionId === undefined) return [];
@@ -509,7 +509,7 @@ async function answer(run: Run, id: string, body: { action: "approve" | "reject"
   if (target === undefined) return { status: 0, error: "no stop to answer" };
   caller = { user: USER, ...(as ?? {}) };
   try {
-    await clients().recovery.answerSuspension(flowId, target.requestId, { suspensionId: target.suspensionId, ...body });
+    await clients().flow(flowId).request(target.requestId).answer({ suspensionId: target.suspensionId, ...body });
     return { status: 202 };
   } catch (error) {
     return { status: (error as { status?: number }).status ?? -1, error: (error as Error).message };

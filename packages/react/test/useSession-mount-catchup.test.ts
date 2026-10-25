@@ -18,16 +18,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, cleanup } from "@testing-library/react";
 
-const { sessionClientMock } = vi.hoisted(() => ({
-  sessionClientMock: {
-    getSession: vi.fn(),
-    getSessionState: vi.fn(),
-    listSessionRequests: vi.fn()
+const { sessionsMock } = vi.hoisted(() => ({
+  sessionsMock: {
+    get: vi.fn(),
+    state: vi.fn(),
+    requests: vi.fn()
   }
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
+  const { fakeClient } = await import("./support/fake-client");
   const noopSSE = () => ({
     close() {
       /* no stream is expected in these tests */
@@ -38,11 +39,11 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   });
   return {
     ...actual,
-    createSSEClient: noopSSE,
     createSSEClientFromResponse: noopSSE,
-    createRecoveryClient: () => ({}),
-    createSessionClient: () => sessionClientMock,
-    createClient: () => ({ sendActionStream: vi.fn(), abortRequest: vi.fn() })
+    createClient: () =>
+      // A FRESH client per call, like the real factory: the hook memoizes its
+      // client on its transport, so a singleton here would hide a backend change.
+      fakeClient({ sessions: { ...sessionsMock }, flow: { send: vi.fn(), abort: vi.fn() }, requestStream: noopSSE })
   };
 });
 
@@ -93,7 +94,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     // values below outlive a `clear`, so a test that consumes fewer of them
     // than it queues would hand the leftovers to the next test.
     vi.resetAllMocks();
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "job1",
       flowKind: "demo",
       userId: "devuser",
@@ -110,11 +111,11 @@ describe("useSession mount catch-up (FIX-1012)", () => {
   it("surfaces the final items when the request completes between the snapshot read and the in-progress lookup", async () => {
     // Snapshot read 1 (mount) is taken while the request is still running, so
     // it predates the final item. Read 2 is the catch-up this fix adds.
-    sessionClientMock.getSessionState
+    sessionsMock.state
       .mockResolvedValueOnce(snapshot([]))
       .mockResolvedValueOnce(snapshot([message("m_final", "the last step")]));
 
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) =>
         options?.status === "in_progress"
           ? // The autoResume lookup, run after the snapshot: the request
@@ -135,7 +136,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
 
     // The catch-up is a second read of the snapshot, not a stream attach —
     // there is no in-progress request left to attach to.
-    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(2);
+    expect(sessionsMock.state).toHaveBeenCalledTimes(2);
   });
 
   it("leaves the request summary agreeing with the items it caught up on", async () => {
@@ -144,7 +145,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     // re-read the hook shows completed items beside a summary still reading
     // in-flight.
     let statusReads = 0;
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) => {
         if (options?.status === "in_progress") return [];
         statusReads += 1;
@@ -153,7 +154,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
         return [request(statusReads === 1 ? "in_progress" : "completed")];
       }
     );
-    sessionClientMock.getSessionState
+    sessionsMock.state
       .mockResolvedValueOnce(snapshot([]))
       .mockResolvedValueOnce(snapshot([message("m_final", "the last step")]));
 
@@ -184,7 +185,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
       releaseStatus = resolve;
     });
 
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) => {
         if (options?.status === "in_progress") {
           order.push("in-progress-lookup");
@@ -196,7 +197,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
         return rows;
       }
     );
-    sessionClientMock.getSessionState.mockImplementation(async () => {
+    sessionsMock.state.mockImplementation(async () => {
       order.push("snapshot");
       return snapshot([message("m_done", "finished")]);
     });
@@ -230,7 +231,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     // the catch-up on "there was nothing to attach to" therefore loses them,
     // and if B ends without a completion refresh nothing else goes back for
     // them either.
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "job1",
       flowKind: "demo",
       userId: "devuser",
@@ -239,11 +240,11 @@ describe("useSession mount catch-up (FIX-1012)", () => {
       latestRequestId: "req2"
     });
 
-    sessionClientMock.getSessionState
+    sessionsMock.state
       .mockResolvedValueOnce(snapshot([]))
       .mockResolvedValueOnce(snapshot([message("m_final", "A's last step")]));
 
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) =>
         options?.status === "in_progress"
           ? // B is running and is the session's latest, so it is attachable.
@@ -261,7 +262,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     });
 
     // The mount snapshot plus the catch-up.
-    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(2);
+    expect(sessionsMock.state).toHaveBeenCalledTimes(2);
   });
 
   it("does not catch up while the older request is still running", async () => {
@@ -272,7 +273,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     //
     // A's absence from the in-progress list is the only evidence it finished.
     // "We are attaching to something else" is not.
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "job1",
       flowKind: "demo",
       userId: "devuser",
@@ -281,9 +282,9 @@ describe("useSession mount catch-up (FIX-1012)", () => {
       latestRequestId: "req2"
     });
 
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([]));
+    sessionsMock.state.mockResolvedValue(snapshot([]));
 
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) =>
         options?.status === "in_progress"
           ? // BOTH running: B is the session's latest, A has not finished.
@@ -300,17 +301,17 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     });
 
     // The mount snapshot, and no catch-up on top of it.
-    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.state).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-read the snapshot when the session was already idle at mount", async () => {
     // The common path: nothing was running when the hook mounted, so there is
     // no race to catch up on and the extra read must not happen. Without this
     // the fix would silently double every autoResume consumer's mount reads.
-    sessionClientMock.getSessionState.mockResolvedValue(
+    sessionsMock.state.mockResolvedValue(
       snapshot([message("m_done", "finished earlier")])
     );
-    sessionClientMock.listSessionRequests.mockImplementation(
+    sessionsMock.requests.mockImplementation(
       async (_sessionId: string, options?: { status?: string }) =>
         options?.status === "in_progress" ? [] : [request("completed")]
     );
@@ -323,7 +324,7 @@ describe("useSession mount catch-up (FIX-1012)", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.state).toHaveBeenCalledTimes(1);
     expect(result.current.items.map((item) => item.id)).toContain("m_done");
   });
 });

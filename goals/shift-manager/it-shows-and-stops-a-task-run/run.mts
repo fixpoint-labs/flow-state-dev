@@ -58,7 +58,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
-import { compareItemOrder, createSSEClient } from "@flow-state-dev/client";
+import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
@@ -265,10 +265,8 @@ type LabApi = ReturnType<typeof labApi>;
  * what it stores live. Finished, non-transient items only.
  */
 function follow(origin: string, flowId: string, requestId: string, onItem: (item: OutputItem) => void) {
-  return createSSEClient({
-    baseUrl: origin,
-    url: `/api/flows/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/stream`,
-    fetcher: fetch,
+  // A request stream reads no user: the reader's id is only the client's own.
+  return createClient({ userId: "goal-reader", baseUrl: origin }).flow(flowId).request(requestId).stream({
     onItemDone: (event) => {
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) onItem(item);

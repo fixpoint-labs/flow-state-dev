@@ -132,7 +132,7 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
   const created: Array<{ flowKind: string; userId: string; state?: Record<string, unknown> }> = [];
   return {
     created,
-    flowSource: { listFlows: vi.fn(async () => [entry("codex-session"), entry("claude-code-session")]) },
+    listFlows: vi.fn(async () => [entry("codex-session"), entry("claude-code-session")]),
     sessionSource: {
       listSessions: vi.fn(async (options?: { flowKind?: string; flowId?: string }) =>
         rows
@@ -140,6 +140,7 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
           .map((row) => ({ id: row.id, flowKind: row.kind, title: row.title }) as unknown as SessionSummary),
       ),
       createSession: vi.fn(async (options: { flowKind: string; userId: string; state?: Record<string, unknown> }) => {
+        // What the frame's `client.flow(kind).createSession` would post.
         created.push({ flowKind: options.flowKind, userId: options.userId, state: options.state });
         const row = { id: `new-${created.length}`, kind: options.flowKind, title: "fresh" };
         rows.unshift(row);
@@ -160,14 +161,26 @@ const TWO_MODELS: ModelChoices = {
   fallbackId: null,
 };
 
+/** The frame's client over a fake server: its flow list, its listing, and a flow's create as the app's user. */
+function clientOf(server: ReturnType<typeof fakeServer>) {
+  return {
+    userId: "devuser",
+    flows: server.listFlows,
+    sessions: { list: server.sessionSource.listSessions },
+    flow: (flowKind: string) => ({
+      createSession: (options: { state?: Record<string, unknown> } = {}) =>
+        server.sessionSource.createSession({ flowKind, userId: "devuser", ...options }),
+    }),
+  } as never;
+}
+
 function mount(server: ReturnType<typeof fakeServer>, models: ModelChoices = TWO_MODELS) {
   return render(
     <HarnessFrame
       label="Codex"
       flowKind="codex-session"
       models={models}
-      flowSource={server.flowSource}
-      sessionSource={server.sessionSource as never}
+      client={clientOf(server)}
       stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
     />,
   );

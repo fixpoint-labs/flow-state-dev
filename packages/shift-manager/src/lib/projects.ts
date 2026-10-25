@@ -27,7 +27,7 @@ import {
   type ProjectProgress,
 } from "@flow-state-dev/workforce/browser";
 import { runAction } from "./action";
-import type { LabClients } from "./connection";
+import type { Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
 import { describeFailure, PROJECT_READER_FLOW, readerSessionId, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
 
@@ -119,14 +119,14 @@ const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "pri
  * user can't read a row at that address: none there, or another user's
  * private project.
  */
-export async function readProject(clients: LabClients, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
+export async function readProject(client: Client, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
   const [row, entries] = await Promise.all([
-    clients.resources.getCollectionItemState(readerSessionId, projectsAccessor(address.visibility), address.id),
+    client.resources.getCollectionItemState(readerSessionId, projectsAccessor(address.visibility), address.id),
     (async () => {
       const found: Omit<WorkstreamEntry, "stale">[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
-        const listed = await clients.resources.listCollectionItems(readerSessionId, workstreamsAccessor(address.visibility), {
+        const listed = await client.resources.listCollectionItems(readerSessionId, workstreamsAccessor(address.visibility), {
           limit: PAGE_SIZE,
           topicPrefix: `workstreams/${address.id}/`,
           ...(cursor === undefined ? {} : { cursor }),
@@ -155,39 +155,39 @@ export async function readProject(clients: LabClients, readerSessionId: string, 
  * has written none.
  */
 export async function readEntryReport(
-  clients: LabClients,
+  client: Client,
   readerSessionId: string,
   project: ProjectAddress,
   entry: Pick<WorkstreamEntry, "key">,
 ): Promise<string | null> {
-  const read = await clients.resources.getCollectionItemContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
+  const read = await client.resources.getCollectionItemContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
   return typeof read.content === "string" && read.content.length > 0 ? read.content : null;
 }
 
 /** Project setups read, per connection: one read per page load. */
-const setups = new WeakMap<LabClients, Promise<ProjectSetup | null>>();
+const setups = new WeakMap<Client, Promise<ProjectSetup | null>>();
 
 /**
  * The Lab's project setup, from its projects flow: the flow among the Lab's
  * that answers `projectSetup` and opens workstreams. `null` for a Lab with no
  * such flow. Read once per connection; a failed read is read again next time.
  */
-export function readProjectSetup(clients: LabClients): Promise<ProjectSetup | null> {
-  let read = setups.get(clients);
+export function readProjectSetup(client: Client): Promise<ProjectSetup | null> {
+  let read = setups.get(client);
   if (read === undefined) {
     read = (async () => {
-      const flows = await clients.actions(PROJECT_READER_FLOW).listFlows();
+      const flows = await client.flows();
       const flow = flows.find((entry) => entry.actions.includes(PROJECT_SETUP_ACTION) && entry.actions.includes("openWorkstream"));
       if (flow === undefined) return null;
-      const { output } = await runAction(clients, flow.id, readerSessionId(clients.userId, flow.id), PROJECT_SETUP_ACTION, {});
+      const { output } = await runAction(client, flow.id, readerSessionId(client.userId, flow.id), PROJECT_SETUP_ACTION, {});
       const answer = (output ?? {}) as { projectCoordinator?: unknown };
       return {
         flow: flow.id,
         projectCoordinator: typeof answer.projectCoordinator === "string" ? answer.projectCoordinator : null,
       };
     })();
-    read.catch(() => setups.delete(clients));
-    setups.set(clients, read);
+    read.catch(() => setups.delete(client));
+    setups.set(client, read);
   }
   return read;
 }
@@ -211,14 +211,14 @@ const PROJECT_POLL_MS = 5_000;
  * yet, or nothing on screen draws the entries.
  */
 export function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [read, setRead] = useState<ProjectReadState>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
     if (readerSessionId === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readProject(clients, readerSessionId, address)
+    readProject(client, readerSessionId, address)
       .then((value) => !closed && setRead({ value }))
       // A failed read again keeps the last good one on screen: one dropped
       // poll shouldn't blank the list. Only a failed first read shows.
@@ -236,7 +236,7 @@ export function useProjectRead(address: ProjectAddress, readerSessionId: string 
     };
     // The address is the view's key; its parts are what the read depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clients, readerSessionId, address.visibility, address.id, readAt, reads]);
+  }, [client, readerSessionId, address.visibility, address.id, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { read, reread };
 }

@@ -1,11 +1,11 @@
 /**
  * Per-row crash-recovery continuation (FIX-865). Unlike the legacy top-level
- * Resume button (which dispatched the JSON `recoveryClient.continue()` and
+ * Resume button (which dispatched the JSON `continue()` and
  * relied on the shared `useRequestStream` GET reconnect to pick the run back
- * up), this hook drives `recoveryClient.continueStream()` directly: the POST
+ * up), this hook drives `continue({ stream: true })` directly: the POST
  * response IS the SSE stream, so serverless deployments without shared
  * pub/sub still see the continued run live (mirrors
- * `resumeSuspensionStream`'s inline-streaming approach).
+ * a streaming resume's inline approach).
  *
  * Each call gets its own `RequestStreamStore`, seeded with the row's existing
  * items via `loadSnapshot` — the continuation stream only adds to that seed,
@@ -20,12 +20,12 @@ import {
   bindStoreToCallbacks,
   createRequestStreamStore,
   createSSEClientFromResponse,
-  type RecoveryClient,
+  type Client,
   type RequestStreamHandle,
 } from "@flow-state-dev/client";
 
 export type UseContinueRequestOptions = {
-  recoveryClient: RecoveryClient;
+  client: Pick<Client, "flow">;
   /** The exact instance that owns the interrupted request. */
   flowId: string | null;
   sessionId: string | null;
@@ -54,7 +54,7 @@ export type UseContinueRequestResult = {
 };
 
 export function useContinueRequest(options: UseContinueRequestOptions): UseContinueRequestResult {
-  const { recoveryClient, flowId, sessionId, onItems, onSettled } = options;
+  const { client, flowId, sessionId, onItems, onSettled } = options;
   // Read from context, not passed in — one channel for the visit, not two. It is
   // in the owner token below because instance and session can both come back to
   // the values they had (A -> B -> A) while the visit cannot.
@@ -102,14 +102,8 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
 
       let response: Response;
       try {
-        response = await recoveryClient.continueStream({
-          // The client's address slot keeps its historical name; the value is
-          // the exact owning instance.
-          flowKind: flowId,
-          sessionId,
-          requestId,
-          includeTrace: true,
-        });
+        // Addressed to the exact owning instance; the stream is the POST's own.
+        response = await client.flow(flowId).request(requestId).continue({ stream: true, includeTrace: true });
       } catch (err) {
         setActiveIds((prev) => {
           if (!prev.has(requestId)) return prev;
@@ -185,7 +179,7 @@ export function useContinueRequest(options: UseContinueRequestOptions): UseConti
 
       handlesRef.current.set(requestId, handle);
     },
-    [flowId, sessionId, recoveryClient, onItems, stop],
+    [flowId, sessionId, client, onItems, stop],
   );
 
   const isContinuing = useCallback((requestId: string) => activeIds.has(requestId), [activeIds]);

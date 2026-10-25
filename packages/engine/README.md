@@ -190,6 +190,38 @@ const router = createFlowApiRouter({ registry, stores });
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
+### Calling the router in process
+
+`createInProcessFetch(app, { basePath? })` takes a `FlowState` or a router and returns a fetch-shaped function, `(input, init?) => Promise<Response>`, that hands each request to the engine in this process, with no web server. Its usual home is a client's `fetcher`:
+
+```ts
+import { createFlowState, createInProcessFetch } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
+
+const flowState = createFlowState({ flows: { support } });
+const fsd = createClient({ userId: "u1", fetcher: createInProcessFetch(flowState) });
+await fsd.flow("support").send("reply", { text: "Hi" });
+```
+
+You can also call it directly, as you would `fetch`:
+
+```ts
+const fetcher = createInProcessFetch(flowState);
+const res = await fetcher("/api/flows/support/actions/reply", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ userId: "u1", input: { text: "Hi" } })
+});
+```
+
+- Only the URL's path is read. The origin is ignored, and a relative path works.
+- `basePath` is the mount, `"/api/flows"` by default. A path outside it answers `404`.
+- Each call waits for store init. A failed init answers `500 { error: "Server failed to initialize" }`.
+- `GET`, `POST`, `PATCH` and `DELETE` reach the router. Any other method, `HEAD` included, answers `405`.
+- SSE bodies stream, and an `AbortSignal` passed in `init` reaches the route.
+
+The routes, checks and answers are the same as over HTTP. Credentials ride the request headers, and being in the same process grants nothing.
+
 The registry indexes instances by id and `get(id)` is an exact lookup: a singleton is found by its kind, a collection member only by its own id, and a miss is `undefined` with no first-registered fallback. Ids are unique across the registry, so a duplicate id, a singleton under a custom id, or a kind mixing singleton and collection instances throws `FlowIdentityConflictError` at `register`. See the [Engine API](https://flow-state.dev/docs/api/server#createflowregistry) and [server setup](https://flow-state.dev/docs/server/setup#addressing-an-instance).
 
 For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.provider` overrides it. See the [Voice guide](https://flowstate.dev/docs/advanced/voice).
@@ -523,8 +555,8 @@ as the session snapshot (`GET /api/flows/sessions/:sessionId/state`) is, before
 anything is streamed. An unknown session answers `404`, and one that needs
 migrating `409` (`migration-required`). In an app that authenticates, both
 routes can also answer `404` when the session is replaced by a new one under
-the same id while the request is being answered. `createSessionSSEClient` in
-`@flow-state-dev/client` reads it.
+the same id while the request is being answered. The client's `sessions.stream`
+in `@flow-state-dev/client` reads it.
 
 Query parameters, all optional:
 
@@ -571,14 +603,14 @@ The server reads the store about once a second per open stream, and each read
 costs what is running or recently changed, not the session's history. Every
 server reads the same store, so a line written on one instance reaches a view
 held by another. The server closes the connection after at most 15 minutes;
-reconnect with `since` to carry on, as `createSessionSSEClient` does. It also
+reconnect with `since` to carry on, as the client's `sessions.stream` does. It also
 closes the connection when the session is deleted or replaced by a new session
 under the same id. The
 reconnect then answers `404` if the session is gone, or `403` if the app
 authenticates and another user or organization now holds the id. If the same
 owner created the session again, or the app doesn't authenticate, the
 reconnect answers `404` when it names `session_created_at`, and otherwise
-follows the new session. `createSessionSSEClient` stops for good,
+follows the new session. The client's `sessions.stream` stops for good,
 without an error, on a `401`, `403`, `404`, `409` or `501`.
 
 A session deleted and created again under the same id, by the same owner in
@@ -1127,7 +1159,7 @@ Each tick takes a single-holder sentinel lease (co-located hosts serialize), enf
 
 **Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` returns `{ answered: false, stopped: true }`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. A run a task board started (the `task` source) that is parked on a user's stop ends at that stop instead: it continues through the board's claim gate, which cancels the task, and ends `aborted` at the stop itself, with nothing after it run. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
-**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `human_approval` / `human_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is `answerSuspension`.
+**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `human_approval` / `human_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
 
 **A user's stop's deadline.** A `waitForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
 
@@ -1139,7 +1171,14 @@ The server runs three coordinated mechanisms so a dropped SSE connection doesn't
 
 - **Wire-level SSE heartbeat.** Every live and GET-attach SSE response emits `: ping\n\n` comment frames at a configurable cadence. Keeps NAT/proxy idle timeouts from closing the connection and gives clients a robust inactivity signal during long pauses (e.g. an LLM thinking).
 - **Stale-request sweeper.** A periodic in-process job that reads the active request registry and, for entries whose executor heartbeat has stopped, marks the persisted request record `interrupted` so session locks release.
-- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips.
+- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips. The snapshot carries the request's `sessionId` (absent for a request with no session), which is what a caller holding only a request id needs to continue or retry it. A request in another tenant, or another principal's, answers `404` like a missing one.
+
+Two user-addressed routes cover requests a crash left behind:
+
+- `POST /api/flows/users/:userId/check-interrupted` sweeps now and answers only the requests **that call** marked `interrupted`. A request the startup pass or the sweeper marked first is not in it.
+- `GET /api/flows/users/:userId/interrupted-requests` lists the user's `interrupted` request records, whoever marked them. It changes nothing, so it returns the same records on every call until each is continued or removed. Call `check-interrupted` first for an answer that doesn't wait for the next sweep; the client's `requests.interrupted()` does both.
+
+Both answer `{ interrupted: [{ requestId, sessionId?, flowKind, flowId, actionName, interruptedAt }] }`. `flowId` is the instance address the request's routes take: the kind for a singleton, the instance id for a collection member. A record that names no instance carries its `flowKind` there. Both scope rows the way `GET /active-requests` does: the caller's tenant, then the owning instance's own resolver when it has one, else the caller's user and organization (or, reached anonymously in a mixed app, open flows only).
 
 ```ts
 createFlowApiRouter({

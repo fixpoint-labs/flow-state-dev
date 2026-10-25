@@ -228,6 +228,7 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // then probes it with cross-org, cross-tenant and anonymous callers.
     case "user_stream":
     case "check_interrupted_requests":
+    case "list_interrupted_requests":
       return { kind: "user", userId: route.userId };
 
     // Cross-flow. The two listings scope their rows to the caller in the

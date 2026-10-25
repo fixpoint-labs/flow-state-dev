@@ -14,11 +14,11 @@ import { readMcpKeys, writeMcpKey, type McpKeysRead, type McpServerKey } from ".
 import type { Failure } from "../lib/reads";
 
 export function SettingsView() {
-  const { clients } = useLab();
+  const { connection } = useLab();
   const [read, setRead] = useState<McpKeysRead | undefined>(undefined);
   const reread = useCallback(() => {
-    void readMcpKeys(clients).then(setRead);
-  }, [clients]);
+    void readMcpKeys(connection).then(setRead);
+  }, [connection]);
   useEffect(reread, [reread]);
 
   return (
@@ -54,7 +54,7 @@ export function SettingsView() {
 
 /** One server: whether the key is set, a field to set or replace it, and Clear. */
 function ServerKey({ server, onChanged }: { server: McpServerKey; onChanged: () => void }) {
-  const { clients } = useLab();
+  const { connection } = useLab();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Failure | undefined>(undefined);
@@ -62,7 +62,7 @@ function ServerKey({ server, onChanged }: { server: McpServerKey; onChanged: () 
   const write = async (value: string | null) => {
     setBusy(true);
     setRefused(undefined);
-    const failure = await writeMcpKey(clients, server.name, value);
+    const failure = await writeMcpKey(connection, server.name, value);
     setBusy(false);
     if (failure !== undefined) return setRefused(failure);
     setDraft("");

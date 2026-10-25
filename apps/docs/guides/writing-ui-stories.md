@@ -83,15 +83,15 @@ Components that read `useFlowContext().renderers` (currently `RequestGroup` and 
 
 The react package's visual components (`FlowNavigator`, `Roster`, `BoardColumns` and `WorkerDetail`) have their stories in the same Storybook, under `packages/ui/stories/react/`, in the `React` folder of the sidebar. The package has no Storybook of its own.
 
-These components fetch their own data, through a client they take as a prop: `resourceClient` on the panels, `client` and `sessionClient` on `FlowNavigator`. A story picks the state by passing a fake client from `packages/ui/stories/fixtures/workforce.ts`:
+These components fetch their own data, through the `client` prop. A story picks the state by passing a fake client from `packages/ui/stories/fixtures/workforce.ts`. A fake only needs the methods the component calls: `resources.listCollectionItems` for the list panels, `resources.getCollectionItemState` for `WorkerDetail`, and `flows` plus `sessions.list` for `FlowNavigator`.
 
 ```tsx
 import { Roster } from "@flow-state-dev/react";
 import { failingRowsSource, loadingRowsSource, rowsSource } from "../fixtures/workforce";
 
-export const Loading: Story = { args: { resourceClient: loadingRowsSource } };
-export const Empty: Story = { args: { resourceClient: rowsSource([]) } };
-export const Failed: Story = { args: { resourceClient: failingRowsSource("Failed to load the roster") } };
+export const Loading: Story = { args: { client: loadingRowsSource } };
+export const Empty: Story = { args: { client: rowsSource([]) } };
+export const Failed: Story = { args: { client: failingRowsSource("Failed to load the roster") } };
 ```
 
 A fake that never answers shows the loading state, one that returns no rows shows the empty state, and one that throws shows the component's error message with its Retry button. There are matching factories for single-item reads (`itemSource`), the flow list (`flowsSource`) and session lists (`sessionsSource`).

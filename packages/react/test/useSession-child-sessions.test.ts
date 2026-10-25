@@ -15,29 +15,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
 
-const { sessionClientMock, clientMock, recoveryClientMock } = vi.hoisted(() => ({
-  sessionClientMock: {
-    getSession: vi.fn(),
-    getSessionState: vi.fn(),
-    listSessionRequests: vi.fn(),
-    listChildSessions: vi.fn()
+const { sessionsMock, flowMock, requestMock } = vi.hoisted(() => ({
+  sessionsMock: {
+    get: vi.fn(),
+    state: vi.fn(),
+    requests: vi.fn(),
+    children: vi.fn()
   },
-  clientMock: {
-    sendActionStream: vi.fn(),
-    abortRequest: vi.fn()
+  flowMock: {
+    send: vi.fn(),
+    abort: vi.fn()
   },
-  recoveryClientMock: {
-    continueStream: vi.fn(),
+  requestMock: {
     continue: vi.fn(),
     retry: vi.fn(),
-    resumeSuspension: vi.fn(),
-    resumeSuspensionStream: vi.fn(),
-    checkInterrupted: vi.fn()
+    resume: vi.fn()
   }
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
+  const { fakeClient } = await import("./support/fake-client");
   const noopSSE = () => ({
     close() {
       /* streams are irrelevant to this axis — it never reads from one */
@@ -48,14 +46,11 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   });
   return {
     ...actual,
-    createSSEClient: noopSSE,
     createSSEClientFromResponse: noopSSE,
-    createRecoveryClient: () => recoveryClientMock,
-    // A FRESH object per call, like the real factory: the hook memoizes the
-    // client on `baseUrl`, so a singleton here would hold its identity across
-    // a backend change and hide the guard this suite is testing.
-    createSessionClient: () => ({ ...sessionClientMock }),
-    createClient: () => clientMock
+    createClient: () =>
+      // A FRESH client per call, like the real factory: the hook memoizes its
+      // client on its transport, so a singleton here would hide a backend change.
+      fakeClient({ sessions: { ...sessionsMock }, flow: flowMock, request: requestMock, requestStream: noopSSE })
   };
 });
 
@@ -95,7 +90,7 @@ async function mountSession(options?: Record<string, unknown>) {
     useSession("sess1", { flowKind: "demo", ...options })
   );
   await waitFor(() => {
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
+    expect(sessionsMock.children).toHaveBeenCalled();
   });
   return view;
 }
@@ -103,17 +98,17 @@ async function mountSession(options?: Record<string, unknown>) {
 describe("useSession childSessions axis (FIX-1012)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
       createdAt: 0,
       updatedAt: 0
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot());
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
-    clientMock.sendActionStream.mockResolvedValue(sseResponse());
+    sessionsMock.state.mockResolvedValue(snapshot());
+    sessionsMock.requests.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
+    flowMock.send.mockResolvedValue(sseResponse());
   });
 
   afterEach(() => {
@@ -127,8 +122,8 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith(
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledWith(
       "sess1",
       undefined
     );
@@ -139,7 +134,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
   });
 
   it("exposes one row per body of work, carrying the state the row renders", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([
+    sessionsMock.children.mockResolvedValue([
       row("ws1", "active"),
       row("ws2", "failed")
     ]);
@@ -156,7 +151,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
 
   it("reads EXACTLY ONCE per turn — at the start of the action, not twice", async () => {
     const { result } = await mountSession();
-    sessionClientMock.listChildSessions.mockClear();
+    sessionsMock.children.mockClear();
 
     await act(async () => {
       await result.current.sendAction("go", {});
@@ -164,12 +159,12 @@ describe("useSession childSessions axis (FIX-1012)", () => {
 
     // The pinned number for interaction-only. Two would mean the terminal
     // read crept back in; zero would mean a launched job is never discovered.
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
   });
 
   it("still reads exactly once per turn with items disabled", async () => {
     const { result } = await mountSession({ items: false });
-    sessionClientMock.listChildSessions.mockClear();
+    sessionsMock.children.mockClear();
 
     await act(async () => {
       await result.current.sendAction("go", {});
@@ -177,7 +172,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
 
     // The read is a local fact about the interaction, not a stream signal, so
     // turning streaming off cannot remove it.
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
   });
 
   it("does not read again while the user simply waits — nothing polls", async () => {
@@ -185,9 +180,9 @@ describe("useSession childSessions axis (FIX-1012)", () => {
     try {
       const view = renderHook(() => useSession("sess1", { flowKind: "demo" }));
       await vi.waitFor(() => {
-        expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
+        expect(sessionsMock.children).toHaveBeenCalled();
       });
-      sessionClientMock.listChildSessions.mockClear();
+      sessionsMock.children.mockClear();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(120_000);
@@ -195,7 +190,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
 
       // Interaction-only: two minutes of sitting still costs nothing. This is
       // the assertion that fails if a poll is ever reintroduced.
-      expect(sessionClientMock.listChildSessions).not.toHaveBeenCalled();
+      expect(sessionsMock.children).not.toHaveBeenCalled();
       view.unmount();
     } finally {
       vi.useRealTimers();
@@ -209,7 +204,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       expect(result.current.childSessions).toEqual([]);
     });
 
-    sessionClientMock.listChildSessions.mockResolvedValue([row("ws_new", "active")]);
+    sessionsMock.children.mockResolvedValue([row("ws_new", "active")]);
 
     await act(async () => {
       await result.current.refresh();
@@ -226,7 +221,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       releaseFirst = resolve;
     });
 
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       // The mount read: slow, and carries a row that is still running.
       .mockImplementationOnce(() => firstRead)
       // A later read: fast, and sees that same work already finished.
@@ -259,7 +254,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       releaseOldBackend = resolve;
     });
 
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       .mockImplementationOnce(() => oldBackendRead)
       .mockResolvedValue([row("ws_new_backend", "active")]);
 
@@ -290,14 +285,14 @@ describe("useSession childSessions axis (FIX-1012)", () => {
   });
 
   it("keeps the last known rows and marks them stale when a read fails, then clears the mark on success", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "active")]);
+    sessionsMock.children.mockResolvedValue([row("ws1", "active")]);
     const { result } = await mountSession();
 
     await waitFor(() => {
       expect(result.current.childSessions).toHaveLength(1);
     });
 
-    sessionClientMock.listChildSessions.mockRejectedValue(new Error("network"));
+    sessionsMock.children.mockRejectedValue(new Error("network"));
     await act(async () => {
       await result.current.refresh();
     });
@@ -306,7 +301,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
     expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws1"]);
     expect(result.current.childSessionsStale).toBe(true);
 
-    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "completed")]);
+    sessionsMock.children.mockResolvedValue([row("ws1", "completed")]);
     await act(async () => {
       await result.current.refresh();
     });
@@ -322,7 +317,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
     // number hardcoded here is one a deployment can set its ceiling below, and
     // the route answers an over-limit `limit` with a 400 rather than clamping
     // — so an ordinary mount would return no rows at all on that deployment.
-    const [, listOptions] = sessionClientMock.listChildSessions.mock.calls[0] ?? [];
+    const [, listOptions] = sessionsMock.children.mock.calls[0] ?? [];
     expect(listOptions?.limit).toBeUndefined();
   });
 
@@ -332,7 +327,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
     // background work than the default has to be able to say so.
     await mountSession({ childSessions: { limit: 500 } });
 
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith(
+    expect(sessionsMock.children).toHaveBeenCalledWith(
       "sess1",
       expect.objectContaining({ limit: 500 })
     );
@@ -347,13 +342,13 @@ describe("useSession childSessions axis (FIX-1012)", () => {
     );
 
     await waitFor(() => {
-      expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
+      expect(sessionsMock.children).toHaveBeenCalled();
     });
 
     rerender();
     rerender();
 
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
   });
 
   it("a read that fails after a newer one succeeded does not mark fresh rows stale", async () => {
@@ -362,7 +357,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       rejectFirst = reject;
     });
 
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       // The mount read: slow, and destined to fail.
       .mockImplementationOnce(() => firstRead)
       // A later read that succeeds while the first is still outstanding.
@@ -396,7 +391,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       releaseFirst = resolve;
     });
 
-    sessionClientMock.listChildSessions
+    sessionsMock.children
       // The mount read: slow, carrying rows that are already out of date.
       .mockImplementationOnce(() => firstRead)
       // A later read that fails while the first is still outstanding.
@@ -425,7 +420,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
   });
 
   it("clears the axis when the session changes", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "active")]);
+    sessionsMock.children.mockResolvedValue([row("ws1", "active")]);
 
     const { result, rerender } = renderHook(
       ({ id }: { id: string }) => useSession(id, { flowKind: "demo" }),
@@ -436,7 +431,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
       expect(result.current.childSessions).toHaveLength(1);
     });
 
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
     rerender({ id: "sess2" });
 
     await waitFor(() => {
@@ -446,7 +441,7 @@ describe("useSession childSessions axis (FIX-1012)", () => {
   });
 
   it("renders a status it has never seen, and a row that has no status at all", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([
+    sessionsMock.children.mockResolvedValue([
       // A value from a future server. This package must not enumerate the
       // status vocabulary, so an unknown value renders rather than throwing.
       row("ws_future", "escalated"),
@@ -492,20 +487,20 @@ describe("useSession childSessions — every interaction path is classified (FIX
 
   beforeEach(() => {
     vi.resetAllMocks();
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
       createdAt: 0,
       updatedAt: 0
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot());
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
-    clientMock.sendActionStream.mockResolvedValue(sseResponse());
-    recoveryClientMock.continueStream.mockResolvedValue(sseResponse());
-    recoveryClientMock.resumeSuspensionStream.mockResolvedValue(sseResponse());
-    recoveryClientMock.retry.mockResolvedValue(sseResponse());
+    sessionsMock.state.mockResolvedValue(snapshot());
+    sessionsMock.requests.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
+    flowMock.send.mockResolvedValue(sseResponse());
+    requestMock.continue.mockResolvedValue(sseResponse());
+    requestMock.resume.mockResolvedValue(sseResponse());
+    requestMock.retry.mockResolvedValue(sseResponse());
   });
 
   afterEach(() => {
@@ -549,7 +544,7 @@ describe("useSession childSessions — every interaction path is classified (FIX
     };
 
     for (const name of SIDE_CHAIN_STARTING) {
-      sessionClientMock.listChildSessions.mockClear();
+      sessionsMock.children.mockClear();
       await act(async () => {
         await drive[name]!().catch(() => {
           // A path that bails for its own reasons still counts: the read is
@@ -557,7 +552,7 @@ describe("useSession childSessions — every interaction path is classified (FIX
         });
       });
       expect(
-        sessionClientMock.listChildSessions,
+        sessionsMock.children,
         `${name} must perform the discovery read`
       ).toHaveBeenCalledTimes(1);
     }

@@ -24,7 +24,7 @@ let refuseAdd: string | null = null;
 
 // One connection and one workforce client, as the app memoizes them per Lab.
 vi.mock("../src/lib/lab-data", () => {
-  const lab = { clients: { userId: "alice" } };
+  const lab = { client: { userId: "alice" } };
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/workforce", () => {

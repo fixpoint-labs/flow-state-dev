@@ -21,13 +21,13 @@ four actions: `hire`, `fork`, `edit` and `fire`. Send them as you would any acti
 of that flow:
 
 ```ts
-import { createClient, createSessionClient } from "@flow-state-dev/client"
+import { createClient } from "@flow-state-dev/client"
 
-const sessions = createSessionClient({ baseUrl })
-const { id: sessionId } = await sessions.createSession({ flowKind: "workforce-roster", userId })
+const fsd = createClient({ userId, baseUrl })
+const roster = fsd.flow("workforce-roster")
+const { id: sessionId } = await roster.createSession()
 
-const roster = createClient({ flowKind: "workforce-roster", userId, baseUrl })
-await roster.sendAction("hire", { id: "scribe", flow: "agent", instructions: "Take short notes." }, { sessionId })
+await roster.send("hire", { id: "scribe", flow: "agent", instructions: "Take short notes." }, { sessionId })
 ```
 
 `hire` takes an id, the flow the worker runs on (`agent` when you leave it out), and its
@@ -36,19 +36,15 @@ is saved. A bad value, a flow your installation doesn't run workers on or keeps 
 workers, or an id already on the user's roster is refused, and nothing is written. An id can't be
 a standard worker's: fork it instead.
 
-`sendAction` returns when the write starts, not when it finishes. Before you send a write that
+`send` returns when the write starts, not when it finishes. Before you send a write that
 depends on an earlier one, such as an `edit` of a worker you just hired or forked, wait for the
-earlier request to leave `in_progress`, and go on only if it `completed`:
+earlier request to settle, and go on only if it `completed`:
 
 ```ts
-const { request } = await roster.sendAction("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
-let status = (await roster.getRequestStatus(request.id)).status
-while (status === "in_progress") {
-  await new Promise((resolve) => setTimeout(resolve, 250))
-  status = (await roster.getRequestStatus(request.id)).status
-}
+const forked = await roster.send("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
+const { status } = await forked.wait()
 if (status !== "completed") throw new Error(`fork ${status}`)
-await roster.sendAction("edit", { id: "my-researcher", instructions: "Cite every source." }, { sessionId })
+await roster.send("edit", { id: "my-researcher", instructions: "Cite every source." }, { sessionId })
 ```
 
 The same four writes are blocks, from `createWorkerHireBlocks(installation)`, if you'd rather
@@ -65,7 +61,7 @@ const { hire, fork, edit, fire } = createWorkerHireBlocks(installation)
 `fork` starts a new worker of the user's own from another worker's configuration, under a new id:
 
 ```ts
-await roster.sendAction("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
+await roster.send("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
 ```
 
 The fork copies what the worker it forks from runs with: its flow, its description, its own
@@ -124,7 +120,7 @@ Read the roster again after any turn, since a turn may have hired, forked or fir
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser"
 
-const workforce = createWorkforceClient({ userId, baseUrl })
+const workforce = createWorkforceClient(fsd) // fsd: your app's client from createClient
 const workers = await workforce.roster()
 // [{ id: "scribe", flow: "agent", standard: false, description: null },
 //  { id: "researcher", flow: "agent", standard: true, description: "Finds things out." }]

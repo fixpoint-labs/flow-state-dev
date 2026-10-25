@@ -550,7 +550,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const before = sessionIds(o.store);
     const convs: Array<{ id: string; task?: string; word: string }> = [];
     for (let i = 0; i < 2; i += 1) {
-      const created = await alice.sessions.createSession({ flowKind: COORDINATOR, userId: A.userId, state: { workerId: CHIEF } }).catch((e) => ({ error: messageOf(e) }) as any);
+      const created = await alice.flow(COORDINATOR).createSession({ state: { workerId: CHIEF } }).catch((e) => ({ error: messageOf(e) }) as any);
       if (created.error !== undefined) {
         r.fail("b4", `Alice's second conversation with the chief of staff couldn't be opened: ${created.error}`);
         continue;
@@ -788,12 +788,12 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
     if (conv === undefined) r.notRun("c1", "needs the setup's coordinator conversation");
     else {
       const before = (await alice.routes.items(conv.id, "")).length;
-      const opened = await refusal(() => bob.sessions.getSession(conv!.id));
+      const opened = await refusal(() => bob.sessions.get(conv!.id));
       if (opened.status === undefined) r.fail("c1", `Bob opened Alice's coordinator conversation \`${conv.id}\``);
       else r.saw("c1", `Bob opening \`${conv.id}\`: refused, ${opened.status}`);
       const token = `bob-${hex(3)}`;
       for (const [how, client] of [["as himself", bob.flow(COORDINATOR)], ["naming Alice's user id in the body", bob.flow(COORDINATOR, A.userId)]] as const) {
-        const posted = await refusal(() => client.sendAction("respond", { message: `${token} ${how}` }, { sessionId: conv!.id }));
+        const posted = await refusal(() => client.send("respond", { message: `${token} ${how}` }, { sessionId: conv!.id }));
         if (posted.status === undefined) r.fail("c1", `Bob's post to Alice's conversation ${how} was accepted`);
         else r.saw("c1", `Bob posting ${how}: refused, ${posted.status}`);
       }
@@ -848,12 +848,12 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
     r.via("c3", "HTTP");
     if (facts.fork === undefined || from === undefined) r.notRun("c3", "needs the setup's fork");
     else {
-      const named = await refusal(() => bob.sessions.createSession({ flowKind: from.flow, userId: B.userId, state: { workerId: fork } }));
+      const named = await refusal(() => bob.flow(from.flow).createSession({ state: { workerId: fork } }));
       if (named.status === undefined) r.fail("c3", `Bob created a session naming Alice's fork: \`${(named.value as { id: string }).id}\``);
       else r.saw("c3", `Bob's create naming \`${fork}\`: refused, ${named.status}`);
       const viaTalk = await refusal(() => bob.workforce.ensureWorkerSession({ worker: fork }));
       if (viaTalk.status === undefined) r.fail("c3", "Bob's talk action opened a session on Alice's fork");
-      const seeded = await refusal(() => bob.sessions.createSession({ flowKind: COORDINATOR, userId: B.userId, state: { workerId: CHIEF, delegates: [{ worker: fork }] } }));
+      const seeded = await refusal(() => bob.flow(COORDINATOR).createSession({ state: { workerId: CHIEF, delegates: [{ worker: fork }] } }));
       if (seeded.status === undefined) r.fail("c3", "Bob created a coordinator session seeding Alice's fork among its delegates");
       else r.saw("c3", `Bob's create seeding delegates: refused, ${seeded.status} (${String(seeded.error).slice(0, 160)})`);
       const bound = sessionRows(o.store).filter((s) => s.userId === B.userId && (s.state.workerId === fork || JSON.stringify(s.state.delegates ?? []).includes(fork)));
@@ -935,7 +935,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
     const crossed = s2.filter((s) => org1.includes(s.id));
     if (crossed.length > 0) r.fail("c6", `her second org lists first-org sessions: ${crossed.map((s) => s.id).join(", ")}`);
     const opened: string[] = [];
-    for (const id of org1.slice(0, 25)) if ((await refusal(() => alice2.sessions.getSession(id))).status === undefined) opened.push(id);
+    for (const id of org1.slice(0, 25)) if ((await refusal(() => alice2.sessions.get(id))).status === undefined) opened.push(id);
     if (opened.length > 0) r.fail("c6", `her second org opens first-org sessions: ${opened.join(", ")}`);
     const pr = await projectsOf(alice2);
     if ([...pr.shared, ...pr.private].some((p) => p.id === P.id || p.id === Q.id)) r.fail("c6", "her second org lists her first org's projects");

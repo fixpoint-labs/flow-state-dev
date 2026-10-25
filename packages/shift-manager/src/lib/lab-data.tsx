@@ -10,12 +10,16 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
-import type { LabClients } from "./connection";
+import type { Client } from "@flow-state-dev/client";
+import { connect, type Connection } from "./connection";
 import { createLabReader, type Ask, type LabReader, type LabSnapshot } from "./reads";
 
 /** What a surface reads from the provider. */
 export type LabData = {
-  clients: LabClients;
+  /** Who the Lab is read as, and with what credential. */
+  connection: Connection;
+  /** The one client every read goes through, built from the connection. */
+  client: Client;
   reader: LabReader;
   /** `undefined` until the first refresh lands. */
   snapshot: LabSnapshot | undefined;
@@ -48,12 +52,12 @@ const SETTLE_FAILED_READS = 3;
  * A run still going after {@link SETTLE_POLLS} reads ends the wait too, and
  * its result is drawn on the conversation's next read.
  */
-async function settled(clients: LabClients, flowId: string, requestId: string, live: () => boolean): Promise<void> {
+async function settled(client: Client, flowId: string, requestId: string, live: () => boolean): Promise<void> {
   let failed = 0;
   for (let poll = 0; poll < SETTLE_POLLS && live(); poll += 1) {
     let status: string | undefined;
     try {
-      status = (await clients.actions(flowId).getRequestStatus(requestId)).status;
+      status = (await client.flow(flowId).request(requestId).status()).status;
       failed = 0;
     } catch {
       failed += 1;
@@ -66,20 +70,21 @@ async function settled(clients: LabClients, flowId: string, requestId: string, l
 
 const LabContext = createContext<LabData | null>(null);
 
-/** Hold the snapshot for `clients`. */
-export function LabProvider({ clients, children }: { clients: LabClients; children: ReactNode }) {
-  const reader = useMemo(() => createLabReader(clients), [clients]);
+/** Hold the snapshot for the Lab `connection` reads. */
+export function LabProvider({ connection, children }: { connection: Connection; children: ReactNode }) {
+  const client = useMemo(() => connect(connection), [connection]);
+  const reader = useMemo(() => createLabReader(client), [client]);
   const [snapshot, setSnapshot] = useState<LabSnapshot | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
-  // The clients a following answer was given: once they change or the provider unmounts, it stops.
-  const current = useRef<LabClients | null>(clients);
+  // The client a following answer was given: once they change or the provider unmounts, it stops.
+  const current = useRef<Client | null>(client);
   useEffect(() => {
-    current.current = clients;
+    current.current = client;
     return () => {
       current.current = null;
     };
-  }, [clients]);
+  }, [client]);
   const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
   // Only the latest refresh may land: an older one finishing late would draw
   // a Lab that has moved on.
@@ -107,20 +112,20 @@ export function LabProvider({ clients, children }: { clients: LabClients; childr
       await refresh();
       // The run goes on without this page: follow it, so what it did with the answer is drawn too.
       if (ask.flowId !== null) {
-        const live = () => current.current === clients;
-        void settled(clients, ask.flowId, ask.item.requestId, live).then(() => {
+        const live = () => current.current === client;
+        void settled(client, ask.flowId, ask.item.requestId, live).then(() => {
           if (!live()) return;
           bump(ask.sessionId);
           void refresh();
         });
       }
     },
-    [clients, reader, refresh, bump],
+    [client, reader, refresh, bump],
   );
 
   const value = useMemo<LabData>(
-    () => ({ clients, reader, snapshot, refreshing, refresh, answer, answered }),
-    [clients, reader, snapshot, refreshing, refresh, answer, answered],
+    () => ({ connection, client, reader, snapshot, refreshing, refresh, answer, answered }),
+    [connection, client, reader, snapshot, refreshing, refresh, answer, answered],
   );
   return <LabContext.Provider value={value}>{children}</LabContext.Provider>;
 }

@@ -6,11 +6,10 @@
  */
 import { useCallback, useMemo } from "react";
 import {
-  createResourceClient,
   type ResourceSnapshotEntry
 } from "@flow-state-dev/client";
 import type { SessionView } from "./useSession";
-import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
 
 /**
  * Return type for useResource — metadata available immediately, content fetched on demand.
@@ -38,9 +37,7 @@ export function useResource<TClient = unknown>(
   session: SessionView,
   ref: string
 ): UseResourceResult<TClient> {
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  const apiPath = context.apiPath;
+  const resources = useClient().resources;
 
   const entry = useMemo(() => {
     const resources = session.snapshot?.resources;
@@ -78,10 +75,9 @@ export function useResource<TClient = unknown>(
       return entry.content;
     }
 
-    const client = createResourceClient({ baseUrl, apiPath });
-    const result = await client.getResourceContent(sessionId, ref);
+    const result = await resources.getResourceContent(sessionId, ref);
     return result.content;
-  }, [session.sessionId, ref, baseUrl, apiPath, entry?.content]);
+  }, [session.sessionId, ref, resources, entry?.content]);
 
   return { clientData, fetchContent };
 }

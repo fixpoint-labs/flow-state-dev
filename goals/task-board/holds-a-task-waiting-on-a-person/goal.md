@@ -17,7 +17,7 @@
 - `f` (the host's setting, `userDeadlineMs` set to 7,777,000 ms): `f:host-setting` a `waitForUser` with no deadline persists the host's deadline, on the stop and on the row's `waitingFor`; `f:raw-keeps-its-own` a raw `ctx.suspend` keeps its own `timeoutMs` (5,555,000 ms), none meaning none. A held question (FIX-2133) reads the same setting; that half is FIX-2133's to check once its hold lands.
 - `g` (no deadline, the setting unset): `g:still-suspended` past twice the sweep's interval and a board touch, the request is still suspended, its stop pending with no expiry, the row waiting on the user with no deadline, and its item still listed.
 
-**Anti-game:** no grade reads a store write the code under test made for itself, or the suspension record, to decide an ending: the task is read through the board's `getTask` and `listTasks` actions, the pending list through Shift Manager's own Inbox read (`readPendingSuspensions`, filtered as Inbox filters it), and every answer goes through `answerSuspension`, the client call a screen makes. The work counter is a proof each worker appends from inside its own run, never an item count. Leg e kills the host process; leg c′'s claimer is a second process on the same SQLite file. The lease is shortened (a scratch patch, printed by the run) so three lease periods are seconds: that fakes time, not behaviour.
+**Anti-game:** no grade reads a store write the code under test made for itself, or the suspension record, to decide an ending: the task is read through the board's `getTask` and `listTasks` actions, the pending list through Shift Manager's own Inbox read (`readPendingSuspensions`, filtered as Inbox filters it), and every answer goes through the request handle's `answer`, the client call a screen makes. The work counter is a proof each worker appends from inside its own run, never an item count. Leg e kills the host process; leg c′'s claimer is a second process on the same SQLite file. The lease is shortened (a scratch patch, printed by the run) so three lease periods are seconds: that fakes time, not behaviour.
 
 **Model:** n/a (model-free).
 
@@ -26,7 +26,7 @@
 **Controls:** scratch patches to the code under test, applied as it loads (`goals/lib/module-patch.mts`), printed by the run, and refused when they never reached the code.
 
 - `GOAL_CONTROL=stop-fails-attempt`: a stop of a task waiting on a user fails its try (`task-entry.ts`, `cancelForStop` fails instead). Runs leg d. Must fail **`d:cancelled-on-try-1`**.
-- `GOAL_CONTROL=public-resume`: the screen's answer goes through the public resume route (`client`'s `answerSuspension` posts to `/resume`). Runs leg a. Must fail **`a:answered`**.
+- `GOAL_CONTROL=public-resume`: the screen's answer goes through the public resume route (`client`'s `answer` posts to `/resume`). Runs leg a. Must fail **`a:answered`**.
 - `GOAL_CONTROL=stored-user-only`: the answer route checks only the stored stop's user, not the resume path's tenant and org checks. Runs leg a. Must fail **`a:another-tenant`**.
 - `GOAL_CONTROL=cancel-after-add`: today's order, the piece added and only then cancelled for its cancelled task (the refusal before the add removed). Runs leg c′. Must fail **`cprime:never-claimable`**: the latch forces the claimer into the window, and it claims the piece.
 - `GOAL_CONTROL=default-deadline`: a stop with no deadline gets 1.5 s anyway. Runs leg g. Must fail **`g:still-suspended`**.

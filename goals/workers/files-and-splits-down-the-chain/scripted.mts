@@ -30,7 +30,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 /** The shipped clients, as the checkout under test exports them. */
 export interface Shipped {
-  client: { createClient(options: Record<string, unknown>): any; createSessionClient(options: Record<string, unknown>): any };
+  client: { createClient(options: Record<string, unknown>): any };
 }
 
 /** Load the shipped clients from the checkout at `root`. */
@@ -52,8 +52,10 @@ export function connect(shipped: Shipped, origin: string, store: string, person:
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
-  const sessions = shipped.client.createSessionClient(transport);
-  const flow = (flowKind: string) => shipped.client.createClient({ flowKind, userId: person.userId, ...transport });
+  // One client, as the person.
+  const fsd = shipped.client.createClient({ userId: person.userId, ...transport });
+  const sessions = fsd.sessions;
+  const flow = (flowKind: string) => fsd.flow(flowKind);
 
   /** Send `action` on `sessionId` and wait for it to end. */
   const act = async (flowKind: string, sessionId: string, action: string, input: unknown, timeoutMs = 90_000): Promise<Acted> => {
@@ -61,34 +63,34 @@ export function connect(shipped: Shipped, origin: string, store: string, person:
     const client = flow(flowKind);
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       return { status: `http ${typeof status === "number" ? status : "?"}`, requestId: null, output: undefined, error: messageOf(error), startedAt, endedAt: Date.now() };
     }
     let status = "timed-out";
     for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(50)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
     const endedAt = Date.now();
-    const listed = (await sessions.listSessionRequests(sessionId, { includeResultOutput: true, limit: 500 }).catch(() => [])) as any[];
+    const listed = (await sessions.requests(sessionId, { includeResultOutput: true, limit: 500 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message, startedAt, endedAt };
   };
 
   /** Open a conversation with `worker` on `flowKind`, as an app opens one. */
   const conversation = async (flowKind: string, worker: string): Promise<string> =>
-    (await sessions.createSession({ flowKind, userId: person.userId, state: { workerId: worker } })).id as string;
+    (await fsd.flow(flowKind).createSession({ state: { workerId: worker } })).id as string;
 
   /** Hire a worker of this person's own, through the roster flow. */
   const hire = async (input: Record<string, unknown>): Promise<Acted> => {
     const roster =
-      ((await sessions.listSessions({ flowKind: ROSTER, userId: person.userId })) as Array<{ id: string }>)[0]?.id ??
-      ((await sessions.createSession({ flowKind: ROSTER, userId: person.userId })) as { id: string }).id;
+      ((await sessions.list({ flowKind: ROSTER, userId: person.userId })) as Array<{ id: string }>)[0]?.id ??
+      ((await fsd.flow(ROSTER).createSession()) as { id: string }).id;
     return act(ROSTER, roster, "hire", input);
   };
 

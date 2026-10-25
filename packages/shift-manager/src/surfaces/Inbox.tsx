@@ -46,7 +46,7 @@ function askHeading(ask: Ask): string {
 }
 
 export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
-  const { clients, refresh } = useLab();
+  const { client, refresh } = useLab();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
   const [replies, setReplies] = useState(0);
@@ -163,7 +163,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                   ask={selected}
                   snapshot={snapshot}
                   gaps={gaps}
-                  clients={clients}
+                  client={client}
                   onDelivered={() => {
                     setReplies((n) => n + 1);
                     void refresh();
@@ -220,12 +220,12 @@ type AskSessionRead =
  * ask, so the ask it reads around never changes under it.
  */
 function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [read, setRead] = useState<AskSessionRead | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    readSessionItems(clients, ask.sessionId).then(
+    readSessionItems(client, ask.sessionId).then(
       (got) => live && setRead({ ok: true, value: askSessionOf(got.items, ask.item), truncated: got.truncated }),
       (error: unknown) => live && setRead({ ok: false, failure: error instanceof RunReadError ? error.failure : describeFailure(error) }),
     );
@@ -233,7 +233,7 @@ function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
       live = false;
     };
     // `ask` is fixed for this component's life (keyed by the ask), so the session is the dependency.
-  }, [clients, ask.sessionId, reread, attempt]);
+  }, [client, ask.sessionId, reread, attempt]);
   if (read === null) {
     return (
       <Meta className="text-muted-foreground" testId="inbox-session-loading">
@@ -310,13 +310,13 @@ function Reply({
   ask,
   snapshot,
   gaps,
-  clients,
+  client,
   onDelivered,
 }: {
   ask: Ask;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  clients: ReturnType<typeof useLab>["clients"];
+  client: ReturnType<typeof useLab>["client"];
   onDelivered: () => void;
 }) {
   const route = replyRoute(ask, snapshot, gaps);
@@ -331,7 +331,7 @@ function Reply({
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
+          return sendTurn(client, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}

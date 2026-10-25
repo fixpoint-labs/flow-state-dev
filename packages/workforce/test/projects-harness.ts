@@ -19,7 +19,13 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, createInMemoryStores, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
+import {
+  createFlowState,
+  createInMemoryStores,
+  createInProcessFetch,
+  inMemoryStores,
+  type StoreAdapter
+} from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { FILED_PROJECT } from "../src/conversation-board/board-entries";
@@ -153,7 +159,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
       return typeof user === "string" ? { userId: user, orgId: org } : null;
     }
   } as never);
-  const router = (await state.getRouter()) as any;
+  const inProcess = createInProcessFetch(state);
   const runtime = await state.getRuntime();
 
   type Answer = { status: number; json: any };
@@ -164,14 +170,11 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     body?: unknown,
     options: { org?: Caller; query?: string } = {}
   ): Promise<Answer> => {
-    const response = await router[method](
-      new Request(`http://test/api/flows/${path.join("/")}${options.query ?? ""}`, {
-        method,
-        headers: { "content-type": "application/json", "x-user": user, ...callerHeaders(options.org ?? ORG) },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      }),
-      { params: { path } }
-    );
+    const response = await inProcess(`/api/flows/${path.join("/")}${options.query ?? ""}`, {
+      method,
+      headers: { "content-type": "application/json", "x-user": user, ...callerHeaders(options.org ?? ORG) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
     const text = await response.text();
     let json: unknown;
     try {
@@ -253,14 +256,10 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const fetcherFor =
     (userId: string, org: Caller = ORG) =>
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = new URL(String(input), "http://localhost");
       const headers = new Headers(init?.headers);
       headers.set("x-user", userId);
       for (const [name, value] of Object.entries(callerHeaders(org))) headers.set(name, value);
-      const request = new Request(url, { ...init, headers });
-      const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-      return router[method](request, { params: { path } });
+      return inProcess(input, { ...init, headers });
     };
 
   /** Every session in the store that names `field` = `value` in its state. */

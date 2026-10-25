@@ -749,7 +749,7 @@ continues the same attempt.
 task, and, while it is `"user"`, `waitingFor`: the stop's `kind` (`approval`, `review`
 or `input`), its `prompt` and `title`, its `deadline` (epoch ms, absent when it has none),
 and the `requestId` and `suspensionId` a screen answers it by. A screen answers it through
-the engine's answer route (`answerSuspension` in `@flow-state-dev/client`); `waitingFor` is
+the engine's answer route (a request handle's `answer` in `@flow-state-dev/client`); `waitingFor` is
 a read convenience, never where a screen lists what waits for a user. Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's

@@ -1,5 +1,5 @@
 /**
- * `createSessionSSEClient`: following a whole session, and every way the
+ * `sessions.stream()`: following a whole session, and every way the
  * connection ends. The server side of the contract (what is sent, and when) is
  * the engine's conformance suite; this file holds the client to its half: hand
  * back the last server time on a reconnect, back off, and stop quietly where
@@ -7,7 +7,17 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionStreamEvent } from "@flow-state-dev/core/items";
-import { createSessionSSEClient, type ClientFetch } from "../src";
+import { createClient, type ClientFetch, type SessionStreamOptions } from "../src";
+
+/** A session's stream, opened through one client's `sessions.stream()`. */
+function sessionStream({
+  sessionId,
+  fetcher,
+  baseUrl,
+  ...options
+}: SessionStreamOptions & { sessionId: string; fetcher: ClientFetch; baseUrl?: string }) {
+  return createClient({ userId: "devuser", baseUrl: baseUrl ?? "", fetcher }).sessions.stream(sessionId, options);
+}
 
 function frame(event: SessionStreamEvent): string {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
@@ -84,7 +94,7 @@ afterEach(() => {
   for (const handle of handles.splice(0)) handle.close();
 });
 
-describe("createSessionSSEClient", () => {
+describe("sessions.stream", () => {
   it("follows the session: items, runs, and the last server time heard", async () => {
     const urls: string[] = [];
     const fetcher: ClientFetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -93,7 +103,7 @@ describe("createSessionSSEClient", () => {
     }) as unknown as ClientFetch;
     const onItem = vi.fn();
     const onRuns = vi.fn();
-    const handle = createSessionSSEClient({
+    const handle = sessionStream({
       sessionId: "s 1",
       baseUrl: "http://host",
       fetcher,
@@ -124,7 +134,7 @@ describe("createSessionSSEClient", () => {
     }) as ClientFetch;
     const onItem = vi.fn();
     handles.push(
-      createSessionSSEClient({
+      sessionStream({
         sessionId: "s1",
         fetcher,
         since: 500,
@@ -155,7 +165,7 @@ describe("createSessionSSEClient", () => {
       return held("", init?.signal ?? undefined);
     }) as ClientFetch;
     const onStop = vi.fn();
-    const handle = createSessionSSEClient({
+    const handle = sessionStream({
       sessionId: "s1",
       fetcher,
       since: 500,
@@ -183,7 +193,7 @@ describe("createSessionSSEClient", () => {
     }) as ClientFetch;
     const onError = vi.fn();
     handles.push(
-      createSessionSSEClient({
+      sessionStream({
         sessionId: "s1",
         fetcher,
         retry: { initialDelayMs: 20, maxDelayMs: 60 },
@@ -214,7 +224,7 @@ describe("createSessionSSEClient", () => {
       return new Response("down", { status: 503 });
     }) as ClientFetch;
     handles.push(
-      createSessionSSEClient({ sessionId: "s1", fetcher, retry: { initialDelayMs: 40, maxDelayMs: 1_000 } })
+      sessionStream({ sessionId: "s1", fetcher, retry: { initialDelayMs: 40, maxDelayMs: 1_000 } })
     );
 
     await until(() => at.length >= 4);
@@ -236,7 +246,7 @@ describe("createSessionSSEClient", () => {
     }) as ClientFetch;
     const attempts: number[] = [];
     handles.push(
-      createSessionSSEClient({
+      sessionStream({
         sessionId: "s1",
         fetcher,
         retry: { initialDelayMs: 5, maxDelayMs: 20 },
@@ -255,7 +265,7 @@ describe("createSessionSSEClient", () => {
       const onStop = vi.fn();
       const onError = vi.fn();
       const onReconnecting = vi.fn();
-      const handle = createSessionSSEClient({
+      const handle = sessionStream({
         sessionId: "s1",
         fetcher: fetcher as unknown as ClientFetch,
         retry: { initialDelayMs: 5 },
@@ -287,7 +297,7 @@ describe("createSessionSSEClient", () => {
     );
     const onStop = vi.fn();
     const onError = vi.fn();
-    const handle = createSessionSSEClient({
+    const handle = sessionStream({
       sessionId: "s1",
       fetcher: fetcher as unknown as ClientFetch,
       retry: { initialDelayMs: 5 },
@@ -313,7 +323,7 @@ describe("createSessionSSEClient", () => {
     const onItem = vi.fn();
     const onStop = vi.fn();
     handles.push(
-      createSessionSSEClient({ sessionId: "s1", fetcher, retry: { initialDelayMs: 5 }, onItem, onStop })
+      sessionStream({ sessionId: "s1", fetcher, retry: { initialDelayMs: 5 }, onItem, onStop })
     );
 
     await until(() => onItem.mock.calls.length === 1);
@@ -330,7 +340,7 @@ describe("createSessionSSEClient", () => {
       return ended("");
     }) as ClientFetch;
     const onItem = vi.fn();
-    const handle = createSessionSSEClient({
+    const handle = sessionStream({
       sessionId: "s1",
       fetcher,
       retry: { initialDelayMs: 5 },
@@ -350,7 +360,7 @@ describe("createSessionSSEClient", () => {
       held(`data: {not json\n\n${frame(itemEvent(5, "req_1", "m1"))}`, init?.signal ?? undefined)) as ClientFetch;
     const onItem = vi.fn();
     const onError = vi.fn();
-    handles.push(createSessionSSEClient({ sessionId: "s1", fetcher, onItem, onError }));
+    handles.push(sessionStream({ sessionId: "s1", fetcher, onItem, onError }));
 
     await until(() => onItem.mock.calls.length === 1);
     expect(onError).toHaveBeenCalledTimes(1);

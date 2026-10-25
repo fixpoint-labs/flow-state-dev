@@ -116,7 +116,7 @@ export function TaskProvider({
   devtoolUrl?: string;
   children: ReactNode;
 }) {
-  const { clients, reader, refresh } = useLab();
+  const { client, reader, refresh } = useLab();
   const fromSnapshot = useMemo(() => allRows(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
   const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
@@ -166,7 +166,7 @@ export function TaskProvider({
     if (linkedSession === undefined) return;
     let live = true;
     setFlow(undefined);
-    resolveRunFlow(clients, linkedSession)
+    resolveRunFlow(client, linkedSession)
       .then((flowId) => {
         if (live) setFlow({ sessionId: linkedSession, flowId });
       })
@@ -176,7 +176,7 @@ export function TaskProvider({
     return () => {
       live = false;
     };
-  }, [clients, linkedSession, retries]);
+  }, [client, linkedSession, retries]);
 
   const [status, setStatus] = useState<{ requestId: string; status: RequestStatus } | { requestId: string; failure: Failure } | undefined>();
   const flowId = flow !== undefined && "flowId" in flow && flow.sessionId === link?.sessionId ? flow.flowId : undefined;
@@ -197,7 +197,7 @@ export function TaskProvider({
     if (openRun === undefined) return;
     let live = true;
     setStatus(undefined);
-    readRunStatus(clients, openRun)
+    readRunStatus(client, openRun)
       .then((s) => {
         if (!live) return;
         setStatus({ requestId: openRun.requestId, status: s });
@@ -209,7 +209,7 @@ export function TaskProvider({
     return () => {
       live = false;
     };
-  }, [clients, openRun, retries]);
+  }, [client, openRun, retries]);
 
   const run: RunState = useMemo(() => {
     if (link === null) return { kind: "none" };
@@ -277,14 +277,14 @@ export function TaskProvider({
     const signal = mounted.current?.signal;
     setInterrupt({ kind: "pending" });
     try {
-      const outcome = await interruptRun(clients, openRun, signal === undefined ? {} : { signal });
+      const outcome = await interruptRun(client, openRun, signal === undefined ? {} : { signal });
       reportStatus(outcome.kind === "aborted" ? "aborted" : outcome.status);
       setInterrupt({ kind: "idle" });
     } catch (error) {
       if (signal?.aborted === true) return;
       setInterrupt({ kind: "refused", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [clients, openRun, interrupt.kind, reportStatus]);
+  }, [client, openRun, interrupt.kind, reportStatus]);
 
   const [sent, setSent] = useState<string[]>([]);
   useEffect(() => setSent([]), [boardRef, taskId]);

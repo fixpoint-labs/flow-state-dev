@@ -13,7 +13,7 @@
 A stop that waits for a user holds its task and ends exactly once (FIX-2129).
 
 - **`ctx.waitForUser({ kind, prompt, deadline? })`** (`core`): stop the request for an `approval`, a `review` or an `input`. It returns the answer, or `{ cancelled: true }` when the task was cancelled while it waited. At its deadline an approval reads as a no (`deadline: true`) and a review or an input throws `SuspensionTimeoutError`, which the block may catch. With no `deadline`, the host's `userDeadlineMs` applies, else none: the stop waits until it is answered, stopped or cancelled.
-- **The answer route** (`engine`): `POST /api/flows/:flowKind/requests/:requestId/answer` answers a user's stop in any run, a task board's included, after the resume path's ownership checks; `answerSuspension` (`client`) calls it. Who answered is the signed-in caller.
+- **The answer route** (`engine`): `POST /api/flows/:flowKind/requests/:requestId/answer` answers a user's stop in any run, a task board's included, after the resume path's ownership checks; a request handle's `answer` (`client`) calls it. Who answered is the signed-in caller.
 - **`userDeadlineMs`** (`createFlowState`, `engine`): the host's deadline for a user's stop, unset by default.
 - **A task waiting on a user** (`orchestration`): `getTask` and `listTasks` show `waitingOn` and, for `"user"`, `waitingFor` (the stop's kind, prompt and deadline). A cancel resumes the run `cancelled` (its writes, its result and its filings are refused), a stop cancels the task instead of failing the try, and a cancelled task refuses new filings (`parent_cancelled`).
 - **Cancel one stop:** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true } })`.

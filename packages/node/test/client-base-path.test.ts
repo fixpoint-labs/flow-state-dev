@@ -13,7 +13,6 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   ClientHttpError,
   createClient,
-  createSessionClient,
 } from "@flow-state-dev/client";
 import { z } from "zod";
 import { serve, type ServeHandle } from "../src/serve";
@@ -54,18 +53,17 @@ async function startServer(basePath?: string): Promise<string> {
  * finished, then read the session's request list back.
  */
 async function roundTrip(transport: { baseUrl: string; apiPath?: string }): Promise<void> {
-  const client = createClient({ flowKind: "echo", userId: "u1", ...transport });
-  const sessions = createSessionClient(transport);
+  const client = createClient({ userId: "u1", ...transport });
 
-  const session = await sessions.createSession({ flowKind: "echo", userId: "u1" });
-  const sent = await client.sendAction("say", { text: "hi" }, { sessionId: session.id });
+  const session = await client.flow("echo").createSession();
+  const sent = await client.flow("echo").send("say", { text: "hi" }, { sessionId: session.id });
   await vi.waitFor(async () => {
-    const status = await client.getRequestStatus(sent.request.id);
+    const status = await sent.status();
     expect(status.status).toBe("completed");
   });
 
-  const requests = await sessions.listSessionRequests(session.id);
-  expect(requests.map((request) => request.id)).toContain(sent.request.id);
+  const requests = await client.sessions.requests(session.id);
+  expect(requests.map((request) => request.id)).toContain(sent.id);
 }
 
 describe("official client against a serve() host", () => {
@@ -75,9 +73,9 @@ describe("official client against a serve() host", () => {
 
   it("misses a custom basePath when the client keeps the default mount", async () => {
     const baseUrl = await startServer("/flows");
-    const client = createClient({ flowKind: "echo", userId: "u1", baseUrl });
+    const client = createClient({ userId: "u1", baseUrl });
 
-    const error = await client.listFlows().catch((caught: unknown) => caught);
+    const error = await client.flows().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ClientHttpError);
     expect((error as ClientHttpError).status).toBe(404);
   });
