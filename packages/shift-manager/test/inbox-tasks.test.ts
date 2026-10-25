@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
-import type { LoadedSnapshot } from "../src/lib/derive";
-import type { Ask, BoardRow, Worker } from "../src/lib/reads";
+import { inboxItemAt, type LoadedSnapshot } from "../src/lib/derive";
+import { inboxSection, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 let index = 0;
 function item(fields: Record<string, unknown>): OutputItem {
@@ -69,6 +69,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
+  waitingFor: null,
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -79,12 +80,14 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
 function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
   const byHolder = new Map<string, BoardRow[]>();
   for (const r of rows) byHolder.set(r.holderSessionId, [...(byHolder.get(r.holderSessionId) ?? []), r]);
+  const boards: LoadedSnapshot["boards"] = Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }]));
   return {
     orgId: "org",
     readAt: 0,
     inventory: { ok: true, value: { workers } },
-    boards: Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }])),
+    boards,
     asks: { ok: true, value: asks },
+    inbox: inboxSection({ ok: true, value: asks }, boards, []),
   } as unknown as LoadedSnapshot;
 }
 
@@ -109,7 +112,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { id: "eng.em", workerId: "eng.em", name: "em", team: "eng", kind: null },
       { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
     ] as unknown as Worker[];
-    const asks = [{ workerId: "eng.em" }] as unknown as Ask[];
+    const asks = [{ workerId: "eng.em", item: { suspensionId: "a1" }, since: 0 }] as unknown as Ask[];
     const s = snapshot(
       [
         row("A", "in_progress", { assignee: "eng.coder" }),
@@ -121,6 +124,25 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       workers,
     );
     expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 2 on shift · 2 streams");
+  });
+
+  it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
+    const held = row("T", "in_progress", {
+      run: { sessionId: "s_run", requestId: "req_1", attempt: 1 },
+      waitingFor: { requestId: "req_1", suspensionId: "susp_legacy", kind: "approval", prompt: "Ship it?" },
+    });
+    const s = snapshot([held]);
+    const item = inboxItemAt(s, "susp_legacy");
+    expect(item?.id).toBe(`task:${held.boardRef}:T`);
+    expect(inboxItemAt(s, item!.id)).toBe(item);
+    expect(inboxItemAt(s, "nothing")).toBeNull();
+  });
+
+  it("an Inbox that didn't load says so in the summary, never 0 need you, which reads as all clear", () => {
+    const s = { ...snapshot([row("A", "in_progress")]), inbox: { ok: false, failure: { message: "asks offline" } } } as LoadedSnapshot;
+    const line = tasksSummary(s);
+    expect(line).toBe("1 in flight · Inbox didn't load · 0 on shift · 1 stream");
+    expect(line).not.toMatch(/need/);
   });
 
   it("the empty Inbox names the runs still going (BR-19, I8)", () => {

@@ -236,7 +236,7 @@ function SidebarRail({
             SC
           </span>
         </RailItem>
-        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", suspensionId: null })} testId="rail-inbox">
+        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", item: null })} testId="rail-inbox">
           <NavIcon name="inbox" />
           {waiting ? (
             <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
@@ -415,9 +415,9 @@ export function Sidebar({
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
 
-  const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
+  const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
-  const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
+  const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
@@ -464,7 +464,7 @@ export function Sidebar({
                   </span>
                 }
                 active={route.level === "inbox"}
-                onClick={() => navigate({ level: "inbox", suspensionId: null })}
+                onClick={() => navigate({ level: "inbox", item: null })}
                 testId="nav-inbox"
               />
               <NavItem

@@ -265,3 +265,13 @@ export const FORWARDERS = {
  * their place, so a new caller of a helper is a finding like a direct write.
  */
 export const PASS_THROUGHS = ["advisoryComplete", "advisoryFail", "advisoryCancel"];
+
+/**
+ * FIX-2133's Inbox rule: one item type says what waits on the user, built in one place. The
+ * functions allowed to build an orchestration `InboxItem`, each with its reason. Keyed like
+ * {@link RECORDERS}. An item built anywhere else is a finding: a second list of what waits on
+ * the user, which the Inbox and its counts would disagree with.
+ */
+export const INBOX_READ = {
+  "orchestration:itemOf": "the Inbox read's one constructor of an item: `inboxItems`, the read, lists every item through it",
+};

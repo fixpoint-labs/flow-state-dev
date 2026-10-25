@@ -1270,6 +1270,26 @@ the agent; only own properties count, so a key like `constructor` misses. It
 lives on the package root so every caller resolving a `tools:` list shares one
 miss path.
 
+## Inbox
+
+`@flow-state-dev/orchestration/inbox` is the read an app's Inbox lists from: one item type for everything waiting on a user, and one call to answer it. It's safe to import in a browser.
+
+```ts
+import { createInboxClient, inboxItems } from "@flow-state-dev/orchestration/inbox";
+
+const items = inboxItems({
+  rows,        // task rows: a board's listTasks, or a browser's read of the board
+  suspensions, // asks a reader found in sessions
+  flowOf,      // the flow that owns a session
+});
+await createInboxClient(client).answer(items[0], { approved: true });
+```
+
+- **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
+- **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
+- **Each hold** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its holds is.
+- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }`. `answer` sends a task run's stop to the engine's answer route, which records who answered. Questions and confirms are refused until tasks can hold them.
+
 ## Documentation
 
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)

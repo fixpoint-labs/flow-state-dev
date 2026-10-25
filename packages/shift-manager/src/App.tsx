@@ -167,7 +167,7 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
     case "roster":
       return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
-      return <Inbox snapshot={snapshot} suspensionId={route.suspensionId} gaps={gaps} />;
+      return <Inbox snapshot={snapshot} itemId={route.item} gaps={gaps} />;
     case "tasks":
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
