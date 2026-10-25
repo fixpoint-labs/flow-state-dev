@@ -80,6 +80,10 @@ table. An Adds item with no existing-piece column is already a finding.
    nouns and verbs across `packages/` (for a new cap: `cap`, `limit`, `max`, `bound`;
    for a reservation: `held`, `taken`, `deferred`, `lapsed`, `reserved`). The package
    the spec is touching is the one place you cannot stop. "None" needs the searches.
+   **Inside an epic, sibling specs' Adds count as existing.** Search the other children's
+   specs (open spec PRs and merged `specs/issues/<ID>/`) as well as `main`. Two siblings that
+   each add the same mechanism get **extend** pointing at one shared piece, never two
+   **genuinely new**.
 3. **Compare to the closest existing piece.** Prefer composition from the five block
    kinds (`handler`, `generator`, `evaluator`, `sequencer`, `router`) and from
    sequencer control (`step`, `stepIf`, `tap`, `doWhile`) over a new hook or loop.
@@ -155,18 +159,20 @@ stops." A review that treats them as synonyms is wrong. A review that asks "is
 this Adds item a *fifth* reservation record?" is the job. Flag a new marker that
 repeats one of these meanings as **reuse** or **extend** that record.
 
-### 3. Two release paths, two different holds
+### 3. Two siblings, one hold (FIX-2058 / #3881)
 
-On `main`, these are not two ways to release the same hold:
+Epic FIX-2058 split "a task waits on a person" by a sorting rule: approvals and input
+suspend the request (`waitForUser`, engine); questions hold the task on its row (board). Two
+sibling specs then each added a row field (`waitingOn: "user"` + `waitingFor`; `questions[]`),
+an Inbox source, an answer route, a deadline payer, a cancel path and crash debt. Each was
+searched against `main` only, so both passed as **genuinely new**. A third PR added glue so
+they wouldn't collide: a reconciler clause for a task listed by both, and a CI sweep rule.
 
-| Hold | Set | Release |
-|------|-----|---------|
-| Pre-start task hold (`status: "held"`) | `createTask({ held: true })` or `updateTask({ status: "held" })` | `updateTask({ id, status: "pending" })` → `held: false` (`packages/orchestration/src/skills/task-tools-capability.ts`) |
-| Question park (`parked` + `parkedOnQuestion`) | `parkOnQuestion` → `parkPatch(..., { onQuestion: true })` | `answerTask` → `unpark` → `unparkPatch(..., answer: true)` (`packages/orchestration/src/tasks/collection/internal.ts`) |
-
-`updateTask({ status: "pending" })` does not unstick a question park. A spec that
-adds a third "release this reservation" path, or that uses the pending status to
-release a question, is **reuse** / **extend** the matching row above.
+**Verdict that should have been:** **extend** one hold type that both write. The amendment
+is one `holds[]` list on the task row (`specs/epics/FIX-2058/DECISIONS.md` → ER-8): the
+engine's suspensions are mirrored there as one `source`, and a new hold kind is a new value.
+A spec that adds a second "this task waits" field, route or release path beside `holds[]`
+is **extend `holds[]`**.
 
 ## Report
 

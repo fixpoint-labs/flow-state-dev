@@ -39,6 +39,10 @@ clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is no
    the Vercel AI SDK, CrewAI, …), then whatever the problem's own field uses.
 3. **Other shapes.** What else could this be — a different block kind, a different layer, a
    subtraction instead of an addition? See "Alternatives" below for when `adhd` runs.
+   **The next-variant test:** name the variant most likely to come next (another kind of wait,
+   another source, another provider) and count what adding it would copy: a field, a route, a
+   cancel path, a deadline, a check. More than one copied piece means the shared abstraction is
+   missing, and that is a finding.
 4. **New factors.** What has landed or been filed since the last analysis that bears on this?
    Linear issues and features created or changed since the watermark (see "The watermark"),
    merged PRs in the same area, a prior-art change. Name each and whether it moves anything.
@@ -180,6 +184,9 @@ follow-up work, and the issue is how it gets done.
 - **Don't relitigate without a new fact.** At wrap, a decision a human signed off is reopened
   only by something the sign-off didn't have — a new factor (objective 4), a prior-art
   finding, or what the build revealed. Re-arguing the same trade-off is not analysis.
+- **A rule from the same epic can't drop an alternative.** An alternative rejected only because
+  it contradicts a decision made in the same epic or spec was not *considered and dropped*: that
+  decision is part of what is under review. Return it to the user as an *Open* fork.
 - **Name things.** "Other frameworks do this differently" without a name and a link is not a
   finding. Neither is "could be cleaner".
 - **Read-only.** The analyst edits nothing and files nothing at spec altitude; the author
