@@ -19,7 +19,9 @@ import type {
   SessionScopeHandle,
   StopRequestOutcome,
   UserScopeHandle,
-  TokenCounter
+  TokenCounter,
+  ResumeContext,
+  SuspensionStatus
 } from "@flow-state-dev/core/types";
 import {
   getPatternPrefix,
@@ -175,6 +177,18 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+/**
+ * Whether the run's task was cancelled with one of its stops (FIX-2129):
+ * this continuation's own resolution, or, for a crash's continuation that
+ * names none, a user's stop the log records cancelled with its task.
+ */
+function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: ReplayLog | undefined): boolean {
+  if (resumeCtx?.resolution === "cancelled" && cancelledWithTask(resumeCtx.data)) return true;
+  return (replayLog?.resolvedInOrder() ?? []).some(
+    (entry) => entry.cancelled && cancelledWithTask(entry.data) && isUserSuspension({ reason: entry.reason ?? "" })
+  );
+}
 
 /**
  * What `ctx.suspend()` throws for a gate resolved without an answer (a
@@ -3005,10 +3019,14 @@ export async function createExecutionContext<
   const requestEndRegistry = createRequestEndRegistry();
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
+  // A crash's continuation names no resolution: the log's latest is how the
+  // request last resumed, so the claim gate still reads a stop or a cancel.
   const readResume = (): RequestResume | undefined => {
     const resumed = options.resumeContext;
-    if (resumed?.resolution === undefined) return undefined;
-    return { resolution: resumed.resolution, userSuspension: resumed.userSuspension === true };
+    if (resumed?.resolution !== undefined) return { resolution: resumed.resolution, userSuspension: resumed.userSuspension === true };
+    const logged = (rootContext as { _replayLog?: ReplayLog })._replayLog?.resolvedInOrder().at(-1);
+    if (logged?.resolution === undefined) return undefined;
+    return { resolution: logged.resolution as SuspensionStatus, userSuspension: isUserSuspension({ reason: logged.reason ?? "" }) };
   };
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
@@ -3707,6 +3725,13 @@ export async function createExecutionContext<
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
+            // A user's stop replays as the stop, never as an answer
+            // (FIX-2129): a crash after its resolution was logged must not
+            // read it as approved. The run ends here, as the live stop does.
+            if (entry.stopped && isUserSuspension(suspendOpts)) {
+              await recordRequestStop(stores.request, requestRef.current);
+              throw new DOMException("The request was stopped while it waited for a user.", "AbortError");
+            }
             if (entry.rejected) {
               throw rejectionOf(suspendOpts, entry.suspensionId, entry.resolvedBy, entry.data, {
                 expired: entry.expired,
@@ -3767,15 +3792,16 @@ export async function createExecutionContext<
             }
             return resumeCtx.data;
           }
-          // A run resumed because its task was cancelled asks nobody again
-          // (FIX-2129): a later wait for a user resolves `cancelled` at once
-          // and opens no item. One stop cancelled while the task goes on
-          // leaves the next wait to suspend as usual.
-          if (resumeCtx.resolution === "cancelled" && cancelledWithTask(resumeCtx.data) && isUserSuspension(suspendOpts)) {
-            throw new SuspensionRejectedError(suspendOpts.suspensionId ?? generateId("susp"), "cancel", undefined, {
-              cancelled: true
-            });
-          }
+        }
+        // A run whose task was cancelled asks nobody again (FIX-2129): a
+        // later wait for a user resolves `cancelled` at once and opens no
+        // item. Read off this continuation's resolution, or off the log when
+        // a crash's continuation names none. One stop cancelled while the
+        // task goes on leaves the next wait to suspend as usual.
+        if (isUserSuspension(suspendOpts) && taskCancelledInRun(resumeCtx, replayLog)) {
+          throw new SuspensionRejectedError(suspendOpts.suspensionId ?? generateId("susp"), "cancel", undefined, {
+            cancelled: true
+          });
         }
         // The one place a host without durable execution refuses a stop
         // (FIX-2063): every host reaches it, so none guards on durability

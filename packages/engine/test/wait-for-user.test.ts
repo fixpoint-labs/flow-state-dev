@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
-import type { FlowInstance, WaitForUserOptions } from "@flow-state-dev/core/types";
+import type { FlowInstance, SuspensionRecord, WaitForUserOptions } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
@@ -289,6 +289,100 @@ describe("waitForUser: a cancel (the board's debt payment)", () => {
     expect(seen).toEqual(["work", 'first:{"cancelled":true}']);
     expect((await h.stores.request.get(requestId))?.status).toBe("completed");
   });
+});
+
+/**
+ * The state a host leaves when it dies after a continuation logged the stop's
+ * resolution (`suspension_resume`) and before the run acted on it: the stop
+ * resolved, the request interrupted with the resolution on its log.
+ */
+async function crashAfterAudit(
+  h: ReturnType<typeof harness>,
+  requestId: string,
+  gate: SuspensionRecord,
+  ending: { status: SuspensionRecord["status"]; resolution: string; resolvedBy: string; resumeData?: unknown }
+) {
+  const resolvedAt = Date.now();
+  await h.provider.suspend({
+    ...gate,
+    status: ending.status,
+    resolvedAt,
+    resolvedBy: ending.resolvedBy,
+    ...(ending.resumeData !== undefined ? { resumeData: ending.resumeData } : {})
+  });
+  const record = (await h.stores.request.get(requestId))!;
+  const items = record.items ?? [];
+  const next = Math.max(...items.map((item) => (item as { itemIndex?: number }).itemIndex ?? 0)) + 1;
+  const audit = {
+    id: `item_suspension_resume_crash_${next}`,
+    type: "suspension_resume",
+    status: "completed",
+    suspensionId: gate.suspensionId,
+    resolution: ending.resolution,
+    resolvedBy: ending.resolvedBy,
+    ...(ending.resumeData !== undefined ? { resumeData: ending.resumeData } : {}),
+    resolvedAt,
+    requestId,
+    itemIndex: next
+  };
+  await h.stores.request.set(
+    requestId,
+    { ...record, status: "interrupted", result: undefined, items: [...items, audit as never] },
+    "any"
+  );
+}
+
+describe("waitForUser: a crash after the stop's resolution was logged replays it as that ending, never as an answer", () => {
+  const routes = {
+    // The sweep's re-drive of a resolved stop.
+    sweep: async (h: ReturnType<typeof harness>, requestId: string, gate: SuspensionRecord) =>
+      redriveResolvedGate(h.deps, (await h.provider.loadSuspension(requestId, gate.suspensionId))!),
+    // A crash's plain continuation, which names no resolution of its own.
+    continue: async (h: ReturnType<typeof harness>, requestId: string) => h.deps.continueRequest({ requestId } as never)
+  };
+  const endings = [
+    {
+      ending: "a stop",
+      options: { kind: "approval", prompt: "Ship?" },
+      twice: false,
+      crash: { status: "stopped", resolution: "stopped", resolvedBy: "stop" },
+      ends: "aborted",
+      seen: ["work"]
+    },
+    {
+      ending: "a cancel of the task, whose later waits cancel at once",
+      options: { kind: "input", prompt: "Which region?" },
+      twice: true,
+      crash: { status: "cancelled", resolution: "cancelled", resolvedBy: "cancel", resumeData: { taskCancelled: true } },
+      ends: "completed",
+      seen: ["work", 'first:{"cancelled":true}', 'second:{"cancelled":true}']
+    },
+    {
+      ending: "an approval's deadline",
+      options: { kind: "approval", prompt: "Ship?" },
+      twice: false,
+      crash: { status: "expired", resolution: "expired", resolvedBy: "durability-sweeper" },
+      ends: "completed",
+      seen: ["work", 'first:{"cancelled":false,"approved":false,"deadline":true}']
+    }
+  ];
+
+  for (const route of ["sweep", "continue"] as const) {
+    it.each(endings)(`replays $ending as itself (${route})`, async ({ options, twice, crash, ends, seen: expected }) => {
+      const seen: string[] = [];
+      const flow = askingFlow(seen);
+      const h = harness(flow);
+      const { requestId, gate } = await park(h, flow, { options, twice });
+      await crashAfterAudit(h, requestId, gate, crash as never);
+
+      await routes[route](h, requestId, gate);
+      await h.drain();
+
+      expect(seen).toEqual(expected);
+      expect((await h.stores.request.get(requestId))?.status).toBe(ends);
+      expect((await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId)).toEqual([]);
+    });
+  }
 });
 
 describe("the answer route (D2)", () => {

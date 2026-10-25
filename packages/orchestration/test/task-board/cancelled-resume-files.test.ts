@@ -106,7 +106,24 @@ async function harness() {
     await (continued as { finished: Promise<unknown> }).finished;
   };
 
-  return { ledger, seen, park, cancelWhileWaiting };
+  /**
+   * The state a host leaves when it dies after a stop's continuation logged
+   * the stop's resolution and before the run acted on it, then the crash's
+   * plain continuation, which names no resolution of its own.
+   */
+  const crashAfterStopLogged = async (requestId: string, stop: Awaited<ReturnType<typeof park>>["stop"]) => {
+    const resolvedAt = Date.now();
+    await provider.suspend({ ...stop, status: "stopped", resolvedBy: "stop", resolvedAt });
+    const record = (await stores.request.get(requestId))!;
+    const items = record.items ?? [];
+    const next = Math.max(...items.map((item) => (item as { itemIndex?: number }).itemIndex ?? 0)) + 1;
+    const audit = { id: `item_suspension_resume_crash_${next}`, type: "suspension_resume", status: "completed", suspensionId: stop.suspensionId, resolution: "stopped", resolvedBy: "stop", resolvedAt, requestId, itemIndex: next };
+    await stores.request.set(requestId, { ...record, status: "interrupted", result: undefined, items: [...items, audit as never] }, "any");
+    const continued = await continueRequest({ requestId, stores, flowRegistry: registry, runtimeConfig } as never);
+    await (continued as { finished: Promise<unknown> }).finished.catch(() => undefined);
+  };
+
+  return { ledger, seen, stores, park, cancelWhileWaiting, crashAfterStopLogged };
 }
 
 describe("a task's run cancelled while it waits for a user (FIX-2129)", () => {
@@ -121,5 +138,16 @@ describe("a task's run cancelled while it waits for a user (FIX-2129)", () => {
     const rows = (await h.ledger()).list();
     expect(rows.map((row) => row.id)).toEqual(["t1"]);
     expect(rows[0]!.status).toBe("cancelled");
+  }, 20_000);
+
+  it("a stop whose resolution a crash left logged still cancels the task and ends the run aborted, never answered", async () => {
+    const h = await harness();
+    const { requestId, stop } = await h.park();
+
+    await h.crashAfterStopLogged(requestId, stop);
+
+    expect(h.seen).toEqual([]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect((await h.ledger()).get("t1")?.status).toBe("cancelled");
   }, 20_000);
 });
