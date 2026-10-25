@@ -94,11 +94,18 @@ FIX-2080's map gains no entry for it. The `parked` status and its rows simply go
 - **A retry keeps a question's answer and asks for a review again.** A question's answer is a
   steer on the row, so the next attempt's brief holds it, as it holds any steer. A review's verdict
   lives on its suspension, which ends with its attempt; a revision request's words are a steer, and stay.
-- **The Inbox** lists reviews through ER-1's predicate and names a review as a review; held
-  questions, before start and midway, are FIX-2133's items, read from task rows. Both take a
-  task's context from the board snapshot it already loads, not a read per task. `reads.ts`'s
+- **The Inbox** lists a review as FIX-2133's one item type over open holds: a review is a
+  suspension hold, named a review; held questions, before start and midway, are row holds on the
+  same type. Both take a task's context from the board snapshot it already loads, not a read per
+  task, through orchestration's Inbox read. `reads.ts`'s
   `PERSON_REASONS` and `send.ts`'s `stopOf` move onto the predicate. Chief of Staff's parked
   list goes: its questions are held questions now.
+- **What this reads and writes on the row** (amended 2026-10-25, the epic's one list of holds).
+  The review stop writes nothing of its own: the claim gate's stop arm opens its suspension hold
+  (FIX-2133, PR 2), and the resume closes it. `askQuestion` opens a row hold through ER-8's write.
+  Retiring the park, the drain's excusal, the Inbox and the composer read open holds, never
+  `waitingOn: "user"`, `waitingFor` or `questions`, which FIX-2133 removes or never builds. Its
+  model tools ask questions only, never `confirm` (the epic's [Open](../../epics/FIX-2058/DECISIONS.md#open)).
 - **The `parked` notice goes.** No ending `parked` is written. Until FIX-2070 the filer is told
   nothing when its task asks, and finds the question through `getTask`.
 - **Removed outright** ([FIX-2056 (e)](../../epics/FIX-2056/DECISIONS.md#e)): no deprecation
@@ -174,8 +181,11 @@ From this PR's round 1 ([#3738](https://github.com/fixpoint-labs/flow-state-dev/
   park's fixed prompt, the migrated question's place above the cap and leg f all go.
 - **Owner, 2026-10-24** — no default deadline on a person's stop (epic D3): leg g sets the host's
   deadline for its no-answer result, and checks that with none the request still waits. From the
-  epic's analysis: the drain's park excusal moves onto ER-1's predicate and ER-8's hold, so a board
+  epic's analysis: the drain's park excusal moves onto ER-1's predicate and ER-8's hold (since
+  2026-10-25, the row's open holds), so a board
   waiting only on a person reports `blocked` (leg h); a model's review returns at its deadline
   where a block's throws, and the signal for that is [FIX-2165](https://linear.app/fixpoint-labs/issue/FIX-2165)'s; reviews list through FIX-2133's one Inbox read, from `readAsks`, adding no source, and acceptance is its reconciler green with a review present; a session line answers server-side through `steerFromLine`, so the composer keeps no copy of which question; each deleted name joins the sweep list in the same PR; `turnReentries` goes with its only writer.
+- **Epic amendment, 2026-10-25** — one list of holds per task: a review's stop and a question both
+  read as open holds; nothing here writes `waitingFor` or `questions`.
 
 **Open: none of this issue's.**

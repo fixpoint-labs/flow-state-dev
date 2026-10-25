@@ -52,13 +52,13 @@ The walk reads Alice's Inbox and the rows through public task actions; each cont
 
 | Assertion | Passes when |
 |---|---|
-| `a:six-items` | FIX-2133's `reconcileInbox` is green over all six kinds at once: no missing, duplicate or orphan item, no row in both arms, every item answerable through its kind's route, as each cell of the [six-stop figure](#what-changes) says |
+| `a:six-items` | FIX-2133's `reconcileInbox` is green over all six kinds at once: no missing, duplicate or orphan item, no drift between a task run's suspension and its hold, every item answerable through its item's `source`, as each cell of the [six-stop figure](#what-changes) says |
 | `a:no-deadline-waits` | None of the six has a deadline set; past the sweeper's interval and a board touch, all six are still listed and none has resumed or released ([epic D3](../../epics/FIX-2058/DECISIONS.md#d3)) |
-| `a:rows-read` | The three suspended rows read `waitingOn: "user"` and keep their claim; the three held rows carry an open question and no lease; no row reads `parked` |
+| `a:rows-read` | The three suspended rows each carry one open suspension hold and keep their claim; the three held rows carry an open row hold and no lease; no row reads `parked` |
 | `b:<stop>-same-attempt` | Each stop, answered once in the Inbox, carries on as its figure row says: `attempts` never past 1, work counter 1 |
 | `b:answered-once` | The item leaves the list; a second answer is told the stop is resolved |
 | `c:item-closes` | Cancelling a suspended and a held task closes both items; nothing the resumed block writes is kept |
-| `c:held-cancel-closes-questions` | `getTask` on the cancelled held row shows no open question. The item would vanish on the status alone, so this reads the row |
+| `c:held-cancel-closes-questions` | `getTask` on the cancelled held row shows no open hold. The item would vanish on the status alone, so this reads the row |
 | `d:no-request-beside` | A steer into a task waiting on a review starts no request beside it; one more turn takes it after the answer |
 | `d:answer-by-id` | A held question is answered only by a steer carrying its question id: through `updateTask` ([FIX-2133 D1](../FIX-2133/DECISIONS.md#d1)), or by a line typed in the task's session, which orchestration's `steerFromLine` writes as that steer for the oldest open question, in every session alike ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)) |
 | `d:plain-answers-nothing` | A plain message to a non-coding task's session (conversation outside the task, owner 2026-10-22), and a steer naming no question, answer nothing |
