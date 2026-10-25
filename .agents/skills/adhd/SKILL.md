@@ -113,7 +113,9 @@ selection decides which ideas survive, so it belongs on the same tier as the gen
 1. **Score.** Each idea on three axes, 0–10: **novelty** (distance from the obvious
    default), **viability** (could it actually ship here), **fit** (does it address the
    stated problem). Flag any idea that is attractive but a **trap** — hidden cost, false
-   economy, won't scale, premature abstraction — with a one-line reason.
+   economy, won't scale, premature abstraction — with a one-line reason. Contradicting a
+   decision made in the same epic or spec does not make an idea a trap; keep it and mark it for
+   the user ([`analysis`](../analysis/SKILL.md) → Guardrails).
 
 2. **Cluster.** Group into 3–6 clusters by underlying angle, not surface keywords. Label
    each by its angle: "make it a capability", "push it to user space", "remove the

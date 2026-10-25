@@ -5,7 +5,7 @@
  * conversation with it, through the board's own filing, as the user. The user's
  * list of schedules shows each one's next run, worked out from its cron.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CronExpressionParser } from "cron-parser";
 import { createScheduledTransportAdapter, formatScheduleId, type ScheduleIndex, type ScheduleIndexRow } from "@flow-state-dev/scheduled";
 import { bootBoardHost, ORG, type BoardHost } from "./conversation-board-harness";
@@ -31,6 +31,7 @@ const weekly = {
 
 let host: BoardHost | undefined;
 afterEach(async () => {
+  vi.useRealTimers();
   await host?.dispose();
   host = undefined;
 });
@@ -171,6 +172,10 @@ describe("a schedule that files a task", () => {
 
 describe("the user's list of schedules", () => {
   it("shows each schedule with its next run, worked out from its cron and time zone", async () => {
+    // Pinned to a Wednesday noon UTC: the daily run (07:30 New York) is the next
+    // morning, days before Monday 09:00 London. Left on the real clock, a Sunday
+    // after 11:30 UTC puts the weekly run first and the order below flips.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-21T12:00:00Z") });
     const h = boot();
     await roster(h, "saveSchedule", weekly);
     await roster(h, "saveSchedule", { ...weekly, key: "daily", cron: "30 7 * * *", timezone: "America/New_York" });
@@ -180,14 +185,21 @@ describe("the user's list of schedules", () => {
     };
     const byKey = Object.fromEntries(listed.schedules.map((s) => [s.key, s]));
     expect(Object.keys(byKey).sort()).toEqual(["adoption", "daily"]);
-    // Soonest first: the daily one runs before next Monday, whatever their keys.
-    expect(listed.schedules.map((s) => s.key)).toEqual(["daily", "adoption"]);
-    for (const schedule of listed.schedules) {
-      const expected = CronExpressionParser.parse(schedule.cron, { tz: schedule.timezone, currentDate: new Date(before) })
+    const nextRun = (schedule: { cron: string; timezone: string }) =>
+      CronExpressionParser.parse(schedule.cron, { tz: schedule.timezone, currentDate: new Date(before) })
         .next()
         .toDate()
         .toISOString();
-      expect(schedule.nextRunAt).toBe(expected);
+    // Soonest first, whatever their keys. Which one is sooner depends on when the test runs
+    // (on a Sunday evening Monday's 9am London comes before 7:30am New York), so the order is
+    // worked out from the crons themselves.
+    const soonestFirst = listed.schedules
+      .map((s) => ({ key: s.key, at: nextRun(s) }))
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .map((s) => s.key);
+    expect(listed.schedules.map((s) => s.key)).toEqual(soonestFirst);
+    for (const schedule of listed.schedules) {
+      expect(schedule.nextRunAt).toBe(nextRun(schedule));
     }
   });
 
