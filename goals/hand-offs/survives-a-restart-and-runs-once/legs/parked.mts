@@ -115,26 +115,28 @@ async function connect(origin: string) {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
-  const sessionsApi = shipped.client.createSessionClient(transport);
-  const app = shipped.workforce.createWorkforceClient({ userId: ALICE.userId, ...transport });
-  const flow = (flowKind: string) => shipped.client.createClient({ flowKind, userId: ALICE.userId, ...transport });
+  // The app's one client, as Alice.
+  const fsd = shipped.client.createClient({ userId: ALICE.userId, ...transport });
+  const sessionsApi = fsd.sessions;
+  const app = shipped.workforce.createWorkforceClient(fsd);
+  const flow = (flowKind: string) => fsd.flow(flowKind);
   const act = async (flowKind: string, sessionId: string, action: string, input: unknown, timeoutMs = 120_000): Promise<Acted> => {
     const client = flow(flowKind);
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       return { status: "http", requestId: null, output: undefined, error: error instanceof Error ? error.message : String(error) };
     }
     let status = "timed-out";
     for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(100)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
-    const listed = (await sessionsApi.listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
+    const listed = (await sessionsApi.requests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
   };
@@ -167,7 +169,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   // Before the kill: file the brief and wait for the park.
   let served = await o.serve(`${o.label}-before`, o.store);
   let alice = await connect(served.origin);
-  const conv = (await alice.sessionsApi.createSession({ flowKind: "coordinator", userId: ALICE.userId, state: { workerId: "desk.lead" } })).id as string;
+  const conv = (await alice.fsd.flow("coordinator").createSession({ state: { workerId: "desk.lead" } })).id as string;
   calls.push("createSession(coordinator)");
   const filingSessionId = (await alice.act("coordinator", conv, "listDelegates", {})).output?.filingSessionId as string | undefined;
   calls.push("listDelegates");

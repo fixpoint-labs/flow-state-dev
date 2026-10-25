@@ -35,7 +35,7 @@ import {
   gatewayModel,
   goalModel,
   goalTmpDir,
-  httpActions,
+  actingAs,
   keysServing,
   modulePatchEnv,
   runGoal,
@@ -304,7 +304,7 @@ await runGoal(async (failures) => {
   const notes: string[] = [];
 
   try {
-    let http = httpActions((await host.getRouter()) as any, USER_ID);
+    let http = actingAs((await host.getRouter()) as any, USER_ID);
     const conv = await http.open("desk", { workerId: DESK });
 
     /** File `goal` for A from the desk, as the person does. Its task id. */
@@ -480,7 +480,7 @@ await runGoal(async (failures) => {
         say(`leg 3 attempt ${attempt}: stopping the host at ${show(atStop)}`);
         await host.dispose();
         host = startHost(db);
-        http = httpActions((await host.getRouter()) as any, USER_ID);
+        http = actingAs((await host.getRouter()) as any, USER_ID);
         if (atStop.top === "in_progress" && atStop.piece === "completed" && atStop.noticesEnded === 0 && atStop.wokenTurns === 0) break;
         // Stopped late: let that task finish before the next attempt.
         await http.act("desk", conv, "listTasks_tasks", {});

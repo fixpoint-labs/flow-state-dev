@@ -27,10 +27,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { encodeUserSegment, type GeneratorModel, type ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { runAction } from "../src/lib/action";
-import { createLabClients, type LabClients } from "../src/lib/connection";
+import type { Client } from "@flow-state-dev/client";
+import { connect } from "../src/lib/connection";
 import { readEntryReport, readProject, type ProjectAddress } from "../src/lib/projects";
 import { createLabReader, readerSessionId } from "../src/lib/reads";
-import { workforceClientFor } from "../src/lib/workforce";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "../teams/devteam/harness-stub.mts";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
@@ -190,20 +191,20 @@ describe("the EM files from the workstream it leads", () => {
     expect(await org.getByPrefix("org", LAB_ORG_ID, "workstream-claims/")).toEqual({});
 
     served = await serveLab(lab.state);
-    const clients: LabClients = createLabClients({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
-    await createLabReader(clients).read();
+    const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
+    await createLabReader(client).read();
     const reader = readerSessionId(ALICE.userId, "projects");
 
     // Alice opens `feature` herself, with the EM as its lead, through the route the app opens one with.
-    await runAction(clients, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
-    const hers = (await readProject(clients, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
+    const hers = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
     expect(hers).toMatchObject({ lead: EM });
     const workstream = hers.sessionId!;
     expect(workstream).toBeTruthy();
 
     // Her Storefront project coordinator hands the job to her `feature` workstream.
-    const pc = (await workforceClientFor(clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-    await runAction(clients, "coordinator", pc, "respond", { message: "Add guest checkout: first the guest cart, then the checkout." });
+    const pc = (await createWorkforceClient(client).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
+    await runAction(client, "coordinator", pc, "respond", { message: "Add guest checkout: first the guest cart, then the checkout." });
 
     // The EM filed one task per part, from the workstream session, on that session's board; each ran and completed.
     const settled = await eventually(async () => {
@@ -229,8 +230,8 @@ describe("the EM files from the workstream it leads", () => {
     }
 
     // The EM updated her entry, and her project screen reads the report.
-    const entry = (await readProject(clients, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
-    expect(await readEntryReport(clients, reader, STOREFRONT, entry)).toBe(REPORT);
+    const entry = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    expect(await readEntryReport(client, reader, STOREFRONT, entry)).toBe(REPORT);
 
     // Every session the job made is Alice's: her workstream session, and each task's session under it.
     const sessions = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all" });

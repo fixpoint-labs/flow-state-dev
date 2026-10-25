@@ -12,9 +12,9 @@
  * any runtime; static/DevTool serving is a long-lived-host concern that lives
  * in `serve()`.
  */
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import {
-  decodePathSegments,
+  createInProcessFetch,
   dispatchDedicatedRoute,
   disposeFlowApiRouter,
   isFlowState,
@@ -68,24 +68,6 @@ export interface ServerApp {
 
 const DEFAULT_BASE_PATH = "/api/flows";
 const DEFAULT_HEALTH_PATH = "/healthz";
-
-/** Escape a string for safe use as a literal inside a `RegExp`. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Decoded segments after the mount prefix, e.g. `/api/flows/chat/send` →
- * `["chat","send"]`. `pathname` is the raw URL path; each segment is decoded
- * once, the same shape Next hands the router as `params.path`. The prefix is
- * matched in its encoded form, the one `URL.pathname` carries, so a basePath
- * holding a space or other escaped character still comes off.
- */
-function pathSegments(pathname: string, basePath: string): string[] {
-  const encodedBase = new URL(basePath, "http://base.invalid").pathname;
-  const prefix = new RegExp(`^${escapeRegExp(encodedBase)}/?`);
-  return decodePathSegments(pathname.replace(prefix, ""));
-}
 
 /**
  * Build the portable host app for `app` (a `FlowState` or a raw
@@ -145,34 +127,19 @@ export function createServerApp(
     return c.json({ status: "initializing" }, 503);
   });
 
-  const dispatch = async (c: Context): Promise<Response> => {
-    // Await the (lazy) router rather than snapshotting `ready`: a serverless host
-    // has no `/healthz` gate, so the invoke that triggers a cold start must wait
-    // for store init instead of getting a spurious 503. `/healthz` keeps the
-    // point-in-time snapshot (below) where a PaaS needs it. For the long-lived
-    // host this turns "503 during boot" into "the request waits until ready".
-    let resolved: FlowApiRouter;
-    try {
-      resolved = await routerPromise;
-    } catch {
-      return c.json({ error: "Server failed to initialize" }, 500);
-    }
-    const method = c.req.method.toUpperCase();
-    const handler = resolved[method as keyof FlowApiRouter];
-    if (handler === undefined) {
-      // Methods the router doesn't expose (PUT, HEAD, OPTIONS, ...) get 405.
-      // HEAD is deliberately not normalized to GET — that would execute the GET
-      // action handler (with its side effects) just to discard the body.
-      return c.json({ error: "Method not allowed" }, 405);
-    }
-    // From the raw URL, not `c.req.path`: Hono partly decodes that one.
-    const path = pathSegments(new URL(c.req.url).pathname, basePath);
-    return handler(c.req.raw, { params: { path } });
-  };
+  // The engine's one dispatch path, the same an in-process client takes: it
+  // awaits the (lazy) router rather than snapshotting `ready` — a serverless
+  // host has no `/healthz` gate, so the invoke that triggers a cold start
+  // waits for store init instead of getting a spurious 503 (500 if init
+  // failed) — answers 405 for a method the router lacks, and reads the path
+  // from the raw URL under `basePath`. `/healthz` keeps the point-in-time
+  // snapshot (below) where a PaaS needs it. Given the same `FlowState`, it
+  // resolves the same memoized router this app holds.
+  const inProcessFetch = createInProcessFetch(app, { basePath });
 
   // The bare mount and everything under it both reach the engine router.
-  hono.all(basePath, dispatch);
-  hono.all(`${basePath}/*`, dispatch);
+  hono.all(basePath, (c) => inProcessFetch(c.req.raw));
+  hono.all(`${basePath}/*`, (c) => inProcessFetch(c.req.raw));
 
   // Keep API errors uniformly JSON: a router throw would otherwise fall through
   // to Hono's default plain-text 500. Only custom transport-adapter routes throw

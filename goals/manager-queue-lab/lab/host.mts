@@ -59,7 +59,7 @@ import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workfor
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { httpActions, untilIdle } from "../../lib/index.mts";
+import { actingAs, untilIdle } from "../../lib/index.mts";
 import { BUILDER_KIND, defineBuilderWorkerFlow, workLineSchema, type WorkLine } from "./workforce/flows/workers/builder.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
@@ -361,8 +361,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The manager's conversation, opened through the session route as its user
   // opens one: the installation's create check runs and names the worker.
   // Every action after goes through the same router, as the user's app sends
-  // it (`httpActions`), and its answer is read back from the ended request.
-  const http = httpActions(await state.getRouter(), LAB_USER_ID);
+  // it (`actingAs`), and its answer is read back from the ended request.
+  const http = actingAs(await state.getRouter(), LAB_USER_ID);
   const conversation = await http.open(COORDINATOR_FLOW, { workerId: managerRecord.id });
 
   const act = async (actionName: string, input: unknown): Promise<{ output?: any; error?: string }> => {

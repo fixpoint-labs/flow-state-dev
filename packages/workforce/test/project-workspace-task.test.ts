@@ -18,6 +18,7 @@
  * delegate's turn asks the source the way a coding run's would, and keeps
  * what it answered.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { RunSource, RunSourceAnswer } from "@flow-state-dev/workspace";
@@ -148,7 +149,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
     h.ok(user, "lab", await lab(user, org), "createProject", input, org);
   /** `user`'s project conversation for `project`. */
   const projectConversation = async (user: string, project: { visibility: "shared" | "private"; id: string }, org: Caller = ORG) =>
-    (await createWorkforceClient({ userId: user, fetcher: h.fetcherFor(user, org) }).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: project })).id;
+    (await createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, org) })).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: project })).id;
   /** `user`'s conversation with no project. */
   const plainConversation = (user: string, org: Caller = ORG) => h.openSession(user, COORDINATOR_FLOW, { workerId: "chief" }, org);
   /** `user` opens workstream `id` in `project`, led by a filer of theirs, and returns its session. */

@@ -92,15 +92,16 @@ Call `createProject` with an id, a title, and optionally a brief, a visibility, 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const projects = createClient({ flowKind: "projects", userId });
+const fsd = createClient({ userId, baseUrl });
+const projects = fsd.flow("projects");
 
-await projects.sendAction(
+await projects.send(
   "createProject",
   { id: "apollo", title: "Apollo", brief: "Ship the new checkout.", visibility: "shared", members: ["bob"] },
   { sessionId }
 );
 
-await projects.sendAction("createProject", { id: "notes", title: "My notes", visibility: "private" }, { sessionId });
+await projects.send("createProject", { id: "notes", title: "My notes", visibility: "private" }, { sessionId });
 ```
 
 It returns the row, where it lives, and whether this call wrote it:
@@ -129,7 +130,7 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 `setBrief` sets, changes or clears a project's brief. Send `null` to clear it:
 
 ```ts
-await projects.sendAction(
+await projects.send(
   "setBrief",
   { project: { visibility: "shared", id: "apollo" }, brief: "Ship the new checkout before the holiday freeze." },
   { sessionId }
@@ -221,7 +222,7 @@ Call `openWorkstream` with the project's address, an id, a title and a lead from
 ```ts
 const apollo = { visibility: "shared", id: "apollo" } as const;
 
-await projects.sendAction(
+await projects.send(
   "openWorkstream",
   {
     project: apollo,
@@ -278,7 +279,7 @@ Everyone who can read the project reads every entry: its title, owner, lead, sta
 Change an entry with `updateWorkstream`. Every field is optional, and what you leave out stays:
 
 ```ts
-await projects.sendAction(
+await projects.send(
   "updateWorkstream",
   {
     project: apollo,
@@ -339,7 +340,7 @@ Progress is worked out from the entries each time you read it, so it reflects th
 - `nextDue` is the earliest due date of a workstream that isn't done, overdue ones included, or `null`.
 - `stale` lists the workstreams that aren't done and whose entry hasn't changed for seven days (`STALE_AFTER_MS`), oldest first.
 
-The entries `readProject` returns leave out the reports. A report is the entry's content: read it with the resource client's `getCollectionItemContent(sessionId, "workstreams", key)` (`"privateWorkstreams"` for a private project), where `key` is the entry's storage key.
+The entries `readProject` returns leave out the reports. A report is the entry's content: read it with `fsd.resources.getCollectionItemContent(sessionId, "workstreams", key)` (`"privateWorkstreams"` for a private project), where `key` is the entry's storage key.
 
 A browser can read the entries itself through the resource routes. Parse each with `parseWorkstreamEntry(path, state)`, and pass the parsed entries to `projectProgress(entries, Date.now())` for the same counts the server gives. Import all three, with `DONE_STATUS` and `STALE_AFTER_MS`, from `@flow-state-dev/workforce/browser`.
 
@@ -387,7 +388,7 @@ Find or start your coordinator for a project with `ensureWorkerSession`, naming 
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId });
+const workforce = createWorkforceClient(fsd); // fsd: your app's client from createClient
 const session = await workforce.ensureWorkerSession({
   worker: "project-coordinator",
   projectId: { visibility: "shared", id: "apollo" },
@@ -662,15 +663,15 @@ Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the exam
 A user's own conversation with a worker can be set to work in one of their projects. From then on, its coding runs and every task it files work in that project, so nobody has to name it in `input.project`. Set it from the app with the workforce client's `setWorkProject`:
 
 ```ts
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const workforce = createWorkforceClient({ userId, baseUrl, fetcher });
-const sessions = createSessionClient({ baseUrl, fetcher });
+const fsd = createClient({ userId, baseUrl, fetcher });
+const workforce = createWorkforceClient(fsd);
 // A worker's one conversation, at the first job that needs files
 await workforce.setWorkProject("lead", { visibility: "shared", id: "apollo" });
 // A new session, after the user picks a project
-const session = await sessions.createSession({ flowKind: "lab-main", userId, state: { workerId: "main" } });
+const session = await fsd.flow("lab-main").createSession({ state: { workerId: "main" } });
 await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, { sessionId: session.id });
 ```
 

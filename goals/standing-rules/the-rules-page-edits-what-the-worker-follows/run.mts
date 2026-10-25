@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
-import { createSessionClient } from "@flow-state-dev/client";
+import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY, createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { chiefOfStaffOf } from "../../../packages/shift-manager/src/lib/derive.ts";
 import type { Worker } from "../../../packages/shift-manager/src/lib/reads.ts";
@@ -80,8 +80,9 @@ await runGoal(async (failures) => {
       return fetch(input, { ...init, headers });
     };
     const routes = labRoutes(served.origin, alice);
-    const workforce = createWorkforceClient({ userId: alice.userId, baseUrl: served.origin, fetcher });
-    const sessions = createSessionClient({ baseUrl: served.origin, fetcher });
+    // Alice's one client.
+    const fsd = createClient({ userId: alice.userId, baseUrl: served.origin, fetcher });
+    const workforce = createWorkforceClient(fsd);
     const roster = await workforce.roster();
     const researcher = roster.find((w) => w.id === WORKER);
     if (researcher === undefined) throw new Error(`setup: the roster has no ${WORKER}: ${roster.map((w) => w.id).join(", ")}`);
@@ -92,7 +93,7 @@ await runGoal(async (failures) => {
     /** A reply in a brand-new conversation with the researcher. */
     const freshReply = async (ask: string): Promise<string> => {
       const sessionId = `conv_goal_${Math.random().toString(16).slice(2, 14)}`;
-      await sessions.createSession({ flowKind: researcher.flow, userId: alice.userId, sessionId, state: { [WORKER_ID_STATE_KEY]: researcher.id } });
+      await fsd.flow(researcher.flow).createSession({ sessionId, state: { [WORKER_ID_STATE_KEY]: researcher.id } });
       const posted = await routes.call("POST", `/${researcher.flow}/${sessionId}/actions/respond`, { userId: alice.userId, input: { message: ask } });
       if (posted.status !== 202) return `refused ${posted.status}`;
       const requestId = String(posted.body?.request?.id);

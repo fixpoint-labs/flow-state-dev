@@ -20,17 +20,17 @@ type Story = StoryObj<typeof meta>;
 
 /** The board read has not answered yet. */
 export const Loading: Story = {
-  args: { resourceClient: loadingRowsSource },
+  args: { client: loadingRowsSource },
 };
 
 /** A board with no rows, which says why rather than spinning. */
 export const Empty: Story = {
-  args: { resourceClient: rowsSource([]) },
+  args: { client: rowsSource([]) },
 };
 
 /** The read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
-  args: { resourceClient: failingRowsSource("Failed to load this board") },
+  args: { client: failingRowsSource("Failed to load this board") },
 };
 
 /**
@@ -39,7 +39,7 @@ export const Failed: Story = {
  */
 export const Populated: Story = {
   args: {
-    resourceClient: rowsSource([
+    client: rowsSource([
       boardRow("t1", "pending", { title: "Refund order 1042", assignee: "support.ada" }),
       boardRow("t2", "in_progress", { title: "Reset a customer's password", assignee: "support.grace" }),
       boardRow("t3", "held", { goal: "Escalate the outage report" }),

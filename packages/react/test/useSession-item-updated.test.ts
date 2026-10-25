@@ -11,21 +11,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { CreateSSEClientOptions } from "@flow-state-dev/client";
+import type { RequestStreamOptions } from "@flow-state-dev/client";
 
-const { sessionClientMock, requestStreams } = vi.hoisted(() => ({
-  sessionClientMock: {
-    getSession: vi.fn(),
-    getSessionState: vi.fn(),
-    listSessionRequests: vi.fn(),
-    listChildSessions: vi.fn()
+type CreateRequestStream = RequestStreamOptions & { url: string };
+
+const { sessionsMock, requestStreams } = vi.hoisted(() => ({
+  sessionsMock: {
+    get: vi.fn(),
+    state: vi.fn(),
+    requests: vi.fn(),
+    children: vi.fn()
   },
-  requestStreams: [] as CreateSSEClientOptions[]
+  requestStreams: [] as CreateRequestStream[]
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
-  const captureSSE = (options: CreateSSEClientOptions) => {
+  const { fakeClient } = await import("./support/fake-client");
+  const captureSSE = (options: CreateRequestStream) => {
     requestStreams.push(options);
     return {
       close() {},
@@ -36,10 +39,11 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   };
   return {
     ...actual,
-    createSSEClient: captureSSE,
     createSSEClientFromResponse: captureSSE,
-    createSessionClient: () => ({ ...sessionClientMock }),
-    createClient: () => ({ sendActionStream: vi.fn(), abortRequest: vi.fn() })
+    createClient: () =>
+      // A FRESH client per call, like the real factory: the hook memoizes its
+      // client on its transport, so a singleton here would hide a backend change.
+      fakeClient({ sessions: { ...sessionsMock }, flow: { send: vi.fn(), abort: vi.fn() }, requestStream: captureSSE })
   };
 });
 
@@ -92,7 +96,7 @@ describe("useSession item.updated", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     requestStreams.length = 0;
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
@@ -100,11 +104,11 @@ describe("useSession item.updated", () => {
       updatedAt: 0,
       latestRequestId: REQUEST
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot());
-    sessionClientMock.listSessionRequests.mockResolvedValue([
+    sessionsMock.state.mockResolvedValue(snapshot());
+    sessionsMock.requests.mockResolvedValue([
       { id: REQUEST, sessionId: "sess1", status: "in_progress", createdAt: 1, updatedAt: 1 }
     ]);
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -142,7 +146,7 @@ describe("useSession item.updated", () => {
   // A resumed stream replays from the start; its patches are older than a
   // finished copy the view already holds, and would roll it back.
   it("ignores a patch to an item the view already holds finished", async () => {
-    sessionClientMock.getSessionState.mockResolvedValue(
+    sessionsMock.state.mockResolvedValue(
       snapshot([toolCall({ status: "completed", output: { answer: 42 } })])
     );
     const { result, own } = await mountAttached();
@@ -163,7 +167,7 @@ describe("useSession item.updated", () => {
     });
 
     let release: (value: unknown) => void = () => {};
-    sessionClientMock.getSessionState.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    sessionsMock.state.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
     let refreshing: Promise<void> = Promise.resolve();
     act(() => {
       refreshing = result.current.refresh();

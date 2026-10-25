@@ -47,7 +47,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, httpActions, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
+import { goalTmpDir, actingAs, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
@@ -146,7 +146,7 @@ await runGoal(async (failures) => {
 
   try {
     const runtime = await state.getRuntime();
-    const { act, open } = httpActions(await state.getRouter(), USER_ID);
+    const { act, open } = actingAs(await state.getRouter(), USER_ID);
     const conversation = await open(filerKind, { workerId: filer.id });
 
     // ---- b. the conversation lists its delegate as taking a task ------------

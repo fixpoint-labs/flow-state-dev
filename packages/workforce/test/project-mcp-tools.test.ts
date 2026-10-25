@@ -12,6 +12,7 @@
  * payload: a task naming a server on a project that names none is relayed
  * nothing.
  */
+import { createClient } from "@flow-state-dev/client";
 import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
@@ -202,7 +203,7 @@ async function boot(options: { env?: Record<string, string>; failGithub?: boolea
       "any"
     );
   const projectConversation = async (user: string, id: string) =>
-    (await createWorkforceClient({ userId: user, fetcher: h.fetcherFor(user) }).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: { visibility: "shared", id } })).id;
+    (await createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user) })).ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: { visibility: "shared", id } })).id;
   const plainConversation = (user: string) => h.openSession(user, COORDINATOR_FLOW, { workerId: "chief" });
   const workstreamConversation = async (user: string, project: string, id: string) => {
     const roster = await h.openSession(user, "workforce-roster");

@@ -137,7 +137,7 @@ function PanelContent({ className }: { className?: string }) {
     activeFlowId,
     activeSessionId,
     workspaceToken,
-    recoveryClient,
+    client,
     selectWorkspace,
     sessionAddressError,
   } = useDevTool();
@@ -710,7 +710,7 @@ function PanelContent({ className }: { className?: string }) {
     [],
   );
   const { continueRequest, isContinuing } = useContinueRequest({
-    recoveryClient,
+    client,
     flowId: activeFlowId,
     sessionId: effectiveSessionId,
     onItems: handleContinueItems,

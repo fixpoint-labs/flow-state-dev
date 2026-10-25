@@ -190,13 +190,13 @@ A browser reads a user's boards through the `tasks` collection on any of that us
 Pass the first segment of a row's `topic`, URI-decoded, to `sessionIdOfFiling` to get the id of the session that filed the task. `clientData` holds the board's fields: `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. A task's input, output and metadata are never sent.
 
 ```ts
-import { createResourceClient, readEveryCollectionPage } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 
-const resources = createResourceClient();
+const fsd = createClient({ userId, baseUrl: "" });
 
 async function tasksBySession(anySessionId: string) {
-  const rows = await readEveryCollectionPage(resources, anySessionId, "tasks", { limit: 200 });
+  const rows = await readEveryCollectionPage(fsd.resources, anySessionId, "tasks", { limit: 200 });
   const bySession = new Map<string, unknown[]>();
   for (const row of rows) {
     const filedFrom = sessionIdOfFiling(decodeURIComponent(row.topic.split("/")[0]!));
@@ -257,15 +257,15 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 Work that comes round on a schedule, like refreshing the adoption numbers every Monday, is a schedule in the user's schedule collection. Each time it is due, it files an ordinary task on the board of the worker it names, in the user's own conversation with that worker, as the user. The task runs, retries, reports and cancels like any task filed there, and the worker hears it end. No model turn decides what to file: the schedule says what lands.
 
-Save one through the roster flow's `saveSchedule` action, on the user's roster session (`workforce-roster`), with an action client for that flow:
+Save one through the roster flow's `saveSchedule` action, on the user's roster session (`workforce-roster`), through the client's handle on that flow:
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const actions = createClient({ flowKind: "workforce-roster", userId, baseUrl });
+const fsd = createClient({ userId, baseUrl });
 // rosterSessionId: a session of workforce-roster that the user owns, the one
 // your app already reads their roster through.
-await actions.sendAction(
+await fsd.flow("workforce-roster").send(
   "saveSchedule",
   {
     key: "adoption-numbers",

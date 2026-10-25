@@ -85,26 +85,28 @@ async function drive(origin: string, store: string) {
     return fetch(input, { ...init, headers });
   };
   const transport = { baseUrl: origin, fetcher };
-  const sessionsApi = shipped.client.createSessionClient(transport);
-  const flow = (flowKind: string) => shipped.client.createClient({ flowKind, userId: ALICE.userId, ...transport });
+  // The app's one client, as Alice.
+  const fsd = shipped.client.createClient({ userId: ALICE.userId, ...transport });
+  const sessionsApi = fsd.sessions;
+  const flow = (flowKind: string) => fsd.flow(flowKind);
 
   const act = async (sessionId: string, action: string, input: unknown, timeoutMs = 120_000): Promise<Acted> => {
     const client = flow("coordinator");
     let requestId: string;
     try {
-      requestId = (await client.sendAction(action, input, { sessionId })).request.id;
+      requestId = (await client.send(action, input, { sessionId })).id;
     } catch (error) {
       return { status: "http", requestId: null, output: undefined, error: error instanceof Error ? error.message : String(error) };
     }
     let status = "timed-out";
     for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(100)) {
-      const now = (await client.getRequestStatus(requestId).catch(() => undefined))?.status as string | undefined;
+      const now = (await client.request(requestId).status().catch(() => undefined))?.status as string | undefined;
       if (now !== undefined && TERMINAL.has(now)) {
         status = now;
         break;
       }
     }
-    const listed = (await sessionsApi.listSessionRequests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
+    const listed = (await sessionsApi.requests(sessionId, { includeResultOutput: true, limit: 200 }).catch(() => [])) as any[];
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
   };
@@ -122,7 +124,7 @@ async function drive(origin: string, store: string) {
     }
   };
   const conversation = async () =>
-    (await sessionsApi.createSession({ flowKind: "coordinator", userId: ALICE.userId, state: { workerId: "desk.lead" } })).id as string;
+    (await fsd.flow("coordinator").createSession({ state: { workerId: "desk.lead" } })).id as string;
 
   // Held out: who each task is for, and its words. Both forms of a recorded
   // row run every time: one recorded for a delegate, and one recorded for

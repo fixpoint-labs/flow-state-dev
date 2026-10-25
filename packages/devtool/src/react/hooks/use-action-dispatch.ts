@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ExecuteActionResponse } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
-import { dispatchDevToolAction } from "../lib/client";
 
 export type UseActionDispatchResult = {
   /**
@@ -21,7 +20,7 @@ export type UseActionDispatchResult = {
 };
 
 export function useActionDispatch(): UseActionDispatchResult {
-  const { config, baseUrl } = useDevTool();
+  const { client } = useDevTool();
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<ExecuteActionResponse | null>(null);
@@ -36,11 +35,9 @@ export function useActionDispatch(): UseActionDispatchResult {
       setIsSending(true);
       setError(null);
       try {
-        const result = await dispatchDevToolAction(flowId, sessionId, action, input, {
-          userId: config.userId,
-          baseUrl,
-          bearerToken: config.bearerToken,
-        });
+        // Dispatched against the exact instance, as the DevTool's user.
+        const sent = await client.flow(flowId).send(action, input, { sessionId });
+        const result = sent.response;
         setLastResponse(result);
         return result;
       } catch (err) {
@@ -51,7 +48,7 @@ export function useActionDispatch(): UseActionDispatchResult {
         setIsSending(false);
       }
     },
-    [config, baseUrl],
+    [client],
   );
 
   return { sendAction, isSending, error, lastResponse };

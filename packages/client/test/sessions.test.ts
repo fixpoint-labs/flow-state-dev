@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createSessionClient,
+  createClient,
   type ClientFetch,
   type SessionDetail,
   type SessionRequestSummary,
@@ -46,7 +46,7 @@ const SNAPSHOT: SessionStateSnapshotResponse = {
   clientData: {}
 };
 
-describe("createSessionClient", () => {
+describe("client.sessions", () => {
   it("lists sessions using canonical query params", async () => {
     const sessions: SessionSummary[] = [
       {
@@ -62,8 +62,8 @@ describe("createSessionClient", () => {
       createJsonResponse({ sessions })
     );
 
-    const client = createSessionClient({ fetcher });
-    const result = await client.listSessions({
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
+    const result = await client.sessions.list({
       flowKind: "demo",
       userId: "devuser",
       limit: 20,
@@ -76,10 +76,25 @@ describe("createSessionClient", () => {
     );
   });
 
+  it("lists the client's own user's sessions unless it names another user", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
+    const client = createClient({ userId: "u 1", baseUrl: "", fetcher });
+
+    await client.sessions.list();
+    await client.sessions.list({ flowKind: "demo" });
+    await client.sessions.list({ userId: "u2" });
+
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/flows/sessions?userId=u+1",
+      "/api/flows/sessions?flowKind=demo&userId=u+1",
+      "/api/flows/sessions?userId=u2"
+    ]);
+  });
+
   it("sends a listing's state filter as one state.<field> parameter per field", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
-    const client = createSessionClient({ fetcher });
-    await client.listSessions({ flowKind: "agent", userId: "devuser", state: { workerId: "researcher" } });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
+    await client.sessions.list({ flowKind: "agent", userId: "devuser", state: { workerId: "researcher" } });
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions?flowKind=agent&userId=devuser&state.workerId=researcher"
     );
@@ -100,15 +115,12 @@ describe("createSessionClient", () => {
         return createJsonResponse(undefined, 204);
       });
 
-    const client = createSessionClient({ fetcher });
-    const created = await client.createSession({
-      flowKind: "demo",
-      userId: "devuser"
-    });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
+    const created = await client.flow("demo").createSession();
 
     expect(created.id).toBe("sess_1");
 
-    await client.deleteSession("sess_1");
+    await client.sessions.delete("sess_1");
 
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/flows/demo/sessions");
     expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/sessions/sess_1");
@@ -125,18 +137,18 @@ describe("createSessionClient", () => {
       )
       .mockImplementationOnce(async () => createJsonResponse(SNAPSHOT));
 
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const session = await client.getSession("sess_1");
+    const session = await client.sessions.get("sess_1");
     expect(session.orgId).toBe("proj_1");
 
-    const requests = await client.listSessionRequests("sess_1", {
+    const requests = await client.sessions.requests("sess_1", {
       status: "completed",
       limit: 10
     });
     expect(requests).toHaveLength(1);
 
-    const snapshot = await client.getSessionState("sess_1");
+    const snapshot = await client.sessions.state("sess_1");
     expect(snapshot.flowKind).toBe("demo");
 
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/flows/sessions/sess_1");
@@ -150,9 +162,9 @@ describe("createSessionClient", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ requests: REQUESTS })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    await client.listSessionRequests("sess_1", { includeItems: true });
+    await client.sessions.requests("sess_1", { includeItems: true });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions/sess_1/requests?include_items=true"
@@ -167,9 +179,9 @@ describe("createSessionClient", () => {
         requests: [{ ...REQUESTS[0], result: { output: { ok: false, error: "no" }, hasOutput: true } }]
       })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const [listed] = await client.listSessionRequests("sess_1", { includeItems: true, includeResultOutput: true });
+    const [listed] = await client.sessions.requests("sess_1", { includeItems: true, includeResultOutput: true });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions/sess_1/requests?include_items=true&include_result_output=true"
@@ -196,9 +208,9 @@ describe("createSessionClient", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ suspensions })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const result = await client.debug.listSuspensions("sess_1", {
+    const result = await client.sessions.debug.listSuspensions("sess_1", {
       status: "pending"
     });
 
@@ -211,9 +223,9 @@ describe("createSessionClient", () => {
 
   it("supports snapshot query options for items and clientData filters", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(SNAPSHOT));
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    await client.getSessionState("sess_1", {
+    await client.sessions.state("sess_1", {
       includeItems: true,
       clientData: ["session.artifactsList", "user.topics"],
       itemTypes: ["message"],
@@ -227,7 +239,7 @@ describe("createSessionClient", () => {
   });
 });
 
-describe("createSessionClient.listChildSessions", () => {
+describe("client.sessions.children", () => {
   const CHILD: ChildSessionSummary = {
     id: "dsx_9f3a",
     parentSessionId: "sess_1",
@@ -242,9 +254,9 @@ describe("createSessionClient.listChildSessions", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ children: [CHILD] })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const result = await client.listChildSessions("sess_1");
+    const result = await client.sessions.children("sess_1");
 
     expect(result).toEqual([CHILD]);
     expect(fetcher.mock.calls[0]?.[0]).toBe(
@@ -256,9 +268,9 @@ describe("createSessionClient.listChildSessions", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ children: [] })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    await client.listChildSessions("sess_1", { limit: 50, offset: 25 });
+    await client.sessions.children("sess_1", { limit: 50, offset: 25 });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions/sess_1/children?limit=50&offset=25"
@@ -278,9 +290,9 @@ describe("createSessionClient.listChildSessions", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ children: [bare] })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const [row] = await client.listChildSessions("sess_1");
+    const [row] = await client.sessions.children("sess_1");
 
     expect(row).toEqual(bare);
     expect(row?.topic).toBeUndefined();
@@ -301,9 +313,9 @@ describe("createSessionClient.listChildSessions", () => {
         ]
       })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    const result = await client.listChildSessions("sess_1");
+    const result = await client.sessions.children("sess_1");
 
     expect(result.map((row) => row.id)).toEqual(["dsx_9f3a"]);
   });
@@ -317,9 +329,9 @@ describe("createSessionClient.listChildSessions", () => {
         ]
       })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    await client.listChildSessions("sess_warn_parent");
+    await client.sessions.children("sess_warn_parent");
 
     expect(spy).toHaveBeenCalledTimes(1);
     const [message] = spy.mock.calls[0] ?? [];
@@ -344,9 +356,9 @@ describe("createSessionClient.listChildSessions", () => {
           ]
         })
       );
-      const client = createSessionClient({ fetcher });
+      const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-      const result = await client.listChildSessions("sess_silent_parent");
+      const result = await client.sessions.children("sess_silent_parent");
 
       expect(result).toEqual([]);
       expect(spy).not.toHaveBeenCalled();
@@ -360,11 +372,13 @@ describe("createSessionClient.listChildSessions", () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ children: [] })
     );
-    const client = createSessionClient({ fetcher });
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
 
-    await expect(client.listChildSessions("  ")).rejects.toThrow(
-      /non-empty parentSessionId/
-    );
+    await expect(client.sessions.children("  ")).rejects.toMatchObject({
+      name: "ClientHttpError",
+      status: 0,
+      message: "parentSessionId is required"
+    });
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

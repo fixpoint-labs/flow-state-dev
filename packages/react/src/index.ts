@@ -159,6 +159,7 @@ export {
   type BoardStatus,
   type PanelRowSource,
   type PanelItemSource,
+  type PanelLiveSource,
   type RosterProps,
   type RosterWorker,
   type RosterWorkerRow,

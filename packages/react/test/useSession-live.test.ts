@@ -16,36 +16,37 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
-import type { CreateSessionSSEClientOptions, CreateSSEClientOptions } from "@flow-state-dev/client";
+import type { RequestStreamOptions, SessionStreamOptions } from "@flow-state-dev/client";
 
-const { sessionClientMock, clientMock, recoveryClientMock, streams, requestStreams, realStream } = vi.hoisted(
+type CreateRequestStream = RequestStreamOptions & { url: string };
+type CreateSessionStream = SessionStreamOptions & { sessionId: string };
+
+const { sessionsMock, flowMock, requestMock, streams, requestStreams, realStream } = vi.hoisted(
   () => ({
-    sessionClientMock: {
-      getSession: vi.fn(),
-      getSessionState: vi.fn(),
-      listSessionRequests: vi.fn(),
-      listChildSessions: vi.fn()
+    sessionsMock: {
+      get: vi.fn(),
+      state: vi.fn(),
+      requests: vi.fn(),
+      children: vi.fn()
     },
-    clientMock: {
-      sendActionStream: vi.fn(),
-      abortRequest: vi.fn()
+    flowMock: {
+      send: vi.fn(),
+      abort: vi.fn()
     },
-    recoveryClientMock: {
-      continueStream: vi.fn(),
+    requestMock: {
       continue: vi.fn(),
       retry: vi.fn(),
-      resumeSuspension: vi.fn(),
-      resumeSuspensionStream: vi.fn(),
-      checkInterrupted: vi.fn()
+      resume: vi.fn()
     },
-    streams: [] as Array<{ options: CreateSessionSSEClientOptions; closed: boolean }>,
-    requestStreams: [] as CreateSSEClientOptions[],
+    streams: [] as Array<{ options: CreateSessionStream; closed: boolean }>,
+    requestStreams: [] as CreateRequestStream[],
     realStream: { on: false }
   })
 );
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/client")>();
+  const { fakeClient } = await import("./support/fake-client");
   const noopSSE = () => ({
     close() {},
     get lastEventId() {
@@ -54,29 +55,37 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   });
   return {
     ...actual,
-    createSSEClient: (options: CreateSSEClientOptions) => {
+    createSSEClientFromResponse: (options: CreateRequestStream) => {
       requestStreams.push(options);
       return noopSSE();
     },
-    createSSEClientFromResponse: (options: CreateSSEClientOptions) => {
-      requestStreams.push(options);
-      return noopSSE();
-    },
-    createRecoveryClient: () => recoveryClientMock,
-    createSessionClient: () => ({ ...sessionClientMock }),
-    createClient: () => clientMock,
-    createSessionSSEClient: (options: CreateSessionSSEClientOptions) => {
-      if (realStream.on) return actual.createSessionSSEClient(options);
-      const entry = { options, closed: false };
-      streams.push(entry);
-      return {
-        close: () => {
-          entry.closed = true;
+    createClient: () =>
+      // A FRESH client per call, like the real factory: the hook memoizes its
+      // client on its transport, so a singleton here would hide a backend change.
+      fakeClient({
+        sessions: { ...sessionsMock },
+        flow: flowMock,
+        request: requestMock,
+        requestStream: (options: CreateRequestStream) => {
+          requestStreams.push(options);
+          return noopSSE();
         },
-        lastAt: undefined,
-        stopped: false
-      };
-    }
+        sessionStream: (options: CreateSessionStream) => {
+          // The real client, against whatever `fetch` the case stubbed.
+          if (realStream.on) {
+            return actual.createClient({ userId: "devuser", baseUrl: "" }).sessions.stream(options.sessionId, options);
+          }
+          const entry = { options, closed: false };
+          streams.push(entry);
+          return {
+            close: () => {
+              entry.closed = true;
+            },
+            lastAt: undefined,
+            stopped: false
+          };
+        }
+      })
   };
 });
 
@@ -157,16 +166,16 @@ describe("useSession live", () => {
     streams.length = 0;
     requestStreams.length = 0;
     realStream.on = false;
-    sessionClientMock.getSession.mockResolvedValue({
+    sessionsMock.get.mockResolvedValue({
       id: "sess1",
       flowKind: "demo",
       userId: "devuser",
       createdAt: 0,
       updatedAt: 0
     });
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot());
-    sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    sessionClientMock.listChildSessions.mockResolvedValue([]);
+    sessionsMock.state.mockResolvedValue(snapshot());
+    sessionsMock.requests.mockResolvedValue([]);
+    sessionsMock.children.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -183,14 +192,14 @@ describe("useSession live", () => {
 
     expect(streams).toHaveLength(0);
     // Today's mount, read for read.
-    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(1);
-    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.state).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.children).toHaveBeenCalledTimes(1);
+    expect(sessionsMock.requests).toHaveBeenCalledTimes(1);
   });
 
   it("opens the stream only once the snapshot has been applied (BR-12)", async () => {
     let release: (value: unknown) => void = () => {};
-    sessionClientMock.getSessionState.mockImplementationOnce(
+    sessionsMock.state.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve))
     );
     renderHook(() => useSession("sess1", { flowKind: "demo", live: true, items: { itemTypes: ["message"] } }));
@@ -210,7 +219,7 @@ describe("useSession live", () => {
   // longer than that to arrive. Starting from the snapshot's own read time
   // loses nothing kept after it.
   it("starts the stream where the snapshot's read began, by the server's clock", async () => {
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([], 1_700_000_000_000));
+    sessionsMock.state.mockResolvedValue(snapshot([], 1_700_000_000_000));
     await mountLive();
     expect(streams[0]?.options.since).toBe(1_700_000_000_000);
   });
@@ -230,16 +239,16 @@ describe("useSession live", () => {
     });
 
     it("is the one the stream follows", async () => {
-      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      sessionsMock.state.mockResolvedValue(of(7, 10));
       await mountLive();
       expect(streams[0]?.options).toMatchObject({ since: 10, sessionCreatedAt: 7 });
     });
 
     it("moves the stream to another session under the id once a snapshot of it lands", async () => {
-      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      sessionsMock.state.mockResolvedValue(of(7, 10));
       const { result } = await mountLive();
 
-      sessionClientMock.getSessionState.mockResolvedValue(of(8, 30));
+      sessionsMock.state.mockResolvedValue(of(8, 30));
       await act(async () => {
         await result.current.refresh();
       });
@@ -250,10 +259,10 @@ describe("useSession live", () => {
     });
 
     it("keeps the stream open when a snapshot of the same session lands", async () => {
-      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      sessionsMock.state.mockResolvedValue(of(7, 10));
       const { result } = await mountLive();
 
-      sessionClientMock.getSessionState.mockResolvedValue(of(7, 30));
+      sessionsMock.state.mockResolvedValue(of(7, 30));
       await act(async () => {
         await result.current.refresh();
       });
@@ -273,7 +282,7 @@ describe("useSession live", () => {
       const first = lines("first", 150);
       const second = lines("second", 150);
       let pages = 0;
-      sessionClientMock.getSessionState.mockImplementation(
+      sessionsMock.state.mockImplementation(
         async (_id: string, options: { offset?: number; limit?: number } = {}) => {
           pages += 1;
           const history = pages === 1 ? first : second;
@@ -300,7 +309,7 @@ describe("useSession live", () => {
   });
 
   it("shows a line another request kept, once, however often it arrives (BR-1, BR-13)", async () => {
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_mine", "m0", "hello", 1)]));
+    sessionsMock.state.mockResolvedValue(snapshot([message("req_mine", "m0", "hello", 1)]));
     const { result } = await mountLive();
 
     deliver(item("req_other", message("req_other", "m1", "from another writer", 2)));
@@ -311,7 +320,7 @@ describe("useSession live", () => {
   });
 
   it("drops the live copy of an item its own request already delivered (BR-3)", async () => {
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_mine", "m0", "as streamed", 1)]));
+    sessionsMock.state.mockResolvedValue(snapshot([message("req_mine", "m0", "as streamed", 1)]));
     const { result } = await mountLive();
 
     deliver(item("req_mine", message("req_mine", "m0", "stale copy", 1)));
@@ -324,13 +333,13 @@ describe("useSession live", () => {
   it("shows both of two requests' items that share an id, as a reload shows them (BR-22)", async () => {
     const fromA = message("req_a", "keyed", "from a", 1);
     const fromB = message("req_b", "keyed", "from b", 2);
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromA]));
+    sessionsMock.state.mockResolvedValue(snapshot([fromA]));
     const { result } = await mountLive();
 
     deliver(item("req_b", fromB));
     expect(texts(result.current.items)).toEqual(["from a", "from b"]);
 
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromA, fromB]));
+    sessionsMock.state.mockResolvedValue(snapshot([fromA, fromB]));
     const reload = renderHook(() => useSession("sess1", { flowKind: "demo" }));
     await waitFor(() => expect(reload.result.current.isLoading).toBe(false));
     expect(texts(reload.result.current.items)).toEqual(["from a", "from b"]);
@@ -356,7 +365,7 @@ describe("useSession live", () => {
     deliver(item("req_a", fromA));
     expect(texts(result.current.items)).toEqual(["from a", "from b"]);
 
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromB, fromA]));
+    sessionsMock.state.mockResolvedValue(snapshot([fromB, fromA]));
     const reload = renderHook(() => useSession("sess1", { flowKind: "demo" }));
     await waitFor(() => expect(reload.result.current.isLoading).toBe(false));
     expect(texts(reload.result.current.items)).toEqual(["from a", "from b"]);
@@ -374,19 +383,19 @@ describe("useSession live", () => {
 
   it("leaves the latest request and the streaming flag alone (BR-19)", async () => {
     const { result } = await mountLive();
-    const requestReads = sessionClientMock.listSessionRequests.mock.calls.length;
+    const requestReads = sessionsMock.requests.mock.calls.length;
 
     deliver(item("req_other", message("req_other", "m1", "from another writer", 2)));
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.latestRequest).toBeNull();
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(requestReads);
+    expect(sessionsMock.requests).toHaveBeenCalledTimes(requestReads);
   });
 
   it("keeps a live item a slower snapshot read lacks", async () => {
     const { result } = await mountLive();
 
     let release: (value: unknown) => void = () => {};
-    sessionClientMock.getSessionState.mockImplementationOnce(
+    sessionsMock.state.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve))
     );
     let refreshing: Promise<void> = Promise.resolve();
@@ -409,7 +418,7 @@ describe("useSession live", () => {
     const { result } = await mountLive();
 
     let release: (value: unknown) => void = () => {};
-    sessionClientMock.getSessionState.mockImplementationOnce(
+    sessionsMock.state.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve))
     );
     let refreshing: Promise<void> = Promise.resolve();
@@ -450,7 +459,7 @@ describe("useSession live", () => {
     /** Hold every snapshot read until the case releases it, in request order. */
     function holdReads() {
       const reads: Array<{ resolve: (value: unknown) => void; reject: (cause: unknown) => void }> = [];
-      sessionClientMock.getSessionState.mockImplementation(
+      sessionsMock.state.mockImplementation(
         () => new Promise((resolve, reject) => reads.push({ resolve, reject }))
       );
       return reads;
@@ -458,7 +467,7 @@ describe("useSession live", () => {
 
     it("never lets the older read undo the newer one", async () => {
       const { result } = await mountLive();
-      sessionClientMock.getSession
+      sessionsMock.get
         .mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0, title: "older" })
         .mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0, title: "newer" });
       const reads = holdReads();
@@ -546,7 +555,7 @@ describe("useSession live", () => {
 
     /** Serve the session's history by offset, as the route does; `onRead` runs after each page is cut. */
     function serve(current: () => OutputItem[], onRead: () => void = () => {}) {
-      sessionClientMock.getSessionState.mockImplementation(
+      sessionsMock.state.mockImplementation(
         async (_id: string, options: { offset?: number; limit?: number } = {}) => {
           const all = current();
           const offset = options.offset ?? 0;
@@ -608,7 +617,7 @@ describe("useSession live", () => {
       const { result } = await mount();
       expect(result.current.error).not.toBeNull();
       expect(result.current.items).toEqual([]);
-      expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(10);
+      expect(sessionsMock.state).toHaveBeenCalledTimes(10);
     });
 
     it("takes the give-up error away once a later read holds still", async () => {
@@ -637,7 +646,7 @@ describe("useSession live", () => {
   describe("an error a snapshot read left", () => {
     it("goes once a later read lands", async () => {
       const { result } = await mountLive();
-      sessionClientMock.getSessionState.mockRejectedValueOnce(new Error("connection reset"));
+      sessionsMock.state.mockRejectedValueOnce(new Error("connection reset"));
       await act(async () => {
         await result.current.refresh();
       });
@@ -652,7 +661,7 @@ describe("useSession live", () => {
     it("stays when a read requested before the failed one lands after it", async () => {
       const { result } = await mountLive();
       const reads: Array<{ resolve: (value: unknown) => void; reject: (cause: unknown) => void }> = [];
-      sessionClientMock.getSessionState.mockImplementation(
+      sessionsMock.state.mockImplementation(
         () => new Promise((resolve, reject) => reads.push({ resolve, reject }))
       );
 
@@ -676,13 +685,13 @@ describe("useSession live", () => {
 
     it("leaves an action's error alone, though a read failed before it", async () => {
       const { result } = await mountLive();
-      sessionClientMock.getSessionState.mockRejectedValueOnce(new Error("connection reset"));
+      sessionsMock.state.mockRejectedValueOnce(new Error("connection reset"));
       await act(async () => {
         await result.current.refresh();
       });
       expect(result.current.error?.message).toBe("connection reset");
 
-      clientMock.sendActionStream.mockRejectedValue(new Error("rate limited"));
+      flowMock.send.mockRejectedValue(new Error("rate limited"));
       await act(async () => {
         await result.current.sendAction("say", { text: "hi" }).catch(() => {});
       });
@@ -695,7 +704,7 @@ describe("useSession live", () => {
     });
 
     it("leaves the error the mount's lookup of running requests left", async () => {
-      sessionClientMock.getSession.mockResolvedValue({
+      sessionsMock.get.mockResolvedValue({
         id: "sess1",
         flowKind: "demo",
         userId: "devuser",
@@ -703,7 +712,7 @@ describe("useSession live", () => {
         updatedAt: 0,
         latestRequestId: "req_mine"
       });
-      sessionClientMock.listSessionRequests.mockImplementation(
+      sessionsMock.requests.mockImplementation(
         async (_id: string, options: { status?: string } = {}) => {
           if (options.status === "in_progress") throw new Error("lookup failed");
           return [];
@@ -728,13 +737,13 @@ describe("useSession live", () => {
 
     /** Send `text` as the user's message; the request's id, and the stream its response opened. */
     async function send(result: { current: ReturnType<typeof useSession> }, text: string) {
-      clientMock.sendActionStream.mockResolvedValue(
+      flowMock.send.mockResolvedValue(
         new Response("", { headers: { "content-type": "text/event-stream" } })
       );
       await act(async () => {
         await result.current.sendAction("say", { text }, { userMessage: text });
       });
-      const options = clientMock.sendActionStream.mock.calls.at(-1)?.[2] as { requestId: string };
+      const options = flowMock.send.mock.calls.at(-1)?.[2] as { requestId: string };
       return { requestId: options.requestId, own: requestStreams.at(-1)! };
     }
 
@@ -786,7 +795,7 @@ describe("useSession live", () => {
 
     /** Mount live, attached to the view's own running request `req_mine`. */
     async function mountAttached() {
-      sessionClientMock.getSession.mockResolvedValue({
+      sessionsMock.get.mockResolvedValue({
         id: "sess1",
         flowKind: "demo",
         userId: "devuser",
@@ -794,7 +803,7 @@ describe("useSession live", () => {
         updatedAt: 0,
         latestRequestId: "req_mine"
       });
-      sessionClientMock.listSessionRequests.mockResolvedValue([
+      sessionsMock.requests.mockResolvedValue([
         { id: "req_mine", sessionId: "sess1", status: "in_progress", createdAt: 1, updatedAt: 1 }
       ]);
       const view = await mountLive({ autoResume: true });
@@ -891,7 +900,7 @@ describe("useSession live", () => {
 
       const voiced = message("req_other", "m1", "Hello there", 2) as unknown as { content: unknown[] };
       voiced.content.push({ type: "output_audio", audio: "AAAA", mediaType: "audio/mpeg" });
-      sessionClientMock.getSessionState.mockResolvedValueOnce(snapshot([voiced as unknown as OutputItem]));
+      sessionsMock.state.mockResolvedValueOnce(snapshot([voiced as unknown as OutputItem]));
       await act(async () => {
         await result.current.refresh();
       });
@@ -903,7 +912,7 @@ describe("useSession live", () => {
       const { result } = await mountLive();
 
       let release: (value: unknown) => void = () => {};
-      sessionClientMock.getSessionState.mockImplementationOnce(
+      sessionsMock.state.mockImplementationOnce(
         () => new Promise((resolve) => (release = resolve))
       );
       let refreshing: Promise<void> = Promise.resolve();
@@ -924,7 +933,7 @@ describe("useSession live", () => {
       const { result, own } = await mountAttached();
 
       let release: (value: unknown) => void = () => {};
-      sessionClientMock.getSessionState.mockImplementationOnce(
+      sessionsMock.state.mockImplementationOnce(
         () => new Promise((resolve) => (release = resolve))
       );
       let refreshing: Promise<void> = Promise.resolve();
@@ -997,7 +1006,7 @@ describe("useSession live", () => {
         });
 
         // Read after the later copy arrived, but before it was kept.
-        sessionClientMock.getSessionState.mockResolvedValueOnce(snapshot([plan(1, 4, 1)]));
+        sessionsMock.state.mockResolvedValueOnce(snapshot([plan(1, 4, 1)]));
         await act(async () => {
           await result.current.refresh();
         });
@@ -1017,16 +1026,16 @@ describe("useSession live", () => {
   });
 
   it("re-reads the runs on a nudge and keeps a run the page lacks (BR-7, BR-23)", async () => {
-    sessionClientMock.listChildSessions.mockResolvedValue([
+    sessionsMock.children.mockResolvedValue([
       { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "child.run_new", status: "active" }
     ]);
     const { result } = await mountLive();
     await waitFor(() => expect(result.current.childSessions).toHaveLength(1));
-    const reads = sessionClientMock.listChildSessions.mock.calls.length;
+    const reads = sessionsMock.children.mock.calls.length;
 
     deliver(runs(["run_new", "run_old"]));
     await waitFor(() =>
-      expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(reads + 1)
+      expect(sessionsMock.children).toHaveBeenCalledTimes(reads + 1)
     );
     await waitFor(() =>
       expect(result.current.childSessions.map((row) => [row.id, row.status, row.flowId])).toEqual([
@@ -1036,7 +1045,7 @@ describe("useSession live", () => {
     );
 
     // Both finish: the page re-read shows them finished and nothing is kept.
-    sessionClientMock.listChildSessions.mockResolvedValue([
+    sessionsMock.children.mockResolvedValue([
       { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 6, status: "completed" }
     ]);
     deliver(runs([]));
@@ -1061,7 +1070,7 @@ describe("useSession live", () => {
     }
 
     async function mountFollowing() {
-      sessionClientMock.listChildSessions.mockResolvedValue(page());
+      sessionsMock.children.mockResolvedValue(page());
       const view = await mountLive();
       deliver(runs(["run_new", "run_old"]));
       await waitFor(() => expect(view.result.current.childSessions).toHaveLength(2));
@@ -1103,7 +1112,7 @@ describe("useSession live", () => {
     });
 
     it("leaves the view as it would be without live when refused before it named anything (BR-16)", async () => {
-      sessionClientMock.listChildSessions.mockResolvedValue(page());
+      sessionsMock.children.mockResolvedValue(page());
       const { result } = await mountLive();
       await waitFor(() => expect(result.current.childSessions).toHaveLength(1));
 
@@ -1116,7 +1125,7 @@ describe("useSession live", () => {
       act(() => openStream().onStop?.({ status: 404 }));
       expect(view.result.current.childSessionsStale).toBe(true);
 
-      sessionClientMock.getSessionState.mockResolvedValue({ ...snapshot(), sessionId: "sess2" });
+      sessionsMock.state.mockResolvedValue({ ...snapshot(), sessionId: "sess2" });
       view.rerender({ id: "sess2" });
       await waitFor(() => expect(streams.filter((s) => !s.closed)).toHaveLength(1));
       await waitFor(() => expect(streams.at(-1)!.options.sessionId).toBe("sess2"));
@@ -1128,7 +1137,7 @@ describe("useSession live", () => {
     const view = await mountLive();
     const first = streams[0];
 
-    sessionClientMock.getSessionState.mockResolvedValue({ ...snapshot(), sessionId: "sess2" });
+    sessionsMock.state.mockResolvedValue({ ...snapshot(), sessionId: "sess2" });
     view.rerender({ id: "sess2" });
     await waitFor(() => expect(streams).toHaveLength(2));
     expect(first.closed).toBe(true);

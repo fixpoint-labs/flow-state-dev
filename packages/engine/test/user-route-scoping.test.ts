@@ -152,6 +152,39 @@ const USER_ROUTE_SCOPING: Record<string, TableEntry> = {
       return reported || record?.status === "interrupted";
     }
   },
+  list_interrupted_requests: {
+    // A request record already marked interrupted: the read lists records,
+    // it sweeps nothing, so a reached row is one the body names.
+    seed: async (stores, rowId, owner) => {
+      const at = Date.now() - 60_000;
+      await stores.request.set(
+        rowId,
+        {
+          id: rowId,
+          flowKind: owner.flowId,
+          flowId: owner.flowId,
+          actionName: "run",
+          sessionId: `${rowId}-session`,
+          userId: owner.userId,
+          orgId: owner.orgId,
+          tenantId: owner.tenantId,
+          source: "http",
+          status: "interrupted",
+          interruptedAt: at,
+          startedAtMs: at,
+          state: {},
+          version: 0,
+          createdAt: at,
+          updatedAt: at
+        },
+        "any"
+      );
+    },
+    saw: async ({ body }, rowId) =>
+      (parseJson(body) as { interrupted?: { requestId: string }[] } | undefined)?.interrupted?.some(
+        (entry) => entry.requestId === rowId
+      ) ?? false
+  },
   user_stream: { notBuiltYet: 501 }
 };
 

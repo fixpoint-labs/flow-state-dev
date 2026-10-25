@@ -2,9 +2,9 @@
 /**
  * Behavioral tests for the react `useRequestStream` hook after its port onto the
  * shared `@flow-state-dev/client` store + `bindStoreToCallbacks`. The transport
- * (`createSSEClient` / `createSSEClientFromResponse`) is mocked to capture the
- * callbacks so the test drives events directly (replicating the client's event
- * dispatcher). The first test is the regression guard for the "no streaming
+ * (a request's `stream()` on the client / `createSSEClientFromResponse`) is
+ * mocked to capture the callbacks so the test drives events directly
+ * (replicating the client's event dispatcher). The first test is the regression guard for the "no streaming
  * text" bug: with the old hand-rolled reducer it failed (deltas were dropped).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -23,7 +23,12 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
     connections.push(rec);
     return { close() { rec.closed = true; }, get lastEventId() { return undefined; } };
   };
-  return { ...actual, createSSEClient: make, createSSEClientFromResponse: make };
+  const { fakeClient } = await import("./support/fake-client");
+  return {
+    ...actual,
+    createClient: () => fakeClient({ requestStream: make as never }),
+    createSSEClientFromResponse: make
+  };
 });
 
 import { useRequestStream } from "../src/hooks/useRequestStream";
@@ -255,6 +260,21 @@ describe("useRequestStream (react)", () => {
     expect(connections.length).toBe(2);
     expect(connections[0]!.closed).toBe(true);
     expect(result.current.items.length).toBe(0);
+  });
+
+  it("keeps its stream open across a re-render with the same inputs", () => {
+    // The hook's client is memoized on its transport: a client rebuilt each
+    // render would close and re-open the stream every render.
+    const { rerender } = renderHook(
+      ({ label }: { label: string }) =>
+        useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", filter: undefined, enabled: label.length > 0 }),
+      { initialProps: { label: "a" } },
+    );
+    act(() => { rerender({ label: "b" }); });
+    act(() => { rerender({ label: "c" }); });
+
+    expect(connections.length).toBe(1);
+    expect(connections[0]!.closed).toBe(false);
   });
 
   it("opens no connection when initially disabled", () => {

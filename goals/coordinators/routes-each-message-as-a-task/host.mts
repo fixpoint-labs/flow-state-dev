@@ -337,7 +337,9 @@ const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Re
   return router[(init?.method ?? "GET").toUpperCase()](new Request(url, { ...init, headers }), { params: { path } });
 };
 const transport = { fetcher: fetcher as typeof fetch };
-const people = createWorkforceClient({ userId: ALICE, ...transport });
+// The app's one client, as Alice.
+const fsd = createClient({ userId: ALICE, ...transport });
+const people = createWorkforceClient(fsd);
 
 const RUNNING = ["pending", "queued", "in_progress", "running"];
 
@@ -428,12 +430,12 @@ async function labSession() {
 
 /** Send actions to one session as Alice, and read their answers back as an app does. */
 function sessionOf(session: { id: string; flowKind: string }) {
-  const client = createClient({ flowKind: session.flowKind, userId: ALICE, ...transport });
+  const client = fsd.flow(session.flowKind);
   /** Send an action and return as soon as it is accepted. */
   const send = async (action: string, input: unknown): Promise<{ requestId: string; error?: string }> => {
     try {
-      const sent = await client.sendAction(action, input as never, { sessionId: session.id });
-      return { requestId: sent.request.id };
+      const sent = await client.send(action, input as never, { sessionId: session.id });
+      return { requestId: sent.id };
     } catch (error) {
       return { requestId: "", error: error instanceof Error ? error.message : String(error) };
     }
@@ -444,7 +446,7 @@ function sessionOf(session: { id: string; flowKind: string }) {
     if (sent.error !== undefined) return { ...sent, status: "refused" };
     let status = "in_progress";
     for (const end = Date.now() + 30_000; Date.now() < end && RUNNING.includes(status); await sleep(25)) {
-      status = ((await client.getRequestStatus(sent.requestId)) as { status: string }).status;
+      status = ((await client.request(sent.requestId).status()) as { status: string }).status;
     }
     const res = await fetcher(`http://goal.local/api/flows/sessions/${encodeURIComponent(session.id)}/requests?include_result_output=true&limit=500`);
     const listed = ((await res.json()) as { requests?: Array<{ id: string; result?: { output?: unknown; error?: unknown } }> }).requests ?? [];

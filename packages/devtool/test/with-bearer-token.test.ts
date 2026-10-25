@@ -1,21 +1,21 @@
 /**
- * The DevTool bearer fetcher adds `Authorization: Bearer` to every request so a
+ * The DevTool's bearer `fetch` adds `Authorization: Bearer` to every request so a
  * bearer-gated flow accepts DevTool traffic (FIX-894).
  */
 import { describe, it, expect, vi } from "vitest";
-import { bearerFetcher } from "../src/react/lib/client";
+import { withBearerToken } from "../src/react/lib/client";
 
-describe("bearerFetcher", () => {
+describe("withBearerToken", () => {
   it("returns undefined when no token is set (client uses its default)", () => {
-    expect(bearerFetcher(undefined)).toBeUndefined();
-    expect(bearerFetcher("")).toBeUndefined();
+    expect(withBearerToken(undefined)).toBeUndefined();
+    expect(withBearerToken("")).toBeUndefined();
   });
 
   it("adds an Authorization: Bearer header, preserving existing headers", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("ok"));
-    const fetcher = bearerFetcher("s3cret")!;
+    const fetcher = withBearerToken("s3cret")!;
 
     await fetcher("/api/flows", { method: "POST", headers: { accept: "application/json" } });
 

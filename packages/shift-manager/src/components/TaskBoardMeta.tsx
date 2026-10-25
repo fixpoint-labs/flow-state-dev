@@ -67,7 +67,7 @@ function isConversationTaskChange(item: OutputItem): boolean {
  * A read that shows a task moved reloads the Lab, so what the snapshot counts agrees with the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
-  const { clients, snapshot, refresh } = useLab();
+  const { client, snapshot, refresh } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
   const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
   const [polls, setPolls] = useState(0);
@@ -83,7 +83,7 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
   useEffect(() => {
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readConversationTasks(clients, flow, sessionId)
+    readConversationTasks(client, flow, sessionId)
       .then((tasks) => {
         if (closed) return;
         setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
@@ -100,7 +100,7 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, refresh, flow, sessionId, readAt, polls]);
+  }, [client, refresh, flow, sessionId, readAt, polls]);
 
   const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;

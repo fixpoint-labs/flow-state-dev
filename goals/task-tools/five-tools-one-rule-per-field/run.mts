@@ -62,7 +62,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -295,8 +295,8 @@ await runGoal(async (failures) => {
   try {
     const runtime = await state.getRuntime();
     const router = (await state.getRouter()) as never;
-    const alice = httpActions(router, ALICE);
-    const bob = httpActions(router, BOB);
+    const alice = actingAs(router, ALICE);
+    const bob = actingAs(router, BOB);
     const idle = () => untilIdle(runtime.stores as never);
     const until = async (check: () => Promise<boolean>, ms: number) => {
       for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(50)) if (await check()) return true;

@@ -239,7 +239,7 @@ function useDispatchRunActivity(runId: string): {
   error: string | null;
   load: (force?: boolean) => Promise<void>;
 } {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [groups, setGroups] = useState<RequestGroup[] | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,7 +251,7 @@ function useDispatchRunActivity(runId: string): {
       setIsLoading(true);
       setError(null);
       try {
-        const requests = await sessionClient.listSessionRequests(runId, {
+        const requests = await client.sessions.requests(runId, {
           includeItems: true,
         });
         setGroups(
@@ -274,7 +274,7 @@ function useDispatchRunActivity(runId: string): {
         setIsLoading(false);
       }
     },
-    [groups, isLoading, runId, sessionClient]
+    [groups, isLoading, runId, client]
   );
 
   return { groups, isLoading, error, load };

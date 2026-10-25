@@ -27,7 +27,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type LabErrorReporter } fro
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
-import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { createLabReader, type Ask } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { parseRoute } from "../../../packages/shift-manager/src/lib/routes.ts";
 import { plantedAgentModel, plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
@@ -284,8 +284,8 @@ async function open(options: {
   const handle = await serve(lab.state, { host: "127.0.0.1", port: 0, basePath: "/api/flows", handleSignals: false });
   const baseUrl = `http://127.0.0.1:${handle.port}`;
   const devtool = lab.state.meta.devtool!;
-  const clients = createLabClients({ baseUrl, userId: devtool.userId ?? LAB_USER_ID, bearerToken: devtool.bearerToken! });
-  const reader = createLabReader(clients);
+  const client = connect({ baseUrl, userId: devtool.userId ?? LAB_USER_ID, bearerToken: devtool.bearerToken! });
+  const reader = createLabReader(client);
   const runtime = await lab.state.getRuntime();
   const intake = runtime.registry.get(ERROR_REPORTER_INTAKE_FLOW) as FlowInstance;
   const coordinator = runtime.registry.get("coordinator") as FlowInstance;

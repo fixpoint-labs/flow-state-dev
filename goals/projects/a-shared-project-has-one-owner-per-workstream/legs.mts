@@ -18,6 +18,7 @@
  * `openWorkstream` names it as the lead over HTTP, as any app may.
  */
 import { randomBytes } from "node:crypto";
+import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
@@ -91,7 +92,7 @@ function connect(origin: string, person: Person): Connected {
   return {
     person,
     routes: labRoutes(origin, { userId: person.userId, bearer: person.bearer }),
-    workforce: createWorkforceClient({ userId: person.userId, baseUrl: origin, fetcher }),
+    workforce: createWorkforceClient(createClient({ userId: person.userId, baseUrl: origin, fetcher })),
   };
 }
 

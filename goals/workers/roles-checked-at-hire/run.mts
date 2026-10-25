@@ -43,7 +43,7 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  httpActions,
+  actingAs,
   modulePatchEnv,
   runGoal,
   silentLogger,
@@ -254,7 +254,7 @@ await runGoal(async (failures, tell) => {
     } as never);
     try {
       const runtime = await state.getRuntime();
-      const { act, open } = httpActions(await state.getRouter(), USER_ID);
+      const { act, open } = actingAs(await state.getRouter(), USER_ID);
       const conversation = await open("desk", { workerId: LEAD });
       const goal = `count the chairs ${RUN_STAMP}`;
       const filed = await act("desk", conversation, "createTask_tasks", { goal, assignee: HAND });

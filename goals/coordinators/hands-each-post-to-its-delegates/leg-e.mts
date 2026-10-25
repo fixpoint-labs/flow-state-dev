@@ -180,7 +180,9 @@ const fetcher =
   };
 
 const transport = { fetcher: fetcher(ALICE) as typeof fetch };
-const people = createWorkforceClient({ userId: ALICE, ...transport });
+// The app's one client, as Alice.
+const fsd = createClient({ userId: ALICE, ...transport });
+const people = createWorkforceClient(fsd);
 
 /** GET a route as Alice. */
 async function get(path: string): Promise<any> {
@@ -205,15 +207,15 @@ async function quiet(): Promise<void> {
 /** One conversation with a coordinator, opened as an app opens one. */
 async function conversation(worker: string) {
   const session = await people.ensureWorkerSession({ worker });
-  const client = createClient({ flowKind: session.flowKind, userId: ALICE, ...transport });
+  const client = fsd.flow(session.flowKind);
   const act = async (action: string, input: unknown): Promise<{ requestId: string; status: string; error?: string }> => {
     try {
-      const sent = await client.sendAction(action, input as never, { sessionId: session.id });
+      const sent = await client.send(action, input as never, { sessionId: session.id });
       let status = "in_progress";
       for (const until = Date.now() + 30_000; Date.now() < until && ["pending", "queued", "in_progress", "running"].includes(status); await sleep(25)) {
-        status = (await client.getRequestStatus(sent.request.id)).status as string;
+        status = (await client.request(sent.id).status()).status as string;
       }
-      return { requestId: sent.request.id, status };
+      return { requestId: sent.id, status };
     } catch (error) {
       return { requestId: "", status: "refused", error: error instanceof Error ? error.message : String(error) };
     }

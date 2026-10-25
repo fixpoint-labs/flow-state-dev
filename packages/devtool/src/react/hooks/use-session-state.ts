@@ -21,7 +21,7 @@ import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 
 export function useSessionState(sessionId: string | null) {
-  const { sessionClient } = useDevTool();
+  const { client } = useDevTool();
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [prevSnapshot, setPrevSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -42,8 +42,8 @@ export function useSessionState(sessionId: string | null) {
     setError(null);
     try {
       const [result, sessionDetail] = await Promise.all([
-        sessionClient.getSessionState(sessionId),
-        sessionClient.getSession(sessionId)
+        client.sessions.state(sessionId),
+        client.sessions.get(sessionId)
       ]);
       setSnapshot((current) => {
         // Don't track diff on initial load — only on refreshes.
@@ -60,7 +60,7 @@ export function useSessionState(sessionId: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionClient, sessionId]);
+  }, [client, sessionId]);
 
   useEffect(() => {
     isFirstFetch.current = true;

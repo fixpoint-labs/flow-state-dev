@@ -35,7 +35,7 @@ import {
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { httpActions, silentLogger, untilIdle } from "../../lib/index.mts";
+import { actingAs, silentLogger, untilIdle } from "../../lib/index.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -115,7 +115,7 @@ const results: unknown[] = [];
 try {
   const runtime = await state.getRuntime();
   const router = (await state.getRouter()) as any;
-  const alice = httpActions(router, USER);
+  const alice = actingAs(router, USER);
   const conversation = await deriveWorkerSessionId({ userId: USER, orgId: ORG, flow: "launch", criteria: { worker: FILER } });
   let rosterSession: string | undefined;
   const roster = async (action: string, input: unknown) => {
