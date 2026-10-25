@@ -5,8 +5,9 @@
  *
  * A call is a muted line with a chevron. A run is one line, labelled from
  * each call's stated intent, or the name-based phrase when none stated one.
- * Running ends in "…", waiting says "(waiting)", failure says so and turns
- * destructive. No status badge on the line.
+ * Running ends in "…", waiting says "(waiting)", failure says "(failed)" in
+ * words and stays muted: a failed call is routine, not an alarm on the run.
+ * No status badge on the line.
  *
  * Consecutive `tool_output` items are wrapped via ItemsRenderer's `toolGroupRenderer`.
  */
@@ -129,14 +130,9 @@ export const ToolOutput = ({
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {errorText ? "Error" : "Result"}
       </h4>
-      <div
-        className={cn(
-          "overflow-x-auto rounded-md text-xs [&_table]:w-full",
-          errorText
-            ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
-        )}
-      >
+      {/* A failed call is routine for an agent (a search with no match exits
+          non-zero), so its output reads like any other result. */}
+      <div className="overflow-x-auto rounded-md bg-muted/50 text-foreground text-xs [&_table]:w-full">
         {errorText && <div>{errorText}</div>}
         {Output}
       </div>
@@ -264,7 +260,7 @@ function ToolLine({ label, state, nested = false, mono = false, defaultOpen = fa
       className={cn("not-prose w-full", nested ? "group/tool-row" : "group/tool mb-2", className)}
     >
       <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-muted-foreground text-sm hover:text-foreground">
-        <span className={cn("truncate", state === "error" && "text-destructive", mono && "font-mono text-xs")}>
+        <span className={cn("truncate", mono && "font-mono text-xs")}>
           {label}
         </span>
         <ChevronRightIcon

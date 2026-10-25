@@ -55,6 +55,26 @@ describe("tool calls as quiet lines", () => {
     expect(screen.getByRole("button", { name: /List files · Run the unit tests \(1 failed\)/ })).toBeTruthy();
   });
 
+  // Agents fail a call and move on all the time (a search with no match exits
+  // non-zero). A failure is said in words; it isn't an alarm on the whole run.
+  it("says a call failed without turning the line or its output red", () => {
+    const failed = toolItem({
+      name: "Bash",
+      args: { command: "rg nothing", description: "Search" },
+      status: "failed",
+      output: "no matches",
+    });
+    const red = ".text-destructive, .bg-destructive\\/10";
+    const group = render(<ToolGroup items={[bash("List files"), failed]} />);
+    expect(screen.getByRole("button", { name: /\(1 failed\)/ })).toBeTruthy();
+    expect(group.container.querySelector(red)).toBeNull();
+    cleanup();
+    const single = render(<Tool item={failed} />);
+    fireEvent.click(screen.getByRole("button", { name: /Search \(failed\)/ }));
+    expect(screen.getByText("no matches")).toBeTruthy();
+    expect(single.container.querySelector(red)).toBeNull();
+  });
+
   it("keeps a call's details closed until its line is opened", () => {
     const item = toolItem({ name: "Bash", args: { command: "ls", description: "List files" }, output: "src\ntest" });
     render(<Tool item={item} />);
