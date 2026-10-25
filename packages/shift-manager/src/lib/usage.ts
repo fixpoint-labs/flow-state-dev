@@ -12,8 +12,8 @@ import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
 import { ActionRefused, runAction } from "./action";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
-import { describeFailure, PROJECT_READER_FLOW, readerSessionId, type Failure } from "./reads";
-import type { LabClients } from "./connection";
+import { describeFailure, readerSessionId, type Failure } from "./reads";
+import type { Client } from "@flow-state-dev/client";
 
 /** The query's name, on whichever of the Lab's flows answers it. */
 const HARNESS_USAGE_ACTION = "harnessUsage";
@@ -48,17 +48,16 @@ export type HarnessUsage = {
 };
 
 /** The Lab flow that answers the query, read once per connection. `null`: this Lab has none. */
-const usageFlows = new WeakMap<LabClients, Promise<string | null>>();
+const usageFlows = new WeakMap<Client, Promise<string | null>>();
 
-function usageFlowOf(clients: LabClients): Promise<string | null> {
-  let found = usageFlows.get(clients);
+function usageFlowOf(client: Client): Promise<string | null> {
+  let found = usageFlows.get(client);
   if (found === undefined) {
-    found = clients
-      .actions(PROJECT_READER_FLOW)
-      .listFlows()
+    found = client
+      .flows()
       .then((flows) => flows.find((flow) => flow.actions.includes(HARNESS_USAGE_ACTION))?.id ?? null);
-    found.catch(() => usageFlows.delete(clients));
-    usageFlows.set(clients, found);
+    found.catch(() => usageFlows.delete(client));
+    usageFlows.set(client, found);
   }
   return found;
 }
@@ -73,18 +72,18 @@ const USAGE_SESSION_PREFIX = "usage-own";
  * listing), it runs on this organization's own usage session instead, opened
  * on first use and found again by its prefix.
  */
-export async function runUsageQuery(clients: LabClients, flow: string): Promise<unknown> {
-  const reader = readerSessionId(clients.userId, flow);
+export async function runUsageQuery(client: Client, flow: string): Promise<unknown> {
+  const reader = readerSessionId(client.userId, flow);
   try {
-    return (await runAction(clients, flow, reader, HARNESS_USAGE_ACTION, { refresh: true })).output;
+    return (await runAction(client, flow, reader, HARNESS_USAGE_ACTION, { refresh: true })).output;
   } catch (error) {
     if (!(error instanceof ActionRefused)) throw error;
-    const listed = await clients.sessions.listSessions({ userId: clients.userId });
+    const listed = await client.sessions.list({ userId: client.userId });
     if (listed.some((session) => session.id === reader)) throw error;
     const own = listed.find(
       (session) => session.parentSessionId == null && session.flowKind === flow && session.id.startsWith(`${USAGE_SESSION_PREFIX}-`),
     )?.id;
-    return (await runAction(clients, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), HARNESS_USAGE_ACTION, { refresh: true })).output;
+    return (await runAction(client, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), HARNESS_USAGE_ACTION, { refresh: true })).output;
   }
 }
 
@@ -105,16 +104,16 @@ export function useHarnessUsage(readAt: number): {
   failure: Failure | undefined;
   reread: () => void;
 } {
-  const { clients } = useLab();
+  const { client } = useLab();
   const [rows, setRows] = useState<HarnessUsage[] | null | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
-    usageFlowOf(clients)
+    usageFlowOf(client)
       .then(async (flow) => {
         if (flow === null) return null;
-        return toHarnessUsage(await runUsageQuery(clients, flow));
+        return toHarnessUsage(await runUsageQuery(client, flow));
       })
       .then((read) => {
         if (closed) return;
@@ -127,7 +126,7 @@ export function useHarnessUsage(readAt: number): {
     return () => {
       closed = true;
     };
-  }, [clients, readAt, reads]);
+  }, [client, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { rows, failure, reread };
 }
