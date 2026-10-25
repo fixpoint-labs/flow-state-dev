@@ -69,7 +69,8 @@ approving adds a way to do a job". A bug-route change has no spec, so everything
      whether the solution coheres with the tenets it claims — the "directionally-right
      spec but the design feels off" failure the other lenses can't see. Its verdict is
      the most consequential: a coherence break usually means reshaping the approach, not
-     patching lines.
+     patching lines. Tell it glue between our own mechanisms is a finding against the model
+     ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
    - **Restraint** → run `second-look` on the target.
    - **Reuse** → run `reuse-review` on the target (spec, epic, or implementation
      change). Do not skip it on a spec because Restraint already ran.

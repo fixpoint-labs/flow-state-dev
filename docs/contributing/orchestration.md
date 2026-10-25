@@ -813,6 +813,15 @@ do not cover: a second cap, a second marker that means the same reservation, a s
 hold-release path, a hook that reimplements a `sequencer` / `doWhile` / handler
 composition we already wrap.
 
+**Siblings, glue and the next variant.** Inside an epic, sibling specs' Adds count as
+existing: two children that each add the same mechanism get one shared piece, never two
+"genuinely new". Code whose only job is keeping two of our own mechanisms from overlapping (a
+reconciler, a sweep rule, refusals written on both sides) marks a missing shared abstraction,
+not rigor. The **next-variant test** catches both early: name the variant most likely to come
+next (another kind of wait, another source, another provider) and count what adding it would
+copy (a field, a route, a cancel path, a deadline, a check). More than one copied piece means
+the abstraction is missing. This is how tenet 2's "one job, one noun" is checked.
+
 **What a spec or epic owes.** Every item it adds to a package names the existing block,
 primitive or mechanism it considered, and either how it is composed from it or why that
 piece does not fit. The Adds list is as short as possible. The debt line counts any
@@ -1012,21 +1021,10 @@ It remains explicitly experimental: outside production imports, workspace packag
 default builds, test/lint and fallow discovery. Keep authored evidence, not dependencies,
 generated output or secrets. The cost of being wrong is a recorded experiment, not an API.
 
-**Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
-and get confused constantly:
-
-| | **Spec POC** (this section) | **POC settlement** (next section) |
-|---|---|---|
-| Fires on | a *trigger* — an unverified premise, a novel composition, a look, a contested fork, an unclear end-state | a **loop** — the same factual claim asserted and counter-asserted twice |
-| Answers | *is this direction right?* | *who is right?* |
-| For | the reviewers and the human at the gate | the review thread that stopped converging |
-| Verdict shape | a summary + code someone can run | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` |
-| Lives | on the spec/epic branch, published | a throwaway worktree, deleted |
-| Timing | **before** the gate, usually during authoring | mid-review, after prose failed |
-
-A spec POC is *proactive* — it stops the loop from forming. A settlement is *reactive* — the
-loop already formed. Running a POC while authoring is strictly cheaper than settling a claim
-in round three, so a trigger noticed early is the best case available.
+**Not a POC settlement** (next section). A spec POC fires on a *trigger*, before the gate,
+and answers *is this direction right?*; a settlement fires on a *loop* and answers *who is
+right?*. Running one while authoring is cheaper than settling a claim in round three. The
+three throwaway-code skills are compared in `spec-poc` → "Which POC skill is this?".
 
 ### The two altitudes
 
@@ -1042,9 +1040,7 @@ in round three, so a trigger noticed early is the best case available.
   the epic-spec's `DECISIONS.md` → [*What the end-state POC showed*](epic-spec-template.md).
 
 Where a direction fork is genuinely contested, a POC can carry **2–3 radically different
-variants**, compared on one page, and the chosen one becomes a decision card. Equal
-effort on each is the rule that matters — a strawman variant manufactures consent for the
-option the author already preferred and puts a human's approval on it.
+variants** built with equal effort; the rules are `spec-poc` → "Variants".
 
 ```mermaid
 flowchart LR
@@ -1091,13 +1087,8 @@ to be independent of both.)
 
 ### Where the record lives
 
-- **The spec** — `DECISIONS.md → Settled` (what was built, what it showed, the premise it
-  settled), and a *How it got here* entry **only if it moved the design**. At epic altitude,
-  `DECISIONS.md → What the end-state POC showed` instead.
-- **The PR description** — the POC block: one runnable command per artifact, the question it
-  answers, and that it's throwaway.
-- **A POC that changed nothing still gets its line.** "The premise held" is a real result;
-  recording only the POCs that found problems teaches the next reader that a quiet POC failed.
+`DECISIONS.md → Settled` (or, for an epic, *What the end-state POC showed*) and the PR's POC
+block, as `spec-poc` → "Publishing it" defines. A POC that changed nothing still gets its line.
 
 ## Settling a disputed claim (POC settlement)
 
@@ -1279,12 +1270,8 @@ The settlement has to *replace* debate rounds, not add to them:
 | **REFUTED** | The premise is false; the approach has to change | The same reply, plus the fold (one round, outside the budget) and a *How it got here* line: *"POC settlement — <what changed>, because the run showed <what>."* |
 | **INCONCLUSIVE** | The claim couldn't be reduced to a check, or the run didn't discriminate | Say so plainly, say why, and hand the claim back as a decision the human makes. **Never** a fabricated verdict — false evidence is worse than an unsettled debate, because it ends the debate wrongly. |
 
-A POC opens a **draft PR only when it produced something worth a human's attention**: it
-uncovered a framework bug or genuinely surprising behavior (also file it via
-`issue-manager`), the check is worth keeping as a durable regression **goal** in `goals/`, or
-its code is the seed of the implementation and reviewers should see the shape. The default
-is no PR — a verdict and a link are the deliverable, and throwaway code that gets reviewed
-stopped being throwaway.
+The default is no PR: a verdict and a link are the deliverable. When a POC earns a draft PR
+is `settle-claim` → Step 5.
 
 ### Where the record lives
 
@@ -1335,40 +1322,11 @@ succeeds: no event will ever arrive to wake the session.
 are similarly cloud-only and won't resolve locally. Check for either before relying on
 `subscribe_pr_activity` — don't assume cloud by default.
 
-**Local Claude fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
-are harness-native (not cloud-gated), but they poll very differently, and for PR-watching
-`Monitor` is the better primitive:
-
-- **`Monitor` (preferred).** Arms a shell poll loop that runs in a **subprocess**; each
-  stdout line it emits becomes an event that wakes the session. The loop hits the PR's
-  comment / review / check endpoints on an interval (60s+ for a remote API — GitHub rate
-  limits) and prints only *new* activity. Because the polling itself is a subprocess, the
-  model wakes **only on a real event**, not on every tick — cost is proportional to actual
-  PR activity, and the poll behavior is deterministic (fixed shell, not a model turn that
-  re-decides each fire). This is the closest local analogue to the cloud webhook stream.
-  The **`watch-pr` skill** packages this loop — reach for it rather than re-deriving the
-  endpoints; use it as the *primary* wake signal a local coordinator/lifecycle re-enters on.
-- **`CronCreate` (only when you need a time-based tick).** Fires a *prompt* on a wall-clock
-  schedule, so it costs a full model turn **every** fire whether or not anything changed —
-  a poll-and-compare on every empty tick. Use it only for a genuinely time-driven check
-  (a low-frequency "is the Monitor still alive / anything I missed" backstop), not as the
-  main watch.
-
-**Cover the same signals the cloud path does** (this is where the naive comment-only loop
-fails): the watch must poll **PR comments *and* reviews *and* check-runs *and* PR meta**
-(`state`/`mergedAt`). Two things the comment-only loop gets wrong:
-
-- A `state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint —
-  omit it and a local orchestrator goes deaf to the exact approval gate above.
-- **Merge/close** is a *quiet* transition — no comment, review, or check accompanies it. A
-  watch that only polls activity endpoints never sees it, so a local lifecycle waiting on the
-  impl PR to merge would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
-  cadence *is* the heartbeat for that transition** — which is why, locally, it substitutes for
-  the `send_later` heartbeat too, not just `subscribe_pr_activity`.
-
-Also advance the comment `since` cursor **only after a successful fetch**: a swallowed
-transient `gh` failure that still moved the cursor would drop any comment posted during the
-failed interval outside the next window.
+**Local Claude fallback: the [`watch-pr`](../../.agents/skills/watch-pr/SKILL.md) skill.** It
+arms a `Monitor` poll loop that wakes the session only on new PR comments, reviews (where an
+approval lives), check-runs and PR state, so it also stands in for the `send_later` heartbeat
+on a quiet merge. The loop's mechanics and why `Monitor` beats `CronCreate` are the skill's.
+Use it as the *primary* wake signal a local coordinator/lifecycle re-enters on.
 
 **Arming a Monitor is not idempotent — one per PR.** Unlike `subscribe_pr_activity` (safe to
 re-call every wake), each `watch-pr` arm spawns a *new* poll subprocess. A coordinator that
@@ -1543,14 +1501,6 @@ user, it is a **gate**, a **blocker**, or the **cap**; that gets its own line wi
 question. Everything else is one line and an ended turn. The point of a coordinator is that
 nobody has to read the implementation dialog — narrating it back is the same cost with an extra
 hop.
-
-> **Considered and deferred: a dedicated feedback-router sub-agent.** A standing agent that
-> triages every incoming event and decides routing was weighed and **not** adopted for v1:
-> the coordinator's per-event work is already cheap (PR# → owner → dispatch), content
-> reading already lives in the workers, and cross-over signaling already flows via issues
-> commenting up on the epic PR. The one genuinely heavy read (epic fan-out targeting) is
-> handled by `scout`. Introduce a dedicated router only if event volume and cross-over
-> routing outgrow the scout-assisted approach — not preemptively.
 
 ## The coordinator dispatches; it never does the work
 
