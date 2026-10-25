@@ -687,6 +687,10 @@ export type MidwayAsk =
  * server-set), never one from input, so only the turn holding the current
  * ticket asks. FIX-2131's model tool calls this.
  *
+ * Once per request for the same turn and questions (`ctx.runOnce`): a durable
+ * turn that resumes from a stop replays the code before it, and that replay
+ * gets the first ask's answer back rather than opening the questions twice.
+ *
  * @param ledger The board the task is on, as the request resolves it.
  */
 export async function askMidway(
@@ -697,14 +701,16 @@ export async function askMidway(
   const record = admitted.get(requestKey(ctx));
   const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
   if (claim === undefined || claim.collectionId !== ledger.collectionId) return { ok: false, reason: "no-claim" };
-  if (ledger.ask === undefined) return { ok: false, reason: "not-supported" };
-  const outcome = await ledger.ask(
-    claim.taskId,
-    questions.map((question) => ({ kind: "question" as const, prompt: question.prompt, ...(question.title !== undefined ? { title: question.title } : {}) })),
-    { claim }
-  );
-  if (outcome.outcome === "declined") return { ok: false, reason: outcome.reason };
+  const ask = ledger.ask;
+  if (ask === undefined) return { ok: false, reason: "not-supported" };
+  const asks = questions.map((question) => ({ kind: "question" as const, prompt: question.prompt, ...(question.title !== undefined ? { title: question.title } : {}) }));
+  const write = async (): Promise<MidwayAsk> => {
+    const outcome = await ask(claim.taskId, asks, { claim });
+    return outcome.outcome === "declined" ? { ok: false, reason: outcome.reason } : { ok: true, holds: outcome.holds ?? [] };
+  };
+  const key = `task-board:ask-midway:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}:${JSON.stringify(asks)}`;
+  const asked = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();
   // The turn is over: its lease is gone, and nothing renews it again.
-  record?.renewal?.stop();
-  return { ok: true, holds: outcome.holds ?? [] };
+  if (asked.ok) record?.renewal?.stop();
+  return asked;
 }

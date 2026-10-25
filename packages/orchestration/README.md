@@ -739,18 +739,19 @@ session. Until then the row stays `in_progress`, and `waitingOn` says why:
 | `waitingOn` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
-| `"user"` | a `ctx.waitForUser()`, or a `ctx.suspend()` for `human_approval` or `human_input` | none |
-| `"wait"` | any other suspension | none |
+| `"wait"` | a suspension, a stop for a person included | none |
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
-continues the same attempt.
+continues the same attempt. A stop for a person (a `ctx.waitForUser()`, or a `ctx.suspend()`
+for `human_approval` or `human_input`) is also mirrored on the row as a hold.
 
 **A task waiting on a user.** `getTask` and `listTasks` show `waitingOn` on a running
-task, and, while it is `"user"`, `waitingFor`: the stop's `kind` (`approval`, `review`
-or `input`), its `prompt` and `title`, its `deadline` (epoch ms, absent when it has none),
-and the `requestId` and `suspensionId` a screen answers it by. A screen answers it through
-the engine's answer route (a request handle's `answer` in `@flow-state-dev/client`); `waitingFor` is
-a read convenience, never where a screen lists what waits for a user. Three other endings:
+task, and its `holds`. A stop for a person is one with `source.kind: "suspension"`: its
+`ask` (`kind` is `approval`, `review` or `input`, with the `prompt` and `title`), its `due`
+(epoch ms, absent when it has none), and the `requestId` and `suspensionId` a screen
+answers it by. A screen answers it through the engine's answer route (a request handle's
+`answer` in `@flow-state-dev/client`); `holds` is a read convenience, never where a screen
+lists what waits for a user (that is the Inbox read, below). Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
   own fence (`cancelAndResume`), so an answer that arrives at the same moment is told the stop is
@@ -1288,7 +1289,8 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
 - **Each hold** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its holds is.
-- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }`. `answer` sends a task run's stop to the engine's answer route, which records who answered. Questions and confirms are refused until tasks can hold them.
+- **One item per task, however many questions it holds.** A task's questions and confirms, asked at filing or midway, list oldest first as its holds, beside a stop in its run.
+- **The answer is typed by what the hold asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }`. `answer(item, value, holdId?)` answers the item's first hold, or the one named; `answerHold(hold, value)` answers one hold directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A hold on a board the reader can't reach says so in `unanswerable`.
 
 ## Documentation
 

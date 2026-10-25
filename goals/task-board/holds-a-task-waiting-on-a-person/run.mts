@@ -524,10 +524,10 @@ async function lastStopOf(run: Run, id: string): Promise<{ requestId: string; su
   const stops = await run.h.runtime.runtimeConfig.durabilityProvider!.listSuspended({ userId: USER });
   return stops.filter((s) => s.requestId === requestId).sort((a, b) => b.createdAt - a.createdAt)[0];
 }
-const waitingOnUser = async (run: Run, id: string) => {
-  const row = await run.h.byId(id);
-  return row?.status === "in_progress" && row.waitingOn === "user";
-};
+/** The row's open mirror of its run's stop for a person (FIX-2133 moved FIX-2129's `waitingFor` onto it). */
+const stopHoldOf = (row: { status?: string; holds?: Task["holds"] } | undefined) =>
+  row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "suspension") : undefined;
+const waitingOnUser = async (run: Run, id: string) => stopHoldOf(await run.h.byId(id)) !== undefined;
 async function untilWaiting(run: Run, id: string, leg: string): Promise<boolean> {
   if (await run.h.until(() => waitingOnUser(run, id), 15_000)) return true;
   run.failures.push(`${leg}:waiting — the task never waited on a user; it is ${show(await run.h.byId(id))}`);
@@ -551,11 +551,12 @@ async function legA(run: Run): Promise<void> {
   await run.h.idle();
   const read = await getTask(run, id);
   const row = await run.h.byId(id);
-  if (read?.waitingOn !== "user" || read?.waitingFor?.prompt !== PROMPTS.input || read?.waitingFor?.kind !== "input" || read?.status !== "in_progress") {
-    run.failures.push(`a:shown — wanted getTask to show it in progress, waiting on a user for "${PROMPTS.input}"; it shows ${show(read && { status: read.status, waitingOn: read.waitingOn, waitingFor: read.waitingFor })}`);
+  const shownStop = stopHoldOf(read);
+  if (shownStop?.ask.prompt !== PROMPTS.input || shownStop.ask.kind !== "input" || read?.status !== "in_progress") {
+    run.failures.push(`a:shown — wanted getTask to show it in progress, held on a user's stop for "${PROMPTS.input}"; it shows ${show(read && { status: read.status, waitingOn: read.waitingOn, holds: read.holds })}`);
   }
   const listed = (await run.h.act(run.conversation, "listTasks_tasks", {}))?.tasks?.find((t: { id: string }) => t.id === id);
-  if (listed?.waitingOn !== "user" || listed?.waitingFor?.prompt !== PROMPTS.input) {
+  if (stopHoldOf(listed)?.ask.prompt !== PROMPTS.input) {
     run.failures.push(`a:listed — wanted listTasks to show it waiting on a user; it lists ${show(listed)}`);
   }
   if (row?.attempts !== 1 || row.leaseUntil != null || proofsOf(id, "work").length !== 1) {
@@ -575,8 +576,8 @@ async function legA(run: Run): Promise<void> {
   const heard = readProofs().filter((p) => p.kind === "message" && p.sessionId === sessionId);
   const still = await run.h.byId(id);
   // (Its reply comes back to this same session, so a second turn is the reply's.)
-  if (heard.length === 0 || heard.some((p) => p.claimed !== false) || still?.status !== "in_progress" || still.waitingOn !== "user" || proofsOf(id, "work").length !== 1) {
-    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to run beside the parked request, outside the task, which keeps waiting; turns ${show(heard.map((p) => p.claimed))}, task ${still?.status}/${still?.waitingOn}`);
+  if (heard.length === 0 || heard.some((p) => p.claimed !== false) || stopHoldOf(still) === undefined || proofsOf(id, "work").length !== 1) {
+    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to run beside the parked request, outside the task, which keeps waiting; turns ${show(heard.map((p) => p.claimed))}, task ${still?.status}/${show(still?.holds)}`);
   }
   // Another tenant and another org, with the stop's user id: told the stop doesn't exist.
   const tenant = await answer(run, id, { action: "submit", data: "us-east" }, { tenant: "t_other" });
@@ -776,7 +777,7 @@ async function legF(run: Run): Promise<void> {
     const row = await run.h.byId(id);
     const stop = await lastStopOf(run, id);
     const record = stop === undefined ? undefined : await run.h.runtime.runtimeConfig.durabilityProvider!.loadSuspension(stop.requestId, stop.suspensionId);
-    return { row: row?.waitingFor?.deadline, record: record?.expiresAt, created: record?.createdAt ?? 0 };
+    return { row: stopHoldOf(row)?.due, record: record?.expiresAt, created: record?.createdAt ?? 0 };
   };
   const near = (at: number | undefined, created: number, span: number) => at !== undefined && Math.abs(at - created - span) < 5_000;
   const a = await deadlineOf(own);
@@ -790,7 +791,7 @@ async function legF(run: Run): Promise<void> {
   }
   for (const id of [own, rawTimed, rawNone]) await run.h.act(run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();
-  run.notes.push(`f: waitForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's deadline is FIX-2133's (not on this branch): not read here`);
+  run.notes.push(`f: waitForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's half is goals/task-board/holds-a-task-on-questions, leg f`);
 }
 
 /** g. No deadline: still waiting past the sweep's interval and a board touch. */
@@ -805,8 +806,9 @@ async function legG(run: Run): Promise<void> {
   const record = stop === undefined ? undefined : await run.h.runtime.runtimeConfig.durabilityProvider!.loadSuspension(stop.requestId, stop.suspensionId);
   const request = stop === undefined ? undefined : await run.h.runtime.stores.request.get(stop.requestId);
   const listed = await pendingIn((await runOf(run, id)).sessionId);
-  if (request?.status !== "suspended" || record?.status !== "pending" || record.expiresAt !== undefined || row?.waitingOn !== "user" || row.waitingFor?.deadline !== undefined || listed.length !== 1) {
-    run.failures.push(`g:still-suspended — wanted a stop with no deadline still suspended and listed past the sweep's interval; request ${request?.status}, stop ${record?.status} expiring ${record?.expiresAt}, row ${row?.status}/${row?.waitingOn}, listed ${listed.length}`);
+  const rowStop = stopHoldOf(row);
+  if (request?.status !== "suspended" || record?.status !== "pending" || record.expiresAt !== undefined || rowStop === undefined || rowStop.due !== undefined || listed.length !== 1) {
+    run.failures.push(`g:still-suspended — wanted a stop with no deadline still suspended and listed past the sweep's interval; request ${request?.status}, stop ${record?.status} expiring ${record?.expiresAt}, row ${row?.status}/${show(row?.holds)}, listed ${listed.length}`);
   }
   await run.h.act(run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();
@@ -904,7 +906,6 @@ if (ROLE === "crash-host") {
         await fHost.state.dispose();
       }
     }
-    notes.push("FIX-2133's reconcileInbox (#3854) is not on this branch: its answerable clause is checked by that PR's own test once both land");
     return { failures, evidence: notes.join("\n") };
   });
 }

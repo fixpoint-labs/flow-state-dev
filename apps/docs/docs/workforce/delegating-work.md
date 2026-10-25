@@ -41,7 +41,7 @@ delegates: all
 
 The roster is read on every call, so a worker you hire partway through a conversation can be handed work on the next call, and a worker you fire drops off. Removing one delegate from such a session turns its list into the roster as it stands then, less that worker, and it stops following the roster. Only the worker's file sets `all`; no action or tool switches a list to it. `all` isn't bounded by the 25-delegate limit a written list has.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), and `answerTask`. `createTask` starts work on a delegate now; with `held: true` it files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), and `answerTask`. `createTask` starts work on a delegate now. With `held: true` it files a task that doesn't start until `updateTask` releases it. With `questions` it files one that doesn't start until the user has answered them from their Inbox, and the answers join the delegate's brief; see [a task held on questions](../orchestration/task-board.md#a-task-held-on-questions). Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
 A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, and `parkOnQuestion`. Neither is an action.
 
@@ -142,7 +142,7 @@ A worker can plan its own work. A task it files naming **itself** is a **step**:
 { "goal": "Tighten the draft", "assignee": "eng.writer", "deps": ["<the draft's taskId>"] }
 ```
 
-A step can report its progress with `reportProgress`, on its own row: its checkpoint is that step's output. A step can't be held.
+A step can report its progress with `reportProgress`, on its own row: its checkpoint is that step's output. A step can't be held, or filed with questions.
 
 A step that needs a fresh start runs in a session of its own: file it with `session: "new"`. When the request reaches it, the step is handed to a new session of the same worker. The request waits for the step to end, however many [deadlines](../orchestration/task-board.md#waiting-on-a-task) that takes, before it starts the steps that depend on it. No completion notice is sent for the step. The steps after it see its result, as they see any step's. A step filed with no `session` runs here, in this session. A step in its own session counts toward [how far it goes](#how-far-it-goes) one board deeper, as a task for a delegate does. It needs the worker's flow to take tasks through its own `work` entry, as the built-in flows do; elsewhere the filing is refused with `step_session_new_unsupported`.
 

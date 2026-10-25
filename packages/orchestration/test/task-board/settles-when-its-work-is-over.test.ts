@@ -530,6 +530,27 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
+  it("a durable turn replayed after a stop asks once: the replay gets the first ask back, not the questions twice", async () => {
+    const h = await harness();
+    // The request store's memo, as a durable host's `runOnce` keeps it across a resume's replay.
+    const memo = new Map<string, unknown>();
+    const runOnce = async <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
+      if (!memo.has(key)) memo.set(key, await fn());
+      return memo.get(key) as T;
+    };
+    const asked: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      const durable = Object.assign(Object.create(ctx), { runOnce });
+      // The first execution, then the replay of the code before its stop.
+      asked.push(await askMidway(durable, ledger, [{ prompt: "Which date column?" }]));
+      asked.push(await askMidway(durable, ledger, [{ prompt: "Which date column?" }]));
+      return "a partial answer";
+    });
+    await h.run();
+    expect(openHolds((await h.row())!)).toHaveLength(1);
+    expect(asked[1]).toEqual(asked[0]);
+  });
+
   it("one wait per turn: the stop arm refuses to mirror a stop for a person on a row its own questions hold", async () => {
     // The cancel of the refused stop needs the host's resume, which this harness
     // has none of: the goal proves it on a real host (FIX-2133, leg e).

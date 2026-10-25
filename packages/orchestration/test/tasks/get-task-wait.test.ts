@@ -202,7 +202,7 @@ describe("getTask waits on a task this session filed", () => {
   });
 
   it("a request working a task may wait too: no refusal on a task's own request", async () => {
-    const claim: TaskClaimTicket = { collectionId: "tasks", taskId: "task_worked", attempt: 1, createdAt: 1 };
+    const claim: TaskClaimTicket = { collectionId: "tasks", taskId: "task_worked", attempt: 1, turn: 1, createdAt: 1 };
     const { model, seen } = stepModel([
       createTask("c1"),
       call("g1", "getTask", () => ({ id: filedId(seen, 1), wait: true })),
