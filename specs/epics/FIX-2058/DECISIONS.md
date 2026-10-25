@@ -4,8 +4,10 @@
 
 The calls above any one issue. The owner decided the model in
 [`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md#inbox-items)
-(rules 11 and 12); D1 and D2 carry it out, and the owner decided D3. Open: renewed approval of
-this post-merge amendment, and the owner's confirmation that D3 covers approvals ([Open](#open)).
+(rules 11 and 12); D1 and D2 carry it out, and the owner decided D3. The owner's 2026-10-25
+decision, one list of holds per task, reached this set relayed by another session, and this
+amendment's direction gate is his confirmation of it ([Amendment · 2026-10-25](#amendment--2026-10-25--one-list-of-holds-per-task)).
+Open: that confirmation, and where `confirm` sits beside an approval ([Open](#open)).
 
 ## The tree
 
@@ -13,7 +15,7 @@ this post-merge amendment, and the owner's confirmation that D3 covers approvals
 flowchart TD
   E["FIX-2058"] --> D1["D1 · durable by default first, no park kept as a fallback; a question holds its task"]
   D1 -.->|"rejected"| X1["parks kept for hosts without durable execution"]
-  E --> D2["D2 · the row's person mark keeps a task's requests apart"]
+  E --> D2["D2 · the row's open hold keeps a task's requests apart"]
   D2 -.->|"rejected"| X2["hold the session's key across the suspension"]
   E --> D3["D3 · no default deadline on a person's stop; a host or a call opts in"]
   D3 -.->|"rejected"| X3["a default of its own, 7 days, or the 5-minute wait default"]
@@ -26,7 +28,7 @@ flowchart TD
 |---|---|
 | **Instead of** | Keeping the question and review parks as the way to stop for a person on a host without durable execution |
 | **Because** | A fallback is the second form this epic exists to remove: every child would build and test two paths, and a person would again have two places to look. Serverless hosts without durability are not a target |
-| **Applied to questions** | The owner's rule, 2026-10-23: if code reads the answer on its next line, the stop suspends with `waitForUser` (an approval, a review, input); if the work can pick up from its brief, the task holds on its row (a question, at filing or midway, [ER-8](#who-owns-what)). The hold is one form on every host, not a fallback, and needs no durable execution. Every approval suspends, "go ahead with the plan?" included, so nobody has to learn the rule. A review is a verdict the code reads; a revision request is new direction, so its words are a steer the work takes after the verdict ([FIX-2131 D1](../../issues/FIX-2131/DECISIONS.md#d1)). A question in a turn with no task row has nothing to hold, so it suspends as input. The mid-task question park is retired for good |
+| **Applied to questions** | The owner's rule, 2026-10-23: if code reads the answer on its next line, the stop suspends with `waitForUser` (an approval, a review, input); if the work can pick up from its brief, the task holds on its row (a question, at filing or midway, [ER-8](#who-owns-what)). The hold is one form on every host, not a fallback, and needs no durable execution. An approval suspends, "go ahead with the plan?" included, when code reads the yes or no next. A yes or no the work picks up from its brief, a task filed to wait for the user's go, is a `confirm` row hold (owner, relayed 2026-10-25; where the line sits is [Open](#open)). A review is a verdict the code reads; a revision request is new direction, so its words are a steer the work takes after the verdict ([FIX-2131 D1](../../issues/FIX-2131/DECISIONS.md#d1)). A question in a turn with no task row has nothing to hold, so it suspends as input. The mid-task question park is retired for good |
 | **Locks in** | FIX-2063 blocks every child that suspends, FIX-2129 and FIX-2131; FIX-2133's hold waits on neither it nor FIX-2129. A host without durable execution refuses a suspension loudly ([ER-6](#who-owns-what)). The kill line: if FIX-2063 can't make durability the default on dev, local and self-hosted hosts, we stop before the review park is retired |
 
 **What would change my mind:** a host we support that can't be made durable. Then the kill line
@@ -37,21 +39,22 @@ fires and the review park stays.
 It comes down to two forms of one job: a fallback park keeps the thing the epic removes.
 
 <a name="d2"></a>
-## D2 · The task row's person mark keeps a task's requests apart across a suspension, not the session's key
+## D2 · The task row's open hold keeps a task's requests apart across a suspension, not the session's key
 
-*An engineering call, decided under the epic's posture; recorded because three children touch it.*
+*An engineering call, decided under the epic's posture; recorded because three children touch it.
+The mark's shape is the owner's, amended 2026-10-25: an open hold on the row ([ER-8](#who-owns-what)).*
 
 | | |
 |---|---|
 | **Instead of** | Holding the session's key while a request is suspended for a person |
-| **Because** | A request gives the key back when it suspends, and keeping it would also hold back the `onTaskSettled` requests that must run while a task waits on a person, such as a filed task ending (#3696's engineering calls; FIX-2077). The row already carries the mark (FIX-2077 D1's `waitingOn`, whose value FIX-2129 renames to `"user"`), so it exists; today the steer admission doesn't read it |
-| **Locks in** | [ER-2](#who-owns-what): every path that admits a request into a task's session reads the row's mark. A steer into a task waiting on a person waits for the resume; it never starts a request beside it. A steer naming the question is its answer ([ER-8](#who-owns-what)) |
+| **Because** | A request gives the key back when it suspends, and keeping it would also hold back the `onTaskSettled` requests that must run while a task waits on a person, such as a filed task ending (#3696's engineering calls; FIX-2077). The row already carries the mark: FIX-2077 D1's `waitingOn`, which FIX-2129 writes as `"user"` with `waitingFor` (#3866), and which FIX-2133 moves onto a `source: "suspension"` hold. Today the steer admission doesn't read it |
+| **Locks in** | [ER-2](#who-owns-what): every path that admits a request into a task's session reads the row's open holds. A steer into a task waiting on a person waits for the resume; it never starts a request beside it. A steer naming a held question is its answer ([ER-8](#who-owns-what)) |
 | **Not decided here** | Messages. A send or a call to a session waiting on a person follows rule 10 as written: it queues. Giving the key back could let one run instead; that is FIX-2070's call, and FIX-2129 pins what a message does there today with a test so the change is seen |
 
 **What would change my mind:** an engine key that holds a session's requests but lets
 `onTaskSettled` through. Then the key is the simpler mark.
 
-![D2: the row's person mark, chosen, beside holding the session's key; decided by onTaskSettled requests that must still run while a task waits on a person](figures/d2-row-mark.svg)
+![D2: the row's open hold, chosen, beside holding the session's key; decided by onTaskSettled requests that must still run while a task waits on a person](figures/d2-row-mark.svg)
 
 It comes down to `onTaskSettled`: holding the key across a suspension keeps a task from hearing its filed work end.
 
@@ -65,7 +68,7 @@ It comes down to `onTaskSettled`: holding the key across a suspension keeps a ta
 | **Instead of** | A default of its own, 7 days, set per host and per call, or the 5-minute default a wait on a task already has |
 | **Because** | The owner: waiting 7 days and then going ahead is arbitrary. No one length fits every stop, and a stop that ends on a length nobody chose for it fails or guesses on work a person still means to answer; minutes fail it while she is at lunch. With no deadline, a stop waits until someone answers it, or its task is stopped or cancelled. An app that wants a stop to end says when |
 | **Applied to every kind** | Confirmed by the owner, 2026-10-24: D3 was one rule for approvals, questions, reviews and input, so no default covers all four, approvals included |
-| **Locks in** | A host setting for a person's stop, separate from the wait default and unset by default: set, every `waitForUser` with no `deadline` and every held question gets it ([ER-1](#who-owns-what), [ER-8](#who-owns-what)); `waitForUser`'s `deadline` sets one on a single call. At a deadline the endings stand: an approval is a no, a review or input throws, the model's tool returns no answer, and a held question's deadline is the debt pass's, where the work goes ahead from its brief. Neither the sweeper nor the debt pass ends a stop with no deadline. FIX-2129 builds the setting. The concept (`workforce-coordination-concept.md`, *Inbox items* and *Decisions*) says so as of this amendment: every wait has a deadline; a stop for a person has none unless the host or the call sets one |
+| **Locks in** | A host setting for a person's stop, separate from the wait default and unset by default: set, every `waitForUser` with no `deadline` and every row hold gets it ([ER-1](#who-owns-what), [ER-8](#who-owns-what)); `waitForUser`'s `deadline` sets one on a single call. At a deadline the endings stand: an approval is a no, a review or input throws, the model's tool returns no answer, and a held question's deadline is the debt pass's, where the work goes ahead from its brief. Neither the sweeper nor the debt pass ends a stop with no deadline. FIX-2129 builds the setting. The concept (`workforce-coordination-concept.md`, *Inbox items* and *Decisions*) says so as of this amendment: every wait has a deadline; a stop for a person has none unless the host or the call sets one |
 
 **What would change my mind:** Inboxes filling with stops nobody will answer. Then the host sets
 the setting, one line, without a change here.
@@ -86,26 +89,26 @@ own question holds, but a host's own harness block, judge or hook can still `ctx
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | One call stops a request for a person when its code reads the answer next: `waitForUser({ kind, prompt, deadline? })`, kind approval, review or input, never a question, which holds its task ([ER-8](#who-owns-what)); with no `deadline`, the host's deadline for a person's stop if one is set, else none, and it waits until answered, stopped or cancelled ([D3](#d3)). It is built on the person suspensions, not the wait gate: a wait gate is resumed only from inside its own session, and a person answers from outside it. The two use the same words, answered and deadline, not the same shape: a wait returns `{ answered: false, deadline: true }`, where a person's suspension at its deadline throws the existing `SuspensionTimeoutError` for a review or an input and reads as a no for an approval ([FIX-2129 D1](https://github.com/fixpoint-labs/flow-state-dev/pull/3735)), and FIX-2131's model-facing tool returns a deadline result instead of throwing, since a model can't catch. A person's suspension resumes with `cancelled`, which the block reads and runs to its end, where a wait gate's `stopped` ends the request unread. One predicate, in `contracts` beside the suspension reasons, says whether a suspension is a person's; the claim gate, the Inbox and the Lab's send all read it, and no child keeps its own list of reasons | FIX-2129 | Every later spec review; the closure's leg a |
-| ER-2 | A task waiting on a person is marked on its row with the suspension that holds it. That mark, never the session's key, keeps its requests apart: while it waits, only `onTaskSettled` and the suspension's own answer are admitted, a steer waits for the resume, and messages follow rule 10 ([D2](#d2)). The mark lands in the same write that drops the lease. A person's stop never holds back the notices of tasks its request filed: FIX-2123 holds them while a filing request is parked, and FIX-2129 exempts a person's stop from that hold | FIX-2129 | FIX-2131's spec review; the closure's leg d |
-| ER-3 | A stop ends exactly once: a suspension resumes answered, deadline or cancelled, and a question's hold ends answered, deadline or cancelled ([ER-8](#who-owns-what)). Whichever comes first wins and the rest find it resolved, and every ending closes its item, an unhandled deadline included. A user's stop ends the request, closes its item and cancels its task | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; legs b and c |
+| ER-2 | A task waiting on a person is marked on its row by an open hold: for a suspension, a `source: "suspension"` hold that mirrors it ([ER-8](#who-owns-what)). That hold, never the session's key, keeps its requests apart: while it waits, only `onTaskSettled` and the suspension's own answer are admitted, a steer waits for the resume, and messages follow rule 10 ([D2](#d2)). The hold opens in the same write that drops the lease. A person's stop never holds back the notices of tasks its request filed: FIX-2123 holds them while a filing request is parked, and FIX-2129 exempts a person's stop from that hold | FIX-2129 | FIX-2131's spec review; the closure's leg d |
+| ER-3 | A stop ends exactly once: a suspension resumes answered, deadline or cancelled, and its mirror hold closes with that resume; a row hold ends answered, deadline or cancelled ([ER-8](#who-owns-what)). Whichever comes first wins and the rest find it resolved, and every ending closes its item, an unhandled deadline included. A user's stop ends the request, closes its item and cancels its task | FIX-2129 | FIX-2131's, FIX-2132's and FIX-2133's spec review; legs b and c |
 | ER-4 | No task tool answers a suspension for a person. The filer answers only a question its task asked midway, by a steer, and not on a routed task; approvals, reviews and questions asked at filing are the user's (rule 11) | FIX-2131 | Every later spec review; the closure sweep |
 | ER-5 | No row persisted before this work is read: stores are reset (owner, 2026-10-23). FIX-2080's retired-shape map ([FIX-2056 D3](../FIX-2056/DECISIONS.md#d3)) gains no entry for a parked question or review, harness rows included, and no question is migrated onto the hold ([ER-8](#who-owns-what)); BP-030's dual-read is waived for this epic's persisted shapes. The `parked` status goes as a write and a read. Where a coding row needs its session back, FIX-2132 reads that from the harness manager's run record (`harness-manager/src/run-record.ts`), not from the row. States in flight between the refactor epics get no shim | FIX-2131 | FIX-2132's spec review |
 | ER-6 | Suspending for a person needs durable execution, on by default wherever stores persist. No child builds a path for a host without it; such a host refuses a suspension loudly. A question's hold needs none | FIX-2063 | Every spec review |
-| ER-7 | The Inbox answers each kind of item through one route the server trusts, and the server sets who answered. A suspension resumes through FIX-2129's route, without opening the public resume route to a `task` source (BP-031), and only after the checks the public resume path runs (`ownsRecord` and `callerReachesRequest`: flow instance, tenant, user, org) before it loads or resolves the suspension ([FIX-2129 D2](../../issues/FIX-2129/DECISIONS.md#d2)). A held question is answered by a steer from the user through the board's own `updateTask` action, which scopes the row to the signed-in user, tenant and org the same way, and names the question it answers ([FIX-2133 D1](../../issues/FIX-2133/DECISIONS.md#d1)). No child builds a third route | FIX-2129; FIX-2133 builds the question leg | FIX-2131's, FIX-2132's and FIX-2133's spec review; leg b |
-| ER-8 | One hold for a question. Open questions are a predicate on the task's row, whatever its status, and the one source of truth: the claim gate never claims the row, and it never settles except by cancel; a status is at most derived from it. Every change to it is one pure write both store backings call, beside the predicate in `orchestration/src/tasks/collection/`: ask, answer (a steer carrying the question's id; one carrying none answers nothing), deadline (a "no answer came" steer, and the work goes ahead from its brief: owner, 2026-10-24) and cancel. One deadline, none unless set: the host's person-stop setting ([D3](#d3)), paid by the board's debt pass (rule 8); a question with none stays open until answered or cancelled. Before start the row is `pending`; midway, `in_progress` with no lease, re-entered on its same attempt ([FIX-2086](../../issues/FIX-2086/DECISIONS.md#d2)'s steer turn). Every claim of a row advances a turn generation, one more field on the existing claim ticket, that every claim-ticket write (renew, complete, fail, settle) checks, so a predecessor turn never writes after its successor's claim. Re-entry holds three invariants: at most one live turn per attempt; a row with no open question is never stranded; a stop ends exactly once. The mechanism is [FIX-2133's](../../issues/FIX-2133/DECISIONS.md) to design and prove with tests, and further protocol findings go to its spec and implementation review, not to this epic. The word stays *hold*, the concept's *held on questions*; renames are FIX-2071's | FIX-2133 | FIX-2131's and FIX-2132's spec review; legs a, b and c |
+| ER-7 | The Inbox answers each kind of item through one route the server trusts, and the server sets who answered. A suspension resumes through FIX-2129's route, without opening the public resume route to a `task` source (BP-031), and only after the checks the public resume path runs (`ownsRecord` and `callerReachesRequest`: flow instance, tenant, user, org) before it loads or resolves the suspension ([FIX-2129 D2](../../issues/FIX-2129/DECISIONS.md#d2)). A row hold, a question or a confirm, is answered by a steer from the user through the board's own `updateTask` action, which scopes the row to the signed-in user, tenant and org the same way, and names the hold it answers (the field is `question` until FIX-2071's renames; [FIX-2133 D1](../../issues/FIX-2133/DECISIONS.md#d1)). The Inbox makes one answer call, and the call routes by the item's `source`: a suspension to FIX-2129's route, a row hold to `updateTask`. No child builds a third route | FIX-2129; FIX-2133 builds the question leg | FIX-2131's, FIX-2132's and FIX-2133's spec review; leg b |
+| ER-8 | One list of holds per task: `holds[]` on its row ([the type](#amendment--2026-10-25--one-list-of-holds-per-task)), and *open holds* the one predicate, whatever the row's status. The claim gate never claims a row with an open hold; the row never settles with one except by cancel; `renewLease` and `reclaim()` refuse it; the deadline pass and the crash debts (`resumeOwed`, `cancelOwed`) read it; the Inbox lists its `actor: "user"` holds. A status is at most derived from it. A hold's `source` says what releases it. **`"suspension"`** mirrors a task run's parked `waitForUser` stop: the claim gate's stop arm opens it in the write that drops the lease, and it closes when the engine resumes the stop (ER-3), so the engine is unchanged and FIX-2129's route answers it (ER-7). **`"row"`** has nothing parked, and its first releaser wins; `answer` (a steer carrying the hold's id; one carrying none releases nothing) is the only releaser in this epic. Row holds are questions and confirms. Every change to `holds[]` is one pure write both store backings call, beside the predicate in `orchestration/src/tasks/collection/`: open, release, deadline (a "no answer came" steer, and the work goes ahead from its brief: owner, 2026-10-24) and cancel, which closes every hold. A row's open holds come from one source at a time. `actor` and `releasedBy` are stored from the first write, so a later kind needs no migration. One deadline, none unless set: a row hold's `due` is the host's person-stop setting ([D3](#d3)), paid by the board's debt pass (rule 8), and with none it stays open until answered or cancelled; a suspension hold's `due` copies its suspension's deadline, which the engine ends. Before start the row is `pending`; midway, `in_progress` with no lease, re-entered on its same attempt ([FIX-2086](../../issues/FIX-2086/DECISIONS.md#d2)'s steer turn), owed by a mark of the hold's own, not `waitingOn: "steer"`, which keeps only FIX-2086's meaning. Every claim of a row advances a turn generation, one more field on the existing claim ticket, that every claim-ticket write (renew, complete, fail, settle) checks, so a predecessor turn never writes after its successor's claim. Re-entry holds three invariants: at most one live turn per attempt; a row with no open hold is never stranded; a stop ends exactly once. The mechanism is [FIX-2133's](../../issues/FIX-2133/DECISIONS.md) to design and prove with tests, and further protocol findings go to its spec and implementation review, not to this epic. It replaces the planned `questions[]`, and `waitingOn: "user"` with `waitingFor` (#3866), which move onto the list. Event releasers and `ctx.waitForEvent` are not this epic's. The word stays *hold*, the concept's *held on questions*; renames are FIX-2071's | FIX-2133 | FIX-2131's and FIX-2132's spec review; legs a, b and c |
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
-| The claim gate's stop arm (`orchestration/src/task-board/task-request.ts`, `stopOf`) | FIX-2129 keys it on ER-1's predicate, records the suspension on the row, and adds the cancel and the user's stop; FIX-2133 adds the refusal of a row with an open question, which cancels the losing suspension, and the settle guard (ER-8). One wait per turn, a row never holding both, is [FIX-2133's rule](../../issues/FIX-2133/DECISIONS.md#decided-not-asked) |
-| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2137 makes a resume skip its completed steps with trace observability off; FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind, the cancel's debt on the board's existing owed-resume marks (`payOwedResumes`, `resumeWait` widened, no eighth host verb), and the opt-in person-stop deadline setting, unset by default ([D3](#d3)), which FIX-2133's question deadline reads (until it lands, only FIX-2133's test hook sets one), the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) stays for waits on work: `waitForUser` shares its words answered and deadline, not their shape or its mechanism, and adds `cancelled` (ER-1) |
-| The answer route (`engine/src/routes/resume-routes.ts`, its public re-entry check; `shift-manager/src/lib/reads.ts`, `REOPENED_SOURCES`) | FIX-2129 builds ER-7's route for suspensions, and FIX-2131's reviews answer through it. FIX-2133 answers a held question through the board's `updateTask` action, and FIX-2131 and FIX-2132 reuse it |
-| Steer admission (`workforce/src/conversation-board/steer.ts`, `task-admission.ts`) | FIX-2113's gate stays for plan waits. FIX-2131 makes a steer into a task waiting on a person wait (ER-2) and a steer naming a held question answer it (ER-8). A line typed in a task's session answers in one server-side home, orchestration's `steerFromLine`, which harness-manager's session door and workforce's steer share: FIX-2133 makes it answer the oldest open question through ER-8's write; FIX-2131's composer sends the plain line; FIX-2132 changes nothing there, and its owed turn starts the next coding run in the same session |
-| The Inbox read (`shift-manager/src/lib/reads.ts`, `send.ts`, `surfaces/Inbox.tsx`) | FIX-2133's first PR adds `reconcileInbox`, checked against reads independent of the listing (`listTasks` rows and `listSessionRequests` filtered by ER-1's predicate), and makes the snapshot's Inbox one union of a `suspension` and a `question` arm, which `Inbox.tsx` alone reads; every child's acceptance is the reconciler green with its kind present, and a `rules.mjs` rule keeps listing inside the Inbox read. One listing source per kind: suspensions from `readAsks` only, held questions from task rows only, and FIX-2129's `waitingFor` never, or a task's approval or review lists twice. FIX-2133 makes the list one package read that Shift Manager and FIX-2157's lab both consume, and lists held questions, before start and midway; FIX-2131 lists reviews through it with ER-1's predicate, adding no source, and moves `send.ts` onto the predicate; FIX-2132 adds nothing a held question doesn't. `getTask` and `listTasks` derive `waitingOn: "user"` and a `question` `waitingFor` for a held row as a read convenience (FIX-2133); no gate reads it |
+| The claim gate's stop arm (`orchestration/src/task-board/task-request.ts`, `stopOf`) | FIX-2129 keys it on ER-1's predicate, records the suspension on the row (`waitingFor`, #3866), and adds the cancel and the user's stop; FIX-2133 moves that record onto a `source: "suspension"` hold, and adds the refusal of a row with an open row hold, which cancels the losing suspension, and the settle guard (ER-8). One wait per turn, a row's open holds from one source at a time, is [FIX-2133's rule](../../issues/FIX-2133/DECISIONS.md#decided-not-asked) |
+| The suspension record, the stop and the sweep (`core/src/types/suspension.ts`, `engine/src/durability/stop-suspended.ts`, `durability-sweeper.ts`) | FIX-2137 makes a resume skip its completed steps with trace observability off; FIX-2063 runs the sweeper on file-backed hosts; FIX-2129 adds the kind, the cancel's debt on the board's existing owed-resume marks (`payOwedResumes`, `resumeWait` widened, no eighth host verb), and the opt-in person-stop deadline setting, unset by default ([D3](#d3)), which FIX-2133's row-hold deadline reads (until it lands, only FIX-2133's test hook sets one), the deadline resume and the stop that cancels. The wait gate (`core/src/types/wait-gate.ts`) stays for waits on work: `waitForUser` shares its words answered and deadline, not their shape or its mechanism, and adds `cancelled` (ER-1) |
+| The answer route (`engine/src/routes/resume-routes.ts`, its public re-entry check; `shift-manager/src/lib/reads.ts`, `REOPENED_SOURCES`) | FIX-2129 builds ER-7's route for suspensions, and FIX-2131's reviews answer through it. FIX-2133 answers a row hold through the board's `updateTask` action, and FIX-2131 and FIX-2132 reuse it. The Inbox's one answer call routes between the two by the item's `source` (ER-7) |
+| Steer admission (`workforce/src/conversation-board/steer.ts`, `task-admission.ts`) | FIX-2113's gate stays for plan waits. FIX-2131 makes a steer into a task waiting on a person wait (ER-2) and a steer naming a held question answer it (ER-8). A line typed in a task's session answers in one server-side home, orchestration's `steerFromLine`, which harness-manager's session door and workforce's steer share: FIX-2133 makes it answer the oldest open question through ER-8's write (a confirm is answered only in the Inbox or by `updateTask`, since a typed line is no yes or no, [FIX-2131 D1](../../issues/FIX-2131/DECISIONS.md#d1)); FIX-2131's composer sends the plain line; FIX-2132 changes nothing there, and its owed turn starts the next coding run in the same session |
+| The Inbox read (orchestration, new; `shift-manager/src/lib/reads.ts`, `send.ts`, `surfaces/Inbox.tsx`) | **One item type over open holds** (amended 2026-10-25). An item is one task row's open `actor: "user"` holds, with an `answerable` flag and one answer call routed by `source` (ER-7). A suspension in a request with no task row has no row to hold, so it lists from `readAsks` as the same item type, and `readAsks` skips a task run's suspensions: those list from their hold alone. The read belongs to orchestration, a read plus a browser client, as workforce's `createWorkforceClient` is, not to the client package; Shift Manager and FIX-2157's lab both consume it. FIX-2133's first PR reshapes `reconcileInbox` onto that item type, checked against reads independent of the listing (`listTasks` rows and `listSessionRequests` filtered by ER-1's predicate); its `bothArms` clause becomes a drift check between each task-run suspension and its mirror hold, and a `rules.mjs` rule keeps building an item inside the read. Every child's acceptance is the reconciler green with its kind present. FIX-2133 lists row holds, before start and midway, and the mirror; FIX-2131 lists reviews through it, adding no source, and moves `send.ts` onto ER-1's predicate; FIX-2132 adds nothing a held question doesn't. `getTask` and `listTasks` show a row's open holds. This supersedes the 2026-10-24 rule, one listing source per kind (suspensions from `readAsks`, questions from rows, `waitingFor` never) |
 | The task tools and the closure sweep (`orchestration/src/skills/task-tools-capability.ts`; `rules.mjs` on `fix/FIX-2087`) | FIX-2131 removes `answerTask` and `parkOnQuestion` and their allowances in the sweep. `PERSON_STOPS_REMOVED` ratchets: each child adds the names it deletes in that PR, FIX-2132 first, and FIX-2134 checks the list is complete ([FIX-2134 D2](../../issues/FIX-2134/DECISIONS.md#d2)). Its midway ask calls ER-8's write; what the request did before asking stands (its writes, messages and last checkpoint), and the next turn starts from the brief, that checkpoint and the answer |
 | FIX-2080's retired-shape map (`orchestration/src/tasks/collection/`) | No child adds an entry: stores are reset, so no parked row is read (ER-5). FIX-2131 removes the `parked` status; FIX-2132's coding row gets its confirmed session back from the harness manager's run record, spending no try |
-| The hold (the row's open questions, beside FIX-2080's `held` flag, which composes with them: both must clear) | FIX-2133 owns the hold on questions (ER-8), its one write and the re-entry protocol, proved by its own tests against both backings. Its constraints: ask adds the question, drops the lease and ends the turn unsettled; the last answer or the deadline releases the hold; cancel closes every question with the row, from both backings' direct and cascade cancel (`state-backed.ts`, `resource-backed.ts`); `renewLease` and `reclaim()` refuse a row with an open question, an ask racing a renewal included; the write that closes the last question sets an owed-turn mark on the row in that same write, never relying on a wake record (owed before the row write, and absent without `RequestWakes`, `request-host.ts`); the claim gate claims a marked `in_progress` row with no lease and no open question for its same attempt, spending no fresh budget, and clears the mark atomically; every claim advances the turn generation that claim-ticket writes check (today ownership is fenced only by row, status and attempt, `internal.ts`); a wake, where the host has one, only starts the turn sooner; `updateTask` gains a question id, accepted from the public action for any question and from the filer's tool only for a midway question on a task not routed (ER-4), so filing with several questions keeps working. FIX-2131 and FIX-2132 ask through it. The drain's counts (`task-board/shared.ts`, `countWaitable`, `activeWorkerCount`; `quiescence.ts`) are FIX-2131's: with the park exit gone, the active-worker count excuses a row ER-1's predicate or ER-8's hold marks, so a `complete-or-blocked` board whose only open rows wait on a person reports `blocked` instead of spinning to its iteration limit, which with no deadline never ends |
+| The holds (`holds[]` on the row, beside FIX-2080's `held` flag, which composes with them: both must clear) | FIX-2133 owns the list (ER-8), its one write, the suspension's mirror and the re-entry protocol, proved by its own tests against both backings. Its constraints: an ask opens a row hold, drops the lease and ends the turn unsettled; the last answer or the deadline releases the row's last open hold; cancel closes every hold with the row, a cancelled suspension hold keeping its address until the `cancelled` resume it owes is paid, from both backings' direct and cascade cancel (`state-backed.ts`, `resource-backed.ts`); `renewLease` and `reclaim()` refuse a row with an open hold, an ask racing a renewal included; the write that closes the last open row hold sets the hold's own owed-turn mark on the row in that same write, never relying on a wake record (owed before the row write, and absent without `RequestWakes`, `request-host.ts`); the claim gate claims a marked `in_progress` row with no lease and no open hold for its same attempt, spending no fresh budget, and clears the mark atomically; every claim advances the turn generation that claim-ticket writes check (today ownership is fenced only by row, status and attempt, `internal.ts`); a wake, where the host has one, only starts the turn sooner; `updateTask` gains a row hold's id, accepted from the public action for any row hold and from the filer's tool only for a midway question on a task not routed (ER-4), so filing with several questions keeps working. FIX-2131 and FIX-2132 ask through it. The drain's counts (`task-board/shared.ts`, `countWaitable`, `activeWorkerCount`; `quiescence.ts`) are FIX-2131's: with the park exit gone, the active-worker count excuses a row with an open hold, so a `complete-or-blocked` board whose only open rows wait on a person reports `blocked` instead of spinning to its iteration limit, which with no deadline never ends |
 | Outside this epic: [FIX-2163](../../issues/FIX-2163/SPEC.md) (epic FIX-2152), a harness run's review | Consumes `waitForUser({ kind: "review" })`, FIX-2129's catchable `SuspensionTimeoutError` and the person-stop setting, and amends FIX-2132's manager: with `reviewChanges` on, the manager suspends for a review, never for a question. Whether this epic's closure walks a coding run's review is FIX-2156's call |
 
 ## Decided in review, recorded so no child reopens them
@@ -210,8 +213,8 @@ counts; the rest is recorded so no child re-derives it.
   they, and the drain's `blocked` verdict, are what keeps a stop nobody answers from costing more
   than a listed item.
 - **Ergonomics debt, for FIX-2071:** `waitingOn: "steer"` means both a queued steer and a turn
-  owed after a held question's last answer; `waitForUser` names two contracts, a block's that
-  throws and a model tool's that returns.
+  owed after a held question's last answer (split 2026-10-25: the hold's own mark owes the
+  second); `waitForUser` names two contracts, a block's that throws and a model tool's that returns.
 - **Prior art:** LangGraph's `interrupt` waits until resumed, with no timeout
   ([docs](https://docs.langchain.com/oss/python/langgraph/interrupts)), the shape D3 now takes.
   Inngest's `step.waitForEvent` takes a timeout and resolves `null` at it
@@ -244,7 +247,8 @@ and FIX-2063. Considered and dropped:
   `cancelled`; `cancelOwed` is the precedent. Not a second debt, payer or host verb.
 - **R2 · one listing source per kind.** Two reads, not three: `readAsks` for suspensions,
   `toBoardRow` for held questions; FIX-2131 adds none. `waitingFor` is never listed. FIX-2133 owns
-  the rule and the one package read; FIX-2134 checks it.
+  the rule and the one package read; FIX-2134 checks it. *Superseded 2026-10-25* by one item type
+  over open holds ([Amendment](#amendment--2026-10-25--one-list-of-holds-per-task)).
 - **R3 · extend.** The turn generation is one more field on `TaskClaimTicket`, checked at
   `transitionDeclineReason`; the copies that compare `attempts` outside it (`holds`,
   `advisory-write-back.ts`, `task-entry.ts`, harness-manager's `manager.ts` and `run-record.ts`)
@@ -252,6 +256,78 @@ and FIX-2063. Considered and dropped:
 - **R4 · remove.** `Task.turnReentries` goes with its only writer, the park's answer (FIX-2131).
 - **Genuinely new:** FIX-2133's single question write, and FIX-2132's run counter, with one note
   for its implementer: could clearing the marker before each run remove the counter?
+
+## Amendment · 2026-10-25 · one list of holds per task
+
+*The owner's decision of 2026-10-25, relayed to this session by another session and not yet
+confirmed to it directly. This amendment's direction gate is his confirmation.* It came after
+FIX-2129 merged (#3866), writing `waitingOn: "user"` and `waitingFor` on a task's row, and while
+FIX-2133's first PR (#3854) is held and conflicts with `main`: it built one Inbox list of two arms,
+`reconcileInbox` with a `bothArms` clause, and an `INBOX_READ` sweep rule.
+
+```ts
+type HoldBase = {
+  id: string;
+  actor: "user" | "system";          // the Inbox lists actor "user"
+  openedAt: number;
+  due?: number;                      // none unless set; cancel closes every hold
+};
+type SuspensionHold = HoldBase & {   // mirrors a parked run; closed when the engine resumes it
+  source: { kind: "suspension"; flowId: string; requestId: string; suspensionId: string };
+  ask: { kind: "approval" | "review" | "input"; prompt: string; title?: string };
+};
+type RowHold = HoldBase & {          // nothing parked; first releaser wins
+  source: { kind: "row"; releasedBy: Releaser[] };
+  ask: { kind: "question" | "confirm"; prompt: string; title?: string };
+};
+type TaskHold = SuspensionHold | RowHold;   // discriminated on source.kind
+type Releaser = { by: "answer" } | { by: "event"; event: string; key: string };
+```
+
+1. **One list per task.** The claim check, cancel, the deadline pass, crash debt and the Inbox
+   all read open holds ([ER-8](#who-owns-what)).
+2. **The engine is unchanged.** `waitForUser` stays as #3866 built it; the board mirrors a task
+   run's stop as a `source: "suspension"` hold and closes it on resume. ER-7 stands.
+3. **Row holds.** Questions and a new `confirm` kind are `source: "row"` holds released by
+   `answer`. `actor` and `releasedBy` are stored from the start; stores are reset (ER-5), so
+   nothing old is read.
+4. **Scope.** Event releasers and `ctx.waitForEvent` are out of this epic. No new issue:
+   FIX-2133 owns `holds[]` under ER-8, in two PRs, the reshaped #3854 and then the row holds
+   with the mirror ([FIX-2133](../../issues/FIX-2133/DECISIONS.md#decided-not-asked)).
+
+**What would change my mind.** A lighter variant was considered: unify only the Inbox read, keep
+`questions[]` and `waitingFor` on the row, and persist no mirror. The amendment does not take it,
+because the relayed decision makes open holds the one predicate for the claim, cancel, the
+deadline, crash debt and the Inbox; an Inbox-only read gives that to the Inbox alone, and the
+other four keep reading two fields.
+
+The relayed type lists every ask kind on one shape; written here as a union on `source`, so a
+mirror carries only a suspension's kinds and a row hold only a question or a confirm, and an
+invalid pair can't be written.
+
+**What it supersedes.** ER-8's open-questions predicate and FIX-2133 D2's `questions[]`; the
+row's `waitingOn: "user"` and `waitingFor` (#3866), which move onto the suspension hold; one
+listing source per kind (R2 above, and the Inbox seam), FIX-2133's derived `waitingOn`/`waitingFor`
+read, and the package read in Shift Manager, which become one item type over open holds read
+by orchestration; `bothArms`, which becomes a drift check, and most of `INBOX_READ`; `waitingOn:
+"steer"` as a held question's owed turn; and D1's "every approval suspends", which now holds
+where code reads the yes or no next ([Open](#open)). The five-issue split, D3, the answer routes
+and the Codex-once rule are unchanged.
+
+**Reuse review**, on the new *Adds* only:
+
+- **`holds[]` · extend** ER-8's `questions[]`: the same list widened, with `waitingFor` moved in,
+  never beside either. FIX-2080's `held: true` stays its own flag and composes; folding it in
+  would reopen FIX-2133 D2's rejected status. `holds()`, the claim-ownership check in
+  `task-board/task-request.ts`, collides with the field's name; the implementer renames it.
+- **The mirror · extend** `waitingFor`: the same fields, written by the same `setWaitingOn`
+  write, cleared at the same resume, kept after a cancel until `resumeOwed` is paid. It is a
+  move: a `waitingFor` left beside it would be the second record the review warns against.
+- **`answer` routing · reuse** FIX-2133's two-arm union and `LabReader.resume`'s one call,
+  moved into orchestration's browser client and keyed on the item's `source`. No third route.
+- **`confirm` · not a reuse, routed to the owner.** It overlaps `waitForUser({ kind: "approval" })`,
+  whose D1 line said every approval suspends so nobody has to learn a rule, and FIX-2080's `held`
+  before the start, which the filer releases and the Inbox doesn't list ([Open](#open)).
 
 ## How it got here
 
@@ -274,8 +350,37 @@ and FIX-2063. Considered and dropped:
   deadline, closing the open question. The forward analysis folded: the drain's counts, FIX-2163
   named as a consumer, the reuse verdicts, and the other shapes (the Inbox reconciler as FIX-2133's
   first PR, the sweep's ratchet, `steerFromLine`, FIX-2132 cut to its coding-run delta). Amended with the five child specs, FIX-2163 and the concept in one PR.
+- **2026-10-25**, the owner, relayed: one list of holds per task, `holds[]`; the engine unchanged
+  and mirrored; questions and `confirm` as row holds; event releasers out. ER-2, ER-3, ER-7, ER-8,
+  D2, the Inbox and hold seams, FIX-2131, FIX-2133 and FIX-2134 amended in one PR
+  ([Amendment](#amendment--2026-10-25--one-list-of-holds-per-task)).
 
 ## Open
 
-None. The owner confirmed on 2026-10-24 that no default deadline covers approvals too ([D3](#d3)).
-The amendment's merge is the owner's renewed approval of the set.
+The owner confirmed on 2026-10-24 that no default deadline covers approvals too ([D3](#d3)).
+Two things are open, both his:
+
+**Is the relayed decision yours, as written?** It reached this set through another session, so
+the direction gate on this amendment is its confirmation. Merging it says yes; FIX-2133's two PRs
+wait on that merge.
+
+**Where does `confirm` stop and an approval start?**
+
+- **In plain terms:** both ask the user a yes or no. An approval stops the run and the code reads
+  the answer on its next line. A `confirm` ends the turn, or keeps the task from starting, and the
+  work picks the answer up from its brief.
+- **The trade-off:** `confirm` lets a task be filed to wait for the user's go, listed in the Inbox,
+  which `held` can't do (its filer releases it, unseen). The price is a second yes-or-no kind
+  where D1 had one, so an author has to pick.
+
+  ![Open: where confirm stops and an approval starts. Keep confirm, recommended, beside dropping it so every yes or no is an approval. Decides it: a task that waits for the user's go, filed and listed with confirm, against a run that starts only to stop. The price: two yes-or-no kinds to pick from. A tie: midway a model's yes or no is an approval either way. Flips if authors can't tell which to use](figures/open-confirm.svg)
+
+  It comes down to a task waiting for a go: without `confirm`, a run starts only to stop.
+- **My recommendation:** keep `confirm`, and draw the line by the rule people already learn: code
+  reads it next, an approval; the work picks it up from its brief, a `confirm`. In this epic only
+  a filer asks one, at filing (`createTask`); a model's midway yes or no stays an approval. I have
+  written that line into D1 and FIX-2133.
+- **What would change my mind:** authors who can't tell which one to use. Then `confirm` goes,
+  and a task waiting for the user's go is an approval in its first turn.
+- **What being wrong costs:** small and reversible while nothing ships: one kind in the hold's
+  `ask`, its Inbox buttons and one leg of FIX-2133's check. Stores are reset, so no data moves.

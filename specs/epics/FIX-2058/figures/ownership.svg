@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 326" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight rules by six issues and the closure FIX-2134, each rule with one owner. FIX-2129 owns one call to stop for a person with one predicate, the row's person mark that keeps a task's requests apart, a stop ending once, and one answer route the server trusts. FIX-2131 owns no task tool answering a suspension, and no row persisted before this work being read. FIX-2063 owns durable execution by default. FIX-2133 owns the one hold for a question. FIX-2137, a bug, owns no rule and uses durable execution by default. Other cells use the rule or are blank.">
+     aria-label="Who owns what: eight rules by six issues and the closure FIX-2134, each rule with one owner. FIX-2129 owns one call to stop for a person with one predicate, the row's open hold that keeps a task's requests apart, a stop ending once, and one answer route the server trusts. FIX-2131 owns no task tool answering a suspension, and no row persisted before this work being read. FIX-2063 owns durable execution by default. FIX-2133 owns one list of holds per task. FIX-2137, a bug, owns no rule and uses durable execution by default. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -33,7 +33,7 @@
     <rect class="use" x="826" y="58" width="66" height="26" rx="3"/><text class="t-use" x="832" y="75">uses</text>
   </g>
   <g id="er2">
-    <text class="t-row" x="16" y="108">ER-2 the row's mark keeps requests apart</text>
+    <text class="t-row" x="16" y="108">ER-2 an open hold keeps requests apart</text>
     <rect class="own" x="426" y="90" width="66" height="26" rx="3"/><text class="t-own" x="432" y="107">OWNS</text>
     <rect class="use" x="506" y="90" width="66" height="26" rx="3"/><text class="t-use" x="512" y="107">uses</text>
     <rect class="use" x="826" y="90" width="66" height="26" rx="3"/><text class="t-use" x="832" y="107">uses</text>
@@ -74,7 +74,7 @@
     <rect class="use" x="826" y="250" width="66" height="26" rx="3"/><text class="t-use" x="832" y="267">uses</text>
   </g>
   <g id="er8">
-    <text class="t-row" x="16" y="300">ER-8 one hold for a question, one row predicate</text>
+    <text class="t-row" x="16" y="300">ER-8 one list of holds per task, open holds read</text>
     <rect class="use" x="506" y="282" width="66" height="26" rx="3"/><text class="t-use" x="512" y="299">uses</text>
     <rect class="use" x="586" y="282" width="66" height="26" rx="3"/><text class="t-use" x="592" y="299">uses</text>
     <rect class="own" x="666" y="282" width="66" height="26" rx="3"/><text class="t-own" x="672" y="299">OWNS</text>

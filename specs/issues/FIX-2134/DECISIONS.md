@@ -83,13 +83,15 @@ the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone
 - **Both store backings:** the walk runs on the resource backing Shift Manager's boards use;
   FIX-2133's check, never skipped for this, reads the state backing; the gap sweep checks both
   backings' cancels call the hold's one write.
-- **One listing source per kind:** suspensions list from `readAsks` only, held questions from task
-  rows only, and `waitingFor` never ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)).
-  FIX-2133's reconciler checks it: green over six kinds at once is leg a, and a double listing or
-  a missed stop is a Bug.
+- **One item type over open holds** (the epic's amendment, 2026-10-25): every stop on a task row
+  lists from its open hold, a suspension's mirror or a row hold, and only a suspension with no task
+  row lists from `readAsks` ([FIX-2133](../FIX-2133/DECISIONS.md#decided-not-asked)).
+  FIX-2133's reconciler checks it, drift included: green over six kinds at once is leg a, and a
+  double listing, a missed stop or a mirror out of step with its suspension is a Bug.
 - **Two new controls**, each one module swap that fails the build if it never fired:
-  `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the hold's questions; `steer-ignores-mark` ignores the row's person mark.
-- **No legacy leg:** stores are reset (owner). Leg a reads `waitingOn: "user"`.
+  `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the row's holds; `steer-ignores-mark` ignores the row's open hold.
+- **No legacy leg:** stores are reset (owner). Leg a reads the rows' open holds, never
+  `waitingOn: "user"` or `waitingFor`, which FIX-2133 moves onto the hold.
 - **A coding run's review** ([FIX-2163](../FIX-2163/SPEC.md), epic FIX-2152) consumes this set's
   review suspension and FIX-2132's manager. Whether this closure walks it is FIX-2156's call.
 - **Today's `main`:** the sweep and leg a fail there; no factual-base checker, since the spec counts
