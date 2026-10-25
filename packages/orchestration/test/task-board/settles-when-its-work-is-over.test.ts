@@ -549,6 +549,27 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: "the whole answer" });
   });
 
+  it("a turn that asked and was answered before it stopped for the user opens no stop on the row: the owed turn stays claimable", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      const asked = await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      if (asked.ok) await ledger.answer!("t1", { hold: asked.holds[0]!, message: "signup_date", from: "user", by: "u1" });
+      // The same turn now stops for the user: one wait per turn, though its question is answered.
+      return ctx.waitForUser({ kind: "approval", prompt: "Ship it now?" });
+    });
+    const first = await h.run();
+    const row = (await h.row())!;
+    expect(openHolds(row)).toEqual([]);
+    expect(row).toMatchObject({ status: "in_progress", attempts: 1, turn: 1, turnOwed: true });
+    expect(row.waitingOn).toBeUndefined();
+    // The asking turn's own resume (its stop answered anyway, this harness having no cancel) takes neither the
+    // owed turn nor a lease, and settles nothing.
+    await h.resume(first.requestId!, { ok: true });
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 1, turn: 1, turnOwed: true });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+    expect(await h.reclaim()).toMatchObject({ attempts: 1, turn: 2 });
+  });
+
   it("a durable turn replayed after a stop asks once: the replay gets the first ask back, not the questions twice", async () => {
     const h = await harness();
     // The request store's memo, as a durable host's `runOnce` keeps it across a resume's replay.

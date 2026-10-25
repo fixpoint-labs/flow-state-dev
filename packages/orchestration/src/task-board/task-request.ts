@@ -58,7 +58,6 @@ import {
   DEFAULT_LEASE_DURATION_MS,
   MAX_HOLD_PROMPT,
   filedWorkHolds,
-  openRowHolds,
   readCommittedTask,
   ticketForClaim,
   untakenSteers,
@@ -160,6 +159,16 @@ function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task |
   return ticketHoldsRow(ticket, ref.collectionId, row);
 }
 
+/**
+ * Whether `record`'s turn asked questions midway (FIX-2133): this request
+ * asked, or the row's ask mark names the turn its ticket holds (a resume of
+ * the asking turn, whose own record is new).
+ */
+function askedThisTurn(record: Admitted, row: Task | undefined): boolean {
+  if (record.asked === true) return true;
+  return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === record.ticket.turn && row.attempts === record.ticket.attempt;
+}
+
 /** A task's request ended with a result that settles it, or that the next request picks up. */
 function answeredBefore(prior: TaskWaitingOn | undefined): boolean {
   return prior === "filed" || prior === "steer";
@@ -193,7 +202,11 @@ export async function admitClaimedTask(
   let ticket = options.ticket;
   let row = options.row;
   const prior = row.waitingOn ?? undefined;
-  if ((prior !== undefined || row.turnOwed === true) && ref.setWaitingOn !== undefined) {
+  // The task's own request resuming a turn that asked (FIX-2133): the turn is
+  // over, and the row, owed turn included, is the next turn's. Admitted for
+  // nothing to write: it takes no lease and no turn.
+  const askedTurn = options.own && row.askedInTurn === ticket.turn;
+  if (!askedTurn && (prior !== undefined || row.turnOwed === true) && ref.setWaitingOn !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
     // The run's own resume closes the mirror of its stop (FIX-2133). A later
     // request (a notice, a steer's turn) keeps it: the task's own run is
@@ -230,6 +243,7 @@ export async function admitClaimedTask(
     renewal,
     answerCounts: options.answerCounts,
     prior,
+    ...(askedTurn ? { asked: true } : {}),
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
@@ -300,6 +314,19 @@ const failsTheAttempt = (status: RequestEnding["status"]) =>
 async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error | undefined> {
   const { ref, ticket } = record;
   const row = ref.get(ticket.taskId);
+  // First, before any other branch (FIX-2133): a request whose turn asked
+  // questions midway waits once, on those questions. It may not stop for the
+  // user (its stop is cancelled, and the run resumes `cancelled`) and never
+  // settles or records a wait, whether the questions are answered yet or not,
+  // and whether or not a later turn has claimed the row since. Read from the
+  // request (`asked`) and the turn generation the ask wrote, never from the
+  // holds the row has open now.
+  if (askedThisTurn(record, row)) {
+    const suspension = ending.status === "suspended" ? ending.suspension : undefined;
+    const stop = suspension !== undefined && isUserSuspension(suspension) ? mirrorOf(record.ctx, ending) : undefined;
+    if (stop !== undefined) cancelRefusedStop(record.ctx, ticket.taskId, stop.source);
+    return undefined;
+  }
   // Settled, retried, parked for review, taken back or claimed for a later
   // turn meanwhile: not this request's to write.
   if (!claimHolds(ref, ticket, row)) return undefined;
@@ -314,17 +341,14 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
     const stop = stopOf(record, ending);
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
     const outcome = await waitOn(record, row, stop.on, undefined, mirror);
-    // One wait per turn (FIX-2133): a question holds this row, so its stop
-    // can't. The stop is cancelled, and the run resumes `cancelled`.
+    // Defence in depth (FIX-2133): a turn that asked never reaches here (the
+    // first branch), and the collection still refuses a mirror on a row a
+    // question holds, one source at a time. Cancelled if it does.
     if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "held") {
       cancelRefusedStop(record.ctx, row.id, mirror.source);
     }
     return undefined;
   }
-  // The turn asked questions (FIX-2133): it ends unsettled, and the last
-  // answer owes the next turn, answered by now or not. Nothing more is this
-  // request's to write.
-  if (record.asked === true || openRowHolds(row).length > 0) return undefined;
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];
   if (failsTheAttempt(ending.status) || background !== undefined) {

@@ -187,7 +187,7 @@ export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
       if (isTerminalStatus(task.status)) return { decline: "terminal" };
       if (openHolds(task).some(isSuspensionHold)) return { decline: "held" };
       if (steerPlacesTaken(task) + change.holds.length > MAX_STEERS) return { decline: "steer-limit" };
-      return { patch: { holds: [...(task.holds ?? []), ...change.holds], leaseUntil: undefined } };
+      return { patch: { holds: [...(task.holds ?? []), ...change.holds], leaseUntil: undefined, askedInTurn: task.turn ?? 0 } };
     }
     case "answer": {
       const { answer } = change;

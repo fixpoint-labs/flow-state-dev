@@ -259,7 +259,8 @@ describe.each([
     it("an ask drops the lease and ends the turn unsettled: no renewal, no reclaim, no claim, no settle while held", async () => {
       const { board, clock, ticket } = await askedMidway();
       const row = board.get("t4")!;
-      expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
+      // The turn that asked is marked on the row, by its generation: it may not stop for the user or settle.
+      expect(row).toMatchObject({ status: "in_progress", attempts: 1, askedInTurn: ticket.turn });
       expect(row.leaseUntil).toBeUndefined();
       expect(await board.renewLease("t4", clock.at + 10_000, { claim: ticket })).toMatchObject({ outcome: "declined", reason: "held" });
       clock.at += 60_000;
