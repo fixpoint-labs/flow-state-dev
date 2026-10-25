@@ -119,7 +119,7 @@ interface Admitted {
    * row is the next turn's once they're answered, even when the last answer
    * lands before this request ends.
    */
-  asked?: boolean;
+  askedQuestions?: boolean;
   /**
    * The task's own request (its entry, or that entry's resume), rather than a
    * later one admitted for it while it waits (a notice, a steer's turn).
@@ -161,11 +161,11 @@ function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task |
 
 /**
  * Whether `record`'s turn asked questions midway (FIX-2133): this request
- * asked, or the row's ask mark names the turn its ticket holds (a resume of
+ * asked, or the row's `askedInTurn` names the turn its ticket holds (a resume of
  * the asking turn, whose own record is new).
  */
 function askedThisTurn(record: Admitted, row: Task | undefined): boolean {
-  if (record.asked === true) return true;
+  if (record.askedQuestions === true) return true;
   return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === record.ticket.turn && row.attempts === record.ticket.attempt;
 }
 
@@ -243,7 +243,7 @@ export async function admitClaimedTask(
     renewal,
     answerCounts: options.answerCounts,
     prior,
-    ...(askedTurn ? { asked: true } : {}),
+    ...(askedTurn ? { askedQuestions: true } : {}),
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
@@ -319,7 +319,7 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   // user (its stop is cancelled, and the run resumes `cancelled`) and never
   // settles or records a wait, whether the questions are answered yet or not,
   // and whether or not a later turn has claimed the row since. Read from the
-  // request (`asked`) and the turn generation the ask wrote, never from the
+  // request (`askedQuestions`) and the turn generation its questions wrote, never from the
   // holds the row has open now.
   if (askedThisTurn(record, row)) {
     const suspension = ending.status === "suspended" ? ending.suspension : undefined;
@@ -747,7 +747,7 @@ export async function askMidway(
   const asked = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();
   // The turn is over: its lease is gone, and nothing renews it again.
   if (asked.ok && record !== undefined) {
-    record.asked = true;
+    record.askedQuestions = true;
     record.renewal?.stop();
   }
   return asked;

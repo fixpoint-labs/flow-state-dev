@@ -554,7 +554,7 @@ export const taskSchema = z.object({
 
   /**
    * The turn generation that asked questions midway (FIX-2133): written by
-   * the ask, so the request working that turn may not stop for the user and
+   * the midway question, so the request working that turn may not stop for the user and
    * never settles, whether its questions are answered yet or not, across a
    * resume too. A later turn's claim leaves it behind (its generation is
    * newer). Server-written. **Absent** until a turn asks.
