@@ -144,57 +144,30 @@ Two failure modes are specific to this lifecycle, because they come from what a 
 
 ## The spec-review round budget (why AWAITING_SPEC_APPROVAL terminates)
 
-A spec PR draws review from bots we don't control, which produce line-level feedback
-without limit. Dispatching a Step 6.5 round for every event that arrives is an unbounded
-loop — and it's the loop that used to grind a directionally-correct spec through ten
-rounds. So this phase is **budgeted, not open-ended.**
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The
+convergence rule"** (two rounds, count rounds spent, the conditional third round). Standalone,
+*you* apply it; under `epic-lifecycle`, `epic-wake`'s `atReviewBudget()` does. **Change that
+doc first, then both.** The standalone mechanics:
 
-**Default: two rounds.** Track the count in the handle cache (`specReviewRounds`; the older
-`spec_review_rounds` spelling is still read, so an epic resumed from an earlier record keeps its spent
-budget instead of silently starting a fresh two).
-
-> **Two implementations, one rule.** Running standalone, *you* apply the budget as written
-> below. Running under `epic-lifecycle`, the `epic-wake` workflow's `atReviewBudget()` applies
-> it — the same rule as executable code, covering issue specs and the epic PR alike. Both
-> derive from [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The
-> convergence rule", which stays canonical. **Change that doc first, then both.** A change to
-> one alone is the drift this note exists to catch.
-
-**Count rounds spent, not events dispatched.** The Step 6.5 sub-agent reports the rounds it
-actually spent, and **a batch that was only factual corrections or broken references costs
-zero** — those get fixed inline by rule precisely because they don't move the design. So add
-what the worker reports; never increment blindly per event. Charging typo batches to the
-budget would exhaust it on noise and then suppress the substantive feedback the budget exists
-to make room for — the opposite of the point. Then:
-
+- **The counter** is `specReviewRounds` in the handle cache (the older `spec_review_rounds`
+  spelling is still read, so a resumed record keeps its spent budget). Add the rounds the Step
+  6.5 worker reports spent; a batch of only factual corrections or broken references costs
+  zero. Never increment per event.
 - **Rounds 1–2** — dispatch Step 6.5 on the event batch as normal.
-- **Round 2 returns** — the spec has **converged**. Surface it to the user for the approval
-  gate, stating that it's converged and that remaining open threads are carried as
-  implementer notes in `DECISIONS.md → Notes from review`. Then **stop dispatching review rounds**; further spec-PR review events
-  are logged in the cache and ignored until the gate resolves. The only event that still
-  acts is a **human** one — a gate signal from
+- **Round 2 returns** — the spec has **converged**. Surface it for the approval gate, saying
+  remaining threads are carried as implementer notes in `DECISIONS.md → Notes from review`.
+  Then **stop dispatching review rounds**: log further spec-PR review events in the cache and
+  ignore them until the gate resolves. Only a **human** event still acts — a gate signal from
   [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
-  (in-session go-ahead, a non-owner human review with no agent header, or an owner label),
-  or the user asking for a specific change. An owner-login review is not that signal.
-- **A third round is allowed only when round two surfaced a genuine spec-level finding** —
-  a new approach question, not more notes. The Step 6.5 sub-agent reports whether anything
-  was spec-level; that flag is what authorizes the extra round. Say so in one line when you
-  spend it, so the extra round is a visible decision rather than drift.
+  (an owner-login review is not one), or the user asking for a specific change.
+- **A third round** only when the worker's spec-level flag says round two found a genuine
+  spec-level finding. Say so in one line when you spend it.
+- **Reset** only when the *user* asks for a spec-level change after convergence.
 
-Stopping design rounds preserves the canonical convergence budget; it never waives
-required branch checks or review-thread policy for spec merge. Below-the-bar feedback
-remains implementer input, and implementation reviews the design against real code.
-A bot review neither grants human direction approval nor extends the design budget.
-
-The counter resets only if the *user* asks for a spec-level change after convergence — that
-starts a fresh direction question, not another polishing pass.
+Stopping design rounds never waives required checks or review-thread policy for spec merge,
+and a bot review neither grants approval nor extends the budget.
 
 ## The PR-feedback round cap (why PR_FEEDBACK terminates)
-
-The spec side is bounded by the budget above. The **implementation** PR is the other
-unbounded loop, and the worse one: several reviewers comment on a diff, a worker fixes and
-replies, the fixes draw fresh comments, and every round looks individually reasonable. Round
-nine re-litigating round three is invisible from inside any single round.
 
 **Default cap: twelve auto-handled rounds** (`prFeedbackRounds` in the handle cache). The
 rule is canonical in [`orchestration.md`](../../../docs/contributing/orchestration.md) →
@@ -224,11 +197,8 @@ round is charged one. Then:
   acknowledgements only, report `0` and post **no** pause comment; no round was spent and the
   loop continues.
 
-Skip this and the cap degrades in both directions at once: an unprompted worker omits the
-count, so every acknowledgement batch is charged one, and the batch that reaches twelve parks
-the issue with **no** pause comment on the PR and no assessment to give the user — the two
-things the cap exists to produce. (`epic-wake` builds exactly this into the `pr-feedback`
-prompt; standalone, it is yours to build.)
+Skip this and the cap fails both ways (orchestration.md says how). `epic-wake` builds it into
+the `pr-feedback` prompt; standalone, it is yours to build.
 
 **The user's answer is the release.** Record it, carry it verbatim into the next dispatch's
 prompt (the escalating worker is gone — same handoff rule as any other blocker), and **reset
