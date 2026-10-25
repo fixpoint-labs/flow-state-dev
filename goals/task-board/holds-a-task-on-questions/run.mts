@@ -26,7 +26,7 @@
  *          attempt 1, and the asking turn's late write after that turn's claim is refused
  *   dnowake leg d with the turn's own start in its session skipped: the board's claim takes it
  *   e      the rules: retries and competing answers, a cancel, no deadline (t6), another user,
- *          tenant or org, a task run's stop as a hold (t9), a confirm (t10), one wait per turn
+ *          tenant or org, a task run's stop as a hold (t9), a confirm's yes (t10) and No (t12), one wait per turn
  *          (t11), and a line typed in a held session (t8)
  *   edue   a deadline the host set (t5): past due and a touch later, "no answer came", and t5 starts
  *   f      the host's setting for a person's stop: a held question reads it (FIX-2129 leg f's half)
@@ -705,6 +705,16 @@ async function legE(run: Run): Promise<void> {
   if (yes !== "ok" || proofsOf(t10, "turn").length !== 1 || !(proofsOf(t10, "turn")[0]?.message ?? "").includes("Yes, go ahead.")) {
     run.failures.push(`e:t10-yes-starts — wanted the yes to start t10 once with it in its brief; ${yes}, ${proofsOf(t10, "turn").length} turns`);
   }
+  // t12: a confirm's No, the default (owner, 2026-10-25): the task is cancelled, never started, its item gone.
+  const t12 = await file(run, word("t12 Drop the old table"), { questions: [{ kind: "confirm", prompt: "Drop it now?" }] });
+  const t12Item = await itemOf(run, t12);
+  const no = t12Item === undefined ? "no item" : await answer(run, t12, t12Item.holds[0]!.id, { done: false, note: "keep it a week" });
+  if (t12Item !== undefined) run.closed.push(t12Item.holds[0]!.id);
+  await touch(run);
+  const t12Read = await getTask(run, t12);
+  if (no !== "ok" || t12Read?.status !== "cancelled" || proofsOf(t12, "turn").length !== 0 || (await itemOf(run, t12)) !== undefined) {
+    run.failures.push(`e:t12-no-cancels — wanted the No to cancel t12 unstarted and close its item; ${no}, ${show({ status: t12Read?.status, error: t12Read?.error })}, ${proofsOf(t12, "turn").length} turns`);
+  }
   // t11: one wait per turn: asked, then a stop for a person in the same turn, which is refused and cancelled.
   const t11 = await file(run, word("t11 Ask then approve [ask-then-approve]"));
   await run.h.until(async () => proofsOf(t11, "resumed").length === 1, 15_000);
@@ -732,7 +742,7 @@ async function legE(run: Run): Promise<void> {
   for (const id of [t6, t7, t8, t11]) await run.h.http.act("desk", run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   for (const id of [t6, t7, t8, t11]) run.closed.push(...openIds(await run.h.byId(id)).filter(() => false));
   await run.h.idle();
-  run.notes.push("e: retries, a competing answer, the caller check, a cancel, no deadline, t9's mirror, t10's confirm, t11's refused stop, t8's line");
+  run.notes.push("e: retries, a competing answer, the caller check, a cancel, no deadline, t9's mirror, t10's confirm, t12's No cancelling it, t11's refused stop, t8's line");
 }
 
 /** edue: a deadline the host set (t5): past due and a touch later, it closes "no answer came", and t5 starts. */

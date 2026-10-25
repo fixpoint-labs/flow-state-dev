@@ -79,6 +79,7 @@ import {
   taskHoldSchema,
   type HoldAnswer,
   type HoldAsk,
+  type RowHold,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -99,8 +100,9 @@ import {
 import { cancelAndResume } from "../tasks/helpers/user-stop";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
-function askOf(question: string | { kind: "question" | "confirm"; prompt: string }): HoldAsk {
-  return typeof question === "string" ? { kind: "question", prompt: question } : { kind: question.kind, prompt: question.prompt };
+function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): HoldAsk {
+  if (typeof question === "string") return { kind: "question", prompt: question };
+  return { kind: question.kind, prompt: question.prompt, ...(question.onNo !== undefined ? { onNo: question.onNo } : {}) };
 }
 
 /**
@@ -864,14 +866,22 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .array(
         z.union([
           z.string().min(1),
-          z.object({ kind: z.enum(["question", "confirm"]), prompt: z.string().min(1) }),
+          z.object({
+            kind: z.enum(["question", "confirm"]),
+            prompt: z.string().min(1),
+            onNo: z
+              .enum(["cancel", "continue"])
+              .optional()
+              .describe('A confirm\'s No: "cancel" (the default) cancels the task; "continue" lets it go on with the No in its brief.'),
+          }),
         ]),
       )
       .min(1)
       .optional()
       .describe(
         "Questions for the user, asked before the task starts: it waits until every one is answered, and each answer " +
-          'joins its brief. A plain string is a question; { kind: "confirm", prompt } asks for a yes or a no. Set only when filing.',
+          'joins its brief. A plain string is a question; { kind: "confirm", prompt } asks for a yes or a no, and a No ' +
+          'cancels the task unless you pass onNo: "continue". Set only when filing.',
       ),
     session: z
       .enum(["new", "ongoing"])
@@ -1421,6 +1431,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         return refuse(`confirm_takes_done: "${input.question}" asks for a yes or a no. Answer it with done: true or false, and a note in message if you like.`);
       }
       text = `${input.done ? "Yes, go ahead." : "No."}${input.message !== undefined ? ` ${input.message}` : ""}`;
+      // A No on a confirm that cancels (the default, owner 2026-10-25): the
+      // task is cancelled through the one cancel path, the No and its note
+      // its reason. Before any answer is kept, so the release never starts it.
+      if (input.done === false && hold.ask.onNo !== "continue") return cancelOnNo(ctx, collection, row, hold, input.message);
     } else {
       if (input.done !== undefined) return refuse(`question_takes_message: "${input.question}" is a question. Answer it with message.`);
       if (input.message === undefined) return refuse(`question_takes_message: an answer to "${input.question}" needs its words in message.`);
@@ -1444,6 +1458,32 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (outcome.reason === "terminal") return lockedError(collection.get(input.id) ?? { ...row, status: outcome.status }, ["message"]);
       if (outcome.reason === "no-such-hold") return refuse(`no_such_question: task "${input.id}" holds no question "${input.question}".`);
       return declinedWriteToolError(input.id, outcome, "The answer was not kept.");
+    }
+    return { ok: true as const };
+  }
+
+  /**
+   * A confirm answered No, on a confirm whose No cancels: the task's ordinary
+   * cancel (`cancelAndResume`, the cancel `updateTask` sends), as the user,
+   * with the No and its note as the reason. Retried after it landed, the same
+   * No is a success; a task that finished another way is refused as finished.
+   */
+  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowHold, note: string | undefined) {
+    const reason = `No to "${hold.ask.prompt}"${note !== undefined && note.trim().length > 0 ? `: ${note}` : ""}`;
+    if (isTerminalStatus(row.status)) {
+      return row.status === "cancelled" && row.error === reason ? { ok: true as const } : lockedError(row, ["message"]);
+    }
+    let outcome: TaskWriteOutcome | undefined;
+    try {
+      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via });
+    } catch (err) {
+      if (err instanceof TaskWriteRefusedError) return refusedError(err);
+      throw err;
+    }
+    if (outcome != null && outcome.outcome === "declined") {
+      const now = collection.get(row.id) ?? { ...row, status: outcome.status };
+      if (now.status === "cancelled" && now.error === reason) return { ok: true as const };
+      return isTerminalStatus(outcome.status) ? lockedError(now, ["message"]) : declinedWriteToolError(row.id, outcome, "The No was not kept.");
     }
     return { ok: true as const };
   }

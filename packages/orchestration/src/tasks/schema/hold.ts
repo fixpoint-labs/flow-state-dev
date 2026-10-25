@@ -68,6 +68,14 @@ export const rowHoldSchema = z.object({
     kind: z.enum(["question", "confirm"]),
     prompt: z.string(),
     title: z.string().optional(),
+    /**
+     * A confirm's No (owner, 2026-10-25): `"cancel"` cancels the task, the
+     * No and its note kept as the cancel's reason; `"continue"` lets the work
+     * go on with "No." in its brief. Written on every confirm from its first
+     * write, `"cancel"` unless its filer said otherwise. **Absent** on a
+     * question.
+     */
+    onNo: z.enum(["cancel", "continue"]).optional(),
   }),
   /**
    * Asked midway, by the turn holding the task's claim, rather than at
@@ -85,5 +93,8 @@ export type RowHold = z.infer<typeof rowHoldSchema>;
 export type TaskHold = z.infer<typeof taskHoldSchema>;
 export type HoldReleaser = z.infer<typeof releaserSchema>;
 
-/** What a filer or a worker asks: a question's words, or a `confirm` (filing only). */
-export type HoldAsk = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string };
+/** What a confirm's No does: cancel the task (the default), or let the work go on. */
+export type ConfirmOnNo = "cancel" | "continue";
+
+/** What a filer or a worker asks: a question's words, or a `confirm` with what its No does. */
+export type HoldAsk = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };

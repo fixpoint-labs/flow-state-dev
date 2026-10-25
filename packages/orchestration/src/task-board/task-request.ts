@@ -702,14 +702,19 @@ export type MidwayAsk =
 export async function askMidway(
   ctx: BlockContext,
   ledger: TaskCollectionRef,
-  questions: readonly { readonly prompt: string; readonly title?: string }[]
+  questions: readonly { readonly kind?: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: "cancel" | "continue" }[]
 ): Promise<MidwayAsk> {
   const record = admitted.get(requestKey(ctx));
   const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
   if (claim === undefined || claim.collectionId !== ledger.collectionId) return { ok: false, reason: "no-claim" };
   const ask = ledger.ask;
   if (ask === undefined) return { ok: false, reason: "not-supported" };
-  const asks = questions.map((question) => ({ kind: "question" as const, prompt: question.prompt, ...(question.title !== undefined ? { title: question.title } : {}) }));
+  const asks = questions.map((question) => ({
+    kind: question.kind ?? ("question" as const),
+    prompt: question.prompt,
+    ...(question.title !== undefined ? { title: question.title } : {}),
+    ...(question.onNo !== undefined ? { onNo: question.onNo } : {}),
+  }));
   const write = async (): Promise<MidwayAsk> => {
     const outcome = await ask(claim.taskId, asks, { claim });
     return outcome.outcome === "declined" ? { ok: false, reason: outcome.reason } : { ok: true, holds: outcome.holds ?? [] };

@@ -143,6 +143,23 @@ describe.each([
     });
   });
 
+  describe("a confirm's No", () => {
+    it("is stored on every confirm from its first write: cancel unless its filer said continue, and never on a question", async () => {
+      const { board } = await make();
+      const row = await board.addTask({
+        id: "t10",
+        goal: "g",
+        questions: [{ kind: "confirm", prompt: "Ship it?" }, { kind: "confirm", prompt: "Tag it?", onNo: "continue" }, ask(CSV)],
+      });
+      expect(row.holds!.map((hold) => hold.ask)).toEqual([
+        { kind: "confirm", prompt: "Ship it?", onNo: "cancel" },
+        { kind: "confirm", prompt: "Tag it?", onNo: "continue" },
+        { kind: "question", prompt: CSV },
+      ]);
+      await expect(board.addTask({ id: "t11", goal: "g", questions: [{ kind: "question", prompt: CSV, onNo: "cancel" }] })).rejects.toThrow(/only a confirm takes onNo/);
+    });
+  });
+
   describe("an answer's rules", () => {
     it("the same answer again is unchanged; other words, or another user, are refused as answered; an unknown id is no such hold", async () => {
       const { board, csv } = await filed();

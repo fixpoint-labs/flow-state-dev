@@ -354,6 +354,11 @@ and the Codex-once rule are unchanged.
   and mirrored; questions and `confirm` as row holds; event releasers out. ER-2, ER-3, ER-7, ER-8,
   D2, the Inbox and hold seams, FIX-2131, FIX-2133 and FIX-2134 amended in one PR
   ([Amendment](#amendment--2026-10-25--one-list-of-holds-per-task)).
+- **2026-10-25**, the owner, relayed (decided on FIX-2133's #3890): a confirm takes
+  `onNo: "cancel" | "continue"` from its filer, default `"cancel"`. A No on a `"cancel"` confirm
+  cancels the task through the ordinary cancel, its No and note the cancel's reason; on
+  `"continue"` the work goes on with "No." in its brief. Confirms filed up front and asked midway
+  alike. An evaluator that reads the answer's meaning is a separate follow-up.
 
 ## Open
 

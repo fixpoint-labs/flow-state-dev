@@ -714,14 +714,14 @@ createTask({
   assignee: "analyst",
   questions: [
     "Which CSV export should the script read?",
-    { kind: "confirm", prompt: "Run it against production?" },
+    { kind: "confirm", prompt: "Run it against production?" },   // a No cancels the task
   ],
 })
 ```
 
-A plain string is a question, answered in words. A `confirm` asks for a yes or a no. The task stays `pending`, and nothing starts it, until every one is answered. Each answer joins the brief its first attempt gets, after the goal and beside the question it answers. Questions are set only when filing, up to 20, each up to 1,000 characters.
+A plain string is a question, answered in words. A `confirm` asks for a yes or a no. A No cancels the task, with the No and any note as the cancel's reason. File it with `onNo: "continue"` instead and the work goes on after a No, with "No." in its brief. The task stays `pending`, and nothing starts it, until every one is answered. Each answer joins the brief its first attempt gets, after the goal and beside the question it answers. Questions are set only when filing, up to 20, each up to 1,000 characters.
 
-A worker can also ask midway, from the turn working the task, with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote, and gives up its lease, so it isn't handed out again while it waits. Once the user answers, the task takes one more turn on the same attempt, with the answer in its message. That turn isn't charged against `maxAttempts`.
+A worker can also ask midway, from the turn working the task, with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote, and gives up its lease, so it isn't handed out again while it waits. Once the user answers, the task takes one more turn on the same attempt, with the answer in its message. That turn isn't charged against `maxAttempts`.
 
 `getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A hold stays listed until it's answered. The same list carries a stop the task's run is parked on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
 

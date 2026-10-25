@@ -42,6 +42,7 @@ export {
   taskHoldSchema,
   rowHoldSchema,
   suspensionHoldSchema,
+  type ConfirmOnNo,
   type HoldAsk,
   type HoldReleaser,
   type RowHold,

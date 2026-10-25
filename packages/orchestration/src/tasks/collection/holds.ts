@@ -93,6 +93,8 @@ export function assertAskable(asks: readonly HoldAsk[]): void {
 export function askProblem(asks: readonly HoldAsk[]): string | undefined {
   if (asks.length === 0) return "no question was asked";
   if (asks.length > MAX_STEERS) return `a task holds at most ${MAX_STEERS} questions, and ${asks.length} were asked`;
+  const misplaced = asks.findIndex((ask) => ask.kind === "question" && ask.onNo !== undefined);
+  if (misplaced >= 0) return `question ${misplaced + 1} is a question, and only a confirm takes onNo`;
   const blank = asks.findIndex((ask) => ask.prompt.trim().length === 0);
   if (blank >= 0) return `question ${blank + 1} is empty`;
   const long = asks.findIndex((ask) => ask.prompt.length > MAX_HOLD_PROMPT);
@@ -108,7 +110,13 @@ export function newRowHolds(asks: readonly HoldAsk[], at: number, options: { rea
     openedAt: at,
     ...(options.dueMs !== undefined ? { due: at + options.dueMs } : {}),
     source: { kind: "row" as const, releasedBy: [{ by: "answer" as const }] },
-    ask: { kind: ask.kind, prompt: ask.prompt, ...(ask.title !== undefined ? { title: ask.title } : {}) },
+    ask: {
+      kind: ask.kind,
+      prompt: ask.prompt,
+      ...(ask.title !== undefined ? { title: ask.title } : {}),
+      // What a confirm's No does, stored from its first write: cancel unless its filer said continue.
+      ...(ask.kind === "confirm" ? { onNo: ask.onNo ?? ("cancel" as const) } : {}),
+    },
     ...(options.midway === true ? { midway: true as const } : {}),
   }));
 }

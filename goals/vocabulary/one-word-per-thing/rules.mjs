@@ -152,7 +152,7 @@ export const KEEP = [
   {
     path: /^(packages\/orchestration\/(src|test)\/|packages\/workforce\/src\/conversation-board\/board\.ts$|apps\/docs\/docs\/orchestration\/task-board\.md$)/,
     // The hold's names only: a question to the user, opened at filing or midway. Any other ask word on these lines' files stays open.
-    line: /\b(askMidway|MidwayAsk|AskDeclineReason|HoldAsk|askProblem|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
+    line: /\b(askMidway|MidwayAsk|AskDeclineReason|HoldAsk|askProblem|assertAskable|askOf|askOptions)\b|\b(hold|ledger|board|collection|ref)\??\.ask\b|TaskCollectionRef(\["ask"\]|\.ask\b)|^\s*ask: (\{|z\.)|\{ ask: \{|\.ask\.(kind|prompt)\b/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "a task's holds (FIX-2133): a hold's `ask` and the midway ask that opens one, a question to the user"
   },

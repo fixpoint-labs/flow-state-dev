@@ -49,7 +49,7 @@ describe("createTask's questions", () => {
     expect(row).toMatchObject({ status: "pending", attempts: 0 });
     expect(openHolds(row).map((hold) => hold.ask)).toEqual([
       { kind: "question", prompt: CSV },
-      { kind: "confirm", prompt: "Run it against prod?" },
+      { kind: "confirm", prompt: "Run it against prod?", onNo: "cancel" },
     ]);
     const read = await b.call("getTask", { id: filed.taskId });
     expect(read.task.holds.map((hold: { ask: unknown }) => hold.ask)).toEqual(openHolds(row).map((hold) => hold.ask));
@@ -122,6 +122,39 @@ describe("updateTask's question", () => {
     expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: true, message: "after lunch" })).toEqual({ ok: true });
     expect(b.get(filed.taskId)!.steers).toEqual([expect.objectContaining({ message: "Yes, go ahead. after lunch", answers: hold })]);
     expect(openHolds(b.get(filed.taskId)!)).toEqual([]);
+  });
+
+  it("a No on a confirm cancels the task by default, the No and its note its reason; the same No again is a success", async () => {
+    const b = await board();
+    const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?" }] });
+    const hold = openHolds(b.get(filed.taskId)!)[0]!.id;
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: false, message: "not this week" })).toEqual({ ok: true });
+    const row = b.get(filed.taskId)!;
+    expect(row).toMatchObject({ status: "cancelled", attempts: 0, error: 'No to "Ship once it builds?": not this week', cancelledVia: "action" });
+    expect(await b.ref.claim("w")).toBeNull();
+    // A retry after the cancel landed; a different answer is refused as finished.
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: false, message: "not this week" })).toEqual({ ok: true });
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: true })).toMatchObject({ ok: false, error: expect.stringMatching(/^task_finished:/) });
+  });
+
+  it("a confirm filed with onNo: continue goes on after a No, with the No in its brief", async () => {
+    const b = await board();
+    const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?", onNo: "continue" }] });
+    const hold = openHolds(b.get(filed.taskId)!)[0]!;
+    expect(hold.ask).toEqual({ kind: "confirm", prompt: "Ship once it builds?", onNo: "continue" });
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold.id, done: false })).toEqual({ ok: true });
+    expect(b.get(filed.taskId)!.steers).toEqual([expect.objectContaining({ message: "No.", answers: hold.id })]);
+    expect(await b.ref.claim("w")).toMatchObject({ id: filed.taskId, status: "in_progress", attempts: 1 });
+  });
+
+  it("a No on a confirm asked midway cancels the task it holds, through the same cancel", async () => {
+    const b = await board();
+    const filed = await b.call("createTask", { goal: "Clean the export" });
+    const claimed = (await b.ref.claim("w", { leaseDurationMs: 10_000 }))!;
+    const asked = await b.ref.ask!(filed.taskId, [{ kind: "confirm", prompt: "Drop the empty rows?" }], { claim: ticketForClaim(b.ref.collectionId, claimed) });
+    expect(asked.outcome).toBe("recorded");
+    expect(await b.act("updateTask", { id: filed.taskId, question: asked.holds![0]!, done: false })).toEqual({ ok: true });
+    expect(b.get(filed.taskId)).toMatchObject({ status: "cancelled", attempts: 1, error: 'No to "Drop the empty rows?"' });
   });
 
   it("the filer's own tool answers no question asked at filing: those are the user's", async () => {
