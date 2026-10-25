@@ -194,7 +194,7 @@ export type BoardRow = {
   question?: string;
   /**
    * What holds the row (FIX-2133): its questions and confirms, and its run's
-   * stop for a person. Empty when nothing does. The Inbox lists the task's
+   * stop for the user. Empty when nothing does. The Inbox lists the task's
    * item from the open ones.
    */
   holds: TaskHold[];

@@ -144,8 +144,8 @@ export type TaskWriteDeclineReason =
   /**
    * A steer past the most a task takes (`MAX_STEERS`, FIX-2086 D1): cancel
    * it and file it again, or file a follow-up once it ends. Each open question
-   * keeps its answer's place under the cap (FIX-2133), so an ask that would
-   * take the row past it is refused this way too.
+   * keeps its answer's place under the cap (FIX-2133), so questions that
+   * would take the row past it are refused this way too.
    */
   | "steer-limit"
   /**

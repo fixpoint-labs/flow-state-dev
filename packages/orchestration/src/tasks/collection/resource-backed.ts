@@ -1095,7 +1095,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // than an exception: the claim commits `leaseUntil` and `updatedAt` from
       // one clock, so keeping them in step is what preserves
       // `leaseUntil - updatedAt === the committed span` across a renewal.
-      // A held row renews no lease (FIX-2133): a renewal racing an ask loses.
+      // A held row renews no lease (FIX-2133): a renewal racing a midway question loses.
       return transitionRef(
         id,
         "in_progress",

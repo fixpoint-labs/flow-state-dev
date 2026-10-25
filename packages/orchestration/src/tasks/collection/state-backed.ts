@@ -730,7 +730,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // Same-status, so this rides the ordinary transition path and picks up
       // all four decline arms — the lease fence among them. See the resource
       // backing's `renewLease` for why `updatedAt` moving is the right answer.
-      // A held row renews no lease (FIX-2133): a renewal racing an ask loses.
+      // A held row renews no lease (FIX-2133): a renewal racing a midway question loses.
       return transitionTo(
         id,
         "in_progress",
@@ -1016,7 +1016,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             task.status === "in_progress" &&
             task.leaseUntil !== undefined &&
             task.leaseUntil < at &&
-            // A held row is never taken back (FIX-2133): it holds no lease, and a renewal racing an ask is refused.
+            // A held row is never taken back (FIX-2133): it holds no lease, and a renewal racing a midway question is refused.
             !hasOpenHold(task as Task)
           ) {
             // Preserve `assignee` — it's the user-set worker-registry
