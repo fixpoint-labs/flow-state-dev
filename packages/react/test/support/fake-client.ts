@@ -68,6 +68,7 @@ export function fakeClient(parts: FakeClientParts): Client {
         const result = await call(parts.request?.resume, "request.resume", id, body);
         return options?.stream === true ? result : handle(flow, (result as { requestId: string }).requestId);
       }) as RequestHandle["resume"],
+      answer: async () => missing("request.answer"),
       stream: (options) =>
         parts.requestStream?.({
           url: `/api/flows/${encodeURIComponent(flow)}/requests/${encodeURIComponent(id)}/stream${

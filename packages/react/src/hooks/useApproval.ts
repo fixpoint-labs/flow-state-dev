@@ -53,6 +53,8 @@ export function resolveApprovalOutcome(
       return { icon: "⏲", label: "Expired" };
     case "stopped":
       return { icon: "■", label: "Stopped" };
+    case "cancelled":
+      return { icon: "■", label: "Cancelled" };
     default:
       return { icon: "•", label: "Resolved" };
   }

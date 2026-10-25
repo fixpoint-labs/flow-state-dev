@@ -23,6 +23,7 @@ import {
   KEEP,
   MIGRATION_TABLE,
   PASS_THROUGHS,
+  PERSON_STOPS_REMOVED,
   RECORDERS,
   REFUSAL_MARKER,
   REMOVED,
@@ -75,7 +76,16 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   }
 
   // ---- removed · text matchers over the swept files ---------------------------------------
-  const textMatchers = REMOVED.filter((m) => m.kind === "text");
+  // FIX-2058's person-stop ratchet rides the same text pass (FIX-2134 D2).
+  const SWEPT = REMOVED.find((m) => m.kind === "text").files;
+  const personStops = PERSON_STOPS_REMOVED.map((p) => ({
+    row: `person stop \`${p.name}\``,
+    kind: "text",
+    files: p.files ?? SWEPT,
+    pattern: new RegExp(`\\b${p.name}\\b`),
+    owner: p.owner,
+  }));
+  const textMatchers = [...REMOVED.filter((m) => m.kind === "text"), ...personStops];
   for (const path of swept) {
     const applicable = textMatchers.filter((m) => m.files.test(path) && !(m.notFiles && m.notFiles.test(path)));
     if (applicable.length === 0) continue;

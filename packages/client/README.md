@@ -106,6 +106,7 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
 | `resume({ suspensionId, action, data?, resumedBy? })` | Answer a pending suspension. The run carries on under the same id. `{ stream: true }` returns its SSE `Response`. |
+| `answer({ suspensionId, action, data? })` | Answer a stop that waits for a user, in any run, a task board's included, which `resume` refuses (below). Resolves to the same handle. |
 | `stream(callbacks)` | Follow the request's events (below). |
 
 `continue` and `retry` need the request's session. A handle from `send` or
@@ -117,6 +118,24 @@ one status call and keeps it. A request with no session rejects before any call.
 the suspension's `resumeSchema` (an invalid payload is a 400 with path-keyed
 `validationErrors`). `skip` declines an optional step. An action outside the
 suspension's `allow` set is a 409.
+
+To answer a stop that waits for a user from an inbox (a `ctx.waitForUser`, or a
+`human_approval` / `human_input` stop), use `answer`. The server checks the
+caller owns the stop's request before it reads the stop, and records the
+signed-in caller as who answered, so there is no `resumedBy`:
+
+```ts
+await fsd.flow(flowId).request(item.requestId).answer({
+  suspensionId: item.suspensionId,
+  action: "submit",
+  data: "eu-west",
+});
+```
+
+It rejects on a refusal: `404` for a stop that isn't the caller's or isn't a
+user's, `409` for one already resolved (an answer, a cancel, a deadline or a
+stop got there first), `410` past its deadline, `400` for an answer its
+`resumeSchema` rejects.
 
 ### After a crash
 

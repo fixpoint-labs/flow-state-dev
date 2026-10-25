@@ -26,9 +26,11 @@
  *   wait), and starts that entry at once; the entry admits a same-attempt
  *   request whose message is the steer, and its end checks again. Each turn
  *   takes at least one steer, so the steer cap bounds the turns.
- * - **suspended** — the row records the stop (`"person"` for a person's,
- *   `human_approval` or `human_input`; `"wait"` for any other) and drops its
- *   lease (D1). The resume is admitted like any request.
+ * - **suspended** — the row records the stop (`"user"` for one that waits for
+ *   a user, by the one predicate `isUserSuspension`, with what it asks in
+ *   `waitingFor`, FIX-2129; `"wait"` for any other) and drops its lease (D1),
+ *   in one write. The resume is admitted like any request; a stop of it is
+ *   the board's to cancel (`cancelStoppedUserStops`).
  * - **failed, aborted, interrupted** — the attempt fails, where it does today
  *   (a gate's rescue has usually done it already, and then this writes
  *   nothing).
@@ -42,11 +44,12 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, onRequestEnded, type RequestEndVerdict, type RequestEnding } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isUserSuspension, onRequestEnded, waitForUserKindOf, type RequestEndVerdict, type RequestEnding } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   DEFAULT_LEASE_DURATION_MS,
+  MAX_WAITING_FOR_PROMPT,
   filedWorkHolds,
   readCommittedTask,
   ticketForClaim,
@@ -98,6 +101,8 @@ interface Admitted {
   readonly answerCounts: boolean;
   /** What the row waited on when this request was admitted. */
   readonly prior: TaskWaitingOn | undefined;
+  /** The user's stop the row waited on then, which admission clears and a later request's end restores (FIX-2129). */
+  readonly priorFor: Task["waitingFor"];
   readonly rules: TaskEndRules;
   /** The answer this request gave, once it gave one that counts. */
   answer?: { output: unknown };
@@ -173,9 +178,17 @@ export async function admitClaimedTask(
   const { ref, ticket } = options;
   let row = options.row;
   const prior = row.waitingOn ?? undefined;
+  const priorFor = row.waitingFor;
   if (prior !== undefined && ref.setWaitingOn !== undefined) {
     const span = row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
-    const outcome = await ref.setWaitingOn(row.id, null, { claim: ticket, leaseUntil: ref.now() + span });
+    // A later request (a notice, a steer's turn) keeps the user's stop the
+    // row records (FIX-2129): the task's own run is still parked on it, and a
+    // cancel meanwhile owes that run its resume.
+    const outcome = await ref.setWaitingOn(row.id, null, {
+      claim: ticket,
+      leaseUntil: ref.now() + span,
+      ...(options.own ? {} : { keepWaitingFor: true }),
+    });
     if (outcome.outcome === "declined") {
       throw (options.onStale ?? ((reason: string) => new Error(`[task-board] task "${row.id}" could not be admitted: ${reason}`)))(
         outcome.reason
@@ -203,6 +216,7 @@ export async function admitClaimedTask(
     renewal,
     answerCounts: options.answerCounts,
     prior,
+    priorFor,
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
@@ -264,7 +278,10 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   // suspended settles nothing and fails nothing: the task still waits on that
   // request, and keeps an answer this one gave that counts.
   if (!record.own && waitsOnItsOwnRequest(record.prior)) return waitOn(record, row, record.prior!, record.answer);
-  if (ending.status === "suspended") return waitOn(record, row, stopOf(record, ending), undefined);
+  if (ending.status === "suspended") {
+    const on = stopOf(record, ending);
+    return waitOn(record, row, on, undefined, on === "user" ? waitingForOf(ending, requestKey(record.ctx)) : undefined);
+  }
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];
   if (failsTheAttempt(ending.status) || background !== undefined) {
@@ -293,20 +310,42 @@ function tookSteers(task: Task, requestId: string): boolean {
   return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true);
 }
 
-/** A task whose own request stopped (a person, a wait) and has not ended. */
+/** A task whose own request stopped (for a user, a wait) and has not ended. */
 function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
-  return prior === "person" || prior === "wait";
+  return prior === "user" || prior === "wait";
 }
 
 /**
- * What a suspended request leaves the task waiting on: a person, for a stop
- * that asks one, or another wait. A request other than the task's own that
- * stops after the task answered leaves it waiting on what it waited on.
+ * What a suspended request leaves the task waiting on: a user, for a stop
+ * that waits for one (the one predicate, `isUserSuspension`), or another
+ * wait. A request other than the task's own that stops after the task
+ * answered leaves it waiting on what it waited on.
  */
 function stopOf(record: Admitted, ending: RequestEnding): TaskWaitingOn {
   if (!record.own && answeredBefore(record.prior)) return record.prior!;
-  const reason = ending.suspension?.reason;
-  return reason === "human_approval" || reason === "human_input" ? "person" : "wait";
+  const suspension = ending.suspension;
+  return suspension !== undefined && isUserSuspension(suspension) ? "user" : "wait";
+}
+
+/**
+ * The stop a task waiting on a user records (`Task.waitingFor`, FIX-2129),
+ * from the request's ending: its address, kind, prompt and deadline.
+ * `undefined` when the ending names no suspension id (a host before it).
+ */
+function waitingForOf(ending: RequestEnding, requestId: string): Task["waitingFor"] {
+  const suspension = ending.suspension;
+  if (suspension?.suspensionId === undefined) return undefined;
+  const kind = waitForUserKindOf(suspension);
+  if (kind === undefined) return undefined;
+  const prompt = suspension.message ?? "";
+  return {
+    requestId,
+    suspensionId: suspension.suspensionId,
+    kind,
+    prompt: prompt.length > MAX_WAITING_FOR_PROMPT ? `${prompt.slice(0, MAX_WAITING_FOR_PROMPT - 1)}…` : prompt,
+    ...(suspension.title !== undefined ? { title: suspension.title } : {}),
+    ...(suspension.expiresAt !== undefined ? { deadline: suspension.expiresAt } : {}),
+  };
 }
 
 /**
@@ -388,9 +427,20 @@ async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undef
  * Record what the task waits on, with no lease, and keep `answer` as its
  * output while it waits. A ref without `setWaitingOn` keeps its lease instead.
  */
-async function waitOn(record: Admitted, row: Task, on: TaskWaitingOn, answer: { output: unknown } | undefined): Promise<undefined> {
+async function waitOn(
+  record: Admitted,
+  row: Task,
+  on: TaskWaitingOn,
+  answer: { output: unknown } | undefined,
+  waitingFor?: Task["waitingFor"]
+): Promise<undefined> {
   if (record.ref.setWaitingOn === undefined) return undefined;
-  await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...(answer !== undefined ? { answer } : {}) });
+  await record.ref.setWaitingOn(row.id, on, {
+    claim: record.ticket,
+    ...(answer !== undefined ? { answer } : {}),
+    // A later request that leaves the task waiting on what it waited on keeps the stop it recorded.
+    ...(waitingFor !== undefined ? { waitingFor } : on === "user" && record.priorFor !== undefined ? { waitingFor: record.priorFor } : {}),
+  });
   return undefined;
 }
 

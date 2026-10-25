@@ -85,7 +85,7 @@ import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durabilit
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { requestEndRegistryOf } from "./request-end-hooks";
-import { WAIT_DEADLINE_ENTRY, isWaitGate, isExpiredApproval, waitGateDataOf } from "@flow-state-dev/core/types";
+import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1892,7 +1892,10 @@ async function runActionAttempt<
         const keepsResolution =
           suspension !== null &&
           (suspension.status === "stopped" ||
-            (isExpiredApproval(suspension) && resumeContextRaw.resolution === "expired") ||
+            // A cancel is terminal too (FIX-2129): nobody resends it, and the
+            // sweep's re-drive finishes it.
+            suspension.status === "cancelled" ||
+            (continuesAtExpiry(suspension) && resumeContextRaw.resolution === "expired") ||
             (suspension.status === "submitted" && isWaitGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({
@@ -2063,6 +2066,9 @@ async function runActionAttempt<
         ) {
           resumeContext.resolution = suspension.status;
         }
+        // Whether the gate waits for a user (FIX-2129): a framework package
+        // reads it, with the resolution, where it admits the resumed request.
+        resumeContext.userSuspension = suspension !== null && isUserSuspension(suspension);
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the
@@ -2294,6 +2300,9 @@ async function runActionAttempt<
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
         // The deadline of the wait this request parks on, if it parks on one.
         let parkedWaitDeadline: number | undefined;
+        // When the suspension stops waiting, if it has a deadline: written to
+        // its record and its item alike, so a reader sees one clock.
+        const expiresAt = suspendError.timeoutMs ? Date.now() + suspendError.timeoutMs : undefined;
         if (provider !== undefined) {
           const stepIndex = suspendError._stepIndex ?? -1;
           const record: SuspensionRecord = {
@@ -2309,6 +2318,7 @@ async function runActionAttempt<
             sessionId: options.sessionId,
             userId: options.userId,
             reason: suspendError.reason,
+            ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
             ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
             message: suspendError.message,
             data: suspendError.data,
@@ -2327,9 +2337,7 @@ async function runActionAttempt<
             stepIndex,
             stepInput: suspendError._currentValue,
             createdAt: Date.now(),
-            expiresAt: suspendError.timeoutMs
-              ? Date.now() + suspendError.timeoutMs
-              : undefined
+            expiresAt
           };
           // A wait's deadline is a wake on this session (FIX-2082 D1), owed
           // before the gate is written: a crash between the two leaves a wake
@@ -2367,6 +2375,8 @@ async function runActionAttempt<
           suspensionId: suspendError.suspensionId,
           suspensionStatus: "pending",
           reason: suspendError.reason,
+          ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
+          ...(expiresAt === undefined ? {} : { expiresAt }),
           ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
           message: suspendError.message,
           data: suspendError.data,
@@ -2402,7 +2412,17 @@ async function runActionAttempt<
         // The heartbeat runs on until they end: the record still reads
         // `in_progress`, and a request with no heartbeat reads as a crashed run.
         const endFailure = await requestEndRegistryOf(ctx)?.run(
-          { status: "suspended", suspension: { reason: String(suspendError.reason) } },
+          {
+            status: "suspended",
+            suspension: {
+              reason: String(suspendError.reason),
+              suspensionId: suspendError.suspensionId,
+              ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
+              ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
+              message: suspendError.message,
+              ...(expiresAt === undefined ? {} : { expiresAt })
+            }
+          },
           { requestId, logger }
         );
         if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);

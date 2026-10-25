@@ -38,7 +38,8 @@ const STATUS_FILTERS: Array<{ value: SuspensionStatus | "all"; label: string }> 
   { value: "rejected", label: "Rejected" },
   { value: "timed_out", label: "Timed out" },
   { value: "expired", label: "Expired" },
-  { value: "stopped", label: "Stopped" }
+  { value: "stopped", label: "Stopped" },
+  { value: "cancelled", label: "Cancelled" }
 ];
 
 /**

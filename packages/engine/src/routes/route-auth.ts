@@ -212,6 +212,7 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "request_stream":
     case "abort_request":
     case "resume_suspension":
+    case "answer_suspension":
     case "request_status":
     case "retry_request":
     case "continue_request":

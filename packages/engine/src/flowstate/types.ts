@@ -300,6 +300,14 @@ export interface CreateFlowStateOptions<
    * execution and a store that keeps wakes.
    */
   waitDeadlines?: RuntimeConfig["waitDeadlines"];
+
+  /**
+   * The deadline a stop that waits for a user gets when it names none
+   * (FIX-2129): every `ctx.waitForUser` without a `deadline`, and every held
+   * question. Unset by default, so such a stop waits until it is answered,
+   * stopped or cancelled. One second to 365 days.
+   */
+  userDeadlineMs?: RuntimeConfig["userDeadlineMs"];
   
   /**
    * Low-level escape hatch: a pre-built FlowDispatcher controlling where

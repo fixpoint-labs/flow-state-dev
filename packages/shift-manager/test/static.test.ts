@@ -170,7 +170,7 @@ describe("V8", () => {
 
   it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
-    const WRITES = /\.(send|resume|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
+    const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) =>
       text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);

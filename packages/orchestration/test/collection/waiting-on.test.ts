@@ -67,9 +67,9 @@ describe.each([
   it("a waiting row drops its lease, so a reclaim past the old deadline leaves it running", async () => {
     const { collection, claim, setNow } = await claimed();
 
-    expect(await collection.setWaitingOn!("t", "person", { claim })).toEqual({ outcome: "recorded" });
+    expect(await collection.setWaitingOn!("t", "user", { claim })).toEqual({ outcome: "recorded" });
     const held = collection.get("t")!;
-    expect(held.waitingOn).toBe("person");
+    expect(held.waitingOn).toBe("user");
     expect(held.leaseUntil).toBeUndefined();
     expect(held.status).toBe("in_progress");
 
@@ -77,7 +77,7 @@ describe.each([
     expect(isClaimable(held, () => undefined, collection.now())).toBe(false);
     expect(await collection.claim("w2", { leaseDurationMs: 10_000 })).toBeNull();
     expect(await collection.reclaim()).toBe(0);
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", attempts: 1, waitingOn: "person" });
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", attempts: 1, waitingOn: "user" });
   });
 
   it("admission clears it and starts a lease of the span the claim committed to", async () => {
@@ -106,7 +106,7 @@ describe.each([
   it("refuses a request that does not hold the claim", async () => {
     const { collection, claim } = await claimed();
     const stale = { ...claim, attempt: claim.attempt + 1 };
-    expect(await collection.setWaitingOn!("t", "person", { claim: stale })).toMatchObject({
+    expect(await collection.setWaitingOn!("t", "user", { claim: stale })).toMatchObject({
       outcome: "declined",
       reason: "lost-claim",
     });

@@ -30,8 +30,21 @@ export interface BackgroundFailure {
 export interface RequestEnding {
   /** How the request ended. */
   readonly status: RequestEndStatus;
-  /** On `suspended`: why the request suspended (`human_approval`, `human_input`, `external_event`, or a flow's own reason). */
-  readonly suspension?: { readonly reason: string };
+  /**
+   * On `suspended`: the suspension it parked on. `reason` is why
+   * (`human_approval`, `human_input`, `external_event`, or a flow's own); the
+   * rest is what a reader of a task waiting on it shows (FIX-2129): its id,
+   * its kind when `waitForUser` set one, what it asks (`title`, `message`),
+   * and its deadline (`expiresAt`), absent when it has none.
+   */
+  readonly suspension?: {
+    readonly reason: string;
+    readonly suspensionId?: string;
+    readonly kind?: import("./suspension").WaitForUserKind;
+    readonly title?: string;
+    readonly message?: string;
+    readonly expiresAt?: number;
+  };
   /** On `failed`: the request's error message, as its record carries it. */
   readonly error?: { readonly message: string };
   /**

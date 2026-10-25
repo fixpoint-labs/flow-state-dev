@@ -739,11 +739,34 @@ session. Until then the row stays `in_progress`, and `waitingOn` says why:
 | `waitingOn` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
-| `"person"` | a `ctx.suspend()` for `human_approval` or `human_input` | none |
+| `"user"` | a `ctx.waitForUser()`, or a `ctx.suspend()` for `human_approval` or `human_input` | none |
 | `"wait"` | any other suspension | none |
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
-continues the same attempt. Each later request for the task in that session
+continues the same attempt.
+
+**A task waiting on a user.** `getTask` and `listTasks` show `waitingOn` on a running
+task, and, while it is `"user"`, `waitingFor`: the stop's `kind` (`approval`, `review`
+or `input`), its `prompt` and `title`, its `deadline` (epoch ms, absent when it has none),
+and the `requestId` and `suspensionId` a screen answers it by. A screen answers it through
+the engine's answer route (a request handle's `answer` in `@flow-state-dev/client`); `waitingFor` is
+a read convenience, never where a screen lists what waits for a user. Three other endings:
+
+- **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
+  own fence (`cancelAndResume`), so an answer that arrives at the same moment is told the stop is
+  resolved. The run resumes with `waitForUser` returning `{ cancelled: true }` and runs to its
+  end holding no claim: its progress writes are refused, nothing it returns is recorded, and a
+  task it files is refused (`parent_cancelled`). Any other ending of the row (a cascade)
+  owes the run the same resume on the row's `resumeOwed` mark, and the board's next touch
+  pays it, so a crash between the cancel and the resume leaves nothing parked.
+- **Stopped.** Stopping the run (the abort route) cancels the task on that attempt rather
+  than failing it: a retry would ask the same thing again.
+- **Its deadline.** An approval reads as a no; a review or an input fails the attempt unless
+  the block catches `SuspensionTimeoutError`.
+
+To end one stop without cancelling its task, call `ctx.requestHost.resumeWait({ suspension:
+{ requestId, suspensionId }, outcome: { cancelled: true } })`: the stop resolves `cancelled`
+and its block runs on, admitted for the task as any resume is. Each later request for the task in that session
 checks it again; a package admits one with `taskRequestAdmission({ name, find,
 answerCounts, endRules? })` first in its sequencer, where `find(ctx)` returns
 `Promise<{ ref: TaskCollectionRef; row: Task } | undefined>` (the waiting row whose run is

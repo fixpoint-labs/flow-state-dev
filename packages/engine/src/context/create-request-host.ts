@@ -162,6 +162,8 @@ export type RequestHostInputs = {
   waitSweeper?: () => boolean;
   /** Whether what this request dispatches runs in this process; see `RequestHost.dispatchRunsHere`. */
   dispatchRunsHere?: () => boolean;
+  /** The host's deadline for a user's stop, when it sets one; see `RequestHost.userDeadlineMs`. */
+  userDeadlineMs?: number;
   /**
    * The store debts' due times are kept in, and how they are bounded
    * (`RequestHost.wakes`, FIX-2078 D1). Absent when the host keeps none.
@@ -741,6 +743,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   const host: RequestHost = { parentTask, settleParentTask };
+  // The host's deadline for a user's stop (FIX-2129): a fact, read as the request starts.
+  if (inputs.userDeadlineMs !== undefined) (host as { userDeadlineMs?: number }).userDeadlineMs = inputs.userDeadlineMs;
   // Read once, as the request starts.
   if (inputs.dispatchRunsHere?.() === true) (host as { dispatchRunsHere?: boolean }).dispatchRunsHere = true;
 
@@ -753,8 +757,14 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     if (inputs.waitSweeper?.() === true) (host as { hasWaitSweeper?: boolean }).hasWaitSweeper = true;
     host.resumeWait = (input: ResumeWaitInput): Promise<ResumeWaitResult> =>
       waitResume({
-        gateId: input.gateId,
-        outcome: input.outcome,
+        ...("gateId" in input
+          ? { gateId: input.gateId, outcome: input.outcome }
+          : {
+              suspension: input.suspension,
+              outcome: input.outcome,
+              ...(input.first !== undefined ? { first: input.first } : {}),
+              ...(input.taskCancelled === true ? { taskCancelled: true } : {})
+            }),
         owner: {
           sessionId: identity.sessionId,
           userId: identity.userId,

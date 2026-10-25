@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 // through the same badge. Unknown values fall back to the neutral style.
 export type RequestStatusLabel =
   | "completed" | "in_progress" | "finishing" | "failed" | "incomplete" | "created" | "suspended"
-  | "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired" | "stopped";
+  | "pending" | "approved" | "rejected" | "submitted" | "skipped" | "timed_out" | "expired" | "stopped" | "cancelled";
 
 /**
  * The brand's state vocabulary, by meaning: done (green), live (blue), failed
@@ -38,6 +38,7 @@ const statusStyles: Record<RequestStatusLabel, StatusTone> = {
   timed_out: error,
   expired: idle,
   stopped: idle,
+  cancelled: idle,
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

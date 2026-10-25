@@ -35,7 +35,9 @@ export type TaskFilingRule =
   /** A batch names one task id twice. */
   | "duplicate_task_id"
   /** A follow-up names a task that never ran with a worker: there is no session to follow up in. */
-  | "follow_up_of_unrun";
+  | "follow_up_of_unrun"
+  /** The task filing it was cancelled: work it files now would outlive it (FIX-2129). */
+  | "parent_cancelled";
 
 /**
  * A filing, or an edit of one, refused at the board (FIX-2080). Nothing was
@@ -309,6 +311,37 @@ export function assertDepsFileable(
   for (const row of batch) {
     if (reaches(row.deps ?? [], row.id, depsOf)) throw loop(row.id);
   }
+}
+
+/**
+ * Refuse a filing made by a task that is already cancelled (FIX-2129): the
+ * filed-work cascade cancels only what the task filed up to its cancel, so a
+ * row filed after it would run on with nothing to end it. Read against the
+ * committed parent row, inside the write where the backing has one. A parent
+ * that is not on this board is the caller's to check (a piece filed on a
+ * task session's own board: `parentCancelledRefusal`).
+ *
+ * @param lookup The board's committed row by id.
+ * @throws {TaskFilingRefusedError}
+ */
+export function assertParentsOpen(
+  batch: readonly Pick<Task, "id" | "filedByTask">[],
+  lookup: (id: string) => Pick<Task, "id" | "status"> | undefined
+): void {
+  for (const row of batch) {
+    if (row.filedByTask === undefined) continue;
+    const parent = lookup(row.filedByTask);
+    if (parent?.status === "cancelled") throw parentCancelledRefusal(row.filedByTask);
+  }
+}
+
+/** The refusal of a filing by `parentId`, a task already cancelled. */
+export function parentCancelledRefusal(parentId: string): TaskFilingRefusedError {
+  return new TaskFilingRefusedError({
+    rule: "parent_cancelled",
+    taskId: parentId,
+    detail: `task "${parentId}", which files this, was cancelled, so it files nothing more. Nothing was written.`,
+  });
 }
 
 /**

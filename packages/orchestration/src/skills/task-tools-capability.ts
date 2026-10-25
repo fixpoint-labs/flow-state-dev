@@ -77,7 +77,7 @@ import {
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
-import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
+import { currentWorkerClaim, currentWorkerTask } from "../task-board/flow-policy-wiring";
 // The resolver `taskBoard()` recorded for its handle, read without importing
 // the task-board barrel (which imports this module's neighbours).
 import { boardResolverOf } from "../task-board/board-resolver";
@@ -90,6 +90,7 @@ import {
   toolCallOf,
   waitOnTask,
 } from "../tasks/helpers/wait-on-task";
+import { cancelAndResume } from "../tasks/helpers/user-stop";
 
 /** Resolves the live TaskCollection a `taskTools` handler mutates. */
 export type TaskCollectionResolver = (
@@ -925,9 +926,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
-    // The task whose request files this one, from the worker's own claim:
-    // server-set, never input (BP-031). An action holds none.
-    const filedByTask = claimless ? undefined : currentWorkerClaim(ctx)?.taskId;
+    // The task whose request files this one: the task the worker's request
+    // works, claimed or not (a cancelled task's run that goes on has no
+    // claim, and is still its filer, so its filing is refused). Server-set,
+    // never input (BP-031). An action works none.
+    const filedByTask = claimless ? undefined : currentWorkerTask(ctx)?.taskId;
     return {
       init: {
         goal: input.goal,
@@ -1199,7 +1202,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (input.status === "cancelled") {
         try {
           // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
-          const outcome: TaskWriteOutcome | undefined = await collection.cancel(input.id, undefined, {
+          // A task waiting on a user is cancelled under its stop's fence, and its run resumes `cancelled` (FIX-2129).
+          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx as never, collection, input.id, undefined, {
             via,
             ...(via === "tool" ? { viaTool: true } : {}),
           });
@@ -1317,6 +1321,30 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
+  /**
+   * What a running task waits on while no worker holds it (FIX-2077's
+   * `waitingOn`), and, while that is a user, the stop it waits on
+   * (`waitingFor`, FIX-2129): its kind, prompt and deadline. A read
+   * convenience, never where a screen lists what waits for a user.
+   */
+  const waitingShape = {
+    waitingOn: z.enum(["user", "wait", "filed", "steer"]).optional(),
+    waitingFor: z
+      .object({
+        kind: z.enum(["approval", "review", "input"]),
+        prompt: z.string(),
+        title: z.string().optional(),
+        deadline: z.number().optional(),
+        requestId: z.string(),
+        suspensionId: z.string(),
+      })
+      .optional(),
+  };
+  const waitingOf = (t: Task) => ({
+    ...(t.waitingOn != null && t.status === "in_progress" ? { waitingOn: t.waitingOn } : {}),
+    ...(t.waitingOn === "user" && t.waitingFor != null && t.status === "in_progress" ? { waitingFor: t.waitingFor } : {}),
+  });
+
   const listTasks = defineTool({
     name: named("listTasks"),
     description:
@@ -1352,6 +1380,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             run: taskSchema.shape.run,
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
+            ...waitingShape,
             /** The latest completed follow-up in its chain, by id; read its output with getTask (FIX-2086). */
             current: z.object({ id: z.string() }).optional(),
           }),
@@ -1383,6 +1412,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
+          ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
         })),
       };
@@ -1464,6 +1494,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           error: z.string().optional(),
           /** The question the task is parked on, when it is parked on one. */
           question: z.string().optional(),
+          ...waitingShape,
           followUpOf: z.string().optional(),
           filedByTask: z.string().optional(),
           run: taskSchema.shape.run,
@@ -1604,6 +1635,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
           ...(t.error !== undefined ? { error: t.error } : {}),
           ...(t.parkedOnQuestion === true && t.feedback ? { question: t.feedback } : {}),
+          ...waitingOf(t),
           ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),

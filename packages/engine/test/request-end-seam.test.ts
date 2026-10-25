@@ -163,7 +163,7 @@ describe("request-end seam", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
 
-    expect(endings).toEqual([{ status: "suspended", suspension: { reason: "human_input" } }]);
+    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "human_input", suspensionId: expect.any(String) }) }]);
   });
 
   it("runs on a suspended request before the request can be resumed", async () => {

@@ -8,13 +8,10 @@
  */
 import type { Client } from "@flow-state-dev/client";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/lib/connection";
 import {
   createLabReader,
-  DISPATCHED_RUN_UNANSWERABLE,
-  REOPENED_SOURCES,
   readerSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
@@ -389,7 +386,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.asks).toEqual({ ok: true, value: [] });
   });
 
-  it("a delivered post's ask is marked unanswerable, and the Lab does refuse to reopen it", async () => {
+  it("a delivered post's ask, in a run the Lab started itself, is answerable, and the answer resumes it (FIX-2129)", async () => {
     const { baseUrl } = await lab();
     const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     const reader = createLabReader(client);
@@ -399,42 +396,16 @@ describe("asks through a coordinator's delivery (V7)", () => {
       return s.asks.ok && s.asks.value.length === 2 ? s.asks.value : undefined;
     }, "the asks");
     for (const ask of asks) {
-      expect(ask.unanswerable).toBe(DISPATCHED_RUN_UNANSWERABLE);
-      // The flag is the Lab's rule, not a guess: the resume is refused.
-      await expect(reader.resume(ask, { action: "approve" })).rejects.toMatchObject({ status: 404 });
+      // Before the answer route, a dispatched run's ask had no answer from here.
+      expect(ask.unanswerable).toBeNull();
+      await reader.resume(ask, { action: "approve" });
     }
-  });
-
-  it("offers an answer only on the sources the engine reopens: its own allow-list, pinned here", () => {
-    // Shift Manager can't import the engine in a browser, so it keeps a copy. A
-    // source added to or removed from the engine's list turns this red.
-    expect([...REOPENED_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
-  });
-
-  it("a user's ask whose request records no source is unanswerable, not offered (fail-closed)", async () => {
-    const { baseUrl } = await lab();
-    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
-    await ask(client, "ops.loner", "no source");
-    const listRequests = client.sessions.requests;
-    const sourceless = {
-      ...client,
-      sessions: {
-        ...client.sessions,
-        requests: async (...args: Parameters<typeof listRequests>) =>
-          (await listRequests(...args)).map(({ source: _source, ...request }) => request as typeof request & { source?: string }),
-      },
-    };
-    const asks = await eventually(async () => {
-      const s = loaded(await createLabReader(sourceless as typeof client).read());
-      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
-    }, "the loner's ask");
-    expect(asks[0]!.unanswerable).toBe(DISPATCHED_RUN_UNANSWERABLE);
-    // The same ask, with its source as recorded, is answerable.
-    const recorded = await eventually(async () => {
-      const s = loaded(await createLabReader(client).read());
-      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
-    }, "the loner's ask, as recorded");
-    expect(recorded[0]!.unanswerable).toBeNull();
+    // Each ask leaves the list once its answer resumed it, and a second answer is told it is resolved.
+    await eventually(async () => {
+      const s = loaded(await reader.read());
+      return s.asks.ok && s.asks.value.length === 0 ? true : undefined;
+    }, "the answered asks gone");
+    await expect(reader.resume(asks[0]!, { action: "approve" })).rejects.toMatchObject({ status: 409 });
   });
 
   it("an ask in a worker that is no coordinator's delegate is in Inbox", async () => {

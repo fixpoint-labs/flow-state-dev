@@ -19,7 +19,9 @@ import type {
   SessionScopeHandle,
   StopRequestOutcome,
   UserScopeHandle,
-  TokenCounter
+  TokenCounter,
+  ResumeContext,
+  SuspensionStatus
 } from "@flow-state-dev/core/types";
 import {
   getPatternPrefix,
@@ -91,8 +93,16 @@ import {
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
-import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
-import { DISPATCH_SEAM, SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
+import {
+  DISPATCH_SEAM,
+  REQUEST_RESUME_SEAM,
+  SUSPENSION_SKIPPED,
+  isUserSuspension,
+  waitForUserOn,
+  type RequestResume,
+  type WaitForUser
+} from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -156,6 +166,7 @@ import { createReactiveDispatcher, createCascadeController } from "./reactive-di
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
+import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
 /**
  * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
@@ -166,6 +177,44 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+/**
+ * Whether the run's task was cancelled with one of its stops (FIX-2129):
+ * this continuation's own resolution, or, for a crash's continuation that
+ * names none, a user's stop the log records cancelled with its task.
+ */
+function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: ReplayLog | undefined): boolean {
+  if (resumeCtx?.resolution === "cancelled" && cancelledWithTask(resumeCtx.data)) return true;
+  return (replayLog?.resolvedInOrder() ?? []).some(
+    (entry) => entry.cancelled && cancelledWithTask(entry.data) && isUserSuspension({ reason: entry.reason ?? "" })
+  );
+}
+
+/**
+ * What `ctx.suspend()` throws for a gate resolved without an answer (a
+ * rejection, an expiry or a cancel), on the live continuation and on replay
+ * alike. An expiry of a suspension that is not an approval (one that allows
+ * no `reject`, or a review's or an input's `waitForUser`) throws
+ * `SuspensionTimeoutError` (FIX-2129 D1); an approval's reads as a rejection
+ * marked expired (FIX-1846).
+ */
+function rejectionOf(
+  suspendOpts: SuspendOptions,
+  suspensionId: string,
+  resolvedBy: string | undefined,
+  data: unknown,
+  how: { expired: boolean; cancelled: boolean }
+): Error {
+  if (how.cancelled) return new SuspensionRejectedError(suspensionId, resolvedBy, data, { cancelled: true });
+  if (how.expired) {
+    const approval =
+      suspendOpts.kind === undefined
+        ? resolveAllowedActions(suspendOpts.reason, suspendOpts.allow).includes("reject")
+        : suspendOpts.kind === "approval";
+    if (!approval) return new SuspensionTimeoutError(suspensionId);
+  }
+  return new SuspensionRejectedError(suspensionId, resolvedBy, data, { expired: how.expired });
+}
 
 function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
@@ -984,6 +1033,7 @@ export async function createExecutionContext<
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,
           dispatchRunsHere: options.requestHost.dispatchRunsHere,
+          userDeadlineMs: options.effectiveRuntimeConfig?.userDeadlineMs,
           ...(options.requestHost.wakes !== undefined && stores.wakes !== undefined
             ? {
                 wakes: {
@@ -2967,6 +3017,17 @@ export async function createExecutionContext<
   // every scope so a hook added from any block reaches the one list the
   // request executor runs after its last drain.
   const requestEndRegistry = createRequestEndRegistry();
+  // How this request resumed (FIX-2129), read when a block asks: the
+  // resolution is filled in at the checkpoint read, after this context is built.
+  // A crash's continuation names no resolution: the log's latest is how the
+  // request last resumed, so the claim gate still reads a stop or a cancel.
+  const readResume = (): RequestResume | undefined => {
+    const resumed = options.resumeContext;
+    if (resumed?.resolution !== undefined) return { resolution: resumed.resolution, userSuspension: resumed.userSuspension === true };
+    const logged = (rootContext as { _replayLog?: ReplayLog })._replayLog?.resolvedInOrder().at(-1);
+    if (logged?.resolution === undefined) return undefined;
+    return { resolution: logged.resolution as SuspensionStatus, userSuspension: isUserSuspension({ reason: logged.reason ?? "" }) };
+  };
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
@@ -3664,9 +3725,17 @@ export async function createExecutionContext<
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
+            // A user's stop replays as the stop, never as an answer
+            // (FIX-2129): a crash after its resolution was logged must not
+            // read it as approved. The run ends here, as the live stop does.
+            if (entry.stopped && isUserSuspension(suspendOpts)) {
+              await recordRequestStop(stores.request, requestRef.current);
+              throw new DOMException("The request was stopped while it waited for a user.", "AbortError");
+            }
             if (entry.rejected) {
-              throw new SuspensionRejectedError(entry.suspensionId, entry.resolvedBy, entry.data, {
-                expired: entry.expired
+              throw rejectionOf(suspendOpts, entry.suspensionId, entry.resolvedBy, entry.data, {
+                expired: entry.expired,
+                cancelled: entry.cancelled
               });
             }
             // A skipped gate replays as the sentinel, never the persisted data,
@@ -3697,11 +3766,23 @@ export async function createExecutionContext<
             (suspendOpts.suspensionId === undefined || suspendOpts.suspensionId === resumeCtx.suspensionId);
 
           if (isResolvingGate) {
+            // A task's run stopped while it waited for a user ends here
+            // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
+            // read the stop, and no block runs past the gate. The stop is
+            // recorded on the request and its controller fired, so the run
+            // ends `aborted` through its own lifecycle.
+            if (resumeCtx.resolution === "stopped" && isUserSuspension(suspendOpts)) {
+              await recordRequestStop(stores.request, requestRef.current);
+              throw new DOMException("The request was stopped while it waited for a user.", "AbortError");
+            }
             if (resumeCtx.action === "reject") {
               // An approval that expired continues as a rejection marked
-              // expired, so the caller can say it is no longer valid.
-              throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data, {
-                expired: resumeCtx.resolution === "expired"
+              // expired, so the caller can say it is no longer valid; any
+              // other suspension at its deadline throws the timeout (FIX-2129
+              // D1). A cancel reads as a rejection marked cancelled.
+              throw rejectionOf(suspendOpts, resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data, {
+                expired: resumeCtx.resolution === "expired",
+                cancelled: resumeCtx.resolution === "cancelled"
               });
             }
             // A skip is non-throwing control flow: return the sentinel so the
@@ -3712,6 +3793,16 @@ export async function createExecutionContext<
             return resumeCtx.data;
           }
         }
+        // A run whose task was cancelled asks nobody again (FIX-2129): a
+        // later wait for a user resolves `cancelled` at once and opens no
+        // item. Read off this continuation's resolution, or off the log when
+        // a crash's continuation names none. One stop cancelled while the
+        // task goes on leaves the next wait to suspend as usual.
+        if (isUserSuspension(suspendOpts) && taskCancelledInRun(resumeCtx, replayLog)) {
+          throw new SuspensionRejectedError(suspendOpts.suspensionId ?? generateId("susp"), "cancel", undefined, {
+            cancelled: true
+          });
+        }
         // The one place a host without durable execution refuses a stop
         // (FIX-2063): every host reaches it, so none guards on durability
         // itself. Worded beside the wait refusal, so either teaches the setting.
@@ -3721,6 +3812,17 @@ export async function createExecutionContext<
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
+      // FIX-2129: built on this scope's `suspend`, with the host's deadline
+      // for a user's stop: the request host's, else the runtime config's, so
+      // a caller that runs the action with no request host keeps the one it set.
+      waitForUser: ((waitOptions: Parameters<WaitForUser>[0]) =>
+        waitForUserOn(
+          {
+            suspend: context.suspend,
+            requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
+          },
+          waitOptions
+        )) as WaitForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per
@@ -3919,6 +4021,7 @@ export async function createExecutionContext<
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         attachRequestEndRegistry(childContext, requestEndRegistry);
+        (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
         // `ctx._requestSideChainSignal`, not `ctx.signal`).
@@ -4285,6 +4388,7 @@ export async function createExecutionContext<
   // identity is preserved across the entire request scope.
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
+  (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.
