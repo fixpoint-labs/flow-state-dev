@@ -237,7 +237,7 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 
 ## Automated PR review is Codex
 
-Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR once; ask again only for a real concern, and name it. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
+Never dispatch a Claude agent as a stand-in for a bot review. Make sure Codex has reviewed a PR once (if not, comment `@codex review` naming what you're unsure of); don't re-request after every push, only for a real concern, and name it. Canonical: [`orchestration.md`](docs/contributing/orchestration.md) → "Codex is the automated reviewer".
 
 ## Asking for sign-off
 
