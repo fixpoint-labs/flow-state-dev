@@ -21,8 +21,6 @@ import { MAX_HOLD_PROMPT, type HoldAsk, type RowHold, type SuspensionHold, type 
 import { MAX_STEERS, type TaskSteer } from "../steers";
 import type { TaskWriteDeclineReason } from "./types";
 
-export { MAX_HOLD_PROMPT };
-
 /** What the board's steer says when it closes a question at a deadline a host set. */
 export const NO_ANSWER_CAME = "No answer came before this question's deadline. Go on from your brief without it.";
 

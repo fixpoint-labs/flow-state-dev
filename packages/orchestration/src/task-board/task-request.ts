@@ -241,7 +241,6 @@ export async function admitClaimedTask(
  * request admitted for a task while it waits admits nothing on it.
  */
 export class TaskAdmissionLost extends Error {
-  readonly code = "task-admission-lost";
   constructor(
     readonly taskId: string,
     readonly reason: string
