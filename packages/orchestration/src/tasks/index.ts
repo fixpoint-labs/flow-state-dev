@@ -83,9 +83,8 @@ export {
 } from "./collection/filing";
 export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
 // Steers (FIX-2086): words sent into an open task, kept on the task.
+export { MAX_STEERS, taskSteerSchema, type TaskSteer } from "./schema/steer";
 export {
-  MAX_STEERS,
-  taskSteerSchema,
   untakenSteers,
   steersTakenIn,
   steerWrite,
@@ -94,7 +93,6 @@ export {
   LINE_STEER_REFUSALS,
   type ShownSteer,
   type LineSteerRefusal,
-  type TaskSteer,
   type SteerInput,
 } from "./steers";
 export { readCommittedTask } from "./collection/read-committed";

@@ -18,7 +18,7 @@ import { generateId } from "../generate-id";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import { MAX_HOLD_PROMPT, type HoldAsk, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
-import { MAX_STEERS, type TaskSteer } from "../steers";
+import { MAX_STEERS, type TaskSteer } from "../schema/steer";
 import type { TaskWriteDeclineReason } from "./types";
 
 /** What the board's steer says when it closes a question at a deadline a host set. */

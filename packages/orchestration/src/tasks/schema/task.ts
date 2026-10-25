@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
-import { taskSteerSchema } from "../steers";
+import { taskSteerSchema } from "./steer";
 import { QUEUED_WAIT } from "./retired-shapes";
 import { taskHoldSchema } from "./hold";
 
