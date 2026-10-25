@@ -197,7 +197,8 @@ round is charged one. Then:
   acknowledgements only, report `0` and post **no** pause comment; no round was spent and the
   loop continues.
 
-Skip this and the cap fails both ways (orchestration.md says how). `epic-wake` builds it into
+Skip this and the cap fails both ways ([`orchestration.md`](../../../docs/contributing/orchestration.md#pr-feedback-the-round-cap)
+→ "PR feedback: the round cap" says how). `epic-wake` builds it into
 the `pr-feedback` prompt; standalone, it is yours to build.
 
 **The user's answer is the release.** Record it, carry it verbatim into the next dispatch's

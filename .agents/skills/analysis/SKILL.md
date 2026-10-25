@@ -39,10 +39,8 @@ clean** — "nothing to reuse: searched X, Y, Z" is a full answer. Padding is no
    the Vercel AI SDK, CrewAI, …), then whatever the problem's own field uses.
 3. **Other shapes.** What else could this be — a different block kind, a different layer, a
    subtraction instead of an addition? See "Alternatives" below for when `adhd` runs.
-   **The next-variant test:** name the variant most likely to come next (another kind of wait,
-   another source, another provider) and count what adding it would copy: a field, a route, a
-   cancel path, a deadline, a check. More than one copied piece means the shared abstraction is
-   missing, and that is a finding.
+   Run the **next-variant test** ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)
+   → "Compose existing pieces"); more than one copied piece is a finding.
 4. **New factors.** What has landed or been filed since the last analysis that bears on this?
    Linear issues and features created or changed since the watermark (see "The watermark"),
    merged PRs in the same area, a prior-art change. Name each and whether it moves anything.

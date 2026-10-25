@@ -80,10 +80,9 @@ table. An Adds item with no existing-piece column is already a finding.
    nouns and verbs across `packages/` (for a new cap: `cap`, `limit`, `max`, `bound`;
    for a reservation: `held`, `taken`, `deferred`, `lapsed`, `reserved`). The package
    the spec is touching is the one place you cannot stop. "None" needs the searches.
-   **Inside an epic, sibling specs' Adds count as existing.** Search the other children's
-   specs (open spec PRs and merged `specs/issues/<ID>/`) as well as `main`. Two siblings that
-   each add the same mechanism get **extend** pointing at one shared piece, never two
-   **genuinely new**.
+   Inside an epic, also search the other children's specs (open spec PRs and merged
+   `specs/issues/<ID>/`): sibling Adds count as existing
+   ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
 3. **Compare to the closest existing piece.** Prefer composition from the five block
    kinds (`handler`, `generator`, `evaluator`, `sequencer`, `router`) and from
    sequencer control (`step`, `stepIf`, `tap`, `doWhile`) over a new hook or loop.

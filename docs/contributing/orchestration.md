@@ -813,6 +813,15 @@ do not cover: a second cap, a second marker that means the same reservation, a s
 hold-release path, a hook that reimplements a `sequencer` / `doWhile` / handler
 composition we already wrap.
 
+**Siblings, glue and the next variant.** Inside an epic, sibling specs' Adds count as
+existing: two children that each add the same mechanism get one shared piece, never two
+"genuinely new". Code whose only job is keeping two of our own mechanisms from overlapping (a
+reconciler, a sweep rule, refusals written on both sides) marks a missing shared abstraction,
+not rigor. The **next-variant test** catches both early: name the variant most likely to come
+next (another kind of wait, another source, another provider) and count what adding it would
+copy (a field, a route, a cancel path, a deadline, a check). More than one copied piece means
+the abstraction is missing. This is how tenet 2's "one job, one noun" is checked.
+
 **What a spec or epic owes.** Every item it adds to a package names the existing block,
 primitive or mechanism it considered, and either how it is composed from it or why that
 piece does not fit. The Adds list is as short as possible. The debt line counts any

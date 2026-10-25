@@ -85,9 +85,8 @@ Sweep every pair (and, where relevant, the whole set) for:
   one. Name it — this is the coherence auditor's core job at batch altitude. Read the debt
   tables as a set too: two specs each accepting a second way to do the same job is drift,
   even when each spec's net reads flat.
-- **Glue between siblings.** A piece whose only job is stopping another spec's piece from
-  colliding with it marks a missing shared abstraction ([`review`](../review/SKILL.md) → Run,
-  Coherence).
+- **Glue between siblings** marks a missing shared abstraction
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
 
 Reuse `audit-coherence`'s judgment for *what counts as* incoherence; the only
 difference here is the unit is a set of specs, not a code slice. Where the docs
