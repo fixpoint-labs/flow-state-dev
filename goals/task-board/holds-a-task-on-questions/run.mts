@@ -50,7 +50,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
