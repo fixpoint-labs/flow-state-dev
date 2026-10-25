@@ -1,0 +1,2035 @@
+# Inventory of framework mechanisms. Guide: docs/mechanisms/README.md
+# Checked by scripts/validate-mechanism-map.mjs. Not a review and not a contract sheet.
+version: 1
+entries:
+  - id: contracts
+    title: Shared leaf types
+    status: canonical
+    summary: |
+      Zero-dependency types and helpers that core, engine, and client share, so those packages do not import each other for a leaf shape.
+    packages:
+      - "@flow-state-dev/contracts"
+    subpaths:
+      - package: "@flow-state-dev/contracts"
+        subpath: "."
+    entryPoints:
+      - path: packages/contracts/src/index.ts
+        exports:
+          - MANIFEST_DOMAINS
+          - buildBlockInstanceId
+    docs:
+      - docs/architecture/overview.md
+
+  - id: block
+    title: Block
+    status: canonical
+    summary: |
+      A block is the unit a flow runs. There are five kinds. A sixth kind would be a new mechanism.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/contracts"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./blocks/handler
+      - package: "@flow-state-dev/core"
+        subpath: ./blocks/sequencer
+      - package: "@flow-state-dev/contracts"
+        subpath: ./block-instance-id
+    entryPoints:
+      - path: packages/core/src/blocks/handler.ts
+        exports:
+          - handler
+      - path: packages/core/src/blocks/generator.ts
+        exports:
+          - generator
+      - path: packages/core/src/blocks/evaluator.ts
+        exports:
+          - evaluator
+      - path: packages/core/src/blocks/router.ts
+        exports:
+          - router
+      - path: packages/core/src/blocks/sequencer.ts
+        exports:
+          - sequencer
+    builtOn:
+      - contracts
+    docs:
+      - docs/architecture/blocks.md
+    facets:
+      - id: handler
+        summary: Runs code the author wrote. No model call.
+        path: packages/core/src/blocks/handler.ts
+        symbol: handler
+        exports:
+          - handler
+      - id: generator
+        summary: Calls a model. The block kind, not the fsdev gen hook of the same name.
+        path: packages/core/src/blocks/generator.ts
+        symbol: generator
+        exports:
+          - generator
+      - id: evaluator
+        summary: Scores or judges an output and returns a verdict the caller branches on.
+        path: packages/core/src/blocks/evaluator.ts
+        symbol: evaluator
+        exports:
+          - evaluator
+      - id: router
+        summary: Picks one next block from a decision.
+        path: packages/core/src/blocks/router.ts
+        symbol: router
+        exports:
+          - router
+      - id: sequencer
+        summary: The block kind that runs the sequencer DSL. The verbs live on sequencer-dsl.
+        path: packages/core/src/blocks/sequencer.ts
+        symbol: sequencer
+        exports:
+          - sequencer
+
+  - id: sequencer-dsl
+    title: Sequencer DSL
+    status: canonical
+    summary: |
+      The verbs on a sequencer. A new composition verb is an addition to this entry, not a new block kind.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/blocks/sequencer-methods.ts
+    builtOn:
+      - block
+    docs:
+      - docs/architecture/sequencer-dsl.md
+    facets:
+      - id: step
+        summary: Run one block and take its output forward.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: step
+      - id: stepIf
+        summary: Run one block only when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: stepIf
+      - id: map
+        summary: Transform the value in flight without a block.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: map
+      - id: parallel
+        summary: Run named branches together and keep each result.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: parallel
+      - id: forEach
+        summary: Run one block for each item of a list.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: forEach
+      - id: forEachSideChain
+        summary: Start a side chain for each item, without blocking the main line on all of them.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: forEachSideChain
+      - id: doUntil
+        summary: Repeat a block until a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: doUntil
+      - id: doWhile
+        summary: Repeat a block while a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: doWhile
+      - id: loopBack
+        summary: Jump back to an earlier step when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: loopBack
+      - id: sideChain
+        summary: Start work beside the main line.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: sideChain
+      - id: sideChainIf
+        summary: Start a side chain only when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: sideChainIf
+      - id: waitForSideChain
+        summary: Wait until a side chain has finished.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: waitForSideChain
+      - id: tap
+        summary: Run a block for its effect and keep the value in flight.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: tap
+      - id: tapIf
+        summary: Tap only when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: tapIf
+      - id: rescue
+        summary: Handle a failure from the steps above.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: rescue
+      - id: branch
+        summary: Pick one named branch.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: branch
+      - id: stepAll
+        summary: Run every step in a list.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: stepAll
+      - id: stepAny
+        summary: Finish when any one step finishes.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: stepAny
+      - id: race
+        summary: Race steps against each other.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: race
+      - id: waitForCondition
+        summary: Pause the main line until a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: waitForCondition
+      - id: exitIf
+        summary: Leave the sequencer when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: exitIf
+      - id: throwIf
+        summary: Fail the sequencer when a condition holds.
+        path: packages/core/src/blocks/sequencer-methods.ts
+        symbol: throwIf
+
+  - id: flow
+    title: Flow
+    status: canonical
+    summary: |
+      defineFlow bundles blocks, actions, state, and resources into the unit a caller starts. Actions are declared here, not on a block.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/flow/defineFlow.ts
+        exports:
+          - defineFlow
+    builtOn:
+      - block
+    reliedOnBy:
+      - examples/hello-chat
+    docs:
+      - docs/architecture/flows-and-actions.md
+      - docs/architecture/action-forms.md
+    facets:
+      - id: actions
+        summary: Caller-addressed, event-addressed, and dispatched actions. The forms are one contract, documented in action-forms.
+        path: packages/core/src/flow/defineFlow.ts
+        symbol: defineFlow
+
+  - id: scope
+    title: Scope
+    status: canonical
+    summary: |
+      Request, session, user, and org are the places state and resources live. A block reads them. It does not invent another scope.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/types/flow.ts
+        exports:
+          - SessionConfig
+          - RequestConfig
+          - UserConfig
+          - OrgConfig
+    builtOn:
+      - flow
+    docs:
+      - docs/architecture/state-and-scopes.md
+
+  - id: resource
+    title: Resource
+    status: canonical
+    summary: |
+      A resource is named durable state a block can read and write. Client data is a projection of that state for a caller, not a second store.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/engine"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./resource-template
+      - package: "@flow-state-dev/engine"
+        subpath: ./resource-template
+    entryPoints:
+      - path: packages/core/src/types/resource.ts
+        exports:
+          - defineResource
+      - path: packages/engine/src/resource-template-loader.ts
+        exports:
+          - loadResourceTemplate
+    builtOn:
+      - scope
+    docs:
+      - docs/architecture/resources-and-client-data.md
+    facets:
+      - id: client-data
+        summary: A computed projection onto a scope or a resource for the caller. Not a store and not a resource.
+        path: packages/core/src/types/flow.ts
+      - id: template
+        summary: A resource template loaded from a file on the engine side.
+        path: packages/engine/src/resource-template-loader.ts
+        symbol: loadResourceTemplate
+        exports:
+          - loadResourceTemplate
+
+  - id: collection
+    title: Collection
+    status: canonical
+    summary: |
+      A collection is a resource that holds many keyed items. Faceted and projected collections are variants of this, not new stores.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/types/resource-collection.ts
+        exports:
+          - defineResourceCollection
+      - path: packages/core/src/types/faceted-collection.ts
+        exports:
+          - defineFacetedCollection
+      - path: packages/core/src/types/projected-resource-collection.ts
+        exports:
+          - defineProjectedResourceCollection
+    builtOn:
+      - resource
+    docs:
+      - docs/architecture/resource-collections.md
+    facets:
+      - id: resource-collection
+        summary: The ordinary keyed collection.
+        path: packages/core/src/types/resource-collection.ts
+        symbol: defineResourceCollection
+        exports:
+          - defineResourceCollection
+      - id: faceted
+        summary: A collection whose items carry facets.
+        path: packages/core/src/types/faceted-collection.ts
+        symbol: defineFacetedCollection
+        exports:
+          - defineFacetedCollection
+      - id: projected
+        summary: A collection that exposes a projection of each item.
+        path: packages/core/src/types/projected-resource-collection.ts
+        symbol: defineProjectedResourceCollection
+        exports:
+          - defineProjectedResourceCollection
+
+  - id: capability
+    title: Capability
+    status: canonical
+    summary: |
+      A capability bundles tools, context, and resources so a block can opt in with uses, instead of spreading that plumbing by hand.
+    packages:
+      - "@flow-state-dev/core"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./capability
+    entryPoints:
+      - path: packages/core/src/capability/define-capability.ts
+        exports:
+          - defineCapability
+      - path: packages/core/src/blocks/tool-cache.ts
+        exports:
+          - createToolCacheCapability
+    builtOn:
+      - block
+      - resource
+    docs:
+      - docs/architecture/capabilities.md
+    facets:
+      - id: tool-cache
+        summary: Caches tool definitions across a turn so a generator does not rebuild them.
+        path: packages/core/src/blocks/tool-cache.ts
+        symbol: createToolCacheCapability
+        exports:
+          - createToolCacheCapability
+
+  - id: item
+    title: Item
+    status: canonical
+    summary: |
+      An item is one unit on the stream and in the log. Messages, tool calls, and traces are items. Packages share the taxonomy through contracts.
+    packages:
+      - "@flow-state-dev/contracts"
+      - "@flow-state-dev/core"
+    subpaths:
+      - package: "@flow-state-dev/contracts"
+        subpath: ./items
+      - package: "@flow-state-dev/core"
+        subpath: ./items
+      - package: "@flow-state-dev/core"
+        subpath: ./items/internal
+    entryPoints:
+      - path: packages/contracts/src/items/index.ts
+        exports:
+          - isBlockValue
+    docs:
+      - docs/architecture/items.md
+    builtOn:
+      - contracts
+
+  - id: streaming
+    title: Streaming
+    status: canonical
+    summary: |
+      The server sends the item log to a caller as a server-sent event stream. Resume uses a cursor, not a second protocol.
+    packages:
+      - "@flow-state-dev/engine"
+    entryPoints:
+      - path: packages/engine/src/streaming/encode-event.ts
+        exports:
+          - encodeStreamEvent
+      - path: packages/engine/src/streaming/resume.ts
+        exports:
+          - parseStartingAfter
+    builtOn:
+      - item
+    docs:
+      - docs/architecture/streaming.md
+
+  - id: execution
+    title: Execution
+    status: canonical
+    summary: |
+      runAction is the path that runs one action. createExecutionContext is the bag of stores, streams, and scope that path closes over. Engine's isRetryableError is a different function from core's of the same name, and this checker cannot tell them apart.
+    packages:
+      - "@flow-state-dev/engine"
+    entryPoints:
+      - path: packages/engine/src/execution/runAction.ts
+        exports:
+          - runAction
+      - path: packages/engine/src/context/createExecutionContext.ts
+        exports:
+          - createExecutionContext
+    builtOn:
+      - flow
+      - scope
+      - streaming
+    docs:
+      - docs/architecture/execution-and-errors.md
+
+  - id: suspension
+    title: Suspension
+    status: canonical
+    summary: |
+      waitForUserOn parks a request until a person answers. The call site is ctx.waitForUser. The exported function is waitForUserOn.
+    packages:
+      - "@flow-state-dev/core"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./errors/suspension-error
+    entryPoints:
+      - path: packages/core/src/types/wait-for-user.ts
+        exports:
+          - waitForUserOn
+      - path: packages/core/src/errors/suspension-error.ts
+        exports:
+          - SuspensionError
+    builtOn:
+      - execution
+    facets:
+      - id: wait-for-user
+        summary: Park the running request for an approval or an input, and resume it with the answer.
+        path: packages/core/src/types/wait-for-user.ts
+        symbol: waitForUserOn
+        exports:
+          - waitForUserOn
+
+  - id: wait-gate
+    title: Wait gate
+    status: canonical
+    summary: |
+      parkOnWait parks a request on a named gate until something else releases it. Same words as a person-wait, different shape.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/types/wait-gate.ts
+        exports:
+          - parkOnWait
+    builtOn:
+      - suspension
+    overlaps:
+      - id: suspension
+        relation: distinct-jobs
+        note: "waitForUser parks for a person. parkOnWait parks on a gate another part of the system releases. The answer shapes differ."
+    facets:
+      - id: park
+        summary: Park on a gate id until a release arrives.
+        path: packages/core/src/types/wait-gate.ts
+        symbol: parkOnWait
+        exports:
+          - parkOnWait
+
+  - id: dispatcher
+    title: Dispatcher block
+    status: canonical
+    summary: |
+      dispatcher() is a handler that sends work to another session of this runtime. It is not a task-claim strategy and not a queue worker.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/blocks/dispatcher.ts
+        exports:
+          - dispatcher
+    builtOn:
+      - block
+      - execution
+    docs:
+      - docs/architecture/dispatched-work.md
+      - docs/architecture/internal-execution-seams.md
+    facets:
+      - id: send
+        summary: The handler that sends work to another session.
+        path: packages/core/src/blocks/dispatcher.ts
+        symbol: dispatcher
+        exports:
+          - dispatcher
+
+  - id: store
+    title: Store
+    status: canonical
+    summary: |
+      A store is the persistence seam for sessions, resources, and requests. Memory, filesystem, SQLite, Postgres, and Vercel Postgres are adapters of one seam.
+    packages:
+      - "@flow-state-dev/engine"
+      - "@flow-state-dev/store-sqlite"
+      - "@flow-state-dev/store-postgres"
+      - "@flow-state-dev/vercel"
+    subpaths:
+      - package: "@flow-state-dev/store-sqlite"
+        subpath: "."
+      - package: "@flow-state-dev/store-postgres"
+        subpath: "."
+      - package: "@flow-state-dev/vercel"
+        subpath: ./store
+      - package: "@flow-state-dev/vercel"
+        subpath: ./pg
+    entryPoints:
+      - path: packages/engine/src/stores/index.ts
+        exports:
+          - createInMemoryStores
+          - inMemoryStores
+          - createFilesystemStores
+          - filesystemStores
+      - path: packages/store-sqlite/src/index.ts
+        exports:
+          - createSQLiteStores
+          - sqliteStores
+      - path: packages/store-postgres/src/index.ts
+        exports:
+          - createPostgresStores
+          - postgresStores
+      - path: packages/vercel/src/store.ts
+        exports:
+          - vercelPostgresStores
+    facets:
+      - id: in-memory
+        summary: In-process stores for tests and one process.
+        path: packages/engine/src/stores/index.ts
+        symbol: createInMemoryStores
+        exports:
+          - createInMemoryStores
+          - inMemoryStores
+      - id: filesystem
+        summary: File-backed stores for a single machine.
+        path: packages/engine/src/stores/index.ts
+        symbol: createFilesystemStores
+        exports:
+          - createFilesystemStores
+          - filesystemStores
+      - id: sqlite
+        summary: SQLite-backed stores.
+        path: packages/store-sqlite/src/index.ts
+        symbol: createSQLiteStores
+        exports:
+          - createSQLiteStores
+          - sqliteStores
+      - id: postgres
+        summary: Postgres-backed stores.
+        path: packages/store-postgres/src/index.ts
+        symbol: createPostgresStores
+        exports:
+          - createPostgresStores
+          - postgresStores
+      - id: vercel-postgres
+        summary: Vercel Postgres adapter of the same store seam.
+        path: packages/vercel/src/store.ts
+        symbol: vercelPostgresStores
+        exports:
+          - vercelPostgresStores
+
+  - id: inbound-transport
+    title: Inbound transport
+    status: canonical
+    summary: |
+      An inbound transport turns an outside request into a run of an action. HTTP is the built-in adapter. The router mounts adapters.
+    packages:
+      - "@flow-state-dev/engine"
+    entryPoints:
+      - path: packages/engine/src/transports/http/createHttpTransportAdapter.ts
+        exports:
+          - createHttpTransportAdapter
+      - path: packages/engine/src/routes/createFlowApiRouter.ts
+        exports:
+          - createFlowApiRouter
+    builtOn:
+      - execution
+      - store
+    docs:
+      - docs/architecture/inbound-transports.md
+    facets:
+      - id: http
+        summary: The HTTP adapter.
+        path: packages/engine/src/transports/http/createHttpTransportAdapter.ts
+        symbol: createHttpTransportAdapter
+        exports:
+          - createHttpTransportAdapter
+      - id: api-router
+        summary: createFlowApiRouter mounts transports and serves the flow HTTP API. Not the router block kind.
+        path: packages/engine/src/routes/createFlowApiRouter.ts
+        symbol: createFlowApiRouter
+        exports:
+          - createFlowApiRouter
+
+  - id: authentication
+    title: Authentication
+    status: canonical
+    summary: |
+      The framework names the principal a transport resolved. The host checks credentials. Flows do not read a caller-supplied user id as identity.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/types/auth.ts
+        exports:
+          - DEFAULT_ORG_ID
+          - isValidOrgId
+    builtOn:
+      - inbound-transport
+    docs:
+      - docs/architecture/authentication.md
+
+  - id: webhook
+    title: Webhook
+    status: canonical
+    summary: |
+      A webhook binding is an event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/engine"
+    entryPoints:
+      - path: packages/core/src/types/webhooks.ts
+        exports:
+          - defineWebhookBinding
+      - path: packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts
+        exports:
+          - createWebhookTransportAdapter
+    builtOn:
+      - flow
+      - inbound-transport
+    docs:
+      - docs/architecture/webhook-transport.md
+
+  - id: schedule
+    title: Schedule
+    status: canonical
+    summary: |
+      A schedule fires an event-addressed action on a cron. ScheduleIndex is the contract. SQLite, Postgres, and BullMQ are adapters. BullMQ's claimDue returns nothing because BullMQ fires the job itself.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/scheduled"
+      - "@flow-state-dev/vercel"
+      - "@flow-state-dev/bullmq"
+    subpaths:
+      - package: "@flow-state-dev/scheduled"
+        subpath: "."
+      - package: "@flow-state-dev/scheduled"
+        subpath: ./collection
+      - package: "@flow-state-dev/vercel"
+        subpath: ./schedules
+      - package: "@flow-state-dev/bullmq"
+        subpath: ./schedules
+    entryPoints:
+      - path: packages/core/src/types/schedules.ts
+        exports:
+          - defineScheduleBinding
+      - path: packages/scheduled/src/defineScheduleCollection.ts
+        exports:
+          - defineScheduleCollection
+      - path: packages/scheduled/src/createScheduledTransportAdapter.ts
+        exports:
+          - createScheduledTransportAdapter
+      - path: packages/scheduled/src/scheduleIndex.ts
+        exports:
+          - ScheduleIndex
+      - path: packages/vercel/src/schedules.ts
+        exports:
+          - createScheduleTickHandler
+      - path: packages/bullmq/src/schedule-index.ts
+        exports:
+          - createBullmqScheduleIndex
+      - path: packages/bullmq/src/schedules.ts
+        exports:
+          - registerStaticSchedules
+          - createScheduleDispatchWorker
+    builtOn:
+      - flow
+      - inbound-transport
+    docs:
+      - docs/architecture/scheduled-actions.md
+    facets:
+      - id: binding
+        summary: One static schedule on a flow.
+        path: packages/core/src/types/schedules.ts
+        symbol: defineScheduleBinding
+        exports:
+          - defineScheduleBinding
+      - id: schedule-collection
+        summary: Dynamic schedules stored as a collection.
+        path: packages/scheduled/src/defineScheduleCollection.ts
+        symbol: defineScheduleCollection
+        exports:
+          - defineScheduleCollection
+      - id: vercel-tick
+        summary: The Vercel cron tick that calls claimDue.
+        path: packages/vercel/src/schedules.ts
+        symbol: createScheduleTickHandler
+        exports:
+          - createScheduleTickHandler
+      - id: bullmq-index
+        summary: BullMQ repeatable jobs as a ScheduleIndex. claimDue is empty because the queue fires natively.
+        path: packages/bullmq/src/schedule-index.ts
+        symbol: createBullmqScheduleIndex
+        exports:
+          - createBullmqScheduleIndex
+
+  - id: mcp-transport
+    title: MCP transport
+    status: canonical
+    summary: |
+      Exposes this runtime's actions as an MCP server over HTTP. Inbound. The opposite of calling someone else's MCP server.
+    packages:
+      - "@flow-state-dev/mcp"
+    subpaths:
+      - package: "@flow-state-dev/mcp"
+        subpath: "."
+    entryPoints:
+      - path: packages/mcp/src/createMcpTransportAdapter.ts
+        exports:
+          - createMcpTransportAdapter
+    builtOn:
+      - inbound-transport
+    docs:
+      - docs/architecture/mcp-server.md
+    overlaps:
+      - id: mcp-client
+        relation: distinct-jobs
+        note: "This adapter exposes our actions as MCP tools. mcp-client calls external MCP servers. Opposite directions."
+
+  - id: mcp-client
+    title: MCP client
+    status: canonical
+    summary: |
+      A capability that calls external MCP servers and exposes their tools to a generator.
+    packages:
+      - "@flow-state-dev/tools"
+    subpaths:
+      - package: "@flow-state-dev/tools"
+        subpath: ./mcp
+    entryPoints:
+      - path: packages/tools/src/mcp/capability.ts
+        exports:
+          - createMcpCapability
+    builtOn:
+      - capability
+
+  - id: host
+    title: Host
+    status: canonical
+    summary: |
+      A host is the process that holds createFlowState and answers a platform. Node, Next, Vercel, and Lambda are adapters. createNextHandler is platform-agnostic. createVercelNextHandler adds Vercel's stream shaping on top.
+    packages:
+      - "@flow-state-dev/engine"
+      - "@flow-state-dev/node"
+      - "@flow-state-dev/next"
+      - "@flow-state-dev/vercel"
+    subpaths:
+      - package: "@flow-state-dev/node"
+        subpath: "."
+      - package: "@flow-state-dev/node"
+        subpath: ./app
+      - package: "@flow-state-dev/node"
+        subpath: ./aws-lambda
+      - package: "@flow-state-dev/next"
+        subpath: "."
+      - package: "@flow-state-dev/vercel"
+        subpath: "."
+      - package: "@flow-state-dev/vercel"
+        subpath: ./next
+    entryPoints:
+      - path: packages/engine/src/flowstate/createFlowState.ts
+        exports:
+          - createFlowState
+      - path: packages/node/src/serve.ts
+        exports:
+          - serve
+      - path: packages/node/src/app.ts
+        exports:
+          - createServerApp
+      - path: packages/node/src/aws-lambda.ts
+        exports:
+          - createLambdaHandler
+      - path: packages/next/src/createNextHandler.ts
+        exports:
+          - createNextHandler
+      - path: packages/vercel/src/handler.ts
+        exports:
+          - createVercelHandler
+          - createVercelBareHandler
+      - path: packages/vercel/src/next.ts
+        exports:
+          - createVercelNextHandler
+    builtOn:
+      - inbound-transport
+      - store
+    docs:
+      - docs/architecture/server-and-client.md
+    facets:
+      - id: flow-state
+        summary: The in-process runtime handle hosts wrap.
+        path: packages/engine/src/flowstate/createFlowState.ts
+        symbol: createFlowState
+        exports:
+          - createFlowState
+      - id: node
+        summary: A long-lived Node server. createServerApp is the app factory beside serve.
+        path: packages/node/src/serve.ts
+        symbol: serve
+        exports:
+          - serve
+      - id: lambda
+        summary: An AWS Lambda handler.
+        path: packages/node/src/aws-lambda.ts
+        symbol: createLambdaHandler
+        exports:
+          - createLambdaHandler
+      - id: next
+        summary: A Next.js route handler with no Vercel-specific stream shaping.
+        path: packages/next/src/createNextHandler.ts
+        symbol: createNextHandler
+        exports:
+          - createNextHandler
+      - id: vercel
+        summary: Vercel handlers. createVercelNextHandler, in the next file, adds Vercel stream shaping on top of the platform-agnostic Next handler.
+        path: packages/vercel/src/handler.ts
+        symbol: createVercelHandler
+        exports:
+          - createVercelHandler
+          - createVercelBareHandler
+
+  - id: model
+    title: Model resolver
+    status: canonical
+    summary: |
+      createModelResolver turns a model id into a provider client. Engine re-exports this function. It does not define a second resolver.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/engine"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./models
+    entryPoints:
+      - path: packages/core/src/models/createModelResolver.ts
+        exports:
+          - createModelResolver
+    docs:
+      - docs/architecture/generator-identity.md
+
+  - id: prompt
+    title: Prompt file
+    status: canonical
+    summary: |
+      A prompt file is a prompt kept beside the code that uses it. Core defines it. Engine loads it from disk.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/engine"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./prompt
+      - package: "@flow-state-dev/core"
+        subpath: ./prompt-file
+      - package: "@flow-state-dev/engine"
+        subpath: ./prompt-file
+    entryPoints:
+      - path: packages/core/src/prompt/prompt-file.ts
+        exports:
+          - definePromptFile
+      - path: packages/engine/src/prompt-file-loader.ts
+        exports:
+          - loadPromptFile
+    builtOn:
+      - block
+
+  - id: utility-block
+    title: Utility blocks
+    status: canonical
+    summary: |
+      Ready-made blocks for small jobs such as summarizing, routing, and extracting. They are published as the utility namespace, twelve factories. A new factory inside that file has to be named here.
+    packages:
+      - "@flow-state-dev/core"
+    entryPoints:
+      - path: packages/core/src/index.ts
+        exports:
+          - utility
+      - path: packages/core/src/utility/index.ts
+        exports:
+          - contextReducer
+          - memoryExtractor
+          - decomposer
+          - summarizer
+          - combiner
+          - analyzer
+          - intentClassifier
+          - intentRouter
+          - keyedRouter
+          - cascadingRouter
+          - upsertResource
+          - sessionTitleGenerator
+    covers:
+      - packages/core/src/utility/index.ts
+    builtOn:
+      - block
+    docs:
+      - docs/architecture/utility-blocks.md
+    overlaps:
+      - id: memory
+        relation: distinct-jobs
+        note: "memoryExtractor is a one-shot block. The memory package is cross-turn tiers. The names meet and the jobs do not."
+      - id: response-auditor
+        relation: distinct-jobs
+        note: "utility.analyzer, responseAuditor, and thought-fabric biasAnalyzer share a name shape. They judge different things and are not one block."
+      - id: thought-fabric
+        relation: distinct-jobs
+        note: "biasAnalyzer is a metacognition block. utility.analyzer is a generic finding block. Same neighborhood of names, different jobs."
+    facets:
+      - id: context-reducer
+        summary: Shrinks a context by compressing, denoising, or distilling it.
+        path: packages/core/src/utility/context-reducer.ts
+        symbol: contextReducer
+        exports:
+          - contextReducer
+      - id: memory-extractor
+        summary: One-shot extraction of memory candidates. Not the memory package.
+        path: packages/core/src/utility/memoryExtractor.ts
+        symbol: memoryExtractor
+        exports:
+          - memoryExtractor
+      - id: decomposer
+        summary: Splits a job into smaller tasks.
+        path: packages/core/src/utility/decomposer.ts
+        symbol: decomposer
+        exports:
+          - decomposer
+      - id: summarizer
+        summary: Summarizes a text at a chosen granularity.
+        path: packages/core/src/utility/summarizer.ts
+        symbol: summarizer
+        exports:
+          - summarizer
+      - id: combiner
+        summary: Combines several texts into one.
+        path: packages/core/src/utility/combiner.ts
+        symbol: combiner
+        exports:
+          - combiner
+      - id: analyzer
+        summary: Returns findings about a text. Not responseAuditor and not biasAnalyzer.
+        path: packages/core/src/utility/analyzer.ts
+        symbol: analyzer
+        exports:
+          - analyzer
+      - id: intent-classifier
+        summary: Classifies an utterance into intent categories.
+        path: packages/core/src/utility/intent-classifier.ts
+        symbol: intentClassifier
+        exports:
+          - intentClassifier
+      - id: intent-router
+        summary: Routes on a classified intent.
+        path: packages/core/src/utility/intent-router.ts
+        symbol: intentRouter
+        exports:
+          - intentRouter
+      - id: keyed-router
+        summary: Routes on a key.
+        path: packages/core/src/utility/keyed-router.ts
+        symbol: keyedRouter
+        exports:
+          - keyedRouter
+      - id: cascading-router
+        summary: Walks a cascade of routers until one verdict is confident.
+        path: packages/core/src/utility/cascading-router.ts
+        symbol: cascadingRouter
+        exports:
+          - cascadingRouter
+      - id: upsert-resource
+        summary: Writes a value into a resource, creating or replacing the item.
+        path: packages/core/src/utility/upsert-resource.ts
+        symbol: upsertResource
+        exports:
+          - upsertResource
+      - id: session-title
+        summary: Generates a short title for a session.
+        path: packages/core/src/utility/session-title-generator.ts
+        symbol: sessionTitleGenerator
+        exports:
+          - sessionTitleGenerator
+
+  - id: graph
+    title: Graph
+    status: canonical
+    summary: |
+      Typed edges between nodes, and pure functions that walk them. No dependency on the memory package.
+    packages:
+      - "@flow-state-dev/core"
+    subpaths:
+      - package: "@flow-state-dev/core"
+        subpath: ./graph
+    entryPoints:
+      - path: packages/core/src/graph/index.ts
+        exports:
+          - nodeRef
+
+  - id: voice
+    title: Voice
+    status: canonical
+    summary: |
+      OpenAI voice as a provider a flow can speak and hear through. One provider package, not a second streaming stack.
+    packages:
+      - "@flow-state-dev/voice-openai"
+    subpaths:
+      - package: "@flow-state-dev/voice-openai"
+        subpath: "."
+    entryPoints:
+      - path: packages/voice-openai/src/index.ts
+        exports:
+          - OpenAIVoiceProvider
+    builtOn:
+      - streaming
+    docs:
+      - docs/architecture/voice.md
+
+  - id: task
+    title: Task
+    status: canonical
+    summary: |
+      A task is one row of work on a board. Claim strategies pick a pending row. Notice records on the row are four different jobs, listed as facets, not four names for one reservation.
+    packages:
+      - "@flow-state-dev/orchestration"
+    subpaths:
+      - package: "@flow-state-dev/orchestration"
+        subpath: ./tasks
+    entryPoints:
+      - path: packages/orchestration/src/tasks/collection/define-task-collection.ts
+        exports:
+          - defineTaskCollection
+      - path: packages/orchestration/src/tasks/dispatchers/fifo.ts
+        exports:
+          - fifoDispatcher
+      - path: packages/orchestration/src/tasks/dispatchers/priority.ts
+        exports:
+          - priorityDispatcher
+      - path: packages/orchestration/src/tasks/dispatchers/topological.ts
+        exports:
+          - topologicalDispatcher
+      - path: packages/orchestration/src/tasks/flow-policy/index.ts
+        exports:
+          - createObservationLedgerCapability
+      - path: packages/orchestration/src/tasks/notice/task-notice.ts
+        exports:
+          - deferredNoticePatch
+          - noticeTakenBy
+          - releasedHeldNotices
+          - LAPSED_SLOT_CHECK_MS
+          - LAPSED_SLOT_CHECK_CAP_MS
+      - path: packages/orchestration/src/tasks/schema/task.ts
+        exports:
+          - taskSchema
+    builtOn:
+      - collection
+    overlaps:
+      - id: dispatcher
+        relation: distinct-jobs
+        note: "fifo, priority, and topological pick a pending task row. dispatcher() sends work to another session."
+      - id: suspension
+        relation: missing-abstraction
+        note: "A person-wait is split. waitForUser parks the request. The row records waitingOn and waitingFor. holds[] was decided as the one list and is not a field on the row yet."
+    facets:
+      - id: claim-fifo
+        summary: Claim the oldest pending task.
+        path: packages/orchestration/src/tasks/dispatchers/fifo.ts
+        exports:
+          - fifoDispatcher
+      - id: claim-priority
+        summary: Claim the highest-priority pending task.
+        path: packages/orchestration/src/tasks/dispatchers/priority.ts
+        exports:
+          - priorityDispatcher
+      - id: claim-topological
+        summary: Claim a pending task whose dependencies are done.
+        path: packages/orchestration/src/tasks/dispatchers/topological.ts
+        exports:
+          - topologicalDispatcher
+      - id: observation-ledger
+        summary: A capability that records observations the board's policy can read.
+        path: packages/orchestration/src/tasks/flow-policy/index.ts
+        symbol: createObservationLedgerCapability
+        exports:
+          - createObservationLedgerCapability
+      - id: held-ending
+        summary: "OwedMarker.held. An ending held for the request whose getTask wait lapsed. Not a hold for an arbitrary request."
+        path: packages/orchestration/src/tasks/notice/task-notice.ts
+        symbol: releasedHeldNotices
+        exports:
+          - releasedHeldNotices
+      - id: notice-taken
+        summary: "noticeTaken: an exclusive delivery claim by one request. It can outlive the owed marker."
+        path: packages/orchestration/src/tasks/notice/task-notice.ts
+        symbol: noticeTakenBy
+        exports:
+          - noticeTakenBy
+      - id: notice-deferred
+        summary: "noticeDeferred plus whileRunning. A pass deferred the notice while the filing request runs. Not a fourth hold flag."
+        path: packages/orchestration/src/tasks/notice/task-notice.ts
+        symbol: deferredNoticePatch
+        exports:
+          - deferredNoticePatch
+      - id: lapsed-slot-backoff
+        summary: "LAPSED_SLOT_CHECK_MS and its cap. How long a pass waits before looking again at a lapsed wait slot. Scheduling, not a reservation."
+        path: packages/orchestration/src/tasks/notice/task-notice.ts
+        exports:
+          - LAPSED_SLOT_CHECK_MS
+          - LAPSED_SLOT_CHECK_CAP_MS
+
+  - id: task-board
+    title: Task board
+    status: canonical
+    summary: |
+      taskBoard drains a task collection with workers. Task tools are how a model drives that board. They are not a second board.
+    packages:
+      - "@flow-state-dev/orchestration"
+    subpaths:
+      - package: "@flow-state-dev/orchestration"
+        subpath: ./task-board
+    entryPoints:
+      - path: packages/orchestration/src/task-board/index.ts
+        exports:
+          - taskBoard
+      - path: packages/orchestration/src/task-board/capability.ts
+        exports:
+          - createTaskBoardCapability
+      - path: packages/orchestration/src/skills/task-tools-capability.ts
+        exports:
+          - createTaskToolsCapability
+    builtOn:
+      - task
+      - sequencer-dsl
+    facets:
+      - id: tools
+        summary: The tools a model calls to file, read, and settle rows on a board.
+        path: packages/orchestration/src/skills/task-tools-capability.ts
+        symbol: createTaskToolsCapability
+        exports:
+          - createTaskToolsCapability
+      - id: board-capability
+        summary: The capability that installs a board onto a flow.
+        path: packages/orchestration/src/task-board/capability.ts
+        symbol: createTaskBoardCapability
+        exports:
+          - createTaskBoardCapability
+
+  - id: goal-seek-loop
+    title: Goal-seek loop
+    status: canonical
+    summary: |
+      A judge-gated loop around a board drain. parallelTasks and planAndExecute are recipes on this loop. Supervisor is not.
+    packages:
+      - "@flow-state-dev/orchestration"
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./plan-and-execute
+    entryPoints:
+      - path: packages/orchestration/src/task-board/goal-seek-loop.ts
+        exports:
+          - goalSeekLoop
+      - path: packages/patterns/src/parallelTasks/index.ts
+        exports:
+          - parallelTasks
+      - path: packages/patterns/src/plan-and-execute/index.ts
+        exports:
+          - planAndExecute
+    builtOn:
+      - task-board
+      - sequencer-dsl
+    facets:
+      - id: parallel-tasks
+        summary: One pass of the loop that runs independent tasks. A recipe, not a second loop.
+        path: packages/patterns/src/parallelTasks/index.ts
+        symbol: parallelTasks
+        exports:
+          - parallelTasks
+      - id: plan-and-execute
+        summary: Plan, drain, judge, replan, on the same loop. A recipe, not a second loop.
+        path: packages/patterns/src/plan-and-execute/index.ts
+        symbol: planAndExecute
+        exports:
+          - planAndExecute
+
+  - id: supervisor
+    title: Supervisor
+    status: canonical
+    summary: |
+      Per-task review on a task board. Each worker is wrapped with a reviewer. It drains the board itself and does not call goalSeekLoop.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./supervisor
+    entryPoints:
+      - path: packages/patterns/src/supervisor/index.ts
+        exports:
+          - supervisor
+    builtOn:
+      - task-board
+    overlaps:
+      - id: goal-seek-loop
+        relation: distinct-jobs
+        note: "Supervisor reviews each task. goalSeekLoop asks one judge after a drain. Supervisor does not call goalSeekLoop."
+
+  - id: routed-specialists
+    title: Routed specialists
+    status: canonical
+    summary: |
+      A controller picks the next specialist, and each iteration is a task on a collection plus a shared workspace. Not a task-board drain.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./routedSpecialists
+    entryPoints:
+      - path: packages/patterns/src/routedSpecialists/index.ts
+        exports:
+          - routedSpecialists
+    builtOn:
+      - task
+      - sequencer-dsl
+    overlaps:
+      - id: supervisor
+        relation: distinct-jobs
+        note: "Routed specialists are a controller loop over a task collection and a workspace. Supervisor drains a task board with a reviewer per task."
+
+  - id: event-actors
+    title: Event actors
+    status: canonical
+    summary: |
+      Actors watch an entry log. A matching entry becomes a task, and a task board drains those tasks. The entry log stays a resource beside the board.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./eventActors
+    entryPoints:
+      - path: packages/patterns/src/eventActors/index.ts
+        exports:
+          - eventActors
+          - actor
+    builtOn:
+      - task-board
+    facets:
+      - id: actor
+        summary: One subscriber. watch matches entries, and a match becomes a task.
+        path: packages/patterns/src/eventActors/index.ts
+        symbol: actor
+        exports:
+          - actor
+
+  - id: debate
+    title: Debate
+    status: canonical
+    summary: |
+      A fixed-order argument. Assigned stances, optional moderator, one judge at the end. A sequencer loop, not a task board.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./debate
+    entryPoints:
+      - path: packages/patterns/src/debate/index.ts
+        exports:
+          - debate
+    builtOn:
+      - sequencer-dsl
+    overlaps:
+      - id: round-robin
+        relation: near-duplicate
+        note: "Both are fixed-order sequencer loops. Debate ends in a judge and stances. Round-robin uses a referee and a synthesizer. Neither is marked for a merge."
+
+  - id: round-robin
+    title: Round robin
+    status: canonical
+    summary: |
+      A fixed roster speaks in order each round. An optional referee critiques. A synthesizer runs at the end unless turned off.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./round-robin
+    entryPoints:
+      - path: packages/patterns/src/round-robin/index.ts
+        exports:
+          - roundRobin
+    builtOn:
+      - sequencer-dsl
+
+  - id: response-auditor
+    title: Response auditor
+    status: canonical
+    summary: |
+      A pattern that audits a response. Distinct from utility.analyzer and from thought-fabric's biasAnalyzer.
+    packages:
+      - "@flow-state-dev/patterns"
+    subpaths:
+      - package: "@flow-state-dev/patterns"
+        subpath: ./response-auditor
+    entryPoints:
+      - path: packages/patterns/src/response-auditor/index.ts
+        exports:
+          - responseAuditor
+    builtOn:
+      - block
+
+  - id: skills
+    title: Skills
+    status: canonical
+    summary: |
+      A catalog of skills a generator can bind. createSkillsLibrary is the surface to build on. createSkillsCapability is still exported and is the legacy entry.
+    packages:
+      - "@flow-state-dev/orchestration"
+    entryPoints:
+      - path: packages/orchestration/src/skills/library.ts
+        exports:
+          - createSkillsLibrary
+      - path: packages/orchestration/src/skills/collection.ts
+        exports:
+          - defineSkillsCollection
+    builtOn:
+      - capability
+      - collection
+    deprecatedExports:
+      - name: createSkillsCapability
+        path: packages/orchestration/src/skills/capability.ts
+        note: "Prefer createSkillsLibrary. The capability file says so. The skills barrel comment still calls the capability the recommended path. Nothing has been removed."
+    facets:
+      - id: library
+        summary: The v2 catalog. A generator binds to it per generator, with no session-global active-skills bag.
+        path: packages/orchestration/src/skills/library.ts
+        symbol: createSkillsLibrary
+        exports:
+          - createSkillsLibrary
+
+  - id: inbox
+    title: Inbox
+    status: canonical
+    summary: |
+      A read model of what a person can answer. It projects suspensions and a row's waitingFor into holds. That list is not a field on the task row.
+    packages:
+      - "@flow-state-dev/orchestration"
+    subpaths:
+      - package: "@flow-state-dev/orchestration"
+        subpath: ./inbox
+      - package: "@flow-state-dev/orchestration"
+        subpath: ./inbox/check
+    entryPoints:
+      - path: packages/orchestration/src/inbox/client.ts
+        exports:
+          - createInboxClient
+      - path: packages/orchestration/src/inbox/holds.ts
+        exports:
+          - openUserHolds
+    builtOn:
+      - task
+      - suspension
+    overlaps:
+      - id: suspension
+        relation: missing-abstraction
+        note: "The inbox builds holds for the reader. The row still stores waitingOn and waitingFor. The file says the row holds have not landed. Do not add another person-wait field beside that decision."
+    facets:
+      - id: read-model
+        summary: openUserHolds projects what a person can answer. It is not the task-row field the epic decided.
+        path: packages/orchestration/src/inbox/holds.ts
+        symbol: openUserHolds
+        exports:
+          - openUserHolds
+
+  - id: workforce
+    title: Workforce
+    status: canonical
+    summary: |
+      hireWorkforce registers worker flows from an installation. The define* factories beside it are the records and flows a workforce app composes. They are not separate frameworks.
+    packages:
+      - "@flow-state-dev/workforce"
+    subpaths:
+      - package: "@flow-state-dev/workforce"
+        subpath: ./browser
+      - package: "@flow-state-dev/workforce"
+        subpath: ./loader
+      - package: "@flow-state-dev/workforce"
+        subpath: ./codegen
+      - package: "@flow-state-dev/workforce"
+        subpath: ./fsdev-gen
+    entryPoints:
+      - path: packages/workforce/src/workers/register.ts
+        exports:
+          - hireWorkforce
+      - path: packages/workforce/src/workers/installation.ts
+        exports:
+          - createWorkerInstallation
+      - path: packages/workforce/src/workforce-capability.ts
+        exports:
+          - createWorkforceCapability
+      - path: packages/workforce/src/workers/client.ts
+        exports:
+          - createWorkforceClient
+      - path: packages/workforce/src/agent-worker-flow.ts
+        exports:
+          - defineAgentWorkerFlow
+      - path: packages/workforce/src/coordinator/coordinator-flow.ts
+        exports:
+          - defineCoordinatorFlow
+      - path: packages/workforce/src/define-persona.ts
+        exports:
+          - definePersona
+      - path: packages/workforce/src/error-reporter/flow.ts
+        exports:
+          - defineErrorReporterFlow
+          - defineErrorReporterIntakeFlow
+      - path: packages/workforce/src/projects/collections.ts
+        exports:
+          - defineProjectsCollection
+          - definePrivateProjectsCollection
+          - defineProjectFilesCollection
+          - definePrivateProjectFilesCollection
+      - path: packages/workforce/src/projects/project-writes.ts
+        exports:
+          - defineProjectBlocks
+      - path: packages/workforce/src/projects/work-project.ts
+        exports:
+          - defineSetWorkProjectBlock
+      - path: packages/workforce/src/projects/mcp-credentials.ts
+        exports:
+          - defineMcpCredentialsCollection
+      - path: packages/workforce/src/projects/workstream-collections.ts
+        exports:
+          - defineWorkstreamsCollection
+          - definePrivateWorkstreamsCollection
+      - path: packages/workforce/src/projects/workstream-writes.ts
+        exports:
+          - defineWorkstreamBlocks
+      - path: packages/workforce/src/workers/roster-flow.ts
+        exports:
+          - defineWorkerRosterFlow
+      - path: packages/workforce/src/workers/standard-workers.ts
+        exports:
+          - defineStandardWorkerCollection
+      - path: packages/workforce/src/workers/worker-row.ts
+        exports:
+          - defineWorkerCollection
+      - path: packages/workforce/src/inventory/collections.ts
+        exports:
+          - defineWorkerInventoryCollection
+      - path: packages/workforce/src/codegen/fsdev-gen.ts
+        exports:
+          - generator
+    builtOn:
+      - flow
+      - task-board
+    reliedOnBy:
+      - apps/kitchen-sink
+      - packages/shift-manager
+    docs:
+      - docs/architecture/workforce-default-worker-flow.md
+    overlaps:
+      - id: block
+        relation: distinct-jobs
+        note: "workforce/fsdev-gen exports a value named generator. That is the hook fsdev gen calls, not the block kind generator. The checker counts one name as claimed."
+    facets:
+      - id: hire
+        summary: Registers the installation's worker flows onto a host.
+        path: packages/workforce/src/workers/register.ts
+        symbol: hireWorkforce
+        exports:
+          - hireWorkforce
+      - id: installation
+        summary: The bundle of workers hireWorkforce registers.
+        path: packages/workforce/src/workers/installation.ts
+        symbol: createWorkerInstallation
+        exports:
+          - createWorkerInstallation
+      - id: agent-worker
+        summary: The default worker flow. answerAgain is an option on the planning answer step, not a second loop.
+        path: packages/workforce/src/agent-worker-flow.ts
+        symbol: defineAgentWorkerFlow
+        exports:
+          - defineAgentWorkerFlow
+      - id: coordinator
+        summary: A coordinator flow over workers.
+        path: packages/workforce/src/coordinator/coordinator-flow.ts
+        symbol: defineCoordinatorFlow
+        exports:
+          - defineCoordinatorFlow
+      - id: persona
+        summary: A persona resource or collection a worker speaks as.
+        path: packages/workforce/src/define-persona.ts
+        symbol: definePersona
+        exports:
+          - definePersona
+      - id: fsdev-generator
+        summary: The fsdev gen plugin for a workforce tree. Same export name as the block kind, different function.
+        path: packages/workforce/src/codegen/fsdev-gen.ts
+        exports:
+          - generator
+
+  - id: session-board
+    title: Session board
+    status: canonical
+    summary: |
+      A board for one conversation session. defineSessionBoard is the public factory. The conversation board and the planning step live beside it in the same package.
+    packages:
+      - "@flow-state-dev/workforce"
+    entryPoints:
+      - path: packages/workforce/src/conversation-board/session-board.ts
+        exports:
+          - defineSessionBoard
+      - path: packages/workforce/src/conversation-board/board.ts
+        exports:
+          - defineConversationBoard
+      - path: packages/workforce/src/conversation-board/plan.ts
+        exports:
+          - definePlanning
+    builtOn:
+      - workforce
+      - sequencer-dsl
+    facets:
+      - id: session
+        summary: The public session board factory.
+        path: packages/workforce/src/conversation-board/session-board.ts
+        symbol: defineSessionBoard
+        exports:
+          - defineSessionBoard
+      - id: conversation
+        summary: The conversation board. Not on the workforce root barrel today.
+        path: packages/workforce/src/conversation-board/board.ts
+        symbol: defineConversationBoard
+        exports:
+          - defineConversationBoard
+      - id: planning
+        summary: Planning.planned answers once more after the plan board drains. That step is not a doWhile.
+        path: packages/workforce/src/conversation-board/plan.ts
+        symbol: definePlanning
+        exports:
+          - definePlanning
+
+  - id: memory
+    title: Memory
+    status: canonical
+    summary: |
+      Cross-turn memory in working, episodic, semantic, and digest tiers. system() wires the tiers into one capability. Not utility.memoryExtractor, and not thought-fabric's system().
+    packages:
+      - "@flow-state-dev/memory"
+    subpaths:
+      - package: "@flow-state-dev/memory"
+        subpath: "."
+    entryPoints:
+      - path: packages/memory/src/memory-capability.ts
+        exports:
+          - createMemoryCapability
+      - path: packages/memory/src/memory-system.ts
+        exports:
+          - system
+      - path: packages/memory/src/capabilities.ts
+        exports:
+          - createWorkingMemoryCapability
+          - createEpisodicMemoryCapability
+          - createSemanticMemoryCapability
+          - createDigestMemoryCapability
+    builtOn:
+      - capability
+      - resource
+      - graph
+    reliedOnBy:
+      - apps/kitchen-sink
+    overlaps:
+      - id: thought-fabric
+        relation: distinct-jobs
+        note: "memory system() assembles cross-turn tiers. thought-fabric identity system() assembles a perspective constitution. Same export name, two functions."
+    facets:
+      - id: tiers
+        summary: The four tier capabilities, also installable on their own.
+        path: packages/memory/src/capabilities.ts
+        symbol: createWorkingMemoryCapability
+        exports:
+          - createWorkingMemoryCapability
+          - createEpisodicMemoryCapability
+          - createSemanticMemoryCapability
+          - createDigestMemoryCapability
+      - id: memory-system
+        summary: One capability that wires the tiers. Not thought-fabric's system().
+        path: packages/memory/src/memory-system.ts
+        symbol: system
+        exports:
+          - system
+
+  - id: coding-harness
+    title: Coding harness
+    status: canonical
+    summary: |
+      A coding agent driven as a block. Core owns the neutral handle. Claude Code, Codex, and Cursor are adapters. Each adapter still has its own copy of the emit helper.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/claude-code"
+      - "@flow-state-dev/codex"
+      - "@flow-state-dev/cursor"
+    subpaths:
+      - package: "@flow-state-dev/claude-code"
+        subpath: ./sdk
+      - package: "@flow-state-dev/claude-code"
+        subpath: ./cli
+      - package: "@flow-state-dev/codex"
+        subpath: "."
+      - package: "@flow-state-dev/cursor"
+        subpath: "."
+    entryPoints:
+      - path: packages/core/src/types/harness.ts
+        exports:
+          - harnessRunHandleSchema
+      - path: packages/claude-code/src/sdk/agent.ts
+        exports:
+          - claudeCodeAgent
+      - path: packages/claude-code/src/sdk/capability.ts
+        exports:
+          - createClaudeCodeAgentCapability
+      - path: packages/claude-code/src/sdk/workspace.ts
+        exports:
+          - createWorkspaceAgentCapability
+      - path: packages/codex/src/agent.ts
+        exports:
+          - codexAgent
+      - path: packages/codex/src/capability.ts
+        exports:
+          - createCodexAgentCapability
+      - path: packages/codex/src/codex-client.ts
+        exports:
+          - createDefaultResolveCodexClient
+      - path: packages/cursor/src/agent.ts
+        exports:
+          - cursorAgent
+      - path: packages/cursor/src/capability.ts
+        exports:
+          - createCursorAgentCapability
+      - path: packages/cursor/src/cursor-client.ts
+        exports:
+          - createDefaultResolveCursorClient
+    builtOn:
+      - block
+    reliedOnBy:
+      - apps/kitchen-sink
+    facets:
+      - id: claude
+        summary: The Claude Code adapter. The capability and the workspace-agent capability are separate exports of the same package.
+        path: packages/claude-code/src/sdk/agent.ts
+        symbol: claudeCodeAgent
+        exports:
+          - claudeCodeAgent
+      - id: codex
+        summary: The Codex adapter. The capability and the default client resolver are separate exports of the same package.
+        path: packages/codex/src/agent.ts
+        symbol: codexAgent
+        exports:
+          - codexAgent
+      - id: cursor
+        summary: The Cursor adapter. The capability and the default client resolver are separate exports of the same package.
+        path: packages/cursor/src/agent.ts
+        symbol: cursorAgent
+        exports:
+          - cursorAgent
+      - id: emit
+        summary: "Each adapter copies createEmitState and finalizeOpenItems (claude-code sdk/emit.ts, codex emit.ts, cursor emit.ts). The neutral handle is in core. The helper is not shared."
+        path: packages/claude-code/src/sdk/emit.ts
+        symbol: createEmitState
+
+  - id: harness-manager
+    title: Harness manager
+    status: canonical
+    summary: |
+      Turns a task-board row into a supervised coding run. Its inbox is a question channel for that run. Its checkout subpath is workspace's git, re-exported, and is not this package's supported contract.
+    packages:
+      - "@flow-state-dev/harness-manager"
+    subpaths:
+      - package: "@flow-state-dev/harness-manager"
+        subpath: "."
+    entryPoints:
+      - path: packages/harness-manager/src/manager.ts
+        exports:
+          - harnessManager
+    builtOn:
+      - task-board
+      - coding-harness
+      - workspace
+    overlaps:
+      - id: inbox
+        relation: distinct-jobs
+        note: "The harness inbox is a question a coding run asked, stored as a row. The orchestration inbox is a read model of what a person can answer. Same word, different record."
+      - id: workspace
+        relation: adapters
+        note: "checkout.ts runs git through the workspace host and re-exports run. It is not a second workspace implementation."
+    facets:
+      - id: question-channel
+        summary: inbox/** on a coding run. A person reads it. It is not migrated onto the task-row hold.
+        path: packages/harness-manager/src/inbox.ts
+
+  - id: workspace
+    title: Workspace
+    status: canonical
+    summary: |
+      Projects file content between resource collections and the directory an agent works in. localWorkspaceHost is the host. Harness checkout calls this rather than shelling git itself.
+    packages:
+      - "@flow-state-dev/workspace"
+      - "@flow-state-dev/harness-manager"
+    subpaths:
+      - package: "@flow-state-dev/workspace"
+        subpath: "."
+      - package: "@flow-state-dev/harness-manager"
+        subpath: ./checkout
+    entryPoints:
+      - path: packages/workspace/src/local-host.ts
+        exports:
+          - localWorkspaceHost
+      - path: packages/harness-manager/src/checkout.ts
+        exports:
+          - provisionCheckout
+          - run
+    facets:
+      - id: local-host
+        summary: The local workspace host.
+        path: packages/workspace/src/local-host.ts
+        symbol: localWorkspaceHost
+        exports:
+          - localWorkspaceHost
+      - id: checkout
+        summary: Harness-manager's worktree helpers. Git execution stays in the workspace package.
+        path: packages/harness-manager/src/workspace.ts
+        symbol: provisionCheckout
+        exports:
+          - provisionCheckout
+          - run
+
+  - id: thought-fabric
+    title: Thought fabric
+    status: canonical
+    summary: |
+      Attention, identity, and metacognition blocks. Identity's system() is a perspective constitution, not the memory package's system().
+    packages:
+      - "@thought-fabric/core"
+    subpaths:
+      - package: "@thought-fabric/core"
+        subpath: "."
+      - package: "@thought-fabric/core"
+        subpath: ./attention
+      - package: "@thought-fabric/core"
+        subpath: ./identity
+      - package: "@thought-fabric/core"
+        subpath: ./metacognition
+    entryPoints:
+      - path: packages/thought-fabric-core/src/attention/filter-relevance.ts
+        exports:
+          - filterRelevance
+      - path: packages/thought-fabric-core/src/attention/score-salience.ts
+        exports:
+          - scoreSalience
+      - path: packages/thought-fabric-core/src/identity/perspective-capability.ts
+        exports:
+          - createPerspectiveCapability
+      - path: packages/thought-fabric-core/src/identity/perspective-blocks.ts
+        exports:
+          - perspectiveObserve
+      - path: packages/thought-fabric-core/src/identity/perspective-system.ts
+        exports:
+          - system
+      - path: packages/thought-fabric-core/src/metacognition/bias-detection-blocks.ts
+        exports:
+          - biasAnalyzer
+    builtOn:
+      - block
+      - capability
+    facets:
+      - id: attention
+        summary: Salience and relevance blocks. scoreSalience sits beside filterRelevance.
+        path: packages/thought-fabric-core/src/attention/filter-relevance.ts
+        symbol: filterRelevance
+        exports:
+          - filterRelevance
+      - id: perspective
+        summary: A perspective capability. perspectiveObserve is the block beside it.
+        path: packages/thought-fabric-core/src/identity/perspective-capability.ts
+        symbol: createPerspectiveCapability
+        exports:
+          - createPerspectiveCapability
+      - id: perspective-system
+        summary: system() for a constitution of perspectives. Not memory's system().
+        path: packages/thought-fabric-core/src/identity/perspective-system.ts
+        symbol: system
+        exports:
+          - system
+      - id: bias-analyzer
+        summary: A metacognition block that looks for bias. Not utility.analyzer.
+        path: packages/thought-fabric-core/src/metacognition/bias-detection-blocks.ts
+        symbol: biasAnalyzer
+        exports:
+          - biasAnalyzer
+
+  - id: bundled-tools
+    title: Bundled tools
+    status: canonical
+    summary: |
+      Search, fetch, crawl, and bash, shipped as tools a flow can use. The MCP client is a separate entry.
+    packages:
+      - "@flow-state-dev/tools"
+    subpaths:
+      - package: "@flow-state-dev/tools"
+        subpath: "."
+      - package: "@flow-state-dev/tools"
+        subpath: ./search
+      - package: "@flow-state-dev/tools"
+        subpath: ./fetch
+      - package: "@flow-state-dev/tools"
+        subpath: ./crawl
+      - package: "@flow-state-dev/tools"
+        subpath: ./bash
+    entryPoints:
+      - path: packages/tools/src/index.ts
+        exports:
+          - tools
+          - search
+          - fetch
+          - crawl
+      - path: packages/tools/src/bash/capability.ts
+        exports:
+          - createBashCapability
+    builtOn:
+      - capability
+    facets:
+      - id: bash
+        summary: A bash capability with a configured working directory and timeout.
+        path: packages/tools/src/bash/capability.ts
+        symbol: createBashCapability
+        exports:
+          - createBashCapability
+
+  - id: client
+    title: Client
+    status: canonical
+    summary: |
+      createClient is the isomorphic caller of a hosted flow. It starts actions, reads sessions, and resumes streams.
+    packages:
+      - "@flow-state-dev/client"
+    subpaths:
+      - package: "@flow-state-dev/client"
+        subpath: "."
+    entryPoints:
+      - path: packages/client/src/client.ts
+        exports:
+          - createClient
+    builtOn:
+      - streaming
+    docs:
+      - docs/architecture/server-and-client.md
+
+  - id: react
+    title: React
+    status: canonical
+    summary: |
+      Hooks and renderers that wrap the client. No transport of its own.
+    packages:
+      - "@flow-state-dev/react"
+    subpaths:
+      - package: "@flow-state-dev/react"
+        subpath: "."
+    entryPoints:
+      - path: packages/react/src/index.ts
+        exports:
+          - useFlow
+          - useSession
+    builtOn:
+      - client
+
+  - id: generative-ui
+    title: Generative UI
+    status: canonical
+    summary: |
+      A starter pack of component renderers and the tool factories that emit them. Renderers stay free of the tool runtime.
+    packages:
+      - "@flow-state-dev/ui"
+    subpaths:
+      - package: "@flow-state-dev/ui"
+        subpath: ./generative/renderers
+      - package: "@flow-state-dev/ui"
+        subpath: ./generative/tools
+    entryPoints:
+      - path: packages/ui/src/generative/renderers.ts
+        exports:
+          - generativeRenderers
+      - path: packages/ui/src/generative/tools.ts
+        exports:
+          - generativeTools
+    builtOn:
+      - react
+      - block
+
+  - id: testing
+    title: Testing
+    status: canonical
+    summary: |
+      testBlock, testFlow, and mockGenerator run blocks and flows without a provider. Engine and scheduled ship test helpers on their own subpaths. defineBenchmark is the benchmark definition.
+    packages:
+      - "@flow-state-dev/testing"
+      - "@flow-state-dev/engine"
+      - "@flow-state-dev/scheduled"
+    subpaths:
+      - package: "@flow-state-dev/testing"
+        subpath: "."
+      - package: "@flow-state-dev/testing"
+        subpath: ./conformance
+      - package: "@flow-state-dev/engine"
+        subpath: ./testing
+      - package: "@flow-state-dev/scheduled"
+        subpath: ./testing
+    entryPoints:
+      - path: packages/testing/src/index.ts
+        exports:
+          - testBlock
+          - testFlow
+          - testSequencer
+          - testRouter
+          - mockGenerator
+          - defineBenchmark
+    facets:
+      - id: conformance
+        summary: Shared checks a transport adapter can run against the inbound contract.
+        path: packages/testing/src/transports/conformance.ts
+        symbol: createInboundTransportConformanceTests
+
+  - id: fsdev
+    title: fsdev
+    status: canonical
+    summary: |
+      The terminal interface. fsdev run executes a flow. fsdev dev serves a flow with the devtool. fsdev gen calls a package's generator hook.
+    packages:
+      - "@flow-state-dev/fsdev"
+    subpaths:
+      - package: "@flow-state-dev/fsdev"
+        subpath: "."
+    entryPoints:
+      - path: packages/cli/src/index.ts
+        exports:
+          - program
+          - resolveGenerator
+    builtOn:
+      - execution
+      - host
+
+  - id: bullmq
+    title: BullMQ host
+    status: canonical
+    summary: |
+      A queue-backed host. createBullmqRuntime and bullmqWorker run flows as jobs. createWorkerDispatcher is the queue's FlowDispatcher, not dispatcher() and not a task-claim strategy. Schedules are the schedule entry's BullMQ adapter.
+    packages:
+      - "@flow-state-dev/bullmq"
+    subpaths:
+      - package: "@flow-state-dev/bullmq"
+        subpath: "."
+      - package: "@flow-state-dev/bullmq"
+        subpath: ./worker
+    entryPoints:
+      - path: packages/bullmq/src/runtime.ts
+        exports:
+          - createBullmqRuntime
+      - path: packages/bullmq/src/flowstate-adapter.ts
+        exports:
+          - bullmqWorker
+      - path: packages/bullmq/src/dispatcher.ts
+        exports:
+          - createWorkerDispatcher
+    builtOn:
+      - host
+      - schedule
+    overlaps:
+      - id: dispatcher
+        relation: distinct-jobs
+        note: "createWorkerDispatcher is the BullMQ FlowDispatcher. dispatcher() is a block. Task claim strategies are a third use of the word."
+    facets:
+      - id: worker-dispatcher
+        summary: Enqueues a flow run onto BullMQ.
+        path: packages/bullmq/src/dispatcher.ts
+        symbol: createWorkerDispatcher
+        exports:
+          - createWorkerDispatcher
+
+  - id: manifest
+    title: Manifest
+    status: canonical
+    summary: |
+      A registry of blocks, workers, skills, and resources a host can discover. The domain list lives in contracts. The registry lives in core.
+    packages:
+      - "@flow-state-dev/core"
+      - "@flow-state-dev/contracts"
+    entryPoints:
+      - path: packages/core/src/manifest/registry.ts
+        exports:
+          - createManifestRegistry
+      - path: packages/contracts/src/index.ts
+        exports:
+          - MANIFEST_DOMAINS
+          - isManifestDomain
+    builtOn:
+      - block
+      - contracts
+
+sharedSubpaths:
+  - package: "@flow-state-dev/contracts"
+    subpath: ./helpers
+    reason: "Leaf helpers shared by packages. Not a mechanism of their own."
+  - package: "@flow-state-dev/core"
+    subpath: "."
+    reason: "Root barrel re-exports many mechanisms. Each primitive is claimed by name."
+  - package: "@flow-state-dev/core"
+    subpath: ./types
+    reason: "Shared type barrel mixing flow, resource, auth, and schedule types."
+  - package: "@flow-state-dev/core"
+    subpath: ./helpers
+    reason: "Shared helpers. Not a mechanism of their own."
+  - package: "@flow-state-dev/engine"
+    subpath: "."
+    reason: "Root barrel mixes execution, stores, transports, and a model re-export."
+  - package: "@flow-state-dev/orchestration"
+    subpath: "."
+    reason: "Root barrel mixes tasks, the board, skills, and the inbox."
+  - package: "@flow-state-dev/patterns"
+    subpath: "."
+    reason: "Root barrel re-exports every pattern. Each pattern claims its own subpath."
+  - package: "@flow-state-dev/workforce"
+    subpath: "."
+    reason: "Root barrel mixes hire, records, and worker flows. Primitives are claimed by name."
+  - package: "@flow-state-dev/devtool"
+    subpath: "."
+    reason: "DevTool assets for fsdev dev. Not a framework mechanism."
+  - package: "@flow-state-dev/devtool"
+    subpath: ./react
+    reason: "DevTool React inspector. A consumer of the framework, not a mechanism."
+  - package: "@flow-state-dev/shift-manager"
+    subpath: "."
+    reason: "The shift-manager app command. A consumer, not a framework mechanism."

@@ -2,6 +2,10 @@
 
 Compact reference for locked contracts and key decisions. For detailed explanations, see the full architecture docs in `docs/architecture/`.
 
+## Where mechanisms are listed
+
+This file is the locked-contract cheat sheet. The inventory of mechanisms — what each one does, what it is built on, and where two of them overlap — is [`../mechanisms/README.md`](../mechanisms/README.md). Contracts stay here. The inventory does not restate them.
+
 ## Authority Order
 
 1. `docs/architecture/*` — Reference docs (authoritative)
