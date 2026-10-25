@@ -914,7 +914,15 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   setWaitingOn?(
     id: string,
     waitingOn: TaskWaitingOn | null,
-    options: { claim: TaskClaimTicket; leaseUntil?: number; answer?: { output: unknown } }
+    options: {
+      claim: TaskClaimTicket;
+      leaseUntil?: number;
+      answer?: { output: unknown };
+      /** With `"user"`: the stop it waits on, copied onto the row (`Task.waitingFor`, FIX-2129). */
+      waitingFor?: Task["waitingFor"];
+      /** With `null`: keep the stop the row records, for a later request admitted while the task's own run stays parked on it. */
+      keepWaitingFor?: boolean;
+    }
   ): Promise<TaskWriteOutcome>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
@@ -986,7 +994,8 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
   /**
    * Clear the row's resume-owed marker (`Task.resumeOwed`) once its waiting
-   * turn has its answer (FIX-1816). `unchanged` when no marker is set.
+   * turn has its answer (FIX-1816), and the stop a cancelled row kept to pay
+   * it (`Task.waitingFor`, FIX-2129). `unchanged` when no marker is set.
    *
    * Optional: both built-in backings implement it, together with writing the
    * marker when a waited-on row ends. A hand-written ref that does neither cannot

@@ -31,6 +31,7 @@
  * two strings, and the answer as `unknown`.
  */
 
+import { isUserSuspension } from "@flow-state-dev/contracts";
 import { SuspensionError, type SuspendOptions } from "../errors/suspension-error";
 
 /** The suspension reason a wait gate carries. */
@@ -58,19 +59,21 @@ export function isWaitGate(suspension: { readonly reason: string }): boolean {
 }
 
 /**
- * Whether a suspension is an approval that expired: not a wait, past its
- * deadline (`expired`), and one a person could have rejected. Its turn carries
- * on as if the approval were rejected, marked expired. A suspension that
- * allows no `reject` (an input form) only expires. `allow` is absent on
- * records written before it existed, which read as approve/reject.
+ * Whether a suspension that passed its deadline carries its turn on: not a
+ * wait, past its deadline (`expired`), and either one a person could have
+ * rejected (an approval, read as a no marked expired) or one that waits for a
+ * user (FIX-2129: a review or an input, which resumes its block with
+ * `SuspensionTimeoutError`). Any other suspension that allows no `reject`
+ * only expires. `allow` is absent on records written before it existed,
+ * which read as approve/reject.
  */
-export function isExpiredApproval(suspension: {
+export function continuesAtExpiry(suspension: {
   readonly reason: string;
   readonly status: string;
   readonly allow?: readonly string[];
 }): boolean {
   if (suspension.status !== "expired" || isWaitGate(suspension)) return false;
-  return (suspension.allow ?? ["approve", "reject"]).includes("reject");
+  return isUserSuspension(suspension) || (suspension.allow ?? ["approve", "reject"]).includes("reject");
 }
 
 /** A row on a board: the waited-on task, or the task a waiting request works. */

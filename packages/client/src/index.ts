@@ -22,6 +22,7 @@ export {
   type ResourceContentResponse,
   type ResourcesApi,
   type ResumeSuspensionBody,
+  type AnswerSuspensionBody,
   type SendOptions,
   type SentRequest,
   type SessionsApi,

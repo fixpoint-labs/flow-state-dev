@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, what keeps a task's requests apart while it waits on a person. Chosen: the task row's person mark. Instead of: holding the session's key across the suspension. It comes down to the first row: while a task waits on a person, the onTaskSettled request for its filed work ending must still run; the row's mark lets it through, while holding the key blocks it until the person answers. The price is the second row: every path that admits a request into the task's session must read the row, where the key is one place the engine already keeps. The third row is a tie: both already exist, the row's waitingOn user mark from FIX-2077 and the key the engine gives back on a stop. Locks in: ER-2, every admission reads the row's mark, and a steer waits for the resume, never beside it. Flips if: the engine grows a key that holds a session's requests but lets onTaskSettled through. Messages are not this decision: they follow rule 10."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what keeps a task's requests apart while it waits on a person. Chosen: the task row's open hold. Instead of: holding the session's key across the suspension. It comes down to the first row: while a task waits on a person, the onTaskSettled request for its filed work ending must still run; the row's open hold lets it through, while holding the key blocks it until the person answers. The price is the second row: every path that admits a request into the task's session must read the row, where the key is one place the engine already keeps. The third row is a tie: both already exist, FIX-2077's mark on the row, now a suspension hold, and the key the engine gives back on a stop. Locks in: ER-2, every admission reads the row's open holds, and a steer waits for the resume, never beside it. Flips if: the engine grows a key that holds a session's requests but lets onTaskSettled through. Messages are not this decision: they follow rule 10."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">The task row's person mark</text>
+    <text class="t-h c-code" x="228" y="112">The task row's open hold</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Hold the session's key across the suspension</text>
@@ -77,7 +77,7 @@
     <text class="t-lbl" x="32" y="280">THE MARK ITSELF</text>
     <text class="mark tie" x="228" y="282">=</text>
     <text class="t-b" x="248" y="281">Already there</text>
-    <text class="t-s" x="248" y="299">waitingOn: "user", from FIX-2077, renamed</text>
+    <text class="t-s" x="248" y="299">FIX-2077&#x27;s mark, now a suspension hold</text>
     <text class="mark tie" x="592" y="282">=</text>
     <text class="t-b" x="612" y="281">Already there</text>
     <text class="t-s" x="612" y="299">the key, given back on a stop today</text>

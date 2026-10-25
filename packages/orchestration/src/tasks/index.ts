@@ -13,6 +13,7 @@
 
 // Schema
 export {
+  MAX_WAITING_FOR_PROMPT,
   taskSchema,
   type Task,
   type TaskClaimIdentity,
@@ -45,7 +46,9 @@ export {
   assertFilingSettings,
   assertFollowUpHasRun,
   assertIdsFree,
+  assertParentsOpen,
   assertUniqueIds,
+  parentCancelledRefusal,
   type TaskFilingCallerContext,
   type TaskFilingRule,
   type TaskSettingsSupport,
@@ -222,6 +225,8 @@ export {
 
 // Filed work still holding a task (FIX-2077, rule 6).
 export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
+// A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.
+export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";

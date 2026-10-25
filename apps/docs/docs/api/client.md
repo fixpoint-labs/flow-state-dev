@@ -114,6 +114,7 @@ A `RequestHandle` comes from `send`, from `flow(address).request(id)`, or from `
 | `continue()` | the same handle | Carries on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. `continue({ stream: true, includeTrace? })` resolves to the continuation's SSE `Response`. |
 | `retry({ input? })` | a new `RequestHandle` | Runs the request again as a new request in the same session, with its original input or `input`. Only an `interrupted` or `failed` request can be retried; any other answers `409`. |
 | `resume(body)` | the same handle | Answers a pending suspension. The run carries on under the same id. `resume(body, { stream: true })` resolves to its SSE `Response`. |
+| `answer(body)` | the same handle | Answers a stop that waits for a user, in any run, including one a task board started. See [`answer(body)`](#answerbody). |
 | `stream(options)` | `RequestStreamHandle` | Follows the request's events. See [Streams](#streams). |
 
 `continue` and `retry` need the request's session. A handle from `send` or `interrupted()` already knows it; one from `request(id)` reads it from one `status()` call and keeps it. A request with no session rejects with a `ClientHttpError` of status `0` before anything is sent.
@@ -139,6 +140,27 @@ Server errors:
 - **410**: the suspension expired.
 
 The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this up for you.
+
+### `answer(body)`
+
+An inbox answers a stop that waits for a user (a `ctx.waitForUser`, or a `human_approval` / `human_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
+
+```ts
+await fsd.flow(flowId).request(item.requestId).answer({
+  suspensionId: item.suspensionId,
+  action: "submit", // "approve" or "reject" for an approval
+  data: "eu-west",
+});
+```
+
+The server checks that the signed-in caller owns the stop's request before it reads the stop, and records that caller as who answered, so there is no `resumedBy`. A stop resolves once: whichever of an answer, a cancel, a deadline or a stop comes first wins.
+
+Server errors:
+
+- **400**: a missing or invalid `action`, or `data` that fails the stop's `resumeSchema`.
+- **404**: the stop isn't the caller's (another user, tenant or organization), isn't one that waits for a user, or doesn't exist.
+- **409**: the stop is already resolved (body `refused: "already-resolved"`), the action isn't one it allows, or another resume of the request is still running (`refused: "busy"`).
+- **410**: the stop passed its deadline.
 
 ## `fsd.requests.interrupted(options?)`
 

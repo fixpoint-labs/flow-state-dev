@@ -216,6 +216,22 @@ export type ResumeSuspensionBody = {
   resumedBy?: string;
 };
 
+/**
+ * The answer to a suspension that waits for a user ({@link RequestHandle.answer}).
+ * Who answered is the signed-in caller, set by the server: there is no `resumedBy`.
+ */
+export type AnswerSuspensionBody = {
+  /** Id of the pending suspension to answer. */
+  suspensionId: string;
+  /**
+   * The answer: `approve` or `reject` for an approval, `submit` with `data`
+   * for a review or an input. Must be in the suspension's `allow` set (409 otherwise).
+   */
+  action: ResumeAction;
+  /** The answer's payload, validated against the suspension's `resumeSchema`. */
+  data?: unknown;
+};
+
 /** Ask for an SSE response instead of JSON: the call resolves to the raw `Response`. */
 export type StreamOption = {
   /**
@@ -296,6 +312,18 @@ export interface RequestHandle {
    */
   resume(body: ResumeSuspensionBody): Promise<RequestHandle>;
   resume(body: ResumeSuspensionBody, options: StreamOption): Promise<Response>;
+  /**
+   * Answer a suspension of this request that waits for a user
+   * (`ctx.waitForUser`, or a raw `human_approval` / `human_input` stop),
+   * whatever started its run, a task's included, which `resume` refuses.
+   * The server checks the caller owns the request before it reads the stop,
+   * resolves it once, and continues the same request; this resolves to its
+   * handle. Rejects with a `ClientHttpError`: 404 for a stop that is not the
+   * caller's or not a user's, 409 for one already resolved (an answer, a
+   * cancel, a deadline or a stop got there first), 410 past its deadline,
+   * 400 for an answer that fails the stop's schema.
+   */
+  answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
   /** Follow the request's events. */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
@@ -768,6 +796,18 @@ function requestHandle(
       return requestHandle(t, retried.request.flowId ?? flow, retried.request.id, retried.session?.id ?? null);
     },
     resume: resume as RequestHandle["resume"],
+    answer: async (body) => {
+      requireValue(body.suspensionId, "suspensionId");
+      if (!RESUME_ACTIONS.includes(body.action)) {
+        clientError(`answer requires action one of ${RESUME_ACTIONS.join(", ")}`);
+      }
+      await t.json<{ requestId: string }>(`${base}/answer`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
+      });
+      return handle;
+    },
     stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
       openRequestStream(
         {

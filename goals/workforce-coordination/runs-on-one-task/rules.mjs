@@ -180,6 +180,23 @@ export const REMOVED = [
 ];
 
 /**
+ * FIX-2058's old ways to stop for a person or to answer one, and the names they leave behind
+ * (FIX-2134 D2): no reference in package source, the pages a user reads, or Shift Manager,
+ * matched as the text rows of {@link REMOVED} are, with the same `--control` plant. A ratchet:
+ * each child of FIX-2058 adds the names it deletes in the PR that deletes them, and FIX-2134
+ * checks the list is complete. A name is a word, matched wherever the removed rule sweeps,
+ * unless its entry narrows `files`.
+ */
+export const PERSON_STOPS_REMOVED = [
+  // FIX-2129: every listed suspension answers through the answer route, whatever source its run
+  // arrived on, so none is unanswerable for that; and an expiry that carries a turn on is no
+  // longer an approval's alone (`continuesAtExpiry`).
+  { name: "REOPENED_SOURCES", owner: "FIX-2129" },
+  { name: "DISPATCHED_RUN_UNANSWERABLE", owner: "FIX-2129" },
+  { name: "isExpiredApproval", owner: "FIX-2129" },
+];
+
+/**
  * Lines that name a removed surface on purpose where a marker can't go or doesn't belong, each
  * with its reason: a published page or README telling a consumer what replaced it, or a legacy
  * read (BP-030). Never widened to silence a live surface: a line here says the surface is gone.
@@ -221,6 +238,7 @@ export const RECORDERS = {
   "orchestration:checkTask": "the claim gate: a dispatched task's request-end check fails the attempt (FIX-2077, FIX-2088)",
   "orchestration:checkAnswered": "the claim gate: a dispatched task's request-end check settles it done (FIX-2077)",
   "orchestration:settleAtRequestEnd": "the claim gate: the settle every request-end and recorder write passes through",
+  "orchestration:cancelForStop": "the claim gate: a stop of a task's run waiting on a user cancels the task where it would have failed the try (FIX-2129, rule 12)",
   "orchestration:createRecordSuccess": "the drain's recorder: an inline row's result",
   "orchestration:createRecordError": "the drain's recorder: an inline row's error (FIX-2090's refused run ends here)",
   "orchestration:releaseRow": "the drain's recorder: a row whose recorder could not confirm its own write",

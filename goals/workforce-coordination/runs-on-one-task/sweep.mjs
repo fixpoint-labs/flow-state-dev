@@ -65,6 +65,12 @@ function plantsOf(root) {
       text: "export const legacy = { tool: \"dispatchTask\" };\n",
     },
     {
+      // A name FIX-2058's ratchet removed (PERSON_STOPS_REMOVED), back in package source.
+      rule: "removed",
+      path: "packages/shift-manager/src/lib/__planted_person_stop__.ts",
+      text: 'export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http"]);\n',
+    },
+    {
       rule: "endings",
       path: "packages/workforce/src/__planted_complete__.ts",
       text: COLLECTION + "export async function wrapUp(rows: TaskCollectionRef, taskId: string, output: unknown) {\n  const renamed = rows;\n  await renamed.complete(taskId, output);\n}\n",

@@ -10,7 +10,10 @@
  *   the worker's `onErrored` piece once when the notice is a failure for good,
  *   and its `onCompleted` piece once when the notice is a completion;
  * - after filing, it waits `holdAfterFiling[worker]` ms, then throws when the
- *   worker is in `failAfterFiling` (FIX-2080: the work a failed task filed).
+ *   worker is in `failAfterFiling` (FIX-2080: the work a failed task filed);
+ * - before filing, a worker in `waitForUserBeforeFiling` (by its id, or as
+ *   `<worker>:<message>` for one turn) waits for the user, and records what
+ *   came back in `answered` (FIX-2129; needs a durable host).
  *
  * Every turn is recorded (worker, session, message).
  */
@@ -61,6 +64,10 @@ export type SplitControls = {
    * `release` (FIX-2114: a dependency another request ends meanwhile).
    */
   holdAfterResolve: Record<string, { reached: () => void; release: Promise<void> }>;
+  /** Workers whose turn waits for the user before it files (not on a notice), or `<worker>:<message>` for one turn. */
+  waitForUserBeforeFiling: Set<string>;
+  /** What each such wait came back with, by worker. */
+  answered: Array<{ worker: string; answer: unknown }>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -91,6 +98,10 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
       if (pieces.length === 0) return notice && Object.hasOwn(controls.noticeAnswer, worker) ? controls.noticeAnswer[worker] : `${worker} heard: ${input.message}`;
       const before = notice ? undefined : controls.holdBeforeFiling[worker];
       if (before !== undefined) await before;
+      if (!notice && (controls.waitForUserBeforeFiling.has(worker) || controls.waitForUserBeforeFiling.has(`${worker}:${input.message}`))) {
+        const answer = await (ctx as unknown as { waitForUser(options: unknown): Promise<unknown> }).waitForUser({ kind: "input", prompt: "Go ahead?" });
+        controls.answered.push({ worker, answer });
+      }
       const ref = await board.board.resolver(ctx as never);
       if (ref === undefined) {
         controls.refusals.push({ worker, error: "no_delegation_board" });
@@ -178,7 +189,9 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
     holdAfterFiling: {},
     batch: new Set(),
     holdBeforeFiling: {},
-    holdAfterResolve: {}
+    holdAfterResolve: {},
+    waitForUserBeforeFiling: new Set(),
+    answered: []
   };
   const host = bootBoardHost({
     standard: splitWorkers(),

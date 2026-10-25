@@ -146,7 +146,17 @@ export interface BoardRunFlowState {
 const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
 
 /** Opened before the ticket exists, same as the lease-renewal slot. */
-type ClaimSlot = { ticket?: TaskClaimTicket; request?: string };
+type ClaimSlot = { ticket?: TaskClaimTicket; task?: WorkerTask; request?: string };
+
+/**
+ * Which task the running worker's request works (FIX-2129): its filing
+ * identity, apart from the claim that is its authority to write the task's
+ * result. A claim always carries one. A run admitted holding no claim (a task
+ * cancelled while its run waited for a user, resumed to run to its end) still
+ * has one, so a task it files names it as its filer, and the board refuses
+ * that filing under the cancelled task.
+ */
+export type WorkerTask = { readonly collectionId: string; readonly partition?: string; readonly taskId: string };
 
 /**
  * The part of a block context a claim is bound to: the request it runs in.
@@ -401,7 +411,35 @@ export function stampCurrentClaim(
     );
   }
   slot.ticket = ticket;
+  slot.task = { collectionId: ticket.collectionId, ...(ticket.partition !== undefined ? { partition: ticket.partition } : {}), taskId: ticket.taskId };
   slot.request = claimRequestKey(ctx);
+}
+
+/**
+ * Publish the task a request works without a claim (see {@link WorkerTask}),
+ * into the slot {@link openWorkerClaimScope} opened. Only the claim gate
+ * calls it, for a task's own run it admits holding no claim.
+ *
+ * @throws When no slot is open, as {@link stampCurrentClaim} does.
+ */
+export function stampCurrentTask(task: WorkerTask, ctx: WorkerClaimReader): void {
+  const slot = workerClaimStore.getStore();
+  if (slot === undefined) {
+    throw new Error("[task-board] stampCurrentTask() was called with no claim scope open. Call openWorkerClaimScope() first.");
+  }
+  slot.task = task;
+  slot.request = claimRequestKey(ctx);
+}
+
+/**
+ * The task the worker whose async chain this call runs in works, claimed or
+ * not, or `undefined` outside one. What a task it files names as its filer
+ * (`filedByTask`); never an authority to write the task (that is
+ * {@link currentWorkerClaim}'s). Bound to `ctx`'s request, as the claim is.
+ */
+export function currentWorkerTask(ctx: WorkerClaimReader): WorkerTask | undefined {
+  const slot = workerClaimStore.getStore();
+  return slot?.task !== undefined && slot.request === claimRequestKey(ctx) ? slot.task : undefined;
 }
 
 /** A claim stamped in this request: every claimed turn is a task turn. */

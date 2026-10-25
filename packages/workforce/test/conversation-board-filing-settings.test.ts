@@ -241,9 +241,10 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
     }
   });
 
-  it("cancels a piece filed after its task was cancelled, so it doesn't outlive the task", async () => {
+  it("refuses a piece filed after its task was cancelled, so it never outlives the task (FIX-2129)", async () => {
     // The task's ending finds nothing filed yet, so its cascade cancels
-    // nothing; the piece is added after. The add itself must catch it.
+    // nothing; the piece is filed after. The filing reads the task as stored
+    // and is refused before anything is added, so no claimable row exists.
     const h = bootSplitHost();
     try {
       let file!: () => void;
@@ -256,15 +257,83 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       const top = await one(h, "Plan the retreat");
       expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
       file();
-      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the cabin")).length === 1)).toBe(true);
+      expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);
       await h.settled();
 
       expect((await one(h, "Plan the retreat")).status).toBe("cancelled");
-      expect((await one(h, "[slow:3000] Book the cabin")).status).toBe("cancelled");
+      expect(h.controls.refusals.find((r) => r.worker === "s1")).toMatchObject({ error: "TaskFilingRefusedError", message: expect.stringMatching(/^parent_cancelled:/) });
+      expect(await h.rowsNamed("alice", "[slow:3000] Book the cabin")).toEqual([]);
     } finally {
       await h.dispose();
     }
   }, 20_000);
+
+  // A task's run found waiting on the user when its task is cancelled resumes
+  // `{ cancelled: true }` and runs on: whatever it files then is refused under
+  // the task it works, in every session a task can run in. That task is the
+  // row whose run link names the resumed request, whatever the session's own
+  // state names (a follow-up's session names its root; an ongoing one, none).
+  const sessions: Array<{
+    where: string;
+    /** Files the task, and returns its goal: the row to cancel. */
+    file: (h: SplitHost, planner: string) => Promise<string>;
+  }> = [
+    {
+      where: "a session of its own",
+      file: async (h, planner) => {
+        h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1" }];
+        h.controls.waitForUserBeforeFiling.add("s1");
+        await h.turn("alice", planner);
+        return "Plan the offsite";
+      }
+    },
+    {
+      where: "the delegate's ongoing session, which names no task",
+      file: async (h, planner) => {
+        h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1", session: "ongoing" }];
+        h.controls.waitForUserBeforeFiling.add("s1");
+        await h.turn("alice", planner);
+        return "Plan the offsite";
+      }
+    },
+    {
+      where: "its root's session (a follow-up), which names the root",
+      file: async (h, planner) => {
+        h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1" }];
+        const piece = h.controls.plans.s1;
+        h.controls.plans.s1 = [];
+        await h.turn("alice", planner);
+        await h.settled();
+        const root = await one(h, "Plan the offsite");
+        expect(root.status).toBe("completed");
+        h.controls.plans.s1 = piece;
+        h.controls.waitForUserBeforeFiling.add("s1:Add a second hall");
+        expect(await h.tool("alice", planner, "createTask", { goal: "Add a second hall", followUpOf: root.id })).toMatchObject({ ok: true });
+        return "Add a second hall";
+      }
+    }
+  ];
+
+  it.each(sessions)("refuses a piece filed by a task cancelled while it waited on the user, in $where (FIX-2129)", async ({ file }) => {
+    const h = bootSplitHost({ durable: true });
+    try {
+      h.controls.plans.s1 = [{ goal: "[slow:3000] Book the hall", assignee: "eng.tasker" }];
+      const planner = await h.open("alice", "planner");
+      const goal = await file(h, planner);
+      expect(await h.until(async () => (await one(h, goal)).waitingOn === "user")).toBe(true);
+      const task = await one(h, goal);
+      expect(await h.tool("alice", planner, "updateTask", { id: task.id, status: "cancelled" })).toEqual({ ok: true });
+      expect(await h.until(async () => h.controls.refusals.some((r) => r.worker === "s1"))).toBe(true);
+      await h.settled();
+
+      expect(h.controls.answered).toEqual([{ worker: "s1", answer: { cancelled: true } }]);
+      expect((await one(h, goal)).status).toBe("cancelled");
+      expect(h.controls.refusals.find((r) => r.worker === "s1")).toMatchObject({ error: "TaskFilingRefusedError", message: expect.stringMatching(/^parent_cancelled:/) });
+      expect(await h.rowsNamed("alice", "[slow:3000] Book the hall")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
 
   it("cancels the open piece a running task filed within seconds of the conversation cancelling the task", async () => {
     const h = bootSplitHost();

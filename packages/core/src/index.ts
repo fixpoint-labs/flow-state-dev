@@ -556,6 +556,7 @@ export {
   SuspensionError,
   SuspensionRejectedError,
   SuspensionTimeoutError,
+  resolveAllowedActions,
   RouteUnavailableError,
   RecordedValueOmittedError,
   RECORDED_VALUE_OMITTED,
@@ -578,7 +579,8 @@ export type {
 // The skip sentinel returned by ctx.suspend() lives alongside SuspensionError on
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
-export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
+export type { ResumeAction, SuspensionSkipped, WaitForUserKind } from "./types/suspension";
+export type { ApprovalAnswer, UserAnswer, WaitForUserOptions } from "./types/wait-for-user";
 
 /**
  * The coding-harness contract's runtime schemas (LAB-152). A harness block

@@ -1003,6 +1003,7 @@ class InternalFlowState<TSettings extends object>
       durabilityRetention: this.#options.durabilityRetention,
       maxDebtAgeMs: this.#options.maxDebtAgeMs,
       waitDeadlines: this.#options.waitDeadlines,
+      userDeadlineMs: this.#options.userDeadlineMs,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,

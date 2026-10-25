@@ -253,6 +253,19 @@ describe("request handle", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("answers a user's stop on the answer route, never the resume route, and sends no resumedBy", async () => {
+    const fetcher = routed({
+      "POST /answer": (init) => {
+        expect(JSON.parse(String(init?.body))).toEqual({ suspensionId: "sus_1", action: "submit", data: "eu-west" });
+        return json({ requestId: "req_1" }, 202);
+      }
+    });
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
+
+    expect(await request.answer({ suspensionId: "sus_1", action: "submit", data: "eu-west" })).toBe(request);
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/requests/req_1/answer"]);
+  });
+
   it("waits past the status a request was carried on from while the server still holds its run", async () => {
     // The continue route answers once the run is registered, before it gets its
     // turn: the record still says `interrupted`, with a live heartbeat beside it.

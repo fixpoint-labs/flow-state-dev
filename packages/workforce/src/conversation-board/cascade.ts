@@ -28,6 +28,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   endsFiledWork,
   isTerminalStatus,
+  parentCancelledRefusal,
+  readCommittedTask,
   type DeclaredFiledCascade,
   cascadeEndedAt,
   type Task,
@@ -71,10 +73,31 @@ export async function stampFiledMarker(ctx: BlockContext, taskId: string, ledger
 }
 
 /**
+ * Refuse a piece of `taskId` before it is added, when the task is already
+ * cancelled (FIX-2129): a cancelled task's block runs on to its end, and a
+ * piece it files then would outlive it, since the cascade cancels only what
+ * was filed up to the cancel. Read against the committed row on the board
+ * above, not this process's copy of it, so no claimable piece of a cancelled
+ * task is ever written.
+ *
+ * @throws {TaskFilingRefusedError} `parent_cancelled`.
+ */
+export async function refuseIfParentCancelled(ctx: BlockContext, taskId: string, ledgerAt: LedgerAt): Promise<void> {
+  const above = boardAboveOf(ctx);
+  if (above === undefined) return;
+  const ref = await ledgerAt(ctx, above);
+  if (ref === undefined) return;
+  const parent = await readCommittedTask(ref, taskId);
+  if (parent?.status === "cancelled") throw parentCancelledRefusal(taskId);
+}
+
+/**
  * Once a piece of `taskId` is added on `board`, cancel it if the task has
  * already failed for good or been cancelled. The task's ending and the
  * piece's add are separate writes: an ending that lands between the marker's
  * stamp and the add finds nothing to cancel, so the add checks after itself.
+ * A task cancelled before the filing is refused first
+ * ({@link refuseIfParentCancelled}); this catches one cancelled meanwhile.
  *
  * @returns Whether the piece was cancelled.
  */

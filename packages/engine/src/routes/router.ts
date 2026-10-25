@@ -146,6 +146,13 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       requestId: p.requestId
     }))
   ],
+  answer_suspension: [
+    entry("POST", "/:flowKind/requests/:requestId/answer", (p) => ({
+      kind: "answer_suspension",
+      flowKind: p.flowKind,
+      requestId: p.requestId
+    }))
+  ],
   request_status: [
     entry("GET", "/:flowKind/requests/:requestId/status", (p) => ({
       kind: "request_status",

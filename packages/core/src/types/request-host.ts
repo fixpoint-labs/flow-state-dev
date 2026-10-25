@@ -28,7 +28,8 @@
  * The seam is **closed at seven verbs**. The fifth, `resumeWait`, was added by
  * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
- * here. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
+ * here; FIX-2129 widened it to cancel a wait for a user, rather than add a
+ * verb. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
  * wake the engine keeps). The seventh, `waits`, by FIX-2082 (one wait gate:
  * its deadline bounds and the depth the engine counts). Adding an eighth verb
  * is a decision someone reviews, not a surface that grows by transitivity.
@@ -70,13 +71,48 @@ export type SettleParentTaskResult =
  */
 export type LivenessAnswers = Readonly<Record<string, boolean>>;
 
-/** Arguments to {@link RequestHost.resumeWait}. */
-export type ResumeWaitInput = {
-  /** The wait gate's id, as the waited-on row records it. */
-  readonly gateId: string;
-  /** The answer, or the error naming how the wait ended. */
-  readonly outcome: WaitOutcome;
+/** A suspension by where it is: its request and its id, the pair every store keys a suspension by. */
+export type SuspensionAddress = {
+  readonly requestId: string;
+  readonly suspensionId: string;
 };
+
+/**
+ * Arguments to {@link RequestHost.resumeWait}: a wait gate in this session
+ * and its outcome, or a wait for a user to cancel (FIX-2129).
+ */
+export type ResumeWaitInput =
+  | {
+      /** The wait gate's id, as the waited-on row records it. */
+      readonly gateId: string;
+      /** The answer, or the error naming how the wait ended. */
+      readonly outcome: WaitOutcome;
+    }
+  | {
+      /**
+       * A suspension that waits for a user, as a task row's record of its
+       * stop names it (server-written, never input). It must be this
+       * principal's: the same user, tenant and organization as the running
+       * request. Any other answers `gate-not-found`.
+       */
+      readonly suspension: SuspensionAddress;
+      /** Cancelled: the block reads `{ cancelled: true }` and runs to its end. */
+      readonly outcome: { readonly cancelled: true };
+      /**
+       * Runs under the suspension's fence, once it is found pending and before
+       * it resolves: the write that cancels the task, so an answer can't land
+       * between the two. Not run when the call is refused. A throw resolves
+       * nothing and is rethrown.
+       */
+      readonly first?: () => Promise<void>;
+      /**
+       * The task the run works is cancelled with this stop: the continued
+       * run asks nobody again, so a later wait for a user in it resolves
+       * `cancelled` at once. Absent, only this stop ends, and the run's next
+       * wait for a user suspends as usual.
+       */
+      readonly taskCancelled?: boolean;
+    };
 
 /**
  * Outcome of a resume. A refusal resumes nothing:
@@ -273,10 +309,31 @@ export interface RequestHost {
    * running session is closed over, so one conversation cannot resume another's
    * turn. A gate resolves once; every later call is refused `already-resolved`.
    *
+   * **Or cancel a wait for a user** (FIX-2129): `{ suspension, outcome: {
+   * cancelled: true } }` resolves a pending user's suspension `cancelled`
+   * through the same fence every answer takes, and continues its request, so
+   * the block reads `{ cancelled: true }` and runs to its end. A suspension
+   * already recorded `cancelled` whose request is still parked (a crash after
+   * the write) is continued. It is the cancel's debt payment: a board pays it
+   * when a task waiting on a user is cancelled (with `taskCancelled: true`, so
+   * the run asks nobody again), and to end one stop of a task that goes on
+   * (without it). The request may be in another session; it must be this
+   * principal's. `already-resolved` when an answer, a deadline or a stop got
+   * there first, `busy` while another resume holds the request.
+   *
    * **Absent when the host has no durable execution**, because nothing can
    * park there in the first place.
    */
   resumeWait?(input: ResumeWaitInput): Promise<ResumeWaitResult>;
+
+  /**
+   * The deadline a wait for a user gets when its call names none, in
+   * milliseconds: the host's setting for a user's stop (FIX-2129, epic D3),
+   * which a held question reads too. Absent when the host sets none: such a
+   * stop waits until it is answered, stopped or cancelled. A fact read when
+   * the request starts, not a verb.
+   */
+  readonly userDeadlineMs?: number;
 
   /**
    * Whether a wait parked on this host is bounded: `true` when this process

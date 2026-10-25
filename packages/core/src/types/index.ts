@@ -37,6 +37,7 @@ export type {
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  SuspensionAddress,
   WaitDeadlines,
   WakeSettleResult,
   WakeView
@@ -58,7 +59,7 @@ export {
   WAIT_DEADLINE_OUTCOME,
   WAIT_GATE_REASON,
   isWaitGate,
-  isExpiredApproval,
+  continuesAtExpiry,
   parkOnWait,
   canHoldWait,
   parseWaitOutcome,
@@ -95,6 +96,14 @@ export type {
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./dispatch";
+
+/** How the running request resumed (FIX-2129): read where a resumed request is admitted. */
+export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
+export type { RequestResume } from "./request-resume";
+
+/** Waiting for a user (FIX-2129): `ctx.waitForUser`, its options and what it returns. */
+export { waitForUserOn } from "./wait-for-user";
+export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export { REQUEST_END_SEAM, onRequestEnded } from "./request-end";
@@ -381,10 +390,13 @@ export type {
   SuspensionReason,
   SuspensionRecord,
   SuspensionSkipped,
-  SuspensionStatus
+  SuspensionStatus,
+  WaitForUserKind
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
+  isUserSuspension,
+  waitForUserKindOf,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,

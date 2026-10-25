@@ -122,7 +122,7 @@ import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
 import { resolveWorkstreamTarget } from "../projects/project-coordinator";
-import { cancelIfParentEnded, stampFiledMarker } from "./cascade";
+import { cancelIfParentEnded, refuseIfParentCancelled, stampFiledMarker } from "./cascade";
 import {
   FILING_FLOW_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
@@ -1103,6 +1103,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const { records } = await reach(ctx);
       assertTargetFits(records, assignee, row.target, "reassigned");
     };
+    /**
+     * In a task session, refuse a filing once the task it would be a piece of
+     * is cancelled (FIX-2129), before anything is reserved or written.
+     */
+    const refuseUnderCancelledTask = async (): Promise<void> => {
+      const owner = await pieceOwnerOf(ctx);
+      if (owner !== undefined) await refuseIfParentCancelled(ctx, owner, conversationLedgerAt);
+    };
     /** Add one checked row under its chain reservation. */
     const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
       const { id, markAdded } = reserved;
@@ -1160,6 +1168,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // One at a time: a batch on such a turn files plain tasks.
       if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return options.routes.file(ctx, init);
       const targeted = await withTarget(init);
+      await refuseUnderCancelledTask();
       return fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true));
     };
     /**
@@ -1251,6 +1260,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           if (!filed.has(depId)) await ref.refresh?.(depId);
         }
         assertDepsFileable(batch, (id) => ref.get(id));
+        await refuseUnderCancelledTask();
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
         const added: Task[] = [];
