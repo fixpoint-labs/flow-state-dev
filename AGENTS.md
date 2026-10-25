@@ -27,22 +27,7 @@ Use this protocol when work is wave-based:
 
 ## Release notes
 
-This repo uses Changesets for release coordination. Do not edit a root `changelog.md` — none exists.
-
-**A changeset is not required by default.** Most PRs don't get one.
-
-**Write one when** somebody who has installed a published package needs to know: public API, a capability, block, CLI command, hook, env var, or config key they call has changed, or behavior they can observe from outside the package has shifted.
-
-1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: `patch` for a change no consumer's existing code can trip over (bug fixes, additive API), `minor` for anything that can break them. Never `major`. [`release-notes-workflow.md`](docs/contributing/release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording for this choice — defer to it, don't re-derive it from this line.
-3. Write a single user-facing sentence and name the Linear issue in it (e.g. `FIX-123`). CI enforces the issue reference.
-4. Commit the generated `.changeset/<name>.md` file with the PR.
-
-**Skip it otherwise** — internal refactors, tests, infra, docs-site edits, agent skills, and anything scoped to a private package (`labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals`). Say "no changeset needed" in the PR description if a reviewer might wonder. `pnpm changeset --empty` still works but is not required, and CI does not gate on `changeset-bot`.
-
-**Never hand-write a fragment naming a private package.** They are skipped by `privatePackages: { version: false }`, and a fragment mixing a skipped package with a publishable one fails the entire release run.
-
-**Reference:** [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) covers when to write what, the multi-package case, common mistakes, and what happens at release time. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule.
+**A changeset is not required by default.** Write one (`pnpm changeset`) only when someone who installed a published package needs to know; private packages never get one. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule (bump level, issue reference, private-package list), and [`release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) is the how-to.
 
 ## Implementation guardrails
 
@@ -57,11 +42,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 ## Asking the user for a decision
 
-**You are the engineer; the user is the product owner.** They set the objectives and track the process as a whole. Their attention is the scarce resource, and every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. They are technical — that makes handing them the mechanism easy, and it is still the wrong move. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening and why the business framing doesn't decide it.
-
-So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts: **the fork as a plain-language heading** · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **your recommendation, always** · **what would change your mind** · **what being wrong costs**. Each part, why it exists, and a worked example are canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) — read it before putting any fork, gate, or sign-off to the user.
-
-This applies in **conversation** as much as in artifacts. Batch a turn's asks under one `Need your sign-off` heading, numbered, hardest first; two to four is normal. And **don't ask when you shouldn't**: the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line.
+**You are the engineer; the user is the product owner.** Translate every ask, in conversation or an artifact, into the business decision they are making, in the six-part shape, batched under one `Need your sign-off` heading. Don't ask what is the implementer's call, derivable, or near-free either way. [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) is canonical; read it before putting any fork, gate, or sign-off to the user.
 
 ## Model tiering — match the model to where judgment lives
 
@@ -93,7 +74,7 @@ Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md
 
 When you change flow logic, the default verification path is `fsdev run`, not `pnpm test` and not opening kitchen-sink in a browser. The CLI runs the full `runAction` engine against the same stores and execution context the production server uses, with structured NDJSON events on stdout and `[flow-state] *` runtime logs on stderr. It is the fastest way to confirm a change works as intended.
 
-When the app under test ships an `fsdev.config.ts` (FIX-784), `fsdev run` uses its wiring — the app's model resolver and store profiles — instead of CLI defaults. Run it from the app directory, since config search is cwd-only (`cd apps/kitchen-sink && pnpm fsdev run ...`). The repo-root invocation stays on directory discovery.
+When the app under test ships an `fsdev.config.ts`, `fsdev run` uses its wiring — the app's model resolver and store profiles — instead of CLI defaults. Run it from the app directory, since config search is cwd-only (`cd apps/kitchen-sink && pnpm fsdev run ...`). The repo-root invocation stays on directory discovery.
 
 **Pick the right tool for the kind of change:**
 
@@ -220,11 +201,7 @@ Update when integration patterns change — server setup, React hooks usage, tes
 
 **Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
 
-**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs):
-
-Lead with the **problem** in plain language, then the solution, then what's being asked of the reader. **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact it is. Everything else goes below the fold, collapsed rather than deleted, except news the reader wouldn't think to look for: a decision, a risk, a known gap, anything hard to reverse, or scope that grew. That goes above the fold, short.
-
-The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md); what the *"what's being asked"* part contains is [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041, above). Don't re-derive any of them — a skill or template restating them is how the copies drift.
+**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs): lead with the **problem** in plain language, then the solution, then what's asked of the reader. The rule and budgets are [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039), the PR layout is [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), and the ask is [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md). Don't re-derive any of them in a skill or template.
 
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
