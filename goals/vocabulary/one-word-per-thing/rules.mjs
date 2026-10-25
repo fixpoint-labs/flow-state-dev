@@ -140,6 +140,11 @@ export const KEEP = [
     why: "Shift Manager's Ask and Inbox: a suspended run waiting on a person"
   },
   {
+    path: /^packages\/orchestration\/(src\/inbox\/|test\/inbox\.test\.ts$)/,
+    rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
+    why: "the Inbox read (FIX-2133): a hold's `ask`, what it asks the user, as FIX-2058's TaskHold names it"
+  },
+  {
     path: /^packages\/harness-manager\//,
     line: /question|marker|inbox/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
