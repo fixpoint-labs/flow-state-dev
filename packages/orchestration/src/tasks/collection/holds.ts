@@ -1,14 +1,9 @@
 /**
- * The one hold write, and the one predicate every reader asks of it, *open
- * holds* (FIX-2133 D2, the epic FIX-2058's ER-8).
+ * The one hold write, and open holds, the one predicate (FIX-2133).
  *
- * Both backings call {@link holdWrite} for every change to `Task.holds`, decided
- * on the committed row inside their write: a filing or a midway ask opens row
- * holds, an answer or a deadline releases one, the claim gate's stop arm opens
- * a task run's mirror and its resume closes it. Cancel closes every hold with
- * the row: an ended row has no open hold ({@link openHolds}), and its mirror
- * stays only as the address of the `cancelled` resume it owes
- * ({@link keptOnEnding}).
+ * Cancel closes every hold with the row: an ended row has no open hold
+ * ({@link openHolds}), and its mirror stays only as the address of the
+ * `cancelled` resume it owes ({@link keptOnEnding}).
  *
  * Pure: reads the row it is handed and nothing else, so two writes at once
  * decide on the row each committed against, and the backing's conditional
@@ -144,23 +139,7 @@ function released(before: Task, next: Pick<Task, "status" | "holds" | "steers">)
   return { turnOwed: true };
 }
 
-/**
- * The one hold write (ER-8), decided on the committed row `task`.
- *
- * - `ask`: refused `held` while a suspension holds the row (one wait per
- *   turn, one source at a time), and `steer-limit` when its answers would
- *   take the row past {@link MAX_STEERS} places.
- * - `answer`: the same words from the same sender again are `unchanged`, even
- *   on a row that has since finished (a retry after a lost response). Other
- *   words, or another sender, are refused `answered`; a finished row,
- *   `terminal`; a hold that isn't a row hold on it, `no-such-hold`. The last
- *   open row hold's answer releases the row.
- * - `deadline`: every open row hold past its `due` closes with the board's
- *   "no answer came" steer; one with no `due` never does.
- * - `mirror`: refused `held` while a row hold is open. `unchanged` for the
- *   same stop already mirrored.
- * - `resume`: drops the mirror.
- */
+/** The one hold write, decided on the committed row. */
 export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
   switch (change.op) {
     case "ask": {
@@ -246,11 +225,6 @@ export function keptOnEnding(prev: Task, next: Task): Partial<Task> | undefined 
 export function droppedMirror(row: Task): Partial<Task> | undefined {
   if (suspensionHoldOf(row) === undefined || row.status === "in_progress" || row.resumeOwed === true) return undefined;
   return { holds: withoutMirror(row.holds) };
-}
-
-/** The row holds a touch at `at` closes "no answer came": open, with a due time passed. */
-export function holdsDue(row: Pick<Task, "status" | "holds" | "steers">, at: number): RowHold[] {
-  return openRowHolds(row).filter((hold) => hold.due !== undefined && hold.due <= at);
 }
 
 /** The earliest due time of `row`'s open row holds, or `undefined` when none has one. */

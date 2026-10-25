@@ -53,7 +53,6 @@ export {
   answerOf,
   askProblem,
   hasOpenHold,
-  holdsDue,
   isRowHold,
   isSuspensionHold,
   nextHoldDue,
