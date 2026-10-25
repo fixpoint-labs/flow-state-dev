@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "../src/lib/connection";
 import { readerSessionId } from "../src/lib/reads";
-import { ageLabel, harnessName, percentLabel, runUsageQuery, toHarnessUsage, windowName } from "../src/lib/usage";
+import { ageLabel, harnessName, levelLabel, percentLabel, runUsageQuery, toHarnessUsage, windowName } from "../src/lib/usage";
 
 describe("Usage labels", () => {
   it("names a window by its length, after its limit's name when it has one", () => {
@@ -32,6 +32,13 @@ describe("Usage labels", () => {
   it("shows a percent as the vendor gave it, fraction and all", () => {
     expect(percentLabel(7.5)).toBe("7.5% used");
     expect(percentLabel(42)).toBe("42% used");
+  });
+
+  it("says how close a window with no percent is, never as a number", () => {
+    expect(levelLabel("ok", "claude-code")).toBe("under Claude Code's warning line");
+    expect(levelLabel("warning", "claude-code")).toBe("near its limit");
+    expect(levelLabel("reached", "claude-code")).toBe("limit reached");
+    expect(levelLabel(null, "claude-code")).not.toMatch(/\d/);
   });
 
   it("names harnesses for the user, and keeps only rows that are rows", () => {

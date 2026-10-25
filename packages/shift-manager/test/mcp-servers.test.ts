@@ -296,7 +296,7 @@ describe("the harness a Lab runs", () => {
     const { claudeCodeHarness } = await import("../teams/devteam/harness.mts");
     process.env.FSD_TEST_LINEAR_SEED = SENTINEL;
     try {
-      const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {} };
+      const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
       claudeCodeHarness(feeds);
       claudeCodeHarness({ ...feeds, mcpTools: Object.assign(async () => ({}), { named: async () => [] }) });
     } finally {
@@ -305,7 +305,7 @@ describe("the harness a Lab runs", () => {
     }
     const [without, withTools] = handed;
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "onSession", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
+      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
     );
     const { mcpTools, uses, ...rest } = withTools!;
     expect(rest).toEqual(without);

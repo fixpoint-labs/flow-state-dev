@@ -51,11 +51,12 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   harnessManager,
   harnessSessionDoor,
+  type HarnessFeeds,
   type HarnessJudge,
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -89,15 +90,11 @@ export interface CoderWorkerFlowOptions {
   /**
    * **The slot.** How this worker flow is pointed at a coding harness.
    *
-   * One expression, handed the three feeds the harness contract declares. The
-   * gate puts a scripted stub here; the honesty check puts a real coding agent
+   * One expression, handed the feeds the harness manager declares. The gate
+   * puts a scripted stub here; the honesty check puts a real coding agent
    * here. Nothing else differs between the two. Called once per manager.
    */
-  harness: (feeds: {
-    cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
-    resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
-    onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
-  }) => HarnessBlock;
+  harness: (feeds: HarnessFeeds) => HarnessBlock;
   /**
    * Where a feature task works: a fixed repository (`{ root, sourceRepo,
    * baseRef }`), or a workspace host whose source is `projectWorkspace()`, so

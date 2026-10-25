@@ -51,7 +51,8 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
-import { errorReporterHarness, startHarness } from "./harness.mts";
+import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -92,6 +93,11 @@ export const lab = await openLab({
   // servers with the Lab user's key, and drafts with Claude Code from this
   // checkout's code, whichever coder the Lab runs.
   errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT, tracker: { project: "shared/fsd" } },
+  // Who Claude Code is signed in as, read when someone opens Usage; its
+  // windows come from the coder's runs.
+  usage: {
+    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+  },
 });
 
 export default lab.state;

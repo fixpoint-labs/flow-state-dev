@@ -138,7 +138,14 @@ window is used, without a run. The shapes live in `@flow-state-dev/core`, so a
 page or a worker reads every agent's usage the same way:
 
 ```ts
-import type { HarnessUsageReader, HarnessUsageReading, HarnessUsageWindow } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageHook,
+  HarnessUsageLevel,
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+  HarnessUsageWindow,
+} from "@flow-state-dev/core/types";
 import { harnessUsageWindowSchema } from "@flow-state-dev/core";
 ```
 
@@ -153,15 +160,33 @@ A reading is one of four:
 | `unavailable` | `reason`. The read couldn't be made. |
 
 Each window has an `id` unique within the reading, the vendor's `label` for its
-limit, its length in `minutes`, `usedPercent` from 0 to 100, and `resetsAt` in
-epoch ms. `label`, `minutes` and `resetsAt` are `null` when the vendor didn't
-say. The numbers are the vendor's own, unconverted. Only `windows` carries a
-number: show the `reason` for the other three, never 0%.
+limit, its length in `minutes`, `usedPercent` from 0 to 100, `level`, and
+`resetsAt` in epoch ms. `label`, `minutes` and `resetsAt` are `null` when the
+vendor didn't say. `level` (`HarnessUsageLevel`) is how close the window is to
+its limit, when the vendor says: `"ok"` (under its warning line), `"warning"`
+(near the limit) or `"reached"`, and `null` for a vendor that sends only a
+percent, as Codex does. `usedPercent` is `null` when the vendor sent no
+percent; show the `level` instead. `harnessUsageWindowSchema` reads a window
+stored with no `level` as `level: null`. The numbers are the vendor's own: a
+fraction is scaled to a percent and nothing else is derived. Only `windows`
+carries a number: show the `reason` for the other three, never 0%.
 
 A reader returns those states rather than throwing. Codex ships one,
-[`readCodexUsage`](./codex.md#reading-usage-left). To keep readings and serve
-them with their age, hand your readers to the
-[harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage).
+[`readCodexUsage`](./codex.md#reading-usage-left), and Claude Code ships
+[`readClaudeUsage`](./claude-code-sdk.md#reading-usage-left).
+
+Some agents report usage only while they run. A harness block that does takes an
+`onUsage` hook, a `HarnessUsageHook`: `(report, ctx) => void | Promise<void>`.
+Each `HarnessUsageReport` carries one window, plus `harness` (the name a usage
+record is kept under), `observedAt` and `runStartedAt` in epoch ms, and the
+`accountId` the run is signed in as, or `null`. A run reports the window that
+applies to the whole account, not its own share. Claude Code is the agent that
+reports this way: its reader names the account and plan, and its windows come
+from [`onUsage`](./claude-code-sdk.md#reading-usage-left).
+
+To keep readings and run windows and serve them with their age, hand your readers
+to the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage)
+and let the manager feed your harness its `onUsage`.
 
 ## The prompt is the input; everything else is configuration
 

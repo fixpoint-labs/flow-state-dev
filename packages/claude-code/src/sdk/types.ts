@@ -188,6 +188,12 @@ export type SdkMessageLike =
       };
     }
   | {
+      /** Sent when the subscription's limits change; read by `onUsage` (`./usage`), never translated to an item. */
+      type: "rate_limit_event";
+      session_id?: string;
+      rate_limit_info?: unknown;
+    }
+  | {
       type: "result";
       subtype?: SdkResultSubtype | string;
       /** Present only on the `success` result variant. */

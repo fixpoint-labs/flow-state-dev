@@ -26,9 +26,9 @@ const manager = harnessManager({
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
 
-  // The slot. Called once; the manager hands down three feeds.
-  harness: ({ cwd, resume, onSession }) =>
-    claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+  // The slot. Called once; the manager hands down four feeds.
+  harness: ({ cwd, resume, onSession, onUsage }) =>
+    claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
 });
 ```
 
@@ -185,13 +185,14 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with three feeds:
+The manager calls your factory once, with four feeds (`HarnessFeeds`):
 
 | Feed | What it does |
 |---|---|
 | `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
+| `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
 
@@ -211,7 +212,7 @@ harness: ({ cwd, resume, onSession }) =>
   cursorAgent({ cwd, resume, onSession, agent: { model: { id: "composer-2.5" } } }),
 ```
 
-Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
+Any block that takes the four feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
@@ -353,13 +354,14 @@ const actions = {
 };
 ```
 
-- **Input** `{ refresh?: boolean }`. **Output** `{ harnesses: HarnessUsageRow[] }`, sorted by harness: `status` (`windows`, `api-key`, `signed-out`, `unavailable`), `reason`, `plan`, `windows` (each with `checkedAt`, `origin`, `ageMs` and `rolledOver`; `origin` is `"read"` for a reader's refresh), `checkedAt`, `ageMs` and `refreshError`. No model call.
+- **Input** `{ refresh?: boolean }`. **Output** `{ harnesses: HarnessUsageRow[] }`, sorted by harness: `status` (`windows`, `api-key`, `signed-out`, `unavailable`), `reason`, `plan`, `windows` (each with `checkedAt`, `origin`, `ageMs` and `rolledOver`; `origin` is `"read"` for a reader's refresh and `"run"` for a window a run reported), `checkedAt`, `ageMs` and `refreshError`. No model call.
 - **Without `refresh`, nothing is read.** A harness with a reader and no reading yet is listed as `unavailable`, `"Not checked yet"`.
 - **`refresh: true` runs the readers**, at most once a minute per user and harness (`USAGE_REFRESH_EVERY_MS`), counted from the last attempt whether or not it worked. Refreshes that arrive together share one call. A reader that throws or outlasts `timeoutMs` (default `USAGE_READ_TIMEOUT_MS`, 10 s) leaves the stored reading and sets `refreshError`.
 - **`ageMs` and `rolledOver` are worked out by the server's clock** when the query runs. `rolledOver` is true once a window's `resetsAt` has passed.
-- **One current record per user and harness.** A reading replaces the whole record, so a sign-in change leaves no earlier account's windows. A reading older than the stored one is refused. The account is kept as a hash; no email is stored. No history.
+- **Run windows land on their own.** Pass the slot's `onUsage` to the harness (`claudeCodeAgent` takes it) and each window a run reports is stored with `origin: "run"`; the session door stores a talk's windows for the user talking. For Claude Code, register `readClaudeUsage` from `@flow-state-dev/claude-code/sdk` as the `claude-code` reader: it names the account and plan, and the windows come from runs.
+- **One current record per user and harness.** A reading replaces the last reading's windows and keeps run windows it doesn't name; on a shared window the newer wins. A newer report for a window replaces an older one, and an older one arriving late is ignored, as is a reading older than the stored one. A reading or run window from a different account clears the earlier account's windows and plan. A no-number reading (`api-key`, `signed-out`) clears every window, and a run that started before it doesn't bring them back. The account is kept as a hash; no email is stored. No history.
 
-The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, user scope, not client-readable, not writable by a model). On the server, `readHarnessUsage(ctx, now, expected?)` returns the query's rows without refreshing, and `recordHarnessUsage(ctx, harness, reading, checkedAt)` is the one writer, for a harness that reports usage during a run; it answers `"recorded"`, `"kept-stored"` or `"refused-older"`. Both throw when the calling block doesn't have the collection under `HARNESS_USAGE`.
+The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, user scope, not client-readable, not writable by a model). On the server, `readHarnessUsage(ctx, now, expected?)` returns the query's rows without refreshing, and `recordHarnessUsage` is the one writer, in two forms: `recordHarnessUsage(ctx, report)` for one window a run reported (the manager's and session door's `onUsage` call it), and `recordHarnessUsage(ctx, harness, reading, checkedAt)` for a whole reading. It answers `"recorded"`, `"kept-stored"` or `"refused-older"`. Both throw when the calling block doesn't have the collection under `HARNESS_USAGE`.
 
 ## The export surface, in two halves
 

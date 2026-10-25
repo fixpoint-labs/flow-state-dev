@@ -34,8 +34,8 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [
       {
         module: USAGE,
-        from: String.raw`reading\.status === "windows" \? reading\.windows\.map\(\(window\) => \(\{ \.\.\.window, checkedAt, origin: "read" \}\)\) : \[\],`,
-        to: 'reading.status === "windows" ? reading.windows.map((window) => ({ ...window, checkedAt, origin: "read" })) : [{ id: "codex:primary", label: null, minutes: 300, usedPercent: 0, resetsAt: null, checkedAt, origin: "read" }],',
+        from: String.raw`        windows: \[\],\n        checkedAt,`,
+        to: '        windows: [{ id: "codex:primary", label: null, minutes: 300, usedPercent: 0, level: null, resetsAt: null, checkedAt, origin: "read" }],\n        checkedAt,',
       },
     ],
     does: "a harness with no number is stored as one window at 0%",
@@ -46,7 +46,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [
       {
         module: USAGE,
-        from: String.raw`if \(stored\.checkedAt !== null && checkedAt < stored\.checkedAt\) return \{ state: current, result: "refused-older" \};`,
+        from: String.raw`if \(stored\.checkedAt !== null && checkedAt < stored\.checkedAt\) return \{ state: \{\}, result: "refused-older" \};`,
         to: "",
       },
     ],

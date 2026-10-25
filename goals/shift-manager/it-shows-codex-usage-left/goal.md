@@ -43,3 +43,4 @@ The spec names *no vendor call* as where `ignore-age` fails leg e. Ignoring age 
 | 2026-10-23 | same, `GOAL_CONTROL=last-write-wins` | n/a | FAIL (expected) | **a:leaves-the-stored-one**: the 5% refresh replaced the 77% reading stamped ahead of it. |
 | 2026-10-23 | same, `GOAL_CONTROL=throttle-ignores-failures` | n/a | FAIL (expected) | **g:one-child**: three looks started 2 Codex processes. |
 | 2026-10-23 | same, `GOAL_CONTROL=key-by-account` | n/a | FAIL (expected) | **h:no-earlier-percent**: two rows, `codex` (`api-key`) and `codex-<hash>` still holding the signed-in windows; a and d fail too, since the view's `codex` row is never written. |
+| 2026-10-23 | claude/project-thread-3x3z3h (FIX-2142, pre-PR) | n/a | PASS (goal met except leg f) | 90 s, rerun over the reworked writer (run windows, `accountAt`); controls re-pointed at its new lines. All five controls fail on their assertions as before. |

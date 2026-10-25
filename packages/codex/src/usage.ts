@@ -173,6 +173,8 @@ function windowsOf(limits: RateLimitsResponse): HarnessUsageWindow[] {
         minutes: typeof window.windowDurationMins === "number" ? window.windowDurationMins : null,
         // The contract is 0 to 100; past a limit Codex can report more.
         usedPercent: Math.min(100, Math.max(0, window.usedPercent as number)),
+        // Codex always sends a percent, and no level.
+        level: null,
         // Codex sends seconds since the epoch.
         resetsAt: typeof window.resetsAt === "number" ? window.resetsAt * 1000 : null,
       });

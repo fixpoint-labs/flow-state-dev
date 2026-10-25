@@ -8,6 +8,7 @@
  * "rolled over" is the Lab's, worked out by its clock, never this page's.
  */
 import { useCallback, useEffect, useState } from "react";
+import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
 import { ActionRefused, runAction } from "./action";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
@@ -22,9 +23,14 @@ export type UsageWindow = {
   id: string;
   label: string | null;
   minutes: number | null;
-  usedPercent: number;
+  /** `null` when the harness sent no percent: never shown as 0. */
+  usedPercent: number | null;
+  /** How close to its limit, when the harness said: `ok`, `warning`, `reached`. `null` from Codex. */
+  level: HarnessUsageLevel | null;
   resetsAt: number | null;
   checkedAt: number;
+  /** `read` when a look read it, `run` when a coding run reported it. */
+  origin: string;
   ageMs: number;
   rolledOver: boolean;
 };
@@ -129,6 +135,18 @@ export function useHarnessUsage(readAt: number): {
 /** A window's percent as the vendor gave it, fractions kept: `7.5% used`. */
 export function percentLabel(usedPercent: number): string {
   return `${usedPercent}% used`;
+}
+
+/**
+ * What a window with no percent says instead, from its level: "limit
+ * reached", "near its limit", or "under Claude Code's warning line". Never a
+ * number the harness didn't send.
+ */
+export function levelLabel(level: UsageWindow["level"], harness: string): string {
+  if (level === "reached") return "limit reached";
+  if (level === "warning") return "near its limit";
+  if (level === "ok") return `under ${harnessName(harness)}'s warning line`;
+  return "no percent reported";
 }
 
 /** A harness's name as the user reads it: `codex` is Codex, `claude-code` is Claude Code. */
