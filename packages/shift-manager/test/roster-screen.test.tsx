@@ -72,7 +72,7 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
     resources: { ok: true, value: [] },
     projects: { ok: true, value: { rows: [] } },
   };
-  return { ...read, inbox: inboxSection(read.asks, read.boards) };
+  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) };
 }
 
 async function open(path: string, snapshot: LabSnapshot = lab()) {

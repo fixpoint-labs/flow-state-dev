@@ -192,37 +192,24 @@ function forwarderPlant(root) {
 }
 
 /**
- * A second list of what waits on the user, in each shape the Inbox rule reads: an Inbox item
- * built outside the Inbox read (a typed literal, a cast, shorthand properties and a spread), a session's suspensions derived
- * through a renamed import, and a board row's questions read and destructured.
+ * A second list of what waits on the user: an Inbox item built outside the Inbox read, in each
+ * shape the rule reads. A typed literal (in a `.map` callback), a cast, shorthand properties, a
+ * spread, and an untyped literal with an item's shape.
  */
 function inboxPlants() {
-  const lib = "packages/shift-manager/src/lib";
+  const fields = 'task: null, holds: [], since: 0, answerable: true, unanswerable: null';
   return [
     {
       rule: "inbox",
-      path: `${lib}/__planted_inbox_item__.ts`,
+      path: "packages/shift-manager/src/lib/__planted_inbox_item__.ts",
       text:
-        'import type { InboxItem } from "./inbox";\nimport type { Ask } from "./reads";\n' +
-        'export function myList(asks: Ask[]): InboxItem[] {\n  return asks.map((ask) => ({ source: "suspension", id: "x", since: 0, ask }));\n}\n' +
-        'export const one = (ask: Ask) => ({ source: "suspension", id: "y", since: 0, ask }) as InboxItem;\n' +
-        'export function short(ask: Ask): InboxItem {\n  const source = "suspension";\n  const id = "z";\n  const since = 0;\n  return { source, id, since, ask };\n}\n' +
-        'const base = { source: "suspension" as const };\nexport const spread = (ask: Ask): InboxItem => ({ ...base, id: "w", since: 0, ask });\n',
-      expect: 4,
-    },
-    {
-      rule: "inbox",
-      path: `${lib}/__planted_inbox_derive__.ts`,
-      text: 'import { deriveSuspensions as pendingOf } from "@flow-state-dev/react";\nexport const asksOf = (items: any[]) => pendingOf(items).pending;\n',
-    },
-    {
-      rule: "inbox",
-      path: `${lib}/__planted_inbox_row__.ts`,
-      text:
-        'import type { BoardRow } from "./reads";\n' +
-        "export const waiting = (rows: BoardRow[]) => rows.filter((row) => row.questions.length > 0);\n" +
-        "export function prompts(row: BoardRow) {\n  const { questions } = row;\n  return questions;\n}\n",
-      expect: 2,
+        'import type { InboxItem } from "@flow-state-dev/orchestration/inbox";\n' +
+        `export function myList(ids: string[]): InboxItem[] {\n  return ids.map((id) => ({ id, source: "suspension", ${fields} }));\n}\n` +
+        `export const one = (id: string) => ({ id, source: "suspension", ${fields} }) as InboxItem;\n` +
+        'export function short(id: string): InboxItem {\n  const source = "suspension";\n  const holds: InboxItem["holds"] = [];\n  const answerable = true;\n  return { id, source, task: null, holds, since: 0, answerable, unanswerable: null };\n}\n' +
+        `const base = { source: "suspension" as const };\nexport const spread = (id: string): InboxItem => ({ ...base, id, task: null, holds: [], since: 0, answerable: true, unanswerable: null });\n` +
+        `export const loose = (id: string) => ({ id, source: "row", ${fields} });\n`,
+      expect: 5,
     },
   ];
 }

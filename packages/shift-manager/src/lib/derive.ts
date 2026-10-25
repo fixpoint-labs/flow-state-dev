@@ -142,6 +142,16 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
 }
 
 /**
+ * The Inbox item that shows suspension `suspensionId`: a task's item when its
+ * row holds it, else the ask's own. Its id when the Inbox didn't load or
+ * doesn't list it, so a link still opens the Inbox.
+ */
+export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
+  const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
+  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+}
+
+/**
  * The pending asks a task's run waits on (BR-17): those in the session its
  * row's run link names, stamped with this task, or unstamped and raised by
  * the very request the link names. Empty while the snapshot or its asks

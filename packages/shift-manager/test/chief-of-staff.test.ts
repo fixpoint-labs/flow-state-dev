@@ -92,7 +92,8 @@ const row = (holderSessionId: string, id: string, status: string): BoardRow => (
   deps: [],
   run: null,
   error: null,
-  questions: [],
+  waitingOn: null,
+  waitingFor: null,
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -130,7 +131,7 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
     resources: { ok: true, value: [] },
     ...over,
   };
-  return { ...read, inbox: inboxSection(read.asks, read.boards) };
+  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) };
 }
 
 describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {

@@ -27,7 +27,7 @@ import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
 import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { approvalOrQuestion, type InboxItem } from "../lib/inbox";
+import type { InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate, pathFor } from "../lib/routes";
@@ -40,24 +40,66 @@ import type { Gaps } from "../gaps";
 const FILTERS = ["All", "Approvals", "Questions"] as const;
 type Filter = (typeof FILTERS)[number];
 
+/** An Inbox item, its suspensions drawn with the ask a worker session holds for them. */
+type InboxItem = OrchestrationInboxItem<Ask>;
+
+/** Whether `item` is an approval, as the filter and its tag read it: its first hold asks for a yes or a no. */
+function isApproval(item: InboxItem): boolean {
+  return item.holds[0]!.ask.kind === "approval";
+}
+
 function matches(filter: Filter, item: InboxItem): boolean {
-  return filter === "All" || (filter === "Approvals") === (approvalOrQuestion(item) === "approval");
+  return filter === "All" || (filter === "Approvals") === isApproval(item);
 }
 
 function askHeading(ask: Ask): string {
   return ask.item.title || ask.item.message || "(no message)";
 }
 
-/** An item's heading: an ask's title or message, or a held row's first open question. */
+/** An item's heading: its first hold's title, else what it asks. */
 function itemHeading(item: InboxItem): string {
-  return item.source === "suspension" ? askHeading(item.ask) : item.questions[0]!.prompt;
+  const { ask } = item.holds[0]!;
+  return ask.title || ask.prompt || "(no message)";
 }
 
-/** Who an item waits for the user on behalf of: the asking worker, or the task's assignee. */
+/** Who an item waits for the user on behalf of: the task's assignee, else the worker that asked, and the task. */
 function itemFrom(item: InboxItem): string {
-  if (item.source === "suspension") return `${workerLabel(item.ask.workerId ?? "unknown worker")} · task —`;
-  const more = item.questions.length > 1 ? ` · ${item.questions.length} questions` : "";
-  return `${workerLabel(item.row.assignee ?? "unassigned")} · task ${item.row.title}${more}`;
+  const who = item.task?.assignee ?? item.holds[0]!.detail?.workerId ?? "unknown worker";
+  const more = item.holds.length > 1 ? ` · ${item.holds.length} asks` : "";
+  return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
+}
+
+/**
+ * The ask a suspension item's card is drawn with: the pending ask the
+ * worker's session holds for it, or, when the session wasn't read, one made
+ * from what the task's row records of the stop. Either answers through the
+ * same route, by the hold's source.
+ */
+function askOfItem(item: InboxItem): Ask {
+  const hold = item.holds[0]!;
+  if (hold.detail !== undefined) return hold.detail;
+  if (hold.source.kind !== "suspension") throw new Error(`Inbox item "${item.id}" holds no suspension`);
+  const approval = hold.ask.kind === "approval";
+  return {
+    sessionId: hold.source.sessionId,
+    workerId: item.task?.assignee ?? null,
+    flowId: hold.source.flowId,
+    parentSessionId: null,
+    kind: approval ? "approval" : "question",
+    item: {
+      type: "suspension",
+      id: hold.source.suspensionId,
+      suspensionId: hold.source.suspensionId,
+      requestId: hold.source.requestId,
+      suspensionStatus: "pending",
+      reason: approval ? "human_approval" : "human_input",
+      message: hold.ask.prompt,
+      ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
+      allow: approval ? ["approve", "reject"] : ["submit"],
+    } as Ask["item"],
+    since: hold.openedAt,
+    unanswerable: item.unanswerable,
+  };
 }
 
 export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
@@ -123,8 +165,8 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     data-testid="inbox-item"
                     data-item-id={item.id}
                     data-source={item.source}
-                    data-suspension-id={item.source === "suspension" ? item.ask.item.suspensionId : undefined}
-                    data-session-id={item.source === "suspension" ? item.ask.sessionId : undefined}
+                    data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
+                    data-session-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.sessionId : undefined}
                     className={cn(
                       "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
@@ -135,7 +177,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex">
                         <span className="border border-foreground/50 px-1 font-mono text-[9.5px] font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
-                          {approvalOrQuestion(item) === "approval" ? "APPROVAL" : "QUESTION"}
+                          {isApproval(item) ? "APPROVAL" : "QUESTION"}
                         </span>
                       </span>
                       <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
@@ -158,11 +200,11 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
-        ) : selected.source === "question" ? (
+        ) : selected.source === "row" ? (
           <HeldQuestions item={selected} gaps={gaps} />
         ) : (
           <AskDetail
-            ask={selected.ask}
+            ask={askOfItem(selected)}
             snapshot={snapshot}
             gaps={gaps}
             client={client}
@@ -229,21 +271,23 @@ function AskDetail({
  * A task holding questions: every open one, oldest first, and the task they
  * hold. One item however many it holds (rule 11).
  */
-function HeldQuestions({ item, gaps }: { item: Extract<InboxItem, { source: "question" }>; gaps: Gaps }) {
-  const task = { level: "task" as const, boardRef: item.row.boardRef, taskId: item.row.id, tab: "brief" as const };
+function HeldQuestions({ item, gaps }: { item: InboxItem; gaps: Gaps }) {
+  const task = item.task === null ? null : { level: "task" as const, boardRef: item.task.board, taskId: item.task.taskId, tab: "brief" as const };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6" data-testid="inbox-held">
       <div className="flex max-w-[660px] flex-col gap-[18px]">
-        <Meta className="text-muted-foreground" testId="inbox-detail-head">
-          {workerLabel(item.row.assignee ?? "unassigned")} waits on {item.questions.length === 1 ? "your answer" : `${item.questions.length} answers`} to start or go on with{" "}
-          <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
-            {item.row.title}
-          </a>
-        </Meta>
+        {task === null ? null : (
+          <Meta className="text-muted-foreground" testId="inbox-detail-head">
+            {workerLabel(item.task!.assignee ?? "unassigned")} waits on {item.holds.length === 1 ? "your answer" : `${item.holds.length} answers`} to start or go on with{" "}
+            <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
+              {item.task!.title}
+            </a>
+          </Meta>
+        )}
         <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">
-          {item.questions.map((question) => (
-            <li key={question.id} data-testid="inbox-held-question" data-question-id={question.id}>
-              <ScreenTitle scale="detail">{question.prompt}</ScreenTitle>
+          {item.holds.map((hold) => (
+            <li key={hold.id} data-testid="inbox-held-question" data-question-id={hold.id}>
+              <ScreenTitle scale="detail">{hold.ask.prompt}</ScreenTitle>
             </li>
           ))}
         </ol>

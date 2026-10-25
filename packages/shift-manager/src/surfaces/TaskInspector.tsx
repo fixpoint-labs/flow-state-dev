@@ -12,8 +12,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
-import { asksOfTask, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
-import { suspensionItemId } from "../lib/inbox";
+import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -69,7 +68,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           <div className="px-4 pt-3.5">
             <button
               type="button"
-              onClick={() => navigate({ level: "inbox", item: suspensionItemId(ask.item.suspensionId) })}
+              onClick={() => navigate({ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) })}
               className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
               data-testid="inspector-needs"
               data-suspension-id={ask.item.suspensionId}

@@ -69,7 +69,8 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
-  questions: [],
+  waitingOn: null,
+  waitingFor: null,
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -87,7 +88,7 @@ function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): L
     inventory: { ok: true, value: { workers } },
     boards,
     asks: { ok: true, value: asks },
-    inbox: inboxSection({ ok: true, value: asks }, boards),
+    inbox: inboxSection({ ok: true, value: asks }, boards, []),
   } as unknown as LoadedSnapshot;
 }
 

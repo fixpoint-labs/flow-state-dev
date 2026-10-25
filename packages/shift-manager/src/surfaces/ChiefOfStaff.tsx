@@ -34,8 +34,7 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
-import { suspensionItemId } from "../lib/inbox";
+import { chiefOfStaffOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -221,7 +220,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                   <button
                     type="button"
                     className="text-info hover:text-foreground"
-                    onClick={() => navigate({ level: "inbox", item: suspensionItemId(ask.item.suspensionId) })}
+                    onClick={() => navigate({ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) })}
                     data-testid="cos-ask-open"
                   >
                     open in Inbox
