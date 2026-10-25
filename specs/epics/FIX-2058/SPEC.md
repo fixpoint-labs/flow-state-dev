@@ -162,7 +162,7 @@ hold needs neither it nor FIX-2129, and comes before the two that ask a question
 | **Removes** | Both parks, the harness question inbox, `answerTask`, `unparkAndDrain`, `answerQuestion()`, two extra person-stop checks, the Inbox's unanswerable task stops, the row's `waitingOn: "user"` and `waitingFor` (moved onto the hold) |
 | **Adds** | `waitForUser`, one list of holds per task with one pure write both store backings call, a suspension's mirror on it and the `confirm` kind ([ER-8](DECISIONS.md#who-owns-what)), one Inbox item type with one answer call routed by `source`, read by orchestration with a browser client, an opt-in host deadline for a person's stop, unset by default ([D3](DECISIONS.md#d3)), one trusted answer route |
 
-**Net: down.** Six forms and three answer paths become one suspension, one hold and one trusted route per kind (ER-7).
+**Net: down for authors, up on the row.** An author meets fewer forms and fewer answer routes: six forms and three answer paths become one suspension, one list of holds and one trusted route per kind (ER-7). The row gains `holds[]`, the suspension's mirror and a drift check to keep them in step, which is FIX-2133's *Net: up, by design*.
 
 ## Sign off
 

@@ -89,7 +89,7 @@ the D2 rule in CI, in FIX-2087's engine or, if #3692 hasn't merged, a standalone
   FIX-2133's reconciler checks it, drift included: green over six kinds at once is leg a, and a
   double listing, a missed stop or a mirror out of step with its suspension is a Bug.
 - **Two new controls**, each one module swap that fails the build if it never fired:
-  `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the row's holds; `steer-ignores-mark` ignores the row's person mark.
+  `cancel-keeps-item` writes the cancel but resolves neither the suspension nor the row's holds; `steer-ignores-mark` ignores the row's open hold.
 - **No legacy leg:** stores are reset (owner). Leg a reads the rows' open holds, never
   `waitingOn: "user"` or `waitingFor`, which FIX-2133 moves onto the hold.
 - **A coding run's review** ([FIX-2163](../FIX-2163/SPEC.md), epic FIX-2152) consumes this set's

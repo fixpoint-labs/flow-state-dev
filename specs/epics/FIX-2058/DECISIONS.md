@@ -266,16 +266,21 @@ FIX-2133's first PR (#3854) is held and conflicts with `main`: it built one Inbo
 `reconcileInbox` with a `bothArms` clause, and an `INBOX_READ` sweep rule.
 
 ```ts
-type TaskHold = {
+type HoldBase = {
   id: string;
   actor: "user" | "system";          // the Inbox lists actor "user"
-  ask?: { kind: "approval" | "review" | "input" | "question" | "confirm" | "action"; prompt: string; title?: string };
-  source:
-    | { kind: "suspension"; flowId: string; requestId: string; suspensionId: string } // mirrors a parked run; closed when the engine resumes it
-    | { kind: "row"; releasedBy: Releaser[] };                                         // nothing parked; first releaser wins
   openedAt: number;
   due?: number;                      // none unless set; cancel closes every hold
 };
+type SuspensionHold = HoldBase & {   // mirrors a parked run; closed when the engine resumes it
+  source: { kind: "suspension"; flowId: string; requestId: string; suspensionId: string };
+  ask: { kind: "approval" | "review" | "input"; prompt: string; title?: string };
+};
+type RowHold = HoldBase & {          // nothing parked; first releaser wins
+  source: { kind: "row"; releasedBy: Releaser[] };
+  ask: { kind: "question" | "confirm"; prompt: string; title?: string };
+};
+type TaskHold = SuspensionHold | RowHold;   // discriminated on source.kind
 type Releaser = { by: "answer" } | { by: "event"; event: string; key: string };
 ```
 
@@ -289,6 +294,16 @@ type Releaser = { by: "answer" } | { by: "event"; event: string; key: string };
 4. **Scope.** Event releasers and `ctx.waitForEvent` are out of this epic. No new issue:
    FIX-2133 owns `holds[]` under ER-8, in two PRs, the reshaped #3854 and then the row holds
    with the mirror ([FIX-2133](../../issues/FIX-2133/DECISIONS.md#decided-not-asked)).
+
+**What would change my mind.** A lighter variant was considered: unify only the Inbox read, keep
+`questions[]` and `waitingFor` on the row, and persist no mirror. The amendment does not take it,
+because the relayed decision makes open holds the one predicate for the claim, cancel, the
+deadline, crash debt and the Inbox; an Inbox-only read gives that to the Inbox alone, and the
+other four keep reading two fields.
+
+The relayed type lists every ask kind on one shape; written here as a union on `source`, so a
+mirror carries only a suspension's kinds and a row hold only a question or a confirm, and an
+invalid pair can't be written.
 
 **What it supersedes.** ER-8's open-questions predicate and FIX-2133 D2's `questions[]`; the
 row's `waitingOn: "user"` and `waitingFor` (#3866), which move onto the suspension hold; one
