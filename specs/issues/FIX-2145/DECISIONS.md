@@ -83,10 +83,13 @@ production. None is known; the changeset is where one would surface.
 - **The convergence points.** Model spend enters the ledger only through
   `onGeneratorModelResult`. The engine installs a base handler at the request (none exists
   today; per-block wrappers chain up to it), and the evaluator-as-a-tool path, which does not
-  forward today, feeds it too. Harness spend enters only through `reportHarnessSpend`, called by
+  forward today, feeds it too. A model step reaches the ledger when the step completes, not
+  only when its block finishes: a generator whose tool suspends for approval, or that fails,
+  still counts the steps it finished, and its later aggregate report does not count them again. Harness spend enters only through `reportHarnessSpend`, called by
   each harness package when a run ends, however it ends (a `finally`, not only the success
-  path), with whatever the vendor reported. A run killed before its result message carries no
-  total and is counted as one run with tokens "not reported". `recordWorkerSpend` is the only
+  path), with whatever usage the vendor had sent by then: Cursor reports per turn, so a killed
+  Cursor run keeps its finished turns. Only a run that received no usage at all (Claude Code
+  killed before its result message) counts as one run with tokens "not reported". `recordWorkerSpend` is the only
   writer of `worker-usage/**` and `workerUsage` its only reader.
 - **One install point for the worker hook.** `installation.session()` returns the hook beside
   `createCheck`; `register.ts` already refuses a worker flow without it, and a spread of it keeps
@@ -165,5 +168,19 @@ production. None is known; the changeset is where one would surface.
 - **Analysis and goal check** — D2 moved from "billed, estimates marked ≈" to vendor-reported
   billed cost only, because the epic forbids a guess. A harness reports on every ending, not only
   success, and the goal check gained a Codex leg and controls for each behaviour it depends on.
+- **Review round 1** — Codex showed two more convergence gaps: a generator that suspends for
+  approval or fails never reports its finished steps, and a killed Cursor run has per-turn usage
+  that "not reported" would throw away. Both now reach the ledger.
+
+## Notes from review
+
+- "Same identifier as block-level `onRequestEnded(ctx, hook)` with a different registration site will confuse implementers. Alternative: internal registration on the existing request-end registry (no new author-facing `SessionConfig` field), or a distinctly named config key (`requestEndHooks`)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306173))
+- "A named `spend` field on `RequestEnding` risks a second public aggregate beside the ledger. Consider a single payload (ledger snapshot or `sinceLastEnding` slice of the same type) and resume idempotency as ledger math." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306168))
+- "Lock in a struct shape (separate harness accumulator, or a slice the budget getter ignores) so `recordWorkerSpend` and `tokenBudget` can't drift." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306182))
+- "`workerUsage({ days: N })` should touch at most N×workers records (key prefix / range), not list all history." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306192))
+- "A discriminated union for the query row (`{ billing: \"api-key\"; costUsd: number } | { billing: \"subscription\" } | …`) would match harness-usage's status pattern and reduce UI branching." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306202))
+- "The `+ // Nothing to pass` hunk adds noise without code." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3886#discussion_r4372306197))
+
+These are inputs, not instructions. Adopt, adapt, or discard.
 
 **Open: none.**
