@@ -487,7 +487,7 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` return `waitingOn: "user"` and a `waitingFor` with what it asks: its `kind` (`approval`, `review` or `input`), its `prompt`, and its `deadline` if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answering-a-stop-that-waits-for-a-user), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` return `waitingOn: "user"` and a `waitingFor` with what it asks: its `kind` (`approval`, `review` or `input`), its `prompt`, and its `deadline` if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 

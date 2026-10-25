@@ -41,25 +41,26 @@ export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollection
 
 /**
  * The task a piece filed now in the running session is a piece of: the task
- * this request holds (its turn, or a turn a piece's ending woke, filed it),
- * else a task session's own task. In a delegate's ongoing session (FIX-2083),
- * only the routed task this request holds: a turn there that works no task
- * files plain tasks. A run that goes on after its task was cancelled (one
- * the cancel resumed from a wait for a user, FIX-2129) holds no row, but its
- * row's run link still names it: that task is the owner, so the filing is
- * refused under it.
+ * this request holds (its turn, or a turn a piece's ending woke, filed it);
+ * else the row whose run link names this request, whatever its status, so a
+ * run that goes on after its task was cancelled (one the cancel resumed from
+ * a wait for a user, FIX-2129) files under that task and is refused; else a
+ * task session's own task. The run link comes first because the session's
+ * state can name another row: a follow-up runs in its root's session, which
+ * names the root, and a delegate's ongoing session (FIX-2083) names none. A
+ * turn there that works no task files plain tasks.
  */
 export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
-  return (await heldTask(ctx))?.row.id ?? stringAt(ctx, TASK_ID_STATE_KEY) ?? (await cancelledTaskOf(ctx));
+  return (await heldTask(ctx))?.row.id ?? (await linkedTaskOf(ctx)) ?? stringAt(ctx, TASK_ID_STATE_KEY);
 }
 
-/** The cancelled row on the board above whose run link names the running request. */
-async function cancelledTaskOf(ctx: BlockContext): Promise<string | undefined> {
+/** The row on the board above whose run link names the running request, in any status. */
+async function linkedTaskOf(ctx: BlockContext): Promise<string | undefined> {
   const partition = boardAboveOf(ctx);
   const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
   if (partition === undefined || requestId === undefined) return undefined;
   const ref = await conversationLedgerAt(ctx, partition);
-  return ref?.list({ status: "cancelled" }).find((task) => task.run?.requestId === requestId)?.id;
+  return ref?.list().find((task) => task.run?.requestId === requestId)?.id;
 }
 
 /**
