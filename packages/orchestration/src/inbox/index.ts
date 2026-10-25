@@ -155,7 +155,8 @@ export function openUserHolds<TDetail>(
       id: stop.suspensionId,
       source: { kind: "suspension", flowId, sessionId: row.run.sessionId, requestId: stop.requestId, suspensionId: stop.suspensionId },
       ask: { kind: stop.kind, prompt: stop.prompt, ...(stop.title !== undefined ? { title: stop.title } : {}) },
-      openedAt: row.updatedAt ?? 0,
+      // When it was raised: the stop's own time, which a later turn on the row doesn't move; the row's only without one.
+      openedAt: found?.since ?? row.updatedAt ?? 0,
       ...(stop.deadline !== undefined ? { due: stop.deadline } : {}),
       ...(detail !== undefined ? { detail } : {}),
     },

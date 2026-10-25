@@ -66,7 +66,7 @@ describe("inboxItems: one item type", () => {
   it("lists a task run's stop once, from its row, even when its session holds it too", () => {
     const rows = [stopped("t1", "sp1")];
     // The run's session holds the same stop: the reader found it there as well.
-    const items = inboxItems({ rows, suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1", detail: "the card" }), found("lone")], flowOf: flows });
+    const items = inboxItems({ rows, suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1", since: 70, detail: "the card" }), found("lone")], flowOf: flows });
     expect(items.map((i) => [i.id, i.source, i.task?.taskId ?? null])).toEqual([
       ["lone", "suspension", null],
       [taskItemId(BOARD, "t1"), "suspension", "t1"],
@@ -77,7 +77,7 @@ describe("inboxItems: one item type", () => {
         id: "sp1",
         source: { kind: "suspension", flowId: "asker", sessionId: "run_t1", requestId: "req_t1", suspensionId: "sp1" },
         ask: { kind: "approval", prompt: "Approve t1?" },
-        openedAt: 100,
+        openedAt: 70,
         detail: "the card",
       },
     ]);
@@ -90,6 +90,16 @@ describe("inboxItems: one item type", () => {
     const items = inboxItems({ rows: [turning], suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1" })], flowOf: flows });
     expect(items.map((i) => [i.id, i.answerable])).toEqual([[taskItemId(BOARD, "t1"), true]]);
     expect(rowTruthOf([turning])).toEqual([{ board: BOARD, taskId: "t1", suspensionHolds: ["sp1"] }]);
+  });
+
+  it("keeps a stop's place when a notice turn moves its row's updatedAt: since is the stop's own", () => {
+    const stop = found("sp1", { sessionId: "run_t1", requestId: "req_t1", since: 40 });
+    const before = inboxItems({ rows: [stopped("t1", "sp1", { updatedAt: 100 })], suspensions: [stop], flowOf: flows });
+    const after = inboxItems({ rows: [stopped("t1", "sp1", { updatedAt: 900 })], suspensions: [stop], flowOf: flows });
+    expect(before[0]!.since).toBe(40);
+    expect(after[0]!.since).toBe(40);
+    // With no stop found to read it from, the row's time stands in.
+    expect(inboxItems({ rows: [stopped("t1", "sp1", { updatedAt: 900 })], suspensions: [], flowOf: flows })[0]!.since).toBe(900);
   });
 
   it("skips a suspension in a task's open run even when the row records no stop yet", () => {
