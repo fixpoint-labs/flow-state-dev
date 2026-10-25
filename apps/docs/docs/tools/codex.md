@@ -223,6 +223,52 @@ Cost is an estimate, derived from flow-state-dev's model price table, and
 - The price table has no entry for the model. One patch release teaches it.
 - The turn never completed, so there is no usage.
 
+## Reading usage left
+
+A ChatGPT plan gives Codex a limit per time window, such as five hours or a
+week, and a run fails once a window is used up. `readCodexUsage` asks Codex how
+much of each window is used, without starting a run:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { readCodexUsage } from "@flow-state-dev/codex";
+
+const reading = await readCodexUsage({
+  env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }),
+});
+
+if (reading.status === "windows") {
+  for (const w of reading.windows) {
+    console.log(w.id, w.minutes, `${w.usedPercent}% used`, w.resetsAt && new Date(w.resetsAt));
+  }
+} else {
+  console.log(reading.reason); // "Codex uses an API key: no subscription limit"
+}
+```
+
+Pass the same `env` your runs get, so the read and the runs see one sign-in. It
+starts the Codex CLI that `@openai/codex-sdk` brings, asks it, and stops it.
+
+The result is the shared [usage reading](./coding-agents.md#subscription-usage),
+and the call never throws:
+
+| `status` | When |
+|---|---|
+| `windows` | Signed in with ChatGPT. Every window Codex reports, each with `usedPercent` (0 to 100), its length in `minutes`, and `resetsAt` in epoch ms, plus `plan` and `accountId`. |
+| `api-key` | Codex runs on an API key, which has no subscription limit. |
+| `signed-out` | Nobody is signed in to Codex. |
+| `unavailable` | The read couldn't be made: the CLI wasn't found, it stopped, or it didn't answer within `timeoutMs` (10 seconds by default). `reason` says which, in plain words. |
+
+`signal` stops a read early; it then returns `unavailable`. The three statuses
+other than `windows` carry a `reason` and no windows, and none of them means 0%.
+
+**Local only.** OpenAI permits this sign-in on your own machine, not in a
+hosted service. Use it in a tool that runs where you are signed in to
+Codex, and don't wire it into a server you host for others.
+
+To keep the last reading and serve it to a page or a worker, register it as the
+`codex` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage).
+
 ## Errors
 
 Every one of these is fatal for the run that raised it:
@@ -249,6 +295,8 @@ A turn the model itself fails is not in that list. It comes back as a handle wit
   and approval policy you set are the whole of the permission story.
 - With `client.env` unset, the run can read every variable in your server's
   environment. See [Environment variables](#environment-variables).
+- Reading usage left works only on your own machine. See
+  [Reading usage left](#reading-usage-left).
 
 ## Related
 
