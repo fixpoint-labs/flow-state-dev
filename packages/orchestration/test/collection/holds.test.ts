@@ -158,6 +158,30 @@ describe.each([
       ]);
       await expect(board.addTask({ id: "t11", goal: "g", questions: [{ kind: "question", prompt: CSV, onNo: "cancel" }] })).rejects.toThrow(/only a confirm takes onNo/);
     });
+
+    it("a cancel for a No lands only while its confirm is open, decided on the committed row: after a yes it is refused as answered", async () => {
+      const { board } = await make();
+      const row = await board.addTask({ id: "t12", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
+      const hold = row.holds![0]!.id;
+      await board.answer!("t12", user(hold, "Yes, go ahead."));
+      expect(await board.cancel("t12", 'No to "Drop it?"', { whileHoldOpen: hold })).toMatchObject({ outcome: "declined", reason: "answered" });
+      expect(board.get("t12")!.status).toBe("pending");
+      expect(await board.cancel("t12", "x", { whileHoldOpen: "hold_none" })).toMatchObject({ outcome: "declined", reason: "no-such-hold" });
+    });
+
+    it("a yes and a No's cancel at once: exactly one wins", async () => {
+      const { board } = await make();
+      const row = await board.addTask({ id: "t13", goal: "g", questions: [{ kind: "confirm", prompt: "Drop it?" }] });
+      const hold = row.holds![0]!.id;
+      const [yes, no] = await Promise.all([
+        board.answer!("t13", user(hold, "Yes, go ahead.")),
+        board.cancel("t13", 'No to "Drop it?"', { whileHoldOpen: hold }),
+      ]);
+      expect([yes.outcome, no.outcome].filter((outcome) => outcome === "recorded")).toHaveLength(1);
+      const after = board.get("t13")!;
+      expect(after.status === "cancelled").toBe(no.outcome === "recorded");
+      expect(after.steers?.some((steer) => steer.answers === hold) ?? false).toBe(yes.outcome === "recorded");
+    });
   });
 
   describe("an answer's rules", () => {

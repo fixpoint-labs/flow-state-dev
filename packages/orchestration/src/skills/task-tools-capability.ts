@@ -1475,7 +1475,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     }
     let outcome: TaskWriteOutcome | undefined;
     try {
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via });
+      // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
+      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;
@@ -1483,6 +1484,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (outcome != null && outcome.outcome === "declined") {
       const now = collection.get(row.id) ?? { ...row, status: outcome.status };
       if (now.status === "cancelled" && now.error === reason) return { ok: true as const };
+      if (outcome.reason === "answered") return { ok: false as const, taskId: row.id, error: `question_answered: "${hold.id}" on task "${row.id}" was already answered. Nothing was written.` };
       return isTerminalStatus(outcome.status) ? lockedError(now, ["message"]) : declinedWriteToolError(row.id, outcome, "The No was not kept.");
     }
     return { ok: true as const };

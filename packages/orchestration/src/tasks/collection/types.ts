@@ -31,6 +31,14 @@ export type CancelOptions = TaskTransitionOptions & {
    * how it was built (a tool, or an action), never from input (BP-031).
    */
   readonly via?: TaskCancelSource;
+  /**
+   * The cancel is a confirm's No (FIX-2133, owner 2026-10-25): it lands only
+   * while this row hold is open, decided on the committed row in the cancel's
+   * own write, as an answer is. Declines `answered` once the hold has an
+   * answer (a yes first, say), and `no-such-hold` for an id that isn't a
+   * question or a confirm on the row.
+   */
+  readonly whileHoldOpen?: string;
 };
 
 /** What a running task waits on (`Task.waitingOn`, FIX-2077). */

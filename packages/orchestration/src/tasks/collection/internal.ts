@@ -25,7 +25,7 @@ import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
-import { droppedMirror, hasOpenHold, holdWrite, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
+import { answerOf, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -871,6 +871,13 @@ export function transitionDeclineReason(
   assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
+  // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
+  const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
+  if (whileHoldOpen !== undefined) {
+    const hold = task.holds?.find((h) => h.id === whileHoldOpen);
+    if (hold === undefined || !isRowHold(hold)) return "no-such-hold";
+    if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
+  }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   if (
     options.ifAllowed === true &&

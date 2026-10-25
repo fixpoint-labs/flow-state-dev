@@ -137,6 +137,15 @@ describe("updateTask's question", () => {
     expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: true })).toMatchObject({ ok: false, error: expect.stringMatching(/^task_finished:/) });
   });
 
+  it("a No sent after the yes is refused as answered, and the task stays as the yes left it", async () => {
+    const b = await board();
+    const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?" }] });
+    const hold = openHolds(b.get(filed.taskId)!)[0]!.id;
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: true })).toEqual({ ok: true });
+    expect(await b.act("updateTask", { id: filed.taskId, question: hold, done: false })).toMatchObject({ ok: false, error: expect.stringMatching(/^question_answered:/) });
+    expect(b.get(filed.taskId)).toMatchObject({ status: "pending" });
+  });
+
   it("a confirm filed with onNo: continue goes on after a No, with the No in its brief", async () => {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Ship v2", questions: [{ kind: "confirm", prompt: "Ship once it builds?", onNo: "continue" }] });
