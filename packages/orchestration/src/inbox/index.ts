@@ -11,8 +11,8 @@
  * hold to the board's `updateTask`, which arrives with the row holds.
  *
  * **Where an item comes from.** A task run's stop lists from its row only, never
- * from the run's session: today the row records it as `waitingOn: "user"`
- * with `waitingFor` (FIX-2129), which the row holds take over. A suspension
+ * from the run's session: today the row records it in `waitingFor`
+ * (FIX-2129), which the row holds take over. A suspension
  * the reader found in a session lists on its own only when no row claims it.
  *
  * Browser-safe: it imports types and the client, never the task board's
@@ -108,7 +108,6 @@ export type InboxRow = {
   readonly updatedAt?: number | null;
   /** The run working it: the session and request its stop is in. */
   readonly run?: { readonly sessionId: string; readonly requestId: string } | null;
-  readonly waitingOn?: string | null;
   readonly waitingFor?: InboxWaitingFor | null;
 };
 
@@ -135,8 +134,10 @@ const TERMINAL = new Set(["completed", "errored", "cancelled"]);
 
 /**
  * A row's open holds for the user. Until the row holds land, the one a row can
- * carry is a task run's stop, as FIX-2129 records it: `waitingOn: "user"`
- * with `waitingFor`, on a running row.
+ * carry is a task run's stop, as FIX-2129 records it in `waitingFor`, on a
+ * running row. Not `waitingOn`: a notice's or a steer's turn admitted while
+ * the stop waits clears it and keeps `waitingFor` (`keepWaitingFor`), and
+ * the stop still waits on the user.
  */
 export function openUserHolds<TDetail>(
   row: InboxRow,
@@ -144,7 +145,7 @@ export function openUserHolds<TDetail>(
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
   const stop = row.waitingFor;
-  if (row.status !== "in_progress" || row.waitingOn !== "user" || stop == null || row.run == null) return [];
+  if (row.status !== "in_progress" || stop == null || row.run == null) return [];
   const found = foundFor(stop.suspensionId);
   const detail = found?.detail;
   // The run's flow: as its session names it, else as the reader found it where the stop is.
@@ -363,6 +364,14 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   }
   for (const row of truth.rows) {
     for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`hold ${id} on ${row.board}:${row.taskId}: no live stop`);
+  }
+  // A listed task item shows the holds its row holds now: a stale list offers a stop that ended.
+  const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds].sort()]));
+  for (const item of items) {
+    const held = heldBy.get(item.id);
+    if (item.task === null || held === undefined) continue;
+    const shown = item.holds.filter((h) => h.source.kind === "suspension").map((h) => h.id).sort();
+    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row holds ${held.join(", ") || "none"}`);
   }
 
   const unanswerable = items.flatMap((item) => (item.unanswerable === null ? [] : [{ id: item.id, why: item.unanswerable }]));

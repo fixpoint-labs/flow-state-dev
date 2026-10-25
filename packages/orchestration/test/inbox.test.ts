@@ -33,7 +33,6 @@ const stopped = (id: string, suspensionId: string, over: Partial<InboxRow> = {})
   status: "in_progress",
   updatedAt: 100,
   run: { sessionId: `run_${id}`, requestId: `req_${id}` },
-  waitingOn: "user",
   waitingFor: { requestId: `req_${id}`, suspensionId, kind: "approval", prompt: `Approve ${id}?` },
   ...over,
 });
@@ -85,14 +84,22 @@ describe("inboxItems: one item type", () => {
     expect(held.answerable).toBe(true);
   });
 
+  it("keeps listing a stop while a notice or steer turn runs: admission clears waitingOn, keeps waitingFor", () => {
+    // `admitClaimedTask` for a turn that is not the task's own: `waitingOn` cleared, `waitingFor` kept, still running.
+    const turning = { ...stopped("t1", "sp1"), waitingOn: null };
+    const items = inboxItems({ rows: [turning], suspensions: [found("sp1", { sessionId: "run_t1", requestId: "req_t1" })], flowOf: flows });
+    expect(items.map((i) => [i.id, i.answerable])).toEqual([[taskItemId(BOARD, "t1"), true]]);
+    expect(rowTruthOf([turning])).toEqual([{ board: BOARD, taskId: "t1", suspensionHolds: ["sp1"] }]);
+  });
+
   it("skips a suspension in a task's open run even when the row records no stop yet", () => {
-    const row = stopped("t1", "sp1", { waitingOn: null, waitingFor: null });
+    const row = stopped("t1", "sp1", { waitingFor: null });
     expect(inboxItems({ rows: [row], suspensions: [found("sp1", { requestId: "req_t1" })], flowOf: flows })).toEqual([]);
   });
 
   it("lists nothing for a row that holds nothing, a finished one, or one not running", () => {
     const rows = [
-      stopped("idle", "x", { waitingOn: null, waitingFor: null }),
+      stopped("idle", "x", { waitingFor: null }),
       stopped("done", "y", { status: "completed" }),
       stopped("queued", "z", { status: "pending" }),
     ];
@@ -154,6 +161,15 @@ describe("reconcileInbox", () => {
     const result = reconcileInbox(items, answered);
     expect(result.green).toBe(false);
     expect(result.drift).toEqual([`hold sp1 on ${BOARD}:t1: no live stop`]);
+  });
+
+  it("control stale-item: a listed item still offering a stop its row no longer holds is drift", () => {
+    // Listed while t1's run waited on sp1; since then sp1 ended and the run stopped again, on sp2.
+    const now = [stopped("t1", "sp2"), stopped("t2", "sp2b")];
+    const stale = inboxItems({ rows: [stopped("t1", "sp1"), stopped("t2", "sp2b")], suspensions: [], flowOf: flows });
+    const result = reconcileInbox(stale, truthOf(now, []));
+    expect(result.green).toBe(false);
+    expect(result.drift).toEqual([`item ${taskItemId(BOARD, "t1")} shows sp1, its row holds sp2`]);
   });
 
   it("drift: a task run's stop with no hold on any row", () => {

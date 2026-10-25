@@ -2,6 +2,7 @@
  * What the screens compute from one snapshot, kept out of the components so
  * every surface computes it the same way.
  */
+import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { isDone, readStatus } from "./columns";
 import {
   GENERAL_TEAM,
@@ -149,6 +150,17 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
 export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
   return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+}
+
+/**
+ * The Inbox item a route names: by its id, else, for a link written when an
+ * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
+ * whose holds that suspension is. `null` when none.
+ */
+export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxItem<Ask> | null {
+  if (id === null) return null;
+  const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
+  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
 }
 
 /**

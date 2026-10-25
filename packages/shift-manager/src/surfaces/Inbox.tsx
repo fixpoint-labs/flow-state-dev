@@ -26,7 +26,7 @@ import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
@@ -116,7 +116,8 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
   }
   const items = snapshot.inbox.value;
   const shown = items.filter((item) => matches(filter, item));
-  const selected = items.find((item) => item.id === itemId) ?? null;
+  // An older link names a suspension id; it opens the item that holds it.
+  const selected = inboxItemAt(snapshot, itemId);
   const now = snapshot.readAt;
 
   const oldest = items.reduce<number | null>((min, item) => (min === null || item.since < min ? item.since : min), null);

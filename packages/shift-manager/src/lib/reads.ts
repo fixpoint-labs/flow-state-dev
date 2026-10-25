@@ -193,12 +193,6 @@ export type BoardRow = {
    */
   question?: string;
   /**
-   * What keeps the running row open while no worker holds it, as the board
-   * publishes it (`"user"` for a task run stopped for the user, FIX-2129), or
-   * `null`.
-   */
-  waitingOn: string | null;
-  /**
    * The stop a row waiting on the user waits on (FIX-2129), or `null`. The
    * Inbox lists the task's item from it.
    */
@@ -520,7 +514,6 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
       ? { question: text(field(data, "feedback")) as string }
       : {}),
-    waitingOn: text(field(data, "waitingOn")),
     waitingFor: toWaitingFor(field(data, "waitingFor")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),

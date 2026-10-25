@@ -92,7 +92,6 @@ const row = (holderSessionId: string, id: string, status: string): BoardRow => (
   deps: [],
   run: null,
   error: null,
-  waitingOn: null,
   waitingFor: null,
   createdAt: null,
   updatedAt: null,

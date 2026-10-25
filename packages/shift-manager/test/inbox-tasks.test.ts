@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
-import type { LoadedSnapshot } from "../src/lib/derive";
+import { inboxItemAt, type LoadedSnapshot } from "../src/lib/derive";
 import { inboxSection, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 let index = 0;
@@ -69,7 +69,6 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
-  waitingOn: null,
   waitingFor: null,
   createdAt: null,
   updatedAt: null,
@@ -125,6 +124,18 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       workers,
     );
     expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 2 on shift · 2 streams");
+  });
+
+  it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
+    const held = row("T", "in_progress", {
+      run: { sessionId: "s_run", requestId: "req_1", attempt: 1 },
+      waitingFor: { requestId: "req_1", suspensionId: "susp_legacy", kind: "approval", prompt: "Ship it?" },
+    });
+    const s = snapshot([held]);
+    const item = inboxItemAt(s, "susp_legacy");
+    expect(item?.id).toBe(`task:${held.boardRef}:T`);
+    expect(inboxItemAt(s, item!.id)).toBe(item);
+    expect(inboxItemAt(s, "nothing")).toBeNull();
   });
 
   it("an Inbox that didn't load says so in the summary, never 0 need you, which reads as all clear", () => {
