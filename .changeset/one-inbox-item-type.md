@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/orchestration": minor
+"@flow-state-dev/orchestration": patch
 ---
 
 New `@flow-state-dev/orchestration/inbox` subpath, safe to import in a browser: the read an Inbox lists from (FIX-2133).

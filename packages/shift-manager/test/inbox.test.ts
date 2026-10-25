@@ -93,7 +93,8 @@ describe("the Inbox against a real Lab", () => {
     expect(reconcileInbox(items, truth)).toEqual({ green: true, missing: [], duplicate: [], orphan: [], drift: [], unanswerable: [], reopened: [] });
 
     // Control duplicate-item: red.
-    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id] });
+    // The item twice, and with it the stop it shows.
+    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id, items[0]!.holds[0]!.id] });
     // Control drop-row-holds: the same reads listed without the boards. Red: the tasks' items are missing.
     const dropped = inboxSection(snapshot.asks, {}, snapshot.sessions);
     const droppedResult = reconcileInbox(dropped.ok ? dropped.value : [], truth);
@@ -111,7 +112,7 @@ describe("the Inbox against a real Lab", () => {
     const left = after.inbox.ok ? after.inbox.value : [];
     const rowsAfter = await boardRows(client, "ops.desk");
     const truthAfter = await readTruth(client, rowsAfter);
-    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.id] })).toMatchObject({ green: true });
+    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.holds[0]!.id] })).toMatchObject({ green: true });
     // Control mirror-skips-close: the row as it was before the resume, against the stops as they are now. Red.
     const stale = reconcileInbox(left, { ...truthAfter, rows: truth.rows });
     expect(stale.green).toBe(false);

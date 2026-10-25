@@ -288,7 +288,11 @@ export type RowTruth = {
 export type InboxTruth = {
   readonly suspensions: readonly SuspensionTruth[];
   readonly rows: readonly RowTruth[];
-  /** Ids answered or cancelled before this read: each must be in no later list, and no later truth. */
+  /**
+   * The holds (their suspension or hold ids) answered or cancelled before this
+   * read: each must be in no later list, and no later truth. A hold, not an
+   * item: a task's item id stays the same when the task waits on the user again.
+   */
   readonly closed?: readonly string[];
 };
 
@@ -297,7 +301,7 @@ export type InboxReconciliation = {
   readonly green: boolean;
   /** In the truth, not in the list. */
   readonly missing: string[];
-  /** In the list more than once. */
+  /** Items listed more than once, and holds shown under more than one item. */
   readonly duplicate: string[];
   /** In the list, not in the truth. */
   readonly orphan: string[];
@@ -308,7 +312,7 @@ export type InboxReconciliation = {
   readonly drift: string[];
   /** Items the user can't answer, each with why. */
   readonly unanswerable: Array<{ id: string; why: string }>;
-  /** Closed ids that are back, in the list or in the truth. */
+  /** Closed holds that are back, in the list or in the truth. */
   readonly reopened: string[];
 };
 
@@ -354,7 +358,12 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const listed = new Set(counts.keys());
 
   const missing = [...want].filter((id) => !listed.has(id));
-  const duplicate = [...counts].filter(([, n]) => n > 1).map(([id]) => id);
+  // A duplicate is an item listed twice, or one stop shown under two items whose ids differ.
+  const holdCounts = new Map<string, number>();
+  for (const item of items) for (const hold of new Set(item.holds.map((h) => h.id))) holdCounts.set(hold, (holdCounts.get(hold) ?? 0) + 1);
+  const duplicate = [
+    ...new Set([...[...counts].filter(([, n]) => n > 1).map(([id]) => id), ...[...holdCounts].filter(([, n]) => n > 1).map(([id]) => id)]),
+  ];
   const orphan = [...listed].filter((id) => !want.has(id));
 
   const drift: string[] = [];
@@ -376,8 +385,14 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   }
 
   const unanswerable = items.flatMap((item) => (item.unanswerable === null ? [] : [{ id: item.id, why: item.unanswerable }]));
+  // Closure is the hold's: listed again, or held again in the reads made apart from the list.
   const closed = new Set(truth.closed ?? []);
-  const reopened = [...new Set([...listed, ...want])].filter((id) => closed.has(id));
+  const holdsSeen = new Set([
+    ...items.flatMap((item) => item.holds.map((h) => h.id)),
+    ...truth.rows.flatMap((r) => r.suspensionHolds),
+    ...truth.suspensions.map((s) => s.suspensionId),
+  ]);
+  const reopened = [...holdsSeen].filter((id) => closed.has(id));
 
   return {
     green: [missing, duplicate, orphan, drift, unanswerable, reopened].every((list) => list.length === 0),

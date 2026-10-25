@@ -5,7 +5,7 @@
  * The check is worth something only if it fails when the list is wrong, so
  * each clause has a control that breaks the list one way and must turn it red:
  * a duplicated item, the row holds dropped, a mirror the resume left open, an
- * item with no route, a closed item back.
+ * item with no route, a closed hold back, one stop under two items.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Client, SessionRequestSummary } from "@flow-state-dev/client";
@@ -199,9 +199,26 @@ describe("reconcileInbox", () => {
     expect(result.unanswerable.map((u) => u.id).sort()).toEqual([taskItemId(BOARD, "t1"), taskItemId(BOARD, "t2")]);
   });
 
-  it("an answered or cancelled item back in a later read, in the list or the truth, is reopened", () => {
-    const id = taskItemId(BOARD, "t1");
-    expect(reconcileInbox(items, { ...truth, closed: [id] }).reopened).toEqual([id]);
+  it("a second stop on the same task, after the first was answered, is not reopened: closure is the hold's", () => {
+    // sp1 was approved and answered; the task's run then stopped again on sp2, under the same task item.
+    const again = [stopped("t1", "sp2"), stopped("t2", "sp2b")];
+    const listed = inboxItems({ rows: again, suspensions: lone, flowOf: flows });
+    expect(listed.find((i) => i.task?.taskId === "t1")?.id).toBe(taskItemId(BOARD, "t1"));
+    expect(reconcileInbox(listed, { ...truthOf(again, lone), closed: ["sp1"] })).toMatchObject({ green: true, reopened: [] });
+  });
+
+  it("control reopened: an answered hold back in a later read, in the list or in the truth alone, is red", () => {
+    // sp1 closed, and listed again.
+    expect(reconcileInbox(items, { ...truth, closed: ["sp1"] })).toMatchObject({ green: false, reopened: ["sp1"] });
+    // Back in the independently read rows only, the list having dropped it.
+    const listedWithout = inboxItems({ rows: [stopped("t2", "sp2")], suspensions: lone, flowOf: flows });
+    expect(reconcileInbox(listedWithout, { ...truth, closed: ["sp1"] }).reopened).toEqual(["sp1"]);
+  });
+
+  it("control one-stop-two-items: a hold listed under two items is a duplicate, though the items' ids differ", () => {
+    const t1 = items.find((i) => i.task?.taskId === "t1")!;
+    const loneCopy = { ...t1, id: "sp1", task: null };
+    expect(reconcileInbox([...items, loneCopy], truth).duplicate).toContain("sp1");
   });
 });
 
