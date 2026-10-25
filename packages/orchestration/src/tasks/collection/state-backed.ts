@@ -25,7 +25,8 @@ import {
   withMigratedStatus,
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
-import type { TaskSettingsPatch } from "./internal";
+import type { FilingStamp, TaskSettingsPatch } from "./internal";
+import { hasOpenHold, holdWrite, newRowHolds, type HoldChange } from "./holds";
 import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,
@@ -136,6 +137,8 @@ export interface StateBackedOptions extends TaskCapOptions {
    * defaults: a filing with any other `session` or `resultTo` is refused.
    */
   settings?: TaskSettingsSupport;
+  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  filing?: FilingStamp;
 }
 
 /**
@@ -521,6 +524,34 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     );
   }
 
+  /**
+   * The one hold write (FIX-2133), decided on the committed row inside the
+   * CAS: `decline` first (a claim fence), then the hold rule itself.
+   */
+  function writeHolds(
+    id: string,
+    kind: TaskChangeKind,
+    change: HoldChange,
+    decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
+  ): Promise<TaskWriteOutcome> {
+    return patchOne(
+      id,
+      kind,
+      (task) => {
+        const decided = holdWrite(task as Task, change);
+        return typeof decided === "object" && "patch" in decided ? (decided.patch as Partial<Task<TInput, TOutput>>) : undefined;
+      },
+      {
+        decline: (task) => {
+          const fenced = decline?.(task);
+          if (fenced !== undefined) return fenced;
+          const decided = holdWrite(task as Task, change);
+          return typeof decided === "object" && "decline" in decided ? decided.decline : undefined;
+        },
+      }
+    );
+  }
+
   /** The board's row by id, as stored now. */
   const committedRow = (id: string): Task | undefined => ownTask(readTasks(), id) as Task | undefined;
 
@@ -557,7 +588,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       assertFilingSettings(init, options.settings, collectionId);
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
-      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy);
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy, undefined, options.filing);
       await casWrite((tasks) => {
         if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
@@ -575,7 +606,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async addTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, collectionId);
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy));
+      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, committedRow), now(), options.createdBy, undefined, options.filing));
       if (built.length === 0) return [];
       await casWrite((tasks) => {
         // Ids filed in the same batch count (FIX-2080).
@@ -699,12 +730,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // Same-status, so this rides the ordinary transition path and picks up
       // all four decline arms — the lease fence among them. See the resource
       // backing's `renewLease` for why `updatedAt` moving is the right answer.
+      // A held row renews no lease (FIX-2133): a renewal racing an ask loses.
       return transitionTo(
         id,
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true }
+        { ...renewOptions, ifAllowed: true, refuseWhenHeld: "any" }
       );
     },
 
@@ -728,8 +760,37 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         "in_progress",
         null,
         (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
-        linkRunGuards({ claim: waitOptions.claim })
+        // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWhenHeld: "row" as const } : {}) }
       );
+    },
+
+    async ask(id, asks, askOptions) {
+      requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      const guards = linkRunGuards({ claim: askOptions.claim });
+      // Minted once, outside the write, so a CAS replay opens the same holds.
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const outcome = await writeHolds(id, "asked", { op: "ask", holds }, (task) =>
+        transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now())
+      );
+      return outcome.outcome === "recorded" ? { ...outcome, holds: holds.map((hold) => hold.id) } : outcome;
+    },
+
+    async answer(id, answer) {
+      // Minted once, outside the write, so a CAS replay keeps one steer.
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      return writeHolds(id, "answered", change);
+    },
+
+    async payHoldDeadlines() {
+      const at = now();
+      let paid = 0;
+      for (const row of Object.values(readTasks()) as Task[]) {
+        if (holdWrite(row, { op: "deadline", at }) === "unchanged") continue;
+        const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
+        if (outcome.outcome === "recorded") paid += 1;
+      }
+      return paid;
     },
 
     async complete(id, output, options) {
@@ -954,7 +1015,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           if (
             task.status === "in_progress" &&
             task.leaseUntil !== undefined &&
-            task.leaseUntil < at
+            task.leaseUntil < at &&
+            // A held row is never taken back (FIX-2133): it holds no lease, and a renewal racing an ask is refused.
+            !hasOpenHold(task as Task)
           ) {
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it

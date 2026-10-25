@@ -69,7 +69,8 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
-  waitingFor: null,
+  holds: [],
+  steers: [],
   createdAt: null,
   updatedAt: null,
   startedAt: null,
@@ -129,7 +130,15 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
     const held = row("T", "in_progress", {
       run: { sessionId: "s_run", requestId: "req_1", attempt: 1 },
-      waitingFor: { requestId: "req_1", suspensionId: "susp_legacy", kind: "approval", prompt: "Ship it?" },
+      holds: [
+        {
+          id: "susp_legacy",
+          actor: "user",
+          openedAt: 1,
+          source: { kind: "suspension", requestId: "req_1", suspensionId: "susp_legacy" },
+          ask: { kind: "approval", prompt: "Ship it?" },
+        },
+      ],
     });
     const s = snapshot([held]);
     const item = inboxItemAt(s, "susp_legacy");

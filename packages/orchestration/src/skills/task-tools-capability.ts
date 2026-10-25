@@ -73,6 +73,12 @@ import {
   withoutNoticeMarkers,
   cancelledDependents,
   MAX_STEERS,
+  isRowHold,
+  openHolds,
+  steerPlacesTaken,
+  taskHoldSchema,
+  type HoldAnswer,
+  type HoldAsk,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -91,6 +97,26 @@ import {
   waitOnTask,
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
+
+/** A filing's question as the board keeps it: a plain string is a question. */
+function askOf(question: string | { kind: "question" | "confirm"; prompt: string }): HoldAsk {
+  return typeof question === "string" ? { kind: "question", prompt: question } : { kind: question.kind, prompt: question.prompt };
+}
+
+/**
+ * Whether the running request's caller reaches `row` (FIX-2133 D1): the
+ * user, tenant and org its filing ran under, compared as the engine compares
+ * a request's (`principalOwnsRequest`): the same user, the same tenant (none
+ * matching none), and the same org when the row recorded one. Read from the
+ * request's verified identity, never input (BP-031). A row filed with no user
+ * recorded is decided by tenant and org alone.
+ */
+function callerReaches(ctx: BlockContext, row: Task): boolean {
+  const identity = (ctx as { request?: { identity?: { userId?: string; tenantId?: string; orgId?: string } } }).request?.identity;
+  if (row.createdBy !== undefined && identity?.userId !== row.createdBy) return false;
+  if ((row.filedUnder?.tenantId ?? undefined) !== (identity?.tenantId ?? undefined)) return false;
+  return row.filedUnder?.orgId == null || row.filedUnder.orgId === identity?.orgId;
+}
 
 /** Resolves the live TaskCollection a `taskTools` handler mutates. */
 export type TaskCollectionResolver = (
@@ -790,7 +816,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "assignee names one of your delegates; leave it unset only when you have one delegate. " +
     "The task starts as its start setting says: at once; after deps, task ids on this board " +
     "that must finish first; or, with held: true, once you release it with updateTask " +
-    "({ id, status: \"pending\" }). input is a structured payload for the worker. " +
+    "({ id, status: \"pending\" }). questions holds it until the user answers each one: plain questions, or " +
+    "{ kind: \"confirm\", prompt } for a yes or a no; the answers join its brief. " +
+    "input is a structured payload for the worker. " +
     "maxAttempts is how many tries it gets in all. Every field can change with updateTask until " +
     "the task first starts; after that only a cancel. The board may bound how many tasks wait " +
     "at once and how many it may hold in total: enqueued_task_cap_exceeded means too many tasks " +
@@ -832,6 +860,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .boolean()
       .optional()
       .describe("File the task held: it doesn't start until you release it with updateTask."),
+    questions: z
+      .array(
+        z.union([
+          z.string().min(1),
+          z.object({ kind: z.enum(["question", "confirm"]), prompt: z.string().min(1) }),
+        ]),
+      )
+      .min(1)
+      .optional()
+      .describe(
+        "Questions for the user, asked before the task starts: it waits until every one is answered, and each answer " +
+          'joins its brief. A plain string is a question; { kind: "confirm", prompt } asks for a yes or a no. Set only when filing.',
+      ),
     session: z
       .enum(["new", "ongoing"])
       .optional()
@@ -945,6 +986,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // A caller's metadata never carries a notice marker, nor the call that filed a row (BP-031).
         ...(input.metadata !== undefined ? { metadata: taskToolCallerMetadata(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
+        ...(input.questions !== undefined ? { questions: input.questions.map(askOf) } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
         ...(input.target !== undefined ? { target: input.target } : {}),
@@ -1129,7 +1171,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "message steers the task until it finishes, and is sent alone: the words join its brief, " +
       "and a running task's worker reads them before its next model call. It uses none of the " +
       "task's tries and never cancels it. A finished task changes no more, and takes no message: file a " +
-      "follow-up instead. A refusal names the rule.",
+      "follow-up instead. question answers one of the task's open questions, by its id, with message: only one " +
+      "its worker asked you midway; the user answers the rest. A refusal names the rule.",
     // Passthrough, so a filing setting reaches `execute` to be refused by name
     // rather than stripped by the parse.
     inputSchema: z
@@ -1142,6 +1185,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           .min(1)
           .optional()
           .describe("Words for the task while it is open, sent alone: they join its brief. Uses no try, never cancels."),
+        question: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("The id of the open question message answers (getTask lists them under holds). Sent with message only."),
+        ...(claimless
+          ? {
+              done: z
+                .boolean()
+                .optional()
+                .describe("A confirm's answer, with question: true gives the go, false says no. message is an optional note."),
+            }
+          : {}),
       })
       .passthrough(),
     outputSchema: z.union([
@@ -1163,6 +1219,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       const message = input.message;
+      // An answer (FIX-2133) is its own write, decided apart from every edit.
+      const question = input.question;
+      const done = (input as { done?: unknown }).done;
+      if (question !== undefined || done !== undefined) {
+        return answerQuestion(ctx, { id: input.id, question, message, done, fields, status: input.status });
+      }
       if (input.status === "cancelled" && (fields.length > 0 || message !== undefined)) {
         const sent = [...fields, ...(message !== undefined ? ["message"] : [])];
         return {
@@ -1248,7 +1310,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // or release, decided by the write, aside) and the steer limit.
       if (message !== undefined) {
         if (isTerminalStatus(current.status)) return lockedError(current, ["message"]);
-        if ((current.steers?.length ?? 0) >= MAX_STEERS) return steerLimitError(input.id);
+        // Each open question keeps its answer's place under the cap (FIX-2133).
+        if (steerPlacesTaken(current) >= MAX_STEERS) return steerLimitError(input.id);
         if (collection.steer === undefined) {
           return {
             ok: false as const,
@@ -1310,6 +1373,81 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
+  /**
+   * Answer one of a task's open questions or confirms (FIX-2133 D1): the
+   * user's words, kept as a steer carrying the question's id, which join the
+   * brief; the last answer lets the work go on, in the same write.
+   *
+   * Before it reads a status or a question it checks the caller reaches the
+   * row: the user, tenant and org the filing ran under, compared as the
+   * engine compares a request's (BP-031). A row it doesn't reach is answered as
+   * not found, with nothing written. Through the public action (a screen) it
+   * answers any open question or confirm, as the user; through the filer's own
+   * tool, only a question the task's worker asked it midway, on a task not
+   * routed to a workstream (ER-4). The sender is how the caller was built and
+   * who the request was verified as, never input.
+   */
+  async function answerQuestion(
+    ctx: BlockContext,
+    input: { id: string; question: string | undefined; message: string | undefined; done: unknown; fields: readonly string[]; status: string | undefined }
+  ) {
+    const refuse = (error: string) => ({ ok: false as const, taskId: input.id, error: `${error} Nothing was written.` });
+    if (input.question === undefined) {
+      return refuse("done_without_question: done answers a confirm, and names it with question. Send both.");
+    }
+    if (input.fields.length > 0 || input.status !== undefined) {
+      const sent = [...input.fields, ...(input.status !== undefined ? ["status"] : [])];
+      return refuse(`answer_takes_no_edits: an answer is sent alone, with message, and this one came with ${sent.join(", ")}. Send them as two calls.`);
+    }
+    const collection = await resolve(ctx);
+    if (!collection) return noBoardError;
+    await collection.refresh?.(input.id);
+    const row = collection.get(input.id);
+    if (row === undefined || !callerReaches(ctx, row)) return taskNotFoundError(input.id);
+    const hold = row.holds?.find((h) => h.id === input.question);
+    if (hold === undefined || !isRowHold(hold)) {
+      return refuse(`no_such_question: task "${input.id}" holds no question "${input.question}". Read its open questions with getTask.`);
+    }
+    if (!claimless && (hold.midway !== true || row.target !== undefined || row.targetSessionId !== undefined)) {
+      return refuse(
+        `question_is_the_users: "${input.question}" is the user's to answer` +
+          (hold.midway === true ? ", since the task runs in a workstream" : ", since it was asked when the task was filed") +
+          ". They answer it from their Inbox. Send what you know as a message instead.",
+      );
+    }
+    let text: string;
+    if (hold.ask.kind === "confirm") {
+      if (typeof input.done !== "boolean") {
+        return refuse(`confirm_takes_done: "${input.question}" asks for a yes or a no. Answer it with done: true or false, and a note in message if you like.`);
+      }
+      text = `${input.done ? "Yes, go ahead." : "No."}${input.message !== undefined ? ` ${input.message}` : ""}`;
+    } else {
+      if (input.done !== undefined) return refuse(`question_takes_message: "${input.question}" is a question. Answer it with message.`);
+      if (input.message === undefined) return refuse(`question_takes_message: an answer to "${input.question}" needs its words in message.`);
+      text = input.message;
+    }
+    if (collection.answer === undefined) return refuse(`questions_not_supported: task "${input.id}"'s board keeps no questions.`);
+    const userId = (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
+    const answer: HoldAnswer =
+      via === "tool"
+        ? { hold: hold.id, message: text, from: "filer" }
+        : { hold: hold.id, message: text, from: "user", ...(userId !== undefined ? { by: userId } : {}) };
+    let outcome: TaskWriteOutcome | undefined;
+    try {
+      outcome = await collection.answer(input.id, answer);
+    } catch (err) {
+      if (err instanceof TaskWriteRefusedError) return refusedError(err);
+      throw err;
+    }
+    if (outcome != null && outcome.outcome === "declined") {
+      if (outcome.reason === "answered") return refuse(`question_answered: "${input.question}" on task "${input.id}" was already answered.`);
+      if (outcome.reason === "terminal") return lockedError(collection.get(input.id) ?? { ...row, status: outcome.status }, ["message"]);
+      if (outcome.reason === "no-such-hold") return refuse(`no_such_question: task "${input.id}" holds no question "${input.question}".`);
+      return declinedWriteToolError(input.id, outcome, "The answer was not kept.");
+    }
+    return { ok: true as const };
+  }
+
   /** The refusal past the most messages a task takes (FIX-2086 D1): names the limit and the move. */
   function steerLimitError(id: string) {
     return {
@@ -1323,27 +1461,22 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   /**
    * What a running task waits on while no worker holds it (FIX-2077's
-   * `waitingOn`), and, while that is a user, the stop it waits on
-   * (`waitingFor`, FIX-2129): its kind, prompt and deadline. A read
-   * convenience, never where a screen lists what waits for a user.
+   * `waitingOn`), and what holds it for a person (FIX-2133): its open holds,
+   * a question or a confirm on the row, or a task run's stop, each with what
+   * it asks and when it falls due. One shape for every stop.
    */
   const waitingShape = {
-    waitingOn: z.enum(["user", "wait", "filed", "steer"]).optional(),
-    waitingFor: z
-      .object({
-        kind: z.enum(["approval", "review", "input"]),
-        prompt: z.string(),
-        title: z.string().optional(),
-        deadline: z.number().optional(),
-        requestId: z.string(),
-        suspensionId: z.string(),
-      })
-      .optional(),
+    waitingOn: z.enum(["wait", "filed", "steer"]).optional(),
+    /** What holds the task now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, question, message })`. */
+    holds: z.array(taskHoldSchema).optional(),
   };
-  const waitingOf = (t: Task) => ({
-    ...(t.waitingOn != null && t.status === "in_progress" ? { waitingOn: t.waitingOn } : {}),
-    ...(t.waitingOn === "user" && t.waitingFor != null && t.status === "in_progress" ? { waitingFor: t.waitingFor } : {}),
-  });
+  const waitingOf = (t: Task) => {
+    const open = openHolds(t);
+    return {
+      ...(t.waitingOn != null && t.status === "in_progress" ? { waitingOn: t.waitingOn } : {}),
+      ...(open.length > 0 ? { holds: open } : {}),
+    };
+  };
 
   const listTasks = defineTool({
     name: named("listTasks"),
@@ -1511,9 +1644,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             .array(
               z.object({
                 message: z.string(),
-                from: z.enum(["filer", "user"]),
+                from: z.enum(["filer", "user", "board"]),
                 by: z.string().optional(),
                 at: z.number(),
+                /** The question it answers, by its hold's id (FIX-2133); absent on a steer that answers none. */
+                answers: z.string().optional(),
                 /** True once the task's current attempt read it. */
                 taken: z.boolean(),
               }),
@@ -1647,6 +1782,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
                   from: steer.from,
                   ...(steer.by !== undefined ? { by: steer.by } : {}),
                   at: steer.at,
+                  ...(steer.answers !== undefined ? { answers: steer.answers } : {}),
                   taken: steer.takenBy === t.attempts,
                 })),
               }

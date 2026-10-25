@@ -29,6 +29,7 @@ import { isDefinedTaskCollection } from "./define-task-collection";
 import { partitionedResourceCollection } from "./partition";
 import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
+import type { FilingStamp } from "./internal";
 
 /** Component-item type emitted on every task lifecycle transition. */
 export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
@@ -159,6 +160,9 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const claimIdentity = readClaimIdentity(options.ctx);
   // Who is adding tasks through this ref: the session owner, server-set.
   const createdBy = options.ctx.session?.identity?.userId;
+  // Where they file it (FIX-2133 D1), and how long a question waits when the
+  // host sets a deadline for a person (the epic's D3): server-set.
+  const filing = filingStampOf(options.ctx);
 
   const onChange = (event: TaskChangeEvent): void => {
     options.ctx.emit.component(
@@ -195,6 +199,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       now: options.now,
       claimIdentity,
       ...(createdBy !== undefined ? { createdBy } : {}),
+      filing,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
       maxTotalRetries: options.maxTotalRetries,
@@ -241,6 +246,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     now: options.now,
     claimIdentity,
     ...(createdBy !== undefined ? { createdBy } : {}),
+    filing,
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
     ...(recordEnding !== undefined ? { recordEnding } : {}),
@@ -337,6 +343,26 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
     sessionId,
     requestId,
     ...(tenantId !== undefined ? { tenantId } : {}),
+  };
+}
+
+/**
+ * What every row this ref files is stamped with beside its filer (FIX-2133):
+ * the tenant and org of the request filing it, from its verified identity
+ * (D1, the caller check on answering a question), and how long a question
+ * waits unanswered when the host sets a deadline for a person's stop
+ * (`RequestHost.userDeadlineMs`; none by default, the epic's D3). Server-set.
+ */
+function filingStampOf(ctx: BlockContext): FilingStamp {
+  const identity = ctx.request?.identity ?? ctx.session?.identity;
+  const tenantId = identity?.tenantId;
+  const orgId = identity?.orgId;
+  const holdDueMs = ctx.requestHost?.userDeadlineMs;
+  return {
+    ...(tenantId !== undefined || orgId !== undefined
+      ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }
+      : {}),
+    ...(typeof holdDueMs === "number" && holdDueMs > 0 ? { holdDueMs } : {}),
   };
 }
 

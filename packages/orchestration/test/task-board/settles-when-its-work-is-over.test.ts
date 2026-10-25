@@ -21,6 +21,7 @@ import {
 } from "@flow-state-dev/engine";
 import { z } from "zod";
 import {
+  askMidway,
   createTaskGate,
   currentWorkerClaim,
   noteTaskAnswer,
@@ -31,6 +32,7 @@ import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/ski
 import {
   createResourceBackedTaskCollection,
   filedWorkHolds,
+  openHolds,
   type Task,
   type TaskChangeEvent,
   type TaskCollectionRef,
@@ -439,13 +441,15 @@ describe("the claim gate settles a task when its work is over", () => {
         return { resumedWith: resolution };
       });
       const first = await h.run();
-      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user" });
+      // The stop for a person is mirrored on the row as its suspension hold (FIX-2133).
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "wait", holds: [{ source: { kind: "suspension" } }] });
 
       // A piece of the task ends (or a check runs) while its own turn waits on the person.
       h.setLaterTurn(async () => "an answer while it waits");
       await h.runLater(later);
 
-      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user", attempts: 1 });
+      // The later request keeps the mirror: the task's own run is still parked on it.
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "wait", attempts: 1, holds: [{ source: { kind: "suspension" } }] });
       expect((await h.row())?.leaseUntil).toBeUndefined();
 
       const resumed = await h.resume(first.requestId!, { ok: true });
@@ -458,7 +462,7 @@ describe("the claim gate settles a task when its work is over", () => {
     const h = await harness();
     h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "human_input", message: "which one?" }));
     const first = await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "user" });
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "wait", holds: [{ ask: { kind: "input", prompt: "which one?" } }] });
 
     expect(await h.stop(first.requestId!)).toBe("stopped");
 
@@ -469,10 +473,10 @@ describe("the claim gate settles a task when its work is over", () => {
   });
 
   it.each([
-    ["human_input", "user"],
-    ["human_approval", "user"],
-    ["external_event", "wait"],
-  ] as const)("a %s stop keeps its claim with no lease, and the resume settles it on attempt 1", async (reason, waitingOn) => {
+    ["human_input", true],
+    ["human_approval", true],
+    ["external_event", false],
+  ] as const)("a %s stop keeps its claim with no lease, and the resume settles it on attempt 1", async (reason, forPerson) => {
     const h = await harness();
     h.setBehaviour(async (ctx) => {
       const resolution = await ctx.suspend!({ reason, message: "waiting" });
@@ -481,7 +485,9 @@ describe("the claim gate settles a task when its work is over", () => {
 
     const first = await h.run();
 
-    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn, attempts: 1 });
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "wait", attempts: 1 });
+    // Only a stop for a person is mirrored on the row (FIX-2133).
+    expect((await h.row())?.holds?.map((hold) => hold.source.kind)).toEqual(forPerson ? ["suspension"] : undefined);
     expect((await h.row())?.leaseUntil).toBeUndefined();
     h.advance(60_000);
     expect(await h.reclaim()).toBeNull();
@@ -491,6 +497,53 @@ describe("the claim gate settles a task when its work is over", () => {
     expect(resumed.error).toBeUndefined();
     expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
     expect((await h.row())?.waitingOn).toBeUndefined();
+    // The resume's admission closed the mirror.
+    expect((await h.row())?.holds).toBeUndefined();
+  });
+});
+
+describe("a task held on its questions midway (FIX-2133)", () => {
+  it("a turn that asks ends unsettled, with no lease; the last answer owes one more turn on its attempt, which settles it", async () => {
+    const h = await harness();
+    const asked: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      asked.push(await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]));
+      return "a partial answer";
+    });
+    await h.run();
+    expect(asked).toEqual([{ ok: true, holds: [expect.any(String)] }]);
+    const held = (await h.row())!;
+    expect(held).toMatchObject({ status: "in_progress", attempts: 1, turn: 1 });
+    expect(held.leaseUntil).toBeUndefined();
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+    // Past the lease: nothing takes it back while the question is open.
+    h.advance(60_000);
+    expect(await h.reclaim()).toBeNull();
+
+    const hold = openHolds(held)[0]!.id;
+    await (await h.ledger()).answer!("t1", { hold, message: "signup_date", from: "user", by: "u1" });
+    h.setBehaviour(async () => "the whole answer");
+    const turn = (await h.reclaim())!;
+    expect(turn).toMatchObject({ attempts: 1, turn: 2 });
+    await h.run(turn);
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: "the whole answer" });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
+  });
+
+  it("one wait per turn: the stop arm refuses to mirror a stop for a person on a row its own questions hold", async () => {
+    // The cancel of the refused stop needs the host's resume, which this harness
+    // has none of: the goal proves it on a real host (FIX-2133, leg e).
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return ctx.waitForUser({ kind: "approval", prompt: "Ship it now?" });
+    });
+    await h.run();
+    const row = (await h.row())!;
+    // The row holds its question alone: no mirror, no wait recorded, not settled.
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(row.waitingOn).toBeUndefined();
   });
 });
 
@@ -510,15 +563,36 @@ describe("a steer no request took gives the task one more turn before it settles
     expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "steer", output: "first answer", attempts: 1 });
     expect((await h.row())?.leaseUntil).toBeUndefined();
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
-    // Past the claim's lease: no reclaim runs the task again.
-    h.advance(60_000);
-    expect(await h.reclaim()).toBeNull();
 
     // The owed turn (the wake's, or its fast-path start) runs with the steer as its message.
     await h.runLater("steerTurn");
 
     expect(h.steerTurns).toEqual([["Use the North America numbers"]]);
     expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the North America numbers", attempts: 1 });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
+  });
+
+  it("with no wake to start it, the claim takes the owed steer turn on its same attempt, and whichever claims first wins (FIX-2133 D3)", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await steer(ledger, "Use the North America numbers");
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "steer", attempts: 1, turn: 1 });
+
+    // The board's claim is the backstop: the same attempt, uncharged, a new turn, the mark cleared.
+    h.setBehaviour(async () => "second answer");
+    const claimed = await h.reclaim();
+    expect(claimed).toMatchObject({ id: "t1", attempts: 1, turn: 2 });
+    expect(claimed?.waitingOn).toBeUndefined();
+    // The steer turn's start, arriving after, finds the turn taken: admitted for nothing, it takes no steer.
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([[]]);
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 1, turn: 2 });
+
+    await h.run(claimed!);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "second answer", attempts: 1 });
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 

@@ -84,8 +84,9 @@ const steerSessionTask = handler({
     const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx as never);
     if (refused !== undefined) throw new SteerRefused(LINE_STEER_REFUSALS[refused]);
     const row = open.ledger.get(open.row.id);
-    // In this session already: the turn runs on this flow.
-    if (row?.waitingOn === "steer") await startOwedSteerTurn(ctx as never, row);
+    // In this session already: the turn runs on this flow. A line that answered
+    // the task's last open question owes it its turn too (FIX-2133).
+    if (row?.waitingOn === "steer" || row?.turnOwed === true) await startOwedSteerTurn(ctx as never, row);
     return { steered: open.row.id };
   }
 });
@@ -198,7 +199,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
         const ledger = await sessionLedger(ctx as never);
         const sessionId = ctx.session.identity.id;
         const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
-        if (row?.waitingOn === "steer") return;
+        if (row?.waitingOn === "steer" || row?.turnOwed === true) return;
         const wakes = ctx.requestHost?.wakes;
         const read = await wakes?.read(STEER_TURN_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(STEER_TURN_ENTRY, read, null);

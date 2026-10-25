@@ -13,7 +13,6 @@
 
 // Schema
 export {
-  MAX_WAITING_FOR_PROMPT,
   taskSchema,
   type Task,
   type TaskClaimIdentity,
@@ -36,6 +35,35 @@ export {
   type TaskSessionSetting,
   type TaskResultSetting,
 } from "./schema/task-init";
+// What holds a task on its row (FIX-2133): one list of holds, and the one
+// predicate every reader asks of it, open holds.
+export {
+  MAX_HOLD_PROMPT,
+  taskHoldSchema,
+  rowHoldSchema,
+  suspensionHoldSchema,
+  type HoldAsk,
+  type HoldReleaser,
+  type RowHold,
+  type SuspensionHold,
+  type TaskHold,
+} from "./schema/hold";
+export {
+  NO_ANSWER_CAME,
+  answerOf,
+  askProblem,
+  hasOpenHold,
+  holdsDue,
+  isRowHold,
+  isSuspensionHold,
+  nextHoldDue,
+  openHolds,
+  openRowHolds,
+  owesTurn,
+  steerPlacesTaken,
+  suspensionHoldOf,
+  type HoldAnswer,
+} from "./collection/holds";
 
 // Filing settings and dependencies (FIX-2080): what a board refuses at filing,
 // and the edit a filing takes until it starts.
@@ -62,7 +90,9 @@ export {
   steersTakenIn,
   steerWrite,
   steerFromLine,
+  shownSteer,
   LINE_STEER_REFUSALS,
+  type ShownSteer,
   type LineSteerRefusal,
   type TaskSteer,
   type SteerInput,

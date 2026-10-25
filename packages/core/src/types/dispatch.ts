@@ -252,6 +252,13 @@ export const taskDispatchInputSchema = z.object({
   taskId: z.string().min(1),
   /** The attempt this dispatch believes it is running. */
   attempt: z.number().int().nonnegative(),
+  /**
+   * The row's turn generation as of the claim: two turns of one attempt are
+   * two claims (a task held on questions midway runs its next turn on its
+   * same attempt). Optional so an envelope persisted before it still parses;
+   * the gate compares it when present.
+   */
+  turn: z.number().int().nonnegative().optional(),
   /** The claimed row's creation stamp. */
   createdAt: z.number(),
   /**

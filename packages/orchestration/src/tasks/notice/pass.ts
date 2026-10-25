@@ -8,6 +8,9 @@
  * 1. **Cancels owed** (`Task.cancelOwed`): a stopped wait whose cancel failed.
  * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
  *    before any notice, so a resent notice names what its ending cancelled.
+ *    Then **held questions past a deadline the host set** (FIX-2133): each
+ *    closes "no answer came", and the last lets the work go on. A question
+ *    with no deadline is never closed here.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
  * 4. **Wait slots lapsed** for a request that has since parked (FIX-2170) or
  *    ended (FIX-2082): released, so an ending held for it is owed to the
@@ -34,6 +37,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
 import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
+import { nextHoldDue } from "../collection/holds";
 import { requestStates } from "../helpers/request-states";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
@@ -112,6 +116,12 @@ export async function payBoardDebts(
     await ref.payOwedCascades?.();
   } catch (error) {
     log("a pass's cascades failed and stay owed", { error: (error as Error).message });
+  }
+  // 2b: held questions past their deadline (FIX-2133): the work goes on without an answer.
+  try {
+    await ref.payHoldDeadlines?.();
+  } catch (error) {
+    log("a pass's question deadlines failed and stay owed", { error: (error as Error).message });
   }
 
   // 4: slots lapsed for a request that has ended. Before the notices, so an
@@ -192,6 +202,9 @@ export async function payBoardDebts(
       }
     }
     if (row.cascadeOwed != null) owe(Math.max(row.cascadeOwed.due, now + NOTICE_DUE_MS));
+    // A held question's deadline, when the host set one (FIX-2133).
+    const held = nextHoldDue(row);
+    if (held !== undefined) owe(Math.max(held, now + NOTICE_DUE_MS));
     // A claimed row's lease: if its worker died, the lease lapses, and the
     // pass at its end reclaims the row.
     if (row.status === "in_progress" && row.leaseUntil != null && !isTerminalStatus(row.status)) owe(row.leaseUntil);

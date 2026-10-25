@@ -64,7 +64,7 @@ import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, type InboxAnswer, type InboxItem, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -193,10 +193,13 @@ export type BoardRow = {
    */
   question?: string;
   /**
-   * The stop a row waiting on the user waits on (FIX-2129), or `null`. The
-   * Inbox lists the task's item from it.
+   * What holds the row (FIX-2133): its questions and confirms, and its run's
+   * stop for a person. Empty when nothing does. The Inbox lists the task's
+   * item from the open ones.
    */
-  waitingFor: NonNullable<InboxRow["waitingFor"]> | null;
+  holds: TaskHold[];
+  /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
+  steers: Array<{ id: string; answers?: string }>;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -467,27 +470,25 @@ function strings(value: unknown): string[] {
 }
 
 /**
- * The stop a row waiting on the user publishes (FIX-2129), or `null`: one
- * missing its request, its suspension, an ask the Inbox knows or a prompt
- * reads as none, never a guess.
+ * The holds a row publishes (FIX-2133), each read against the hold's own
+ * shape: one that doesn't parse is none, never a guess.
  */
-function toWaitingFor(value: unknown): NonNullable<InboxRow["waitingFor"]> | null {
-  const requestId = text(field(value, "requestId"));
-  const suspensionId = text(field(value, "suspensionId"));
-  const asks = field(value, "kind");
-  const prompt = field(value, "prompt");
-  if (requestId === null || suspensionId === null || typeof prompt !== "string") return null;
-  if (asks !== "approval" && asks !== "review" && asks !== "input") return null;
-  const title = text(field(value, "title"));
-  const deadline = field(value, "deadline");
-  return {
-    requestId,
-    suspensionId,
-    kind: asks,
-    prompt,
-    ...(title !== null ? { title } : {}),
-    ...(typeof deadline === "number" ? { deadline } : {}),
-  };
+function toHolds(value: unknown): TaskHold[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((hold) => {
+    const parsed = taskHoldSchema.safeParse(hold);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** A row's steers as the Inbox reads them: each one's id, and the question it answers when it answers one. */
+function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((steer) => {
+    const id = text(field(steer, "id"));
+    const answers = text(field(steer, "answers"));
+    return id === null ? [] : [{ id, ...(answers !== null ? { answers } : {}) }];
+  });
 }
 
 /**
@@ -514,7 +515,8 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
       ? { question: text(field(data, "feedback")) as string }
       : {}),
-    waitingFor: toWaitingFor(field(data, "waitingFor")),
+    holds: toHolds(field(data, "holds")),
+    steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),
@@ -580,7 +582,7 @@ export function inboxSection(
   return {
     ok: true,
     value: inboxItems<Ask>({
-      rows: rows.map((row) => ({ ...row, board: row.boardRef })),
+      rows: rows.map((row) => ({ ...row, board: row.boardRef, holder: holderOf(row) })),
       suspensions: asks.value.map((ask) => ({
         sessionId: ask.sessionId,
         flowId: ask.flowId,
@@ -596,6 +598,23 @@ export function inboxSection(
     }),
   };
 }
+
+/**
+ * Where a row's questions are answered (FIX-2133): the board's `updateTask`
+ * action on the conversation that holds it, as the signed-in user. A board
+ * that isn't a conversation's has no action Shift Manager names: `null`,
+ * and its questions read as unanswerable here.
+ */
+function holderOf(row: BoardRow): InboxRow["holder"] {
+  return row.boardRef === conversationBoardRef(row.holderSessionId) ? { sessionId: row.holderSessionId, action: UPDATE_TASK_ACTION } : null;
+}
+
+/**
+ * The action a conversation answers a task's question through: the task
+ * tools' `updateTask`, named for the conversation board's id (`tasks`) by the
+ * task tools' action rule.
+ */
+export const UPDATE_TASK_ACTION = "updateTask_tasks";
 
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
@@ -617,6 +636,13 @@ export type LabReader = {
    * names no owner, or when the Lab refuses the answer.
    */
   resume(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
+  /**
+   * Answer one of an Inbox item's holds through orchestration's one answer
+   * call, routed by its source: a task's question or confirm through its
+   * board's `updateTask`, as the user (FIX-2133). Rejects with the board's
+   * refusal.
+   */
+  answerHold(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /**
@@ -1026,5 +1052,7 @@ export function createLabReader(client: Client): LabReader {
     );
   };
 
-  return { read, readBoard, resume };
+  const answerHold: LabReader["answerHold"] = (hold, answer) => inbox.answerHold(hold, answer);
+
+  return { read, readBoard, resume, answerHold };
 }

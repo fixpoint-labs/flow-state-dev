@@ -3,14 +3,17 @@
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
+import { openHolds } from "../tasks/collection/holds";
+import type { Task } from "../tasks/schema/task";
 import type { InboxHold, InboxRow, InboxSuspension } from "./types";
 
 /** Why a hold in a session that names no owning flow can't be answered. */
 export const NO_FLOW_UNANSWERABLE =
   "This ask can't be answered from the Inbox: its session was written before sessions recorded their owning flow, so there is no flow to answer it through.";
 
-/** Why a row hold can't be answered yet: its answer path, the board's `updateTask`, lands with the row holds. */
-export const ROW_HOLD_UNANSWERABLE = "Answering a task's question from the Inbox arrives with the row holds.";
+/** Why a row hold whose board the reader can't place can't be answered. */
+export const NO_BOARD_UNANSWERABLE =
+  "This question can't be answered from the Inbox: the reader couldn't name the board's session and flow it is answered through.";
 
 /** An item's id for a task row: one per row, by its board and its task. */
 export function taskItemId(board: string, taskId: string): string {
@@ -25,7 +28,7 @@ export function isOpenRow(row: InboxRow): boolean {
 /** Why a hold with this source can't be answered, or `null` when it can. */
 function unanswerableSource(source: InboxHold<unknown>["source"]): string | null {
   if (source.kind === "suspension") return source.flowId === null ? NO_FLOW_UNANSWERABLE : null;
-  return ROW_HOLD_UNANSWERABLE;
+  return source.flowId === null || source.sessionId === null || source.action === null ? NO_BOARD_UNANSWERABLE : null;
 }
 
 /** A hold, its answerable flag set from its source. */
@@ -46,31 +49,61 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
 }
 
 /**
- * A row's open holds for the user. Until the row holds land, the one a row can
- * carry is a task run's stop, as FIX-2129 records it in `waitingFor`, on a
- * running row. Not `waitingOn`: a notice's or a steer's turn admitted while
- * the stop waits clears it and keeps `waitingFor` (`keepWaitingFor`), and the
- * stop still waits on the user.
+ * A row's open holds for the user (`actor: "user"`), by the one predicate the
+ * board reads (`openHolds`): its questions and confirms, answered through the
+ * board, and its run's stop for a person, answered through the engine in the
+ * session its run link names.
  */
 export function openUserHolds<TDetail>(
   row: InboxRow,
   flowOf: (sessionId: string) => string | null | undefined,
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
-  const stop = row.waitingFor;
-  if (row.status !== "in_progress" || stop == null || row.run == null) return [];
-  const found = foundFor(stop.suspensionId);
-  // The run's flow: as its session names it, else as the reader found it where the stop is.
-  const flowId = flowOf(row.run.sessionId) ?? found?.flowId ?? null;
-  return [
-    withAnswerable<TDetail>({
-      id: stop.suspensionId,
-      source: { kind: "suspension", flowId, sessionId: row.run.sessionId, requestId: stop.requestId, suspensionId: stop.suspensionId },
-      ask: { kind: stop.kind, prompt: stop.prompt, ...(stop.title !== undefined ? { title: stop.title } : {}) },
-      // When it was raised: the stop's own time, which a later turn on the row doesn't move; the row's only without one.
-      openedAt: found?.since ?? row.updatedAt ?? 0,
-      ...(stop.deadline !== undefined ? { due: stop.deadline } : {}),
-      ...(found?.detail !== undefined ? { detail: found.detail } : {}),
-    }),
-  ];
+  const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
+  const holds: InboxHold<TDetail>[] = [];
+  for (const hold of open) {
+    if (hold.actor !== "user") continue;
+    const title = hold.ask.title !== undefined ? { title: hold.ask.title } : {};
+    const due = hold.due !== undefined ? { due: hold.due } : {};
+    if (hold.source.kind === "row") {
+      const holder = row.holder ?? null;
+      holds.push(
+        withAnswerable<TDetail>({
+          id: hold.id,
+          source: {
+            kind: "row",
+            flowId: holder === null ? null : (flowOf(holder.sessionId) ?? null),
+            sessionId: holder?.sessionId ?? null,
+            action: holder?.action ?? null,
+            taskId: row.id,
+          },
+          ask: { kind: hold.ask.kind, prompt: hold.ask.prompt, ...title },
+          openedAt: hold.openedAt,
+          ...due,
+        }),
+      );
+      continue;
+    }
+    // A task run's stop: its answer goes to the run's session, where it is parked.
+    if (row.run == null) continue;
+    const found = foundFor(hold.source.suspensionId);
+    const flowId = flowOf(row.run.sessionId) ?? found?.flowId ?? null;
+    holds.push(
+      withAnswerable<TDetail>({
+        id: hold.source.suspensionId,
+        source: {
+          kind: "suspension",
+          flowId,
+          sessionId: row.run.sessionId,
+          requestId: hold.source.requestId,
+          suspensionId: hold.source.suspensionId,
+        },
+        ask: { kind: hold.ask.kind, prompt: hold.ask.prompt, ...title },
+        openedAt: found?.since ?? hold.openedAt,
+        ...due,
+        ...(found?.detail !== undefined ? { detail: found.detail } : {}),
+      }),
+    );
+  }
+  return holds;
 }

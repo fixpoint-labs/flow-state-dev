@@ -10,10 +10,9 @@ import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "../steers";
 import { QUEUED_WAIT } from "./retired-shapes";
+import { taskHoldSchema } from "./hold";
 
 /** The base Task schema. */
-/** The most characters of a stop's prompt a task row copies (`Task.waitingFor`): a list of tasks stays small. */
-export const MAX_WAITING_FOR_PROMPT = 1_000;
 
 export const taskSchema = z.object({
   id: z.string(),
@@ -500,54 +499,67 @@ export const taskSchema = z.object({
 
   /**
    * What keeps this running task open while no worker holds it (FIX-2077 D1):
-   * `"user"`, a stop that waits for a user (FIX-2129: `waitForUser`, or a raw
-   * `human_approval` or `human_input` stop), with what it asks in
-   * `waitingFor`; `"wait"`, any other suspension (a webhook, a call);
-   * `"filed"`, work it filed that still holds it. Only on an
+   * `"wait"`, its own request is suspended (a stop for a person, which the
+   * row's suspension hold in `holds` mirrors, or any other: a webhook, a
+   * call); `"filed"`, work it filed that still holds it. Only on an
    * `in_progress` row. A waiting row has no lease, so the reclaim leaves it
    * alone: that task is never run again by a lapse. `"steer"`, a steer no
    * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
    * no lease. The request admitted for it next clears it and starts a lease;
    * every ending, and every claim, clears it.
    *
-   * Not FIX-2080's `held`, which is a status before a start: this applies only
-   * after one. Server-written by the claim gate (`setWaitingOn`), never by a
-   * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
-   * `"queued"`, which a row stored while a queued message held it open
-   * carries, reads as `"filed"`: its request had answered (the retired-shape
-   * map's `queued` entry).
+   * Not FIX-2080's `held`, which is a status before a start, nor `holds`,
+   * which says what a person holds the row on. Server-written by the claim
+   * gate (`setWaitingOn`), never by a caller. **Absent, or `null`, reads as
+   * waiting on nothing** (BP-030). `"queued"`, which a row stored while a
+   * queued message held it open carries, reads as `"filed"`: its request had
+   * answered (the retired-shape map's `queued` entry).
    */
   // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
   // it, and every src read of a stored row goes through `withRetiredShapes` first.
   waitingOn: z
-    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["user", "wait", "filed", "steer"]).nullable())
+    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["wait", "filed", "steer"]).nullable())
     .optional(),
 
   /**
-   * The stop a task waiting on a user waits on (FIX-2129): its request and
-   * id, what it asks for (`kind`), its prompt (cut to
-   * {@link MAX_WAITING_FOR_PROMPT} characters) and heading, and its deadline
-   * (epoch ms), absent when it has none. Copied from the request's ending in
-   * the write that sets `waitingOn: "user"` and drops the lease, so a reader
-   * lists tasks with no read of the suspension store. Admission and every
-   * ending clear it, except a cancel's, which keeps it until the cancelled
-   * resume it owes the stop (`resumeOwed`) is paid.
+   * What holds the task on its row (FIX-2133 D2): its questions and confirms
+   * (`source.kind: "row"`), and the mirror of a task run's stop for a person
+   * (`"suspension"`), oldest first. *Open holds* (`openHolds`) is the one
+   * predicate every reader asks: the claim never takes a row with one, the row
+   * settles with one only by cancel, and the Inbox lists a row's open
+   * `actor: "user"` holds. Before its start a held row is `pending`; midway,
+   * `in_progress` with no lease. A cancel closes every hold.
    *
-   * A read convenience and the address of that debt, never a listing source:
-   * the Inbox lists a suspension from the suspensions themselves. Server-
-   * written by the claim gate (`setWaitingOn`), never by a caller. **Absent**
-   * on every other row.
+   * Server-written by the collection's one hold write (`collection/holds`),
+   * never by a caller. **Absent** on a row nothing has held.
    */
-  waitingFor: z
-    .object({
-      requestId: z.string(),
-      suspensionId: z.string(),
-      kind: z.enum(["approval", "review", "input"]),
-      prompt: z.string(),
-      title: z.string().optional(),
-      deadline: z.number().optional(),
-    })
-    .optional(),
+  holds: z.array(taskHoldSchema).optional(),
+
+  /**
+   * The row's turn generation (FIX-2133 D3): advanced by every claim of the
+   * row, a same-attempt re-entry's included, and carried on the claim ticket,
+   * so a turn's late write never lands after its successor's claim. **Absent
+   * reads as 0**, a row never claimed.
+   */
+  turn: z.number().int().nonnegative().optional(),
+
+  /**
+   * The last open row hold of a running task closed (FIX-2133 D3): it owes one
+   * more turn on its same attempt, with no lease. The claim takes it, using
+   * no attempt, and clears it in the claim's write; a wake only starts that
+   * sooner. Not FIX-2086's `waitingOn: "steer"`, which keeps its own meaning.
+   * Server-written. **Absent** on every other row.
+   */
+  turnOwed: z.literal(true).optional(),
+
+  /**
+   * The tenant and organization the filing request ran under, from its
+   * verified identity (FIX-2133 D1), beside the user in `createdBy`. The board's
+   * `updateTask` reaches a row's holds only for a caller in the same user,
+   * tenant and org. Server-only (`SERVER_ONLY_TASK_FIELDS`). **Absent** on a
+   * row filed with neither.
+   */
+  filedUnder: z.object({ tenantId: z.string().optional(), orgId: z.string().optional() }).optional(),
 
   /**
    * The wait on this row is over (its turn was stopped, or it timed out) but

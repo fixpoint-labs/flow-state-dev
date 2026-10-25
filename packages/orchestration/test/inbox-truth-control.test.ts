@@ -1,8 +1,8 @@
 /**
  * Control for the Inbox check's independence (FIX-2133): the list's own
  * helper is broken here (its status filter dropped, so a finished row's kept
- * `waitingFor` lists), and the check must go red. It can only, because its
- * truth reads the rows' fields itself and never calls that helper.
+ * mirror lists), and the check must go red. It can only, because its truth
+ * reads the rows' fields itself and never calls that helper.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,7 +10,7 @@ vi.mock("../src/inbox/holds", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/inbox/holds")>();
   return {
     ...real,
-    // The broken helper: any row's recorded stop is open, whatever its status.
+    // The broken helper: any row's holds are open, whatever its status.
     openUserHolds: (row: Parameters<typeof real.openUserHolds>[0], ...rest: unknown[]) =>
       (real.openUserHolds as (...args: unknown[]) => unknown)({ ...row, status: "in_progress" }, ...rest),
   };
@@ -21,13 +21,21 @@ const { reconcileInbox, rowTruthOf, taskItemId } = await import("../src/inbox/ch
 
 describe("control broken-list-helper", () => {
   it("a list helper that lists a cancelled row's kept stop turns the check red", () => {
-    // A cancel keeps the row's waitingFor until the cancelled resume it owes is paid.
+    // A cancel keeps the row's mirror until the cancelled resume it owes is paid.
     const cancelled = {
       board: "b.tasks",
       id: "t1",
       status: "cancelled",
       run: { sessionId: "run_t1", requestId: "req_t1" },
-      waitingFor: { requestId: "req_t1", suspensionId: "sp1", kind: "approval" as const, prompt: "Ship it?" },
+      holds: [
+        {
+          id: "sp1",
+          actor: "user" as const,
+          openedAt: 1,
+          source: { kind: "suspension" as const, requestId: "req_t1", suspensionId: "sp1" },
+          ask: { kind: "approval" as const, prompt: "Ship it?" },
+        },
+      ],
     };
     const items = inboxItems({ rows: [cancelled], suspensions: [], flowOf: () => "asker" });
     expect(items.map((i) => i.id)).toEqual([taskItemId("b.tasks", "t1")]);
