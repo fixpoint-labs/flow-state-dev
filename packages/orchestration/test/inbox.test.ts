@@ -328,8 +328,8 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
   describe("the answer, through the board's updateTask on the board's session", () => {
     const board = (output: unknown) => {
       const send = vi.fn(async () => ({ id: "req_answer" }));
-      const status = vi.fn(async () => ({ status: "completed" }));
-      const flow = vi.fn(() => ({ send, request: () => ({ status }) }));
+      const wait = vi.fn(async () => ({ status: "completed" }));
+      const flow = vi.fn(() => ({ send, request: () => ({ wait }) }));
       const requests = vi.fn(async () => [{ id: "req_answer", result: { output } }]);
       return { send, flow, inbox: createInboxClient({ flow, sessions: { requests } } as unknown as Client) };
     };
