@@ -838,6 +838,318 @@ drain returns while its tasks still run, and an `onReview: "exit"` board, whose 
 with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
+## Task tools
+
+```ts
+import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
+```
+
+`taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
+`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's own tool, `reportProgress`, is built apart
+([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
+returns or throws.
+`createTaskToolsCapability(resolver, roster?)` points them at a
+board, and an optional roster makes `createTask` and `updateTask` refuse
+an assignee it does not name. The roster can be a function of the running block's
+context, read on each call that checks an assignee, for a board whose team changes
+while it is in use. `taskToolActions` exposes the same tools as flow
+actions. With no board resolvable, a call returns
+`{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
+`createTask`, is a JSON object: a string, number or array is refused by the
+tool's schema, so a model that would send the payload as a JSON string is told to send the object.
+A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
+answers it when a task has one, and a task filed without one is labelled by its goal.
+`createTask` also takes `context`, `labels`, `maxAttempts` and `held: true`, which files the task
+without starting it until `updateTask` releases it. A task filed from a turn that is working a
+task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
+
+For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
+dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
+`tools:`. Any block can be a tool, and only the finalized result re-enters the
+caller's history.
+
+`updateTask({ id, ...fields })` takes its fields flat, each with one rule, checked as part of the
+write (`patchSettings`), so a task that starts between a read and the write
+is refused, not edited:
+
+| Field | Allowed |
+|---|---|
+| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
+| `status: "held"` / `"pending"` | Before the task first starts |
+| `status: "cancelled"` | Until the task finishes, sent alone |
+| `message` | Until the task finishes, sent alone ([steers](#messages-on-an-open-task)) |
+
+*Before it first starts* means no attempt ever claimed it (`hasStarted(task)`), so a task back in
+`pending` after a failed attempt stays locked. `labels` replaces the list; `metadata` merges.
+`TASK_FIELD_RULES` and `lockedFields(task, fields)` export the table. The refusals are
+`field_locked_after_start` (naming the fields and the status), `task_finished` (a message
+included: "a finished task takes no message; file a follow-up"), `cancel_takes_no_edits`,
+`message_takes_no_edits` (a message is its own write, so it is sent alone), `nothing_to_update`,
+`steer_limit` and `message_not_supported` (a board whose collection keeps no steers). Every
+check runs before the write, so a refused call writes nothing. A cancel through the tool writes
+`cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
+
+On a board that starts work on filing, `createTask` starts a task as soon as it is filed. Pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
+ready row as soon as it's written, the way a Workforce conversation does; `taskToolActions(collectionId,
+resolve, roster, { dispatches: true })` does the same for the actions. On such a board a task
+filed `held: true` waits until `updateTask({ id, status: "pending" })` releases it, and the same
+write can name its `assignee`. `dispatches` defaults to `false`: `createTask` then files a row
+the drain runs.
+
+Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
+working the task or the one that last did. A row has none until a run starts on it, and a new
+claim clears it until the next run starts.
+
+`getTask({ id })` returns one task whole, for a model that has to answer from what the
+task found rather than from its `listTasks` row: its goal, `context`, `input`, the fields
+`updateTask` edits (`deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts`),
+`status`, `attempts`, `statusNote`, `filedByTask`, `output` with `checkpoint: true` when it is a
+reported checkpoint, `error`, `question`, `followUpOf`, `run` and `completedAt`, and `current`:
+the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`, when one exists.
+A `listTasks` row names it by id only (`current: { id }`).
+`output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
+comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `question` is set only
+on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
+board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+
+> **Which surfaces are capped.** The caps come from the code that constructs the
+> collection, so they cover boards `taskBoard` builds itself, not the capability
+> surface on its own. A resolver you hand to `createTaskToolsCapability(resolver)`
+> is bounded only if the collection it returns was built with
+> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
+
+**Every `taskTools` call reports a problem the same way.** A change the task's
+state does not permit is a recoverable tool result, not a throw: `updateTask` on a
+started task answers `{ ok: false, error: "field_locked_after_start: …" }`, naming the
+fields and the task's status. So the recoverable set across the tools is
+`no_delegation_board`, `task_not_found`, `unknown_assignee`,
+`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
+`field_locked_after_start`, `task_finished`, `cancel_takes_no_edits`, `nothing_to_update`,
+`create_task_does_not_wait`, `terminal_task_write_declined`,
+`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
+`task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
+(`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
+`TaskFilingRule`), and the `wait_*` codes when `getTask`
+[waits](#waiting-for-a-tasks-answer). A
+coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+`not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
+and [follow-ups](#following-up-on-a-finished-task), below.
+
+Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
+`enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
+string, except that `task_not_found` carries a sentence when a follow-up names a task
+that isn't on the board. Every other code is followed by `: ` and a sentence of guidance for the
+model, so `error === "field_locked_after_start"` never matches. Use
+`error.startsWith("field_locked_after_start")`. There is no separate structured
+`code` field.
+
+Only the *tool* boundary translates a refusal into a result. Driving a collection
+directly throws, and the error is an exported class you can catch:
+
+```ts
+import { IllegalTaskTransitionError } from "@flow-state-dev/orchestration";
+
+try {
+  await collection.complete(taskId, output);
+} catch (err) {
+  if (err instanceof IllegalTaskTransitionError) {
+    // err.taskId, err.from, err.to — the refused move.
+  }
+  throw err;
+}
+```
+
+Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
+timeout, or a storage failure is not a task-state problem and should keep
+propagating.
+
+The one exception is a call that asked for it. `complete` and `fail` accept the
+advisory options described under [TaskCollection](#taskcollection) above, and a
+refused transition on such a call is a returned `declined` verdict rather than a
+throw, so it never reaches this `catch`.
+
+At the `taskTools` boundary a `declined` verdict **does** become a tool
+result: an `updateTask` cancel or edit that the collection declines answers
+`{ ok: false, error: … }` rather than reporting a success that did not happen. `ok: true` from those tools means "the
+backing reported no decline", not "the write happened". For the two built-in
+backings those coincide, but a custom ref that reports nothing is carried past
+rather than having a verdict synthesized for it.
+
+### Waiting for a task's answer
+
+`getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
+until the task ends or the deadline passes, and returns the task as `getTask` always does. The
+deadline is milliseconds from the call, five minutes by default, within the host's
+`waitDeadlines` bounds. A task that already ended is returned at once, and your `onTaskSettled`
+block isn't called for it: a task's notice waits while the request that filed it runs, so a wait
+in that request reads the ending first. If the notice was taken by `onTaskSettled` before the wait
+reads the task (the filing request was parked, or another request waits), the wait returns
+`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task until `onTaskSettled` has handled that ending, including while a failed notice
+waits to be sent again. A notice turn that is parked, waiting on a person for example, still counts
+as handling it, so a wait answers `arrivesAsNotice` until that turn ends. The notice is how the
+session hears that ending. After that, a wait returns the task as `getTask` does, with its output.
+At the deadline the task runs on and nothing is cancelled. If it ends while the
+waiting request is still running, that request's next `getTask` on it returns the ending. If
+the request parks or ends first, the ending goes to `onTaskSettled`, once, and a wait on it after the
+resume returns `arrivesAsNotice` or the task by the same rule. When the answer
+is how the session hears that a task failed or was cancelled, in place of its notice, it carries
+`cancelled` beside `task`: the dependents that ending cancelled, as the notice would have named
+them. Any other `getTask` answer leaves them to the notice. Waits nest: a
+task's own turn may wait too. A wait is refused when it would make a chain of more than five
+waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
+on.
+`listTasks` marks a row a request is parked on `waitedOn: true`. `createTask` never waits: it
+refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the refusal of the old fields -->
+`timeoutMs` with `create_task_does_not_wait`, and nothing is filed. See
+[Task board → Waiting on a task](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-task)
+for the refusals.
+
+`wait` and `deadline` are in `getTask`'s schema only on a board that starts work on filing, also
+resumes waits, and runs on a host that can hold a wait: pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
+the board also hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
+session's `onTaskSettled` request resumes the waiting turn when its task ends; after a crash the
+session's wake sends it again), and the host has durable execution, a running durability sweeper
+and a store that keeps wakes (`canHoldWait`). `resumesWaits` defaults to `false`. A composing
+layer that builds its own capability gets the same per-turn list from
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
+
+Two functions sit under the option, for a layer that builds its own board surface:
+
+- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, ownBoard?, message? }, checked?)`, from
+  `@flow-state-dev/orchestration/task-board`, waits on a task already filed from inside a
+  block with a stable identity. `key` is what the wait is recorded under with the request (a
+  tool call's logical id), and `step` the model step it belongs to (one wait per step). It runs
+  every check before anything is written and resolves to `{ ok: true, task, ended }` (the task
+  once it ended, or as it stands at the deadline), `{ ok: false, error, message }` with a
+  `wait_*` refusal, or `{ ok: false, error: "wait_ended_the_request" }` when a person stopped
+  the request or its own task was cancelled. `waitAgain: true` waits again at each deadline, as
+  a plan board's drain does on a row it handed over. Each new park counts the chain again,
+  except a drain's own wait (`ownBoard: true`), which is not counted again.
+- `checkWait(ctx, collection, taskId, options)` runs the same checks without waiting: the
+  refusal, or the checked wait to pass to `waitOnTask` as `checked`, which then doesn't check
+  again. A drain uses it to refuse a row before it hands the row over.
+
+`canHoldWait(ctx)` (re-exported from `@flow-state-dev/core`) and `waitGateId` are on the same
+subpath.
+
+A plan board can hand a row to another session and wait on it there: give `taskBoard` a
+`newSession` dispatcher, and a row filed `session: "new"` runs in a session of its own while
+the drain parks on it. The drain waits for the row to end, however many deadlines that takes,
+before it starts the rows that depend on it. No completion notice is sent for the row. A plan
+board may hold dispatcher assignees too, whose rows it waits on the same way; a plan board's
+dispatcher with `wait: false` and a delegation board's with `wait: true` are refused. A drain
+that fails after it handed a row over fails its request, naming the row, whatever `onError`
+says, and no row that hasn't started runs. It writes nothing on the handed-over row: when the
+dispatch itself threw, nothing may be running it, so it stays `in_progress` until its lease
+lapses and the plan's next run claims it again. A `getTask({ id, wait: true })` on a row the
+drain handed over is refused `wait_on_plan_step` for as long as the drain waits on it, deadlines
+included, so no other wait can take the slot the plan waits with. Declare
+the board's `onTaskSettled` entry on the flow: without it, the board still builds, and the drain hears a
+row's ending at its next check-in, up to the host's default wait deadline later.
+
+A waiting turn whose task has ended is resumed by the board's pass, which the filing session's
+`onTaskSettled` runs (`payBoardDebts`, under [Task board](#task-board)). The same pass cancels each task whose wait was
+stopped while its own cancel failed (`Task.cancelOwed`), and releases a wait slot that lapsed
+for a request that has since ended, so an ending held for that request reaches `onTaskSettled`
+even when its process died. Until that pass runs, a cancelled task's worker may keep running.
+
+**Migrating from `resumeOwedWaits`.** `resumeOwedWaits(ctx, collection)` is no longer exported.
+The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
+sure the flow holding the board declares `onTaskSettled`.
+
+### When a task stops on a question
+
+A worker that can't go on without an answer parks its task on a question until someone
+answers it. Anyone who can call `answerTask` on the board can answer.
+`createParkOnQuestion({ resolve })` builds the worker's side:
+`parkOnQuestion({ question })` parks the task the current turn is working on, and
+`offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
+task that no turn is waiting on (`getTask` with `wait`).
+
+`answerTask({ taskId, answer })` answers a task parked on its worker's question:
+the task goes back to `pending` with the answer, its worker picks it up again in the
+same session, the next attempt gets the answer as `input.answer`, and the claim that
+follows isn't charged against `maxAttempts`.
+It takes only a task its worker parked with `parkOnQuestion`, for the question it
+is waiting on now. It declines any other task (including one parked with `awaitReview`,
+one parked while a person talks to its worker, or one waiting on its own sub-tasks), a late answer to a question the task has
+moved past (`not_parked_on_question: …`), and a finished task
+(`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
+its own; on your own board, drain it afterwards. An answered task has started, so `updateTask`
+refuses to move it to another worker, and the answer reaches the session that asked.
+
+### Progress from the worker
+
+`createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
+and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
+turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
+(at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
+task carries as its output (`Task.checkpointed: true`; `getTask` shows `checkpoint: true`). Neither changes the task's status. When the
+task completes, a checkpoint stays as its output; a failed attempt keeps it for the next one. On a
+finished task it answers `task_finished` and writes nothing. The collection side is
+`TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
+
+### Following up on a finished task
+
+`createTask` takes `followUpOf` to file new work on a task: the follow-up
+is a new task, with the same worker, that runs in that task's session. Its
+row carries that task's `session`, `target` and `targetSessionId`, so a
+follow-up of a task filed with `session: "ongoing"`, or filed for a
+workstream, runs in that same session. If the session it runs in no
+longer exists, the follow-up runs nowhere else: its hand-over fails it with
+`session-not-found`, and its filer hears the failure. It also carries that
+task's `resultTo` (where the task's result is delivered), so its result goes
+to the same place. When that is `"conversation"` (a Workforce conversation),
+the follow-up gets one attempt, as every task whose result goes there does.
+A follow-up takes no
+`session`, `target` or `resultTo` of its own (`follow_up_takes_no_session`,
+`follow_up_takes_no_target`, `follow_up_takes_no_result_to`). It keeps that worker: `updateTask` won't move it
+(`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
+(`follow_up_takes_no_assignee`) and a task that never ran with a worker
+(`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
+waits until that task ends, then runs. The task it follows never changes. If two
+follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
+
+### Messages on an open task
+
+`updateTask({ id, message })` keeps a message on a task that hasn't finished: from the filer's
+model through the tool (`from: "filer"`), or from a person through the `updateTask_<board>` action
+(`from: "user"`, `by` their id from the request's verified identity). The collection write is
+`TaskCollectionRef.steer(id, { message, from, by?, key? })`, appended to `Task.steers` (at most
+`MAX_STEERS`, 20; past that it declines `steer-limit`; on a finished task, `terminal`). Its change
+event kind is `"steered"`. No status changes, no attempt is used, no ending is recorded.
+
+Where a message lands:
+
+- **Before the first claim**: the claim marks every steer taken by the attempt, and the worker
+  input carries them (`TaskWorkerInput.steers`), so the first brief has them.
+- **While a request runs the task**: `createSteerContext({ resolve })` is a context preset that,
+  before each model call, takes the steers no earlier read took (`takeSteers(id, { claim,
+  takenIn })`, fenced to the claim) and renders them. `renderSteers`, `runningTaskOf` and
+  `takeRunningSteers` are its parts, for a worker of your own.
+- **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
+  "steer"`, and the host starts the turn it is owed.
+- **After the request's last model call**: an untaken message gives the task one more turn on
+  the same attempt before it settles, run by the entry you name in
+  `taskLedgers({ endRules: { steerTurn: { entry } } })`. A message that lands while the task is
+  settling still gets it: the completion itself declines while one is untaken
+  (`refuseUntakenSteers`, reason `untaken-steers`). Without `steerTurn`, the task settles and the
+  message stays untaken, so on such a board a late message may not be acted on.
+
+`getTask` returns the messages as `steers` (`{ message, from, by?, at, taken }`). A message a
+request takes mid-run shows in the task's session as a line from its sender
+(`showTakenSteers`); a line typed in the session is there already.
+
+### Upgrading from stores written by an older version
+
+Rows written before steers existed read in their new shape, with nothing to run. A row stored with
+`reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
+at the latest line in its session, so its next turn reads it. A row stored `parked` for a
+person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged.
+
 ## Skills
 
 A skill is inline instructions injected into a generator's prompt. Bind skills to
@@ -913,318 +1225,8 @@ itself.
 A skill can't declare a team of its own. A `SKILL.md` with an `agents:` block is
 refused when it loads; give the work to workers on a task board instead.
 
-### Task tools
-
-`taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
-`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's fifth tool, `reportProgress`, is built apart
-([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
-returns or throws.
-`createTaskToolsCapability(resolver, roster?)` points them at a
-board, and an optional roster makes `createTask` and `updateTask` refuse
-an assignee it does not name. The roster can be a function of the running block's
-context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. `taskToolActions` exposes the same tools as flow
-actions. With no board resolvable, a call returns
-`{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
-`createTask`, is a JSON object: a string, number or array is refused by the
-tool's schema, so a model that would send the payload as a JSON string is told to send the object.
-A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
-answers it when a task has one, and a task filed without one is labelled by its goal.
-`createTask` also takes `context`, `labels`, `maxAttempts` and `held: true`, which files the task
-without starting it until `updateTask` releases it. A task filed from a turn that is working a
-task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
-
-`updateTask({ id, ...fields })` takes its fields flat, each with one rule, checked inside the
-collection's guarded write (`patchSettings`), so a task that starts between a read and the write
-is refused, not edited:
-
-| Field | Allowed |
-|---|---|
-| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
-| `status: "held"` / `"pending"` | Before the task first starts |
-| `status: "cancelled"` | Until the task finishes, sent alone |
-| `message` | Until the task finishes, sent alone ([steers](#messages-on-an-open-task)) |
-
-*Before it first starts* means no attempt ever claimed it (`hasStarted(task)`), so a task back in
-`pending` after a failed attempt stays locked. `labels` replaces the list; `metadata` merges.
-`TASK_FIELD_RULES` and `lockedFields(task, fields)` export the table. The refusals are
-`field_locked_after_start` (naming the fields and the status), `task_finished` (a message
-included: "a finished task takes no message; file a follow-up"), `cancel_takes_no_edits`,
-`message_takes_no_edits` (a message is its own write, so it is sent alone), `nothing_to_update`,
-`steer_limit` and `message_not_supported` (a board whose collection keeps no steers). Every
-check runs before the write, so a refused call writes nothing. A cancel through the tool writes
-`cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
-
-On a board that starts work now, `createTask` starts a task as soon as it is filed. Pass
-`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
-ready row as soon as it's written, the way a Workforce conversation does; `taskToolActions(collectionId,
-resolve, roster, { dispatches: true })` does the same for the actions. On such a board a task
-filed `held: true` waits until `updateTask({ id, status: "pending" })` releases it, and the same
-write can name its `assignee`. `dispatches` defaults to `false`: `createTask` then files a row
-the drain runs.
-
-Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
-working the task or the one that last did. A row has none until a run starts on it, and a new
-claim clears it until the next run starts.
-
-`getTask({ id })` returns one task whole, for a model that has to answer from what the
-task found rather than from its `listTasks` row: its goal, `context`, `input`, the fields
-`updateTask` edits (`deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts`),
-`status`, `attempts`, `statusNote`, `filedByTask`, `output` with `checkpoint: true` when it is a
-reported checkpoint, `error`, `question`, `followUpOf`, `run` and `completedAt`, and `current`:
-the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`, when one exists.
-A `listTasks` row names it by id only (`current: { id }`).
-`output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
-comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
-`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `question` is set only
-on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
-board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
-
-> **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
-> collection, so they cover boards `taskBoard` builds itself — not the capability
-> surface on its own. A resolver you hand to `createTaskToolsCapability(resolver)`
-> is bounded only if the collection it returns was built with
-> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
-
-**Every `taskTools` call reports a problem the same way.** A change the task's
-state does not permit is a recoverable tool result, not a throw: `updateTask` on a
-started task answers `{ ok: false, error: "field_locked_after_start: …" }`, naming the
-fields and the task's status. So the recoverable set across the tools is
-`no_delegation_board`, `task_not_found`, `unknown_assignee`,
-`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
-`field_locked_after_start`, `task_finished`, `cancel_takes_no_edits`, `nothing_to_update`,
-`create_task_does_not_wait`, `terminal_task_write_declined`,
-`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
-`task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
-(`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
-`TaskFilingRule`), and the `wait_*` codes when `getTask`
-[waits](#waiting-for-a-tasks-answer). A
-coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
-`not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
-and [follow-ups](#following-up-on-a-finished-task), below.
-
-Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
-`enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
-string, except that `task_not_found` carries a sentence when a follow-up names a task
-that isn't on the board. Every other code is followed by `: ` and a sentence of guidance for the
-model, so `error === "field_locked_after_start"` never matches. Use
-`error.startsWith("field_locked_after_start")`. There is no separate structured
-`code` field.
-
-Only the *tool* boundary translates a refusal into a result. Driving a collection
-directly throws, and the error is an exported class you can catch:
-
-```ts
-import { IllegalTaskTransitionError } from "@flow-state-dev/orchestration";
-
-try {
-  await collection.complete(taskId, output);
-} catch (err) {
-  if (err instanceof IllegalTaskTransitionError) {
-    // err.taskId, err.from, err.to — the refused move.
-  }
-  throw err;
-}
-```
-
-Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
-timeout, or a storage failure is not a task-state problem and should keep
-propagating.
-
-The one exception is a call that asked for it. `complete` and `fail` accept the
-advisory options described under [TaskCollection](#taskcollection) above, and a
-refused transition on such a call is a returned `declined` verdict rather than a
-throw, so it never reaches this `catch`.
-
-At the `taskTools` boundary a `declined` verdict **does** become a tool
-result: an `updateTask` cancel or edit that the collection declines answers
-`{ ok: false, error: … }` rather than reporting a success that did not happen. `ok: true` from those tools means "the
-backing reported no decline", not "the write happened" — for the two built-in
-backings those coincide, but a custom ref that reports nothing is carried past
-rather than having a verdict synthesized for it.
-
-For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
-dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
-`tools:` — any block can be a tool, and only the finalized result re-enters the
-caller's history.
-
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface.
-
-#### Waiting for a task's answer
-
-`getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
-until the task ends or the deadline passes, and returns the task as `getTask` always does. The
-deadline is milliseconds from the call, five minutes by default, within the host's
-`waitDeadlines` bounds. A task that already ended is returned at once, and your `onTaskSettled`
-block isn't called for it: a task's notice waits while the request that filed it runs, so a wait
-in that request reads the ending first. If the notice was taken by `onTaskSettled` before the wait
-reads the task (the filing request was parked, or another request waits), the wait returns
-`{ ok: true, taskId, arrivesAsNotice: true, message }` instead of the task until `onTaskSettled` has handled that ending, including while a failed notice
-waits to be sent again. A notice turn that is parked, waiting on a person for example, still counts
-as handling it, so a wait answers `arrivesAsNotice` until that turn ends. The notice is how the
-session hears that ending. After that, a wait returns the task as `getTask` does, with its output.
-At the deadline the task runs on and nothing is cancelled. If it ends while the
-waiting request is still running, that request's next `getTask` on it returns the ending. If
-the request parks or ends first, the ending goes to `onTaskSettled`, once, and a wait on it after the
-resume returns `arrivesAsNotice` or the task by the same rule. When the answer
-is how the session hears that a task failed or was cancelled, in place of its notice, it carries
-`cancelled` beside `task`: the dependents that ending cancelled, as the notice would have named
-them. Any other `getTask` answer leaves them to the notice. Waits nest: a
-task's own turn may wait too. A wait is refused when it would make a chain of more than five
-waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
-on.
-`listTasks` marks a row a request is parked on `waitedOn: true`. `createTask` never waits: it
-refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the refusal of the old fields -->
-`timeoutMs` with `create_task_does_not_wait`, and nothing is filed. See
-[Task board → Waiting on a task](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-task)
-for the refusals.
-
-`wait` and `deadline` are in `getTask`'s schema only on a board that dispatches, also resumes
-waits, and runs on a host that can hold a wait: pass
-`createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
-the board hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
-session's `onTaskSettled` request resumes the waiting turn when its task ends; after a crash the
-session's wake sends it again), and the host has durable execution, a running durability sweeper
-and a store that keeps wakes (`canHoldWait`). `resumesWaits` defaults to `false`. A composing
-layer that builds its own capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
-
-Two functions sit under the option, for a layer that builds its own board surface:
-
-- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, message? }, checked?)`, from
-  `@flow-state-dev/orchestration/task-board`, waits on a task already filed from inside a
-  block with a stable identity. `key` is what the wait is recorded under with the request (a
-  tool call's logical id), and `step` the model step it belongs to (one wait per step). It runs
-  every check before anything is written and resolves to `{ ok: true, task, ended }` (the task
-  once it ended, or as it stands at the deadline), `{ ok: false, error, message }` with a
-  `wait_*` refusal, or `{ ok: false, error: "wait_ended_the_request" }` when a person stopped
-  the request or its own task was cancelled. `waitAgain: true` waits again at each deadline, as
-  a plan board's drain does on a row it handed over. Each new park counts the chain again,
-  except a drain's (`ownBoard: true`): its wait already exists, and refusing it would only leave
-  the plan waiting on nothing.
-- `checkWait(ctx, collection, taskId, options)` runs the same checks without waiting: the
-  refusal, or the checked wait to pass to `waitOnTask` as `checked`, which then doesn't check
-  again. A drain uses it to refuse a row before it hands the row over.
-
-`canHoldWait(ctx)` (re-exported from `@flow-state-dev/core`) and `waitGateId` are on the same
-subpath.
-
-A plan board can hand a row to another session and wait on it there: give `taskBoard` a
-`newSession` dispatcher, and a row filed `session: "new"` runs in a session of its own while
-the drain parks on it. The drain waits for the row to end, however many deadlines that takes,
-before it starts the rows that depend on it. No completion notice is sent for the row. A plan
-board may hold dispatcher assignees too, whose rows it waits on the same way; a plan board's
-dispatcher with `wait: false` and a delegation board's with `wait: true` are refused. A drain
-that fails after it handed a row over fails its request, naming the row, whatever `onError`
-says, and no row that hasn't started runs. It writes nothing on the handed-over row: when the
-dispatch itself threw, nothing may be running it, so it stays `in_progress` until its lease
-lapses and the plan's next run claims it again. A `getTask({ id, wait: true })` on a row the
-drain handed over is refused `wait_on_plan_step` for as long as the drain waits on it, deadlines
-included, so no other wait can take the slot the plan waits with. Declare
-the board's pass entry on the flow: without it, the board still builds, and the drain hears a
-row's ending at its next check-in, up to the host's default wait deadline later.
-
-A waiting turn whose task has ended is resumed by the board's pass, which the filing session's
-`onTaskSettled` runs (`payBoardDebts`, above). The same pass cancels each task whose wait was
-stopped while its own cancel failed (`Task.cancelOwed`), and releases a wait slot that lapsed
-for a request that has since ended, so an ending held for that request reaches `onTaskSettled`
-even when its process died. Until that pass runs, a cancelled task's worker may keep running.
-
-**Migrating from `resumeOwedWaits`.** `resumeOwedWaits(ctx, collection)` is no longer exported.
-The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
-sure the flow holding the board declares `onTaskSettled`.
-
-#### When a task stops on a question
-
-A worker that can't go on without an answer parks its task on a question until someone
-answers it. Anyone who can call `answerTask` on the board can answer.
-`createParkOnQuestion({ resolve })` builds the worker's side:
-`parkOnQuestion({ question })` parks the task the current turn is working on, and
-`offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
-task that no turn is waiting on (`getTask` with `wait`).
-
-`answerTask({ taskId, answer })` answers a task parked on its worker's question:
-the task goes back to `pending` with the answer, its worker picks it up again in the
-same session, the next attempt gets the answer as `input.answer`, and the claim that
-follows isn't charged against `maxAttempts`.
-It takes only a task its worker parked with `parkOnQuestion`, for the question it
-is waiting on now. It declines any other task (including one parked with `awaitReview`,
-one parked while a person talks to its worker, or one waiting on its own sub-tasks), a late answer to a question the task has
-moved past (`not_parked_on_question: …`), and a finished task
-(`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
-its own; on your own board, drain it afterwards. An answered task has started, so `updateTask`
-refuses to move it to another worker, and the answer reaches the session that asked.
-
-#### Progress from the worker
-
-`createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
-and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
-turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
-(at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
-task carries as its output (`checkpointed: true`). Neither changes the task's status. When the
-task completes, a checkpoint stays as its output; a failed attempt keeps it for the next one. On a
-finished task it answers `task_finished` and writes nothing. The collection side is
-`TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
-
-#### Following up on a finished task
-
-`createTask` takes `followUpOf` to file new work on a task: the follow-up
-is a new task, with the same worker, that runs in that task's session. Its
-row carries that task's `session`, `target` and `targetSessionId`, so a
-follow-up of a task filed with `session: "ongoing"`, or filed for a
-workstream, runs in that same session. If the session it runs in no
-longer exists, the follow-up runs nowhere else: its hand-over fails it with
-`session-not-found`, and its filer hears the failure. It also carries that
-task's `resultTo` (where the task's result is delivered), so its result goes
-to the same place. When that is `"conversation"` (a Workforce conversation),
-the follow-up gets one attempt, as every task whose result goes there does.
-A follow-up takes no
-`session`, `target` or `resultTo` of its own (`follow_up_takes_no_session`,
-`follow_up_takes_no_target`, `follow_up_takes_no_result_to`). It keeps that worker: `updateTask` won't move it
-(`follow_up_takes_no_assignee`). `createTask` refuses an `assignee` beside it
-(`follow_up_takes_no_assignee`) and a task that never ran with a worker
-(`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
-waits until that task ends, then runs. The task it follows never changes. If two
-follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
-
-#### Messages on an open task
-
-`updateTask({ id, message })` keeps a message on a task that hasn't finished: from the filer's
-model through the tool (`from: "filer"`), or from a person through the `updateTask_<board>` action
-(`from: "user"`, `by` their id from the request's verified identity). The collection write is
-`TaskCollectionRef.steer(id, { message, from, by?, key? })`, appended to `Task.steers` (at most
-`MAX_STEERS`, 20; past that it declines `steer-limit`; on a finished task, `terminal`). Its change
-event kind is `"steered"`. No status changes, no attempt is used, no ending is recorded.
-
-Where a message lands:
-
-- **Before the first claim**: the claim marks every steer taken by the attempt, and the worker
-  input carries them (`TaskWorkerInput.steers`), so the first brief has them.
-- **While a request runs the task**: `createSteerContext({ resolve })` is a context preset that,
-  before each model call, takes the steers no earlier read took (`takeSteers(id, { claim,
-  takenIn })`, fenced to the claim) and renders them. `renderSteers`, `runningTaskOf` and
-  `takeRunningSteers` are its parts, for a worker of your own.
-- **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
-  "steer"`, and the host starts the turn it is owed.
-- **After the request's last model call**: an untaken message gives the task one more turn on
-  the same attempt before it settles, run by the entry you name in
-  `taskLedgers({ endRules: { steerTurn: { entry } } })`. A message that lands while the task is
-  settling still gets it: the completion itself declines while one is untaken
-  (`refuseUntakenSteers`, reason `untaken-steers`). Without `steerTurn`, the task settles and the
-  message stays untaken, so on such a board a late message may not be acted on.
-
-`getTask` returns the messages as `steers` (`{ message, from, by?, at, taken }`). A message a
-request takes mid-run shows in the task's session as a line from its sender
-(`showTakenSteers`); a line typed in the session is there already.
-
-#### Upgrading from stores written by an older version
-
-Rows written before steers existed read in their new shape, with nothing to run. A row stored with
-`reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
-at the latest line in its session, so its next turn reads it. A row stored `parked` for a
-person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged. See
-`retired-shapes`.
 
 ### skillsManifestSource
 
