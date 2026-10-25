@@ -88,7 +88,7 @@ import {
   stampLeaseRenewal,
   withLeaseRenewalScope,
 } from "../tasks/lease-renewal-scope";
-import { openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
+import { openWorkerClaimScope, stampCurrentClaim, stampCurrentTask } from "./flow-policy-wiring";
 import { createRecordError } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import { admitClaimedTask, noteTaskAnswer, type TaskEndRules } from "./task-request";
@@ -447,10 +447,13 @@ function buildTaskGate(options: {
           // `cancelled` and runs to its end. Stopped: the task is cancelled
           // here, and the run ends at its suspension. Either way it holds no
           // claim, so nothing it writes to the task, nothing it returns and no
-          // task it files is kept: it is admitted for nothing.
+          // task it files is kept: it is admitted for nothing. It is still
+          // this task's run, so what it files names the task, and the board
+          // refuses that filing under the cancelled task.
           const resumed = userResumeOf(ctx, row);
           if (resumed === "stopped" && row.status === "in_progress") await cancelForStop(board, row);
           if (resumed === "stopped" || (resumed === "cancelled" && row.status === "cancelled")) {
+            stampCurrentTask({ collectionId: board.collectionId, ...(board.partition !== undefined ? { partition: board.partition } : {}), taskId: row.id }, ctx);
             ctx._markTaskScope?.(row.id);
             return;
           }

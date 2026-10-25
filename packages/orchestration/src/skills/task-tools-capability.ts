@@ -77,7 +77,7 @@ import {
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
-import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
+import { currentWorkerClaim, currentWorkerTask } from "../task-board/flow-policy-wiring";
 // The resolver `taskBoard()` recorded for its handle, read without importing
 // the task-board barrel (which imports this module's neighbours).
 import { boardResolverOf } from "../task-board/board-resolver";
@@ -926,9 +926,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
-    // The task whose request files this one, from the worker's own claim:
-    // server-set, never input (BP-031). An action holds none.
-    const filedByTask = claimless ? undefined : currentWorkerClaim(ctx)?.taskId;
+    // The task whose request files this one: the task the worker's request
+    // works, claimed or not (a cancelled task's run that goes on has no
+    // claim, and is still its filer, so its filing is refused). Server-set,
+    // never input (BP-031). An action works none.
+    const filedByTask = claimless ? undefined : currentWorkerTask(ctx)?.taskId;
     return {
       init: {
         goal: input.goal,
