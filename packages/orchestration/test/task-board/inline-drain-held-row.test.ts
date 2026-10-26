@@ -1,5 +1,7 @@
+/** An inline drain returns while a row waits on an unanswered question; the next drain runs the owed turn. */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
+import { withTimeout } from "@flow-state-dev/core/helpers";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
@@ -14,18 +16,6 @@ import { createFakeResourceCollection, createFakeSequencerState } from "../helpe
 
 /** Long enough for a prompt drain, short enough that a hang fails here instead of at the test timeout. */
 const PROMPT_MS = 2_000;
-
-async function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${what} did not return within ${ms}ms`)), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 describe.each([
   [
@@ -65,7 +55,7 @@ describe.each([
       workers: worker,
     });
 
-    await within(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain with a held row");
+    await withTimeout(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain with a held row");
     expect(attempts).toEqual([1]);
     const held = await collection.get("t");
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
@@ -75,7 +65,7 @@ describe.each([
     expect(await collection.answer!("t", { hold: hold!.id, message: "signup_date", from: "user", by: "u1" })).toEqual({
       outcome: "recorded",
     });
-    await within(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain after the answer");
+    await withTimeout(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain after the answer");
     expect(attempts).toEqual([1, 1]);
     expect(await collection.get("t")).toMatchObject({ status: "completed", attempts: 1, output: { answer: "the whole answer" } });
   }, 20_000);
