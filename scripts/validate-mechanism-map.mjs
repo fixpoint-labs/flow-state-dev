@@ -1,52 +1,8 @@
 #!/usr/bin/env node
 /**
- * Check the mechanism map against the packages it claims to describe.
- *
- * The map (`docs/mechanisms/map.yaml`) is an inventory: one entry per
- * framework mechanism, with the exports and subpaths it owns. Judgment
- * stays with `reuse-review`, `analysis`, and `audit-coherence`. This
- * script only checks that the inventory still points at the code, and
- * that a spec which opts in names those entries.
- *
- * Not wired into `pnpm typecheck` or CI. Run:
- *
- *   node scripts/validate-mechanism-map.mjs
- *   node scripts/validate-mechanism-map.mjs --spec specs/issues/FIX-1/SPEC.md
- *   node scripts/validate-mechanism-map.mjs --self-test
- *
- * ## What fails
- *
- *   E1  a map path, export, subpath, `builtOn`, `overlaps`, or `mergeInto`
- *       that does not resolve
- *   E2  a concrete `package.json` `exports` subpath no entry claims
- *   E3  a public value export that looks like a primitive (`define*`,
- *       `create*Capability|Adapter|Runtime|Stores|Handler|Client`, a
- *       `*Stores` factory, or a name in the bare list below) and is not
- *       named by any entry
- *   E4  a function-shaped export of a file an entry `covers` that the
- *       entry does not name
- *   E5  a ```mechanisms fence whose ids do not resolve, or whose `adds`
- *       row has no `considered` list and no `because`
- *
- * ## Known gaps — stated so a green run is not read as complete
- *
- *   - Claim is by export name, not by package. Two packages exporting the
- *     same name count as one primitive. A second package that re-exports
- *     the first (engine re-exporting `createModelResolver`) is the case
- *     this is aimed at; a genuine second function with the same name
- *     would slip through.
- *   - Names that are not `define*`, not the `create*` suffixes above, and
- *     not in `BARE` are not required to be mapped. A new `readFoo` or
- *     `makeFoo` can land on a public barrel without an error.
- *   - Wildcard `exports` keys (`./items/*`) and non-code targets are
- *     reported and not required.
- *   - `reliedOnBy` is checked only when the string contains a slash and
- *     then only that the path exists. It is not an import scan.
- *   - A spec with no ```mechanisms fence is a warning. `--strict` makes
- *     that an error. The prose "Already here" table is not parsed: specs
- *     do not share one table shape.
- *   - The checker does not decide whether an overlap is real, or whether
- *     a justification is good. That is `reuse-review`.
+ * Check `docs/mechanisms/map.yaml` against package exports, and check an
+ * opt-in ```mechanisms fence. Rules and known gaps: `docs/mechanisms/README.md`.
+ * Not part of `pnpm typecheck`. Run `pnpm mechanism-map`.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -54,7 +10,6 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const MAP_PATH = join(ROOT, "docs/mechanisms/map.yaml");
 
 const RELATIONS = new Set([
   "near-duplicate",
@@ -491,7 +446,6 @@ function entryNames(entry) {
     for (const name of point.exports ?? []) names.add(name);
   }
   for (const facet of entry.facets ?? []) {
-    for (const name of facet.exports ?? []) names.add(name);
     if (facet.symbol) names.add(facet.symbol);
   }
   for (const dep of entry.deprecatedExports ?? []) names.add(dep.name);

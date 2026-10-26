@@ -60,32 +60,22 @@ entries:
         summary: Runs code the author wrote. No model call.
         path: packages/core/src/blocks/handler.ts
         symbol: handler
-        exports:
-          - handler
       - id: generator
         summary: Calls a model. The block kind, not the fsdev gen hook of the same name.
         path: packages/core/src/blocks/generator.ts
         symbol: generator
-        exports:
-          - generator
       - id: evaluator
         summary: Scores or judges an output and returns a verdict the caller branches on.
         path: packages/core/src/blocks/evaluator.ts
         symbol: evaluator
-        exports:
-          - evaluator
       - id: router
         summary: Picks one next block from a decision.
         path: packages/core/src/blocks/router.ts
         symbol: router
-        exports:
-          - router
       - id: sequencer
         summary: The block kind that runs the sequencer DSL. The verbs live on sequencer-dsl.
         path: packages/core/src/blocks/sequencer.ts
         symbol: sequencer
-        exports:
-          - sequencer
 
   - id: sequencer-dsl
     title: Sequencer DSL
@@ -265,8 +255,6 @@ entries:
         summary: A resource template loaded from a file on the engine side.
         path: packages/engine/src/resource-template-loader.ts
         symbol: loadResourceTemplate
-        exports:
-          - loadResourceTemplate
 
   - id: collection
     title: Collection
@@ -294,20 +282,14 @@ entries:
         summary: The ordinary keyed collection.
         path: packages/core/src/types/resource-collection.ts
         symbol: defineResourceCollection
-        exports:
-          - defineResourceCollection
       - id: faceted
         summary: A collection whose items carry facets.
         path: packages/core/src/types/faceted-collection.ts
         symbol: defineFacetedCollection
-        exports:
-          - defineFacetedCollection
       - id: projected
         summary: A collection that exposes a projection of each item.
         path: packages/core/src/types/projected-resource-collection.ts
         symbol: defineProjectedResourceCollection
-        exports:
-          - defineProjectedResourceCollection
 
   - id: capability
     title: Capability
@@ -336,8 +318,6 @@ entries:
         summary: Caches tool definitions across a turn so a generator does not rebuild them.
         path: packages/core/src/blocks/tool-cache.ts
         symbol: createToolCacheCapability
-        exports:
-          - createToolCacheCapability
 
   - id: item
     title: Item
@@ -427,8 +407,6 @@ entries:
         summary: Park the running request for an approval or an input, and resume it with the answer.
         path: packages/core/src/types/wait-for-user.ts
         symbol: waitForUserOn
-        exports:
-          - waitForUserOn
 
   - id: wait-gate
     title: Wait gate
@@ -452,8 +430,6 @@ entries:
         summary: Park on a gate id until a release arrives.
         path: packages/core/src/types/wait-gate.ts
         symbol: parkOnWait
-        exports:
-          - parkOnWait
 
   - id: dispatcher
     title: Dispatcher block
@@ -477,8 +453,6 @@ entries:
         summary: The handler that sends work to another session.
         path: packages/core/src/blocks/dispatcher.ts
         symbol: dispatcher
-        exports:
-          - dispatcher
 
   - id: store
     title: Store
@@ -522,36 +496,22 @@ entries:
         summary: In-process stores for tests and one process.
         path: packages/engine/src/stores/index.ts
         symbol: createInMemoryStores
-        exports:
-          - createInMemoryStores
-          - inMemoryStores
       - id: filesystem
         summary: File-backed stores for a single machine.
         path: packages/engine/src/stores/index.ts
         symbol: createFilesystemStores
-        exports:
-          - createFilesystemStores
-          - filesystemStores
       - id: sqlite
         summary: SQLite-backed stores.
         path: packages/store-sqlite/src/index.ts
         symbol: createSQLiteStores
-        exports:
-          - createSQLiteStores
-          - sqliteStores
       - id: postgres
         summary: Postgres-backed stores.
         path: packages/store-postgres/src/index.ts
         symbol: createPostgresStores
-        exports:
-          - createPostgresStores
-          - postgresStores
       - id: vercel-postgres
         summary: Vercel Postgres adapter of the same store seam.
         path: packages/vercel/src/store.ts
         symbol: vercelPostgresStores
-        exports:
-          - vercelPostgresStores
 
   - id: inbound-transport
     title: Inbound transport
@@ -577,14 +537,10 @@ entries:
         summary: The HTTP adapter.
         path: packages/engine/src/transports/http/createHttpTransportAdapter.ts
         symbol: createHttpTransportAdapter
-        exports:
-          - createHttpTransportAdapter
       - id: api-router
         summary: createFlowApiRouter mounts transports and serves the flow HTTP API. Not the router block kind.
         path: packages/engine/src/routes/createFlowApiRouter.ts
         symbol: createFlowApiRouter
-        exports:
-          - createFlowApiRouter
 
   - id: authentication
     title: Authentication
@@ -676,26 +632,18 @@ entries:
         summary: One static schedule on a flow.
         path: packages/core/src/types/schedules.ts
         symbol: defineScheduleBinding
-        exports:
-          - defineScheduleBinding
       - id: schedule-collection
         summary: Dynamic schedules stored as a collection.
         path: packages/scheduled/src/defineScheduleCollection.ts
         symbol: defineScheduleCollection
-        exports:
-          - defineScheduleCollection
       - id: vercel-tick
         summary: The Vercel cron tick that calls claimDue.
         path: packages/vercel/src/schedules.ts
         symbol: createScheduleTickHandler
-        exports:
-          - createScheduleTickHandler
       - id: bullmq-index
         summary: BullMQ repeatable jobs as a ScheduleIndex. claimDue is empty because the queue fires natively.
         path: packages/bullmq/src/schedule-index.ts
         symbol: createBullmqScheduleIndex
-        exports:
-          - createBullmqScheduleIndex
 
   - id: mcp-transport
     title: MCP transport
@@ -793,33 +741,22 @@ entries:
         summary: The in-process runtime handle hosts wrap.
         path: packages/engine/src/flowstate/createFlowState.ts
         symbol: createFlowState
-        exports:
-          - createFlowState
       - id: node
         summary: A long-lived Node server. createServerApp is the app factory beside serve.
         path: packages/node/src/serve.ts
         symbol: serve
-        exports:
-          - serve
       - id: lambda
         summary: An AWS Lambda handler.
         path: packages/node/src/aws-lambda.ts
         symbol: createLambdaHandler
-        exports:
-          - createLambdaHandler
       - id: next
         summary: A Next.js route handler with no Vercel-specific stream shaping.
         path: packages/next/src/createNextHandler.ts
         symbol: createNextHandler
-        exports:
-          - createNextHandler
       - id: vercel
         summary: Vercel handlers. createVercelNextHandler, in the next file, adds Vercel stream shaping on top of the platform-agnostic Next handler.
         path: packages/vercel/src/handler.ts
         symbol: createVercelHandler
-        exports:
-          - createVercelHandler
-          - createVercelBareHandler
 
   - id: model
     title: Model resolver
@@ -910,74 +847,50 @@ entries:
         summary: Shrinks a context by compressing, denoising, or distilling it.
         path: packages/core/src/utility/context-reducer.ts
         symbol: contextReducer
-        exports:
-          - contextReducer
       - id: memory-extractor
         summary: One-shot extraction of memory candidates. Not the memory package.
         path: packages/core/src/utility/memoryExtractor.ts
         symbol: memoryExtractor
-        exports:
-          - memoryExtractor
       - id: decomposer
         summary: Splits a job into smaller tasks.
         path: packages/core/src/utility/decomposer.ts
         symbol: decomposer
-        exports:
-          - decomposer
       - id: summarizer
         summary: Summarizes a text at a chosen granularity.
         path: packages/core/src/utility/summarizer.ts
         symbol: summarizer
-        exports:
-          - summarizer
       - id: combiner
         summary: Combines several texts into one.
         path: packages/core/src/utility/combiner.ts
         symbol: combiner
-        exports:
-          - combiner
       - id: analyzer
         summary: Returns findings about a text. Not responseAuditor and not biasAnalyzer.
         path: packages/core/src/utility/analyzer.ts
         symbol: analyzer
-        exports:
-          - analyzer
       - id: intent-classifier
         summary: Classifies an utterance into intent categories.
         path: packages/core/src/utility/intent-classifier.ts
         symbol: intentClassifier
-        exports:
-          - intentClassifier
       - id: intent-router
         summary: Routes on a classified intent.
         path: packages/core/src/utility/intent-router.ts
         symbol: intentRouter
-        exports:
-          - intentRouter
       - id: keyed-router
         summary: Routes on a key.
         path: packages/core/src/utility/keyed-router.ts
         symbol: keyedRouter
-        exports:
-          - keyedRouter
       - id: cascading-router
         summary: Walks a cascade of routers until one verdict is confident.
         path: packages/core/src/utility/cascading-router.ts
         symbol: cascadingRouter
-        exports:
-          - cascadingRouter
       - id: upsert-resource
         summary: Writes a value into a resource, creating or replacing the item.
         path: packages/core/src/utility/upsert-resource.ts
         symbol: upsertResource
-        exports:
-          - upsertResource
       - id: session-title
         summary: Generates a short title for a session.
         path: packages/core/src/utility/session-title-generator.ts
         symbol: sessionTitleGenerator
-        exports:
-          - sessionTitleGenerator
 
   - id: graph
     title: Graph
@@ -1062,48 +975,31 @@ entries:
       - id: claim-fifo
         summary: Claim the oldest pending task.
         path: packages/orchestration/src/tasks/dispatchers/fifo.ts
-        exports:
-          - fifoDispatcher
       - id: claim-priority
         summary: Claim the highest-priority pending task.
         path: packages/orchestration/src/tasks/dispatchers/priority.ts
-        exports:
-          - priorityDispatcher
       - id: claim-topological
         summary: Claim a pending task whose dependencies are done.
         path: packages/orchestration/src/tasks/dispatchers/topological.ts
-        exports:
-          - topologicalDispatcher
       - id: observation-ledger
         summary: A capability that records observations the board's policy can read.
         path: packages/orchestration/src/tasks/flow-policy/index.ts
         symbol: createObservationLedgerCapability
-        exports:
-          - createObservationLedgerCapability
       - id: held-ending
         summary: "OwedMarker.held. An ending held for the request whose getTask wait lapsed. Not a hold for an arbitrary request."
         path: packages/orchestration/src/tasks/notice/task-notice.ts
         symbol: releasedHeldNotices
-        exports:
-          - releasedHeldNotices
       - id: notice-taken
         summary: "noticeTaken: an exclusive delivery claim by one request. It can outlive the owed marker."
         path: packages/orchestration/src/tasks/notice/task-notice.ts
         symbol: noticeTakenBy
-        exports:
-          - noticeTakenBy
       - id: notice-deferred
         summary: "noticeDeferred plus whileRunning. A pass deferred the notice while the filing request runs. Not a fourth hold flag."
         path: packages/orchestration/src/tasks/notice/task-notice.ts
         symbol: deferredNoticePatch
-        exports:
-          - deferredNoticePatch
       - id: lapsed-slot-backoff
         summary: "LAPSED_SLOT_CHECK_MS and its cap. How long a pass waits before looking again at a lapsed wait slot. Scheduling, not a reservation."
         path: packages/orchestration/src/tasks/notice/task-notice.ts
-        exports:
-          - LAPSED_SLOT_CHECK_MS
-          - LAPSED_SLOT_CHECK_CAP_MS
 
   - id: task-board
     title: Task board
@@ -1133,14 +1029,10 @@ entries:
         summary: The tools a model calls to file, read, and settle rows on a board.
         path: packages/orchestration/src/skills/task-tools-capability.ts
         symbol: createTaskToolsCapability
-        exports:
-          - createTaskToolsCapability
       - id: board-capability
         summary: The capability that installs a board onto a flow.
         path: packages/orchestration/src/task-board/capability.ts
         symbol: createTaskBoardCapability
-        exports:
-          - createTaskBoardCapability
 
   - id: goal-seek-loop
     title: Goal-seek loop
@@ -1171,14 +1063,10 @@ entries:
         summary: One pass of the loop that runs independent tasks. A recipe, not a second loop.
         path: packages/patterns/src/parallelTasks/index.ts
         symbol: parallelTasks
-        exports:
-          - parallelTasks
       - id: plan-and-execute
         summary: Plan, drain, judge, replan, on the same loop. A recipe, not a second loop.
         path: packages/patterns/src/plan-and-execute/index.ts
         symbol: planAndExecute
-        exports:
-          - planAndExecute
 
   - id: supervisor
     title: Supervisor
@@ -1245,8 +1133,6 @@ entries:
         summary: One subscriber. watch matches entries, and a match becomes a task.
         path: packages/patterns/src/eventActors/index.ts
         symbol: actor
-        exports:
-          - actor
 
   - id: debate
     title: Debate
@@ -1329,8 +1215,6 @@ entries:
         summary: The v2 catalog. A generator binds to it per generator, with no session-global active-skills bag.
         path: packages/orchestration/src/skills/library.ts
         symbol: createSkillsLibrary
-        exports:
-          - createSkillsLibrary
 
   - id: inbox
     title: Inbox
@@ -1363,8 +1247,6 @@ entries:
         summary: openUserHolds projects what a person can answer. It is not the task-row field the epic decided.
         path: packages/orchestration/src/inbox/holds.ts
         symbol: openUserHolds
-        exports:
-          - openUserHolds
 
   - id: workforce
     title: Workforce
@@ -1462,37 +1344,25 @@ entries:
         summary: Registers the installation's worker flows onto a host.
         path: packages/workforce/src/workers/register.ts
         symbol: hireWorkforce
-        exports:
-          - hireWorkforce
       - id: installation
         summary: The bundle of workers hireWorkforce registers.
         path: packages/workforce/src/workers/installation.ts
         symbol: createWorkerInstallation
-        exports:
-          - createWorkerInstallation
       - id: agent-worker
         summary: The default worker flow. answerAgain is an option on the planning answer step, not a second loop.
         path: packages/workforce/src/agent-worker-flow.ts
         symbol: defineAgentWorkerFlow
-        exports:
-          - defineAgentWorkerFlow
       - id: coordinator
         summary: A coordinator flow over workers.
         path: packages/workforce/src/coordinator/coordinator-flow.ts
         symbol: defineCoordinatorFlow
-        exports:
-          - defineCoordinatorFlow
       - id: persona
         summary: A persona resource or collection a worker speaks as.
         path: packages/workforce/src/define-persona.ts
         symbol: definePersona
-        exports:
-          - definePersona
       - id: fsdev-generator
         summary: The fsdev gen plugin for a workforce tree. Same export name as the block kind, different function.
         path: packages/workforce/src/codegen/fsdev-gen.ts
-        exports:
-          - generator
 
   - id: session-board
     title: Session board
@@ -1519,20 +1389,14 @@ entries:
         summary: The public session board factory.
         path: packages/workforce/src/conversation-board/session-board.ts
         symbol: defineSessionBoard
-        exports:
-          - defineSessionBoard
       - id: conversation
         summary: The conversation board. Not on the workforce root barrel today.
         path: packages/workforce/src/conversation-board/board.ts
         symbol: defineConversationBoard
-        exports:
-          - defineConversationBoard
       - id: planning
         summary: Planning.planned answers once more after the plan board drains. That step is not a doWhile.
         path: packages/workforce/src/conversation-board/plan.ts
         symbol: definePlanning
-        exports:
-          - definePlanning
 
   - id: memory
     title: Memory
@@ -1572,17 +1436,10 @@ entries:
         summary: The four tier capabilities, also installable on their own.
         path: packages/memory/src/capabilities.ts
         symbol: createWorkingMemoryCapability
-        exports:
-          - createWorkingMemoryCapability
-          - createEpisodicMemoryCapability
-          - createSemanticMemoryCapability
-          - createDigestMemoryCapability
       - id: memory-system
         summary: One capability that wires the tiers. Not thought-fabric's system().
         path: packages/memory/src/memory-system.ts
         symbol: system
-        exports:
-          - system
 
   - id: coding-harness
     title: Coding harness
@@ -1643,20 +1500,14 @@ entries:
         summary: The Claude Code adapter. The capability and the workspace-agent capability are separate exports of the same package.
         path: packages/claude-code/src/sdk/agent.ts
         symbol: claudeCodeAgent
-        exports:
-          - claudeCodeAgent
       - id: codex
         summary: The Codex adapter. The capability and the default client resolver are separate exports of the same package.
         path: packages/codex/src/agent.ts
         symbol: codexAgent
-        exports:
-          - codexAgent
       - id: cursor
         summary: The Cursor adapter. The capability and the default client resolver are separate exports of the same package.
         path: packages/cursor/src/agent.ts
         symbol: cursorAgent
-        exports:
-          - cursorAgent
       - id: emit
         summary: "Each adapter copies createEmitState and finalizeOpenItems (claude-code sdk/emit.ts, codex emit.ts, cursor emit.ts). The neutral handle is in core. The helper is not shared."
         path: packages/claude-code/src/sdk/emit.ts
@@ -1718,15 +1569,10 @@ entries:
         summary: The local workspace host.
         path: packages/workspace/src/local-host.ts
         symbol: localWorkspaceHost
-        exports:
-          - localWorkspaceHost
       - id: checkout
         summary: Harness-manager's worktree helpers. Git execution stays in the workspace package.
         path: packages/harness-manager/src/workspace.ts
         symbol: provisionCheckout
-        exports:
-          - provisionCheckout
-          - run
 
   - id: thought-fabric
     title: Thought fabric
@@ -1771,26 +1617,18 @@ entries:
         summary: Salience and relevance blocks. scoreSalience sits beside filterRelevance.
         path: packages/thought-fabric-core/src/attention/filter-relevance.ts
         symbol: filterRelevance
-        exports:
-          - filterRelevance
       - id: perspective
         summary: A perspective capability. perspectiveObserve is the block beside it.
         path: packages/thought-fabric-core/src/identity/perspective-capability.ts
         symbol: createPerspectiveCapability
-        exports:
-          - createPerspectiveCapability
       - id: perspective-system
         summary: system() for a constitution of perspectives. Not memory's system().
         path: packages/thought-fabric-core/src/identity/perspective-system.ts
         symbol: system
-        exports:
-          - system
       - id: bias-analyzer
         summary: A metacognition block that looks for bias. Not utility.analyzer.
         path: packages/thought-fabric-core/src/metacognition/bias-detection-blocks.ts
         symbol: biasAnalyzer
-        exports:
-          - biasAnalyzer
 
   - id: bundled-tools
     title: Bundled tools
@@ -1827,8 +1665,6 @@ entries:
         summary: A bash capability with a configured working directory and timeout.
         path: packages/tools/src/bash/capability.ts
         symbol: createBashCapability
-        exports:
-          - createBashCapability
 
   - id: client
     title: Client
@@ -1976,8 +1812,6 @@ entries:
         summary: Enqueues a flow run onto BullMQ.
         path: packages/bullmq/src/dispatcher.ts
         symbol: createWorkerDispatcher
-        exports:
-          - createWorkerDispatcher
 
   - id: manifest
     title: Manifest
