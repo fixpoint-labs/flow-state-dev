@@ -183,15 +183,9 @@ export function assertSafeSegment(label: string, value: string): string {
   return canonicalSegment(value);
 }
 
-/** The bare key prefix covering everything kept about one issue-phase. */
-export function issuePhasePrefix(issue: string, phase: string): string {
-  return `${assertSafeSegment("issue", issue)}/${assertSafeSegment("phase", phase)}/`;
-}
-
 /**
- * Hex characters of a {@link hashKeySegment}: 64 bits. Where a counter is
- * unavailable (the ask step commits no state), the hash is the row's identity,
- * and the width is what keeps two different texts off one row.
+ * Hex characters of a {@link hashKeySegment}: 64 bits, the width that keeps
+ * two different texts off one key.
  */
 const KEY_HASH_LENGTH = 16;
 
@@ -587,7 +581,7 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
   rule: ASK_MARKER_IGNORE_RULE,
   guards: isAskMarkerPath,
   why:
-    "A run writes the question it needs answered to a file named for its attempt inside " +
+    "A run writes the question it needs answered to a file named for its attempt and run inside " +
     "that directory, and the coding agent's `git add -A` would commit it to the branch and " +
     "the pull request.",
 };

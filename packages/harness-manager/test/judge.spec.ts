@@ -5,7 +5,7 @@
  * The phase's check knows whether the run ended well, not whether its answer
  * meets what was asked. The host's judge reads the goal, the answer and the
  * commits and says done, not done (the attempt fails with its reason, which
- * the next attempt is told), or ask (the row parks on its question). A
+ * the next attempt is told), or ask (the task is held on its question). A
  * verdict under the host's floor counts as done. A judge that fails gives no
  * verdict, and the run settles on its check alone: an outage never fails work
  * that passed. Only a board read from the claim is judged.
@@ -13,6 +13,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
+import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -73,20 +74,22 @@ describe("a judged run on a board read from the claim", () => {
     expect(row.error).toContain("still guessing");
   }, 60_000);
 
-  it("parks on ask with the judge's question, and the answer reaches the next attempt", async () => {
+  it("holds the task on ask with the judge's question, and the answer's turn resumes the session on the same attempt", async () => {
     const { judge } = scriptedJudge([verdict("ask", 0.8, "which repository did you mean?"), verdict("done", 0.9, "fine")]);
     const lab = claimHost({ mode: "claim", script: [{ answer: "which one?" }, { answer: "storefront has two packages" }], manager: { judge } });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at our repo", input: {} });
 
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
-    const parked = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    expect(parked).toMatchObject({ status: "parked", parkedOnQuestion: true, feedback: "which repository did you mean?" });
+    const held = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(openRowHolds(held).map((hold) => hold.ask.prompt)).toEqual(["which repository did you mean?"]);
 
     await lab.act("answer", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", answer: "storefront" });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
 
     expect(lab.seen[1]!.prompt).toContain("ANSWERED: which repository did you mean? => storefront");
-    expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", output: { judged: true } });
+    expect(lab.seen[1]!.resume).toBe("sess_1");
+    expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", attempts: 1, output: { judged: true } });
   }, 60_000);
 
   it("completes a not-done under the floor, judged", async () => {

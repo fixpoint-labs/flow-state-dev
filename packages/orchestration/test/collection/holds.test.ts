@@ -287,6 +287,19 @@ describe.each([
       expect(board.get("t4")).toMatchObject({ status: "completed", attempts: 1, output: "done" });
     });
 
+    it("the asking turn settles nothing even once its question is answered and before the next turn's claim", async () => {
+      // An inline drain's recorder settles after the worker returns, with the asking turn's claim.
+      // The answer has closed the hold by then, so the open-hold refusal alone would let it through.
+      const { board, ticket, hold } = await askedMidway();
+      await board.answer!("t4", user(hold, "signup_date"));
+      expect(board.get("t4")).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
+      expect(await board.complete("t4", "done", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
+      expect(await board.fail("t4", "boom", { claim: ticket, ifAllowed: true })).toMatchObject({ outcome: "declined", reason: "held" });
+      // The owed turn is still there for the next claim, on the same attempt.
+      expect(board.get("t4")).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
+      expect(await board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ attempts: 1, turn: 2 });
+    });
+
     it("an ask with no questions is refused, and leaves the turn's lease as it was", async () => {
       const { board } = await make();
       await board.addTask({ id: "t4", goal: "g" });

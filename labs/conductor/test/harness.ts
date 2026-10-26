@@ -115,7 +115,7 @@ export function askingAgent(
         // The path the PROMPT named, parsed back out of it — so a prompt that
         // stopped naming the marker makes this stub write nowhere, which is the
         // failure a real coding agent would produce.
-        const named = /^\s{2}(\S*[/\\]\.fsdev[/\\]ask[/\\]\d+\.md)\s*$/m.exec(prompt);
+        const named = /^\s{2}(\S*[/\\]\.fsdev[/\\]ask[/\\]\d+-\d+\.md)\s*$/m.exec(prompt);
         if (named !== null) {
           const target = named[1]!;
           mkdirSync(dirname(target), { recursive: true });
@@ -251,8 +251,6 @@ export interface HarnessOptions {
   runTimeoutMs?: number;
   /** The bound on ALL of provisioning, which the stale window must clear. */
   provisionTimeoutMs?: number;
-  /** The relay seam. Called after the park; a no-op by default. */
-  announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
 }
 
 
@@ -328,7 +326,6 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
       includePartialMessages: false,
     },
     ownership,
-    ...(options.announce !== undefined ? { announce: options.announce } : {}),
   });
 
   const state = createFlowState({

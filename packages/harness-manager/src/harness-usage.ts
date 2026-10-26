@@ -60,7 +60,7 @@
  *
  * ## A named limit: `user` scope is the bare user id
  *
- * As on `inbox/**`: where one user id is reachable from two tenants, both see
+ * Where one user id is reachable from two tenants, both see
  * this row. It is filled only by a reader on the person's own machine and
  * holds no email, so the exposure is that person's plan and percents.
  */
@@ -493,7 +493,7 @@ interface UsageRef {
   updateState(updater: (current: Record<string, unknown>) => Record<string, unknown>): Promise<void>;
 }
 
-/** The slice of the collection this module uses. Structural, like `inbox`. */
+/** The slice of the collection this module uses. Structural. */
 interface UsageCollectionRef {
   getOptional(key: string): Promise<UsageRef | undefined>;
   upsert(key: string, update: Record<string, unknown>, createOnly?: Record<string, unknown>): Promise<unknown>;
