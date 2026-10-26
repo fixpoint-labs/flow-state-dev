@@ -1,13 +1,7 @@
 /**
- * What a drain reports when it stops on a row waiting for a person's answer
- * (FIX-2214): `"awaiting-answer"`, not `"blocked-by-failures"`. Nothing failed,
- * and the reason is what tells a reader whether to fix something or answer it.
- *
- * Both ways a row gets held are pinned, because they reach the ladder by
- * different rungs: a row filed on questions is `pending` and falls to the last
- * rung, while a row that asked midway is `in_progress` with its lease dropped
- * and reads as abandoned to the going-nowhere closure. A failure beside a held
- * row must still win, or the new reason would mask it.
+ * A drain that stops on an open question or confirm reports "awaiting-answer".
+ * A filed row and a midway ask reach that by different rungs; a failure beside
+ * either still reports "blocked-by-failures".
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
@@ -68,6 +62,14 @@ function workerFor(collection: TaskCollectionRef): TaskWorker {
 }
 
 const QUESTION = { kind: "question" as const, prompt: "Which date column?" };
+
+const STORED_QUESTION = {
+  id: "q-1",
+  actor: "user",
+  openedAt: 1,
+  source: { kind: "row", releasedBy: [{ by: "answer" }] },
+  ask: { kind: "question", prompt: "Which date column?" },
+};
 
 describe("a drain stopped on a row waiting for an answer", () => {
   it("reports awaiting-answer when the row was filed on a question", async () => {
@@ -185,15 +187,7 @@ describe("a row that waits on something other than an answer", () => {
         status: "pending",
         attempts: 0,
         deps: ["missing"],
-        holds: [
-          {
-            id: "q-1",
-            actor: "user",
-            openedAt: 1,
-            source: { kind: "row", releasedBy: [{ by: "answer" }] },
-            ask: { kind: "question", prompt: "Which date column?" },
-          },
-        ],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -205,15 +199,7 @@ describe("a row that waits on something other than an answer", () => {
         id: "held-status",
         status: "held",
         attempts: 0,
-        holds: [
-          {
-            id: "q-1",
-            actor: "user",
-            openedAt: 1,
-            source: { kind: "row", releasedBy: [{ by: "answer" }] },
-            ask: { kind: "question", prompt: "Which date column?" },
-          },
-        ],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
