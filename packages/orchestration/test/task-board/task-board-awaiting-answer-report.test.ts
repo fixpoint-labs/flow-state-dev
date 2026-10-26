@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createStateBackedTaskCollection, type TaskCollectionRef, type TaskInit, type TaskWorker } from "../../src/tasks";
+import { createStateBackedTaskCollection, type Task, type TaskCollectionRef, type TaskInit, type TaskWorker } from "../../src/tasks";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createBoardMetaCompleted } from "../../src/task-board/blocks/board-meta";
 import { createFakeSequencerState } from "../helpers";
@@ -140,13 +140,18 @@ describe("a row that waits on something other than an answer", () => {
     });
   }
 
-  async function reasonOf(collection: TaskCollectionRef): Promise<string | undefined> {
+  async function reasonOf(
+    collection: TaskCollectionRef,
+    poolExits: unknown = [{ shouldContinue: false, reason: "blocked" }],
+    runsElsewhere?: (task: Task) => boolean
+  ): Promise<string | undefined> {
     const block = createBoardMetaCompleted({
       name: `awaiting-answer-meta-${seq}`,
       collection: async () => collection,
       collectionId: collection.collectionId,
+      ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
     });
-    const result = await testBlock(block, { input: [{ shouldContinue: false, reason: "blocked" }] });
+    const result = await testBlock(block, { input: poolExits });
     expect(result.error).toBeNull();
     type MetaItem = { type?: string; component?: string; data?: { terminationReason?: string } };
     return (result.items as MetaItem[]).find((i) => i.type === "component" && i.component === "task-board-meta")?.data
@@ -217,5 +222,39 @@ describe("a row that waits on something other than an answer", () => {
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
+  });
+
+  /** A row filed on one open question, as stored. */
+  const questionRow = (id: string): Record<string, unknown> => ({
+    id,
+    status: "pending",
+    attempts: 0,
+    holds: [
+      {
+        id: `q-${id}`,
+        actor: "user",
+        openedAt: 1,
+        source: { kind: "row", releasedBy: [{ by: "answer" }] },
+        ask: { kind: "question", prompt: "Which date column?" },
+      },
+    ],
+  });
+
+  it("ranks below a park: a parked row beside a question row reports parked-for-review", async () => {
+    const collection = await storedCollection([questionRow("asked"), { id: "review", status: "parked" }]);
+    const parkedExit = [{ shouldContinue: false, reason: "drained", excusedParked: true }];
+    expect(await reasonOf(collection, parkedExit)).toBe("parked-for-review");
+  });
+
+  it("reports awaiting-answer, not blocked-by-failures, with a dispatched row beside the question row", async () => {
+    // The question row is not dispatched, so `dispatched` cannot match here;
+    // what this pins is that the dispatched row, going somewhere, does not
+    // turn a board that waits on an answer into a failure.
+    const collection = await storedCollection([
+      questionRow("asked"),
+      { id: "background-work", status: "in_progress", assignee: "background", leaseUntil: NOW + 60_000 },
+    ]);
+    const runsElsewhere = (task: Task): boolean => task.assignee === "background";
+    expect(await reasonOf(collection, undefined, runsElsewhere)).toBe("awaiting-answer");
   });
 });
