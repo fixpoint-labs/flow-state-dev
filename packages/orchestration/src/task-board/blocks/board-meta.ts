@@ -362,8 +362,7 @@ function excusedParkedByPool(input: unknown): boolean {
  *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
  *   reports it; `counts.parked` is how many.
  * - `"awaiting-answer"` — the board stopped because the work it has left is
- *   waiting on a person's answer to a question or confirm (FIX-2214). Like
- *   `"parked-for-review"`, neither a success nor a failure.
+ *   waiting on a person's answer to a question or confirm (FIX-2214).
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -380,10 +379,8 @@ function excusedParkedByPool(input: unknown): boolean {
  *    from the rows as they stand now — but the reason names a state, so it is
  *    also checked against that state: a board with nothing in `parked`
  *    never reports it, whatever the pool carried.
- * 6. any remaining row waits on an answer → `awaiting-answer`. Rung 4 has
- *    already established that every other remaining row is done, answerable,
- *    being worked, or released by one of those, so the question is the reason.
- *    It beats `dispatched` for the reason parking does: a person owes an answer.
+ * 6. any remaining row waits on an answer → `awaiting-answer`. Rung 4 already
+ *    vouches for the other rows.
  * 7. every remaining row is dispatched → `dispatched`.
  * 8. otherwise → `blocked-by-failures`.
  *
