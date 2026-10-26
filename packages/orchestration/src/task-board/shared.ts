@@ -291,10 +291,12 @@ export function activeWorkerCount(
 }
 
 /**
- * Only {@link activeWorkerCount} excuses this, so the verdict stays `blocked`.
- * A suspension hold stays counted: that run resumes itself.
+ * A running row waiting on a person's answer: `in_progress`, with an open
+ * question or confirm. Of the exit counts only {@link activeWorkerCount}
+ * excuses it, so the verdict stays `blocked`; `goalSeekLoop` ends its pass on
+ * it without judging. A suspension hold stays counted: that run resumes itself.
  */
-function awaitsAnswer(row: Task): boolean {
+export function awaitsAnswer(row: Task): boolean {
   return row.status === "in_progress" && openRowHolds(row).length > 0;
 }
 

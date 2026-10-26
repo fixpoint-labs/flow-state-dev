@@ -12,6 +12,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 
 import {
+  askMidway,
   taskBoard,
   goalSeekLoop,
   mapToVerdict,
@@ -590,5 +591,50 @@ describe("goalSeekLoop - construction guards", () => {
     expect(() =>
       goalSeekLoop({ name: "idless", board, judge, maxIterations: 1 }),
     ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A task waiting on a person (FIX-2131)
+// ---------------------------------------------------------------------------
+
+describe("goalSeekLoop - a task waiting on a person", () => {
+  it("never judges or finalizes while a task waits on its question, and spends no iteration", async () => {
+    // A plan board's drain returns `blocked` while a task is held on a
+    // question its worker asked midway: nobody is working it, and only the
+    // person's answer moves it. The judge would rule on unfinished work, and
+    // on every later pass the same open question, until the cap.
+    const name = "asked";
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        askMidway(ctx, await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name }), [{ prompt: "Which region?" }]),
+    });
+    const board = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    let judged = 0;
+    let finalized = 0;
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: (): Verdict => {
+        judged += 1;
+        return { decision: "continue", reason: "not yet" };
+      },
+      finalize: handler({ name: `${name}-finalize`, inputSchema: z.unknown(), execute: () => { finalized += 1; return null; } }),
+      maxIterations: 3,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(judged).toBe(0);
+    expect(finalized).toBe(0);
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    // The loop's output is the board as the drain left it: the task still running, waiting.
+    const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
+    expect(row?.status).toBe("in_progress");
   });
 });

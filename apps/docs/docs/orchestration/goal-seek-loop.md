@@ -47,6 +47,8 @@ type Verdict =
 
 The loop stops by default when the judge throws, returns something that isn't a `Verdict`, or asks to `replan` without producing work (no non-empty `tasks`, no `replanner` configured). It exits with `reason: "judge-error"` and still runs `finalize` over the settled board. Pass `onError: "fail"` to have the failure propagate as a request error instead. A failure in `seed` or in the drain itself always propagates either way.
 
+The loop never judges work that waits on a person. When a drain leaves a task waiting on an answer to a question its worker asked midway, the loop ends there with `reason: "waiting-on-a-person"`. It runs no judge, no replan and no `finalize`, and the drain doesn't count against `maxIterations`. On a resource-backed board, once the person answers, run the loop again: its drain takes the task's next turn, and the loop goes on from there.
+
 When your judge already produces some other decision shape, `mapToVerdict` adapts it and fills in a default `reason`, so a decision-only source is never treated as malformed:
 
 ```ts
@@ -145,7 +147,7 @@ The loop emits one `goal-seek-loop-termination` component when it exits:
 { collectionId: string; reason: string; iterations: number }
 ```
 
-`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, or `judge-error` when the judge failed under the default `onError: "skip"`. It's there for tooling reading the live stream, and it never enters model history. The shipped chat renderers skip it. If your app supplies its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item falls back to a raw JSON block when the loop ends.
+`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, `judge-error` when the judge failed under the default `onError: "skip"`, or `waiting-on-a-person` when a task waits on an answer. That last pass isn't counted in `iterations`. It's there for tooling reading the live stream, and it never enters model history. The shipped chat renderers skip it. If your app supplies its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item falls back to a raw JSON block when the loop ends.
 
 ## Limits
 
