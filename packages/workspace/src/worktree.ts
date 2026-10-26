@@ -18,14 +18,16 @@
  *    only trees it ever clears are a provision it can positively identify as
  *    interrupted (a marker beside the tree, AND a tree that agrees), and the
  *    one it just made and is refusing.
- * 4. **A run that switched its checkout's branch is moved back, never
- *    stranded, and nothing it made is lost.** The run's branch stays the
- *    run's root: a side trip onto another branch (to split work into several
- *    pull requests, say) is allowed, and the next hand-back puts the checkout
- *    back on the run's branch. What the run made off it stays on a named
- *    branch. Only a half-done git operation, or the run's branch checked out
- *    in another worktree, is refused, typed, naming the git command that
- *    clears it.
+ * 4. **A run that switched its checkout's branch is not stranded.** The
+ *    run's branch stays the run's root: a side trip onto another branch (to
+ *    split work into several pull requests, say) is allowed. The next
+ *    hand-back puts the checkout back on the run's branch when nothing the
+ *    run made would move with it, and what it made off the branch stays on a
+ *    named branch. Uncommitted changes are the run's to decide about: a
+ *    checkout that would need them moved is handed back exactly as it is, and
+ *    reported as off its branch. Only a half-done git operation, or the run's
+ *    branch checked out in another worktree, is refused, typed, naming the
+ *    git command that clears it.
  *
  * The repository worktrees are cut from is the caller's: a repository on this
  * machine the operator named, or the host's own clone of an allowed remote.
@@ -110,6 +112,21 @@ export interface Worktree {
    * checked out, though every commit and change it made is still there.
    */
   movedBack?: MovedBack;
+  /**
+   * Present when the checkout was handed back off the run's branch and left
+   * there, because moving it back would move uncommitted changes. Nothing
+   * was changed. Tell the run, which decides what to do with them; a caller
+   * that must not run anywhere but the run's branch refuses with `message`.
+   */
+  offBranch?: OffBranch;
+}
+
+/** A checkout handed back off its run's branch, as it was found. */
+export interface OffBranch {
+  /** The branch the checkout is on; `null` for a detached HEAD. */
+  on: string | null;
+  /** Why it was left there and what moves it back, in a sentence for a person or a run. */
+  message: string;
 }
 
 /**
@@ -120,9 +137,10 @@ export interface Worktree {
  *   was moved up to it. No file moved.
  * - `"re-pointed"`: the run's branch was already at the checkout's commit. No
  *   file moved.
- * - `"switched"`: the checkout's commit lacked some of the run's branch, so
- *   the run's branch was checked out as it stands. Files moved; everything
- *   the run made is on `from`, or on `kept` for a detached HEAD.
+ * - `"switched"`: the checkout's commit lacked some of the run's branch, and
+ *   it had no uncommitted changes, so the run's branch was checked out as it
+ *   stands. Files moved; everything the run made is on `from`, or on `kept`
+ *   for a detached HEAD.
  */
 export interface MovedBack {
   /** The branch the checkout was found on; `null` for a detached HEAD. Left where it is. */
@@ -131,24 +149,12 @@ export interface MovedBack {
   commit: string;
   how: "fast-forward" | "re-pointed" | "switched";
   /**
-   * A branch the host made so a detached HEAD's commits or saved work are not
-   * orphaned: `<run's branch>-detached-<commit>`. Only on `"switched"`.
+   * A branch the host made so a detached HEAD's commits are not orphaned:
+   * `<run's branch>-detached-<commit>`, with `-2`, `-3`… when that name is
+   * taken. Only on `"switched"`.
    */
   kept?: string;
-  /**
-   * The last commit the host made of what was uncommitted, on `from` (or
-   * `kept`), before switching: one for what was staged, then one for the
-   * rest. Only on `"switched"` from a tree with changes.
-   */
-  saved?: string;
 }
-
-/** Who the commit of a run's uncommitted work is by, so nobody reads it as the run's own. */
-const SAVED_WORK_IDENTITY: readonly string[] = [
-  "-c", "user.name=flow-state-dev workspace host",
-  "-c", "user.email=workspace-host@flow-state-dev.invalid",
-  "-c", "commit.gpgsign=false",
-];
 
 /**
  * The operations git leaves half-done in a checkout, by the file or directory
@@ -197,6 +203,26 @@ export function remainingBudget(deadline: number, now: () => number): number {
 export function gitAnsweredNo(err: unknown): boolean {
   const { code, killed } = (err ?? {}) as { code?: unknown; killed?: unknown };
   return killed !== true && code === 1;
+}
+
+/**
+ * Is `ancestor` reachable from `commit` in `repo`? A probe that failed is
+ * raised, never read as no.
+ */
+export async function isAncestor(
+  git: (cwd: string, args: string[], timeoutMs: number) => Promise<string>,
+  repo: string,
+  ancestor: string,
+  commit: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    await git(repo, ["merge-base", "--is-ancestor", ancestor, commit], timeoutMs);
+    return true;
+  } catch (err) {
+    if (gitAnsweredNo(err)) return false;
+    throw err;
+  }
 }
 
 /**
@@ -368,38 +394,39 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
     // it is moved back onto the run's branch before anything runs in it.
     const head = await git(checkout, ["rev-parse", "--abbrev-ref", "HEAD"], left());
     const on = head === "HEAD" ? null : head;
-    const movedBack = on === branch ? undefined : await moveBack(on);
+    const moved = on === branch ? undefined : await moveBack(on);
 
     // Re-checked on reuse: a run that deleted the rule leaves a checkout that
     // provisioned legally and is no longer safe to write into.
     if (request.ignored !== undefined) await assertIgnored(request.ignored, { checkoutStillAttached: true });
-    return movedBack === undefined ? { created: false } : { created: false, movedBack };
+    if (moved === undefined) return { created: false };
+    return "message" in moved ? { created: false, offBranch: moved } : { created: false, movedBack: moved };
   }
 
   /**
    * Put a checkout found on `on` back on the run's branch, keeping everything
-   * the run made off it.
+   * the run made off it, or say why it stays where it is.
    *
    * **Refs only, when that is enough.** When the checkout's commit contains
    * the run's branch, the branch moves up to it and HEAD is re-pointed at the
    * branch: branch and HEAD then name the commit the tree and index were built
    * from, so nothing in either changes, uncommitted work included.
    *
-   * **Otherwise the run's branch is checked out, once nothing can be lost.**
-   * The run went on a side trip (a branch for one of several pull requests,
-   * say) and the run's branch still holds its own work. A detached HEAD whose
-   * commits no branch holds gets a branch first, and uncommitted changes are
-   * committed onto the branch the checkout is on, by the host's identity, so
-   * the switch moves only files that are committed somewhere named.
+   * **Otherwise the run's branch is checked out, when nothing uncommitted
+   * would move.** The run went on a side trip (a branch for one of several
+   * pull requests, say) and the run's branch still holds its own work. A
+   * detached HEAD whose commits no branch holds gets a branch first, so the
+   * switch moves only files that are committed somewhere named.
    *
-   * Staged changes are saved as they stand before the tree is, and the
-   * caller's ignored directory is never part of a save.
+   * **Uncommitted changes are the run's to decide about.** Committing,
+   * stashing or carrying them would decide for it, so a checkout that has
+   * them is left exactly as it is and reported as off its branch.
    *
    * Refused, unchanged: a half-done git operation, whose HEAD is git's scratch
    * state; the run's branch checked out in another worktree; and a switch
    * that would overwrite a file ignored on the branch the run left.
    */
-  async function moveBack(on: string | null): Promise<MovedBack> {
+  async function moveBack(on: string | null): Promise<MovedBack | OffBranch> {
     const found = on === null ? "a detached HEAD" : `branch "${on}"`;
     const refuse = (why: string, clear: string): never => {
       throw new WorkspaceRefusedError(
@@ -433,7 +460,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
 
     const commit = await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"], left());
     const tip = await git(repo, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`], left());
-    if (tip === commit || (await isAncestor(tip, commit))) {
+    if (tip === commit || (await isAncestor(git, repo, tip, commit, left()))) {
       // Compare-and-swap on the tip read above, so a branch that moved since
       // is not overwritten.
       if (tip !== commit) await git(checkout, ["update-ref", `refs/heads/${branch}`, commit, tip], left());
@@ -441,85 +468,41 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       return { from: on, commit, how: tip === commit ? "re-pointed" : "fast-forward" };
     }
 
-    // From here the switch moves files, so first make sure every commit and
-    // change the run made is on a branch the switch leaves behind.
-    const dirty = (await git(checkout, ["status", "--porcelain", "--untracked-files=all"], left())) !== "";
+    // From here the switch moves files. Uncommitted changes would move or
+    // be lost with them, and what to do about those is the run's call.
+    if ((await git(checkout, ["status", "--porcelain", "--untracked-files=all"], left())) !== "") {
+      return {
+        on,
+        message:
+          `The checkout at ${checkout} is on ${found}, not the run's branch "${branch}", and has ` +
+          `uncommitted changes, so it was left as it is. "${on ?? "That commit"}" lacks some of ` +
+          `"${branch}"'s commits, so moving back would move those changes. Commit them, stash them or ` +
+          `discard them, and the next hand-back moves the checkout back onto "${branch}"; or check out ` +
+          `"${branch}" yourself (\`git switch ${branch}\`).`,
+      };
+    }
     let kept: string | undefined;
-    if (on === null && (dirty || (await git(repo, ["for-each-ref", "--contains", commit, "--format=%(refname)", "refs/heads/"], left())) === "")) {
+    if (on === null && (await git(repo, ["for-each-ref", "--contains", commit, "--format=%(refname)", "refs/heads/"], left())) === "") {
       kept = await keepDetached(commit);
       await git(checkout, ["symbolic-ref", "HEAD", `refs/heads/${kept}`], left());
     }
-    let saved: string | undefined;
-    if (dirty) {
-      const onto = on ?? kept!;
-      // The caller's own files stay out of the save: the branch the run left
-      // may not ignore their directory the way the run's branch does.
-      const outside = request.ignored === undefined ? [] : [`:(exclude)${request.ignored.dir}`];
-      if (outside.length > 0) await git(checkout, ["reset", "--quiet", "--", request.ignored!.dir], left());
-      // **The index first, as it stands**, then the tree on top: a file staged
-      // and then deleted lives only in the index, and staging the tree would
-      // drop it before any commit held it.
-      if (await hasStaged()) saved = await saveCommit("staged", onto);
-      await git(checkout, ["add", "--all", "--", ".", ...outside], left());
-      if (await hasStaged()) saved = await saveCommit("unstaged", onto);
-    }
     // An ignored file on this branch can be a tracked one on the run's, and
-    // git's default is to overwrite it. Refused instead, after the saves
-    // above, so the next hand-back finds a clean tree and says the same.
+    // git's default is to overwrite it.
     try {
       await git(checkout, ["checkout", "--quiet", "--no-overwrite-ignore", branch, "--"], left());
     } catch (err) {
       if ((err as Error).message?.startsWith("provisioning exceeded its budget")) throw err;
       refuse(
         `checking "${branch}" out would overwrite files that are ignored here (${firstLine(err) ?? "git refused"})`,
-        `Move those files aside, or delete them if they are not needed, in ${checkout}; the next turn then ` +
-          `moves it back.${saved !== undefined ? ` Its uncommitted changes are already committed on "${on ?? kept}".` : ""}`,
+        `Move those files aside, or delete them if they are not needed, in ${checkout}; the next turn then moves it back.`,
       );
     }
-    return {
-      from: on,
-      commit: tip,
-      how: "switched",
-      ...(kept !== undefined ? { kept } : {}),
-      ...(saved !== undefined ? { saved } : {}),
-    };
-  }
-
-  /** Whether the index differs from HEAD in the checkout. */
-  async function hasStaged(): Promise<boolean> {
-    try {
-      await git(checkout, ["diff", "--cached", "--quiet"], left());
-      return false;
-    } catch (err) {
-      if (gitAnsweredNo(err)) return true;
-      throw err;
-    }
-  }
-
-  /** Commit the index as the host, saying why; returns the commit. */
-  async function saveCommit(what: "staged" | "unstaged", onto: string): Promise<string> {
-    await git(
-      checkout,
-      [
-        ...SAVED_WORK_IDENTITY,
-        "commit",
-        "--quiet",
-        "--no-verify",
-        "-m",
-        `WIP: ${what} changes saved by the workspace host`,
-        "-m",
-        `The checkout was left on "${onto}" with these changes ${what}, off the run's branch ` +
-          `"${branch}". They were committed here so the host could check "${branch}" back out ` +
-          `without losing them. \`git reset HEAD~1\` undoes this commit and leaves them uncommitted.`,
-      ],
-      left(),
-    );
-    return await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"], left());
+    return { from: on, commit: tip, how: "switched", ...(kept !== undefined ? { kept } : {}) };
   }
 
   /**
-   * A new branch at `commit` for a detached HEAD's work, never one that exists:
-   * an earlier hand-back's kept branch may hold a save of its own.
+   * A new branch at `commit` for a detached HEAD's work, never one that
+   * exists: that name may hold work of its own.
    */
   async function keepDetached(commit: string): Promise<string> {
     const base = `${branch}-detached-${commit.slice(0, 12)}`;
@@ -540,17 +523,6 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
   async function refExists(ref: string): Promise<boolean> {
     try {
       await git(repo, ["show-ref", "--verify", "--quiet", ref], left());
-      return true;
-    } catch (err) {
-      if (gitAnsweredNo(err)) return false;
-      throw err;
-    }
-  }
-
-  /** `true` when `ancestor` is reachable from `commit`; a probe that failed is raised. */
-  async function isAncestor(ancestor: string, commit: string): Promise<boolean> {
-    try {
-      await git(repo, ["merge-base", "--is-ancestor", ancestor, commit], left());
       return true;
     } catch (err) {
       if (gitAnsweredNo(err)) return false;

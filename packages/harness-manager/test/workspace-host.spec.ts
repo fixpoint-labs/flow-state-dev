@@ -55,12 +55,14 @@ afterAll(() => {
  * - `write-ask` — writes `notes.md` and a question to its ask marker, then finishes.
  * - `write-throw` — writes `notes.md`, then the harness itself throws.
  * - `switch-throw` — moves the run source to another repository, then throws.
+ * - `dirty-side-throw` — commits, checks out a side branch that lacks the
+ *   commit, leaves an uncommitted file there, then throws.
  * - `read` — reads `which.txt` from its checkout, then finishes.
  * - `where` — records the name of the directory it was handed, then finishes.
  * - `write-step` — confirms a coding session, writes `step-<n>.md` (n counts the
  *   steps), then finishes: what a steer's extra step leaves behind.
  */
-type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read" | "where" | "write-step";
+type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "dirty-side-throw" | "read" | "where" | "write-step";
 
 function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
   return (feeds: HarnessFeeds): HarnessBlock =>
@@ -89,7 +91,14 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
           writeFileSync(marker, "Which option?");
         }
         if (step === "switch-throw") switchSource();
-        if (step === "write-throw" || step === "switch-throw") throw new Error("the harness crashed");
+        if (step === "dirty-side-throw") {
+          const g = (...args: string[]) =>
+            execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, stdio: "pipe" });
+          g("commit", "--allow-empty", "-m", "the run's own");
+          g("checkout", "-b", "side", "HEAD~1");
+          writeFileSync(join(cwd, "half-done.txt"), "not committed");
+        }
+        if (step === "write-throw" || step === "switch-throw" || step === "dirty-side-throw") throw new Error("the harness crashed");
         return {
           source: "stub/test",
           status: "completed" as const,
@@ -445,4 +454,23 @@ describe("a run its workspace refuses", () => {
       expect(run.asked()).toBe(source === "refused" ? 1 : 2);
     }, 60_000);
   }
+});
+
+describe("a run that left its checkout on a side branch with uncommitted changes", () => {
+  // Moving back would move the changes, and committing them for the run would
+  // decide for it. The retry would commit to the side branch, not the one its
+  // verdict reads, so the row is refused with what clears it, and the
+  // checkout is left as the run left it.
+  it("is refused on the retry, without running, saying what to do", async () => {
+    const run = lab({ script: ["dirty-side-throw"], source: "repo", maxAttempts: 2 });
+    await run.act("seed");
+    await run.act("drain");
+    await run.settled("pending");
+    await run.act("drain");
+    const row = await run.settled("cancelled");
+
+    expect(run.seen).toEqual(["dirty-side-throw"]);
+    expect(row.attempts).toBe(2);
+    expect(JSON.stringify(row)).toContain("uncommitted changes, so it was left as it is");
+  }, 60_000);
 });

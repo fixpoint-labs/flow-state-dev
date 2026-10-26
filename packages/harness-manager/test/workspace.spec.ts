@@ -1178,6 +1178,26 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     await expect(attempt).rejects.toThrow(/git merge --abort/);
   });
 
+  it("refuses a worktree left on a side branch with uncommitted changes, leaving them for the run", async () => {
+    // The attempt would commit to the side branch, not the one its verdict
+    // reads; moving back would move the changes, and what to do with them is
+    // the run's call. The row settles as refused, saying what clears it.
+    const config = workspace();
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const g = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: checkout.path, stdio: "pipe" });
+    g("commit", "--allow-empty", "-m", "the run's own");
+    g("checkout", "-b", "somewhere-else", "HEAD~1");
+    writeFileSync(join(checkout.path, "half-done.txt"), "not committed");
+
+    const attempt = provisionCheckout(config, at("FIX-1219", "implement"));
+    await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
+    await expect(attempt).rejects.toThrow(/uncommitted changes, so it was left as it is/);
+    const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
+    expect(head).toBe("somewhere-else");
+    expect(readFileSync(join(checkout.path, "half-done.txt"), "utf8")).toBe("not committed");
+  });
+
   it("re-points a detached HEAD at the run's branch", async () => {
     // A run on a detached HEAD commits to no branch at all. At the branch's
     // own commit, re-pointing HEAD moves nothing.

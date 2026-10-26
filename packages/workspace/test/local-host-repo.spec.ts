@@ -6,7 +6,7 @@
  * that matter most are about processes: a refused remote starts none, and a
  * retry starts no fetch.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
@@ -387,26 +387,45 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     expect(git(again.cwd, "rev-parse", "split/b")).toBe(split);
   });
 
-  it("commits what was left uncommitted on the side branch before switching, so nothing is lost", async () => {
+  it("hands back, unchanged, a side branch with uncommitted changes, reporting it off the run's branch", async () => {
+    // Switching would move or lose the changes. Committing them for the run
+    // would decide for it; what to do with them is the run's call.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
+    const side = git(first.cwd, "rev-parse", "HEAD");
+    writeFileSync(join(first.cwd, "marker.txt"), "half-done edit");
+    writeFileSync(join(first.cwd, "new.txt"), "untracked");
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toBeUndefined();
+    expect(again.repo?.offBranch?.on).toBe("split/a");
+    expect(again.repo?.offBranch?.message).toMatch(/uncommitted changes, so it was left as it is/);
+    expect(again.repo?.offBranch?.message).toContain("git switch fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("split/a");
+    expect(git(again.cwd, "rev-parse", "split/a")).toBe(side);
+    expect(git(again.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
+    expect(git(again.cwd, "status", "--porcelain")).toBe("M marker.txt\n?? new.txt");
+  });
+
+  it("moves the checkout back once the run has committed what it left", async () => {
     const h = host();
     const first = await provision(h);
     git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
     const tip = git(first.cwd, "rev-parse", "HEAD");
     git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
     writeFileSync(join(first.cwd, "marker.txt"), "half-done edit");
-    writeFileSync(join(first.cwd, "new.txt"), "untracked");
+    expect((await provision(h)).repo?.offBranch).toBeDefined();
+    git(first.cwd, "commit", "-q", "-am", "the run decided to commit");
 
     const again = await provision(h);
 
-    const saved = again.repo?.movedBack?.saved;
-    expect(again.repo?.movedBack).toMatchObject({ from: "split/a", commit: tip, how: "switched" });
-    expect(saved).toBe(git(again.cwd, "rev-parse", "split/a"));
-    expect(git(again.cwd, "show", "--format=%an", "-s", saved!)).toBe("flow-state-dev workspace host");
-    expect(git(again.cwd, "show", `${saved}:marker.txt`)).toBe("half-done edit");
-    expect(git(again.cwd, "show", `${saved}:new.txt`)).toBe("untracked");
-    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
-    expect(readFileSync(join(again.cwd, "marker.txt"), "utf8")).toBe("marker A");
-    expect(existsSync(join(again.cwd, "new.txt"))).toBe(false);
+    expect(again.repo?.offBranch).toBeUndefined();
+    expect(again.repo?.movedBack).toEqual({ from: "split/a", commit: tip, how: "switched" });
+    expect(git(again.cwd, "show", "split/a:marker.txt")).toBe("half-done edit");
   });
 
   it("names a branch for a detached HEAD's commits before switching away from them", async () => {
@@ -424,41 +443,6 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     const kept = `fsd/run-1-detached-${detached.slice(0, 12)}`;
     expect(again.repo?.movedBack).toMatchObject({ from: null, how: "switched", kept });
     expect(git(again.cwd, "rev-parse", kept)).toBe(detached);
-    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
-  });
-
-  it("saves a file that lives only in the index, staged and then deleted, before switching", async () => {
-    const h = host();
-    const first = await provision(h);
-    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
-    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
-    writeFileSync(join(first.cwd, "staged-only.txt"), "only in the index");
-    git(first.cwd, "add", "staged-only.txt");
-    rmSync(join(first.cwd, "staged-only.txt"));
-
-    const again = await provision(h);
-
-    expect(again.repo?.movedBack).toMatchObject({ from: "split/a", how: "switched" });
-    expect(git(again.cwd, "show", "split/a^:staged-only.txt")).toBe("only in the index");
-    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
-  });
-
-  it("leaves the caller's own files out of the save, though the side branch doesn't ignore them", async () => {
-    remote.commit("main", ".gitignore", ".fsdev\n");
-    const ignored = { dir: ".fsdev", rule: ".fsdev", why: "the caller's questions are written there" };
-    const h = host();
-    const place = () => h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1", ignored });
-    const first = await place();
-    git(first.cwd, "checkout", "-q", "-b", "old", "HEAD~1");
-    mkdirSync(join(first.cwd, ".fsdev"));
-    writeFileSync(join(first.cwd, ".fsdev", "question.md"), "the caller's");
-    writeFileSync(join(first.cwd, "marker.txt"), "the run's edit");
-
-    const again = await place();
-
-    const saved = again.repo!.movedBack!.saved!;
-    expect(git(again.cwd, "show", "--name-only", "--format=", saved)).toBe("marker.txt");
-    expect(readFileSync(join(again.cwd, ".fsdev", "question.md"), "utf8")).toBe("the caller's");
     expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
   });
 
@@ -483,23 +467,23 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("side");
   });
 
-  it("names a second kept branch for a second visit to the same detached commit, keeping the first", async () => {
+  it("never reuses a kept-branch name that is taken, keeping what holds it", async () => {
     const h = host();
     const first = await provision(h);
     git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
-    const base = git(first.cwd, "rev-parse", "HEAD~1");
-    git(first.cwd, "checkout", "-q", "--detach", base);
-    writeFileSync(join(first.cwd, "marker.txt"), "first visit");
-    const once = await provision(h);
-    const kept = once.repo!.movedBack!.kept!;
-    git(first.cwd, "checkout", "-q", "--detach", base);
-    writeFileSync(join(first.cwd, "marker.txt"), "second visit");
+    git(first.cwd, "checkout", "-q", "--detach", "HEAD~1");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const detached = git(first.cwd, "rev-parse", "HEAD");
+    const kept = `fsd/run-1-detached-${detached.slice(0, 12)}`;
+    // The name is taken by a branch that does not hold the detached commit.
+    git(first.cwd, "branch", kept, "fsd/run-1");
+    const taken = git(first.cwd, "rev-parse", kept);
 
-    const twice = await provision(h);
+    const again = await provision(h);
 
-    expect(twice.repo?.movedBack?.kept).toBe(`${kept}-2`);
-    expect(git(first.cwd, "show", `${kept}:marker.txt`)).toBe("first visit");
-    expect(git(first.cwd, "show", `${kept}-2:marker.txt`)).toBe("second visit");
+    expect(again.repo?.movedBack?.kept).toBe(`${kept}-2`);
+    expect(git(again.cwd, "rev-parse", `${kept}-2`)).toBe(detached);
+    expect(git(again.cwd, "rev-parse", kept)).toBe(taken);
   });
 
   it("refuses a checkout in the middle of a merge, even on a branch it could fast-forward to", async () => {

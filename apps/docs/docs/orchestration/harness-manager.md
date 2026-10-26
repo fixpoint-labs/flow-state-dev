@@ -391,7 +391,7 @@ it. Everything in it is specific to git worktrees. Build on `harnessManager({ ha
 status page or a cleanup job reads `workspacePath` and `branch` off the run
 record instead of deriving them again.
 
-If the coding agent switches its checkout to another branch, the next attempt still runs on the run's own branch, and the agent's branch is kept. When the agent's branch has everything the run's branch has, the run's branch fast-forwards to it and no files change. When it doesn't, the run's branch is checked out again, after any uncommitted changes are saved as a commit on the agent's branch. If the agent left a merge or rebase half done, the row settles as refused, and the message names the git command to run in the checkout.
+If the coding agent switches its checkout to another branch, the next attempt still runs on the run's own branch, and the agent's branch is kept. When the agent's branch has everything the run's branch has, the run's branch fast-forwards to it and no files change. When it doesn't, the run's branch is checked out again. The manager never commits for the agent, though: if the agent left uncommitted changes on its other branch, the checkout stays as it is and the row settles as refused, with a message saying to commit, stash or discard the changes, or switch back. The same happens if the agent left a merge or rebase half done, and then the message names the git command to run in the checkout.
 
 ## Limits
 
