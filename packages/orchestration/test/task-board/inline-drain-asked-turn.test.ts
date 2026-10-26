@@ -20,7 +20,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
     });
     const turns: number[] = [];
     const worker = handler({
-      name: "inline-asker",
+      name: "inline-questioning-worker",
       inputSchema: taskWorkerInputSchema,
       outputSchema: z.object({ answer: z.string() }),
       execute: async (input, ctx) => {
