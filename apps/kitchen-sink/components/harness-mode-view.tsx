@@ -12,8 +12,8 @@ import { useCallback } from "react";
 
 import { HarnessFrame } from "@/components/harness-frame";
 import { HarnessSessionView } from "@/components/harness-session";
-import { useBlockHistoryKeys } from "@/lib/use-block-history-keys";
 import type { ModelChoices } from "@/lib/harness-models";
+import { useSuppressHistoryKeys } from "@/lib/use-suppress-history-keys";
 
 /** A harness mode's frame and session view. */
 export function HarnessModeView({
@@ -27,7 +27,7 @@ export function HarnessModeView({
   note?: string;
   models: ModelChoices;
 }) {
-  useBlockHistoryKeys();
+  useSuppressHistoryKeys();
   const stream = useCallback(
     (sessionId: string) => (
       <HarnessSessionView key={sessionId} label={label} flowKind={flowKind} sessionId={sessionId} models={models} />

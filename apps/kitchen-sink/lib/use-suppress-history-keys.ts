@@ -11,14 +11,14 @@ import { useEffect } from "react";
 
 function inTextField(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.matches("input, textarea, select");
+  return target.isContentEditable || target.matches("input, textarea");
 }
 
-export function useBlockHistoryKeys(): void {
+export function useSuppressHistoryKeys(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const history = event.key === "ArrowLeft" || event.key === "ArrowRight";
-      if (!history || !event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) return;
+      const horizontalArrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
+      if (event.defaultPrevented || !horizontalArrow || !event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) return;
       if (inTextField(event.target)) return;
       event.preventDefault();
     };

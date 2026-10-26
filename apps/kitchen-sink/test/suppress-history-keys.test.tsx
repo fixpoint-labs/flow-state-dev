@@ -8,17 +8,19 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
-import { useBlockHistoryKeys } from "../lib/use-block-history-keys";
+import { useSuppressHistoryKeys } from "../lib/use-suppress-history-keys";
 
 afterEach(cleanup);
 
 function Page() {
-  useBlockHistoryKeys();
+  useSuppressHistoryKeys();
   return (
     <div>
       <input data-testid="field" />
       <textarea data-testid="area" />
-      <div data-testid="editable" contentEditable suppressContentEditableWarning />
+      <div contentEditable suppressContentEditableWarning>
+        <span data-testid="editable-child">text</span>
+      </div>
       <button data-testid="button">go</button>
     </div>
   );
@@ -30,7 +32,7 @@ function press(target: Element, init: KeyboardEventInit): boolean {
   return event.defaultPrevented;
 }
 
-describe("useBlockHistoryKeys", () => {
+describe("useSuppressHistoryKeys", () => {
   it("stops Option+Left and Option+Right from reaching the browser's history", () => {
     const { getByTestId } = render(<Page />);
     expect(press(getByTestId("button"), { key: "ArrowLeft", altKey: true })).toBe(true);
@@ -39,7 +41,7 @@ describe("useBlockHistoryKeys", () => {
 
   it("leaves word-by-word movement alone inside a text field", () => {
     const { getByTestId } = render(<Page />);
-    for (const id of ["field", "area"]) {
+    for (const id of ["field", "area", "editable-child"]) {
       expect(press(getByTestId(id), { key: "ArrowLeft", altKey: true })).toBe(false);
     }
   });
