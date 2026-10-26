@@ -11,6 +11,7 @@ import {
   fifoDispatcher,
   isClaimable,
   leaseLapsed,
+  openRowHolds,
   priorityDispatcher,
   topologicalDispatcher,
   type Task,
@@ -188,9 +189,10 @@ function countWaitable(
   collection: TaskCollectionRef,
   statuses: TaskStatus[],
   runsElsewhere?: RunsElsewhere,
-  excuseParked = false
+  excuseParked = false,
+  excuseAwaitingAnswer = false
 ): WaitableCount {
-  if (runsElsewhere === undefined && !excuseParked) {
+  if (runsElsewhere === undefined && !excuseParked && !excuseAwaitingAnswer) {
     return { waiting: collection.count({ status: statuses }), excusedParked: false };
   }
   const rows = collection.list({ status: statuses });
@@ -204,6 +206,7 @@ function countWaitable(
       excusedParked = true;
       continue;
     }
+    if (excuseAwaitingAnswer && awaitsAnswer(row)) continue;
     waiting += 1;
   }
   return { waiting, excusedParked };
@@ -272,6 +275,9 @@ export function inFlightCount(
  * reachable if this count excuses the parked row too; excusing it in one arm
  * and not the other would leave such a board spinning until its iteration
  * budget ran out, which is the defect park-exit exists to remove.
+ *
+ * A running row waiting on a person's answer is excused here always, on
+ * every board: no worker is on it ({@link awaitsAnswer}).
  */
 export function activeWorkerCount(
   collection: TaskCollectionRef,
@@ -282,8 +288,28 @@ export function activeWorkerCount(
     collection,
     ["in_progress", "parked"],
     runsElsewhere,
-    excuseParked
+    excuseParked,
+    true
   );
+}
+
+/**
+ * A running row whose turn asked a person midway and is waiting on the answer
+ * (FIX-2133): `in_progress`, with an open question or confirm. Opening the
+ * question dropped its lease and ended its turn, so no worker is on it, and nothing but the
+ * answer moves it; the answer owes the next turn, which a later claim takes.
+ *
+ * Only {@link activeWorkerCount} excuses it (FIX-2210). Counting it there kept
+ * an inline drain waiting for a worker that does not exist, so a drain with an
+ * unanswered question never returned. It still counts as in flight, so the
+ * board reads `blocked` rather than `drained`, as a row filed on questions
+ * before its start already does.
+ *
+ * Row holds only: a suspension hold mirrors a worker stopped inside its run,
+ * which is the run's own to resume, not a turn that has ended.
+ */
+function awaitsAnswer(row: Task): boolean {
+  return row.status === "in_progress" && openRowHolds(row).length > 0;
 }
 
 /**
