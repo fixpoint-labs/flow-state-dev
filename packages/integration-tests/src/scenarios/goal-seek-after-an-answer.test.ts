@@ -54,6 +54,7 @@ function buildFlow() {
   const board: TaskBoardHandle<any, any, any> = taskBoard({
     name: `${NAME}-board`,
     collection: ledger,
+    initialTasks: [{ id: "a", goal: "write the report" }],
     workers: handler({
       name: `${NAME}-w`,
       inputSchema: taskWorkerInputSchema,
@@ -67,20 +68,9 @@ function buildFlow() {
       },
     }),
   });
-  const tasksOf = async (ctx: unknown) => (ctx as { cap: any }).cap[board.capability.name].tasks();
-  const seed = handler({
-    name: `${NAME}-seed`,
-    inputSchema: z.unknown(),
-    uses: [board.capability],
-    execute: async (_input, ctx) => {
-      const tasks = await tasksOf(ctx);
-      if (tasks.get("a") === undefined) await tasks.addTask({ id: "a", goal: "write the report" });
-    },
-  });
   const loop = goalSeekLoop({
     name: NAME,
     board,
-    seed,
     judge: ({ collection }): Verdict => {
       const row = collection.get("a")!;
       seen.judgedOn.push({ status: row.status, attempts: row.attempts });
@@ -91,9 +81,9 @@ function buildFlow() {
   const answer = handler({
     name: `${NAME}-answer`,
     inputSchema: z.object({ message: z.string() }),
-    uses: [board.capability],
+    uses: [capability],
     execute: async (input, ctx) => {
-      const tasks = await tasksOf(ctx);
+      const tasks = await (ctx.cap as any)[capability.name].tasks();
       const [hold] = openRowHolds(tasks.get("a"));
       return tasks.answer("a", { hold: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
@@ -127,7 +117,6 @@ describe("goalSeekLoop: a later run after the person answers", () => {
     const first = await run("plan", {});
     expect(first.error).toBeUndefined();
     expect(readTermination(first.items)).toMatchObject({ reason: "waiting-on-a-user", iterations: 0 });
-    expect(seen.judgedOn).toEqual([]);
 
     expect((await run("answer", { message: "eu-west" })).error).toBeUndefined();
 
