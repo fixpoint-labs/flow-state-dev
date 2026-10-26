@@ -561,12 +561,13 @@ export async function writeRunRow(
   const existing = (await runs.getOptional(identity.topic))?.state as
     | RunRecordState
     | undefined;
-  if (existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
-  // A later turn of the same attempt, of the same task, has opened the record: this one is
-  // over. Only within one task: a task filed again under the same id starts its turns over,
-  // and the board row's fence above already refuses the old task's writes.
+  // A later attempt, or a later turn of the same attempt, of the same task has opened the
+  // record: this one is over. Only within one task: a task filed again under the same id
+  // starts its attempts and turns over, and the board row's fence above already refuses the
+  // old task's writes.
   const sameTask =
     existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
+  if (sameTask && existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
   if (
     identity.turn !== undefined &&
     sameTask &&
