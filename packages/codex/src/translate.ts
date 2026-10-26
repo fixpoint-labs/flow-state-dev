@@ -54,7 +54,7 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
     }
 
     case "turn.started":
-      return [{ kind: "status", message: "Codex turn started." }];
+      return [{ kind: "status", message: "Codex turn started" }];
 
     case "turn.completed":
       return [{ kind: "turn_completed", usage: normalizeUsage((event as { usage?: unknown }).usage) }];

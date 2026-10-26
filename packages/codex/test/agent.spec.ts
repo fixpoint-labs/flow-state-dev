@@ -8,7 +8,7 @@
  * subprocess. The one spec that runs the real installed SDK is
  * `installed-sdk.spec.ts`.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
@@ -248,6 +248,24 @@ describe("codexAgent — the session hook", () => {
     // the ONLY carrier that survives a run the caller's deadline kills.
     const firstConversational = items.find((i) => i.type === "message" || i.type === "tool_output");
     expect(firstConversational).toBeDefined();
+  });
+
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const { resolve } = scripted(() =>
+        (async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          for (const e of OK_STREAM) yield e;
+        })(),
+      );
+      const { items } = await testBlock(codexAgent({ ...GATE_OFF, resolveCodexClient: resolve }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Codex run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("calls the hook exactly once even if the wire names the thread again", async () => {

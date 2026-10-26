@@ -97,10 +97,13 @@ As the agent runs, the block translates the SDK stream into items:
 | Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items. While it works, a transient `status` shows the sub-agent's summary if it has one, otherwise its description followed by the last tool it used, such as `Refactor imports (Edit)`. Status text is cut to 120 characters. A sub-agent with neither a summary nor a description shows no status. |
 | Run start | transient `status`: `Starting Claude Code…`, shown from the moment the run starts. |
 | API retry | transient `status` each time Claude Code retries a failed API call, for example `Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…`. The `, in 5 s` part is left out when the SDK reports no delay. |
-| History compaction | transient `status`: `Claude Code agent compacted its context.` Compaction is Claude Code summarizing a long conversation to free up space. |
+| History compaction | transient `status`: `Claude Code agent compacted its context`. Compaction is Claude Code summarizing a long conversation to free up space. |
+| Run end | a `status` kept in the session's history, saying how long the run took: `Claude Code agent run completed in 5 mins, 24 seconds.` A run that fails ends with a kept status that says it errored and why, `Claude Code agent run errored (<reason>).`, besides the `error` item. |
 | Errors | `error` |
 
 The run-start, API retry, and compaction statuses clear on the first output Claude Code produces after them: an assistant message, a streamed token, a tool result, or the run's result. Nothing else clears them. Another status replaces them straight away, such as a tool's `Using <tool>…`.
+
+The run-end duration is rounded to the nearest second and written with units: `1 min, 1 second`. A run of an hour or more shows hours and minutes only (`1 hr, 3 mins`). Under half a second reads `less than a second`.
 
 Every item carries provenance, so the devtool shows the full trace of what the
 agent did.
