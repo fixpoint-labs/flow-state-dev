@@ -461,6 +461,50 @@ describe("translateSdkMessage", () => {
     expect(translateOne({ type: "system", subtype: "task_progress" } as SdkMessageLike)).toEqual([]);
   });
 
+  // A status line from a quiet stretch has to go when the stretch does: the
+  // request's status slot shows the latest value for the whole run, so a line
+  // left behind sits beside the answer that follows.
+  describe("a status line for a quiet stretch", () => {
+    const retry = { type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as SdkMessageLike;
+    const answer = { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as SdkMessageLike;
+
+    it("clears once Claude Code produces output", () => {
+      const state = createTranslateState({ partialMessages: false });
+      translateSdkMessage(retry, state);
+      expect(translateSdkMessage(answer, state)).toEqual([
+        { kind: "status", message: "" },
+        { kind: "message_complete", text: "hi" },
+      ]);
+    });
+
+    it("clears once only, and not at all when none was set", () => {
+      const state = createTranslateState({ partialMessages: false });
+      expect(translateSdkMessage(answer, state)).toEqual([{ kind: "message_complete", text: "hi" }]);
+      translateSdkMessage(retry, state);
+      translateSdkMessage(answer, state);
+      expect(translateSdkMessage(answer, state)).toEqual([{ kind: "message_complete", text: "hi" }]);
+    });
+
+    it("stays through another system message", () => {
+      const state = createTranslateState({ partialMessages: false });
+      translateSdkMessage(retry, state);
+      translateSdkMessage({ type: "system", subtype: "init", session_id: "s" }, state);
+      expect(translateSdkMessage(answer, state)[0]).toEqual({ kind: "status", message: "" });
+    });
+
+    it("covers the compaction notice too", () => {
+      const state = createTranslateState({ partialMessages: false });
+      translateSdkMessage({ type: "system", subtype: "compact_boundary" }, state);
+      expect(translateSdkMessage(answer, state)[0]).toEqual({ kind: "status", message: "" });
+    });
+  });
+
+  it("falls back to the description when a sub-agent's summary is only whitespace", () => {
+    expect(
+      translateOne({ type: "system", subtype: "task_progress", summary: "   ", description: "Review it" } as SdkMessageLike),
+    ).toEqual([{ kind: "status", message: "Review it" }]);
+  });
+
   it("emits nothing for a system init message", () => {
     // The session id reaches the host through `onSession`. A "session started"
     // line says nothing a person acts on, and read as stale once the run was working.

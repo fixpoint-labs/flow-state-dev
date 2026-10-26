@@ -95,10 +95,12 @@ As the agent runs, the block translates the SDK stream into items:
 | Extended thinking | `reasoning`, when the SDK returns any text. Thinking with the text withheld emits nothing. |
 | Tool call and its result | `tool_output`, with the tool call's id, name, and arguments. While it runs, a transient `status` carries the call's `description` for Bash, or `Using <tool>…` for any other tool, and it clears when the last open tool finishes. |
 | Sub-agent (`Task`/`Agent`) | a `container` grouping the sub-agent's items. While it works, a transient `status` shows the sub-agent's summary if it has one, otherwise its description followed by the last tool it used, such as `Refactor imports (Edit)`. Status text is cut to 120 characters. A sub-agent with neither a summary nor a description shows no status. |
-| Run start | transient `status`: `Starting Claude Code…`, shown from the moment the run starts until the next status line replaces it. |
-| API retry | transient `status` each time Claude Code retries a failed API call, for example `Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…`. The `, in 5 s` part is left out when the SDK reports no delay. The line stays until the next status line replaces it. |
-| History compaction | transient `status`: `Claude Code agent compacted its context.` Compaction is Claude Code summarizing a long conversation to free up space. The line stays until the next status line replaces it. |
+| Run start | transient `status`: `Starting Claude Code…`, shown from the moment the run starts. |
+| API retry | transient `status` each time Claude Code retries a failed API call, for example `Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…`. The `, in 5 s` part is left out when the SDK reports no delay. |
+| History compaction | transient `status`: `Claude Code agent compacted its context.` Compaction is Claude Code summarizing a long conversation to free up space. |
 | Errors | `error` |
+
+The run-start, API retry, and compaction statuses clear on the first output Claude Code produces after them: an assistant message, a streamed token, a tool result, or the run's result. Nothing else clears them. Another status replaces them straight away, such as a tool's `Using <tool>…`.
 
 Every item carries provenance, so the devtool shows the full trace of what the
 agent did.

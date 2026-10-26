@@ -1089,6 +1089,20 @@ describe("claudeCodeAgent", () => {
     expect(statuses[0]).toBe("Starting Claude Code…");
   });
 
+  it("clears the starting line once the SDK speaks, so it does not sit beside the answer", async () => {
+    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      query: async function* () {
+        yield { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as SdkMessageLike;
+        yield RESULT_OK;
+      },
+    });
+    const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent, includePartialMessages: false }), {
+      input: { prompt: "go" },
+    });
+    const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+    expect(statuses.slice(0, 2)).toEqual(["Starting Claude Code…", ""]);
+  });
+
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {
     let decision: { behavior: string; message?: string } | undefined;
     const messages: SdkMessageLike[] = [RESULT_OK];

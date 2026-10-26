@@ -1087,7 +1087,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           loop = (async () => {
             // Starting Claude Code can take a while on a busy host and the SDK
             // says nothing until it is up, so the person is told it is starting.
+            // This covers the gap before `query()` only: the MCP tools set up above
+            // runs before it. A status records no work, so the recorder is not
+            // handed it. The first output from Claude Code clears it.
             if (!ctx.signal.aborted) {
+              translateState.quietStatus = true;
               inFlightRef.current = emitTranslatedEvent({ kind: "status", message: STARTING_STATUS }, ctx, emitState, name);
               try {
                 await inFlightRef.current;
