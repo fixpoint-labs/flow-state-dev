@@ -10,7 +10,7 @@
 const SHELL_TOOLS = new Set(["shell", "bash", "command_execution", "run_command", "terminal"]);
 
 /** A `description` on any other tool can be a payload, not an intent. */
-export const TOOL_INTENT_ARG: Record<string, string> = {
+const TOOL_INTENT_ARG: Record<string, string> = {
   Bash: "description",
   bash: "description",
   Task: "description",

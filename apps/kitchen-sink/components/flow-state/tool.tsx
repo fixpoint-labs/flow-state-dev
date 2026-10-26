@@ -47,7 +47,7 @@ export {
   type ToolCallLabelInput,
   type ToolVerbs,
 } from "./tool-grouping";
-export { toolIntent, TOOL_INTENT_ARG } from "./tool-naming";
+export { toolIntent } from "./tool-naming";
 
 /**
  * Framework-agnostic tool execution state.
