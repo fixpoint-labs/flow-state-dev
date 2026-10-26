@@ -7,8 +7,7 @@ argument-hint: "<description of the issue, or of the work already done>"
 # Adhoc
 
 One pipeline: Linear issue → (optional fix) → branch → commit → PR. Two entries,
-picked from the ask. They used to be two skills (`adhoc-quick-fix` and
-`adhoc-commit-as-new-issue`); `/adhoc-commit-as-new-issue` still resolves here.
+picked from the ask. `/adhoc-commit-as-new-issue` is Entry B.
 
 ## Which entry
 
@@ -132,7 +131,10 @@ description from the diff if the user said "ship it". Then **Ship**.
 ### Branch and stage
 
 1. Current git state:
-   - Already on a feature/fix branch with the right changes → skip creation
+   - Already committed on a feature/fix branch → do not commit again. Push and
+     open the PR.
+   - Already on a feature/fix branch with the right uncommitted changes → skip
+     creation
    - On main or an unrelated branch with uncommitted changes: stash, update
      main, create `fix/FIX-{number}-{slug}`, pop stash (prefer stashed changes
      on conflict)
@@ -176,13 +178,3 @@ State: Done. Attach the PR URL. On A, the final comment includes the commit hash
 
 Linear issue ID and URL, PR URL, branch name. On A, include the review summary
 the user already saw.
-
-## Guidelines
-
-- **Minimal changes** (A). Fix the issue. Don't improve neighbors.
-- **No code changes** (B). Logistics only.
-- **Speed over ceremony.** One ask, not five. Don't drip-feed questions.
-- **Keep Linear updated.** Every state change is reflected.
-- **One shot on B.** Don't ask for confirmation at each step.
-- **Handle existing branches.** If the user is already on the right branch, or
-  changes are already committed, push and open the PR.

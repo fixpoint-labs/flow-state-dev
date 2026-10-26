@@ -80,12 +80,6 @@ criteria for what a *surviving* idea has to do on *this* problem. Candidates nev
 see it. It is the picker's tool in Phase 2. A rubric written after you have seen
 the ideas is a rationalization.
 
-> **Attribution (this section).** Rubric-before-fan-out, a judge from another
-> model family, and "pick a base then graft, don't average" are adapted from the
-> MIT-licensed **pstack** `arena` skill by Lauren Tan —
-> <https://github.com/cursor/plugins/tree/main/pstack/skills/arena>. They sit on
-> top of the ADHD diverge/focus loop; they do not replace the frames.
-
 ### Phase 1 — Diverge (no critic)
 
 1. **Pick 5 frames** from the tables below. For code-shaped problems take 4 tagged `code`,

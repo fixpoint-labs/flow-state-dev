@@ -14,18 +14,7 @@ path is replayed on the real code, through real entry points.
 
 This is a **dev-time** tool. It does not add a runtime statechart API, and it
 does not rewrite the TypeScript. Sequencers, blocks, and flows are a composition
-DSL, not this skill's subject.
-
-> **Attribution.** The method (reader-word labels, from-spec / from-chart, each
-> bug as a numbered path, replay on real entry points, work in a scratch dir)
-> is adapted from the MIT-licensed **pstack** `statechart` skill by Lauren Tan
-> — <https://github.com/cursor/plugins/tree/main/pstack/skills/statechart>.
-> Adapted here for FSD: scoped to the four machines below; scripts stay
-> upstream and run outside the repo.
->
-> The upstream copyright and permission notice is retained in
-> [`LICENSE.upstream`](./LICENSE.upstream). Keep the two together if either
-> ever moves.
+DSL, not this skill's subject. A sequencer `.doWhile` is not a statechart.
 
 ## Not this skill
 
@@ -52,7 +41,7 @@ Epic lifecycle phases (`NEEDS_SPEC`, `AWAITING_OBJECTIVE`, `EPIC_WRAP`, …) are
 
 ## Tooling — scratch dir, scripts stay upstream
 
-Do **not** vendor pstack's scripts or install TLC into this repo.
+Do **not** vendor pstack's scripts, TLC, Java, or generated TLA+ into this repo.
 
 1. Work in a scratch folder **outside** the repo. The command writes next to its input.
 2. Fetch the upstream scripts into that folder:
@@ -98,7 +87,8 @@ pass the spec unchanged as `--against`.
    client, or another part of the system reaches. Assert only what they can
    observe. A test that asserts a flag it sets, or that searches the source
    text, proves nothing. If a bug does not reproduce, assume the **model** is
-   wrong until you show otherwise. Fix the model, not the rule.
+   wrong until you show otherwise. Fix the model, not the rule. A path you did
+   not drive on a real entry point is a sketch, not a bug report.
 
 ## Hand off
 
@@ -110,10 +100,3 @@ Say what the model leaves out.
 
 Do not open a PR that refactors the runtime from this skill. A finding becomes
 a Linear issue (via `issue-manager`) or a note on an existing one.
-
-## Guardrails
-
-- **Orchestration only.** A sequencer `.doWhile` is not a statechart.
-- **Scratch dir only.** No TLC, no Java, no generated TLA+ in the repo.
-- **Replay or recant.** A path that was not driven on real entry points is a
-  sketch, not a bug report.

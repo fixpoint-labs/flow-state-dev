@@ -44,13 +44,6 @@ Two ladders, in this order. The first is *how the lesson is enforced*. The secon
 5. **Docs or agent rules last, only for judgment calls.** Nothing fails when an
    agent skips them. This is the only rung that writes prose.
 
-> **Attribution.** The enforcement ladder, "prove the check on a real past mistake",
-> and the rule→enforcer table are adapted from the MIT-licensed **pstack** `correct`
-> skill (and `principle-encode-lessons-in-structure`) by Lauren Tan —
-> <https://github.com/cursor/plugins/tree/main/pstack/skills/correct>. The
-> Accepted / Rejected list and "if a lint could enforce it, it leaves the prose"
-> are from pstack `reflect`. Copyright in [`LICENSE.upstream`](./LICENSE.upstream).
-
 **Landing altitude (only for rung 5 — leftover judgment).**
 `docs/philosophy.md` settles the grounding's shape. The lasting layer is the
 **tenets**; best practices are the *volatile, few* tier; and **"most situational
@@ -398,10 +391,10 @@ apply it. Only then write.
 
 ## Rule → enforcer
 
-Keep this table honest. A rule with no enforcer is a hope. When a class repeats
-and the rule was already written, that is the signal to move it up a rung, in
-the same change. Drop a row once the mistake cannot happen. The living copy is
-this table; `AGENTS.md` points here.
+Keep this table honest. When a class repeats and the rule was already written,
+that is the signal to move it up a rung, in the same change. Drop a row once
+the mistake cannot happen. The living copy is this table; `AGENTS.md` points
+here.
 
 | Rule | Enforcer | Rung |
 |---|---|---|

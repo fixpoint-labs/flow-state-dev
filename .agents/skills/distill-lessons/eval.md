@@ -4,17 +4,9 @@ Evals are unit tests for skills. Use this when a skill change is the thing you
 need to prove — a new checklist line, a flipped default, a merge of two skills —
 not when the cycle-ledger already answers "did the rework class fall."
 
-> **Attribution.** The blinding rules, the organic-prompt step, the
-> different-family judge, and hill-climbing the variant are adapted from the
-> MIT-licensed **pstack** `poteto-mode` playbook `playbooks/eval.md` by Lauren
-> Tan — <https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/eval.md>.
-> The copyright notice is in [`LICENSE.upstream`](./LICENSE.upstream). FSD
-> substitutions: model tiers from `AGENTS.md` (not `pstack-models.mdc`);
-> candidates are Agent-tool dispatches; transcripts stay in this workspace.
-
-## You own the experiment
-
-Plan, blind, run, synthesize. Do not ask the candidate to grade itself.
+Dispatch candidates with the Agent tool. Model tiers are `AGENTS.md`. Transcripts
+stay in this workspace. You plan, blind, run, and synthesize. The candidate does
+not grade itself.
 
 ## Non-negotiables for blinding
 
@@ -35,27 +27,22 @@ Plan, blind, run, synthesize. Do not ask the candidate to grade itself.
 
 ## Steps
 
+The blinding rules above apply to every step.
+
 1. **Frame.** State what variant is under test and what behavior counts as
    success. Write the rubric (3–6 concrete criteria) for the judge only. Hold
    it back from candidates.
-2. **Set up sanitized environments.** One working dir per candidate, with the
-   variant in place (a worktree, or a copy of the skill under a neutral name).
-   Plant the context an organic task would have: a small fixture repo or the
-   skills the candidate would naturally read. Keep those dirs **out of this
-   repo**.
-3. **Author one organic prompt.** What a user would type. No leakage of what
-   is being measured.
-4. **Spawn N parallel candidates** on different models. Pin `model` explicitly
-   (AGENTS.md tiers: Opus for judgment-shaped tasks, Sonnet for decided checks).
-   Same prompt to each. Each works in its own sanitized dir.
-5. **Spawn one blinded judge on a different model family** from the parent
-   and from the candidates when you can (Claude vs Grok vs GPT). The judge
-   sees outputs by sanitized label and the rubric, never a model name.
-6. **Verify the chain from transcripts, not self-report.** Stay inside this
-   workspace's transcript directory. Grade chain-following from the files
-   each candidate actually opened plus the shape of the output.
-7. **Read every candidate output yourself.** Compare to the judge's verdict.
-   Disagreement means a model is biased or the rubric is ambiguous. Synthesize.
+2. **One working dir per candidate**, out of this repo. Variant in place (a
+   worktree, or a copy of the skill under a neutral name) and the context an
+   organic task would have.
+3. **One prompt.** What a user would type.
+4. **N parallel candidates.** Pin `model` (Opus for judgment-shaped tasks,
+   Sonnet for decided checks). Same prompt. Each in its own dir.
+5. **One judge on a different model family** from the parent and from the
+   candidates when you can (Claude vs Grok vs GPT). It sees the rubric.
+6. **Grade from transcripts** in this workspace, per the non-negotiables.
+7. **Read every candidate output yourself.** Disagreement with the judge means
+   a model is biased or the rubric is ambiguous.
 
 ## Hill-climb
 

@@ -306,12 +306,6 @@ One "considered & clean" line per lens that found nothing. When run by
 `issue-implement`, must-fix and should-fix are resolved before it presents; notes flow
 to its summary.
 
-> **Attribution.** The agreement map, the four buckets, and the different-family
-> judge are adapted from the MIT-licensed **pstack** `interrogate` and `arena`
-> skills by Lauren Tan — <https://github.com/cursor/plugins/tree/main/pstack>.
-> They add a merge step; they do not replace the lenses or the
-> must-fix / should-fix / note scale.
-
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
