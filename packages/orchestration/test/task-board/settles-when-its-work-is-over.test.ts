@@ -949,7 +949,7 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
       said.push(...settled.map((s) => (s.status === "fulfilled" ? s.value : String(s.reason))));
       return "partial";
     });
-    const first = await h.run();
+    await h.run();
     expect(said).toEqual([
       { ok: true, taskId: "t1", questionId: expect.any(String) },
       { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*askQuestion/) },
