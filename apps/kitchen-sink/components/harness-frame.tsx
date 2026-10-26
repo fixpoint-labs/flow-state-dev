@@ -40,7 +40,7 @@ export interface HarnessFrameProps {
   readonly label: string;
   /** The mode's session flow kind. The rail lists only its sessions. */
   readonly flowKind: string;
-  /** The available mode's note (a run without its sandbox), under the mode's name. */
+  /** The available mode's note, shown under the mode's name. No mode sets one today. */
   readonly note?: string;
   /** The models New session offers. With none, New session is off and the reason shows. */
   readonly models: ModelChoices;

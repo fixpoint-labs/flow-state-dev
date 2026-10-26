@@ -3,15 +3,17 @@
  * check of whether this host can run it.
  *
  * Server only. The block records Cursor's to-do list in the shared plan record
- * (`recordPlan`), runs Cursor's local runtime with its sandbox on, so the run
- * writes only in the session's worktree (Cursor's sandbox keeps a worktree's
- * `.git` pointer and the repository's hooks and config out of reach), and
- * hands the runtime only an allowlisted environment through the block's `env`.
- * The Cursor package runs that runtime in a child process whose environment is
- * exactly the allowlist. That filters what the run's commands start with; it
- * is not a security boundary. The child runs as the server's OS user, and on
- * Linux a command can still read the server's environment from `/proc`. Run
- * the server as a separate OS user or in a container when that matters.
+ * (`recordPlan`) and hands the runtime only an allowlisted environment through
+ * the block's `env`. The Cursor package runs that runtime in a child process
+ * whose environment is exactly the allowlist. That filters what the run's
+ * commands start with; it is not a security boundary.
+ *
+ * **Kitchen Sink confines no run.** Cursor's own sandbox is off and the run
+ * asks for no approval, so it writes, commits and runs commands wherever the
+ * server's OS user can — this checkout included, not just the session's
+ * worktree. Kitchen Sink is a showcase meant to run on a machine where that is
+ * fine. Run the server as a separate OS user, or in a container, when it is
+ * not.
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Cursor
  * (`lib/scripted-cursor.ts`), with `env` left unset (the scripted client runs
@@ -25,9 +27,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   TESTED_SDK_VERSION,
   cursorAgent,
-  probeCursorSandbox,
   readInstalledCursorSdkVersion,
-  type CursorSandboxSupport,
   type CursorAgentOptions,
   type CursorModelSelection,
   type InstalledSdkVersion,
@@ -35,7 +35,6 @@ import {
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
-import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -112,11 +111,8 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     recordPlan: goalControl() !== "no-record",
     agent: {
       mode: "agent",
-      // Writes confined to the run's `cwd`, the session's worktree. Cursor fails
-      // the run when its sandbox can't start, rather than running without it.
-      // `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` turns it off (`lib/harness-sandbox.ts`):
-      // the run then writes wherever the server's OS user can.
-      local: { sandboxOptions: { enabled: !harnessUnsandboxed() } },
+      // Cursor's sandbox is off: Kitchen Sink confines no run. See the header.
+      local: { sandboxOptions: { enabled: false } },
     },
     // A stand-in client runs in this process, so it takes no `env`; the real
     // runtime always gets the allowlist, in its own process.
@@ -204,8 +200,6 @@ export interface CursorHostChecks {
   readonly childStarts: (env: Record<string, string>) => string | null;
   /** Cursor's sign-in over the run's own environment: its key, or the SDK's stored login. No run. */
   readonly signIn: (env: Record<string, string>) => Promise<CursorSignIn>;
-  /** Whether Cursor's sandbox can start for a run in `cwd` with exactly `env`, in Cursor's words. No run. */
-  readonly sandbox: (cwd: string, env: Record<string, string>) => CursorSandboxSupport;
 }
 
 /**
@@ -242,20 +236,15 @@ export const HOST_CHECKS: CursorHostChecks = {
   },
   childStarts,
   signIn,
-  sandbox: (cwd, env) => probeCursorSandbox({ cwd, env }),
 };
 
 /**
  * Cursor mode's own check, for the gate's mode-check slot: the pinned Cursor
  * SDK is installed, the worktree root can be made, a process with only the
  * run's environment can start (the Cursor package runs the runtime in one),
- * Cursor is signed in over that environment, and Cursor's sandbox can start
- * here. The first that fails is the reason.
- *
- * Cursor fails a run whose sandbox can't start rather than running without
- * it, hence the sandbox check (`probeCursorSandbox`). Under
- * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` it is skipped, and the available
- * mode's note says the run is unsandboxed.
+ * and Cursor is signed in over that environment. The first that fails is the
+ * reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
+ * sandbox off (see the header).
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -288,14 +277,6 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
       return {
         available: false,
         reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
-      };
-    }
-    if (harnessUnsandboxed()) return { available: true, note: unsandboxedNote("Cursor") };
-    const sandbox = checks.sandbox(repository, env);
-    if (!sandbox.supported) {
-      return {
-        available: false,
-        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason} ${unsandboxedHint("Cursor")}`,
       };
     }
     return { available: true };

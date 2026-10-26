@@ -1,6 +1,6 @@
 /**
- * What a Codex mode run can see and touch, on the real Codex program
- * (`specs/issues/FIX-1916/PLAN.md` V5; BUSINESS-RULES BR-10, BR-12).
+ * What a Codex mode run can see, on the real Codex program
+ * (`specs/issues/FIX-1916/PLAN.md` V5; BUSINESS-RULES BR-10).
  *
  * The real session flow, the real Codex block and the real `@openai/codex-sdk`,
  * which starts the real `codex` program with Codex mode's own client options.
@@ -9,16 +9,15 @@
  * no network, and the run's Codex home is a fresh temporary directory.
  *
  * The command reads a variable set on the server but left off the allowlist,
- * and tries to write in the worktree, its `.git` pointer, the repository's git
- * data, a folder beside the worktree, and `/tmp`. Only the worktree may change.
+ * and writes a file in the worktree the run was given.
  *
- * Skipped, with Codex's own reason, on a host where Codex's sandbox can't run
- * (Codex mode is unavailable there, BR-18).
+ * **Confinement is NOT under test, because there is none.** Kitchen Sink runs
+ * Codex with its sandbox off, so a run writes wherever the server's OS user
+ * can. What is still true, and is what this holds, is that the run is HANDED
+ * only the allowlisted environment and works in the session's own worktree.
  *
- * Red states produced before this was trusted:
+ * Red state produced before this was trusted:
  *   - leave `client.env` unset: the command prints the planted value.
- *   - leave `/tmp` on the sandbox's writable list: the repository here sits under
- *     the system temp folder, so the writes to its git data and beside the worktree land.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -47,7 +46,6 @@ const requestsSeen: Array<{ model?: unknown; service_tier?: unknown }> = [];
 /** How many requests reached the MCP server the settings name (served beside the model, at `/mcp`). */
 let mcpHits = 0;
 let command = "";
-let sandboxFails: string | null = null;
 
 beforeAll(async () => {
   scratch = realpathSync(mkdtempSync(join(tmpdir(), "ks-codex-real-")));
@@ -67,18 +65,9 @@ beforeAll(async () => {
   vi.stubEnv("CODEX_HOME", home);
   vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", PLANTED);
 
-  const root = worktreeRoot(repo);
-  mkdirSync(root, { recursive: true });
-  sandboxFails = await HOST_CHECKS.sandboxFails(root, codexEnv());
+  mkdirSync(worktreeRoot(repo), { recursive: true });
 
-  command = [
-    'echo "planted=[$KITCHEN_SINK_PLANTED_SECRET]"',
-    "touch inside && echo wrote-inside",
-    "echo x >> .git && echo wrote-git-pointer",
-    `touch ${join(repo, ".git", "probe")} && echo wrote-git-data`,
-    `touch ${join(scratch, "beside")} && echo wrote-beside`,
-    "touch /tmp/ks-codex-real-probe && echo wrote-tmp",
-  ].join("; ");
+  command = ['echo "planted=[$KITCHEN_SINK_PLANTED_SECRET]"', "touch inside && echo wrote-inside"].join("; ");
 
   // The scripted model: one shell command, then a reply.
   let requests = 0;
@@ -127,11 +116,7 @@ afterAll(() => {
 });
 
 describe("a Codex mode run, on the real Codex program (V5)", () => {
-  it("sees only the allowlisted environment, and writes only in the session's worktree (BR-10, BR-12)", async (ctx) => {
-    if (sandboxFails !== null) ctx.skip(`Codex's sandbox can't run on this host: ${sandboxFails}`);
-    const tmpProbe = "/tmp/ks-codex-real-probe";
-    rmSync(tmpProbe, { force: true });
-
+  it("sees only the allowlisted environment, and works in the session's worktree (BR-10)", async () => {
     const stores = createInMemoryStores();
     // The SDK's own client, with Codex mode's own client options; only the model endpoint is ours.
     const resolveCodexClient = createDefaultResolveCodexClient({ ...codexClientOptions(), baseUrl, apiKey: "sk-scripted" });
@@ -160,15 +145,9 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
     expect(worktrees).toHaveLength(1);
     const session = worktrees[0]!;
     expect(existsSync(join(session, "inside"))).toBe(true);
-    expect(readFileSync(join(session, ".git"), "utf8")).toMatch(/^gitdir: [^\n]+\n$/);
-    expect(existsSync(join(repo, ".git", "probe"))).toBe(false);
-    expect(existsSync(join(scratch, "beside"))).toBe(false);
-    expect(existsSync(tmpProbe)).toBe(false);
-    expect(output).not.toMatch(/wrote-(git-pointer|git-data|beside|tmp)/);
   }, 120_000);
 
-  it("takes neither the model, the Fast tier nor the MCP servers from your own Codex settings", async (ctx) => {
-    if (sandboxFails !== null) ctx.skip(`Codex's sandbox can't run on this host: ${sandboxFails}`);
+  it("takes neither the model, the Fast tier nor the MCP servers from your own Codex settings", async () => {
     // A home set up the way the report's was: a model this account can't use,
     // the Fast tier, and a server that can't start here.
     const config = join(process.env.CODEX_HOME!, "config.toml");

@@ -2,12 +2,12 @@
  * Codex mode's own check (`specs/issues/FIX-1916/PLAN.md` V4; BR-15 to BR-18):
  * each reason this host can't run it disables the mode with that reason, an
  * SDK at another version leaves the server up with both versions named, and an
- * unavailable mode registers no flow. Sign-in and the sandbox are checked over
- * the environment the run is handed, not the server's.
+ * unavailable mode registers no flow. Sign-in is checked over the environment
+ * the run is handed, not the server's. Nothing is asked about a sandbox:
+ * Kitchen Sink confines no run.
  *
  * Red states produced before these were trusted:
  *   - count only `codex login status` as signed in: the key-only case reads unavailable.
- *   - skip the sandbox probe: the sandbox case reads available.
  *   - build the block when the flow list is made, whatever the check said: the
  *     no-flow case calls the factory, which is where another SDK version throws.
  */
@@ -24,7 +24,6 @@ const able: CodexHostChecks = {
   sdk: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
   makeRoot: () => "/worktrees",
   loggedIn: async () => true,
-  sandboxFails: async () => null,
 };
 
 afterEach(() => {
@@ -81,39 +80,14 @@ describe("Codex mode's check (V4)", () => {
     expect(result).toEqual({ available: true });
   });
 
-  it("is unavailable when Codex's sandbox can't run here, with Codex's reason (BR-18)", async () => {
-    const result = await check({ sandboxFails: async () => "bwrap: No permissions to create new namespace" });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("sandbox can't run") });
-    expect(result).toMatchObject({ reason: expect.stringContaining("No permissions to create new namespace") });
-  });
-
-  it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 skips the sandbox and says the run is unconfined", async () => {
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
-    const probed: string[] = [];
-    const result = await check({ sandboxFails: async (dir) => (probed.push(dir), "no sandbox here") });
-    expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
-    expect(probed).toEqual([]);
-  });
-
-  it("names the opt-out when the sandbox can't run", async () => {
-    const result = await check({ sandboxFails: async () => "no sandbox here" });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
-  });
-
-  it("probes the sandbox in the worktree root, and the sign-in and the sandbox over the run's environment", async () => {
+  it("probes the sign-in over the run's environment, not the server's", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CODEX_HOME", "/codex-home");
-    const seen: Array<{ dir?: string; env: Record<string, string> }> = [];
-    await check({
-      loggedIn: async (env) => (seen.push({ env }), true),
-      sandboxFails: async (dir, env) => (seen.push({ dir, env }), null),
-    });
-    expect(seen).toHaveLength(2);
-    expect(seen[1]!.dir).toBe("/worktrees");
-    for (const { env } of seen) {
-      expect(env.CODEX_HOME).toBe("/codex-home");
-      expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
-    }
+    const seen: Array<Record<string, string>> = [];
+    await check({ loggedIn: async (env) => (seen.push(env), true) });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.CODEX_HOME).toBe("/codex-home");
+    expect(seen[0]!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
   });
 
   it("asks nothing of the host in test mode, where the scripted Codex runs", async () => {
