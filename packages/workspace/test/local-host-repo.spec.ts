@@ -330,7 +330,7 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     // key on it see what the run did.
     expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
     expect(git(again.cwd, "rev-parse", "fsd/run-1")).toBe(committed);
-    expect(again.repo?.movedBack).toEqual({ from: "fix/elsewhere", commit: committed, fastForwarded: true });
+    expect(again.repo?.movedBack).toEqual({ from: "fix/elsewhere", commit: committed, how: "fast-forward" });
     // Nothing in the tree moved: a move-back is never a reset.
     expect(readFileSync(join(again.cwd, "marker.txt"), "utf8")).toBe("uncommitted edit");
     expect(readFileSync(join(again.cwd, "wip.txt"), "utf8")).toBe("untracked");
@@ -349,7 +349,7 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     const again = await provision(h);
 
     expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
-    expect(again.repo?.movedBack).toEqual({ from: null, commit: committed, fastForwarded: true });
+    expect(again.repo?.movedBack).toEqual({ from: null, commit: committed, how: "fast-forward" });
   });
 
   it("does not report a move-back for a checkout that never left its branch", async () => {
@@ -361,29 +361,70 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     expect(again.repo?.movedBack).toBeUndefined();
   });
 
-  it("refuses, unchanged and typed, a branch that lacks the run's commits, naming what clears it", async () => {
-    // Fast-forwarding here would drop the run's own commit from its branch,
-    // and checking the run's branch back out would move files.
+  it("switches back from a side branch that lacks the run's commits, leaving that branch as the run made it", async () => {
+    // A run splitting its work into several pull requests cuts a branch from
+    // the base and cherry-picks onto it. The run's branch is still its root,
+    // and the side branch is work too: both survive.
+    const h = host();
+    const first = await provision(h);
+    writeFileSync(join(first.cwd, "a.txt"), "part a");
+    git(first.cwd, "add", "a.txt");
+    git(first.cwd, "commit", "-q", "-m", "a");
+    writeFileSync(join(first.cwd, "b.txt"), "part b");
+    git(first.cwd, "add", "b.txt");
+    git(first.cwd, "commit", "-q", "-m", "b");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "split/b", "HEAD~2");
+    git(first.cwd, "cherry-pick", "fsd/run-1");
+    const split = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toEqual({ from: "split/b", commit: tip, how: "switched" });
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "HEAD")).toBe(tip);
+    expect(git(again.cwd, "status", "--porcelain")).toBe("");
+    expect(git(again.cwd, "rev-parse", "split/b")).toBe(split);
+  });
+
+  it("commits what was left uncommitted on the side branch before switching, so nothing is lost", async () => {
     const h = host();
     const first = await provision(h);
     git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
     const tip = git(first.cwd, "rev-parse", "HEAD");
-    git(first.cwd, "checkout", "-q", "-b", "elsewhere", "HEAD~1");
+    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
+    writeFileSync(join(first.cwd, "marker.txt"), "half-done edit");
+    writeFileSync(join(first.cwd, "new.txt"), "untracked");
 
-    const refusal = await refusalOf(provision(h));
-
-    expect(refusal).toBeInstanceOf(WorkspaceRefusedError);
-    expect(refusal.reason).toBe("checkout-moved");
-    expect(refusal.message).toMatch(/on branch "elsewhere", not the run's branch "fsd\/run-1"/);
-    expect(refusal.message).toContain("git merge fsd/run-1");
-    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
-    expect(git(first.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
-
-    // Doing what the refusal says clears it.
-    git(first.cwd, "merge", "-q", "fsd/run-1");
     const again = await provision(h);
+
+    const saved = again.repo?.movedBack?.saved;
+    expect(again.repo?.movedBack).toMatchObject({ from: "split/a", commit: tip, how: "switched" });
+    expect(saved).toBe(git(again.cwd, "rev-parse", "split/a"));
+    expect(git(again.cwd, "show", "--format=%an", "-s", saved!)).toBe("flow-state-dev workspace host");
+    expect(git(again.cwd, "show", `${saved}:marker.txt`)).toBe("half-done edit");
+    expect(git(again.cwd, "show", `${saved}:new.txt`)).toBe("untracked");
     expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
-    expect(again.repo?.movedBack?.from).toBe("elsewhere");
+    expect(readFileSync(join(again.cwd, "marker.txt"), "utf8")).toBe("marker A");
+    expect(existsSync(join(again.cwd, "new.txt"))).toBe(false);
+  });
+
+  it("names a branch for a detached HEAD's commits before switching away from them", async () => {
+    // A commit no branch holds would be reachable only from the reflog once
+    // the checkout moves.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    git(first.cwd, "checkout", "-q", "--detach", "HEAD~1");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const detached = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    const kept = `fsd/run-1-detached-${detached.slice(0, 12)}`;
+    expect(again.repo?.movedBack).toMatchObject({ from: null, how: "switched", kept });
+    expect(git(again.cwd, "rev-parse", kept)).toBe(detached);
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
   });
 
   it("refuses a checkout in the middle of a merge, even on a branch it could fast-forward to", async () => {

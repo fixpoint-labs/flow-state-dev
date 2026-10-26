@@ -12,8 +12,9 @@
  * `reason` is stable: `"invalid-remote"`, `"remote-not-allowed"`,
  * `"remote-unreadable"`, `"base-diverged"` (a repository on this machine
  * whose base and its upstream each have commits the other lacks),
- * `"checkout-moved"` (the run's checkout is on another branch, or detached,
- * and cannot be moved back onto the run's branch without dropping work), or
+ * `"checkout-moved"` (the run's checkout is off the run's branch and is
+ * mid-way through a merge, rebase or similar, or the run's branch is checked
+ * out in another worktree), or
  * whatever reason a run source refused with. A caller should fail the run
  * with it rather than retry: none of these clears by itself, and the message
  * says what clears it. `base-diverged` clears once someone pulls or rebases,

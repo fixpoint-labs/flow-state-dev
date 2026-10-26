@@ -1135,20 +1135,47 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
     expect(readFileSync(join(again.path, "wip.txt"), "utf8")).toBe("half done");
   });
 
-  it("refuses, as a refusal, a worktree on a branch that lacks the run's commits", async () => {
-    // Moving the run's branch there would drop its commits; checking it back
-    // out would move files. A typed refusal settles the row with what clears it.
+  it("switches a worktree back from a side branch that lacks the run's commits, keeping both", async () => {
+    // A run splitting its work cuts a branch from the base. The attempt still
+    // runs on the branch its prompt names, with the run's commits, and the side
+    // branch is left as the run made it.
     const config = workspace();
     const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
     execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "the run's own"], {
       cwd: checkout.path,
       stdio: "pipe",
     });
+    const tip = execFileSync("git", ["rev-parse", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
     execFileSync("git", ["checkout", "-b", "somewhere-else", "HEAD~1"], { cwd: checkout.path, stdio: "pipe" });
+
+    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
+
+    const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
+    expect(head).toBe(again.branch);
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim()).toBe(tip);
+    execFileSync("git", ["rev-parse", "--verify", "somewhere-else"], { cwd: again.path, stdio: "pipe" });
+  });
+
+  it("refuses, as a refusal, a worktree left in the middle of a merge", async () => {
+    // Mid-merge, HEAD is git's scratch state; the row settles as refused with
+    // the command that clears it.
+    const config = workspace();
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    const g = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: checkout.path, stdio: "pipe" });
+    g("checkout", "-b", "side");
+    writeFileSync(join(checkout.path, "clash.txt"), "side");
+    g("add", "clash.txt");
+    g("commit", "-m", "side");
+    g("checkout", "-b", "somewhere-else", "HEAD~1");
+    writeFileSync(join(checkout.path, "clash.txt"), "elsewhere");
+    g("add", "clash.txt");
+    g("commit", "-m", "elsewhere");
+    expect(() => g("merge", "side")).toThrow();
 
     const attempt = provisionCheckout(config, at("FIX-1219", "implement"));
     await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
-    await expect(attempt).rejects.toThrow(/is on branch "somewhere-else", not the run's branch/);
+    await expect(attempt).rejects.toThrow(/git merge --abort/);
   });
 
   it("re-points a detached HEAD at the run's branch", async () => {

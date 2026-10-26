@@ -622,8 +622,8 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
  * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
  * and a checkout whose branch was deleted or that was cut from another
  * repository is refused rather than recreated. One a run switched to another
- * branch is moved back onto the run's branch when that is a fast-forward, so
- * the attempt commits where the prompt says, and refused otherwise. The checkout is exactly
+ * branch is moved back onto the run's branch, keeping what the run made on the
+ * other, so the attempt commits where the prompt says. The checkout is exactly
  * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
  */
 export async function provisionCheckout(
