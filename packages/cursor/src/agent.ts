@@ -31,6 +31,7 @@
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
+  formatRunDuration,
   handler,
   harnessRunInputSchema,
   harnessRunNamespace,
@@ -518,7 +519,7 @@ async function openAgent(args: {
     closeQuietly(agent);
     throw err;
   }
-  args.ctx.emit.status(`Cursor agent ${agent.agentId}.`);
+  args.ctx.emit.status(`Cursor agent ${agent.agentId}`);
   return agent;
 }
 
@@ -793,7 +794,7 @@ function buildHandle(args: {
 
   args.ctx.emit.status(
     settled.outcome === "finished"
-      ? "Cursor run completed."
+      ? `Cursor run completed in ${formatRunDuration(Date.now() - args.dispatchedAt)}.`
       : `Cursor run errored (${settled.failureMessage ?? "no terminal wait result"}).`,
     { transient: false },
   );

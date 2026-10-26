@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
+import { formatRunDuration, handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
@@ -1389,7 +1389,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             ? `Claude Code agent run errored (${
                 resultSubtype === "success" ? "is_error" : (resultSubtype ?? "unknown subtype")
               }).`
-            : "Claude Code agent run completed.",
+            : `Claude Code agent run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`,
           { transient: false },
         );
 

@@ -1078,6 +1078,24 @@ describe("claudeCodeAgent", () => {
     });
   });
 
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        query: async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          yield RESULT_OK;
+        },
+      });
+      const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Claude Code agent run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says Claude Code is starting before the SDK has said anything", async () => {
     const resolveClaudeAgent: ResolveClaudeAgent = () => ({
       query: async function* () {

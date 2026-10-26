@@ -8,7 +8,7 @@
  * runtime and no network. The one spec that loads the real installed SDK is
  * `installed-sdk.spec.ts`.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
@@ -244,6 +244,24 @@ describe("cursorAgent — what it hands the SDK", () => {
     });
     await testBlock(block, { input: { prompt: "go" } });
     expect(calls).toBe(1);
+  });
+
+  it("ends a run by saying how long it took", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      const { resolve } = scripted(() =>
+        (async function* () {
+          vi.setSystemTime((5 * 60 + 24) * 1000);
+          for (const m of OK_STREAM) yield m;
+        })(),
+      );
+      const { items } = await testBlock(cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve }), { input: { prompt: "go" } });
+      const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+      expect(statuses).toContain("Cursor run completed in 5 mins, 24 seconds.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("closes the agent on the way out of a successful run", async () => {

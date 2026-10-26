@@ -75,7 +75,7 @@ export function translateCursorMessage(message: CursorSdkMessage): TranslatedEve
           kind: "status",
           message: `Cursor task${status === undefined ? "" : ` (${status})`}${
             text === undefined || text === "" ? "" : `: ${text}`
-          }.`,
+          }`,
         },
       ];
     }
@@ -101,7 +101,7 @@ export function translateCursorMessage(message: CursorSdkMessage): TranslatedEve
  * per-account default has no other source for it.
  */
 function translateSystem(message: { subtype?: unknown; model?: { id?: unknown } }): TranslatedEvent[] {
-  const events: TranslatedEvent[] = [{ kind: "status", message: "Cursor agent started." }];
+  const events: TranslatedEvent[] = [{ kind: "status", message: "Cursor agent started" }];
   const model = readString(message.model?.id);
   if (model !== undefined && model !== "") events.push({ kind: "model", model });
   return events;

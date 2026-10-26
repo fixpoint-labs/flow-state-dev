@@ -624,3 +624,4 @@ export type {
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";
 export type { HarnessEnvOptions } from "./helpers/harness-env";
+export { formatRunDuration } from "./helpers/run-duration";
