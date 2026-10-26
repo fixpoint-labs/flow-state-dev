@@ -41,7 +41,6 @@ export {
   composeToolCallsLabel,
   composeToolGroupLabel,
   toolIntent,
-  toolSubject,
   TOOL_GROUP_DISTINCT_CAP,
   TOOL_GROUP_INTENT_CAP,
   TOOL_INTENT_ARG,

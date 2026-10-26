@@ -165,7 +165,7 @@ const grokPickerId = (effort: string) => `grok-4.7:${effort}`;
  * the pick. Availability still depends on the signed-in account; when Cursor
  * ships or retires a model, edit this list.
  */
-export const CURSOR_MODELS: readonly HarnessModel[] = [
+const CURSOR_MODELS: readonly HarnessModel[] = [
   ...GROK_EFFORTS.map(({ value, label }) => ({ id: grokPickerId(value), label: `Grok 4.7 · ${label}` })),
   { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
   { id: "gemini-4-argon", label: "Gemini 4 Argon" },
