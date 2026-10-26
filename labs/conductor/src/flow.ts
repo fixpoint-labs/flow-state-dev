@@ -134,13 +134,14 @@ export interface ConductorFlowOptions {
    * Forwarded to the coding agent (model, tools, permission mode, a test stub).
    *
    * This lab picks Claude Code, so this is `claudeCodeAgent`'s option surface
-   * minus the four the manager's slot supplies — see where the factory is
-   * written below. A host that wanted Codex would write a different factory and
+   * minus the four feeds the manager's slot supplies and the two options this
+   * lab fixes (`detached`, `recordWork`) — see where the factory is written
+   * below. A host that wanted Codex would write a different factory and
    * change nothing in `@flow-state-dev/harness-manager`.
    */
   agent?: Omit<
     Parameters<typeof claudeCodeAgent>[0],
-    "detached" | "recordWork" | "cwd" | "resume" | "onSession"
+    "detached" | "recordWork" | "cwd" | "resume" | "onSession" | "onUsage"
   >;
   ownership?: Parameters<typeof harnessManager>[0]["ownership"];
 }
@@ -534,7 +535,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   // **The slot, and the only place this repository names a coding harness.**
   //
-  // The manager hands down three feeds and knows nothing else about what it
+  // The manager hands down four feeds and knows nothing else about what it
   // is driving; everything Claude-specific is written here, where it belongs.
   // Pointing this board at Codex is this one expression.
   //
@@ -549,12 +550,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
   //
   // Shared by the manager and the run's door, which resumes a finished run's
   // coding session for a person's line (FIX-2086).
-  const harness: HarnessSlot = ({ cwd, resume, onSession }) =>
+  //
+  // The feeds are spread, not listed, so a feed the manager adds reaches the
+  // harness without an edit here.
+  const harness: HarnessSlot = (feeds) =>
     claudeCodeAgent({
       ...(agent ?? {}),
-      cwd,
-      resume,
-      onSession,
+      ...feeds,
       detached: true,
       recordWork: true,
     });

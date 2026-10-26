@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import type { SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 import {
   acquireCheckout,
   encodeSegment,
@@ -290,6 +291,48 @@ describe("the manager — the verdict at each exit", () => {
 
     expect(row.status).toBe("errored");
     expect(row.run?.outcome).toBe("failed");
+  });
+});
+
+describe("the manager — what a run reports about its subscription", () => {
+  it("records the usage window a run reports in the run owner's usage record", async () => {
+    // The slot is where the lab names its harness, so a feed it does not pass
+    // on is lost: a run's rate-limit windows never reach the person's usage
+    // record, and the Usage view shows nothing for runs this lab started.
+    const rateLimit = {
+      type: "rate_limit_event",
+      session_id: "sess_stub",
+      rate_limit_info: { status: "allowed", resetsAt: 1_800_000_000, rateLimitType: "five_hour" },
+    } as unknown as SdkMessageLike;
+    live = createConductorHarness({
+      // A real run names its account; a window whose account is unknown is dropped.
+      resolveClaudeAgent: () => ({
+        query: () =>
+          Object.assign(
+            (async function* () {
+              yield rateLimit;
+              yield sdkResult("success");
+            })(),
+            { accountInfo: async () => ({ email: "alice@example.com" }) },
+          ),
+      }),
+      isDone: () => true,
+    });
+
+    const row = await seedAndDrain(live);
+    expect(row.status).toBe("completed");
+
+    // Read at the store, since the lab exposes no usage query: the run owner's
+    // cell, so a window written for the session or anyone else misses.
+    const { stores } = await live.state.getRuntime();
+    const stored = await stores.resourceState.get(
+      "user",
+      `${USER_ID}:~org:${DEFAULT_ORG_ID}`,
+      "harness-usage/claude-code",
+    );
+    expect(stored?.state["windows"]).toEqual([
+      expect.objectContaining({ id: "five_hour", origin: "run" }),
+    ]);
   });
 });
 
