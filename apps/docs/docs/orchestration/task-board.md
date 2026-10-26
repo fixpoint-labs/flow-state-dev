@@ -633,7 +633,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 A model works a board through five task tools. Four belong to whoever files the work:
 
-- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, or, filed with `held: true`, when you release it.
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-task-held-on-questions).
 - `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
 - `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
 - `updateTask({ id, ... })` changes one, each field by its own rule.
@@ -660,6 +660,7 @@ No tool finishes a task. A task ends when its worker's turn returns, or throws.
 | `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
 | `status: "cancelled"` | Until the task finishes. Sent alone |
 | `message` | Until the task finishes. Sent alone, and kept on the task; see [below](#sending-a-message-to-an-open-task) |
+| `question` with `message`, or with `done` | While the question is open. Answers one of the task's [questions](#a-task-held-on-questions) by its id. Sent alone |
 
 The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel or a message lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` to correct or extend it.
 
@@ -677,6 +678,14 @@ Every rule is checked inside the write, so a task that starts between your read 
 | `unknown_assignee` | An `assignee` the board's roster doesn't name |
 | `steer_limit` | A message to a task that already holds 20 |
 | `message_not_supported` | A message on a board whose task list keeps no messages |
+| `no_such_question` | A `question` id the task holds no open question or confirm under |
+| `question_answered` | Other words for a question that was already answered |
+| `question_is_the_users` | The filer's tool answering a question the user answers from their Inbox |
+| `question_takes_message` | A question answered without `message`, or with `done` |
+| `confirm_takes_done` | A confirm answered without `done` |
+| `done_without_question` | `done` sent without the `question` it answers |
+| `answer_takes_no_edits` | An answer sent with a field or a status |
+| `questions_not_supported` | An answer on a board whose task list keeps no questions |
 
 ### Sending a message to an open task
 
@@ -694,6 +703,42 @@ The filer's model sends a message with the `updateTask` tool, and a person with 
 `getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). Unless it arrived before the task started, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
+
+### A task held on questions
+
+Some work can't start until a person decides something. File it with the questions, and it waits for the answers:
+
+```ts
+createTask({
+  goal: "Write the adoption script",
+  assignee: "analyst",
+  questions: [
+    "Which CSV export should the script read?",
+    { kind: "confirm", prompt: "Run it against production?" },   // a No cancels the task
+  ],
+})
+```
+
+A plain string is a question, answered in words. A `confirm` asks for a yes or a no. A No cancels the task, with the No and any note as the cancel's reason. File it with `onNo: "continue"` instead and the work goes on after a No, with "No." in its brief. The task stays `pending`, and nothing starts it, until every one is answered. Each answer joins the brief its first attempt gets, after the goal and beside the question it answers. Questions are set only when filing, up to 20, each up to 1,000 characters.
+
+A worker can also ask midway, from the turn working the task, with `askMidway(ctx, board, [{ prompt }])` from `@flow-state-dev/orchestration/task-board`, or `[{ kind: "confirm", prompt, onNo }]` for a yes or a no. The turn ends there without settling the task: it keeps its attempt and everything the turn wrote, and gives up its lease, so it isn't handed out again while it waits. Once the user answers, the task takes one more turn on the same attempt, with the answer in its message. That turn isn't charged against `maxAttempts`.
+
+`getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A hold stays listed until it's answered. The same list carries a stop the task's run is parked on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
+
+The user answers from their Inbox. A screen of your own answers with the board's `updateTask` action, naming the question:
+
+```ts
+updateTask_tasks({ id, question: holdId, message: "The March export, exports/2026-03.csv" })
+updateTask_tasks({ id, question: confirmId, done: true })   // or done: false, with an optional message
+```
+
+The answer is kept on the task as one of its messages, from the user, so it counts toward the 20 a task takes. Sending the same answer again is a success that writes nothing, even once the task has finished. Different words for an answered question are refused. Only the user the task was filed for, in the same tenant and organization, can answer; anyone else is answered `task_not_found`. The filer's own `updateTask` tool answers only a question the worker asked midway, on a task that runs in a session of its own. Questions asked at filing are the user's.
+
+A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Then, on the board's first touch past it, the question closes with "No answer came before this question's deadline. Go on from your brief without it." and the work goes on as if it had been answered.
+
+A line the user types into a held task's session answers its oldest open question. A confirm is never answered that way: it takes a yes or a no. With no question open, the line is a message to the task as usual.
+
+A held task ends only by a cancel, which closes every question. A turn waits once: a worker can't ask midway while its run waits for the user, and a run can't stop for the user while its own questions are open. The second wait is refused, and the run's stop resumes at once with `{ cancelled: true }`.
 
 ### Progress from the worker
 
@@ -846,14 +891,15 @@ Until then the task stays `in_progress`, and its row's `waitingOn` says what it'
 | `waitingOn` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
-| `"user"` | a stop that waits for a user: `ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input` | none |
-| `"wait"` | any other stop, such as an external event | none |
+| `"wait"` | a stop: `ctx.waitForUser()`, `ctx.suspend()`, or an external event | none |
+
+A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input`) is also listed in the task's `holds`.
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` return `waitingOn: "user"` and a `waitingFor` with what it asks: its `kind` (`approval`, `review` or `input`), its `prompt`, and its `deadline` if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `holds`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 

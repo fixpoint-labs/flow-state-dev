@@ -24,7 +24,7 @@ describe("isTaskTurn", () => {
     const seen = await isolated(() => {
       openWorkerClaimScope();
       const ctx = ctxWith({});
-      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, createdAt: 1 }, ctx);
+      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, turn: 1, createdAt: 1 }, ctx);
       return isTaskTurn(ctx);
     });
     expect(seen).toBe(true);
@@ -37,7 +37,7 @@ describe("isTaskTurn", () => {
     const inRequest = (id: string) => ({ session: { state: {} }, request: { identity: { id }, incarnation: "i1" } });
     const seen = await isolated(() => {
       openWorkerClaimScope();
-      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, createdAt: 1 }, inRequest("r_worker"));
+      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, turn: 1, createdAt: 1 }, inRequest("r_worker"));
       return [isTaskTurn(inRequest("r_worker")), isTaskTurn(inRequest("r_started"))];
     });
     expect(seen).toEqual([true, false]);

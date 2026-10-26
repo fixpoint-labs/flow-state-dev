@@ -4,6 +4,7 @@
  * `index.ts` publishes the ones a caller uses; the rest stay inside the read.
  */
 import type { WaitForUserKind } from "@flow-state-dev/core/types";
+import type { TaskHold } from "../tasks/schema/hold";
 
 /** What a hold asks the user for: a task run's stop (`approval`, `review`, `input`) or a row's own (`question`, `confirm`). */
 export type InboxAskKind = WaitForUserKind | "question" | "confirm";
@@ -18,8 +19,22 @@ export type SuspensionHoldSource = {
   readonly suspensionId: string;
 };
 
-/** A hold kept on the task row itself (a question or a confirm): answered through the board. */
-export type RowHoldSource = { readonly kind: "row" };
+/**
+ * A hold kept on the task row itself (a question or a confirm): answered
+ * through the board's `updateTask` action, as the user, on the session that
+ * holds the board.
+ */
+export type RowHoldSource = {
+  readonly kind: "row";
+  /** The flow that owns the board's session; `null` when the reader can't name it, which leaves the hold unanswerable. */
+  readonly flowId: string | null;
+  /** The session that holds the board; `null` when the row names none. */
+  readonly sessionId: string | null;
+  /** The board's `updateTask` action on that session. */
+  readonly action: string | null;
+  /** The task the hold is on. */
+  readonly taskId: string;
+};
 
 /** One open hold an item shows. */
 export type InboxHold<TDetail = unknown> = {
@@ -77,15 +92,16 @@ export type InboxRow = {
   readonly updatedAt?: number | null;
   /** The run working it: the session and request its stop is in. */
   readonly run?: { readonly sessionId: string; readonly requestId: string } | null;
-  /** The task run's stop as the row records it (FIX-2129), until the row's holds take it over. */
-  readonly waitingFor?: {
-    readonly requestId: string;
-    readonly suspensionId: string;
-    readonly kind: WaitForUserKind;
-    readonly prompt: string;
-    readonly title?: string;
-    readonly deadline?: number;
-  } | null;
+  /** What holds it (`Task.holds`): its questions and confirms, and its run's stop for a person. */
+  readonly holds?: readonly TaskHold[] | null;
+  /** Its steers, as far as the Inbox reads them: which hold each answers. A question is open while none carries its id. */
+  readonly steers?: readonly { readonly id: string; readonly answers?: string }[] | null;
+  /**
+   * Where its row holds are answered: the session that holds the board, and
+   * the board's `updateTask` action there. `null` when the reader can't say,
+   * which leaves them unanswerable.
+   */
+  readonly holder?: { readonly sessionId: string; readonly action: string } | null;
 };
 
 /** A suspension for the user a reader found in a session. */

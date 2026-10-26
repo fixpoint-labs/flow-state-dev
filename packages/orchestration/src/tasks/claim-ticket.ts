@@ -53,6 +53,14 @@ export interface TaskClaimTicket {
   /** `task.createdAt` as of the claim — task identity across delete/recreate. */
   readonly createdAt: number;
   /**
+   * `task.turn` as of the claim: the row's turn generation (FIX-2133 D3).
+   * Every claim of a row advances it, a same-attempt re-entry's included, so
+   * two turns of one attempt hold different tickets and a turn's late write
+   * never lands after its successor's claim. Checked by every claim-ticket
+   * write, at `transitionDeclineReason`.
+   */
+  readonly turn: number;
+  /**
    * `task.incarnationId` as of the claim — the row's identity nonce, and the
    * only one of these fields that survives a same-millisecond recreate.
    *
@@ -108,6 +116,8 @@ export const taskClaimTicketSchema = z.object({
   taskId: z.string(),
   attempt: z.number(),
   createdAt: z.number(),
+  /** The row's turn generation as of the claim. See {@link TaskClaimTicket.turn}. */
+  turn: z.number().int().nonnegative(),
   // Declared, not merely allowed: a Zod object strips keys it does not name, so
   // an undeclared field would be dropped the moment the board patches the
   // ticket onto its worker-body state. Optional because the row it is copied
@@ -144,6 +154,7 @@ export function ticketForClaim(
     taskId: claimed.id,
     attempt: claimed.attempts,
     createdAt: claimed.createdAt,
+    turn: claimed.turn ?? 0,
     // Spread conditionally so an absent nonce stays an ABSENT KEY. A present
     // key holding `undefined` reads the same to `ticketNamesTask` and does not
     // to a JSON boundary, and this ticket's fields are copied onto a task

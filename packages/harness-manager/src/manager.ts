@@ -57,10 +57,12 @@ import {
   MAX_STEERS,
   readCommittedTask,
   resolveResourceCollection,
+  shownSteer,
   steersTakenIn,
   ticketForClaim,
   untakenSteers,
   type DefinedTaskCollection,
+  type ShownSteer,
   type Task,
   type TaskCollectionRef,
   type TaskSteer,
@@ -687,6 +689,12 @@ const managerStateSchema = z.object({
   topic: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
   attempt: z.number().nullable().default(null),
+  /**
+   * The row's turn generation when this attempt opened it (FIX-2133 D3), on a
+   * board read from the claim: two turns can share an attempt, so a write is
+   * this run's only while the row is still on its turn. `null` on a fixed board.
+   */
+  turn: z.number().nullable().default(null),
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   /**
@@ -928,6 +936,7 @@ function identityFrom(
   return {
     taskId: state.taskId,
     attempt: state.attempt,
+    ...(state.turn != null ? { turn: state.turn } : {}),
     topic: state.topic,
     boardCollectionId,
   };
@@ -1512,7 +1521,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ctx: BlockContext,
     takenIn: string,
     select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
-  ): Promise<{ steers: Array<{ message: string; from: "filer" | "user" }>; taken: TaskSteer[] } | null> => {
+  ): Promise<{ steers: ShownSteer[]; taken: TaskSteer[] } | null> => {
     const board = await runBoard(ctx);
     const row = await committedRow(ctx);
     if (row === undefined || row.status !== "in_progress") return { steers: [], taken: [] };
@@ -1525,7 +1534,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
     const now = board.get(row.id) ?? row;
     return {
-      steers: select(now, takenIn).map(({ message, from }) => ({ message, from })),
+      steers: select(now, takenIn).map((steer) => shownSteer(now, steer)),
       // What this take wrote, as the write says: a re-run of the read took none.
       taken: (now.steers ?? []).filter((steer) => taken.includes(steer.id)),
     };
@@ -1838,6 +1847,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // of the claim's incarnation when it names one; the incarnation found is
       // kept, so every later write is fenced against it too.
       let claim = claimFrom(input);
+      let openedTurn: number | null = null;
       if (claim !== null) {
         const board = await claimLedger(ctx, claim);
         if (board === undefined) {
@@ -1854,11 +1864,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         }
         claim = { ...claim, incarnationId: claim.incarnationId ?? row.incarnationId ?? null };
         assertDerivedIdentity("the claim's ledger id", claim.collectionId);
+        openedTurn = row.turn ?? 0;
       }
       const epic = claim === null ? boardCollectionId! : runBoardSegment(claim.collectionId, claim.partition ?? undefined);
       // On state before anything can refuse, so a refusal settles under this
       // attempt's own claim.
-      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts, goal: input.goal, decided: null });
+      await ctx.sequencer!.patchState({ claim, epic, taskId: input.taskId, attempt: input.attempts, turn: openedTurn, goal: input.goal, decided: null });
 
       // A row naming no issue and phase (a task a conversation filed) runs as
       // this manager's phase, with its task id standing in for the issue. So
@@ -2765,7 +2776,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const state = managerState(harnessCtxState(ctx));
         const row = await committedRow(ctx);
         if (!live()) return;
-        const owed = row !== undefined && row.status === "in_progress" && row.attempts === state.attempt && untakenSteers(row).length > 0;
+        const owed =
+          row !== undefined &&
+          row.status === "in_progress" &&
+          row.attempts === state.attempt &&
+          // This turn's own row (FIX-2133 D3): a later turn of the attempt is another run's.
+          (state.turn == null || (row.turn ?? 0) === state.turn) &&
+          untakenSteers(row).length > 0;
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use.
         const confirmed = owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
@@ -2847,7 +2864,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const row = await committedRow(ctx);
     // Only this attempt's own row: a task cancelled, finished or claimed again
     // since takes no more steps from this request.
-    const ours = row !== undefined && row.status === "in_progress" && row.attempts === state.attempt;
+    const ours =
+      row !== undefined &&
+      row.status === "in_progress" &&
+      row.attempts === state.attempt &&
+      // A later turn of the attempt claimed since is another run's (FIX-2133 D3).
+      (state.turn == null || (row.turn ?? 0) === state.turn);
     if (!ours) {
       if (!stopped) return undefined;
       throw new HarnessAttemptFailed(STALE_AFTER_STOP);

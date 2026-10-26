@@ -42,6 +42,7 @@ import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
+  shownSteer,
   taskSchema,
   type Task,
   type TaskCollectionRef,
@@ -145,7 +146,7 @@ export async function packWorkerInput(
     ...(task.answered === true && task.feedback !== undefined ? { answer: task.feedback } : {}),
     // Every steer, taken or not (FIX-2086 D1): the brief a retry runs from too.
     ...(task.steers !== undefined && task.steers.length > 0
-      ? { steers: task.steers.map((steer) => ({ message: steer.message, from: steer.from })) }
+      ? { steers: task.steers.map((steer) => shownSteer(task, steer)) }
       : {}),
     // The task a follow-up follows: a `per-task` dispatch keys its session by it.
     ...(task.followUpOf !== undefined ? { followUpOf: task.followUpOf } : {}),

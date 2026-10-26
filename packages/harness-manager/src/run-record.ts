@@ -368,6 +368,12 @@ export interface AttemptIdentity {
   taskId: string;
   /** `attempts` as the board packed it into this worker's input at claim time. */
   attempt: number;
+  /**
+   * The row's turn generation when this attempt opened it (FIX-2133 D3), on a
+   * board read from the claim. Two turns can share an attempt, so a write is
+   * refused once a later turn is claimed. Absent on a fixed board.
+   */
+  turn?: number;
   /** The bare topic — `<epic>/<issue>/<phase>`. See {@link runTopic}. */
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
@@ -395,6 +401,7 @@ export interface AttemptIdentity {
 interface ClaimView {
   status?: string;
   attempts?: number;
+  turn?: number;
   leaseUntil?: number | null;
   incarnationId?: string;
 }
@@ -531,6 +538,7 @@ export async function writeRunRow(
   const claim = readClaim(row);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
+  if (identity.turn !== undefined && (claim.turn ?? 0) !== identity.turn) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
   if (leaseHasLapsed(claim, Date.now())) return "refused";
   if (

@@ -41,6 +41,7 @@ const CLAIM: TaskClaimTicket = {
   collectionId: "issue-ledger",
   taskId: "t1",
   attempt: 1,
+  turn: 1,
   createdAt: 1_700_000_000_000,
   incarnationId: "inc_1",
 };

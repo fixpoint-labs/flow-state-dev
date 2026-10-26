@@ -1,8 +1,7 @@
 /**
  * `@flow-state-dev/orchestration/inbox/check` — the check that an Inbox list
  * is the list it should be (FIX-2133). For tests and goals in this repository:
- * the subpath is in the workspace's exports only, never published, since its
- * truth reads change with the row holds.
+ * the subpath is in the workspace's exports only, never published.
  *
  * The truth is read apart from the list, or the check proves nothing: a
  * session's suspended requests with their items (not the item log a reader
@@ -32,6 +31,8 @@ export type RowTruth = {
   readonly taskId: string;
   /** The suspension ids of its open suspension holds. */
   readonly suspensionHolds: readonly string[];
+  /** The ids of its open questions and confirms. */
+  readonly rowHolds: readonly string[];
 };
 
 /** What should be in the Inbox, read apart from the list. */
@@ -90,15 +91,27 @@ export function suspensionTruthOf(sessionId: string, requests: readonly SessionR
 }
 
 /**
- * A board's rows as truth, read straight from what `listTasks` returns: an
- * open row that records a task run's stop (`waitingFor`) holds it. Not the
- * list's helpers, so a fault in them shows.
+ * A board's rows as truth, read straight from what `listTasks` returns, field
+ * by field: an open row holds the user on each `actor: "user"` hold in its
+ * `holds`, a suspension's while it is there, a question's or a confirm's while
+ * no steer names it. Not the list's helpers, nor the board's predicate, so a
+ * fault in either shows.
  */
 export function rowTruthOf(rows: readonly InboxRow[]): RowTruth[] {
   return rows.flatMap((row) => {
-    const stop = row.waitingFor?.suspensionId;
-    if (stop === undefined || isTerminalStatus(row.status as TaskStatus)) return [];
-    return [{ board: row.board, taskId: row.id, suspensionHolds: [stop] }];
+    if (isTerminalStatus(row.status as TaskStatus)) return [];
+    const answered = new Set((row.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
+    const suspensionHolds: string[] = [];
+    const rowHolds: string[] = [];
+    // Open holds re-derived here on purpose, not through `openRowHolds`: the
+    // truth stays independent of the predicate it checks.
+    for (const hold of row.holds ?? []) {
+      if (hold.actor !== "user") continue;
+      if (hold.source.kind === "suspension") suspensionHolds.push(hold.source.suspensionId);
+      else if (!answered.has(hold.id)) rowHolds.push(hold.id);
+    }
+    if (suspensionHolds.length === 0 && rowHolds.length === 0) return [];
+    return [{ board: row.board, taskId: row.id, suspensionHolds, rowHolds }];
   });
 }
 
@@ -130,12 +143,12 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   for (const row of truth.rows) {
     for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`hold ${id} on ${row.board}:${row.taskId}: no live stop`);
   }
-  // A listed task item shows the holds its row holds now: a stale list offers a stop that ended.
-  const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds].sort()]));
+  // A listed task item shows the holds its row holds now: a stale list offers a stop that ended, or a question answered.
+  const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds, ...r.rowHolds].sort()]));
   for (const item of items) {
     if (item.task === null) continue;
     const held = heldBy.get(item.id) ?? [];
-    const shown = item.holds.filter((h) => h.source.kind === "suspension").map((h) => h.id).sort();
+    const shown = item.holds.map((h) => h.id).sort();
     if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row holds ${held.join(", ") || "none"}`);
   }
 
@@ -144,7 +157,7 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const closed = new Set(truth.closed ?? []);
   const holdsSeen = new Set([
     ...items.flatMap((item) => item.holds.map((h) => h.id)),
-    ...truth.rows.flatMap((r) => r.suspensionHolds),
+    ...truth.rows.flatMap((r) => [...r.suspensionHolds, ...r.rowHolds]),
     ...truth.suspensions.map((s) => s.suspensionId),
   ]);
   const reopened = [...holdsSeen].filter((id) => closed.has(id));

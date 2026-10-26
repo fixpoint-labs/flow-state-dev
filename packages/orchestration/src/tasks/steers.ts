@@ -1,44 +1,13 @@
 /**
  * A task's steers (FIX-2086): words sent into an open task, kept on the task.
  *
- * The schema, the cap, and the pure decisions both backings share. A steer
- * changes no status, no claim, and no attempt count.
+ * The pure decisions both backings share; the schema and the cap are the
+ * leaf `schema/steer.ts`. A steer changes no status, no claim, and no attempt
+ * count.
  */
-import { z } from "zod";
 import type { Task } from "./schema/task";
-
-/** The most steers one task takes; the next is refused, naming the limit (D1). */
-export const MAX_STEERS = 20;
-
-/**
- * One steer on a task. Server-written by the `steer` verb, never by a patch;
- * each field but the take marks is written once.
- */
-export const taskSteerSchema = z.object({
-  /** Unique on its task. A replay that names the same key adds nothing. */
-  id: z.string(),
-  /** The words, as sent. */
-  message: z.string(),
-  /**
-   * Who sent it: `"filer"`, the filer's model through its `updateTask` tool;
-   * `"user"`, a person, from a screen or a line typed in the task's session.
-   */
-  from: z.enum(["filer", "user"]),
-  /** The user who sent it, when a person did and their id is known. */
-  by: z.string().optional(),
-  /** When it was kept, in epoch ms. */
-  at: z.number(),
-  /** The attempt that last took it. **Absent** until one has. */
-  takenBy: z.number().int().optional(),
-  /**
-   * The read that took it in that attempt (`takeSteers`). **Absent** when the
-   * claim took it, as part of the brief.
-   */
-  takenIn: z.string().optional(),
-});
-
-/** One steer on a task. */
-export type TaskSteer = z.infer<typeof taskSteerSchema>;
+import { hasOpenHold, openRowHolds, steerPlacesTaken, type HoldAnswer } from "./collection/holds";
+import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */
 export interface SteerInput {
@@ -51,6 +20,20 @@ export interface SteerInput {
    * upgrade step run again) adds one. A fresh id when absent.
    */
   readonly key?: string;
+}
+
+/** One steer as a worker is shown it: the words, who sent them, and the question they answer when they answer one (FIX-2133). */
+export interface ShownSteer {
+  readonly message: string;
+  readonly from: TaskSteer["from"];
+  /** The question or confirm this steer answers, as it was asked. */
+  readonly question?: string;
+}
+
+/** `steer` as a worker on `task` is shown it: with the prompt of the question it answers, read off the task's holds. */
+export function shownSteer(task: Pick<Task, "holds">, steer: Pick<TaskSteer, "message" | "from" | "answers">): ShownSteer {
+  const question = steer.answers === undefined ? undefined : task.holds?.find((hold) => hold.id === steer.answers)?.ask.prompt;
+  return { message: steer.message, from: steer.from, ...(question !== undefined ? { question } : {}) };
 }
 
 /** The steers on `task` no request of its current attempt has taken. Rule 6 settles only when this is empty. */
@@ -66,6 +49,9 @@ export function steersTakenIn(task: Pick<Task, "steers" | "attempts">, takenIn: 
 /**
  * What a `steer` writes on `task`, decided inside the write: the patch, or
  * `"unchanged"` for a key already kept, or `"limit"` past {@link MAX_STEERS}.
+ * Each open question keeps its answer's place under the cap (FIX-2133), so a
+ * row hold is always answerable: an ordinary steer is refused once the
+ * steers and the open questions reach it.
  * A task running nothing while it waits on work it filed now waits on the
  * steer instead: a turn is owed for it (D2).
  */
@@ -77,7 +63,7 @@ export function steerWrite(
 ): { patch: Partial<Task> } | "unchanged" | "limit" {
   const steers = task.steers ?? [];
   if (input.key !== undefined && steers.some((steer) => steer.id === input.key)) return "unchanged";
-  if (steers.length >= MAX_STEERS) return "limit";
+  if (steerPlacesTaken(task) >= MAX_STEERS) return "limit";
   const steer: TaskSteer = {
     id: input.key ?? id,
     message: input.message,
@@ -88,7 +74,8 @@ export function steerWrite(
   return {
     patch: {
       steers: [...steers, steer],
-      ...(task.status === "in_progress" && task.waitingOn === "filed" ? { waitingOn: "steer" as const } : {}),
+      // The turn owed for it is marked on the row (FIX-2133 D3), so the claim can take it when no wake does.
+      ...(task.status === "in_progress" && task.waitingOn === "filed" ? { waitingOn: "steer" as const, turnOwed: true as const } : {}),
     },
   };
 }
@@ -99,6 +86,9 @@ export function steerWrite(
  * took is left, so the same read after a crash still finds it.
  */
 export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | undefined {
+  // A held row's steers, and the answers that released it (`turnOwed`), are
+  // the next turn's (FIX-2133): the turn that asked takes none of them.
+  if (hasOpenHold(task) || task.turnOwed === true) return undefined;
   const steers = task.steers ?? [];
   if (!steers.some((steer) => steer.takenBy !== task.attempts)) return undefined;
   return {
@@ -128,9 +118,28 @@ export const LINE_STEER_REFUSALS: Readonly<Record<LineSteerRefusal, string>> = {
   "not-supported": "This task's board takes no message.",
 };
 
-/** The board a line steers: its `steer` verb, which a board that keeps no steers lacks. */
+/**
+ * The board a line steers: its `steer` verb, which a board that keeps no
+ * steers lacks, and its row as stored with the answer a question takes
+ * (FIX-2133), which a board that keeps no questions lacks.
+ */
 interface LineSteerLedger {
   readonly steer?: (id: string, input: SteerInput) => Promise<{ outcome: string; reason?: string } | undefined | void>;
+  readonly answer?: (id: string, answer: HoldAnswer) => Promise<{ outcome: string; reason?: string } | undefined | void>;
+  readonly get?: (id: string) => Pick<Task, "status" | "holds" | "steers"> | undefined;
+  readonly getCommitted?: (id: string) => Promise<Pick<Task, "status" | "holds" | "steers"> | undefined>;
+}
+
+/**
+ * The oldest open question on `taskId`, as stored: never a confirm, which a
+ * typed line can't answer. `null` when the line keyed `key` is on the task
+ * already (a replayed request): it is kept, and answers nothing more.
+ */
+async function oldestOpenQuestion(ledger: LineSteerLedger, taskId: string, key: string): Promise<string | null | undefined> {
+  const row = ledger.getCommitted !== undefined ? await ledger.getCommitted(taskId) : ledger.get?.(taskId);
+  if (row === undefined) return undefined;
+  if ((row.steers ?? []).some((steer) => steer.id === key)) return null;
+  return openRowHolds(row).find((hold) => hold.ask.kind === "question")?.id;
 }
 
 /** The request a line arrived on: its verified user and its id, never its input (BP-031). */
@@ -144,6 +153,12 @@ interface LineRequest {
  * `taskId`: from the user the request was verified as, keyed by the request
  * so a replayed request adds nothing.
  *
+ * The one home for what a line answers (FIX-2133): while the task holds open
+ * questions, the line is the answer to the oldest, through the board's one
+ * hold write, and the others stay open. Never a confirm: a typed line is no
+ * yes or no, so a confirm is answered in the Inbox or by `updateTask`. The
+ * server picks the question, never a client (BP-031).
+ *
  * @returns `undefined` once the steer is kept (or was already), else why not.
  */
 export async function steerFromLine(
@@ -152,8 +167,25 @@ export async function steerFromLine(
   message: string,
   ctx: LineRequest
 ): Promise<LineSteerRefusal | undefined> {
-  if (ledger.steer === undefined) return "not-supported";
   const by = ctx.user?.identity?.userId;
+  if (ledger.answer !== undefined) {
+    // Read again once if another answer took the oldest between the read and the write.
+    for (let tries = 0; tries < 2; tries += 1) {
+      const question = await oldestOpenQuestion(ledger, taskId, `line:${ctx.request.identity.id}`);
+      if (question === null) return undefined;
+      if (question === undefined) break;
+      const answered = await ledger.answer(taskId, {
+        hold: question,
+        message,
+        from: "user",
+        ...(by !== undefined ? { by } : {}),
+        key: `line:${ctx.request.identity.id}`,
+      });
+      if (answered == null || answered.outcome !== "declined") return undefined;
+      if (answered.reason !== "answered") return "finished";
+    }
+  }
+  if (ledger.steer === undefined) return "not-supported";
   const outcome = await ledger.steer(taskId, {
     message,
     from: "user",

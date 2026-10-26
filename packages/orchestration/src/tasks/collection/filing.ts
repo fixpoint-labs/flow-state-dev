@@ -11,9 +11,12 @@
 import type { Task } from "../schema/task";
 import type { TaskInit, TaskResultSetting, TaskSessionSetting } from "../schema/task-init";
 import { isTerminalStatus } from "../schema/task-status";
+import { askProblem } from "./holds";
 
 /** Why a filing (or an edit of one) was refused. The code leads the error's message. */
 export type TaskFilingRule =
+  /** The questions a task is filed on can't be kept: none, empty, too long, or too many (FIX-2133). */
+  | "questions_not_kept"
   /** A dependency names no task on this board (another board's id, or a typo). */
   | "dependency_not_on_board"
   /** A dependency already failed or was cancelled, so the task could never start. */
@@ -108,6 +111,14 @@ const DEFAULT_RESULTS: readonly TaskResultSetting[] = ["filer"];
  */
 export function assertFilingSettings(init: TaskInit, support: TaskSettingsSupport | undefined, collectionId: string): void {
   const taskId = init.id;
+  const asked = init.questions === undefined ? undefined : askProblem(init.questions);
+  if (asked !== undefined) {
+    throw new TaskFilingRefusedError({
+      rule: "questions_not_kept",
+      taskId,
+      detail: `${asked}, so the task can't be held on them. Ask fewer or shorter questions, or file it without.`,
+    });
+  }
   if (init.followUpOf !== undefined && init.session !== undefined) {
     throw new TaskFilingRefusedError({
       rule: "follow_up_takes_no_session",

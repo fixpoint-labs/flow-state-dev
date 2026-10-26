@@ -8,9 +8,10 @@
  * its answer goes and whether the Inbox can answer it; an item is answerable
  * when one of its holds is. {@link createInboxClient}'s `answer` routes each
  * hold by its source: a suspension to the engine's answer route
- * (`client.flow(..).request(..).answer(..)`, FIX-2129), a row hold to the
- * board's `updateTask`, which arrives with the row holds. The answer is typed
- * by what the hold asks ({@link InboxAnswerFor}).
+ * (`client.flow(..).request(..).answer(..)`, FIX-2129), a question or a
+ * confirm to the board's `updateTask` action on the session that holds the
+ * board, as the user. The answer is typed by what the hold asks
+ * ({@link InboxAnswerFor}).
  *
  * **Where an item comes from.** A task run's stop lists under its row, never
  * from the run's session on its own. A suspension the reader found in a
@@ -23,6 +24,8 @@
  */
 export { createInboxClient, type InboxClient } from "./client";
 export { inboxItems } from "./list";
+// What a row's holds are, for a reader that parses a published row (FIX-2133).
+export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";
 export type {
   InboxAnswer,
   InboxAnswerFor,

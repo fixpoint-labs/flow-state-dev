@@ -250,6 +250,8 @@ describe("dispatcher — the body", () => {
     const error = await runForTest(block, {}, ctx).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DispatchRefusedError);
     const refused = error as DispatchRefusedError;
+    // The code a `.rescue()` branches on, as the README documents it.
+    expect(refused.code).toBe("dispatch-refused");
     expect(refused.refused).toBe("session-not-found");
     expect(refused.address).toEqual({ type: "internal", action: "wake" });
     expect(refused.blockName).toBe("wake-epic");
@@ -262,9 +264,9 @@ describe("dispatcher — the body", () => {
       action: "wake",
       session: { id: () => "s_epic" }
     });
-    await expect(runForTest(block, {}, createMockContext())).rejects.toBeInstanceOf(
-      NoDispatchSeamError
-    );
+    const error = await runForTest(block, {}, createMockContext()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoDispatchSeamError);
+    expect((error as NoDispatchSeamError).code).toBe("no-dispatch-seam");
   });
 
   it("sends a task envelope under the key its policy derives, with the row as provenance", async () => {

@@ -27,7 +27,7 @@ import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
 import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
+import type { InboxHold, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate, pathFor } from "../lib/routes";
@@ -202,7 +202,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
         ) : selected.holds[0]!.source.kind === "row" ? (
-          <HeldQuestions item={selected} gaps={gaps} />
+          <HeldQuestions item={selected} />
         ) : (
           <AskDetail
             ask={askOfItem(selected)}
@@ -270,9 +270,11 @@ function AskDetail({
 
 /**
  * A task holding questions: every open one, oldest first, and the task they
- * hold. One item however many it holds (rule 11).
+ * hold. One item however many it holds (rule 11). Each is answered here,
+ * through the task's board as the user (FIX-2133): a question with words, a
+ * confirm with a yes or a no.
  */
-function HeldQuestions({ item, gaps }: { item: InboxItem; gaps: Gaps }) {
+function HeldQuestions({ item }: { item: InboxItem }) {
   const task = item.task === null ? null : { level: "task" as const, boardRef: item.task.board, taskId: item.task.taskId, tab: "brief" as const };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6" data-testid="inbox-held">
@@ -287,15 +289,75 @@ function HeldQuestions({ item, gaps }: { item: InboxItem; gaps: Gaps }) {
         )}
         <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">
           {item.holds.map((hold) => (
-            <li key={hold.id} data-testid="inbox-held-question" data-question-id={hold.id}>
+            <li key={hold.id} className="flex flex-col gap-2" data-testid="inbox-held-question" data-question-id={hold.id}>
               <ScreenTitle scale="detail">{hold.ask.prompt}</ScreenTitle>
+              <HeldAnswer hold={hold} />
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted-foreground" data-testid="inbox-held-gap">
-          {gaps.inboxQuestionAnswer}
-        </p>
       </div>
+    </div>
+  );
+}
+
+/** One held question's answer: words for a question, a yes or a no (with a note) for a confirm. */
+function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
+  const { answerHold } = useLab();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  if (!hold.answerable) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="inbox-held-unanswerable">
+        {hold.unanswerable}
+      </p>
+    );
+  }
+  const send = async (answer: Parameters<typeof answerHold>[1]) => {
+    setSending(true);
+    setFailure(null);
+    try {
+      await answerHold(hold, answer);
+      setText("");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  };
+  const confirm = hold.ask.kind === "confirm";
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="inbox-held-answer">
+      <textarea
+        className="min-h-[56px] w-full border border-foreground/20 bg-card px-2.5 py-1.5 text-sm"
+        placeholder={confirm ? "A note, if you like" : "Your answer"}
+        aria-label={confirm ? `A note for: ${hold.ask.prompt}` : `Answer: ${hold.ask.prompt}`}
+        value={text}
+        disabled={sending}
+        onChange={(event) => setText(event.target.value)}
+        data-testid="inbox-held-answer-text"
+      />
+      <div className="flex gap-2">
+        {confirm ? (
+          <>
+            <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending} onClick={() => void send({ done: true, ...(text.trim() !== "" ? { note: text } : {}) })} data-testid="inbox-held-yes">
+              Yes
+            </button>
+            <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending} onClick={() => void send({ done: false, ...(text.trim() !== "" ? { note: text } : {}) })} data-testid="inbox-held-no">
+              No
+            </button>
+          </>
+        ) : (
+          <button type="button" className="border border-foreground/30 px-3 py-1 text-sm" disabled={sending || text.trim() === ""} onClick={() => void send({ text })} data-testid="inbox-held-send">
+            Answer
+          </button>
+        )}
+      </div>
+      {failure !== null ? (
+        <p className="text-xs text-destructive" role="alert" data-testid="inbox-held-failure">
+          {failure}
+        </p>
+      ) : null}
     </div>
   );
 }

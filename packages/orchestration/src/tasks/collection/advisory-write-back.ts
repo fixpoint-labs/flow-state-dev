@@ -452,7 +452,8 @@ function attribute(
     // containing something loud costs FIX-963 its entire signal.
     const couldBeOurs =
       (current.status === target.status || current.status === target.alternate) &&
-      (options.claim === undefined || current.attempts === options.claim.attempt);
+      // The same attempt AND turn (FIX-2133 D3): two turns can share an attempt.
+      (options.claim === undefined || (current.attempts === options.claim.attempt && (current.turn ?? 0) === options.claim.turn));
     if (!couldBeOurs) {
       const reason = transitionDeclineReason(
         current,

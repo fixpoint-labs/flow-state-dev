@@ -130,6 +130,7 @@ describe("transitionDeclineReason — which condition fired", () => {
     taskId: "t",
     attempt: 1,
     createdAt: 0,
+    turn: 0,
   };
 
   it("returns undefined with no options, so an unguarded caller still throws downstream", () => {
