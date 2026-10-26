@@ -279,6 +279,7 @@ describe("C4 · the organization boundary on the management surface", () => {
       expect(other.status).toBe(404);
       expect(await other.json()).toEqual({ error: 'Request "r1" not found' });
       expect(unused.status).toBe(404);
+      expect(await unused.json()).toEqual({ error: 'Request "unused" not found' });
 
       const owner = await call(router, "GET", ["secure", "requests", "r1", "status"], {
         user: "dana",
