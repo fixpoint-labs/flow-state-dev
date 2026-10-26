@@ -106,6 +106,21 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
   });
 }
 
+/**
+ * Whether the stream ends on a step in flight: a tool call or a thought still
+ * running that renders in the group (not one under a container or a task).
+ * The group's own line names it, so the indicator would repeat it.
+ */
+function endsOnStepInFlight(items: readonly OutputItem[]): boolean {
+  const last = items[items.length - 1];
+  return (
+    last !== undefined &&
+    (last.type === "tool_output" || last.type === "reasoning") &&
+    last.status === "in_progress" &&
+    last.ownedBy === undefined
+  );
+}
+
 function RequestGroup({
   group,
   owned,
@@ -131,6 +146,8 @@ function RequestGroup({
     return group.items.filter((item) => !owned.has(item.id));
   }, [group.items, owned]);
 
+  const stepInFlight = isLast && isStreaming && endsOnStepInFlight(filteredItems);
+
   return (
     <div
       data-request-id={group.requestId}
@@ -139,7 +156,7 @@ function RequestGroup({
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
-      {isLast && isStreaming && <StreamingIndicator message={statusMessage} isFinishing={isFinishing} />}
+      {isLast && isStreaming && !stepInFlight && <StreamingIndicator message={statusMessage} isFinishing={isFinishing} />}
     </div>
   );
 }
