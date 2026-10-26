@@ -185,8 +185,9 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"retry-budget-exhausted"`: the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"dispatched"`: every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
 - `"parked-for-review"`: the board stopped because the work it has left is waiting on a person. It is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
+- `"awaiting-answer"`: the board stopped because the work it has left is waiting on a person's answer to a question or confirm, filed with the task ([A task held on questions](#a-task-held-on-questions)) or asked midway ([When a task stops on a question](#when-a-task-stops-on-a-question)). Like `"parked-for-review"`, nothing went wrong and nothing is finished. The next drain after the answer picks the work back up.
 
-Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, or is `held`. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
+Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, or is `held`. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. An open question is ranked the same way: a failure beside it still reports `"blocked-by-failures"`, a task waiting on the held task does not, and it outranks a dispatch. A parked task outranks it. A refused retry outranks all of them.
 
 ```ts
 // On the final task-board-meta item:
@@ -196,7 +197,7 @@ Order matters when a board ends up in more than one of these states at once. `"b
     collectionId: "echo",
     status: "completed",
     terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
-                                          //  | "dispatched" | "parked-for-review"
+                                          //  | "dispatched" | "parked-for-review" | "awaiting-answer"
     maxTotalRetries: 50,
     counts: {
       total: 2,

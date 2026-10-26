@@ -75,6 +75,17 @@
  * task on the board and no retry ever denied. A termination reason that
  * can lie is worse than no new reason at all.
  *
+ * ## Why a question gets a reason of its own
+ *
+ * A row held on an open question or confirm (filed with `questions`, or asked
+ * midway) is not claimable until a person answers, so a drain that runs out of
+ * other work stops on it. Before `"awaiting-answer"` that stop fell to a
+ * failure rung: a filed row is `pending` and reached the last rung, and a row
+ * that asked midway has dropped its lease, so the going-nowhere closure read it
+ * as abandoned. Nothing had failed. It is the same defect dispatch and parking
+ * each had, facing a third way a board waits, so it is the same fix: a reason
+ * that names the state.
+ *
  * The emitted item is keyed by `collectionId`, so the latest state
  * replaces the previous one in the client UI — `active` then
  * `completed` resolves to one rendered status per board.
@@ -85,7 +96,7 @@ import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, type RunsElsewhere } from "../shared";
-import { leaseLapsed } from "../../tasks";
+import { leaseLapsed, openRowHolds } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -130,6 +141,16 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
       );
     },
   });
+}
+
+/**
+ * Is `task` waiting on a person's answer (FIX-2214)? `pending` or `in_progress`
+ * with an open question or confirm. A suspension hold does not count: that run
+ * resumes itself. A `held`-status row does not either: rung 3 reports it, since
+ * an answer does not release it.
+ */
+function waitsOnAnswer(task: Task): boolean {
+  return (task.status === "pending" || task.status === "in_progress") && openRowHolds(task).length > 0;
 }
 
 /**
@@ -227,8 +248,8 @@ function hasRowGoingNowhere(
   now: number
 ): boolean {
   // Seed: rows this board's dependency graph is not what resolves. Either they
-  // are already done, or a person owes an answer on them, or somebody is
-  // working them right now.
+  // are already done, or a person owes an answer on them (a review, or an open
+  // question), or somebody is working them right now.
   //
   // **The last of those is a lease question, not a status or routing one**, and
   // that is the whole correctness of this seed. `in_progress` alone would seed
@@ -244,6 +265,9 @@ function hasRowGoingNowhere(
     if (
       task.status === "completed" ||
       task.status === "parked" ||
+      // A row that asked midway dropped its lease, so the lease test below
+      // would call it abandoned; the answer owes it a turn, so it is not.
+      waitsOnAnswer(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -345,6 +369,9 @@ function excusedParkedByPool(input: unknown): boolean {
  * - `"parked-for-review"` — the board stopped because the work it has left is
  *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
  *   reports it; `counts.parked` is how many.
+ * - `"awaiting-answer"` — the board stopped because the work it has left is
+ *   waiting on a person's answer to a question or confirm (FIX-2214). Like
+ *   `"parked-for-review"`, neither a success nor a failure.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -361,14 +388,19 @@ function excusedParkedByPool(input: unknown): boolean {
  *    from the rows as they stand now — but the reason names a state, so it is
  *    also checked against that state: a board with nothing in `parked`
  *    never reports it, whatever the pool carried.
- * 6. every remaining row is dispatched → `dispatched`.
- * 7. otherwise → `blocked-by-failures`.
+ * 6. any remaining row waits on an answer → `awaiting-answer`. Rung 4 has
+ *    already established that every other remaining row is done, answerable,
+ *    being worked, or released by one of those, so the question is the reason.
+ *    It beats `dispatched` for the reason parking does: a person owes an answer.
+ * 7. every remaining row is dispatched → `dispatched`.
+ * 8. otherwise → `blocked-by-failures`.
  *
  * **On a board with no parked row the reason is exactly what it was before
  * FIX-1234.** Rung 5 is unreachable without a parked row — checkable by looking
  * at `counts.parked`, not by reasoning about how the verdict got here —
- * and rung 4 fires only where rung 7 already reported `blocked-by-failures` by
- * another route.
+ * and rung 4 fires only where rung 8 already reported `blocked-by-failures` by
+ * another route. Likewise a board with no open question reports what it did
+ * before FIX-2214: rung 6 needs one, and so does the seed rung 4 gained.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -430,7 +462,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "blocked-by-failures"
         | "retry-budget-exhausted"
         | "dispatched"
-        | "parked-for-review" = anyRetryDeniedByBudget(all)
+        | "parked-for-review"
+        | "awaiting-answer" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -440,9 +473,11 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
               ? "blocked-by-failures"
               : excusedParkedByPool(input) && counts.parked > 0
                 ? "parked-for-review"
-                : allRemainingDispatched
-                  ? "dispatched"
-                  : "blocked-by-failures";
+                : remaining.some(waitsOnAnswer)
+                  ? "awaiting-answer"
+                  : allRemainingDispatched
+                    ? "dispatched"
+                    : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
