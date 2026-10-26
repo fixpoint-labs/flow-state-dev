@@ -666,15 +666,11 @@ const managerStateSchema = z.object({
    * The claim this run holds, as the claim gate (or the board's drain) stamped
    * it when it claimed the turn: the task, its attempt, and its turn
    * generation (FIX-2133 D3). Every write this run makes to the task presents
-   * it, never a ticket minted from the row as it stands later.
+   * it, never a ticket minted from the row as it stands later. Two turns can
+   * share an attempt (an answered question owes one more), so a write is this
+   * run's only while the row is still on the ticket's turn.
    */
   ticket: taskClaimTicketSchema.nullable().default(null),
-  /**
-   * The ticket's turn generation: two turns can share an attempt (an answered
-   * question owes one more), so a write is this run's only while the row is
-   * still on its turn.
-   */
-  turn: z.number().nullable().default(null),
   /** Which run of the manager's on this issue-phase this is: the ask marker's second number (`./ask`). */
   run: z.number().nullable().default(null),
   workspacePath: z.string().nullable().default(null),
@@ -894,7 +890,7 @@ function identityFrom(
   return {
     taskId: state.taskId,
     attempt: state.attempt,
-    ...(state.turn != null ? { turn: state.turn } : {}),
+    ...(state.ticket != null ? { turn: state.ticket.turn } : {}),
     topic: state.topic,
     boardCollectionId,
   };
@@ -1516,7 +1512,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
     const base = identityFrom(state, claim?.collectionId ?? boardCollectionId!);
-    if (claim === null) return base;
+    // The task this run's turn belongs to: a task filed again under the same id is another one.
+    const incarnationId = state?.ticket?.incarnationId;
+    if (claim === null) return incarnationId === undefined ? base : { ...base, incarnationId };
     return {
       ...base,
       readBoardRow: async () => (await claimLedger(ctx as BlockContext, claim))?.get(base.taskId),
@@ -1804,7 +1802,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         taskId: input.taskId,
         attempt: input.attempts,
         ticket,
-        turn: ticket.turn,
         goal: input.goal,
         decided: null,
       });
@@ -2640,7 +2637,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           row.status === "in_progress" &&
           row.attempts === state.attempt &&
           // This turn's own row (FIX-2133 D3): a later turn of the attempt is another run's.
-          (state.turn == null || (row.turn ?? 0) === state.turn) &&
+          (state.ticket == null || (row.turn ?? 0) === state.ticket.turn) &&
           untakenSteers(row).length > 0;
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use.
@@ -2728,7 +2725,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       row.status === "in_progress" &&
       row.attempts === state.attempt &&
       // A later turn of the attempt claimed since is another run's (FIX-2133 D3).
-      (state.turn == null || (row.turn ?? 0) === state.turn);
+      (state.ticket == null || (row.turn ?? 0) === state.ticket.turn);
     if (!ours) {
       if (!stopped) return undefined;
       throw new HarnessAttemptFailed(STALE_AFTER_STOP);

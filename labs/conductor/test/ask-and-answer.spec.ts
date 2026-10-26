@@ -28,7 +28,7 @@ type StatusRow = {
   status: string;
   attempts: number;
   feedback: string | null;
-  run: { outcome: string | null; reason: string | null; sessionId: string | null } | null;
+  run: { outcome: string | null; reason: string | null; sessionId: string | null; childSessionId: string | null } | null;
   questions: Array<{ question: string; text: string; askedAt: number }>;
 };
 
@@ -335,6 +335,25 @@ describe("the answer's rules", () => {
     expect(after.questions).toHaveLength(0);
     await live.call("wake", {});
     expect(seen.turn).toBe(1);
+  });
+
+  it("answers the question with a line typed in the run's own session, and the answer's turn starts without a wake", async () => {
+    const seen = seenTurns();
+    live = createConductorHarness({
+      resolveClaudeAgent: turnAgent([{ question: "which path?" }, { subtype: "success" }], seen),
+      isDone: () => false,
+    });
+    const held = await seedAndSettle(live);
+    const runSession = held.run?.childSessionId;
+    expect(runSession).toBeTruthy();
+
+    await live.call("message", { message: "The second one." }, runSession!);
+    const after = await settle(live);
+
+    expect(seen.prompts).toHaveLength(2);
+    expect(seen.prompts[1]).toContain("The second one.");
+    expect(after.attempts).toBe(1);
+    expect(after.questions).toHaveLength(0);
   });
 
   it("reports a question asked inside the child session to a DIFFERENT coordinator session", async () => {

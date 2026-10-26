@@ -1062,7 +1062,10 @@ export function conductorFlow(options: ConductorFlowOptions) {
           inputSchema: door.inputSchema,
         })
           .tap(tenantGate)
-          .step(door.block),
+          .step(door.block)
+          // A line that answered the task's last question owes it a turn: the same drain
+          // `updateTask` runs after an answer takes it, since no drain is running to.
+          .tapIf((outcome: { steered?: unknown }) => typeof outcome?.steered === "string", board.drain),
       },
     },
   });

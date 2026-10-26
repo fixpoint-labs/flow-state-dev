@@ -154,6 +154,8 @@ export const runRecordStateSchema = z.object({
    * one has opened. See {@link writeRunRow}.
    */
   turn: z.number().nullable().default(null),
+  /** The incarnation of the task that last wrote the record: what {@link turn} is compared within. */
+  incarnationId: z.string().nullable().default(null),
   /**
    * How many runs the manager has opened on this issue-phase, this one
    * included: the second number of the run's ask marker (`./ask`). Kept across
@@ -560,9 +562,14 @@ export async function writeRunRow(
     | RunRecordState
     | undefined;
   if (existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
-  // A later turn of the same attempt has opened the record: this one is over.
+  // A later turn of the same attempt, of the same task, has opened the record: this one is
+  // over. Only within one task: a task filed again under the same id starts its turns over,
+  // and the board row's fence above already refuses the old task's writes.
+  const sameTask =
+    existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
   if (
     identity.turn !== undefined &&
+    sameTask &&
     existing?.attempt === identity.attempt &&
     existing.turn != null &&
     existing.turn > identity.turn
@@ -574,6 +581,7 @@ export async function writeRunRow(
     ...update,
     attempt: identity.attempt,
     ...(identity.turn !== undefined ? { turn: identity.turn } : {}),
+    ...(identity.incarnationId !== undefined ? { incarnationId: identity.incarnationId } : {}),
     taskId: identity.taskId,
     updatedAt: Date.now(),
   });

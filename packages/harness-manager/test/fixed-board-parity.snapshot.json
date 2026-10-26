@@ -11,6 +11,7 @@
     "filesOnly": null,
     "finalMessage": "the answer",
     "held": null,
+    "incarnationId": "string",
     "lastSave": null,
     "outcome": "succeeded",
     "place": null,

@@ -602,7 +602,7 @@ await runGoal(async (failures, tell) => {
       // `announce` is refused by name, so the refusal itself is the one place it may stand.
       ["announce", grep(String.raw`\bannounce\b`, ["packages/harness-manager/src", "labs/conductor/src"]).filter((line) => !/`announce` was removed|"announce" in/.test(line))],
       ["harness-manager's askQuestion", grep(String.raw`\baskQuestion\b`, ["packages/harness-manager/src"])],
-      ["harness-manager's inbox module", [...grep(String.raw`from "\./inbox"`, ["packages/harness-manager/src"]), ...grep(String.raw`harness-manager/src/inbox`, [...SOURCE, "goals"])]],
+      ["harness-manager's inbox module", [...grep(String.raw`from "\./inbox"`, ["packages/harness-manager/src"]), ...grep(String.raw`harness-manager/src/inbox`, [...SOURCE, "goals", ":(exclude)goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/**"])]],
       ["awaitReview in harness-manager", grep(String.raw`\bawaitReview\b`, ["packages/harness-manager/src"])],
       ["HarnessRunParked", grep(String.raw`\bHarnessRunParked\b`, SOURCE)],
       ["waitForUser in harness-manager", grep(String.raw`\bwaitForUser\b`, ["packages/harness-manager/src"])],

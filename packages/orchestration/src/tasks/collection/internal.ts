@@ -879,6 +879,21 @@ export function transitionDeclineReason(
     if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
   }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
+  // FIX-2133, at the settle (FIX-2132): a turn that asked midway settles nothing on its own
+  // claim, answered or not. An answer closes the hold but leaves the asking turn's ticket valid
+  // until the next claim, and the turn it owes is the one that settles.
+  if (
+    claim !== undefined &&
+    changeKind !== undefined &&
+    SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
+    !isTerminalStatus(task.status) &&
+    task.askedInTurn !== undefined &&
+    task.askedInTurn === claim.turn &&
+    (task.turn ?? 0) === claim.turn &&
+    task.attempts === claim.attempt
+  ) {
+    return "held";
+  }
   if (
     options.ifAllowed === true &&
     requireFrom !== undefined &&

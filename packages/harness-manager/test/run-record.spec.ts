@@ -376,4 +376,18 @@ describe("two turns of one attempt (FIX-2133 D3)", () => {
     expect(await writeRunRow(ctx, { ...identity(1), turn: 1 }, { sessionId: "late" })).toBe("refused");
     expect(((await runs.getOptional(TOPIC))!.state as RunRecordState).sessionId).toBeNull();
   });
+
+  it("compares turns within one task: a task filed again under the same id opens its record at turn 1", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(1), turn: 2, incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 2, incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // Deleted and filed again under the same id: a new task, on its first attempt's first turn.
+    await board.upsert(TASK, { ...claimed(1), turn: 1, incarnationId: "second" });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 1, incarnationId: "second" }, OPENED)).toBe("applied");
+    // The old task's late write is refused by the board row, which is the new task's.
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 2, incarnationId: "first" }, { sessionId: "old" })).toBe("refused");
+  });
 });
