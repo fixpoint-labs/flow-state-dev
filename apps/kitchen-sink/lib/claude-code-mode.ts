@@ -261,10 +261,19 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
         reason: `The folder for session worktrees can't be made: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    const account = await checks.probe(env);
+    // The gate keeps this answer until restart, so a start of Claude Code too
+    // slow to answer is asked once more before it counts against the person.
+    let account = await checks.probe(env);
+    if (account.status === "none" && account.unanswered === true) account = await checks.probe(env);
     if (account.status === "sdk-missing") return { available: false, reason: `The Claude Code SDK is not installed. ${account.reason}` };
     if (account.status === "none") {
-      return { available: false, reason: `Claude Code is not signed in on this host (${account.reason}). Sign in with \`claude\`, then restart.` };
+      return {
+        available: false,
+        reason:
+          account.unanswered === true
+            ? `${account.reason}, so its sign-in is unknown. Restart the server to ask again.`
+            : `Claude Code is not signed in on this host (${account.reason}). Sign in with \`claude\`, then restart.`,
+      };
     }
     return unsandboxed ? { available: true, note: unsandboxedNote("Claude Code") } : { available: true };
   };
