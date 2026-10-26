@@ -133,6 +133,7 @@ the block is built:
 | Tool call | `tool_output`, opened when the call starts and settled with its result |
 | A change to Cursor's to-do list | `tool_output`, like any tool call. With `recordPlan`, also rows in the run's plan record ([Recording the run's plan](#recording-the-runs-plan)) |
 | Run and task lifecycle | transient `status` |
+| Run end | `status`, kept in the session's history, saying how long the run took: `Cursor run completed in 5 mins, 24 seconds.` A run that fails ends with a kept status that says it errored and why, `Cursor run errored (<reason>).` |
 | Errors | `error` |
 
 Every item carries provenance, so the devtool shows the full trace of what the

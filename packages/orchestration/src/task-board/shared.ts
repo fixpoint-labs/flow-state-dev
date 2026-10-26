@@ -105,8 +105,8 @@ export function isDispatched(
 
 /**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
- * places outside this drain, and, with `excuseWaitingOnPerson`, minus the
- * running rows waiting on a person.
+ * places outside this drain, and, with `excuseWaitingOnUser`, minus the
+ * running rows waiting on a user.
  *
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
@@ -163,9 +163,9 @@ function countWaitable(
   collection: TaskCollectionRef,
   statuses: TaskStatus[],
   runsElsewhere?: RunsElsewhere,
-  excuseWaitingOnPerson = false
+  excuseWaitingOnUser = false
 ): number {
-  if (runsElsewhere === undefined && !excuseWaitingOnPerson) {
+  if (runsElsewhere === undefined && !excuseWaitingOnUser) {
     return collection.count({ status: statuses });
   }
   const rows = collection.list({ status: statuses });
@@ -174,26 +174,26 @@ function countWaitable(
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isDispatched(row, now, runsElsewhere)) continue;
-    if (excuseWaitingOnPerson && waitsOnPerson(row)) continue;
+    if (excuseWaitingOnUser && waitsOnUser(row)) continue;
     waiting += 1;
   }
   return waiting;
 }
 
 /**
- * Whether a running row waits on a person (FIX-2131): it has an open hold,
+ * Whether a running row waits on a user (FIX-2131): it has an open hold,
  * a question it asked (a row hold, its lease dropped) or the mirror of its
- * run's stop for a person (a suspension hold). Read off the row's open holds
+ * run's stop for a user (a suspension hold). Read off the row's open holds
  * (ER-8), never off a status: no row is parked. Nothing in a drain moves such
- * a row; the person's answer does.
+ * a row; the user's answer does.
  */
-function waitsOnPerson(row: Task): boolean {
+export function waitsOnUser(row: Task): boolean {
   return row.status === "in_progress" && hasOpenHold(row);
 }
 
 /**
  * Count tasks the loop must wait on: `pending` and `in_progress`, a running
- * row waiting on a person included. Terminal statuses don't count.
+ * row waiting on a user included. Terminal statuses don't count.
  *
  * `runsElsewhere` (FIX-982) drops the rows a child session is running. See
  * {@link countWaitable}.
@@ -204,7 +204,7 @@ export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: Run
 
 /**
  * Count the rows an active worker is holding — `in_progress`, less the rows
- * waiting on a person. The `complete-or-blocked` arm reads this to ask
+ * waiting on a user. The `complete-or-blocked` arm reads this to ask
  * whether anything is still producing state changes *in this drain*.
  *
  * Split out of `boardQuiescence`'s inline `count` so it takes the same
@@ -213,9 +213,9 @@ export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: Run
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
  *
- * **A row waiting on a person is excused here, and only here** (FIX-2131).
+ * **A row waiting on a user is excused here, and only here** (FIX-2131).
  * `inFlightCount` keeps it, so the board isn't drained; this count drops it,
- * so a board whose only open rows wait on a person, with nothing claimable,
+ * so a board whose only open rows wait on a user, with nothing claimable,
  * reports `blocked` rather than spinning to its iteration limit, which with no
  * deadline on the wait it would never leave. The row stays as it is.
  */

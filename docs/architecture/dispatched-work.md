@@ -558,7 +558,7 @@ suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
 `countWaitable` as separate predicates rather than one widened predicate,
 because they answer different questions:
 
-| | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnPerson`) |
+| | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnUser`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
 | Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |

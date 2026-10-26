@@ -379,7 +379,7 @@ function clipStatus(text: string): string {
 function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>, state: TranslateState): TranslatedEvent[] {
   if (msg.subtype === "compact_boundary") {
     state.quietStatus = true;
-    return [{ kind: "status", message: "Claude Code agent compacted its context." }];
+    return [{ kind: "status", message: "Claude Code agent compacted its context" }];
   }
   if (msg.subtype === "api_retry") {
     const { attempt, max_retries: max, retry_delay_ms: delay } = msg;

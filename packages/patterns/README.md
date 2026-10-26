@@ -120,7 +120,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 - `"complete"`: exit only when no `pending` or `in_progress` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 
-The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "dispatched"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, and from one whose remaining work is running in a child session — without inspecting `counts`.
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "dispatched" | "waiting-on-a-user"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a child session, and from one whose remaining work waits on a person — without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";

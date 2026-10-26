@@ -184,8 +184,9 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"blocked-by-failures"`: at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `held` waiting on a release.
 - `"retry-budget-exhausted"`: the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"dispatched"`: every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
+- `"waiting-on-a-user"`: the board stopped because the work it has left [waits on a user](#a-task-waiting-on-a-user): a question or confirm, or a run stopped for a review or approval. Nothing went wrong and nothing is finished. The next drain after the answer picks the work back up.
 
-A refused retry outranks the others when a board ends up in more than one of these states at once. A board that stopped because its open tasks wait on a person reports `"blocked-by-failures"`, because they didn't reach `completed`. To tell that apart from a real failure, read the tasks: a task waiting on a person lists what it waits on in its `holds`.
+A refused retry outranks the others when a board ends up in more than one of these states at once. A failed, cancelled or `held` task beside one that waits on a user still reports `"blocked-by-failures"`, and so does a task whose dependencies will never complete, even once the person answers. A task that only depends on the waiting one does not change the reason.
 
 ```ts
 // On the final task-board-meta item:
@@ -195,7 +196,7 @@ A refused retry outranks the others when a board ends up in more than one of the
     collectionId: "echo",
     status: "completed",
     terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
-                                          //  | "dispatched"
+                                          //  | "dispatched" | "waiting-on-a-user"
     maxTotalRetries: 50,
     counts: {
       total: 2,

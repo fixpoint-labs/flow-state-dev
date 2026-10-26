@@ -15,7 +15,7 @@
  * could throw. A cancelled run returns no handle, so the hook is the only
  * carrier that survives exactly the deadline it exists for.
  */
-import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
+import { formatRunDuration, handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import type {
   HarnessCallbackContext,
   HarnessResolver,
@@ -320,7 +320,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                   hookFired = true;
                   await onSession?.(event.threadId, ctx);
                 }
-                ctx.emit.status(`Codex thread ${event.threadId}.`);
+                ctx.emit.status(`Codex thread ${event.threadId}`);
                 continue;
               }
               if (event.kind === "turn_completed") {
@@ -396,7 +396,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
 
       ctx.emit.status(
         outcome === "finished"
-          ? "Codex run completed."
+          ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
           : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
         { transient: false },
       );

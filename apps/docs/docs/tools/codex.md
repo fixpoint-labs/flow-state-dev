@@ -109,6 +109,7 @@ the ids come from you; `codex debug models` shows what the installed Codex knows
 | Web search, to-do list | `tool_output` |
 | Thread and turn lifecycle, reconnect attempts | transient `status` |
 | Warnings, such as a setting the model doesn't support | `status`, kept in the session's history |
+| Run end | `status`, kept in the session's history, saying how long the run took: `Codex run completed in 5 mins, 24 seconds.` A run that fails ends with a kept status that says it errored and why, `Codex run errored (<reason>).`, besides the `error` item below. |
 | A failed run | `error`: one line saying why, with everything Codex printed under `details.output` |
 
 Every item carries provenance, so the devtool shows the full trace of what the
