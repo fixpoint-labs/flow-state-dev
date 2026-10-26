@@ -20,7 +20,7 @@ import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { EmptyState, SectionFailure } from "../components/ui";
-import { asksOfTask, heldOnYou } from "../lib/derive";
+import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -34,7 +34,7 @@ export function TaskSession() {
   const { snapshot } = useLab();
   // A task held on a question for you points at the Inbox; its run's stop for
   // you shows inline as an ask instead (BR-17).
-  const waiting = heldOnYou(snapshot, row) && asksOfTask(snapshot, row).length === 0;
+  const waiting = waitsOnYou(snapshot, row) && asksOfTask(snapshot, row).length === 0;
 
   const body = (() => {
     switch (run.kind) {

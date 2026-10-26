@@ -101,7 +101,7 @@ const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled
  * it; a stop is open while it is on the row. `undefined` when nothing holds
  * the task, or it has settled.
  */
-export function heldOn(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
+export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
   if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
   const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
   return task.holds.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;

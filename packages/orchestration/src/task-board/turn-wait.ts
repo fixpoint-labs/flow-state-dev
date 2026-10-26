@@ -15,6 +15,7 @@
 import { onRequestEnded } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskClaimTicket } from "../tasks";
+import { askedOnTicket } from "../tasks/collection/holds";
 
 /** The two model tools that wait on a person from a task turn. */
 export type PersonWaitTool = "askQuestion" | "waitForUser";
@@ -28,11 +29,6 @@ function keyOf(ctx: BlockContext, claim: TaskClaimTicket): string | undefined {
   return `${requestId}:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}`;
 }
 
-/** Whether `row` records that the turn `claim` holds asked questions (the turn-asked fact, FIX-2133). */
-function turnAsked(claim: TaskClaimTicket, row: Task | undefined): boolean {
-  return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === claim.turn && row.attempts === claim.attempt;
-}
-
 /**
  * Take the turn's one wait on a person for `by`.
  *
@@ -44,8 +40,10 @@ export function takeTurnWait(
   held: { readonly claim: TaskClaimTicket; readonly row: Task | undefined },
   by: PersonWaitTool
 ): PersonWaitTool | undefined {
-  if (turnAsked(held.claim, held.row)) return by === "askQuestion" ? undefined : "askQuestion";
+  if (askedOnTicket(held.row, held.claim)) return by === "askQuestion" ? undefined : "askQuestion";
   const key = keyOf(ctx, held.claim);
+  // Unreachable on a real turn: a held row means a claim, which only a request
+  // holds, and `BlockContext.request.identity` is required; the guard is for a hand-built test context.
   if (key === undefined) return undefined;
   const already = taken.get(key);
   if (already !== undefined) return already === by ? undefined : already;

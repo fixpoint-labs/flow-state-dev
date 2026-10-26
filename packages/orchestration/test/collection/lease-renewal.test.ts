@@ -446,6 +446,23 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     expect(driver.signal.aborted).toBe(true);
   });
 
+  it("stops WITHOUT aborting when the row waits on a person: a `held` renewal is not a lost claim", async () => {
+    // The turn asked a question: the row holds no lease while it waits, and
+    // the worker still owns its turn. Aborting it would fail work that did
+    // what it meant to (FIX-2131).
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const ticket = ticketForClaim("tasks", task);
+    const timer = fakeTimer();
+    const driver = startLeaseRenewal({ collection: h.collection, ticket, claimedTask: task, now: h.now, timer: timer.timer });
+
+    await h.collection.ask!("t", [{ kind: "question", prompt: "Which region?" }], { claim: ticket });
+    await timer.fireNext();
+
+    expect(driver.signal.aborted).toBe(false);
+    expect(timer.pending()).toBe(0);
+  });
+
   it("does NOT abort when the store throws inside the lease — the unknown case is not the dead case", async () => {
     // A store that threw tells us nothing about who holds the row, and the
     // fence refuses whatever this worker writes if it turns out to be gone.

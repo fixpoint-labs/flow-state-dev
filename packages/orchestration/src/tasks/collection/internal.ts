@@ -25,7 +25,7 @@ import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
-import { answerOf, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -833,10 +833,8 @@ export function transitionDeclineReason(
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
     !isTerminalStatus(task.status) &&
-    task.askedInTurn !== undefined &&
-    task.askedInTurn === claim.turn &&
-    (task.turn ?? 0) === claim.turn &&
-    task.attempts === claim.attempt
+    askedOnTicket(task, claim) &&
+    (task.turn ?? 0) === claim.turn
   ) {
     return "held";
   }

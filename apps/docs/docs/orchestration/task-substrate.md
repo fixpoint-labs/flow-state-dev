@@ -116,7 +116,7 @@ There are two kinds, told apart by `source.kind`:
 
 A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payHoldDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
-A held task settles only by a cancel, which closes every hold. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
+A task with open holds settles only by a cancel, which closes every hold; an answer closes its own hold and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
 ### Changing a filing before it starts
 
@@ -271,7 +271,7 @@ While a task is `in_progress`, your writes are good for as long as you hold the 
 
 One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it: `{ outcome: "declined", reason: "lost-claim" }` if another claimant has meanwhile taken the task, and `{ outcome: "recorded" }` if nobody has, which means the task is yours again for the deadline you just wrote. Pass `committedLeaseSpan(task)` past `now()` as that deadline, so the task keeps the lease length its claim was granted. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
 
-The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [hold](#holding-a-task-on-questions), and the turn that asked gives up its lease, so nothing reclaims the task while it waits, however long the person takes. So when a task has to wait on a person for longer than any lease you would want to set, hold it on a question rather than holding a claim open on a running task.
+The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [hold](#holding-a-task-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing: it runs the terminal check whether you pass options or not.
 

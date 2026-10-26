@@ -2133,10 +2133,10 @@ five boards deep and 100 tasks under one top task; a filing past either is answe
 
 ### Questions, messages and follow-ups
 
-A worker on a task turn has `askQuestion`: the task holds on its question, which the user's
+A worker on a task turn has `askQuestion`: the task waits on its question, which the user's
 Inbox lists. The answer is a message naming the question, `updateTask_tasks({ id, question,
 message })`, from the Inbox, a line typed in the task's session, or the coordinator's `updateTask`
-tool for a question asked midway on a task not routed. The task takes one more turn in its own
+tool. The coordinator answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The task takes one more turn in its own
 session, on the same attempt, with the answer, without spending a retry. The worker also has
 `waitForUser`, which stops its turn for the user's approval or review; only the user answers that,
 in the Inbox.

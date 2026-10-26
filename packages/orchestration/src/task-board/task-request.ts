@@ -68,6 +68,7 @@ import {
   type TaskWaitingOn,
 } from "../tasks";
 import { ticketHoldsRow } from "../tasks/collection/internal";
+import { askedOnTicket } from "../tasks/collection/holds";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";
@@ -165,8 +166,7 @@ function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task |
  * the asking turn, whose own record is new).
  */
 function askedThisTurn(record: Admitted, row: Task | undefined): boolean {
-  if (record.askedQuestions === true) return true;
-  return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === record.ticket.turn && row.attempts === record.ticket.attempt;
+  return record.askedQuestions === true || askedOnTicket(row, record.ticket);
 }
 
 /** A task's request ended with a result that settles it, or that the next request picks up. */

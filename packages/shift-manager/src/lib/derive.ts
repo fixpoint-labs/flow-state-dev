@@ -84,7 +84,7 @@ export type WorkerState = {
   /** Its rows that are running, waiting on you included, in board order: its slots in use. */
   held: BoardRow[];
   /** Of `held`, the rows held on a question or confirm for you (their Inbox item's board holds). */
-  heldOnYou: BoardRow[];
+  waitsOnYou: BoardRow[];
   /** Its pending asks, in Inbox's order. */
   asks: Ask[];
 };
@@ -120,7 +120,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   if (cached !== undefined) return cached;
   const roster = rosterOf(snapshot);
   const workers = new Map<string, WorkerState>(
-    roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], heldOnYou: [], asks: [] }]),
+    roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], waitsOnYou: [], asks: [] }]),
   );
   for (const row of allRows(snapshot)) {
     if (row.status !== "in_progress") continue;
@@ -128,7 +128,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
     if (owner === undefined) continue;
     const state = workers.get(owner.id);
     state?.held.push(row);
-    if (heldOnYou(snapshot, row)) state?.heldOnYou.push(row);
+    if (waitsOnYou(snapshot, row)) state?.waitsOnYou.push(row);
   }
   for (const ask of snapshot.asks.ok ? snapshot.asks.value : []) {
     if (ask.workerId !== null) workers.get(ask.workerId)?.asks.push(ask);
@@ -173,7 +173,7 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
  * for you (an approval, a review) shows that stop as an ask instead
  * ({@link asksOfTask}). `false` while the snapshot or its Inbox isn't read.
  */
-export function heldOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
+export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
     (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
@@ -243,10 +243,10 @@ export type ShiftCounts = Record<ShiftStatus, number> & {
 /** The counts over every worker in `states`, or over one team's. */
 export function shiftCounts(states: WorkerStates, team?: string): ShiftCounts {
   const counts: ShiftCounts = { "on shift": 0, "off shift": 0, waiting: 0 };
-  for (const { worker, status, heldOnYou, asks } of states.workers.values()) {
+  for (const { worker, status, waitsOnYou, asks } of states.workers.values()) {
     if (team !== undefined && worker.team !== team) continue;
     counts[status] += 1;
-    counts.waiting += heldOnYou.length + asks.length;
+    counts.waiting += waitsOnYou.length + asks.length;
   }
   return counts;
 }

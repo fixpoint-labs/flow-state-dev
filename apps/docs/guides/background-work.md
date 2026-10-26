@@ -196,7 +196,7 @@ Dispatching comes with bounds:
 
 **A row released to a run stops holding up the drain.** A row a run has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 
-That release lasts only while the run is actually holding the row, not for the rest of the row's life. Handing work over says where it belongs; it does not promise the work is still moving. If the run stops without settling the row — its process dies, its host is shut down — the row goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A row waiting on a person, held on a question or stopped for a review, is no active worker: a board whose other work is done stops `blocked` and leaves it waiting, and the answer starts its next turn.
+That release lasts only while the run is actually holding the row, not for the rest of the row's life. Handing work over says where it belongs; it does not promise the work is still moving. If the run stops without settling the row — its process dies, its host is shut down — the row goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A row waiting on a person, on a question or stopped for a review, doesn't count as active work: a board whose other work is done stops `blocked` and leaves it waiting, and the answer starts its next turn.
 
 You can exercise all of it from the terminal by running the flow against an `fsdev.config.*`. Whether the command waits for the background work before exiting depends on whether a queue is configured, and running without a config can't start it at all. See [Background work from the CLI](/docs/cli/overview#background-work).
 

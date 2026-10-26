@@ -19,7 +19,7 @@
  * A task also carries a short note about itself on `feedback`, and the row's
  * reason slot renders it so a retried row says why without being opened
  * (FIX-1481). A task waiting on a person shows what it was asked there
- * instead (`heldOn`): its open question, or its run's stop. The slot is keyed on the field being present, never on a
+ * instead (`waitPrompt`): its open question, or its run's stop. The slot is keyed on the field being present, never on a
  * status, and the note is rendered exactly as stored — see
  * `showReason` in `CollectionCard` for why both of those are load-bearing.
  *
@@ -38,7 +38,7 @@ import {
   type CollectionView,
   type ResolvedTask,
   type TaskStreamItem,
-  heldOn,
+  waitPrompt,
 } from "../../lib/task-collection-state";
 import {
   decodeDispatchRunEntry,
@@ -183,7 +183,7 @@ function CollectionCard({
   // Per board, so a board where nothing carries a note grows no reason slot —
   // nothing apologising for itself on every row.
   const showReason = collection.tasks.some(
-    (entry) => entry.task.feedback !== undefined || heldOn(entry.task) !== undefined
+    (entry) => entry.task.feedback !== undefined || waitPrompt(entry.task) !== undefined
   );
 
   const columns = rowColumns(showReason);
@@ -358,8 +358,8 @@ function TaskRow({
             // stored note of spaces is a fact about the row worth seeing.
             // Clamped to one line; the whole string is on the title and in
             // the open row.
-            <span data-slot="reason" className="min-w-0 truncate text-[13px] text-fs-ink2" title={heldOn(task) ?? task.feedback}>
-              {heldOn(task) ?? task.feedback ?? <span className="text-fs-ink5">—</span>}
+            <span data-slot="reason" className="min-w-0 truncate text-[13px] text-fs-ink2" title={waitPrompt(task) ?? task.feedback}>
+              {waitPrompt(task) ?? task.feedback ?? <span className="text-fs-ink5">—</span>}
             </span>
           )}
           <span data-slot="assignee" className="min-w-0 truncate font-fs-mono text-[11.5px] text-fs-ink2" title={task.assignee}>

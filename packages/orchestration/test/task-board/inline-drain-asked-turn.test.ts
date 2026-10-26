@@ -8,7 +8,14 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createStateBackedTaskCollection, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import {
+  createStateBackedTaskCollection,
+  MIN_LEASE_DURATION_MS,
+  openHolds,
+  type TaskCollectionRef,
+  type TaskDispatcher,
+  type TaskWorker,
+} from "../../src/tasks";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeSequencerState } from "../helpers";
 
@@ -44,5 +51,49 @@ describe("an inline board's drain, after a turn that asked midway", () => {
     await testBlock(board.drain, { input: undefined });
     expect(turns).toEqual([1, 1]);
     expect(collection.get("t")).toMatchObject({ status: "completed", attempts: 1, turn: 2, output: { answer: "the whole answer" } });
+  });
+
+  it("returns normally when the asking turn runs on past a lease renewal: the question holds the task, and the turn is not aborted", async () => {
+    // A question asked midway leaves the turn's lease-renewal driver running until the turn
+    // returns. Its next renewal is declined `held`: the row waits on a
+    // person, and nobody took it. Reading that as a lost claim aborted the
+    // turn, and under `onError: "fail"` failed the whole drain (FIX-2131).
+    const collection: TaskCollectionRef = createStateBackedTaskCollection({
+      collectionId: "inline-asked-renewal",
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    });
+    const shortLease: TaskDispatcher = {
+      async claim(ref, workerId) {
+        return ref.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
+      },
+    };
+    let aborted: boolean | undefined;
+    const worker = handler({
+      name: "inline-asking-past-renewal",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ answer: z.string() }),
+      execute: async (_input, ctx) => {
+        await askMidway(ctx, collection, [{ prompt: "Which date column?" }]);
+        // The turn's final response, past a renewal tick (a third of the lease).
+        await new Promise((resolve) => setTimeout(resolve, MIN_LEASE_DURATION_MS / 2 + 200));
+        aborted = ctx.signal?.aborted;
+        return { answer: "asked" };
+      },
+    }) as TaskWorker;
+    const board = taskBoard({
+      name: "inline-asked-renewal-board",
+      collection: () => collection,
+      concurrency: 1,
+      onError: "fail",
+      dispatcher: shortLease,
+      initialTasks: [{ id: "t", goal: "write the script" }],
+      workers: worker,
+    });
+
+    await testBlock(board.drain, { input: undefined });
+    expect(aborted).toBe(false);
+    const row = collection.get("t")!;
+    expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(openHolds(row).map((hold) => hold.ask.prompt)).toEqual(["Which date column?"]);
   });
 });

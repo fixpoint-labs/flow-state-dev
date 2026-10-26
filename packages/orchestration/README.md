@@ -355,8 +355,8 @@ omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`; a running task waiting
-on a person, held on a question or stopped for a review or an approval, is in flight but no
-active worker, so a `"complete-or-blocked"` board whose open tasks only wait on a person stops
+on a person, on a question or stopped for a review or an approval, is in flight but doesn't
+count as active work, so a `"complete-or-blocked"` board whose open tasks only wait on a person stops
 `blocked` and leaves them as they are), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
@@ -646,7 +646,7 @@ only when that row is one the running session may take; it arrives on the dispat
 too, and the gate re-reads the row it names. `uses` declares the ledgers' resources,
 `onError` defaults to `"skip"`, and `allowSessionState` accepts an entry whose blocks
 keep session state. Each run of the entry is a task turn (`isTaskTurn(ctx)`): the run
-gets `askQuestion`, whose question holds the task until the user answers, and
+gets `askQuestion`, whose question the task waits on until the user answers, and
 `waitForUser`. The entry runs
 only if its claim on the task is still current, and task-tool writes from the run can
 touch only the task it holds.
@@ -1046,11 +1046,11 @@ sure the flow holding the board declares `onTaskSettled`.
 ### When a worker waits on a person
 
 A worker that can't go on without an answer asks the user. `createAskQuestion({ resolve })` builds
-the worker's side: `askQuestion({ question })` holds the task the current turn is working on, on
-that question, and the turn ends without settling it; `offered(ctx)` says whether the turn gets the
+the worker's side: `askQuestion({ question })` asks it on the task the current turn is working
+on, and the turn ends without settling it; `offered(ctx)` says whether the turn gets the
 tool, on a task turn for a running task. The answer is a message naming the question,
 `updateTask({ id, question, message })`, from the Inbox, a line the user types in the task's
-session, or the filer's own tool for a question asked midway on a task not routed. The first answer
+session, or the filer's own tool. The coordinator answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The first answer
 wins, and it owes the task one more turn on the same attempt, which starts from the brief, the last
 checkpoint and the answer.
 
