@@ -87,6 +87,11 @@ describe("toolIntent", () => {
     expect(toolIntent("Bash", { command: "ls", description: "   " })).toBeUndefined();
   });
 
+  it("reads the description of any shell tool, whatever it is named", () => {
+    expect(toolIntent("shell", { command: "ls", description: "List files" })).toBe("List files");
+    expect(toolIntent("command_execution", { command: "ls", description: "List files" })).toBe("List files");
+  });
+
   // A `description` on an arbitrary tool can be a payload (an issue body),
   // so only tools known to state intent there are read.
   it("ignores a description argument on a tool that does not state intent", () => {
@@ -141,7 +146,27 @@ describe("toolSubject", () => {
     expect(toolSubject("grep", { pattern: "foo" })).toEqual({ text: 'Grep "foo"', code: false });
   });
 
-  it("says nothing for an unknown tool or a call without the arg", () => {
+  it("title-cases a tool it was never told about, dropping web_ and _file", () => {
+    expect(toolSubject("fetch_page", { url: "https://a.dev" })).toEqual({ text: "Fetch Page https://a.dev", code: false });
+    expect(toolSubject("web_fetch", { url: "https://a.dev" })).toEqual({ text: "Fetch https://a.dev", code: false });
+    expect(toolSubject("create_file", { path: "a.ts" })).toEqual({ text: "Create a.ts", code: false });
+    expect(toolSubject("web_search", { query: "x" })).toEqual({ text: 'Search "x"', code: false });
+  });
+
+  it("maps only ls and multiedit to a different verb", () => {
+    expect(toolSubject("ls", { path: "src" })).toEqual({ text: "List src", code: false });
+    expect(toolSubject("MultiEdit", { file_path: "a.ts" })).toEqual({ text: "Edit a.ts", code: false });
+  });
+
+  it("names a namespaced tool by its last segment", () => {
+    expect(toolSubject("mcp__linear__get_issue", { query: "FIX-1" })).toEqual({ text: 'Get Issue "FIX-1"', code: false });
+  });
+
+  it("prefers the search term over the directory a search ran in", () => {
+    expect(toolSubject("Grep", { pattern: "foo", path: "src" })).toEqual({ text: 'Grep "foo"', code: false });
+  });
+
+  it("says nothing for a tool with no recognisable arg", () => {
     expect(toolSubject("custom", { command: "x" })).toBeUndefined();
     expect(toolSubject("read", {})).toBeUndefined();
     expect(toolSubject("shell", null)).toBeUndefined();

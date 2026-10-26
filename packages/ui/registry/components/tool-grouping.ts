@@ -119,6 +119,8 @@ export function composeToolGroupLabel(toolNames: string[]): string {
   return capitalizeFirst(joinClauses(clauses));
 }
 
+const SHELL_TOOLS = new Set(["shell", "bash", "command_execution", "run_command", "terminal"]);
+
 /** A `description` on any other tool can be a payload, not an intent. */
 export const TOOL_INTENT_ARG: Record<string, string> = {
   Bash: "description",
@@ -129,7 +131,7 @@ export const TOOL_INTENT_ARG: Record<string, string> = {
 
 /** Trimmed allowlisted intent, or undefined when the call left it empty. */
 export function toolIntent(toolName: string, args: unknown): string | undefined {
-  const key = TOOL_INTENT_ARG[toolName];
+  const key = SHELL_TOOLS.has(toolName.toLowerCase()) ? "description" : TOOL_INTENT_ARG[toolName];
   if (key === undefined || args === null || typeof args !== "object") return undefined;
   const value = (args as Record<string, unknown>)[key];
   if (typeof value !== "string") return undefined;
@@ -137,38 +139,22 @@ export function toolIntent(toolName: string, args: unknown): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-const SHELL_TOOLS = new Set(["shell", "bash", "command_execution", "run_command", "terminal"]);
+/** Args that name what a call acted on, most specific first: a search term beats the directory it ran in. */
+const SUBJECT_ARGS = ["query", "pattern", "glob_pattern", "globPattern", "url", "file_path", "path", "target_file", "target_directory", "dir"];
 
-/** Tool name (lower-case) → the verb that heads its subject, and the args that carry it, first found wins. */
-const SUBJECT_TOOLS: Record<string, { verb: string; keys: string[]; quote?: boolean }> = {
-  read: { verb: "Read", keys: ["path", "file_path", "target_file"] },
-  read_file: { verb: "Read", keys: ["path", "file_path", "target_file"] },
-  write: { verb: "Write", keys: ["path", "file_path", "target_file"] },
-  write_file: { verb: "Write", keys: ["path", "file_path", "target_file"] },
-  create_file: { verb: "Create", keys: ["path", "file_path", "target_file"] },
-  edit: { verb: "Edit", keys: ["path", "file_path", "target_file"] },
-  edit_file: { verb: "Edit", keys: ["path", "file_path", "target_file"] },
-  multiedit: { verb: "Edit", keys: ["file_path", "path"] },
-  delete: { verb: "Delete", keys: ["path", "file_path", "target_file"] },
-  delete_file: { verb: "Delete", keys: ["path", "file_path", "target_file"] },
-  grep: { verb: "Grep", keys: ["pattern", "query"], quote: true },
-  glob: { verb: "Glob", keys: ["globPattern", "glob_pattern", "pattern"] },
-  ls: { verb: "List", keys: ["path", "target_directory", "dir"] },
-  web_search: { verb: "Search", keys: ["query"], quote: true },
-  search: { verb: "Search", keys: ["query"], quote: true },
-  web_fetch: { verb: "Fetch", keys: ["url"] },
-  fetch: { verb: "Fetch", keys: ["url"] },
-};
+/** Tools whose verb is not their name. */
+const VERBS: Record<string, string> = { ls: "List", multiedit: "Edit" };
+
+/** `mcp__linear__get_issue` → "Get Issue", `web_fetch` → "Fetch", `read_file` → "Read". */
+function verbFor(toolName: string): string {
+  const bare = toolName.split("__").pop()!.toLowerCase();
+  const mapped = VERBS[bare];
+  if (mapped !== undefined) return mapped;
+  const words = bare.replace(/^web_/, "").replace(/_file$/, "").split(/[_\s-]+/).filter((w) => w !== "");
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
 
 const SUBJECT_MAX = 80;
-
-function firstArg(args: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = args[key];
-    if (typeof value === "string" && value.trim() !== "") return value.trim();
-  }
-  return undefined;
-}
 
 /** A path as its last three segments, so a deep one still fits on a line. */
 function shortPath(path: string): string {
@@ -186,7 +172,9 @@ export type ToolSubject = { text: string; code: boolean };
 /**
  * Names what a call did, so a run of calls to one tool reads as distinct steps:
  * the command a shell ran, the file a read opened, the pattern a grep sought.
- * Undefined for a tool this doesn't know, which keeps its name.
+ * The verb is the tool's name, title-cased; the subject is the first of a
+ * short list of common args the call carries. Undefined when it carries none,
+ * which keeps the tool's name.
  */
 export function toolSubject(toolName: string, args: unknown): ToolSubject | undefined {
   if (args === null || typeof args !== "object") return undefined;
@@ -201,12 +189,11 @@ export function toolSubject(toolName: string, args: unknown): ToolSubject | unde
     return line === "" ? undefined : { text: clip(line), code: true };
   }
 
-  const entry = SUBJECT_TOOLS[lower];
-  if (entry === undefined) return undefined;
-  const value = firstArg(record, entry.keys);
-  if (value === undefined) return undefined;
-  const shown = entry.quote ? `"${value}"` : entry.keys.includes("url") ? value : shortPath(value);
-  return { text: clip(`${entry.verb} ${shown}`), code: false };
+  const key = SUBJECT_ARGS.find((k) => typeof record[k] === "string" && (record[k] as string).trim() !== "");
+  if (key === undefined) return undefined;
+  const value = (record[key] as string).trim();
+  const shown = key === "query" || key === "pattern" ? `"${value}"` : key === "url" ? value : shortPath(value);
+  return { text: clip(`${verbFor(toolName)} ${shown}`), code: false };
 }
 
 /** One call, as the label composer sees it. */
