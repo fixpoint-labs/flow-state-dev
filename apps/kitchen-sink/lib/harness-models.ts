@@ -3,7 +3,7 @@
  * preselected, and why the list is short or empty when it is.
  *
  * Server only. Each list is the harness's own where its SDK can list (Claude
- * Code, Cursor) and one Kitchen Sink keeps where it can't (Codex). The mode
+ * Code) and one Kitchen Sink keeps otherwise (Codex, Cursor). The mode
  * files read them (`claudeCodeModelChoices`, `codexModelChoices`,
  * `cursorModelChoices`); this module shares one read among the page loads that
  * arrive during it, keeps a list that was read in full until the server

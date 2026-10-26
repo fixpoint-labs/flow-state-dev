@@ -23,7 +23,7 @@ import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { claudeCodeModelChoices, claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { CODEX_DEFAULT_MODEL, CODEX_MODELS, CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
-import { CURSOR_DEFAULT_MODEL, cursorCatalogModels, cursorModelChoices, cursorSessionFlow } from "@/lib/cursor-mode";
+import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorModelSelection, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { MODEL_REQUIRED } from "@/lib/harness-session-flow";
 import type { HarnessSessionState } from "@/lib/harness-turn";
@@ -295,46 +295,47 @@ describe("what each mode offers to pick", () => {
     ]);
   });
 
-  it("Cursor: its own list with the mode's default preselected and first when unlisted; the default alone when the list fails", async () => {
-    const listed = await cursorModelChoices(async () => [
-      { id: "other", label: "Other" },
-      { id: CURSOR_DEFAULT_MODEL, label: "Composer" },
+  it("Cursor: the hand-kept list, Composer 2.5 preselected, Auto offered as the default", async () => {
+    const choices = await cursorModelChoices();
+    expect(choices).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL });
+    expect(choices.models.map((model) => model.id)).toEqual([
+      "grok-4.7:low", "grok-4.7:medium", "grok-4.7:high", "grok-4.7:xhigh",
+      "composer-2.5", "gemini-4-argon", "muse-wonder-1.0", "kimi-k3", "glm-5p3", "glm-5p3-flash", "default",
     ]);
-    expect(listed).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL });
-    expect(listed.models.map((m) => m.id)).toEqual(["other", CURSOR_DEFAULT_MODEL]);
+    // The preselected model is one the picker offers.
+    expect(choices.models.map((model) => model.id)).toContain(choices.defaultId);
+  });
 
-    const unlisted = await cursorModelChoices(async () => [{ id: "other", label: "Other" }]);
-    expect(unlisted.models.map((m) => m.id)).toEqual([CURSOR_DEFAULT_MODEL, "other"]);
-
-    const failed = await cursorModelChoices(async () => {
-      throw new Error("offline");
+  // Grok 4.7 is one model run at four efforts; the effort is part of the pick,
+  // and Cursor takes it as the model's settings, not as a different id.
+  it("Cursor: a Grok effort reaches Cursor as the model and its setting; every other pick is its own id", () => {
+    expect(cursorModelSelection("grok-4.7:xhigh")).toEqual({
+      id: "grok-4.7",
+      params: [{ id: "reasoning_effort", value: "xhigh" }],
     });
-    expect(failed.models.map((m) => m.id)).toEqual([CURSOR_DEFAULT_MODEL]);
-    expect(failed.reason).toMatch(/can't be read \(offline\), so only Cursor mode's default is offered/);
+    expect(cursorModelSelection("kimi-k3")).toBe("kimi-k3");
+    expect(cursorModelSelection("default")).toBe("default");
+    // An id Kitchen Sink doesn't know goes through: Cursor judges what it runs.
+    expect(cursorModelSelection("some-new-model")).toBe("some-new-model");
+    expect(cursorModelSelection(undefined)).toBeUndefined();
   });
 
-  it("Cursor: an entry that needs parameters to run is not offered, since a session hands Cursor an id alone", () => {
-    // The shape `Cursor.models.list()` returns (`ModelListItem`, @cursor/sdk 1.0.31).
-    const offered = cursorCatalogModels([
-      { id: CURSOR_DEFAULT_MODEL, displayName: "Composer 2.5" },
-      {
-        id: "auto-smart",
-        displayName: "Auto",
-        parameters: [{ id: "optimize_for", values: [{ value: "speed" }, { value: "intelligence" }] }],
-      },
-      { id: "plain", displayName: "", parameters: [] },
-    ]);
-    expect(offered).toEqual([
-      { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
-      { id: "plain", label: "plain" },
-    ]);
-  });
-
-  it("Cursor: a catalog call that never answers gives up in time and offers the default, so an existing session still opens", async () => {
-    const stalled = await cursorModelChoices(() => new Promise(() => {}), 20);
-    expect(stalled).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL });
-    expect(stalled.models.map((m) => m.id)).toEqual([CURSOR_DEFAULT_MODEL]);
-    expect(stalled.reason).toMatch(/can't be read \(no answer within 20 ms\)/);
+  it("Cursor: a session picked on a Grok effort runs the model at that effort, on the first turn and on the resume", async () => {
+    const selections: unknown[] = [];
+    const scripted = scriptedCursor();
+    const resolve: ResolveCursorClient = async (ctx) => {
+      const client = await scripted(ctx);
+      return {
+        create: (options) => (selections.push(options.model), client.create(options)),
+        resume: (agentId, options) => (selections.push(options.model), client.resume(agentId, options)),
+      };
+    };
+    const mode: Mode = { name: "Cursor", flow: () => cursorSessionFlow({ resolveCursorClient: resolve }) as never, models: [], fallback: CURSOR_DEFAULT_MODEL };
+    const stores = createInMemoryStores();
+    await turn(stores, mode, "s-grok", { model: "grok-4.7:high" });
+    await turn(stores, mode, "s-grok", { model: "grok-4.7:high" });
+    const high = { id: "grok-4.7", params: [{ id: "reasoning_effort", value: "high" }] };
+    expect(selections).toEqual([high, high]);
   });
 
   it("a full list is kept until restart; a short one is asked for again", async () => {
