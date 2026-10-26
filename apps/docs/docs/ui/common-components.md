@@ -127,7 +127,7 @@ fsdev ui add shimmer
 
 ## StreamingIndicator
 
-In-flight status indicator shown between the user's message and the first streamed token (or for the duration of any background work after that point). Renders the latest value from the request-scoped status slot, falling back to "Working..." when the slot is empty. While the request is in its background-task drain phase (`useSession.isFinishing`), the indicator switches to a muted "Tidying up..." state.
+In-flight status indicator for the latest request while it streams. It shows before the first step, between steps (after one finishes and before the next begins), and while the answer streams. It hides while a [Tool](#tool) call or [Reasoning](#reasoning) step is in progress, because that component already shows the step. Renders the latest value from the request-scoped status slot, falling back to "Working..." when the slot is empty. While the request is in its background-task drain phase (`useSession.isFinishing`), the indicator switches to a muted "Tidying up..." state, unless a step is in progress, in which case it is not rendered at all.
 
 ```bash
 fsdev ui add streaming-indicator
