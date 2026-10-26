@@ -356,6 +356,29 @@ describe("the answer's rules", () => {
     expect(after.questions).toHaveLength(0);
   });
 
+  it("answers a second question with another line in the same run session: every turn stays in that session", async () => {
+    const seen = seenTurns();
+    live = createConductorHarness({
+      resolveClaudeAgent: turnAgent([{ question: "which path?" }, { question: "and which file?" }, { subtype: "success" }], seen),
+      isDone: () => false,
+    });
+    const first = await seedAndSettle(live);
+    const runSession = first.run!.childSessionId!;
+
+    await live.call("message", { message: "The second path." }, runSession);
+    const second = await settle(live);
+    expect(second.questions.map((q) => q.text)).toEqual(["and which file?"]);
+    expect(second.run?.childSessionId).toBe(runSession);
+
+    await live.call("message", { message: "The README." }, runSession);
+    const after = await settle(live);
+
+    expect(seen.prompts).toHaveLength(3);
+    expect(seen.prompts[2]).toContain("The README.");
+    expect(after.attempts).toBe(1);
+    expect(after.questions).toHaveLength(0);
+  }, 30_000);
+
   it("reports a question asked inside the child session to a DIFFERENT coordinator session", async () => {
     const seen = seenTurns();
     live = createConductorHarness({ resolveClaudeAgent: turnAgent([{ question: "which path?" }], seen), isDone: () => false });

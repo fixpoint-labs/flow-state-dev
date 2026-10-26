@@ -58,7 +58,9 @@ import {
   defineTaskCollection,
   isClaimable,
   DEFAULT_MAX_ABANDONMENTS,
+  getOrCreateTaskCollection,
   openRowHolds,
+  resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
@@ -588,7 +590,21 @@ export function conductorFlow(options: ConductorFlowOptions) {
       [ASSIGNEE]: dispatcher({
         name: `${boardId}-hand-off`,
         action: ASSIGNEE,
-        session: "per-task",
+        // A task whose run already has a session goes on in it: the turn an
+        // answer owes can be started from that run session (a line typed
+        // there), and a child derived from it would move the task's run to a
+        // session no later line is typed in. A first run gets its own child.
+        session: {
+          by: async (task, ctx) => {
+            const collection = resolveResourceCollection(ctx, collectionId);
+            const row =
+              collection === undefined
+                ? undefined
+                : (await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId, collection })).get(task.taskId);
+            const existing = row?.run?.sessionId;
+            return existing !== undefined ? { id: existing } : { key: `task|${boardId}|${task.taskId}` };
+          },
+        },
       }),
     },
     // **A run parked on a person is not this drain's to wait on.**
