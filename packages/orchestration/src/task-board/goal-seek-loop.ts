@@ -60,7 +60,7 @@ import { z, type ZodTypeAny } from "zod";
 import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
-import { drainNextWithoutSeed } from "./blocks/seed-collection";
+import { setNextDrainUnseeded } from "./blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Public contract
@@ -568,7 +568,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   // marked for the board here, never asked for through the drain's input.
   const drainPass = sequencer({ name: `${name}-gsl-drain-pass`, inputSchema: z.unknown(), uses: [board.capability] })
     .step((input: unknown, ctx: BlockContext) => {
-      if (board.hasIdlessInitialTasks && owedNow(input, ctx)) drainNextWithoutSeed(ctx, board.collectionId);
+      if (board.hasIdlessInitialTasks) setNextDrainUnseeded(ctx, board.collectionId, owedNow(input, ctx));
       return input;
     }, board.drain)
     .tap(noteWaiting)

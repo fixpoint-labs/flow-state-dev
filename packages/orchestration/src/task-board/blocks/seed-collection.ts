@@ -44,9 +44,16 @@ function unseededKey(ctx: BlockContext, collectionId: string): string {
   return `${ctx.request.identity.id}\u0000${ctx.request.incarnation}\u0000${collectionId}`;
 }
 
-/** Marks the next drain of the board on `collectionId`, in this request, to run without its seed. Package-internal. */
-export function drainNextWithoutSeed(ctx: BlockContext, collectionId: string): void {
-  unseededDrains.add(unseededKey(ctx, collectionId));
+/**
+ * Sets whether the next drain of the board on `collectionId`, in this request,
+ * runs without its seed. Clearing it drops a mark a drain that threw before its
+ * seed left behind, which a retry of the request would otherwise inherit.
+ * Package-internal: not exported from the package.
+ */
+export function setNextDrainUnseeded(ctx: BlockContext, collectionId: string, unseeded: boolean): void {
+  const key = unseededKey(ctx, collectionId);
+  if (unseeded) unseededDrains.add(key);
+  else unseededDrains.delete(key);
 }
 
 export interface SeedCollectionOptions<TInput = unknown> {

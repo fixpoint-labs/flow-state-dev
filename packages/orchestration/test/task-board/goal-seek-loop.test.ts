@@ -22,6 +22,7 @@ import {
   type TaskBoardHandle,
 } from "../../src/task-board";
 import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
+import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -764,6 +765,37 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(result.error).toBeNull();
     expect(turns).toBe(2);
     expect(trace).toEqual(["later"]);
+  });
+
+  it("seeds a pass's first drain even when an earlier attempt of the request left a mark", async () => {
+    // A drain that throws between the loop's mark and its seed leaves the mark
+    // behind, and a retry of the request keeps the same id and incarnation. The
+    // retry's first drain still seeds the board: only an owed-turn drain skips.
+    const name = "stale-unseeded-mark";
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: `${name}-board`,
+      collection: { collectionId: name },
+      workers: completingWorker(`${name}-w`, trace),
+      initialTasks: [{ goal: "the configured task" }],
+    });
+    const leftByEarlierAttempt = handler({
+      name: `${name}-earlier-attempt`,
+      inputSchema: z.unknown(),
+      execute: (_input, ctx) => setNextDrainUnseeded(ctx, board.collectionId, true),
+    });
+    const loop = goalSeekLoop({
+      name,
+      board,
+      judge: (): Verdict => ({ decision: "done", reason: "converged" }),
+      maxIterations: 1,
+    });
+    const retried = sequencer({ name: `${name}-retried`, inputSchema: z.unknown() }).tap(leftByEarlierAttempt).step(loop);
+
+    const result = await testBlock(retried, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(trace).toEqual(["the configured task"]);
   });
 
   it("drains the owed turn without seeding the board's id-less initial tasks again", async () => {
