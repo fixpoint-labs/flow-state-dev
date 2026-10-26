@@ -633,7 +633,7 @@ describe("goalSeekLoop - a task waiting on a person", () => {
     expect(result.error).toBeNull();
     expect(judged).toBe(0);
     expect(finalized).toBe(0);
-    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-user", iterations: 0 });
     // The loop's output is the board as the drain left it: the task still running, waiting.
     const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
     expect(row?.status).toBe("in_progress");
@@ -907,7 +907,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(turns).toBe(2);
     expect(judged).toBe(0);
     expect(finalized).toBe(0);
-    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-user", iterations: 0 });
     const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
     expect(row?.status).toBe("in_progress");
   });

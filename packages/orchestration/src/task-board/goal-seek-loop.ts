@@ -24,7 +24,7 @@
  * would rule on unfinished work, and on every later pass the same open
  * question, until the cap. So a drain that leaves a task waiting on a person
  * ends the loop's pass there: no judge, no replan, no finalize, and no
- * iteration spent, with the termination reason `"waiting-on-a-person"`. The
+ * iteration spent, with the termination reason `"waiting-on-a-user"`. The
  * answer owes the task its next turn; run the loop again once it is answered,
  * and its drain takes that turn and the loop goes on.
  *
@@ -244,7 +244,7 @@ const goalSeekLoopStateSchema = z.object({
 });
 
 /** The termination reason of a pass a task waiting on a person ended. */
-const WAITING_ON_A_PERSON = "waiting-on-a-person";
+const WAITING_ON_A_USER = "waiting-on-a-user";
 
 /** Whether the loop's last drain left a task waiting on a person. */
 const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
@@ -372,7 +372,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const waitingVerdict = handler({
     name: `${name}-gsl-waiting-verdict`,
     inputSchema: z.unknown(),
-    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_PERSON }),
+    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_USER }),
   });
 
   const incrementDrainCount = handler({

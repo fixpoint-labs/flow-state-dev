@@ -66,8 +66,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, type RunsElsewhere } from "../shared";
-import { leaseLapsed } from "../../tasks";
+import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
+import { hasOpenHold, leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -123,8 +123,9 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * an operator needs.
  *
  * **A reachability closure, not a one-level check**: the seed set is
- * everything that will resolve on its own (already completed, or worked right
- * now under a live lease) and the loop closes over the `pending` rows those
+ * everything that will resolve on its own (already completed, worked right
+ * now under a live lease, or running and waiting on a user's answer) and the
+ * loop closes over the `pending` rows those
  * release, so a dependent of a dependent of running work is not called stuck.
  * It runs once, after the pool has finished, never on the exit predicate's
  * hot path.
@@ -135,7 +136,8 @@ function hasRowGoingNowhere(
   now: number
 ): boolean {
   // Seed: rows this board's dependency graph is not what resolves. Either they
-  // are already done, or somebody is working them right now.
+  // are already done, or a running row waits on a user, or somebody is
+  // working them right now.
   //
   // **The last of those is a lease question, not a status or routing one**, and
   // that is the whole correctness of this seed. `in_progress` alone would seed
@@ -148,7 +150,15 @@ function hasRowGoingNowhere(
   // routed.
   const willResolve = new Set<string>();
   for (const task of all) {
-    if (task.status === "completed" || (task.status === "in_progress" && !leaseLapsed(task, now))) {
+    if (
+      task.status === "completed" ||
+      // A row that asked midway dropped its lease, so the lease test below
+      // would call it abandoned; the answer owes it a turn, so it is not.
+      // Only the running one: a `pending` row filed on questions still needs
+      // its deps once answered, so it enters through the expansion below.
+      waitsOnUser(task) ||
+      (task.status === "in_progress" && !leaseLapsed(task, now))
+    ) {
       willResolve.add(task.id);
     }
   }
@@ -193,6 +203,9 @@ function hasRowGoingNowhere(
  *   establish that a refusal happened.
  * - `"dispatched"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
+ * - `"waiting-on-a-user"` — the board stopped because the work it has left
+ *   waits on a user: a question, a confirm, or a run's stop for a review or
+ *   approval (FIX-2214). The same words `goalSeekLoop` ends a pass with.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -204,8 +217,11 @@ function hasRowGoingNowhere(
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. every remaining row is dispatched → `dispatched`.
- * 6. otherwise → `blocked-by-failures`.
+ * 5. any remaining row has an open hold, so waits on a user →
+ *    `waiting-on-a-user`. Rung 3 left only `pending` and `in_progress`
+ *    rows, and rung 4 already vouches for the others.
+ * 6. every remaining row is dispatched → `dispatched`.
+ * 7. otherwise → `blocked-by-failures`.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -265,7 +281,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "all-completed"
         | "blocked-by-failures"
         | "retry-budget-exhausted"
-        | "dispatched" = anyRetryDeniedByBudget(all)
+        | "dispatched"
+        | "waiting-on-a-user" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -273,9 +290,11 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : allRemainingDispatched
-                ? "dispatched"
-                : "blocked-by-failures";
+              : remaining.some(hasOpenHold)
+                ? "waiting-on-a-user"
+                : allRemainingDispatched
+                  ? "dispatched"
+                  : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
