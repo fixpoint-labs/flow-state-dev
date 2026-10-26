@@ -145,13 +145,21 @@ const SUBJECT_ARGS = ["query", "pattern", "glob_pattern", "globPattern", "url", 
 /** Tools whose verb is not their name. */
 const VERBS: Record<string, string> = { ls: "List", multiedit: "Edit" };
 
-/** `mcp__linear__get_issue` → "Get Issue", `web_fetch` → "Fetch", `read_file` → "Read". */
-function verbFor(toolName: string): string {
-  const bare = toolName.split("__").pop()!.toLowerCase();
-  const mapped = VERBS[bare];
-  if (mapped !== undefined) return mapped;
-  const words = bare.replace(/^web_/, "").replace(/_file$/, "").split(/[_\s-]+/).filter((w) => w !== "");
+function titleCase(text: string): string {
+  const words = text.split(/[_\s-]+/).filter((w) => w !== "");
   return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+/** `web_fetch` → "Fetch", `read_file` → "Read", `ls` → "List". */
+function verbFor(toolName: string): string {
+  const lower = toolName.toLowerCase();
+  return VERBS[lower] ?? titleCase(lower.replace(/^web_/, "").replace(/_file$/, ""));
+}
+
+/** `mcp__linear__get_issue` → ["linear", "get_issue"]; undefined for any other tool. */
+function mcpParts(toolName: string): [string, string] | undefined {
+  const [prefix, server, ...tool] = toolName.split("__");
+  return prefix === "mcp" && server !== undefined && tool.length > 0 ? [server, tool.join("__")] : undefined;
 }
 
 const SUBJECT_MAX = 80;
@@ -183,6 +191,9 @@ export function toolSubject(toolName: string, args: unknown): ToolSubject | unde
   if (args === null || typeof args !== "object") return undefined;
   const record = args as Record<string, unknown>;
   const lower = toolName.toLowerCase();
+
+  const mcp = mcpParts(toolName);
+  if (mcp !== undefined) return { text: `Calling MCP tool ${titleCase(mcp[0])} ${titleCase(mcp[1])}`, code: false };
 
   if (SHELL_TOOLS.has(lower)) {
     const raw = record.command;

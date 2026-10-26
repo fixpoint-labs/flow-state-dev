@@ -168,8 +168,11 @@ describe("toolSubject", () => {
     expect(toolSubject("MultiEdit", { file_path: "a.ts" })).toEqual({ text: "Edit a.ts", code: false });
   });
 
-  it("names a namespaced tool by its last segment", () => {
-    expect(toolSubject("mcp__linear__get_issue", { query: "FIX-1" })).toEqual({ text: 'Get Issue "FIX-1"', code: false });
+  it("names an MCP tool by its server and tool, whatever args it carries", () => {
+    const named = { text: "Calling MCP tool Linear Get Issue", code: false };
+    expect(toolSubject("mcp__linear__get_issue", { query: "FIX-1" })).toEqual(named);
+    expect(toolSubject("mcp__linear__get_issue", { id: "FIX-1" })).toEqual(named);
+    expect(toolSubject("mcp__linear__get_issue", {})).toEqual(named);
   });
 
   it("prefers the search term over the directory a search ran in", () => {
