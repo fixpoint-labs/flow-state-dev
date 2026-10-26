@@ -128,7 +128,6 @@ export async function handleResumeSuspension(
   const suspensionId = getString(body.suspensionId);
   const action = getString(body.action);
   const resumeData = body.data;
-  const resumedBy = getString(body.resumedBy);
 
   if (suspensionId === undefined) {
     return jsonResponse(400, { error: "Missing required field: suspensionId" });
@@ -213,6 +212,9 @@ export async function handleResumeSuspension(
       });
     }
   }
+
+  // Who resumed is the signed-in caller, never a field of the body (BP-031).
+  const resumedBy = ctx.principal?.userId ?? originalRequest.userId;
 
   // Lease, resolve, continue the SAME request (FIX-811), and revert if setup
   // fails before the run starts: the path every resume shares. Reverting is
