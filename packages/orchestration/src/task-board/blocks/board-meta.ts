@@ -66,8 +66,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { heldOnPerson, isDispatched, waitsOnPerson, type RunsElsewhere } from "../shared";
-import { leaseLapsed } from "../../tasks";
+import { isDispatched, waitsOnPerson, type RunsElsewhere } from "../shared";
+import { hasOpenHold, leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -217,8 +217,9 @@ function hasRowGoingNowhere(
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. any remaining row waits on a person → `waiting-on-a-person`. Rung 4
- *    already vouches for the other rows.
+ * 5. any remaining row has an open hold, so waits on a person →
+ *    `waiting-on-a-person`. Rung 3 left only `pending` and `in_progress`
+ *    rows, and rung 4 already vouches for the others.
  * 6. every remaining row is dispatched → `dispatched`.
  * 7. otherwise → `blocked-by-failures`.
  *
@@ -289,7 +290,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : remaining.some(heldOnPerson)
+              : remaining.some(hasOpenHold)
                 ? "waiting-on-a-person"
                 : allRemainingDispatched
                   ? "dispatched"
