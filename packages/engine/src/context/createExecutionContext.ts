@@ -3383,8 +3383,9 @@ export async function createExecutionContext<
   // its recorded resolution (in original order) instead of re-suspending —
   // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
   // earlier one forever. Keyed by logical block id; the value counts how many of
-  // that gate's recorded resolutions this replay has consumed. Shared across all
-  // per-scope `suspend` closures.
+  // that gate's recorded resolutions this replay has consumed, plus one once
+  // the continuation's own resolution has answered a call there (FIX-2196).
+  // Shared across all per-scope `suspend` closures.
   const resolvedResumeCursor = new Map<string, number>();
 
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
@@ -3759,13 +3760,18 @@ export async function createExecutionContext<
           // A block that parks again on a new gate (a wait that waits again
           // at its deadline, FIX-2082) reaches this from the same path: a
           // gate that names its own id is resolved only by its own
-          // resolution.
+          // resolution. Within one block the resolution answers one call,
+          // the first past the gates the log replayed: a later call in the
+          // same block, named or not, suspends on its own stop (FIX-2196).
+          const position = resolvedResumeCursor.get(callerLogicalId) ?? 0;
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
             resumeCtx.pendingBlockLogicalId === callerLogicalId &&
+            position === (replayLog?.resolvedResumes(callerLogicalId).length ?? 0) &&
             (suspendOpts.suspensionId === undefined || suspendOpts.suspensionId === resumeCtx.suspensionId);
 
           if (isResolvingGate) {
+            resolvedResumeCursor.set(callerLogicalId, position + 1);
             // A task's run stopped while it waited for a user ends here
             // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
             // read the stop, and no block runs past the gate. The stop is
