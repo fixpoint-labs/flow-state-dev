@@ -95,8 +95,8 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, type RunsElsewhere } from "../shared";
-import { leaseLapsed, openRowHolds } from "../../tasks";
+import { isDispatched, waitsOnAnswer, type RunsElsewhere } from "../shared";
+import { leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -141,16 +141,6 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
       );
     },
   });
-}
-
-/**
- * Is `task` waiting on a person's answer (FIX-2214)? `pending` or `in_progress`
- * with an open question or confirm. A suspension hold does not count: that run
- * resumes itself. A `held`-status row does not either: rung 3 reports it, since
- * an answer does not release it.
- */
-function waitsOnAnswer(task: Task): boolean {
-  return (task.status === "pending" || task.status === "in_progress") && openRowHolds(task).length > 0;
 }
 
 /**

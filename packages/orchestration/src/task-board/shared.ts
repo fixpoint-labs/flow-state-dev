@@ -295,9 +295,29 @@ export function activeWorkerCount(
  * question or confirm. Of the exit counts only {@link activeWorkerCount}
  * excuses it, so the verdict stays `blocked`; `goalSeekLoop` ends its pass on
  * it without judging. A suspension hold stays counted: that run resumes itself.
+ *
+ * "Running and waiting". {@link waitsOnAnswer} is "waiting, running or not";
+ * both ask the same hold question.
  */
 export function awaitsAnswer(row: Task): boolean {
-  return row.status === "in_progress" && openRowHolds(row).length > 0;
+  return row.status === "in_progress" && hasOpenQuestion(row);
+}
+
+/**
+ * A row waiting on a person's answer, running or not (FIX-2214): `pending`
+ * (filed with questions) or `in_progress` (asked midway), with an open
+ * question or confirm. The board's completion reason reads it; the exit counts
+ * read the narrower {@link awaitsAnswer}, since a `pending` row is already
+ * unclaimable there. A suspension hold does not count: that run resumes
+ * itself. Nor does a `held`-status row: an answer does not release it.
+ */
+export function waitsOnAnswer(row: Task): boolean {
+  return (row.status === "pending" || row.status === "in_progress") && hasOpenQuestion(row);
+}
+
+/** The hold test both predicates share: an open row hold, never a suspension hold. */
+function hasOpenQuestion(row: Task): boolean {
+  return openRowHolds(row).length > 0;
 }
 
 /**

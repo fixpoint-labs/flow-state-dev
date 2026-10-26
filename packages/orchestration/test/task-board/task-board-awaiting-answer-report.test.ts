@@ -15,6 +15,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createStateBackedTaskCollection, type TaskCollectionRef, type TaskInit, type TaskWorker } from "../../src/tasks";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { createBoardMetaCompleted } from "../../src/task-board/blocks/board-meta";
 import { createFakeSequencerState } from "../helpers";
 
 let seq = 0;
@@ -115,5 +116,83 @@ describe("a drain stopped on a row waiting for an answer", () => {
     );
     expect(meta.counts).toMatchObject({ errored: 1 });
     expect(meta.terminationReason).toBe("blocked-by-failures");
+  });
+});
+
+/**
+ * The guard on the closure seed: only an open *question* says the answer owes
+ * the row a turn. These rows are stored directly, since no drain leaves a row
+ * in these shapes on purpose, and read by the completion block alone.
+ */
+describe("a row that waits on something other than an answer", () => {
+  const NOW = 1_000_000;
+
+  /** A collection at a fixed clock holding exactly `rows`, as stored. */
+  async function storedCollection(rows: Record<string, unknown>[]): Promise<TaskCollectionRef> {
+    seq += 1;
+    const tasks = Object.fromEntries(
+      rows.map((row) => [row.id as string, { goal: row.id, attempts: 1, deps: [], createdAt: 1, updatedAt: 1, ...row }])
+    );
+    return createStateBackedTaskCollection({
+      collectionId: `awaiting-answer-stored-${seq}`,
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks }),
+      now: () => NOW,
+    });
+  }
+
+  async function reasonOf(collection: TaskCollectionRef): Promise<string | undefined> {
+    const block = createBoardMetaCompleted({
+      name: `awaiting-answer-meta-${seq}`,
+      collection: async () => collection,
+      collectionId: collection.collectionId,
+    });
+    const result = await testBlock(block, { input: [{ shouldContinue: false, reason: "blocked" }] });
+    expect(result.error).toBeNull();
+    type MetaItem = { type?: string; component?: string; data?: { terminationReason?: string } };
+    return (result.items as MetaItem[]).find((i) => i.type === "component" && i.component === "task-board-meta")?.data
+      ?.terminationReason;
+  }
+
+  it("reports blocked-by-failures for an abandoned row holding only a suspension hold", async () => {
+    // A lapsed lease and no open question: nothing owes this row a turn, so it
+    // is abandoned. Seeding it on any open hold, not an open question, would
+    // call this stall `awaiting-answer`.
+    const collection = await storedCollection([
+      {
+        id: "suspended",
+        status: "in_progress",
+        leaseUntil: NOW - 1,
+        holds: [
+          {
+            id: "susp-1",
+            actor: "user",
+            openedAt: 1,
+            source: { kind: "suspension", requestId: "req-1", suspensionId: "susp-1" },
+            ask: { kind: "approval", prompt: "Approve?" },
+          },
+        ],
+      },
+    ]);
+    expect(await reasonOf(collection)).toBe("blocked-by-failures");
+  });
+
+  it("reports blocked-by-failures for a held-status row, even with an open question on it", async () => {
+    const collection = await storedCollection([
+      {
+        id: "held-status",
+        status: "held",
+        attempts: 0,
+        holds: [
+          {
+            id: "q-1",
+            actor: "user",
+            openedAt: 1,
+            source: { kind: "row", releasedBy: [{ by: "answer" }] },
+            ask: { kind: "question", prompt: "Which date column?" },
+          },
+        ],
+      },
+    ]);
+    expect(await reasonOf(collection)).toBe("blocked-by-failures");
   });
 });
