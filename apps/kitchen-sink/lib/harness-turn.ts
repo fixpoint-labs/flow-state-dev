@@ -231,11 +231,12 @@ export interface PlanRowStage {
 /**
  * Reads a plan row's status. A harness's create records none (Claude Code's
  * `TaskCreate` carries no status), so `null` is a row nobody has started.
- * Spelling is forgiven; a word this does not know is kept as said.
+ * Spelling (snake, kebab, spaced, camel) is forgiven; a word this does not know is kept as said.
  */
 export function planRowStage(status: string | null): PlanRowStage {
-  if (status === null) return { stage: "pending", label: "To do" };
-  switch (status.trim().toLowerCase().replace(/[\s-]+/g, "_")) {
+  if (status === null || status.trim() === "") return { stage: "pending", label: "To do" };
+  // `inProgress` (Cursor) and `in_progress` (Claude Code) are one word.
+  switch (status.trim().replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[\s-]+/g, "_")) {
     case "pending":
     case "todo":
     case "not_started":

@@ -119,8 +119,8 @@ describe("planRowStage", () => {
   });
 
   it("reads the common words of the harnesses in any spelling", () => {
-    for (const word of ["pending", "Pending", "todo", "not_started"]) expect(planRowStage(word).stage).toBe("pending");
-    for (const word of ["in_progress", "in-progress", "In Progress", "running"]) {
+    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planRowStage(word).stage).toBe("pending");
+    for (const word of ["in_progress", "in-progress", "In Progress", "running", "inProgress"]) {
       expect(planRowStage(word)).toEqual({ stage: "active", label: "In progress" });
     }
     for (const word of ["completed", "complete", "done"]) expect(planRowStage(word)).toEqual({ stage: "done", label: "Done" });
