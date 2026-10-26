@@ -574,7 +574,7 @@ that **nothing was written down before the work that constrained it**:
 - **A pass whose scope came from the material** rather than from an issue — `polish-docs` at
   epic wrap is the standing case.
 - **Work filed retrospectively**, where the issue was written *after* the change to record
-  it — the `adhoc-commit-as-new-issue` route for anything that isn't a bug.
+  it — the `adhoc-quick-fix` "work already done" entry for anything that isn't a bug.
 
 **Do not paste variant 3 here.** It asserts a one-screen brief exists and that the work was
 expected to be small and local. Neither route wrote a brief, and a corpus-level pass isn't

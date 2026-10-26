@@ -195,14 +195,15 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | --- | --- |
 | `issue-spec` | Research and write implementation specs for Linear issues |
 | `issue-implement` | Implement a Linear issue from its spec document |
-| `adhoc-quick-fix` | Log a bug to Linear and fix it immediately |
-| `adhoc-commit-as-new-issue` | Create a Linear issue for work already done, commit and PR |
-| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
+| `adhoc-quick-fix` | Log a Linear issue and ship it — fix it now, or the work is already done. `/adhoc-commit-as-new-issue` is the second entry |
+| `diagnose` | Hard-bug loop (reproduce → hypothesise → fix). Calls `debug-flow` for flow traces |
+| `debug-flow` | `fsdev run` toolkit (`diagnose` calls it): NDJSON traces, `fsdev block`, failure-pattern table |
+| `statechart` | Mermaid statechart from a TLA+ model of Task status, holds, notice records, or the assemble phase. Scratch dir; no runtime change |
 | `fsd-coding` | Drive coding through one FSD flow (`fsdev run` + a host-selected Codex, Cursor, or Claude harness). Local / Grok-box only in v1 |
 | `linear-triage` | Review and prioritize Linear issues |
 | `plan-day` | Identify unblocked tasks and generate a daily work plan |
-| `distill-lessons` | Measure the loop (cycle-ledger) and push the smallest upstream fix for a recurring rework class |
-| `audit-coherence` | Sweep the codebase or a change for incoherence; the coherence lens of `review` |
+| `distill-lessons` | Measure the loop (cycle-ledger) and encode the recurring class — architecture / lint / test before a soft rule. Skill evals in `eval.md` |
+| `audit-coherence` | Sweep the codebase or a change for incoherence; the coherence lens of `review`. `/tech-debt-audit` redirects here |
 | `review` | The one definition of review (flaws in the work): coherence, restraint, reuse, correctness, completeness, optional depth, as parallel lenses |
 | `reuse-review` | Each Adds item of a spec, epic or change against existing pieces: reuse X, extend X, or genuinely new |
 | `analysis` | Whether this is the right work (seven objectives), on a drafted spec before the gate and at epic wrap |
@@ -230,7 +231,8 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `create-block`      | Create a new block (handler, generator, utility, router) with tests            |
 | `create-pattern`    | Create a multi-block composable pattern with tests and docs                    |
 | `add-flow`          | Create a new flow definition with actions, scopes, resources, and capabilities |
-| `write-block-tests` | Write or update vitest tests for blocks and patterns                           |
+| `tdd`               | Red-green-refactor loop. Conventions live in `write-block-tests`               |
+| `write-block-tests` | Conventions reference for block/pattern vitest tests. The red-green loop is `tdd` |
 | `add-store-adapter` | Create a new persistence store adapter package                                 |
 | `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
 
