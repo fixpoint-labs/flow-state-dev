@@ -71,11 +71,19 @@ const planner = generator({
 ```
 
 **Cursor needs a model.** Its SDK refuses to open a local agent without one, so
-name one with `model` (an id, or a resolver asked once per run, so each session
-can run its own) or with `agent.model`, which also takes Cursor's `params` list of
-`{ id, value }` pairs for whatever that model exposes. Setting both is refused
-when the block is built. `Cursor.models.list()` in the SDK enumerates what your
-account can select.
+name one with `model`. It takes an id, a model with its settings
+(`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
+reasoning effort), or a resolver returning either, asked once per run. The result
+goes to the agent on create and on resume alike, so a resolver that reads the
+session can run a different model and settings for each one.
+`Cursor.models.list()` in the SDK enumerates what your account can select.
+
+A resolver that returns `null`, `undefined` or an empty id names no model. With no
+model named from `model` or `agent.model`, Cursor's SDK refuses to open the agent
+and the run fails. `agent.model` also takes `{ id, params }`, is the model when
+`model` is unset, and is one value for every run. `model` beside `agent.model` or `send.model` throws
+when the block is built; `agent` and `send` are Cursor's own option bags, described
+under [As a sequencer step](#as-a-sequencer-step).
 
 ## As a sequencer step
 

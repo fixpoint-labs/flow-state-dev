@@ -70,6 +70,7 @@ import {
   type CursorAgentHandle,
   type CursorAgentLike,
   type CursorCreateOptions,
+  type CursorModelSelection,
   type CursorRunLike,
   type CursorRunResult,
   type CursorRunUsage,
@@ -89,6 +90,16 @@ import {
  * type-checking for reasons that had nothing to do with the host.
  */
 type AgentCallbackContext = HarnessCallbackContext;
+
+/** A model named by id, or by id and settings. */
+type ModelChoice = string | CursorModelSelection;
+
+/** The selection a model option names, or `undefined` for "none named" (`null`, `undefined`, an empty id). */
+function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelection | undefined {
+  if (choice === null || choice === undefined) return undefined;
+  const selection = typeof choice === "string" ? { id: choice } : choice;
+  return selection.id === "" ? undefined : selection;
+}
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
@@ -126,16 +137,19 @@ export interface CursorAgentOptions {
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
-   * model for each run. It becomes the agent's `model` (`{ id }`) on
-   * `Agent.create` and `Agent.resume` alike, and the cost-estimate fallback.
+   * model for each run. It becomes the agent's `model` on `Agent.create` and
+   * `Agent.resume` alike, and the cost-estimate fallback.
+   *
+   * A model with settings (a Grok's effort) is named as `{ id, params }`: the
+   * resolver may return one per run, and a fixed one is the same value for
+   * every run (the same as `agent.model`).
    *
    * `null`, `""` and `undefined` from the resolver all mean "no model named",
    * and Cursor's SDK refuses a local agent with none, so name one here or on
    * `agent.model`. Setting this beside `agent.model` or `send.model` is
-   * refused when the block is built: one owner per value. A model with
-   * parameters (`{ id, params }`) goes on `agent.model`.
+   * refused when the block is built: one owner per value.
    */
-  model?: string | HarnessResolver<string | null | undefined>;
+  model?: ModelChoice | HarnessResolver<ModelChoice | null | undefined>;
   /**
    * The SDK's agent options, forwarded verbatim to `Agent.create` /
    * `Agent.resume` (model, api key, mode, tools, MCP servers, the rest of
@@ -406,17 +420,17 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
       let sessionId: string | null = null;
-      let runModel: string | undefined;
+      let runModel: CursorModelSelection | undefined;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
-        runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
+        runModel = selectionOf(typeof model === "function" ? await model(ctx) : model);
         agent = await openAgent({
           ctx,
           resolveCwd,
           resolveResume,
           onSession,
-          agentOptions: runModel === undefined ? agentOptions : { ...agentOptions, model: { id: runModel } },
+          agentOptions: runModel === undefined ? agentOptions : { ...agentOptions, model: runModel },
           resolveCursorClient,
         });
         sessionId = agent.agentId;
@@ -439,7 +453,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
           dispatchedAt,
           settled,
           finalMessage: emitState.finalMessage,
-          configuredModel: runModel ?? agentOptions?.model?.id,
+          configuredModel: runModel?.id ?? agentOptions?.model?.id,
           name,
           ctx,
         });
@@ -650,6 +664,9 @@ async function mirrorRun(
         await emitTranslatedEvent(event, ctx, emitState, blockName);
       }
     }
+    // The last text has no event after it to close it; the handle reads
+    // `finalMessage` as soon as the stream is done.
+    await closeOpenText(ctx, emitState);
     return { usage, model };
   } catch (err) {
     await cancelQuietly(run);
@@ -664,9 +681,6 @@ async function mirrorRun(
   }
 }
 
-    // The last text has no event after it to close it; the handle reads
-    // `finalMessage` as soon as the stream is done.
-    await closeOpenText(ctx, emitState);
 /**
  * Read the run's outcome from `run.wait()` — the sole authority.
  *
