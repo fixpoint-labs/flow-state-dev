@@ -269,6 +269,29 @@ describe("where a session works (V6)", () => {
     expect(existsSync(join(repo, "edited.txt"))).toBe(false);
   });
 
+  it("a run that switches its worktree's branch does not strand the session: the next turn runs on the session's branch, with the work", async () => {
+    // A coding agent branching its own checkout, to prepare a pull request say,
+    // is ordinary. The next turn must still run, on the session's branch, with
+    // what the run committed.
+    const stores = createInMemoryStores();
+    const recorder = recorded((options) => {
+      if (recorder.runs.length > 1) return;
+      git(options.cwd!, "checkout", "-q", "-b", "fix/the-runs-own-branch");
+      writeFileSync(join(options.cwd!, "fixed.txt"), "committed on the run's branch\n");
+      git(options.cwd!, "add", "fixed.txt");
+      git(options.cwd!, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fix");
+    });
+    await turn(stores, recorder, "s-switched", "fix it on a branch of your own");
+    const second = await turn(stores, recorder, "s-switched", "carry on");
+
+    expect(second.status).toBe("completed");
+    expect(recorder.runs).toHaveLength(2);
+    const cwd = recorder.runs[1]!.cwd!;
+    expect(git(cwd, "branch", "--show-current").trim()).toBe(sessionBranch({ flowKind: CLAUDE_CODE_SESSION, sessionId: "s-switched" }));
+    expect(existsSync(join(cwd, "fixed.txt"))).toBe(true);
+    expect(git(cwd, "status", "--porcelain")).toBe("");
+  });
+
   it("the run's sandbox writes only its worktree, never its .git pointer (BR-13)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();

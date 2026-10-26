@@ -391,6 +391,8 @@ it. Everything in it is specific to git worktrees. Build on `harnessManager({ ha
 status page or a cleanup job reads `workspacePath` and `branch` off the run
 record instead of deriving them again.
 
+If the coding agent switches its checkout to another branch, the next attempt still runs on the run's own branch. When the agent's branch already has everything the run's branch has, the run's branch fast-forwards to it and the checkout switches back. No files change, and the agent's branch stays where it is. If moving back would lose commits, for example because the agent checked out an unrelated branch, the row settles as refused. The message names the git command to run in the checkout.
+
 ## Limits
 
 - **Saving work across machines is opt-in.** Without a held-work store, a run's checkout exists only on the machine that made it, and a retry that lands elsewhere starts from the base branch. A run whose record says its work was saved, with no store and no live checkout on this machine, parks and asks its owner rather than starting over.

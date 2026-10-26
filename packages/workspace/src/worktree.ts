@@ -18,6 +18,13 @@
  *    only trees it ever clears are a provision it can positively identify as
  *    interrupted (a marker beside the tree, AND a tree that agrees), and the
  *    one it just made and is refusing.
+ * 4. **A run that switched its checkout's branch is moved back, never
+ *    stranded.** When the branch it switched to holds every commit of the
+ *    run's own, the run's branch is fast-forwarded to it and the checkout
+ *    pointed back at the run's branch: no file, index entry or uncommitted
+ *    change moves, and the branch the run made is left where it is. When
+ *    that would drop commits, the refusal is typed and names the git command
+ *    that clears it.
  *
  * The repository worktrees are cut from is the caller's: a repository on this
  * machine the operator named, or the host's own clone of an allowed remote.
@@ -26,6 +33,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, run } from "./exec";
+import { WorkspaceRefusedError } from "./refused";
 import { identityFromCommonDir } from "./repository";
 
 /**
@@ -95,7 +103,38 @@ export interface Worktree {
   baseRef?: string;
   /** The commit it was cut at, when the caller's `base` knew it. */
   baseCommit?: string;
+  /**
+   * Present when the checkout was handed back off the run's branch and moved
+   * back onto it. Tell the run: what it left checked out is no longer what is
+   * checked out, though every commit and change it made is still there.
+   */
+  movedBack?: MovedBack;
 }
+
+/** A checkout found off its run's branch and moved back onto it. */
+export interface MovedBack {
+  /** The branch the checkout was found on; `null` for a detached HEAD. Left where it is. */
+  from: string | null;
+  /** The commit the run's branch now points at: the one the checkout was found on. */
+  commit: string;
+  /** Whether the run's branch moved to reach it; `false` when it already pointed there. */
+  fastForwarded: boolean;
+}
+
+/**
+ * The operations git leaves half-done in a checkout, by the file or directory
+ * that marks each one under the worktree's own git directory. A checkout in
+ * the middle of one is never moved: its HEAD is git's scratch state, not a
+ * branch the run chose.
+ */
+const IN_PROGRESS: readonly { path: string; op: string; abort: string }[] = [
+  { path: "rebase-merge", op: "rebase", abort: "git rebase --abort" },
+  { path: "rebase-apply", op: "rebase", abort: "git rebase --abort" },
+  { path: "MERGE_HEAD", op: "merge", abort: "git merge --abort" },
+  { path: "CHERRY_PICK_HEAD", op: "cherry-pick", abort: "git cherry-pick --abort" },
+  { path: "REVERT_HEAD", op: "revert", abort: "git revert --abort" },
+  { path: "BISECT_LOG", op: "bisect", abort: "git bisect reset" },
+];
 
 /**
  * The remaining time in one provision, as a per-call timeout.
@@ -159,8 +198,10 @@ export function isStrictlyInside(candidate: string, root: string): boolean {
  * Give a run its checkout on its own branch, or hand back the one the last
  * attempt left.
  *
- * A checkout whose branch was deleted, that is on another branch, or that is a
- * worktree of another repository is refused, never reset: it may hold work.
+ * A checkout whose branch was deleted, or that is a worktree of another
+ * repository, is refused, never reset: it may hold work. One on another branch
+ * is moved back onto the run's branch when that touches no file, and refused
+ * otherwise (see `moveBack`).
  */
 export async function provisionWorktree(request: WorktreeRequest): Promise<Worktree> {
   const { repo, repoLabel, checkout, marker, branch, now } = request;
@@ -285,27 +326,96 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       throw new Error(
         `the checkout at ${checkout} is on branch "${branch}", which no longer exists in ` +
           `${repoLabel}. Refusing to recreate it: the tree may hold uncommitted work, and a ` +
-          `fresh branch off the base would diverge from whatever the deleted one pointed at.`,
+          `fresh branch off the base would diverge from whatever the deleted one pointed at. ` +
+          `If what the checkout holds is what the run should continue from, run ` +
+          `\`git branch ${branch} HEAD\` in ${checkout}; otherwise remove the checkout by hand.`,
       );
     }
 
+    if (mine === undefined || theirs === undefined) throw notOurs();
+
     // The branch existing is not the branch being checked out. A tree switched
-    // by hand or by a run would commit somewhere the record does not say.
+    // by hand or by a run would commit somewhere the record does not say, so
+    // it is moved back onto the run's branch before anything runs in it.
     const head = await git(checkout, ["rev-parse", "--abbrev-ref", "HEAD"], left());
     const on = head === "HEAD" ? null : head;
-    if (on !== branch) {
-      throw new Error(
-        `the checkout at ${checkout} is on branch "${on}", not the expected "${branch}". ` +
-          `Refusing to use it: a run told it is on "${branch}" would commit to "${on}". ` +
-          `Restore the branch or remove the checkout by hand — nothing here resets a tree.`,
-      );
-    }
-    if (mine === undefined || theirs === undefined) throw notOurs();
+    const movedBack = on === branch ? undefined : await moveBack(on);
 
     // Re-checked on reuse: a run that deleted the rule leaves a checkout that
     // provisioned legally and is no longer safe to write into.
     if (request.ignored !== undefined) await assertIgnored(request.ignored, { checkoutStillAttached: true });
-    return { created: false };
+    return movedBack === undefined ? { created: false } : { created: false, movedBack };
+  }
+
+  /**
+   * Put a checkout found on `on` back on the run's branch, touching only refs.
+   *
+   * **Only a fast-forward, and only HEAD's ref.** The run's branch moves to
+   * the commit the checkout is on, which must already contain it, and HEAD is
+   * re-pointed at the branch. Branch and HEAD then name the commit the tree
+   * and index were built from, so nothing in either changes, uncommitted work
+   * included. Anything else would move files, which is a reset, and is
+   * refused instead, unchanged, with what clears it.
+   */
+  async function moveBack(on: string | null): Promise<MovedBack> {
+    const found = on === null ? "a detached HEAD" : `branch "${on}"`;
+    const refuse = (why: string, clear: string): never => {
+      throw new WorkspaceRefusedError(
+        "checkout-moved",
+        `the checkout at ${checkout} is on ${found}, not the run's branch "${branch}", and ${why}. ` +
+          `Nothing was changed. ${clear}`,
+      );
+    };
+
+    for (const marker of IN_PROGRESS) {
+      const at = await git(checkout, ["rev-parse", "--path-format=absolute", "--git-path", marker.path], left());
+      if (existsSync(at)) {
+        refuse(
+          `it is in the middle of a ${marker.op}`,
+          `Finish the ${marker.op}, or run \`${marker.abort}\` in ${checkout}; the next turn then moves it back.`,
+        );
+      }
+    }
+
+    const commit = await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"], left());
+    const tip = await git(repo, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`], left());
+    if (tip !== commit && !(await isAncestor(tip, commit))) {
+      refuse(
+        `${on === null ? "that commit" : `"${on}"`} does not contain every commit on "${branch}", so ` +
+          `moving "${branch}" to it would drop work`,
+        `Either merge "${branch}" into it (\`git merge ${branch}\` in ${checkout}), and the next turn moves ` +
+          `the checkout back with everything on both; or commit or stash what is uncommitted and run ` +
+          `\`git switch ${branch}\` there.`,
+      );
+    }
+
+    // Moving a branch another worktree has checked out would move that tree's
+    // HEAD under it. Nothing has it out while this tree was on it, but a run
+    // that switched away left it free to be checked out elsewhere.
+    const worktrees = await git(repo, ["worktree", "list", "--porcelain"], left());
+    if (worktrees.split("\n").includes(`branch refs/heads/${branch}`)) {
+      refuse(
+        `"${branch}" is checked out in another worktree`,
+        `Switch that worktree off "${branch}" (\`git worktree list\` names it); the next turn then moves this one back.`,
+      );
+    }
+
+    // Compare-and-swap on the tip read above, so a branch that moved since is
+    // not overwritten.
+    if (tip !== commit) await git(checkout, ["update-ref", `refs/heads/${branch}`, commit, tip], left());
+    await git(checkout, ["symbolic-ref", "HEAD", `refs/heads/${branch}`], left());
+    return { from: on, commit, fastForwarded: tip !== commit };
+  }
+
+  /** `true` when `ancestor` is reachable from `commit`; a probe that failed is raised. */
+  async function isAncestor(ancestor: string, commit: string): Promise<boolean> {
+    try {
+      await git(repo, ["merge-base", "--is-ancestor", ancestor, commit], left());
+      return true;
+    } catch (err) {
+      if (gitAnsweredNo(err)) return false;
+      throw err;
+    }
   }
 
   /** `true` when the repository holds the branch; a probe that failed is raised, never read as no. */

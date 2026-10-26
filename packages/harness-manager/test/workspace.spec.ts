@@ -27,6 +27,7 @@ import {
   isStrictlyInside,
   releaseCheckout,
 } from "../src/workspace";
+import { WorkspaceRefusedError } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
 
@@ -1109,40 +1110,58 @@ describe("a run opened before the organization was part of its place", () => {
 });
 
 describe("provisioning verifies the branch a reused checkout is actually on", () => {
-  it("fails loudly when the worktree was switched to another branch", async () => {
-    // The expected branch still EXISTING is not the tree being ON it. A worktree
-    // switched by hand, by a tool, or by the run itself passes the
-    // branch-exists check and is silently accepted — so the prompt says one
-    // branch, the run record says one branch, and the commits land on another,
-    // while a pre-existing PR for the expected branch can make the attempt look
-    // done. Every layer agrees and all of them are wrong.
+  it("moves a worktree the run switched to another branch back onto its own, work and all", async () => {
+    // The expected branch still EXISTING is not the tree being ON it. Accepted
+    // as it stands, a switched worktree has the prompt and the run record
+    // naming one branch while the commits land on another, and a pre-existing
+    // PR for the expected branch can make the attempt look done. Refused, the
+    // run can never continue without a person repairing git. Moved back, the
+    // run's branch holds every commit and the attempt commits where it is told.
     const config = workspace();
     const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
-    writeFileSync(join(checkout.path, "wip.txt"), "half done");
-
-    execFileSync("git", ["checkout", "-b", "somewhere-else"], {
+    execFileSync("git", ["checkout", "-b", "somewhere-else"], { cwd: checkout.path, stdio: "pipe" });
+    execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "on the side"], {
       cwd: checkout.path,
       stdio: "pipe",
     });
+    const committed = execFileSync("git", ["rev-parse", "HEAD"], { cwd: checkout.path, encoding: "utf8" }).trim();
+    writeFileSync(join(checkout.path, "wip.txt"), "half done");
 
-    await expect(
-      provisionCheckout(config, at("FIX-1219", "implement")),
-    ).rejects.toThrow(/is on branch "somewhere-else", not the expected/);
+    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
 
-    // And it refused rather than resetting — the work is untouched.
-    expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
+    const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
+    expect(head).toBe(again.branch);
+    expect(execFileSync("git", ["rev-parse", again.branch], { cwd: again.path, encoding: "utf8" }).trim()).toBe(committed);
+    expect(readFileSync(join(again.path, "wip.txt"), "utf8")).toBe("half done");
   });
 
-  it("fails loudly on a detached HEAD", async () => {
-    // A run on a detached HEAD commits to no branch at all, which is a mismatch
-    // like any other rather than a tolerable state.
+  it("refuses, as a refusal, a worktree on a branch that lacks the run's commits", async () => {
+    // Moving the run's branch there would drop its commits; checking it back
+    // out would move files. A typed refusal settles the row with what clears it.
+    const config = workspace();
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "the run's own"], {
+      cwd: checkout.path,
+      stdio: "pipe",
+    });
+    execFileSync("git", ["checkout", "-b", "somewhere-else", "HEAD~1"], { cwd: checkout.path, stdio: "pipe" });
+
+    const attempt = provisionCheckout(config, at("FIX-1219", "implement"));
+    await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
+    await expect(attempt).rejects.toThrow(/is on branch "somewhere-else", not the run's branch/);
+  });
+
+  it("re-points a detached HEAD at the run's branch", async () => {
+    // A run on a detached HEAD commits to no branch at all. At the branch's
+    // own commit, re-pointing HEAD moves nothing.
     const config = workspace();
     const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
     execFileSync("git", ["checkout", "--detach"], { cwd: checkout.path, stdio: "pipe" });
 
-    await expect(
-      provisionCheckout(config, at("FIX-1219", "implement")),
-    ).rejects.toThrow(/not the expected/);
+    const again = await provisionCheckout(config, at("FIX-1219", "implement"));
+
+    const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: again.path, encoding: "utf8" }).trim();
+    expect(head).toBe(again.branch);
   });
 
   it("still accepts a checkout that is on the branch it should be", async () => {

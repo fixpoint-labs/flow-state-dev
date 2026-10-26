@@ -620,8 +620,10 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
  * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
  * runs every git command: idempotent, never resets, forces or discards work,
  * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
- * and a checkout whose branch was deleted, switched, or cut from another
- * repository is refused rather than recreated. The checkout is exactly
+ * and a checkout whose branch was deleted or that was cut from another
+ * repository is refused rather than recreated. One a run switched to another
+ * branch is moved back onto the run's branch when that is a fast-forward, so
+ * the attempt commits where the prompt says, and refused otherwise. The checkout is exactly
  * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
  */
 export async function provisionCheckout(

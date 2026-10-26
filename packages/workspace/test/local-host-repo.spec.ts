@@ -303,16 +303,125 @@ describe("a retry keeps its checkout and never fetches", () => {
     ).rejects.toThrow(/not a worktree of the clone/);
     expect(readFileSync(join(first.cwd, "marker.txt"), "utf8")).toBe("marker A");
   });
+});
 
-  it("refuses a checkout that is on another branch rather than resetting it", async () => {
+describe("a run that switched its checkout's branch is moved back, not stranded", () => {
+  // A coding agent branching its own checkout (to prepare a pull request, say)
+  // is ordinary. Refusing the checkout on the next turn left the session dead
+  // until a person repaired git by hand, so the host folds the switch back:
+  // the run's branch takes the commits, and the tree is never touched.
+  const provision = (h: ReturnType<typeof host>) =>
+    h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+
+  it("fast-forwards the run's branch to the one the run switched to, keeping every change", async () => {
     const h = host();
-    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
-    git(first.cwd, "checkout", "-q", "-b", "elsewhere");
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "fix/elsewhere");
+    writeFileSync(join(first.cwd, "done.txt"), "committed on the run's own branch");
+    git(first.cwd, "add", "done.txt");
+    git(first.cwd, "commit", "-q", "-m", "work on fix/elsewhere");
+    const committed = git(first.cwd, "rev-parse", "HEAD");
+    writeFileSync(join(first.cwd, "marker.txt"), "uncommitted edit");
+    writeFileSync(join(first.cwd, "wip.txt"), "untracked");
 
-    await expect(
-      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
-    ).rejects.toThrow(/elsewhere/);
+    const again = await provision(h);
+
+    // The run's branch now holds the work, so the verdict and pull request that
+    // key on it see what the run did.
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(git(again.cwd, "rev-parse", "fsd/run-1")).toBe(committed);
+    expect(again.repo?.movedBack).toEqual({ from: "fix/elsewhere", commit: committed, fastForwarded: true });
+    // Nothing in the tree moved: a move-back is never a reset.
+    expect(readFileSync(join(again.cwd, "marker.txt"), "utf8")).toBe("uncommitted edit");
+    expect(readFileSync(join(again.cwd, "wip.txt"), "utf8")).toBe("untracked");
+    expect(git(again.cwd, "status", "--porcelain")).toBe("M marker.txt\n?? wip.txt");
+    // The branch the run made is the run's: left where it is.
+    expect(git(again.cwd, "rev-parse", "fix/elsewhere")).toBe(committed);
+  });
+
+  it("re-points a detached HEAD that is ahead of the run's branch", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "--detach");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "detached work");
+    const committed = git(first.cwd, "rev-parse", "HEAD");
+
+    const again = await provision(h);
+
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(again.repo?.movedBack).toEqual({ from: null, commit: committed, fastForwarded: true });
+  });
+
+  it("does not report a move-back for a checkout that never left its branch", async () => {
+    const h = host();
+    await provision(h);
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toBeUndefined();
+  });
+
+  it("refuses, unchanged and typed, a branch that lacks the run's commits, naming what clears it", async () => {
+    // Fast-forwarding here would drop the run's own commit from its branch,
+    // and checking the run's branch back out would move files.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const tip = git(first.cwd, "rev-parse", "HEAD");
+    git(first.cwd, "checkout", "-q", "-b", "elsewhere", "HEAD~1");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal).toBeInstanceOf(WorkspaceRefusedError);
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toMatch(/on branch "elsewhere", not the run's branch "fsd\/run-1"/);
+    expect(refusal.message).toContain("git merge fsd/run-1");
     expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+    expect(git(first.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
+
+    // Doing what the refusal says clears it.
+    git(first.cwd, "merge", "-q", "fsd/run-1");
+    const again = await provision(h);
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+    expect(again.repo?.movedBack?.from).toBe("elsewhere");
+  });
+
+  it("refuses a checkout in the middle of a merge, even on a branch it could fast-forward to", async () => {
+    // Mid-merge, HEAD is git's scratch state, not a branch the run chose.
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "side");
+    writeFileSync(join(first.cwd, "marker.txt"), "side");
+    git(first.cwd, "commit", "-q", "-am", "side");
+    git(first.cwd, "checkout", "-q", "-b", "elsewhere", "fsd/run-1");
+    writeFileSync(join(first.cwd, "marker.txt"), "elsewhere");
+    git(first.cwd, "commit", "-q", "-am", "elsewhere");
+    expect(() => git(first.cwd, "merge", "-q", "side")).toThrow();
+    const tip = git(first.cwd, "rev-parse", "fsd/run-1");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toContain("git merge --abort");
+    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+    expect(git(first.cwd, "rev-parse", "fsd/run-1")).toBe(tip);
+  });
+
+  it("refuses to move a branch another worktree now has checked out", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "checkout", "-q", "-b", "elsewhere");
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "ahead");
+    const tip = git(first.cwd, "rev-parse", "fsd/run-1");
+    const other = join(tempDir("other"), "tree");
+    git(first.repo!.clone, "worktree", "add", "-q", other, "fsd/run-1");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toMatch(/checked out in another worktree/);
+    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+    expect(git(other, "rev-parse", "HEAD")).toBe(tip);
   });
 });
 

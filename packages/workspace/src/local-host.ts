@@ -89,7 +89,8 @@ import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutC
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
-import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
+import { WorkspaceRefusedError } from "./refused";
+import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -125,26 +126,8 @@ const HELD_DIR = "held";
  */
 const FETCH_BUDGET_SHARE = 0.5;
 
-/**
- * The host would not provision this run, and says why — before anything was
- * created and before any agent was paid for.
- *
- * `reason` is stable: `"invalid-remote"`, `"remote-not-allowed"`,
- * `"remote-unreadable"`, `"base-diverged"` (a repository on this machine
- * whose base and its upstream each have commits the other lacks), or
- * whatever reason a run source refused with. A caller should fail the run
- * with it rather than retry: none of these clears by itself, and
- * `base-diverged` clears once someone pulls or rebases, or pushes, there.
- */
-export class WorkspaceRefusedError extends Error {
-  constructor(
-    readonly reason: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "WorkspaceRefusedError";
-  }
-}
+/** The host's typed refusal, defined in `./refused` and exported from here as it always was. */
+export { WorkspaceRefusedError };
 
 export interface LocalWorkspaceHostOptions {
   /** The host directory every clone and place lives under. */
@@ -297,6 +280,12 @@ export interface WorkspacePlace {
     baseRef?: string;
     /** The commit it was cut at. Only when `created`. */
     baseCommit?: string;
+    /**
+     * Present when the checkout was handed back off the run's branch and moved
+     * back onto it (see `MovedBack`). Tell the run, which may still think it is
+     * on the branch it switched to.
+     */
+    movedBack?: MovedBack;
   };
   /** Where a repository place came from. */
   origin?: PlaceOrigin;
@@ -705,6 +694,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         created: worktree.created,
         ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
         ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+        ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
       };
     });
   }
@@ -785,6 +775,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       created: worktree.created,
       ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
       ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+      ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
     };
   }
 
