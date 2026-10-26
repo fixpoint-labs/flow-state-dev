@@ -66,7 +66,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, waitsOnPerson, type RunsElsewhere } from "../shared";
+import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
 import { hasOpenHold, leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
@@ -124,7 +124,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *
  * **A reachability closure, not a one-level check**: the seed set is
  * everything that will resolve on its own (already completed, worked right
- * now under a live lease, or running and waiting on a person's answer) and the
+ * now under a live lease, or running and waiting on a user's answer) and the
  * loop closes over the `pending` rows those
  * release, so a dependent of a dependent of running work is not called stuck.
  * It runs once, after the pool has finished, never on the exit predicate's
@@ -136,7 +136,7 @@ function hasRowGoingNowhere(
   now: number
 ): boolean {
   // Seed: rows this board's dependency graph is not what resolves. Either they
-  // are already done, or a running row waits on a person, or somebody is
+  // are already done, or a running row waits on a user, or somebody is
   // working them right now.
   //
   // **The last of those is a lease question, not a status or routing one**, and
@@ -156,7 +156,7 @@ function hasRowGoingNowhere(
       // would call it abandoned; the answer owes it a turn, so it is not.
       // Only the running one: a `pending` row filed on questions still needs
       // its deps once answered, so it enters through the expansion below.
-      waitsOnPerson(task) ||
+      waitsOnUser(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -203,8 +203,8 @@ function hasRowGoingNowhere(
  *   establish that a refusal happened.
  * - `"dispatched"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
- * - `"waiting-on-a-person"` — the board stopped because the work it has left
- *   waits on a person: a question, a confirm, or a run's stop for a review or
+ * - `"waiting-on-a-user"` — the board stopped because the work it has left
+ *   waits on a user: a question, a confirm, or a run's stop for a review or
  *   approval (FIX-2214). The same words `goalSeekLoop` ends a pass with.
  *
  * **The ladder's order is the contract.** First match wins:
@@ -217,8 +217,8 @@ function hasRowGoingNowhere(
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. any remaining row has an open hold, so waits on a person →
- *    `waiting-on-a-person`. Rung 3 left only `pending` and `in_progress`
+ * 5. any remaining row has an open hold, so waits on a user →
+ *    `waiting-on-a-user`. Rung 3 left only `pending` and `in_progress`
  *    rows, and rung 4 already vouches for the others.
  * 6. every remaining row is dispatched → `dispatched`.
  * 7. otherwise → `blocked-by-failures`.
@@ -282,7 +282,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "blocked-by-failures"
         | "retry-budget-exhausted"
         | "dispatched"
-        | "waiting-on-a-person" = anyRetryDeniedByBudget(all)
+        | "waiting-on-a-user" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -291,7 +291,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
               : remaining.some(hasOpenHold)
-                ? "waiting-on-a-person"
+                ? "waiting-on-a-user"
                 : allRemainingDispatched
                   ? "dispatched"
                   : "blocked-by-failures";

@@ -1,5 +1,5 @@
 /**
- * A drain that stops on work waiting on a person reports "waiting-on-a-person".
+ * A drain that stops on work waiting on a user reports "waiting-on-a-user".
  * A filed question and a midway ask reach that by different rungs; a failure
  * beside either still reports "blocked-by-failures".
  */
@@ -17,7 +17,7 @@ let seq = 0;
 function freshCollection(): TaskCollectionRef {
   seq += 1;
   return createStateBackedTaskCollection({
-    collectionId: `waiting-on-a-person-${seq}`,
+    collectionId: `waiting-on-a-user-${seq}`,
     state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
   });
 }
@@ -29,7 +29,7 @@ async function drainReason(
   worker: TaskWorker
 ): Promise<{ terminationReason?: string; counts?: Record<string, number> }> {
   const board = taskBoard({
-    name: `waiting-on-a-person-board-${seq}`,
+    name: `waiting-on-a-user-board-${seq}`,
     collection: () => collection,
     concurrency: 1,
     initialTasks,
@@ -47,7 +47,7 @@ async function drainReason(
 /** A worker that settles every row it is handed, unless the row's goal says to ask or to fail. */
 function workerFor(collection: TaskCollectionRef): TaskWorker {
   return handler({
-    name: "waiting-on-a-person-worker",
+    name: "waiting-on-a-user-worker",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ done: z.boolean() }),
     execute: async (input, ctx) => {
@@ -72,8 +72,8 @@ const STORED_QUESTION = {
   ask: QUESTION,
 };
 
-describe("a drain stopped on a row waiting on a person", () => {
-  it("reports waiting-on-a-person when the row was filed on a question", async () => {
+describe("a drain stopped on a row waiting on a user", () => {
+  it("reports waiting-on-a-user when the row was filed on a question", async () => {
     const collection = freshCollection();
     const meta = await drainReason(
       collection,
@@ -83,14 +83,14 @@ describe("a drain stopped on a row waiting on a person", () => {
       ],
       workerFor(collection)
     );
-    expect(meta.terminationReason).toBe("waiting-on-a-person");
+    expect(meta.terminationReason).toBe("waiting-on-a-user");
     expect(meta.counts).toMatchObject({ completed: 1, pending: 1 });
   });
 
-  it("reports waiting-on-a-person when the row asked midway, though its lease is dropped", async () => {
+  it("reports waiting-on-a-user when the row asked midway, though its lease is dropped", async () => {
     const collection = freshCollection();
     const meta = await drainReason(collection, [{ id: "midway", goal: "ask" }], workerFor(collection));
-    expect(meta.terminationReason).toBe("waiting-on-a-person");
+    expect(meta.terminationReason).toBe("waiting-on-a-user");
     expect(meta.counts).toMatchObject({ in_progress: 1 });
   });
 
@@ -104,7 +104,7 @@ describe("a drain stopped on a row waiting on a person", () => {
       ],
       workerFor(collection)
     );
-    expect(meta.terminationReason).toBe("waiting-on-a-person");
+    expect(meta.terminationReason).toBe("waiting-on-a-user");
   });
 
   it("still reports blocked-by-failures when a row failed beside the held one", async () => {
@@ -124,7 +124,7 @@ describe("a drain stopped on a row waiting on a person", () => {
 
 /**
  * The closure seed and the rung, on rows stored directly and read by the
- * completion block alone: an open hold says a person owes the row a turn;
+ * completion block alone: an open hold says a user owes the row a turn;
  * nothing else does.
  */
 describe("the completion reason over stored rows", () => {
@@ -137,7 +137,7 @@ describe("the completion reason over stored rows", () => {
       rows.map((row) => [row.id as string, { goal: row.id, attempts: 1, deps: [], createdAt: 1, updatedAt: 1, ...row }])
     );
     return createStateBackedTaskCollection({
-      collectionId: `waiting-on-a-person-stored-${seq}`,
+      collectionId: `waiting-on-a-user-stored-${seq}`,
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks }),
       now: () => NOW,
     });
@@ -148,7 +148,7 @@ describe("the completion reason over stored rows", () => {
     runsElsewhere?: (task: Task) => boolean
   ): Promise<string | undefined> {
     const block = createBoardMetaCompleted({
-      name: `waiting-on-a-person-meta-${seq}`,
+      name: `waiting-on-a-user-meta-${seq}`,
       collection: async () => collection,
       collectionId: collection.collectionId,
       ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
@@ -160,9 +160,9 @@ describe("the completion reason over stored rows", () => {
       ?.terminationReason;
   }
 
-  it("reports waiting-on-a-person for a run stopped for a review, its lease dropped", async () => {
-    // A review is a run's stop for a person, mirrored as a suspension hold;
-    // the person's answer resumes it, so its lapsed lease is not abandonment.
+  it("reports waiting-on-a-user for a run stopped for a review, its lease dropped", async () => {
+    // A review is a run's stop for a user, mirrored as a suspension hold;
+    // the user's answer resumes it, so its lapsed lease is not abandonment.
     const collection = await storedCollection([
       {
         id: "reviewing",
@@ -179,7 +179,7 @@ describe("the completion reason over stored rows", () => {
         ],
       },
     ]);
-    expect(await reasonOf(collection)).toBe("waiting-on-a-person");
+    expect(await reasonOf(collection)).toBe("waiting-on-a-user");
   });
 
   it("reports blocked-by-failures for a running row with a lapsed lease and nothing open on it", async () => {
@@ -223,15 +223,15 @@ describe("the completion reason over stored rows", () => {
     holds: [STORED_QUESTION],
   });
 
-  it("reports waiting-on-a-person, not blocked-by-failures, with a dispatched row beside the question row", async () => {
+  it("reports waiting-on-a-user, not blocked-by-failures, with a dispatched row beside the question row", async () => {
     // The question row is not dispatched, so `dispatched` cannot match here;
     // what this pins is that the dispatched row, going somewhere, does not
-    // turn a board that waits on a person into a failure.
+    // turn a board that waits on a user into a failure.
     const collection = await storedCollection([
       questionRow("asked"),
       { id: "background-work", status: "in_progress", assignee: "background", leaseUntil: NOW + 60_000 },
     ]);
     const runsElsewhere = (task: Task): boolean => task.assignee === "background";
-    expect(await reasonOf(collection, runsElsewhere)).toBe("waiting-on-a-person");
+    expect(await reasonOf(collection, runsElsewhere)).toBe("waiting-on-a-user");
   });
 });
