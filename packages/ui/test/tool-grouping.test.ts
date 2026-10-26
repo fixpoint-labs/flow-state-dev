@@ -140,6 +140,16 @@ describe("toolSubject", () => {
     expect(toolSubject("command_execution", { command: ["ls", "-la"] })).toEqual({ text: "ls -la", code: true });
   });
 
+  it("skips a leading cd so the command that does the work is what shows", () => {
+    expect(toolSubject("shell", { command: "cd /a/b/c && git diff --stat" })).toEqual({ text: "git diff --stat", code: true });
+    expect(toolSubject("shell", { command: 'cd "/a b" ; cd src && pnpm test' })).toEqual({ text: "pnpm test", code: true });
+    expect(toolSubject("shell", { command: "cd /a/b\ngit log -3" })).toEqual({ text: "git log -3", code: true });
+  });
+
+  it("keeps a command that is only a cd", () => {
+    expect(toolSubject("shell", { command: "cd /a/b" })).toEqual({ text: "cd /a/b", code: true });
+  });
+
   it("names a file or search call by verb and target, shortening deep paths", () => {
     expect(toolSubject("read", { path: "src/a.ts" })).toEqual({ text: "Read src/a.ts", code: false });
     expect(toolSubject("Read", { file_path: "/a/b/c/d/e.ts" })).toEqual({ text: "Read …/c/d/e.ts", code: false });

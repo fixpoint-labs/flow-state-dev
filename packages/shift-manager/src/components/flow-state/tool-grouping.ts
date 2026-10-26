@@ -156,6 +156,9 @@ function verbFor(toolName: string): string {
 
 const SUBJECT_MAX = 80;
 
+/** One or more `cd <dir> &&` (or `;`) at the front of a command line. */
+const LEADING_CD = /^(?:cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;|$)\s*)+/;
+
 /** A path as its last three segments, so a deep one still fits on a line. */
 function shortPath(path: string): string {
   const parts = path.split("/").filter((part) => part !== "");
@@ -185,8 +188,11 @@ export function toolSubject(toolName: string, args: unknown): ToolSubject | unde
     const raw = record.command;
     const command = Array.isArray(raw) ? raw.join(" ") : raw;
     if (typeof command !== "string") return undefined;
-    const line = command.trim().split("\n")[0]!.replace(/\s+/g, " ");
-    return line === "" ? undefined : { text: clip(line), code: true };
+    const lines = command.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    // Agents prefix `cd <dir> &&` to every command; the work is what follows.
+    const worked = lines.map((l) => l.replace(LEADING_CD, "")).filter((l) => l !== "");
+    const line = (worked[0] ?? lines[0])?.replace(/\s+/g, " ");
+    return line === undefined ? undefined : { text: clip(line), code: true };
   }
 
   const key = SUBJECT_ARGS.find((k) => typeof record[k] === "string" && (record[k] as string).trim() !== "");
