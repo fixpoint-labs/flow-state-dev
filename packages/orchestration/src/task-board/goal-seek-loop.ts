@@ -60,7 +60,7 @@ import { z, type ZodTypeAny } from "zod";
 import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
-import { DRAIN_WITHOUT_SEED } from "./blocks/seed-collection";
+import { drainNextWithoutSeed } from "./blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Public contract
@@ -564,9 +564,13 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   // a turn and none waits on a person (see the file header). No state schema,
   // so its blocks read and write the loop's own state, as the judge step's do.
   // The drain that takes an owed turn does not seed the board again: the pass
-  // already did, and an id-less initial task would be added twice.
+  // already did, and an id-less initial task would be added twice. It is
+  // marked for the board here, never asked for through the drain's input.
   const drainPass = sequencer({ name: `${name}-gsl-drain-pass`, inputSchema: z.unknown(), uses: [board.capability] })
-    .step((input: unknown, ctx: BlockContext) => (owedNow(input, ctx) ? DRAIN_WITHOUT_SEED : input), board.drain)
+    .step((input: unknown, ctx: BlockContext) => {
+      if (owedNow(input, ctx)) drainNextWithoutSeed(ctx, board.collectionId);
+      return input;
+    }, board.drain)
     .tap(noteWaiting)
     .loopBack(board.drain.name, { when: owedNow, maxIterations });
 

@@ -640,6 +640,24 @@ describe("goalSeekLoop - a task waiting on a person", () => {
 });
 
 describe("goalSeekLoop - an answer that lands as the drain returns", () => {
+  it("leaves no drain input that skips a board's initial tasks", async () => {
+    // The loop's owed-turn drain runs without the board's seed. That must stay
+    // the loop's own call: a board's drain can be mounted as a flow action, and
+    // a caller who could ask for it would silently drop the configured work.
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "unseeded-by-input",
+      collection: { collectionId: "unseeded-by-input" },
+      workers: completingWorker("unseeded-by-input-w", trace),
+      initialTasks: [{ goal: "the configured task" }],
+    });
+
+    const result = await testBlock(board.drain, { input: { taskBoardDrain: "without-seed" } });
+
+    expect(result.error).toBeNull();
+    expect(trace).toEqual(["the configured task"]);
+  });
+
   it("drains the owed turn before judging, and spends no iteration on it", async () => {
     // The drain stops `blocked` on a task waiting on its question, and the
     // person answers before the loop reads the board. The question is closed,
