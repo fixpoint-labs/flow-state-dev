@@ -73,13 +73,21 @@ production. None is known; the changeset is where one would surface.
 
 - **L1 knows a request and a session, never a worker.** Core and the engine gain the ledger, a
   `spend` field on `RequestEnding` (spent since the request's last ending, so a resumed request
-  is not counted twice), a session-config `onRequestEnded` hook the engine runs with the
-  request's context, and `reportHarnessSpend(ctx, { harness, inputTokens, outputTokens, cost,
+  is not counted twice), and `reportHarnessSpend(ctx, { harness, inputTokens, outputTokens, cost,
   billing })` in `core/types/harness.ts`. No vendor word, no Workforce word.
-- **The session hook is framework-facing.** `SessionConfig` says it carries only state and
-  client-data hooks, and FIX-2077 calls the seam framework-facing. The hook keeps that spirit:
-  documented for framework packages, with the docs saying so, and the `SessionConfig` comment
-  updated.
+- **One request-end registry, and the session config only installs on it.** The worker writer is an
+  ordinary `RequestEndHook` on the request's existing registry (FIX-2077), not a second hook: it
+  runs in the same list, in order, under the same shutdown drain. A flow's session config carries
+  a framework-only, symbol-keyed slot (as `REQUEST_END_SEAM` is) holding a function the engine
+  calls with the request's context when the request starts; what it returns is added to that
+  registry, exactly as a block's `onRequestEnded(ctx, hook)` would add it. Only
+  `installation.session()` fills the slot. There is no new author-facing `SessionConfig` field,
+  and the docs present it as framework-facing.
+- **Why a block call alone can't carry it.** `onRequestEnded(ctx, hook)` is called from a block,
+  and no block Workforce owns runs in every worker request: authors write a worker's blocks, and
+  each entry (respond, task, steer, talk, coordinator) would have to remember the call, so a
+  missed one undercounts silently. `installation.session()` is the one piece `register.ts`
+  requires of every worker flow, so it is where the hook gets put on the registry.
 - **The convergence points.** Model spend enters the ledger only through
   `onGeneratorModelResult`. The engine installs a base handler at the request (none exists
   today; per-block wrappers chain up to it), and the evaluator-as-a-tool path, which does not
@@ -139,7 +147,7 @@ production. None is known; the changeset is where one would surface.
 
 2026-10-25 · watermark 2026-10-23 (FIX-2141 spec) · **Right approach, with changes** (folded).
 
-1. **Reuse** — `reuse-review`: the ledger and the session hook extend existing pieces (the request
+1. **Reuse** — `reuse-review`: the ledger and the worker hook extend existing pieces (the request
    count, the FIX-2077 seam); `worker-usage/**` follows `harness-usage/**`; `reportHarnessSpend`
    is new, and FIX-2142's feed was weighed and loses (now in *Considered and dropped*). See
    [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
@@ -171,6 +179,9 @@ production. None is known; the changeset is where one would surface.
 - **Review round 1** — Codex showed two more convergence gaps: a generator that suspends for
   approval or fails never reports its finished steps, and a killed Cursor run has per-turn usage
   that "not reported" would throw away. Both now reach the ledger.
+- **Review round 2** — the FSD Architect saw a near-duplicate of `onRequestEnded` in the
+  session-config hook. The writer is now an ordinary hook on the existing request-end registry,
+  and the session config only puts it there; no author-facing `SessionConfig` field.
 
 ## Notes from review
 

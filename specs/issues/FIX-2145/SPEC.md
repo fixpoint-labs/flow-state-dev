@@ -93,7 +93,7 @@ A worker flow changes nothing: every one already declares `session: installation
 and that is where the request-end hook rides.
 
 **Docs:** new page *Workforce → Worker usage* (`workforce/worker-usage`, after
-`workforce/inventory`). Update *Configuration → Flow* (a session's request-end hook, and token
+`workforce/inventory`). Update *Configuration → Flow* (token
 budgets counting in production), *Tools → Coding agents* (a harness reports its run's spend),
 *Shift Manager → Overview* (the Usage view's worker section), and the READMEs of `core`,
 `engine`, `claude-code`, `codex`, `cursor`, `workforce` and `shift-manager`.
@@ -104,7 +104,7 @@ budgets counting in production), *Tools → Coding agents* (a harness reports it
 flowchart LR
   G["generator · evaluator · evaluator as a tool"] -->|"every model result, added"| L["the request's spend ledger · L1"]
   H["claude-code · codex · cursor · when a run ends, however it ends"] -->|"reportHarnessSpend"| L
-  L --> E["request ends · session's onRequestEnded · L1"]
+  L --> E["request ends · the request-end registry, hook put there by the session config · L1"]
   E --> W["recordWorkerSpend · Workforce · the one writer"]
   W --> C["worker-usage · user scope · worker and day"]
   Q["workerUsage query"] --> C
@@ -130,7 +130,7 @@ Core and the engine know a request and a session, never a worker. Workforce read
 |---|---|
 | Ways to total spend | **Four, none across requests:** the request's `tokenUsage` and `costEstimate` (engine, summed from traces), the action `tokenBudget` on top of them, DevTool's `aggregateTokenUsage` over loaded items (the closest), and harness-manager's run row (one attempt). claude-code also keeps each handle in session state (`SDK_AGENT_RUNS_KEY`), per session. Searched `totalTokens`, `costUsd`, `byModel`, `tokenBudget`, `ledger`, `spend`, `usage` across `packages/`. This would be the first total across requests |
 | The request's `tokenUsage`, read from trace items | **Replaces its source** with a ledger fed by model results ([D3](DECISIONS.md#d3)). Same shape, same budget check; it now counts in production |
-| The request-end seam, `onRequestEnded` (FIX-2077) | **Extends** it: the ending carries what the request spent, and a session's config can register a hook, so no block has to |
+| The request-end seam, `onRequestEnded` (FIX-2077) | **Extends** it: the ending carries what the request spent. The worker writer is an ordinary hook on the same registry; a flow's session config only puts it there when the request starts, so no block has to call it. No second hook and no author-facing `SessionConfig` field |
 | `installation.session()`, which `register.ts` requires of every worker flow | **Builds on** it: the one place the worker hook is installed |
 | FIX-2142's run-time feed, `onUsage` through harness-manager's slot | **Considered for harness spend, not used:** the Error Reporter and kitchen-sink don't run through that slot |
 | harness-manager's `harness-usage/**` (FIX-2141 [D1](../FIX-2141/DECISIONS.md#d1)) | **Builds on** its scope, shape rules and one-writer-one-query form for `worker-usage/**`. **Keeps** D1: per person |
@@ -143,16 +143,16 @@ Core and the engine know a request and a session, never a worker. Workforce read
 |---|---|---|
 | A request spend ledger | Trace `modelUsage` | Lean traces drop it in production, and a repair call overwrites it. The ledger is fed by the same runtime hook, added, not assigned |
 | `reportHarnessSpend` in core | The run row's `usage`; FIX-2142's `onUsage` feed | Both are harness-manager's alone, and the row keeps the last attempt. One function each harness calls when a run ends covers every caller |
-| A session-config request-end hook | `onRequestEnded` from a block; a request-config hook | Every worker entry would have to remember a block call. Request config isn't required of worker flows; the session config is |
+| The session config puts a hook on the existing request-end registry | `onRequestEnded` from a block; a request-config hook | Same registry, same hook type. Only *who registers* moves: no block Workforce owns runs in every worker request, so every entry would have to remember a block call. Request config isn't required of worker flows; the session config is |
 | `worker-usage/**`, `recordWorkerSpend`, `workerUsageAction` | `harness-usage/**` | A different key (worker and day) and an additive write; windows overwrite. Same scope, same one-writer rule |
 
 | The debt | |
 |---|---|
 | **Removes** | The request's count read from traces, which reads 0 in production. A repair call overwriting the request's count |
-| **Adds** | Two public core surfaces (a session-config hook, `reportHarnessSpend`) and a `spend` field on the request ending; three harness callers; one collection, one writer, one query action, one view section. Every worker request waits for one small write before its end is reported. Permanent by design |
+| **Adds** | One public core surface (`reportHarnessSpend`), a `spend` field on the request ending, and a framework-only slot through which a session config adds a hook to the existing registry; three harness callers; one collection, one writer, one query action, one view section. Every worker request waits for one small write before its end is reported. Permanent by design |
 | **Leaves** | A trace's per-block `modelUsage` still keeps only a generator's last call (DevTool), filed as FIX-2207. Spend of a process that dies before its request ends is lost. A third-party harness that never calls `reportHarnessSpend` goes uncounted. `user` scope is not tenant-qualified, inherited from FIX-2141 |
 
-**Net: up, medium.** One new total and two framework surfaces; the request count it builds on is
+**Net: up, medium.** One new total, one framework surface and a framework-only slot on the existing seam; the request count it builds on is
 fixed rather than doubled.
 
 ## Sign off
@@ -161,8 +161,8 @@ fixed rather than doubled.
 harness runs and model calls, reported cost where billed, in production. If wrong: the numbers
 miss model-only workers or read 0 in production.
 
-**[The debt](#whats-already-here-and-the-debt), net up, medium:** a new total and two framework
-surfaces over a fixed count. If wrong: a second count beside the request's, which can disagree
+**[The debt](#whats-already-here-and-the-debt), net up, medium:** a new total, one framework
+surface and a slot on the existing seam, over a fixed count. If wrong: a second count beside the request's, which can disagree
 with it.
 
 1. **[D3](DECISIONS.md#d3) · One spend count per request, and it counts in production, so action

@@ -72,7 +72,7 @@
     <text class="t-s" x="252" y="325">counts in production</text>
     <rect class="n-new" x="478" y="262" width="200" height="88" rx="5"/>
     <text class="t-lbl" x="490" y="280">WORKFORCE</text>
-    <text class="t-b" x="490" y="296">session onRequestEnded</text>
+    <text class="t-b" x="490" y="296">request-end registry</text>
     <text class="t-s" x="490" y="312">installation.session()</text>
     <text class="t-s" x="490" y="325">reads the session's workerId</text>
     <rect class="n-new" x="716" y="236" width="192" height="72" rx="5"/>
