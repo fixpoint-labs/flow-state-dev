@@ -134,8 +134,9 @@ export interface ConductorFlowOptions {
    * Forwarded to the coding agent (model, tools, permission mode, a test stub).
    *
    * This lab picks Claude Code, so this is `claudeCodeAgent`'s option surface
-   * minus the four the manager's slot supplies — see where the factory is
-   * written below. A host that wanted Codex would write a different factory and
+   * minus the four feeds the manager's slot supplies and the two options this
+   * lab fixes (`detached`, `recordWork`) — see where the factory is written
+   * below. A host that wanted Codex would write a different factory and
    * change nothing in `@flow-state-dev/harness-manager`.
    */
   agent?: Omit<
