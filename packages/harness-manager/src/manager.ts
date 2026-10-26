@@ -479,14 +479,14 @@ export interface ManagerOptions {
   /**
    * **The slot.** How this manager is pointed at a coding harness.
    *
-   * Called ONCE, at construction, with the three feeds the harness contract
-   * declares — and the harness package closes over all three. That is the whole
+   * Called ONCE, at construction, with the four feeds the harness contract
+   * declares — and the harness package closes over all four. That is the whole
    * coupling: this package imports no harness, names no vendor, and a second
    * harness needs no edit here.
    *
    * ```ts
-   * harness: ({ cwd, resume, onSession }) =>
-   *   claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+   * harness: ({ cwd, resume, onSession, onUsage }) =>
+   *   claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
    * ```
    *
    * **What the host writes inside the factory is the host's**, deliberately.
@@ -530,13 +530,13 @@ export interface ManagerOptions {
 }
 
 /**
- * The three feeds a manager hands its harness, in one call.
+ * The four feeds a manager hands its harness, in one call.
  *
- * All three are **LAB-152's, declared in `@flow-state-dev/core`** and imported
+ * All four are **declared in `@flow-state-dev/core`** and imported
  * here rather than restated: what this package picks is the slot that bundles
  * them, not the callbacks' names or their signatures.
  *
- * Why three and not two. A harness that throws on the manager's deadline
+ * Why `onSession` and not only `cwd` and `resume`. A harness that throws on the manager's deadline
  * returns no handle at all, and a status item is transient by contract — so
  * neither can carry the session id to the next attempt in exactly the case
  * resume exists for. Unless the harness hands the id to manager-owned durable

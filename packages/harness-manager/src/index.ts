@@ -9,7 +9,7 @@
  *
  * The **harness is a slot**, not a dependency. This package imports no coding
  * agent and reads no vendor field: the host hands it a factory, the manager
- * calls that factory once with the three feeds the harness contract declares
+ * calls that factory once with the four feeds the harness contract declares
  * (`@flow-state-dev/core`), and a Codex run and a Claude Code run settle
  * identically because the verdict is read off the neutral handle.
  *
