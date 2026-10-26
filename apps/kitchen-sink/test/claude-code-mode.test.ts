@@ -92,6 +92,14 @@ describe("Claude Code mode's check (V9)", () => {
     expect((result as { reason: string }).reason).not.toContain("not signed in");
   });
 
+  it("says its sign-in is unknown, not that nobody is signed in, when the probe itself failed", async () => {
+    const result = await check({
+      probe: async () => ({ status: "none", reason: "Claude Code could not be asked for its account: spawn failed", unanswered: true }) as never,
+    });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("could not be asked for its account: spawn failed") });
+    expect((result as { reason: string }).reason).not.toContain("not signed in");
+  });
+
   it("does not ask again when Claude Code answered that there is no sign-in", async () => {
     let asked = 0;
     await check({
