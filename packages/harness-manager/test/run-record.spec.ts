@@ -390,4 +390,31 @@ describe("two turns of one attempt (FIX-2133 D3)", () => {
     // The old task's late write is refused by the board row, which is the new task's.
     expect(await writeRunRow(ctx, { ...identity(1), turn: 2, incarnationId: "first" }, { sessionId: "old" })).toBe("refused");
   });
+
+  it("compares attempts within one task: a task filed again under the same id opens its record at attempt 1", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(3), incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(3), incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // Deleted and filed again under the same id: a new task, on its first attempt.
+    await board.upsert(TASK, { ...claimed(1), incarnationId: "second" });
+    expect(await openRunRow(ctx, { ...identity(1), incarnationId: "second" }, OPENED)).toBe("applied");
+    expect(((await runs.getOptional(TOPIC))!.state as RunRecordState).attempt).toBe(1);
+    // The old task's late write is refused by the board row, which is the new task's.
+    expect(await writeRunRow(ctx, { ...identity(3), incarnationId: "first" }, { sessionId: "old" })).toBe("refused");
+  });
+
+  it("still refuses an earlier attempt of the same task", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(2), incarnationId: "first" });
+    expect(await openRunRow(ctx, { ...identity(2), incarnationId: "first" }, OPENED)).toBe("applied");
+
+    // The board read is stale (the monotonic backstop's window): it still shows attempt 1.
+    await board.upsert(TASK, { ...claimed(1), incarnationId: "first" });
+    expect(await writeRunRow(ctx, { ...identity(1), incarnationId: "first" }, { sessionId: "stale" })).toBe("refused");
+  });
 });
