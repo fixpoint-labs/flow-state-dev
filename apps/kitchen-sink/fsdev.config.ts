@@ -16,6 +16,7 @@
  *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
  */
 import { after } from "next/server";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
@@ -41,6 +42,13 @@ import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+/** The local SQLite file, its folder made first: SQLite opens a file in a folder that exists, and a fresh checkout has no `.fsdev/data`. */
+function sqliteFile(): string {
+  const dir = path.join(process.cwd(), ".fsdev", "data");
+  mkdirSync(dir, { recursive: true });
+  return path.join(dir, "flowstate.db");
+}
+
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
@@ -167,7 +175,7 @@ const flowstate = createFlowState({
           ? inMemoryStores()
           : process.env.STORE_TYPE === "filesystem"
             ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-            : sqliteStores({ filename: path.join(process.cwd(), ".fsdev", "data", "flowstate.db") }),
+            : sqliteStores({ filename: sqliteFile() }),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured

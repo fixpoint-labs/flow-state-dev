@@ -223,6 +223,8 @@ function getToolErrorText(item: ToolItem): string | undefined {
 type LineState = "running" | "waiting" | "completed" | "error";
 
 function lineState(item: ToolItem): LineState {
+  // A thought that ended unfinished (a stream that dropped mid-thought) is over, not still going.
+  if (isThought(item)) return item.status === "in_progress" ? "running" : "completed";
   const state = mapToolStatus(item);
   if (state === "error") return "error";
   if (state === "awaiting") return "waiting";
@@ -361,6 +363,8 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
 
   // The calls say what the stretch was; a stretch of thinking alone says so.
   // One call is named by what it did; several are summarised by what they did.
+  // A settled run of calls stays a count of what was done, so only a single call, and the step
+  // in flight, are named by their subject.
   const only = one && calls.length === 1 ? labelInput(calls[0]!) : undefined;
   const summary =
     only !== undefined

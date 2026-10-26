@@ -191,4 +191,12 @@ describe("a stretch of thinking and tool calls as one line", () => {
     render(<ToolGroup items={[shell(), reasoningItem({ text: "  ", status: "in_progress" })]} />);
     expect(screen.getByRole("button", { name: /^Thinking…$/ })).toBeTruthy();
   });
+
+  // A stream that dropped mid-thought leaves the thought `incomplete`. The request is over, so the
+  // line must not keep saying the agent is thinking.
+  it("treats a thought that ended unfinished as over, not as still thinking", () => {
+    render(<ToolGroup items={[reasoningItem({ text: "Hm.", status: "incomplete" })]} />);
+    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("completed");
+    expect(screen.getByRole("button", { name: /^Thought$/ })).toBeTruthy();
+  });
 });
