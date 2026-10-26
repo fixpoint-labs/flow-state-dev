@@ -23,7 +23,7 @@ const nextConfig = {
   // ships its local runtime as a native binary, and the Cursor package loads
   // it by name, in the runtime's own process. The Codex SDK is the same: it
   // starts the Codex program its platform package ships.
-  serverExternalPackages: ["pg", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk", "@openai/codex-sdk"],
+  serverExternalPackages: ["pg", "better-sqlite3", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk", "@openai/codex-sdk"],
   transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),

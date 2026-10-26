@@ -3,8 +3,11 @@
  * vocabulary out. No side effects, no context, no vendor word past this
  * boundary — everything downstream reads {@link TranslatedEvent}.
  *
- * **Stateless on purpose.** Cursor's stream carries whole messages: a
- * `tool_call` repeats its `call_id`, `name` and `args` at every status, so
+ * **Stateless on purpose.** Cursor's stream carries whole messages, except for
+ * text: an answer and the thinking before it arrive as runs of small
+ * `assistant` / `thinking` chunks, which this layer passes on one event each and
+ * the emitter joins. A `tool_call` repeats its `call_id`, `name` and `args` at
+ * every status, so
  * nothing here needs to remember the opening to interpret the closing. The one
  * piece of correlation that does exist — a `tool_output` item opened by a
  * running call and settled by its result — is keyed by the call's own id and

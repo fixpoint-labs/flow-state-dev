@@ -186,15 +186,6 @@ function mount(server: ReturnType<typeof fakeServer>, models: ModelChoices = TWO
   );
 }
 
-async function openKind(kind: string) {
-  const row = await waitFor(() => {
-    const found = document.querySelector<HTMLButtonElement>(`[data-kind="${kind}"]`);
-    if (found === null) throw new Error(`no row for ${kind}`);
-    return found;
-  });
-  if (row.getAttribute("aria-expanded") !== "true") fireEvent.click(row);
-}
-
 describe("V6 · a harness mode's frame", () => {
   it("BR-21: the mode's name and the way back head the rail, which lists only its own kind's sessions", async () => {
     const server = fakeServer([
@@ -205,16 +196,17 @@ describe("V6 · a harness mode's frame", () => {
     const rail = screen.getByTestId("rail");
     expect(within(rail).getByTestId("mode-name").textContent).toBe("Codex");
     expect(within(rail).getByRole("link", { name: "Back to the modes" }).getAttribute("href")).toBe("/");
-    await openKind("codex-session");
+    // The sessions are there as the rail opens: a mode has one flow, so there
+    // is no kind row to open first.
     await waitFor(() => expect(within(rail).getByText("codex one")).toBeTruthy());
-    expect(rail.querySelector('[data-kind="claude-code-session"]')).toBeNull();
+    expect(rail.querySelector("[data-kind]")).toBeNull();
+    expect(within(rail).getByTestId("session-list").querySelector("[aria-expanded]")).toBeNull();
     expect(within(rail).queryByText("claude one")).toBeNull();
   });
 
   it("BR-22: New session creates a session on the mode's flow and opens it in the stream; the other kind is untouched", async () => {
     const server = fakeServer([{ id: "k1", kind: "claude-code-session", title: "claude one" }]);
     mount(server);
-    await openKind("codex-session");
     fireEvent.click(screen.getByTestId("new-session"));
     await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("new-1"));
     expect(server.created).toEqual([{ flowKind: "codex-session", userId: "devuser", state: { model: "model-a" } }]);
@@ -252,15 +244,21 @@ describe("V6 · a harness mode's frame", () => {
   it("BR-23: with no sessions, the rail says so and offers New session", async () => {
     const server = fakeServer([]);
     mount(server);
-    await openKind("codex-session");
-    // The navigator's own empty line, inside the mode's open leaf.
-    const leaf = await waitFor(() => {
-      const found = screen.getByTestId("rail").querySelector('ul[data-leaf="codex-session"]');
-      if (found === null) throw new Error("the leaf did not open");
-      return found as HTMLElement;
-    });
-    await waitFor(() => expect(within(leaf).getByText("No sessions yet")).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByTestId("rail")).getByText("No sessions yet")).toBeTruthy());
     expect(screen.getByTestId("new-session").textContent).toContain("New session");
+  });
+});
+
+describe("a harness mode's session list", () => {
+  it("says a failed read failed, and Retry reads again", async () => {
+    const server = fakeServer([{ id: "c1", kind: "codex-session", title: "codex one" }]);
+    server.sessionSource.listSessions.mockRejectedValueOnce(new Error("the server is down"));
+    mount(server);
+    const rail = screen.getByTestId("rail");
+    await waitFor(() => expect(within(rail).getByRole("status").textContent).toMatch(/the server is down/));
+    expect(within(rail).queryByText("No sessions yet")).toBeNull();
+    fireEvent.click(within(rail).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(within(rail).getByText("codex one")).toBeTruthy());
   });
 });
 
@@ -291,7 +289,6 @@ describe("FIX-1915 BR-6 · a reload comes back to the open session", () => {
       { id: "c2", kind: "codex-session", title: "codex two" },
     ]);
     mount(server);
-    await openKind("codex-session");
     fireEvent.click(await waitFor(() => within(screen.getByTestId("rail")).getByText("codex two")));
     await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("c2"));
 
