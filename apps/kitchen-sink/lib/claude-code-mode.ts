@@ -149,6 +149,13 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
 const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
 
 /**
+ * How long to wait for Claude Code's model list. It answers in about a second
+ * on an idle machine and took up to a minute on a loaded one, so the package's
+ * 10 s default read a busy host as one that can't list its models.
+ */
+const MODEL_LIST_TIMEOUT_MS = 60_000;
+
+/**
  * Claude Code's own list. When it can't be read, nothing is offered and New
  * session can't start: Kitchen Sink keeps no Claude model name of its own,
  * which would age as Claude Code's default moves, and a session must be born
@@ -156,7 +163,7 @@ const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
  * can't list its models is unlikely to run a turn either.
  */
 export async function claudeCodeModelChoices(
-  list: (env: Record<string, string>) => Promise<ClaudeModelList> = (env) => listClaudeModels({ env }),
+  list: (env: Record<string, string>) => Promise<ClaudeModelList> = (env) => listClaudeModels({ env, timeoutMs: MODEL_LIST_TIMEOUT_MS }),
 ): Promise<ModelChoices> {
   if (claudeCodeIsScripted()) {
     return {
