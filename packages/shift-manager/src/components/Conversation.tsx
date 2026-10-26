@@ -23,7 +23,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
+import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
@@ -153,12 +153,10 @@ export function Conversation({
     () =>
       read === undefined
         ? []
-        : callRuns(
-            buildItemRenderStream(
-              read.items.filter((item) => !UNDRAWN.has(item.type)),
-              shiftManagerRenderers,
-              { groupToolCalls: true },
-            ),
+        : buildItemRenderStream(
+            read.items.filter((item) => !UNDRAWN.has(item.type)),
+            shiftManagerRenderers,
+            { groupToolCalls: true },
           ),
     [read],
   );

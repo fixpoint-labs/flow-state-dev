@@ -139,10 +139,19 @@ describe("buildItemRenderStream — tool grouping", () => {
   });
 });
 
-// An agent's working (what it thought, what it called) is one stretch of
-// activity between the things it says. Reasoning is part of that stretch, so a
-// thought between two calls doesn't split the group in two.
+// `"activity"` is the stretch of thinking and calls between messages. `true`
+// groups calls only, which is what a calls-only line still asks for.
 describe("buildItemRenderStream — activity grouping", () => {
+  it("leaves a thought between calls as its own item when only calls are grouped", () => {
+    const items: OutputItem[] = [toolItem("t1", "shell"), reasoningItem("r1"), toolItem("t2", "read")];
+    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
+    expect(stream.map((s) => (s.kind === "group" ? `calls:${s.items.map((i) => i.id).join(",")}` : s.item.id))).toEqual([
+      "calls:t1",
+      "r1",
+      "calls:t2",
+    ]);
+  });
+
   it("keeps reasoning and tool calls between messages in one group, in order", () => {
     const items: OutputItem[] = [
       reasoningItem("r1"),
@@ -151,7 +160,7 @@ describe("buildItemRenderStream — activity grouping", () => {
       toolItem("t2", "read"),
       messageItem("m1"),
     ];
-    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
+    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: "activity" });
     expect(stream.map((s) => s.kind)).toEqual(["group", "item"]);
     const group = stream[0];
     if (group.kind === "group") expect(group.items.map((i) => i.id)).toEqual(["r1", "t1", "r2", "t2"]);
@@ -165,12 +174,12 @@ describe("buildItemRenderStream — activity grouping", () => {
       reasoningItem("r2"),
       messageItem("m2"),
     ];
-    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: true });
+    const stream = buildItemRenderStream(items, undefined, { groupToolCalls: "activity" });
     expect(stream.map((s) => s.kind)).toEqual(["group", "item", "group", "item"]);
   });
 
   it("groups thinking that has no tool call with it, so it doesn't stand alone", () => {
-    const stream = buildItemRenderStream([reasoningItem("r1"), reasoningItem("r2")], undefined, { groupToolCalls: true });
+    const stream = buildItemRenderStream([reasoningItem("r1"), reasoningItem("r2")], undefined, { groupToolCalls: "activity" });
     expect(stream).toHaveLength(1);
     expect(stream[0].kind).toBe("group");
   });
@@ -296,6 +305,15 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
 });
 
 describe("ItemsRenderer live", () => {
+  it("gives the group renderer the thought between the calls", () => {
+    const nodes = ItemsRenderer({
+      items: [reasoningItem("r1"), toolItem("t1", "shell"), messageItem("m1")],
+      toolGroupRenderer: () => null,
+    }) as any[];
+    const grouped = nodes.map((node) => node.props?.children?.props?.items).find((group) => group !== undefined);
+    expect(grouped?.map((item: { id: string }) => item.id)).toEqual(["r1", "t1"]);
+  });
+
   const groupProps = (live: boolean | undefined) => {
     const items = [toolItem("a", "read"), messageItem("m"), toolItem("b", "grep")];
     const nodes = ItemsRenderer({ items, toolGroupRenderer: () => null, live }) as any[];

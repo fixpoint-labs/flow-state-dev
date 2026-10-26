@@ -67,14 +67,13 @@ export type ItemsRendererProps = {
 };
 
 /**
- * A segment of the render stream after filtering and optional tool-call
- * grouping. `item` segments pass through to the renderer registry; `group`
- * segments represent a run of consecutive tool_output and reasoning items
- * that a toolGroupRenderer should render as one unit.
+ * A segment of the render stream after filtering and optional grouping.
+ * `item` segments pass through to the renderer registry. `group` segments
+ * are one run of `T` that a toolGroupRenderer draws as one unit.
  */
-export type ItemRenderSegment =
+export type ItemRenderSegment<T extends ActivityItem = ActivityItem> =
   | { kind: "item"; item: OutputItem }
-  | { kind: "group"; items: ActivityItem[] };
+  | { kind: "group"; items: T[] };
 
 /**
  * Options for {@link buildItemRenderStream}. Mirrors the ItemsRenderer
@@ -85,10 +84,11 @@ export type BuildItemRenderStreamOptions = {
   deduplicateByKey?: boolean;
   showSubAgents?: boolean;
   /**
-   * When true, consecutive tool_output and reasoning items in the filtered
-   * stream are collapsed into `group` segments. Any other item breaks the run.
+   * `true` collapses consecutive tool_output items into `group` segments.
+   * `"activity"` also takes the reasoning between them, so a thought stays in
+   * the run. Any other item breaks it.
    */
-  groupToolCalls?: boolean;
+  groupToolCalls?: boolean | "activity";
 };
 
 /**
@@ -163,8 +163,8 @@ const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
 
 /**
  * Pure helper: applies dedup / sub-agent / container-owner filters, then
- * optionally collapses consecutive tool_output and reasoning runs into
- * `group` segments. Returns the ordered render stream.
+ * optionally collapses a run of tool calls (and, for `"activity"`, the
+ * reasoning with them) into `group` segments. Returns the ordered render stream.
  *
  * Exposed so consumers can test filter + grouping behavior without a React
  * tree. ItemsRenderer uses this internally.
@@ -172,6 +172,16 @@ const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
 export function buildItemRenderStream(
   items: OutputItem[],
   renderers: RendererRegistry | undefined,
+  options: BuildItemRenderStreamOptions & { groupToolCalls: "activity" },
+): ItemRenderSegment[];
+export function buildItemRenderStream(
+  items: OutputItem[],
+  renderers?: RendererRegistry,
+  options?: Omit<BuildItemRenderStreamOptions, "groupToolCalls"> & { groupToolCalls?: boolean },
+): ItemRenderSegment<ToolOutputItem>[];
+export function buildItemRenderStream(
+  items: OutputItem[],
+  renderers: RendererRegistry | undefined = undefined,
   options: BuildItemRenderStreamOptions = {}
 ): ItemRenderSegment[] {
   const { deduplicateByKey = true, showSubAgents = false, groupToolCalls = false } = options;
@@ -206,7 +216,7 @@ export function buildItemRenderStream(
     buf = [];
   };
   for (const item of filtered) {
-    if (item.type === "tool_output" || item.type === "reasoning") {
+    if (item.type === "tool_output" || (groupToolCalls === "activity" && item.type === "reasoning")) {
       buf.push(item as ActivityItem);
     } else {
       flush();
@@ -234,11 +244,9 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
   const { renderers } = useFlowContext();
 
-  const stream = buildItemRenderStream(props.items, renderers, {
-    deduplicateByKey,
-    showSubAgents,
-    groupToolCalls: toolGroupRenderer !== undefined,
-  });
+  const stream = toolGroupRenderer
+    ? buildItemRenderStream(props.items, renderers, { deduplicateByKey, showSubAgents, groupToolCalls: "activity" })
+    : buildItemRenderStream(props.items, renderers, { deduplicateByKey, showSubAgents });
 
   // Suspensions whose matching `suspension_resume` item has arrived, mapped to
   // how they resolved. The inline ApprovalRenderer fallback can't see the full
