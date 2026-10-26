@@ -343,8 +343,17 @@ function toolStatus(name: string, input: unknown): string {
   return line.length > MAX_STATUS_LENGTH ? `${line.slice(0, MAX_STATUS_LENGTH - 1)}…` : line;
 }
 
+/** A live status line, cut to {@link MAX_STATUS_LENGTH}. */
+function boundedStatus(text: string): TranslatedEvent {
+  return { kind: "status", message: text.length > MAX_STATUS_LENGTH ? `${text.slice(0, MAX_STATUS_LENGTH - 1)}…` : text };
+}
+
 /**
- * `system` compact_boundary → a transient status notice.
+ * `system` messages that tell the person what a quiet stretch is:
+ * - `compact_boundary` → a transient notice.
+ * - `api_retry` → the failed call is being retried, with the attempt and wait.
+ * - `task_progress` → what a sub-agent is on: its own summary, else its
+ *   description and the last tool it used.
  *
  * `init` says nothing: the session id reaches the host through `onSession`, and
  * a "session started" line only read as stale once the run was working.
@@ -352,6 +361,19 @@ function toolStatus(name: string, input: unknown): string {
 function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): TranslatedEvent[] {
   if (msg.subtype === "compact_boundary") {
     return [{ kind: "status", message: "Claude Code agent compacted its context." }];
+  }
+  if (msg.subtype === "api_retry") {
+    const { attempt, max_retries: max, retry_delay_ms: delay } = msg;
+    if (typeof attempt !== "number" || typeof max !== "number") return [];
+    const wait = typeof delay === "number" ? `, in ${Math.ceil(delay / 1000)} s` : "";
+    return [{ kind: "status", message: `Claude Code is retrying a failed API call (attempt ${attempt} of ${max}${wait})…` }];
+  }
+  if (msg.subtype === "task_progress") {
+    const summary = readString(msg, "summary");
+    const description = readString(msg, "description");
+    const tool = readString(msg, "last_tool_name");
+    if (summary !== null) return [boundedStatus(summary)];
+    if (description !== null) return [boundedStatus(tool === null ? description : `${description} (${tool})`)];
   }
   return [];
 }

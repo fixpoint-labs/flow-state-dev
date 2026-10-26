@@ -418,6 +418,49 @@ describe("translateSdkMessage", () => {
     expect(result).toMatchObject({ usage: null, costUsd: null, finalMessage: null });
   });
 
+  it("says a failed API call is being retried, with the attempt and the wait", () => {
+    const events = translateOne({
+      type: "system",
+      subtype: "api_retry",
+      attempt: 2,
+      max_retries: 5,
+      retry_delay_ms: 4200,
+      error_status: 529,
+    } as SdkMessageLike);
+    expect(events).toEqual([
+      { kind: "status", message: "Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…" },
+    ]);
+  });
+
+  it("leaves the wait out of a retry that names none", () => {
+    const events = translateOne({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as SdkMessageLike);
+    expect(events).toEqual([{ kind: "status", message: "Claude Code is retrying a failed API call (attempt 1 of 3)…" }]);
+  });
+
+  it("shows what a sub-agent is on: its summary, else its description and last tool", () => {
+    expect(
+      translateOne({
+        type: "system",
+        subtype: "task_progress",
+        description: "Review the Codex package",
+        last_tool_name: "Read",
+        summary: "Reading the translate layer",
+      } as SdkMessageLike),
+    ).toEqual([{ kind: "status", message: "Reading the translate layer" }]);
+    expect(
+      translateOne({
+        type: "system",
+        subtype: "task_progress",
+        description: "Review the Codex package",
+        last_tool_name: "Read",
+      } as SdkMessageLike),
+    ).toEqual([{ kind: "status", message: "Review the Codex package (Read)" }]);
+  });
+
+  it("says nothing for a sub-agent progress message with nothing to say", () => {
+    expect(translateOne({ type: "system", subtype: "task_progress" } as SdkMessageLike)).toEqual([]);
+  });
+
   it("emits nothing for a system init message", () => {
     // The session id reaches the host through `onSession`. A "session started"
     // line says nothing a person acts on, and read as stale once the run was working.

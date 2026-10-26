@@ -1078,6 +1078,17 @@ describe("claudeCodeAgent", () => {
     });
   });
 
+  it("says Claude Code is starting before the SDK has said anything", async () => {
+    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      query: async function* () {
+        yield RESULT_OK;
+      },
+    });
+    const { items } = await testBlock(claudeCodeAgent({ resolveClaudeAgent }), { input: { prompt: "go" } });
+    const statuses = items.filter((i) => i.type === "status").map((i) => String((i as { message: string }).message));
+    expect(statuses[0]).toBe("Starting Claude Code…");
+  });
+
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {
     let decision: { behavior: string; message?: string } | undefined;
     const messages: SdkMessageLike[] = [RESULT_OK];
