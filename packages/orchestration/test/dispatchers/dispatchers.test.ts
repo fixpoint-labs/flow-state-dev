@@ -44,11 +44,10 @@ describe("fifoDispatcher", () => {
     expect(claimed?.id).toBe("second");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "review-me", goal: "r" });
     await c.claim("w");
-    await c.awaitReview("review-me");
     await c.addTask({ id: "ready", goal: "ok" });
     const claimed = await fifoDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("ready");
@@ -97,11 +96,10 @@ describe("topologicalDispatcher", () => {
     expect(winners[0]?.id).toBe("d");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "a", goal: "a" });
     await c.claim("w");
-    await c.awaitReview("a");
     await c.addTask({ id: "b", goal: "b" });
     const claimed = await topologicalDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("b");
@@ -134,11 +132,10 @@ describe("priorityDispatcher", () => {
     expect(claimed?.id).toBe("u");
   });
 
-  it("skips parked tasks", async () => {
+  it("skips a task another worker is running", async () => {
     const c = buildCollection();
     await c.addTask({ id: "hi", goal: "hi", priority: 9 });
     await c.claim("w");
-    await c.awaitReview("hi");
     await c.addTask({ id: "low", goal: "low", priority: 1 });
     const claimed = await priorityDispatcher.claim(c, "w2", fakeCtx);
     expect(claimed?.id).toBe("low");

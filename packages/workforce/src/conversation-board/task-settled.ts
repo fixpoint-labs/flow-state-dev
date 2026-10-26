@@ -76,10 +76,9 @@ export const taskNoticeSchema = z
     boardId: z.string().min(1),
     taskId: z.string().min(1),
     attempt: z.number().int().nonnegative(),
-    ending: z.enum(["completed", "errored", "parked", "retried", "cancelled"]),
+    ending: z.enum(["completed", "errored", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
-    question: z.string().optional(),
     asked: z.literal(true).optional(),
     cancelled: z.array(z.string()).optional()
   })
@@ -191,7 +190,7 @@ async function onEnding(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   const ref = await ownConversationLedger(ctx);
   if (ref === undefined) return;
   if (notice.ending !== "retried") await wakeIfStartable(ctx, ref);
-  if (notice.ending !== "retried" && notice.ending !== "parked" && taskChainOf(ctx) === undefined) {
+  if (notice.ending !== "retried" && taskChainOf(ctx) === undefined) {
     const ended = ref.get(notice.taskId);
     if (ended !== undefined && isTerminalStatus(ended.status)) {
       await deleteChain(ctx, { partition: await filingSessionIdOf(ctx.session), taskId: notice.taskId });

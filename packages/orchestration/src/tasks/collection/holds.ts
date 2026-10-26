@@ -49,6 +49,16 @@ export function openHolds(row: Pick<Task, "status" | "holds" | "steers">): TaskH
   return row.holds.filter((hold) => !isRowHold(hold) || answerOf(row, hold.id) === undefined);
 }
 
+/**
+ * The turn-asked fact (FIX-2133): whether `row` records that the turn a
+ * ticket holds asked questions midway, on that ticket's attempt. The one
+ * reading of `askedInTurn`; each caller adds what its own rule needs on top
+ * (the request's own flag, the row's current turn).
+ */
+export function askedOnTicket(row: Pick<Task, "askedInTurn" | "attempts"> | undefined, ticket: { readonly turn: number; readonly attempt: number }): boolean {
+  return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === ticket.turn && row.attempts === ticket.attempt;
+}
+
 /** Whether anything holds `row` now. */
 export function hasOpenHold(row: Pick<Task, "status" | "holds" | "steers">): boolean {
   return openHolds(row).length > 0;

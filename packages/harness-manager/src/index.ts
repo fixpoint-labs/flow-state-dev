@@ -9,7 +9,7 @@
  *
  * The **harness is a slot**, not a dependency. This package imports no coding
  * agent and reads no vendor field: the host hands it a factory, the manager
- * calls that factory once with the three feeds the harness contract declares
+ * calls that factory once with the four feeds the harness contract declares
  * (`@flow-state-dev/core`), and a Codex run and a Claude Code run settle
  * identically because the verdict is read off the neutral handle.
  *
@@ -33,7 +33,8 @@
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
  *   own shutdown needs the same numbers the manager enforces.
- * - The run record and inbox collections, so a host can build a status surface.
+ * - The run record collection, so a host can build a status surface. A run's
+ *   question holds its task on the board, so a host reads questions there.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
  *
@@ -60,7 +61,6 @@ export {
   MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
-  HarnessRunParked,
   HarnessRunRefused,
   RUNS,
   STEER_POLL_MS,
@@ -76,7 +76,6 @@ export {
   type PromptRunContext,
   type CompletionRunContext,
   type AnsweredQuestion,
-  type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
 
@@ -128,25 +127,6 @@ export {
  * issue, phase)` is that run's record key.
  */
 export { runBoardSegment } from "./workspace";
-
-// ── The question inbox ──────────────────────────────────────────────────────
-//
-// `withdrawEarlierQuestions` is not here for the same reason the run-record
-// writes are not: it is attempt-scoped reconciliation the manager performs at
-// the start of a run, and calling it from outside one withdraws a question a
-// live attempt is still waiting on.
-export {
-  INBOX,
-  askQuestion,
-  answerQuestion,
-  inboxCollection,
-  listQuestions,
-  parseQuestionTopic,
-  questionFingerprint,
-  questionTopic,
-  readQuestion,
-  withdrawQuestion,
-} from "./inbox";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //

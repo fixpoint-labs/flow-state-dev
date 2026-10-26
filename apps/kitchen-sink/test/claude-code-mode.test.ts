@@ -68,6 +68,49 @@ describe("Claude Code mode's check (V9)", () => {
     expect(result).toMatchObject({ available: false, reason: expect.stringContaining("not signed in") });
   });
 
+  // The gate keeps its answer until restart, so one slow start of Claude Code
+  // would otherwise tell a signed-in person they are not signed in.
+  it("asks again when Claude Code did not answer in time, and goes by the second answer", async () => {
+    let asked = 0;
+    const result = await check({
+      probe: async () => {
+        asked += 1;
+        return (asked === 1
+          ? { status: "none", reason: "Claude Code did not report an account within 10000 ms", unanswered: true }
+          : { status: "account", email: "a@b" }) as never;
+      },
+    });
+    expect(asked).toBe(2);
+    expect(result).toEqual({ available: true });
+  });
+
+  it("says Claude Code did not answer, not that nobody is signed in, when both asks time out", async () => {
+    const result = await check({
+      probe: async () => ({ status: "none", reason: "Claude Code did not report an account within 10000 ms", unanswered: true }) as never,
+    });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("did not report an account") });
+    expect((result as { reason: string }).reason).not.toContain("not signed in");
+  });
+
+  it("says its sign-in is unknown, not that nobody is signed in, when the probe itself failed", async () => {
+    const result = await check({
+      probe: async () => ({ status: "none", reason: "Claude Code could not be asked for its account: spawn failed", unanswered: true }) as never,
+    });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("could not be asked for its account: spawn failed") });
+    expect((result as { reason: string }).reason).not.toContain("not signed in");
+  });
+
+  it("does not ask again when Claude Code answered that there is no sign-in", async () => {
+    let asked = 0;
+    await check({
+      probe: async () => {
+        asked += 1;
+        return { status: "none", reason: "no credential" } as never;
+      },
+    });
+    expect(asked).toBe(1);
+  });
+
   it("probes the sign-in over the environment the run is handed", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("ANTHROPIC_API_KEY", "key");

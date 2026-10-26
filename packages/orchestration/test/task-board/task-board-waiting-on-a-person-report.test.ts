@@ -1,7 +1,7 @@
 /**
- * A drain that stops on an open question or confirm reports "awaiting-answer".
- * A filed row and a midway ask reach that by different rungs; a failure beside
- * either still reports "blocked-by-failures".
+ * A drain that stops on work waiting on a person reports "waiting-on-a-person".
+ * A filed question and a midway ask reach that by different rungs; a failure
+ * beside either still reports "blocked-by-failures".
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
@@ -17,7 +17,7 @@ let seq = 0;
 function freshCollection(): TaskCollectionRef {
   seq += 1;
   return createStateBackedTaskCollection({
-    collectionId: `awaiting-answer-${seq}`,
+    collectionId: `waiting-on-a-person-${seq}`,
     state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
   });
 }
@@ -29,7 +29,7 @@ async function drainReason(
   worker: TaskWorker
 ): Promise<{ terminationReason?: string; counts?: Record<string, number> }> {
   const board = taskBoard({
-    name: `awaiting-answer-board-${seq}`,
+    name: `waiting-on-a-person-board-${seq}`,
     collection: () => collection,
     concurrency: 1,
     initialTasks,
@@ -47,7 +47,7 @@ async function drainReason(
 /** A worker that settles every row it is handed, unless the row's goal says to ask or to fail. */
 function workerFor(collection: TaskCollectionRef): TaskWorker {
   return handler({
-    name: "awaiting-answer-worker",
+    name: "waiting-on-a-person-worker",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ done: z.boolean() }),
     execute: async (input, ctx) => {
@@ -72,8 +72,8 @@ const STORED_QUESTION = {
   ask: QUESTION,
 };
 
-describe("a drain stopped on a row waiting for an answer", () => {
-  it("reports awaiting-answer when the row was filed on a question", async () => {
+describe("a drain stopped on a row waiting on a person", () => {
+  it("reports waiting-on-a-person when the row was filed on a question", async () => {
     const collection = freshCollection();
     const meta = await drainReason(
       collection,
@@ -83,14 +83,14 @@ describe("a drain stopped on a row waiting for an answer", () => {
       ],
       workerFor(collection)
     );
-    expect(meta.terminationReason).toBe("awaiting-answer");
+    expect(meta.terminationReason).toBe("waiting-on-a-person");
     expect(meta.counts).toMatchObject({ completed: 1, pending: 1 });
   });
 
-  it("reports awaiting-answer when the row asked midway, though its lease is dropped", async () => {
+  it("reports waiting-on-a-person when the row asked midway, though its lease is dropped", async () => {
     const collection = freshCollection();
     const meta = await drainReason(collection, [{ id: "midway", goal: "ask" }], workerFor(collection));
-    expect(meta.terminationReason).toBe("awaiting-answer");
+    expect(meta.terminationReason).toBe("waiting-on-a-person");
     expect(meta.counts).toMatchObject({ in_progress: 1 });
   });
 
@@ -104,7 +104,7 @@ describe("a drain stopped on a row waiting for an answer", () => {
       ],
       workerFor(collection)
     );
-    expect(meta.terminationReason).toBe("awaiting-answer");
+    expect(meta.terminationReason).toBe("waiting-on-a-person");
   });
 
   it("still reports blocked-by-failures when a row failed beside the held one", async () => {
@@ -123,11 +123,11 @@ describe("a drain stopped on a row waiting for an answer", () => {
 });
 
 /**
- * The guard on the closure seed: only an open *question* says the answer owes
- * the row a turn. These rows are stored directly, since no drain leaves a row
- * in these shapes on purpose, and read by the completion block alone.
+ * The closure seed and the rung, on rows stored directly and read by the
+ * completion block alone: an open hold says a person owes the row a turn;
+ * nothing else does.
  */
-describe("a row that waits on something other than an answer", () => {
+describe("the completion reason over stored rows", () => {
   const NOW = 1_000_000;
 
   /** A collection at a fixed clock holding exactly `rows`, as stored. */
@@ -137,7 +137,7 @@ describe("a row that waits on something other than an answer", () => {
       rows.map((row) => [row.id as string, { goal: row.id, attempts: 1, deps: [], createdAt: 1, updatedAt: 1, ...row }])
     );
     return createStateBackedTaskCollection({
-      collectionId: `awaiting-answer-stored-${seq}`,
+      collectionId: `waiting-on-a-person-stored-${seq}`,
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks }),
       now: () => NOW,
     });
@@ -145,29 +145,27 @@ describe("a row that waits on something other than an answer", () => {
 
   async function reasonOf(
     collection: TaskCollectionRef,
-    poolExits: unknown = [{ shouldContinue: false, reason: "blocked" }],
     runsElsewhere?: (task: Task) => boolean
   ): Promise<string | undefined> {
     const block = createBoardMetaCompleted({
-      name: `awaiting-answer-meta-${seq}`,
+      name: `waiting-on-a-person-meta-${seq}`,
       collection: async () => collection,
       collectionId: collection.collectionId,
       ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
     });
-    const result = await testBlock(block, { input: poolExits });
+    const result = await testBlock(block, { input: [{ shouldContinue: false, reason: "blocked" }] });
     expect(result.error).toBeNull();
     type MetaItem = { type?: string; component?: string; data?: { terminationReason?: string } };
     return (result.items as MetaItem[]).find((i) => i.type === "component" && i.component === "task-board-meta")?.data
       ?.terminationReason;
   }
 
-  it("reports blocked-by-failures for an abandoned row holding only a suspension hold", async () => {
-    // A lapsed lease and no open question: nothing owes this row a turn, so it
-    // is abandoned. Seeding it on any open hold, not an open question, would
-    // call this stall `awaiting-answer`.
+  it("reports waiting-on-a-person for a run stopped for a review, its lease dropped", async () => {
+    // A review is a run's stop for a person, mirrored as a suspension hold;
+    // the person's answer resumes it, so its lapsed lease is not abandonment.
     const collection = await storedCollection([
       {
-        id: "suspended",
+        id: "reviewing",
         status: "in_progress",
         leaseUntil: NOW - 1,
         holds: [
@@ -176,11 +174,17 @@ describe("a row that waits on something other than an answer", () => {
             actor: "user",
             openedAt: 1,
             source: { kind: "suspension", requestId: "req-1", suspensionId: "susp-1" },
-            ask: { kind: "approval", prompt: "Approve?" },
+            ask: { kind: "review", prompt: "Review the draft?" },
           },
         ],
       },
     ]);
+    expect(await reasonOf(collection)).toBe("waiting-on-a-person");
+  });
+
+  it("reports blocked-by-failures for a running row with a lapsed lease and nothing open on it", async () => {
+    // Abandoned: no hold, so nothing owes it a turn. The seed must not admit it.
+    const collection = await storedCollection([{ id: "abandoned", status: "in_progress", leaseUntil: NOW - 1 }]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
   });
 
@@ -219,21 +223,15 @@ describe("a row that waits on something other than an answer", () => {
     holds: [STORED_QUESTION],
   });
 
-  it("ranks below a park: a parked row beside a question row reports parked-for-review", async () => {
-    const collection = await storedCollection([questionRow("asked"), { id: "review", status: "parked" }]);
-    const parkedExit = [{ shouldContinue: false, reason: "drained", excusedParked: true }];
-    expect(await reasonOf(collection, parkedExit)).toBe("parked-for-review");
-  });
-
-  it("reports awaiting-answer, not blocked-by-failures, with a dispatched row beside the question row", async () => {
+  it("reports waiting-on-a-person, not blocked-by-failures, with a dispatched row beside the question row", async () => {
     // The question row is not dispatched, so `dispatched` cannot match here;
     // what this pins is that the dispatched row, going somewhere, does not
-    // turn a board that waits on an answer into a failure.
+    // turn a board that waits on a person into a failure.
     const collection = await storedCollection([
       questionRow("asked"),
       { id: "background-work", status: "in_progress", assignee: "background", leaseUntil: NOW + 60_000 },
     ]);
     const runsElsewhere = (task: Task): boolean => task.assignee === "background";
-    expect(await reasonOf(collection, undefined, runsElsewhere)).toBe("awaiting-answer");
+    expect(await reasonOf(collection, runsElsewhere)).toBe("waiting-on-a-person");
   });
 });

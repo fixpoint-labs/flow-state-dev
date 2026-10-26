@@ -575,6 +575,12 @@ export async function authorizeManagementRoute(
   // point is that the caller does not get to say which organization they are
   // in; the verified principal does.
   if (ownerOrgId !== undefined && principal.orgId !== ownerOrgId) {
+    // A request id travels as freely across organizations as across users, so
+    // another organization's is answered as an id nobody has used, exactly as
+    // another user's is above.
+    if (subject.kind === "request") {
+      return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
+    }
     return {
       denied: jsonResponse(403, {
         error: "Caller's organization does not own the requested resource"

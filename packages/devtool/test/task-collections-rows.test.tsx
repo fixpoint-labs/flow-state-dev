@@ -57,7 +57,7 @@ const full: Task = {
   id: "task-full",
   goal: "Answer the customer about their refund, with the whole policy quoted",
   title: "Refund question",
-  status: "parked",
+  status: "in_progress",
   attempts: 1,
   maxAttempts: 3,
   assignee: "support.accounts",

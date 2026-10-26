@@ -5,8 +5,9 @@
  * stream slot.
  *
  * The rail is the mode's name with the way back to the picker, the model
- * picker and a **New session** button, and one `FlowNavigator` section over
- * the mode's one flow kind, so it lists that kind's sessions and no other's.
+ * picker and a **New session** button, and the mode's sessions as one flat
+ * list (`HarnessSessionList`) over its one flow kind, so it lists that kind's
+ * sessions and no other's, with no kind row to open first.
  * **New session** creates a session on that flow, born with the picked model
  * (the mode's default preselected), and opens it in the stream slot. A
  * session's model never changes; another model is another session. The open
@@ -18,16 +19,12 @@
  * Nothing in here is harness-specific beyond the flow kind: a harness that
  * needs more than this has found a gap in its own package.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import {
-  FlowNavigator,
-  type FlowNavigatorLeafState,
-  type FlowNavigatorSection,
-} from "@flow-state-dev/react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient, type Client } from "@flow-state-dev/client";
 import { Plus } from "lucide-react";
 
-import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
+import { HarnessSessionList, type SessionRows } from "@/components/harness-session-list";
+import { ModeRailHeader } from "@/components/mode-rail-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import type { ModelChoices } from "@/lib/harness-models";
@@ -35,11 +32,8 @@ import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 const SESSION_PARAM = "session";
 
-/**
- * The slice of the one client the frame reads and writes: the flow list and
- * session listing the navigator reads, and a flow's session create.
- */
-export type HarnessClient = Pick<Client, "userId" | "flows" | "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
+/** The slice of the one client the frame reads and writes: the session listing, and a flow's session create. */
+export type HarnessClient = Pick<Client, "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
 
 export interface HarnessFrameProps {
   /** The mode's name, at the top of the rail. */
@@ -52,7 +46,7 @@ export interface HarnessFrameProps {
   readonly models: ModelChoices;
   /** The mode's session view for the picked session. Filled by the mode's own issue. */
   readonly stream?: (sessionId: string) => ReactNode;
-  /** Where flows and sessions are listed and created. Defaults to this app's server, as its user; stable. */
+  /** Where sessions are listed and created. Defaults to this app's server, as its user; stable. */
   readonly client?: HarnessClient;
 }
 
@@ -62,14 +56,19 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
     () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
     [hostClient],
   );
-  const sections = useMemo<readonly FlowNavigatorSection[]>(() => [{ label: "Sessions", kinds: [flowKind] }], [flowKind]);
 
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<string | null>(models.defaultId ?? models.models[0]?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The open leaf's re-read, so a session just created shows in the list.
-  const refreshLeaf = useRef<(() => void) | null>(null);
+  // The mode's sessions: the one read the list draws and the address's session
+  // is checked against. `reads` is bumped to read again, by a session created
+  // or a Retry.
+  const [rows, setRows] = useState<SessionRows | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [reads, setReads] = useState(0);
+  // The session the address names, until the listing has said whether it is this mode's.
+  const named = useRef<string | null>(null);
 
   const open = useCallback((sessionId: string) => {
     setSelected(sessionId);
@@ -78,25 +77,43 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
     window.history.replaceState(window.history.state, "", url);
   }, []);
 
-  // After mount, since the server draws no session: the one the address names,
-  // when it is one of this mode's. Anything else leaves the picker. A failed
-  // listing says so, so it doesn't read as a session that isn't there.
   useEffect(() => {
-    const named = new URLSearchParams(window.location.search).get(SESSION_PARAM);
-    if (named === null) return;
+    named.current = new URLSearchParams(window.location.search).get(SESSION_PARAM);
+  }, []);
+
+  useEffect(() => {
     let current = true;
     client.sessions.list({ flowKind, userId: KITCHEN_SINK_USER_ID }).then(
-      (rows) => {
-        if (current && rows.some((row) => row.id === named)) setSelected((picked) => picked ?? named);
+      (listed) => {
+        if (!current) return;
+        setRows(listed);
+        setListError(null);
       },
       (cause: unknown) => {
-        if (current) setError(`Session ${named} can't be reopened: ${cause instanceof Error ? cause.message : String(cause)}`);
+        if (current) setListError(cause instanceof Error ? cause.message : String(cause));
       },
     );
     return () => {
       current = false;
     };
-  }, [client, flowKind]);
+  }, [client, flowKind, reads]);
+
+  // After mount, since the server draws no session: the one the address names,
+  // when it is one of this mode's. Anything else leaves the picker. A failed
+  // listing says so, so it doesn't read as a session that isn't there.
+  useEffect(() => {
+    const wanted = named.current;
+    if (wanted === null) return;
+    if (rows !== null) {
+      named.current = null;
+      if (rows.some((row) => row.id === wanted)) {
+        setSelected((picked) => picked ?? wanted);
+        setError(null);
+      }
+    } else if (listError !== null) {
+      setError(`Session ${wanted} can't be reopened: ${listError}`);
+    }
+  }, [rows, listError]);
 
   const handleNewSession = useCallback(async () => {
     if (picked === null) return;
@@ -107,20 +124,13 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
       // no later write can change it.
       const created = await client.flow(flowKind).createSession({ state: { model: picked } });
       open(created.id);
-      refreshLeaf.current?.();
+      setReads((n) => n + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setCreating(false);
     }
   }, [client, flowKind, open, picked]);
-
-  const slots = useMemo(
-    () => ({
-      leafDetail: (leaf: FlowNavigatorLeafState) => <LeafRefresh leaf={leaf} refreshRef={refreshLeaf} />,
-    }),
-    [],
-  );
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background sm:flex-row" data-testid="harness-frame">
@@ -175,13 +185,14 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
             </p>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto py-1" style={RAIL_THEME}>
-          <FlowNavigator
-            sections={sections}
-            client={client}
-            selectedSessionId={selected}
-            onSelectSession={open}
-            slots={slots}
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          <HarnessSessionList
+            rows={rows}
+            error={listError}
+            onRetry={() => setReads((n) => n + 1)}
+            flowKind={flowKind}
+            selectedId={selected}
+            onSelect={open}
           />
         </div>
         <div className="hidden items-center gap-1 border-t p-3 sm:flex">
@@ -201,22 +212,4 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
       </main>
     </div>
   );
-}
-
-/** Keeps a handle on the open leaf's re-read for as long as the leaf is open. Draws nothing. */
-function LeafRefresh({
-  leaf,
-  refreshRef,
-}: {
-  leaf: FlowNavigatorLeafState;
-  refreshRef: MutableRefObject<(() => void) | null>;
-}) {
-  const { refresh } = leaf;
-  useEffect(() => {
-    refreshRef.current = refresh;
-    return () => {
-      if (refreshRef.current === refresh) refreshRef.current = null;
-    };
-  }, [refresh, refreshRef]);
-  return null;
 }

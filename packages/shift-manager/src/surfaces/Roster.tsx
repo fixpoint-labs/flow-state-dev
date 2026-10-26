@@ -17,7 +17,6 @@
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { chiefOfStaffOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
-import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
@@ -65,8 +64,8 @@ function useLookName(look: ThemeLook | undefined): string | null {
 }
 
 function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: boolean }) {
-  const { worker, status, held, asks } = state;
-  const parked = held.filter((row) => readStatus(row.status) === "parked");
+  const { worker, status, held, waitsOnYou, asks } = state;
+  const onYou = new Set(waitsOnYou);
   return (
     <li
       className={`${COLUMNS_GRID} border-b px-2 py-2.5 text-sm`}
@@ -106,7 +105,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           {held.map((row) => (
             <span
               key={`${row.boardRef}/${row.id}`}
-              className={`size-2 border ${readStatus(row.status) === "parked" ? "border-foreground bg-attention" : "border-info bg-info"}`}
+              className={`size-2 border ${onYou.has(row) ? "border-foreground bg-attention" : "border-info bg-info"}`}
               data-testid="roster-slot"
             />
           ))}
@@ -126,7 +125,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
               key={`${row.boardRef}/${row.id}`}
               type="button"
               title={row.title}
-              className={`border px-1.5 py-0.5 text-xs hover:border-foreground ${readStatus(row.status) === "parked" ? "bg-attention text-attention-foreground" : ""}`}
+              className={`border px-1.5 py-0.5 text-xs hover:border-foreground ${onYou.has(row) ? "bg-attention text-attention-foreground" : ""}`}
               onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
               data-testid="roster-holding"
               data-board-ref={row.boardRef}
@@ -138,12 +137,12 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
         )}
       </div>
       <ul className="min-w-0 space-y-[5px]">
-        {parked.length === 0 && asks.length === 0 ? (
+        {waitsOnYou.length === 0 && asks.length === 0 ? (
           <li className="pt-[3px] font-mono text-[11px] font-medium text-muted-foreground" data-testid="roster-no-wait">
             —
           </li>
         ) : null}
-        {parked.map((row) => (
+        {waitsOnYou.map((row) => (
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((ask) => (

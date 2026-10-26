@@ -301,28 +301,6 @@ describe("BoardColumns", () => {
     ).toBe(2);
   });
 
-  it("lands a pre-rename row in `parked`, not a column of its own (BP-030)", async () => {
-    // `awaiting_review` shipped as `parked`. The substrate maps it forward at
-    // its own read boundary, but a client read does not pass through that one
-    // — verified against the real route, where the legacy word comes back
-    // untouched. Un-normalized, it would read as a status this version does
-    // not know and earn its own column BESIDE `parked`, which is the failure
-    // this asserts away.
-    const source = fakeSource([card("t-legacy", "awaiting_review", { title: "old row" })]);
-    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", client: { resources: source } }));
-
-    await waitFor(() => expect(document.querySelector('[data-column="parked"]')).toBeTruthy());
-    expect(
-      document.querySelectorAll('[data-column="parked"] [data-task-id]').length,
-      "the legacy row belongs in parked"
-    ).toBe(1);
-    // No stray column, and none marked unknown — either would mean the row
-    // rendered somewhere a person is not looking for it.
-    expect(document.querySelector('[data-column="awaiting_review"]')).toBeNull();
-    expect(document.querySelector("[data-column-unknown]")).toBeNull();
-    expect(document.querySelectorAll("[data-column]").length).toBe(BOARD_STATUS_COLUMNS.length);
-  });
-
   it("gives a status it does not know its own column rather than dropping the row", () => {
     // Asserted on the grouping directly: this is where a card can be lost, and
     // a DOM assertion would pass against a component that rendered the right

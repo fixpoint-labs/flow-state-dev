@@ -241,14 +241,11 @@ describe("attempts and reassigns (BR-17, BR-18)", () => {
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
-      const filed = await file(host, "alice", conv, { goal: "decide [park:which one?]", assignee: "eng.tasker" });
+      const filed = await file(host, "alice", conv, { goal: "decide [ask:which one?]", assignee: "eng.tasker" });
       await host.settled();
-      expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("parked");
+      // Held on its question: started, running, waiting on the user.
+      expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("in_progress");
       const first = host.runs[0]!.sessionId;
-      // Answered: the attempt ends and the row waits again, as an answer leaves it.
-      const parked = (await host.row("alice", filing, filed.taskId!))!;
-      const { partition: _p, ...stored } = parked;
-      await host.writeRow("alice", filing, { ...(stored as Task), status: "pending", feedback: "the second" });
 
       const moved = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" });
       expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: assignee/) });

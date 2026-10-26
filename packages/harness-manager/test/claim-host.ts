@@ -26,6 +26,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  openRowHolds,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
@@ -145,6 +146,8 @@ export interface HostOptions {
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
+  /** Run inside the phase's prompt builder, on its context, before the prompt is built. */
+  beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
   ledgers?: (ledgerId: string, ctx: BlockContext, partition: string | undefined) => Promise<TaskCollectionRef | undefined>;
 }
@@ -192,13 +195,15 @@ export function claimHost(options: HostOptions) {
     tenant: undefined,
     phase: {
       phase: PHASE,
-      buildPrompt: (run: PromptRunContext) =>
-        [
+      buildPrompt: async (run: PromptRunContext) => {
+        await options.beforePrompt?.(run.ctx);
+        return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
           ...(run.feedback !== undefined ? [`FEEDBACK: ${run.feedback}`] : []),
           ...run.answers.map((a) => `ANSWERED: ${a.question} => ${a.answer}`),
           `ASK: ${run.askMarkerPath}`,
-        ].join("\n"),
+        ].join("\n");
+      },
       isDone: (run: CompletionRunContext) => {
         const answer = (run as { answer?: string | null }).answer;
         answersSeen.push(answer);
@@ -272,6 +277,7 @@ export function claimHost(options: HostOptions) {
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
     },
   });
+  // Answer the row's oldest open question as its user, through the board's one hold write.
   const answer = handler({
     name: "claim-host-answer",
     inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), answer: z.string() }),
@@ -280,7 +286,10 @@ export function claimHost(options: HostOptions) {
     execute: async (input, ctx) => {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
-      return ref.unpark(input.id, input.answer, { answer: true });
+      const row = ref.get(input.id);
+      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { hold: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
   const cancel = handler({
@@ -352,7 +361,7 @@ export function claimHost(options: HostOptions) {
   let sessions = 0;
   // Every action runs in this organization; `inOrg` moves the host's person to another.
   let orgId = ORG_ID;
-  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string) => {
+  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string, requestId?: string) => {
     const runtime = await (state as unknown as {
       getRuntime(): Promise<{ stores: any; runtimeConfig: object }>;
     }).getRuntime();
@@ -364,6 +373,7 @@ export function claimHost(options: HostOptions) {
       orgId,
       sessionId,
       ...(source !== undefined ? { source } : {}),
+      ...(requestId !== undefined ? { requestId } : {}),
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     } as never)) as { output?: unknown; error?: unknown };
@@ -386,6 +396,8 @@ export function claimHost(options: HostOptions) {
     id: string,
     partition?: string,
     claimOnInput?: InputClaim | null,
+    /** Run the attempt under this request id: as an inline drain runs every turn it takes in its own request. */
+    requestId?: string,
   ) => {
     const claimed = (await act("claim", { ...at(ledgerId, partition), id })).output as Task | null;
     if (claimed === null) throw new Error(`row ${id} was not claimable`);
@@ -411,12 +423,12 @@ export function claimHost(options: HostOptions) {
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
-          ...(claimed.answered === true && claimed.feedback !== undefined ? { answer: claimed.feedback } : {}),
           ...(onInput !== null ? { claim: onInput } : {}),
         },
       },
       `s_task_${orgId === ORG_ID ? "" : `${orgId}_`}${ledgerId}_${partition ?? "none"}_${id}`,
       "task",
+      requestId,
     );
     return { claimed, result };
   };

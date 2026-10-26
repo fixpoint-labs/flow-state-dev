@@ -144,7 +144,7 @@ describe("where getTask offers wait", () => {
         await act(state as never, flow, "run", {}, { sweeper: options.router });
         const names = seen[0]!.tools!.map((t) => t.name).sort();
         // Waiting adds no tool.
-        expect(names).toEqual(["answerTask", "createTask", "getTask", "listTasks", "updateTask"]);
+        expect(names).toEqual(["createTask", "getTask", "listTasks", "updateTask"]);
         expect(fieldsOf(seen, "getTask")).toEqual(offered ? ["deadline", "id", "wait"] : ["id"]);
         // No other tool waits.
         expect(fieldsOf(seen, "createTask")).not.toContain("wait");

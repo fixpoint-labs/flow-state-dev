@@ -9,9 +9,9 @@
  */
 import {
   fifoDispatcher,
+  hasOpenHold,
   isClaimable,
   leaseLapsed,
-  openRowHolds,
   priorityDispatcher,
   topologicalDispatcher,
   type Task,
@@ -105,7 +105,8 @@ export function isDispatched(
 
 /**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
- * places outside this drain.
+ * places outside this drain, and, with `excuseWaitingOnPerson`, minus the
+ * running rows waiting on a person.
  *
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
@@ -115,37 +116,10 @@ export function isDispatched(
  * assignees it is NOT), so the predicate has to see the row. One pass either
  * way; both callers below already ran one.
  *
- * **Only `in_progress` is subject to the exclusion**, and the other two
- * statuses are deliberate omissions rather than oversights:
- *
- * - a `pending` dispatched row is work this drain has yet to claim and dispatch,
- *   so excluding it would let the drain exit *before* spawning anything — the
- *   feature inverted into a board that silently runs nothing;
- * - a `parked` row is parked for an external actor whichever way it
- *   was dispatched, so the *routing* exclusion never reaches it. Whether that
- *   row holds the drain open is a different question with a different answer,
- *   asked by `excuseParked` below.
- *
- * ## The second exclusion: rows parked for a human
- *
- * `excuseParked` (FIX-1234) is the board's `onReview: "exit"` mode reaching
- * this count. It drops `parked` rows, and it is a **predicate of its
- * own beside** the routing one rather than a widening of it, because the two
- * answer different questions. `runsElsewhere` asks *where this row's work
- * belongs*, from the board's declared mode (`./board-mode`). This one asks
- * whether the row is waiting on a **human**, which is true on any board however
- * it dispatches.
- *
- * **And it carries no liveness conjunct, deliberately.** The routing exclusion
- * is paired with a lease check because a routed row can be abandoned by a
- * claimant that died. A parked row cannot be in that state: parking moves it
- * off `in_progress`, and the lease deliberately stops governing it there so
- * that a slow human cannot have the task reclaimed out from under them. A lease
- * conjunct here would either exclude nothing or reintroduce exactly the reclaim
- * the substrate prevents on purpose.
- *
- * Absent (`false`) for every board that leaves `onReview` at its default, which
- * is what keeps those boards' counts bit-for-bit what they were.
+ * **Only `in_progress` is subject to the exclusion**: a `pending` dispatched
+ * row is work this drain has yet to claim and dispatch, so excluding it would
+ * let the drain exit *before* spawning anything — the feature inverted into a
+ * board that silently runs nothing.
  *
  * ## …and only while the lease is live
  *
@@ -189,79 +163,61 @@ function countWaitable(
   collection: TaskCollectionRef,
   statuses: TaskStatus[],
   runsElsewhere?: RunsElsewhere,
-  excuseParked = false,
-  excuseAwaitingAnswer = false
-): WaitableCount {
-  if (runsElsewhere === undefined && !excuseParked && !excuseAwaitingAnswer) {
-    return { waiting: collection.count({ status: statuses }), excusedParked: false };
+  excuseWaitingOnPerson = false
+): number {
+  if (runsElsewhere === undefined && !excuseWaitingOnPerson) {
+    return collection.count({ status: statuses });
   }
   const rows = collection.list({ status: statuses });
   const now = collection.now();
   let waiting = 0;
-  let excusedParked = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isDispatched(row, now, runsElsewhere)) continue;
-    if (excuseParked && row.status === "parked") {
-      excusedParked = true;
-      continue;
-    }
-    if (excuseAwaitingAnswer && awaitsAnswer(row)) continue;
+    if (excuseWaitingOnPerson && waitsOnPerson(row)) continue;
     waiting += 1;
   }
-  return { waiting, excusedParked };
+  return waiting;
 }
 
 /**
- * A waitable count, plus whether the park exclusion took anything off it.
- *
- * The two travel together because the second is only meaningful about the pass
- * that produced the first. `excusedParked` is what the board's completion item
- * eventually reports as `parked-for-review` (FIX-1234) — it is read here, at
- * the moment the exit is decided, and carried from there rather than
- * re-derived from rows that may have moved since. A resume landing between the
- * worker pool finishing and the completion item would otherwise turn a
- * successful review exit into a reported failure.
- *
- * A flag rather than a count, because every reader asks only whether the
- * exclusion fired. How many rows are parked is already on the completion item
- * as `counts.parked`, read fresh, which is the number a caller
- * actually wants.
+ * Whether a running row waits on a person (FIX-2131): it has an open hold,
+ * a question it asked (a row hold, its lease dropped) or the mirror of its
+ * run's stop for a person (a suspension hold). Read off the row's open holds
+ * (ER-8), never off a status: no row is parked. Nothing in a drain moves such
+ * a row; the person's answer does.
  */
-export interface WaitableCount {
-  /** Rows this drain must still wait on. */
-  waiting: number;
-  /** Did the park exclusion drop at least one row from `waiting`? */
-  excusedParked: boolean;
+export function waitsOnPerson(row: Task): boolean {
+  return row.status === "in_progress" && hasOpenHold(row);
 }
 
 /**
- * Count tasks the loop must wait on. `pending`, `in_progress`, and
- * `parked` are all in-flight — `parked` per FIX-443
- * §10.1, the others by definition. Terminal statuses don't count.
- *
- * `runsElsewhere` (FIX-982) drops the rows a child session is running;
- * `excuseParked` (FIX-1234) drops the rows parked for a human. See
- * {@link countWaitable} for which statuses each reaches and why they are two
- * predicates rather than one.
+ * Whether a row waits on a person, running or not (FIX-2214): a running row
+ * {@link waitsOnPerson}, or a `pending` one filed on questions. The board's
+ * completion reason reads it; the exit counts read the narrower
+ * {@link waitsOnPerson}, since a `pending` row held on questions is already
+ * unclaimable there. A `held`-status row is not one: a release moves it, not
+ * an answer.
  */
-export function inFlightCount(
-  collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere,
-  excuseParked = false
-): WaitableCount {
-  return countWaitable(
-    collection,
-    ["pending", "in_progress", "parked"],
-    runsElsewhere,
-    excuseParked
-  );
+export function heldOnPerson(row: Task): boolean {
+  return (row.status === "pending" || row.status === "in_progress") && hasOpenHold(row);
 }
 
 /**
- * Count the rows an active worker is holding — `in_progress` or
- * `parked`. The `complete-or-blocked` arm reads this to ask whether
- * anything is still producing state changes *in this drain*.
+ * Count tasks the loop must wait on: `pending` and `in_progress`, a running
+ * row waiting on a person included. Terminal statuses don't count.
+ *
+ * `runsElsewhere` (FIX-982) drops the rows a child session is running. See
+ * {@link countWaitable}.
+ */
+export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhere): number {
+  return countWaitable(collection, ["pending", "in_progress"], runsElsewhere);
+}
+
+/**
+ * Count the rows an active worker is holding — `in_progress`, less the rows
+ * waiting on a person. The `complete-or-blocked` arm reads this to ask
+ * whether anything is still producing state changes *in this drain*.
  *
  * Split out of `boardQuiescence`'s inline `count` so it takes the same
  * `runsElsewhere` exclusion `inFlightCount` does. Without that the two arms
@@ -269,55 +225,14 @@ export function inFlightCount(
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
  *
- * `excuseParked` (FIX-1234) reaches this arm for the same reason. A board whose
- * parked row has a `pending` dependent is not drained — the dependent is still
- * waitable — and the honest verdict for it is `blocked`. That verdict is only
- * reachable if this count excuses the parked row too; excusing it in one arm
- * and not the other would leave such a board spinning until its iteration
- * budget ran out, which is the defect park-exit exists to remove.
+ * **A row waiting on a person is excused here, and only here** (FIX-2131).
+ * `inFlightCount` keeps it, so the board isn't drained; this count drops it,
+ * so a board whose only open rows wait on a person, with nothing claimable,
+ * reports `blocked` rather than spinning to its iteration limit, which with no
+ * deadline on the wait it would never leave. The row stays as it is.
  */
-export function activeWorkerCount(
-  collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere,
-  excuseParked = false
-): WaitableCount {
-  return countWaitable(
-    collection,
-    ["in_progress", "parked"],
-    runsElsewhere,
-    excuseParked,
-    true
-  );
-}
-
-/**
- * A running row waiting on a person's answer: `in_progress`, with an open
- * question or confirm. Of the exit counts only {@link activeWorkerCount}
- * excuses it, so the verdict stays `blocked`; `goalSeekLoop` ends its pass on
- * it without judging. A suspension hold stays counted: that run resumes itself.
- *
- * "Running and waiting". {@link waitsOnAnswer} is "waiting, running or not";
- * both ask the same hold question.
- */
-export function awaitsAnswer(row: Task): boolean {
-  return row.status === "in_progress" && hasOpenQuestion(row);
-}
-
-/**
- * A row waiting on a person's answer, running or not (FIX-2214): `pending`
- * (filed with questions) or `in_progress` (asked midway), with an open
- * question or confirm. The board's completion reason reads it; the exit counts
- * read the narrower {@link awaitsAnswer}, since a `pending` row is already
- * unclaimable there. A suspension hold does not count: that run resumes
- * itself. Nor does a `held`-status row: an answer does not release it.
- */
-export function waitsOnAnswer(row: Task): boolean {
-  return (row.status === "pending" || row.status === "in_progress") && hasOpenQuestion(row);
-}
-
-/** The hold test both predicates share: an open row hold, never a suspension hold. */
-function hasOpenQuestion(row: Task): boolean {
-  return openRowHolds(row).length > 0;
+export function activeWorkerCount(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhere): number {
+  return countWaitable(collection, ["in_progress"], runsElsewhere, true);
 }
 
 /**

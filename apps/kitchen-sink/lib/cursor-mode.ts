@@ -29,6 +29,7 @@ import {
   readInstalledCursorSdkVersion,
   type CursorSandboxSupport,
   type CursorAgentOptions,
+  type CursorModelSelection,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
@@ -46,10 +47,9 @@ import { scriptedCursor } from "./scripted-cursor";
 export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
 
 /**
- * Cursor mode's default model: preselected in New session, the one a session
- * from before models could be picked runs on, and the only one offered when
- * Cursor's model list can't be read. Cursor's SDK refuses a local agent with
- * no model, so there is always one to hand it.
+ * Cursor mode's default model: preselected in New session, and the one a
+ * session from before models could be picked runs on. Cursor's SDK refuses a
+ * local agent with no model, so there is always one to hand it.
  */
 export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
@@ -107,7 +107,7 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
-    model: feeds.model,
+    model: async (ctx) => cursorModelSelection(await feeds.model(ctx)),
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
     agent: {
@@ -146,69 +146,49 @@ export function cursorSessionFlow(seams: CursorSeams = {}) {
   });
 }
 
-/** Cursor's own model list, read over the run's sign-in. A seam for tests. */
-export type CursorModelList = (env: Record<string, string>) => Promise<readonly HarnessModel[]>;
+/** The efforts Grok 4.7 is offered at, as Cursor names them (`reasoning_effort`). */
+const GROK_EFFORTS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra High" },
+] as const;
 
-/** One entry of Cursor's catalog, as far as the picker reads it (`ModelListItem` in `@cursor/sdk`). */
-export interface CursorCatalogEntry {
-  readonly id: string;
-  readonly displayName?: string;
-  /** The settings the model is chosen with (`optimize_for` on `auto-smart`, say). */
-  readonly parameters?: readonly unknown[];
-}
-
-/**
- * The catalog entries a session can run by id alone. The model feed hands the
- * block an id and nothing else, so an entry that declares parameters is left
- * out rather than offered without them.
- */
-export function cursorCatalogModels(items: readonly CursorCatalogEntry[]): HarnessModel[] {
-  return items
-    .filter((item) => (item.parameters?.length ?? 0) === 0)
-    .map((item) => ({ id: item.id, label: item.displayName || item.id }));
-}
-
-/** The SDK's catalog call: the models the signed-in account can run, by Cursor's ids and names. */
-const listCursorModels: CursorModelList = async (env) => {
-  // Loaded only here, so a host without the SDK never loads it.
-  const { Cursor } = (await import("@cursor/sdk")) as unknown as {
-    Cursor: { models: { list(options?: { apiKey?: string }): Promise<CursorCatalogEntry[]> } };
-  };
-  const key = env.CURSOR_API_KEY ?? "";
-  return cursorCatalogModels(await Cursor.models.list(key === "" ? undefined : { apiKey: key }));
-};
-
-/** How long the page waits for Cursor's catalog before offering the default alone. */
-const CURSOR_LIST_TIMEOUT_MS = 10_000;
+/** A Grok 4.7 entry's id in the picker: the model, then the effort. Stored on the session as the pick. */
+const grokPickerId = (effort: string) => `grok-4.7:${effort}`;
 
 /**
- * Cursor's list, the mode's default put first when Cursor omits it; the
- * default alone, with the reason, when the list can't be read within `timeoutMs`.
+ * The models Cursor mode offers in New session. Kept by hand: each is a
+ * model Cursor's catalog lists, which is a different set for each account
+ * and moves faster than this list does. A model with settings runs on
+ * Cursor's own defaults for them, except Grok 4.7, whose effort is part of
+ * the pick. Availability still depends on the signed-in account; when Cursor
+ * ships or retires a model, edit this list.
  */
-export async function cursorModelChoices(
-  list: CursorModelList = listCursorModels,
-  timeoutMs: number = CURSOR_LIST_TIMEOUT_MS,
-): Promise<ModelChoices> {
-  const fallback: HarnessModel = { id: CURSOR_DEFAULT_MODEL, label: CURSOR_DEFAULT_MODEL };
-  const base = { defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL };
-  if (cursorIsScripted()) return { ...base, models: [fallback], reason: null };
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const timedOut = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
-    });
-    const models = await Promise.race([list(cursorEnv()), timedOut]);
-    const listed = models.some((model) => model.id === CURSOR_DEFAULT_MODEL);
-    return { ...base, models: listed ? models : [fallback, ...models], reason: null };
-  } catch (error) {
-    return {
-      ...base,
-      models: [fallback],
-      reason: `Cursor's model list can't be read (${error instanceof Error ? error.message : String(error)}), so only Cursor mode's default is offered.`,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+const CURSOR_MODELS: readonly HarnessModel[] = [
+  ...GROK_EFFORTS.map(({ value, label }) => ({ id: grokPickerId(value), label: `Grok 4.7 · ${label}` })),
+  { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
+  { id: "gemini-4-argon", label: "Gemini 4 Argon" },
+  { id: "muse-wonder-1.0", label: "Muse Wonder" },
+  { id: "kimi-k3", label: "Kimi K3" },
+  { id: "glm-5p3", label: "GLM 5.3" },
+  { id: "glm-5p3-flash", label: "GLM 5.3 Flash" },
+  { id: "default", label: "Auto (Cursor picks)" },
+];
+
+/**
+ * What Cursor is handed for a pick: the model and its settings for a Grok 4.7
+ * entry, and the pick itself otherwise (an id Cursor takes as it is, or one
+ * Kitchen Sink doesn't know, which Cursor judges).
+ */
+export function cursorModelSelection(picked: string | undefined): string | CursorModelSelection | undefined {
+  const grok = GROK_EFFORTS.find(({ value }) => grokPickerId(value) === picked);
+  return grok === undefined ? picked : { id: "grok-4.7", params: [{ id: "reasoning_effort", value: grok.value }] };
+}
+
+/** What Cursor mode's New session offers: the list above, Composer 2.5 preselected. */
+export async function cursorModelChoices(): Promise<ModelChoices> {
+  return { models: CURSOR_MODELS, defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
 }
 
 /** How this host signs Cursor in: a key in the run's environment, a stored login, or neither. */

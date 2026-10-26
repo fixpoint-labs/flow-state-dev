@@ -91,7 +91,6 @@ import type { TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
   isTerminalStatus,
-  withMigratedStatus,
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type {
@@ -141,8 +140,6 @@ import {
   settingsChangeKind,
   type TaskSettingsPatch,
   type FilingStamp,
-  parkPatch,
-  unparkPatch,
 } from "./internal";
 import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
@@ -234,13 +231,13 @@ export interface ResourceBackedOptions {
   createdBy?: string;
   /**
    * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
-   * FIX-1780 to `in_progress` and `parked`).
+   * FIX-1780 to `in_progress`).
    *
    * Set by a task board with dispatcher assignees. The assignee is what a
    * dispatched task's routing key derives from, so reassigning a task whose
    * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
    * A pending or blocked task is claimed afresh before it runs, so it can
-   * change hands; a parked one can once `unpark` ends its attempt.
+   * change hands.
    *
    * Only the resource backing carries this, and that is deliberate rather than
    * an omission: a dispatched board is refused at construction unless its backing
@@ -288,10 +285,9 @@ export interface ResourceBackedOptions {
 
 /**
  * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row written before the `parked` rename arrives carrying the
- * legacy status, one written before the wait rename its legacy wait mark, and
- * one in a shape the retired-shape map reads (FIX-2080); all are mapped
- * forward here (see `withMigratedStatus`, `withMigratedWait` and
+ * parsed, so a row written before the wait rename arrives carrying its legacy
+ * wait mark, and one in a shape the retired-shape map reads (FIX-2080); both
+ * are mapped forward here (see `withMigratedWait` and
  * `withRetiredShapes`), before any filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
@@ -301,7 +297,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withRetiredShapes(withMigratedWait(withMigratedStatus(state))) as unknown as Task<TInput, TOutput>;
+  return withRetiredShapes(withMigratedWait(state)) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -554,10 +550,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * wake every idle worker on the board into a full collection scan. The
    * store's own `resource_change` still fires, unchanged.
    *
-   * `quiet` tells the ending recorders a park asks nobody anything
-   * (`awaitReview(..., { quiet: true })`). The ending itself is detected where
-   * every write passes, `applyTransition`, which runs the ledger's recorder in
-   * the same write (FIX-1794 P2).
+   * The ending itself is detected where every write passes,
+   * `applyTransition`, which runs the ledger's recorder in the same write
+   * (FIX-1794 P2).
    */
   async function transitionRef(
     id: string,
@@ -565,8 +560,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus,
-    quiet?: boolean
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -582,7 +576,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       delivery.hooks.filerOf(readTaskState(ref) as Task) === delivery.ownSession;
     const writeRecording: EndingRecording = {
       ...recording,
-      ...(quiet === true ? { quiet } : {}),
       ...(ownCancel ? { ownCancel: true } : {}),
     };
 
@@ -653,14 +646,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   }
 
   /**
-   * Whether a write to `target` may end the row, or make it ready (a retry, an
-   * unpark): either owes the filer's pass. Read off the mirror,
+   * Whether a write to `target` may end the row, or make it ready (a retry):
+   * either owes the filer's pass. Read off the mirror,
    * outside the write, so it errs toward owing: no check of the row's status,
    * which a concurrent writer may have moved. A spare wake costs one pass that
    * finds nothing.
    */
   function mayEnd(_row: Task, target: TaskStatus): boolean {
-    return target === "completed" || target === "errored" || target === "cancelled" || target === "parked" || target === "pending";
+    return target === "completed" || target === "errored" || target === "cancelled" || target === "pending";
   }
 
   /**
@@ -1224,7 +1217,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
               return {
                 feedback: error,
-                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -1262,46 +1254,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // New dependencies have the filing's window (`cancelIfDepEnded`).
       if (settings.deps !== undefined && outcome.outcome === "recorded") await cancelIfDepEnded(id);
       return outcome;
-    },
-
-    async awaitReview(id, feedback, options) {
-      // Writes `feedback` unconditionally, the way `unpark` does: a park with
-      // no reason clears the note, so a failed attempt's text never reads as
-      // why the task is waiting on a person.
-      // A worker's own park is fenced to a running attempt: a row that settled
-      // or re-pended first declines naming what it found, instead of being
-      // parked behind the attempt that already ended it. `ifAllowed` is forced
-      // on that path only, the way `unpark` forces its own fence.
-      const fenced = options?.fromRunning === true;
-      // A park its holder marks `quiet` asks nobody anything: the ending
-      // recorders are told so.
-      return transitionRef(
-        id,
-        "parked",
-        "review_requested",
-        () => parkPatch(feedback, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
-        fenced ? { ...options, ifAllowed: true } : options,
-        fenced ? "in_progress" : undefined,
-        options?.quiet === true
-      );
-    },
-
-    async unpark(id, feedback, options) {
-      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
-      // this may run from, and the check runs inside the atomic write, so a
-      // row a worker is holding, or one somebody already answered, comes back
-      // `declined` naming the status it found — never re-queued. `ifAllowed` is
-      // forced AFTER the spread, the way `cancel` forces it: the fence is the
-      // verb's contract, not an option a caller can switch off, and a terminal
-      // row declines `terminal` instead of throwing.
-      return transitionRef(
-        id,
-        "pending",
-        "resumed",
-        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "parked"
-      );
     },
 
     async steer(id, input) {
@@ -1410,9 +1362,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async setAssignee(id, assignee) {
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
       // task is refused, because its work will never run again. On a dispatched
-      // board a task an attempt holds (`in_progress` or `parked`) is refused
-      // too (FIX-982, narrowed by FIX-1780): its dispatch is keyed by the
-      // assignee it was claimed with, and a parked attempt can still settle.
+      // board a task an attempt holds (`in_progress`) is refused too (FIX-982,
+      // narrowed by FIX-1780): its dispatch is keyed by the assignee it was
+      // claimed with.
       // The check runs inside the write, so a claim that lands first refuses
       // the move rather than racing it.
       const write = () =>
@@ -1434,12 +1386,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // from the updater skips the store's check of that snapshot. Unlike
       // `terminal`, an attempt-held status is one another request moves on,
       // so confirm the decline against the committed row before reporting it.
-      // An answered row's fence lifts when another request claims it, so it
-      // is confirmed against the committed row the same way.
-      if (
-        outcome.outcome === "declined" &&
-        (outcome.reason === "immutable-assignee" || outcome.reason === "awaiting-answer")
-      ) {
+      if (outcome.outcome === "declined" && outcome.reason === "immutable-assignee") {
         const ref = mirror.get(id);
         if (ref !== undefined) {
           await readCommitted(ref, () => undefined);

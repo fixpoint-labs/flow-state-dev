@@ -28,13 +28,6 @@
  * (FIX-981), so "which task do I settle" and "which task may I settle" are one
  * fact and cannot disagree.
  *
- * **Neither recorder writes to a row the worker parked for review** (FIX-1234).
- * A worker that calls `awaitReview()` on its own task has handed that row to a
- * human, and both `parked → completed` and `parked → errored`
- * are legal transitions the ticket fence admits — so without an explicit status
- * read the park did not survive the very next step. See
- * {@link workerParkedItForReview}.
- *
  * **A write that committed and then failed to be announced is reported, not
  * swallowed** (FIX-963). Both backings announce a change as a tail call, after
  * the durable write resolves, so an announcement that throws rejects a call
@@ -49,7 +42,7 @@
  * classify, release sequence lives once, in
  * {@link writeRethrowingIfNothingSaved}, and both recorders call it. Everything
  * that decides how a recorder *leaves* stays written out in that recorder's own
- * body: its no-claim and parked exits, where it stops renewal and clears the
+ * body: its no-claim exit, where it stops renewal and clears the
  * claim (the two recorders do those in different orders), and the tail that
  * emits the report and then raises or defers by site. The error recorder's two
  * containment guards stay two separate statements for the same reason: one is
@@ -132,65 +125,13 @@ import {
  * option the board composes it with. A worker that calls `ctx.suspend()` exits
  * through NEITHER recorder (`SuspensionError` bypasses `.rescue()` by design)
  * and does not abort its signal either, so that third stop is what keeps a
- * parked worker from renewing an `in_progress` row forever. That hook fires on
+ * suspended worker from renewing an `in_progress` row forever. That hook fires on
  * the returned and threw paths too, which is exactly why it must not stop on
  * them: it runs before the recorder that owns the write. The unref'd timer only
  * keeps the runtime from being held open; it does not stop the renewals.
  */
 function stopLeaseRenewal(): void {
   currentLeaseRenewal()?.stop();
-}
-
-/**
- * Did the worker park this row for a human before it left (FIX-1234)?
- *
- * Both recorders ask before they write, and a `true` answer means **write
- * nothing**: the row is not this worker's to settle any more.
- *
- * ## Why the ticket fence does not already cover this
- *
- * Every write below is advisory — `ifAllowed` plus the worker's claim — so the
- * natural assumption is that a row the worker moved out from under itself is
- * refused anyway. It is not. The claim ticket admits a row in `in_progress` *or*
- * `parked` (a parked row is still that attempt's row, which is what
- * lets a worker resume and settle it later), and `parked → completed`
- * and `parked → errored` are both legal transitions. So a worker that
- * called `awaitReview()` on its own task and then returned normally had that
- * task **completed** by the success tap a moment later: the park never survived
- * the step that follows it, `onReview: "exit"` had nothing to excuse, and the
- * HITL surface the substrate documents did not work from inside a worker at all.
- *
- * The status is therefore read explicitly, and it is read on **every** board
- * rather than only on one that declared `onReview: "exit"`. A worker parking its
- * own row is a deliberate, recorded transition on any board; silently undoing it
- * is wrong wherever it happens, and gating the guard on board configuration
- * would leave the same defect standing on the default.
- *
- * ## This read is an optimisation. The guarantee is in the write.
- *
- * An earlier version of this comment claimed the read was "the conservative
- * direction, not a race", on the grounds that a resume landing between the read
- * and the write moves the row to `pending`, which the fence declines anyway.
- * That is true of a **resume** and false of a **park**, and the difference is
- * the whole point: `parked` is in `ATTEMPT_OWNED_STATUSES`, so a
- * concurrent park lands the row in a status this attempt still owns and one that
- * `parked → completed` / `→ errored` can legally leave. Nothing in the
- * fence refused it, so a park arriving in that window was overwritten — the
- * defect this guard exists to stop, reachable through the guard itself.
- *
- * So the refusal now lives in `transitionDeclineReason`, evaluated inside the
- * atomic write against committed state, and returns `parked`. A check that has
- * to win a race can be wrong; a check the write cannot bypass cannot be.
- *
- * What this read still buys is skipping work the substrate would decline —
- * resolving nothing, emitting nothing, and leaving the reason in one place
- * rather than in a discarded verdict. Deleting it would change no outcome.
- */
-function workerParkedItForReview(
-  collection: TaskCollectionRef,
-  taskId: string
-): boolean {
-  return collection.get(taskId)?.status === "parked";
 }
 
 /**
@@ -376,7 +317,7 @@ async function releaseRow(
       collection,
       claim.taskId,
       `task board could not confirm its own write: ${messageOf(err)}`,
-      { ifAllowed: true, claim, refuseWhenParked: true, ...(noRetry ? { noRetry: true } : {}) }
+      { ifAllowed: true, claim, ...(noRetry ? { noRetry: true } : {}) }
     );
   } catch {
     /* see above */
@@ -414,19 +355,6 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         return;
       }
       const collection = await collectionFactory(ctx);
-      if (workerParkedItForReview(collection, claim.taskId)) {
-        // The worker handed this row to a human and then returned. It owes the
-        // substrate no result, so nothing is written — but it IS done with the
-        // row, so the two pieces of bookkeeping below still run. Stopping
-        // renewal here is safe for the reason the block comment above gives:
-        // the rule is "once no further fenced write can follow", and on this
-        // path there is no write at all and no `.rescue()` to come, because the
-        // worker returned normally. Leaving the driver running would renew a
-        // lease on a row the lease has deliberately stopped governing.
-        stopLeaseRenewal();
-        await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
-        return;
-      }
       // FIX-963. This call RETHROWS the write's own error untouched when the
       // write committed nothing, which is the pre-existing path: the body's
       // `.rescue()` then runs `recordError`, whose fenced `fail()` settles the
@@ -446,10 +374,6 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
           advisoryComplete(collection, claim.taskId, output, {
             ifAllowed: true,
             claim,
-            // The guarantee. The status read above can be raced by a park;
-            // this cannot, because it is evaluated inside the same atomic
-            // write.
-            refuseWhenParked: true,
             write,
           }),
       });
@@ -571,52 +495,37 @@ export function createRecordError(options: RecordErrorOptions) {
       try {
         if (claim !== undefined) {
           const collection = await collectionFactory(ctx);
-          // The mirror of the success path (FIX-1234), and it matters more here
-          // than it looks. `fail()` on a parked row does not merely overwrite
-          // the park: on a task carrying `maxAttempts` it RE-PENDS the row for
-          // another attempt, so a worker that parked for a human and then threw
-          // would put that row back in the queue and a sibling worker would run
-          // it — while the human is still being asked. The park is an explicit
-          // decision the worker recorded; a throw afterwards is about the
-          // worker, not about the row.
+          // FIX-963, and this is the half that was worse than the filed one:
+          // before it, nothing caught a throw from this write, so it escaped
+          // the rescue it runs inside, the `forEach` rejected, and every task
+          // that had not started was abandoned.
           //
-          // The error is not swallowed by this: it still reaches `onError`
-          // below, which rethrows on `"fail"` and reports it on `"skip"`.
-          if (!workerParkedItForReview(collection, claim.taskId)) {
-            // FIX-963, and this is the half that was worse than the filed one:
-            // before it, nothing caught a throw from this write, so it escaped
-            // the rescue it runs inside, the `forEach` rejected, and every task
-            // that had not started was abandoned.
-            //
-            // This call still RETHROWS the write's own error untouched when the
-            // write committed nothing — a store that is simply down on a task
-            // the worker still holds has nothing to do with that issue and
-            // keeps reaching the caller. The claim stays set on that path; the
-            // `finally` below still stops renewal.
-            recorderFailure = await writeRethrowingIfNothingSaved({
-              ctx,
-              collection,
-              claim,
-              recorder: "fail",
-              runId: wiring.runId,
-              ...(forGood !== undefined ? { noRetry: true } : {}),
-              attempt: (write) =>
-                forGood === "cancelled"
-                  ? advisoryCancel(collection, claim.taskId, message, {
-                      ifAllowed: true,
-                      claim,
-                      refuseWhenParked: true,
-                      write,
-                    })
-                  : advisoryFail(collection, claim.taskId, message, {
-                      ifAllowed: true,
-                      claim,
-                      refuseWhenParked: true,
-                      write,
-                      ...(forGood === "errored" ? { noRetry: true } : {}),
-                    }),
-            });
-          }
+          // This call still RETHROWS the write's own error untouched when the
+          // write committed nothing — a store that is simply down on a task
+          // the worker still holds has nothing to do with that issue and
+          // keeps reaching the caller. The claim stays set on that path; the
+          // `finally` below still stops renewal.
+          recorderFailure = await writeRethrowingIfNothingSaved({
+            ctx,
+            collection,
+            claim,
+            recorder: "fail",
+            runId: wiring.runId,
+            ...(forGood !== undefined ? { noRetry: true } : {}),
+            attempt: (write) =>
+              forGood === "cancelled"
+                ? advisoryCancel(collection, claim.taskId, message, {
+                    ifAllowed: true,
+                    claim,
+                    write,
+                  })
+                : advisoryFail(collection, claim.taskId, message, {
+                    ifAllowed: true,
+                    claim,
+                    write,
+                    ...(forGood === "errored" ? { noRetry: true } : {}),
+                  }),
+          });
           await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
         }
       } finally {
@@ -689,7 +598,7 @@ export async function settleAtRequestEnd(params: {
     if (params.recorder === "fail") return err instanceof Error ? err : new Error(messageOf(err));
     // Nothing was saved: fail the attempt, the rescue's write.
     try {
-      await advisoryFail(collection, claim.taskId, messageOf(err), { ifAllowed: true, claim, refuseWhenParked: true });
+      await advisoryFail(collection, claim.taskId, messageOf(err), { ifAllowed: true, claim });
       return undefined;
     } catch (failed) {
       return failed instanceof Error ? failed : new Error(messageOf(failed));

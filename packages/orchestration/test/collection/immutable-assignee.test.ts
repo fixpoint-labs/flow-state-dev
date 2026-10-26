@@ -125,37 +125,6 @@ describe("setAssignee on a board that dispatches", () => {
     expect(tasks.get(task.id)?.assignee).toBe("review");
   });
 
-  it("declines a parked task: its attempt can still settle it", async () => {
-    // `parked → completed` is legal for the attempt that parked, so moving the
-    // row would let the old worker settle work now addressed to a new one.
-    const tasks = await board({ immutableAssignee: true });
-    const task = await running(tasks);
-    await tasks.awaitReview(task.id, "which colour?");
-    expect(tasks.get(task.id)?.status).toBe("parked");
-
-    expect(await tasks.setAssignee(task.id, "review")).toEqual({
-      outcome: "declined",
-      reason: "immutable-assignee",
-      status: "parked",
-    });
-    expect(tasks.get(task.id)?.assignee).toBe("implement");
-  });
-
-  it("moves a parked task once unpark ends its attempt, and the old claim can no longer settle it", async () => {
-    const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-    const claimed = await tasks.claim("w1");
-    const oldClaim = ticketForClaim(tasks.collectionId, claimed!);
-    await tasks.awaitReview(task.id, "which colour?");
-
-    await tasks.unpark(task.id);
-    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
-
-    const late = await tasks.complete(task.id, "done", { claim: oldClaim });
-    expect(late).toMatchObject({ outcome: "declined", reason: "lost-claim" });
-    expect(tasks.get(task.id)).toMatchObject({ status: "pending", assignee: "review" });
-  });
-
   it("moves a held task", async () => {
     const tasks = await board({ immutableAssignee: true });
     const task = await tasks.addTask({ goal: "implement", assignee: "implement" });

@@ -128,6 +128,14 @@ export type SdkMessageLike =
       session_id?: string;
       /** On `init`: every MCP server the run connected to, or tried to. */
       mcp_servers?: Array<{ name: string; status?: string }>;
+      /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
+      attempt?: number;
+      max_retries?: number;
+      retry_delay_ms?: number;
+      /** On `task_progress`: what a sub-agent is on. */
+      description?: string;
+      last_tool_name?: string;
+      summary?: string;
     }
   | {
       type: "assistant";

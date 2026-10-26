@@ -38,7 +38,6 @@ import {
   ChevronRightIcon,
   CircleIcon,
   CircleSlashIcon,
-  EyeIcon,
   HelpCircleIcon,
   Loader2Icon,
   PauseCircleIcon,
@@ -93,11 +92,6 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
     icon: PauseCircleIcon,
     iconClassName: "text-warning",
     label: "Held",
-  },
-  parked: {
-    icon: EyeIcon,
-    iconClassName: "bg-attention text-attention-foreground",
-    label: "Parked",
   },
   completed: {
     icon: CheckCircle2Icon,
@@ -280,8 +274,7 @@ export function TaskPlan({
       (entry) =>
         entry.task.status !== "pending" &&
         entry.task.status !== "in_progress" &&
-        entry.task.status !== "held" &&
-        entry.task.status !== "parked"
+        entry.task.status !== "held"
     );
   }, [state.boardMeta.status, state.tasks]);
 
@@ -582,9 +575,7 @@ function TaskPlanRow({
   const showError = task.status === "errored" && task.error !== undefined;
   const showFeedback =
     task.feedback !== undefined &&
-    (task.status === "held" ||
-      task.status === "parked" ||
-      entry.kind === "retried");
+    (task.status === "held" || entry.kind === "retried");
   const deps = formatDeps(task);
 
   const isActive = task.status === "in_progress";

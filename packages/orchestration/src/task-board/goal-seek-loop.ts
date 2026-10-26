@@ -57,8 +57,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
-import { awaitsAnswer } from "./shared";
+import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 import { DRAIN_WITHOUT_SEED } from "./blocks/seed-collection";
@@ -330,20 +329,13 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     );
   }
   // FIX-2076: the judge rules on the board as the drain left it, so every row
-  // must have ended when the drain returns. Two boards' drains can return with
-  // one still running or parked.
+  // must have ended when the drain returns. A delegation board's drain can
+  // return with one still running.
   if (board.mode === "delegation") {
     throw new Error(
       `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", a delegation board: ` +
         `its drain returns while the rows it handed to other sessions still run, so the judge ` +
         `would rule on unfinished work. Loop over a plan board, whose drain waits on every row.`,
-    );
-  }
-  if (board.onReview === "exit") {
-    throw new Error(
-      `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", whose onReview: "exit" ` +
-        `lets its drain return with a row still parked for review, so the judge would rule on ` +
-        `unfinished work. Use the default onReview: "hold".`,
     );
   }
   if (maxIterations > 1 && board.hasIdlessInitialTasks) {
@@ -360,7 +352,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   // ---- Small state-touching helpers (read/patch the loop-owner container) --
 
   // After each drain: does a task still wait on a person's answer (the rows
-  // the drain's exit check excuses, `awaitsAnswer`), or, with none waiting,
+  // the drain's exit check excuses, an open hold), or, with none waiting,
   // owe a turn an answer that landed after the drain stopped earned? Read
   // through the board's own accessor, as the projection below is.
   const noteWaiting = handler({
@@ -371,7 +363,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const rows = ref.list();
-      const waiting = rows.some(awaitsAnswer);
+      const waiting = rows.some((row) => hasOpenHold(row));
       await ctx.sequencer!.patchState({ goalSeekLoopWaiting: waiting, goalSeekLoopOwed: !waiting && rows.some(owesTurn) } as any);
     },
   });

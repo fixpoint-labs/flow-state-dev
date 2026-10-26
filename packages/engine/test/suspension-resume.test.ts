@@ -766,6 +766,48 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumed.output).toEqual({ first: "one", second: "two" });
   });
 
+  it("answers each of one block's unnamed stops with its own resolution", async () => {
+    // Two stops in one block with no ids: answering the first must not answer
+    // the second, which parks until its own answer comes.
+    const twice = handler({
+      name: "twice",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const first = await ctx.suspend!({ reason: "human_approval", message: "first?" });
+        const second = await ctx.suspend!({ reason: "human_approval", message: "second?" });
+        return { first, second };
+      }
+    });
+    const flow = defineFlow({
+      kind: "unnamed-same-block-gates",
+      actions: { run: { block: sequencer({ name: "twiceSeq", durable: true }).step(twice), inputSchema: z.any() } }
+    })({ id: "unnamed-same-block-gates" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    const [first] = await provider.listSuspended({ status: "pending" });
+    await (await resolve(flow, stores, provider, requestId, first!, "approve", "one"));
+    // Parked again, on the second stop: the first's answer did not answer it.
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const [second] = await provider.listSuspended({ status: "pending" });
+    expect(second!.suspensionId).not.toBe(first!.suspensionId);
+    expect(second!.message).toBe("second?");
+
+    const resumed = await (await resolve(flow, stores, provider, requestId, second!, "approve", "two"));
+    expect(resumed.output).toEqual({ first: "one", second: "two" });
+  });
+
   it("continues an interrupted request under its own id, replaying completed blocks (FIX-811 crash recovery)", async () => {
     // Crash recovery re-enters the SAME id with NO resumeContext: completed
     // blocks replay from the durable log (not re-run), the in-flight block

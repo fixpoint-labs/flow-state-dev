@@ -146,8 +146,6 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
-  AwaitReviewOptions,
-  UnparkOptions,
   FailOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,

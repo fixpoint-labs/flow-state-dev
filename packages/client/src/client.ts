@@ -212,7 +212,10 @@ export type ResumeSuspensionBody = {
   action: ResumeAction;
   /** Resume payload validated against the suspension's `resumeSchema`. */
   data?: unknown;
-  /** Who resolved it. */
+  /**
+   * @deprecated Ignored: the server records the signed-in caller (the
+   * request's owner when the app does not authenticate) as who resolved it.
+   */
   resumedBy?: string;
 };
 

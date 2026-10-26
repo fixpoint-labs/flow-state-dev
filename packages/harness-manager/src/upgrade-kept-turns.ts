@@ -12,8 +12,7 @@
  * adds nothing. A turn whose task has finished is left: a finished task takes
  * no steer. A row waiting on its filed work keeps waiting on it: nothing here
  * starts the turn a live steer's sender starts, so the check its filed work
- * wakes when it ends owes the steer its turn. A row parked for the turn reads as pending through
- * orchestration's retired-shape map, so its next attempt takes the steer.
+ * wakes when it ends owes the steer its turn.
  *
  * Which row: a turn is kept under its run's issue and phase; the run record
  * of that issue-phase on a board names the task (`taskId`), and the row is

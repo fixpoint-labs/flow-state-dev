@@ -17,9 +17,10 @@
  * something the row is gated on — see `lib/dispatch-run-links`.
  *
  * A task also carries a short note about itself on `feedback`, and the row's
- * reason slot renders it so a parked row says why without being opened
- * (FIX-1481). The slot is keyed on the field being present, never on the
- * `parked` status, and the note is rendered exactly as stored — see
+ * reason slot renders it so a retried row says why without being opened
+ * (FIX-1481). A task waiting on a person shows what it was asked there
+ * instead (`waitPrompt`): its open question, or its run's stop. The slot is keyed on the field being present, never on a
+ * status, and the note is rendered exactly as stored — see
  * `showReason` in `CollectionCard` for why both of those are load-bearing.
  *
  * Each task is one row that opens in place, like an accordion (FIX-1629). The
@@ -37,6 +38,7 @@ import {
   type CollectionView,
   type ResolvedTask,
   type TaskStreamItem,
+  waitPrompt,
 } from "../../lib/task-collection-state";
 import {
   decodeDispatchRunEntry,
@@ -170,10 +172,9 @@ function CollectionCard({
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
   // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
-  // entirely. Three verbs write `feedback` — parking for review, a failed
-  // attempt heading for a retry, and resuming — and the retry one leaves it on
-  // a row that has gone back to `pending`, so keying this on `parked` would
-  // suppress a true explanation of what the reader is looking at.
+  // entirely. A failed attempt heading for a retry writes `feedback` and
+  // leaves it on a row that has gone back to `pending`, so keying this on a
+  // status would suppress a true explanation of what the reader is looking at.
   //
   // Presence, not truthiness: a stored empty or whitespace note is a note
   // something wrote, and this panel reports what is stored rather than
@@ -182,7 +183,7 @@ function CollectionCard({
   // Per board, so a board where nothing carries a note grows no reason slot —
   // nothing apologising for itself on every row.
   const showReason = collection.tasks.some(
-    (entry) => entry.task.feedback !== undefined
+    (entry) => entry.task.feedback !== undefined || waitPrompt(entry.task) !== undefined
   );
 
   const columns = rowColumns(showReason);
@@ -357,8 +358,8 @@ function TaskRow({
             // stored note of spaces is a fact about the row worth seeing.
             // Clamped to one line; the whole string is on the title and in
             // the open row.
-            <span data-slot="reason" className="min-w-0 truncate text-[13px] text-fs-ink2" title={task.feedback}>
-              {task.feedback ?? <span className="text-fs-ink5">—</span>}
+            <span data-slot="reason" className="min-w-0 truncate text-[13px] text-fs-ink2" title={waitPrompt(task) ?? task.feedback}>
+              {waitPrompt(task) ?? task.feedback ?? <span className="text-fs-ink5">—</span>}
             </span>
           )}
           <span data-slot="assignee" className="min-w-0 truncate font-fs-mono text-[11.5px] text-fs-ink2" title={task.assignee}>
@@ -492,14 +493,13 @@ const FALLBACK_TONE: Tone = { glyph: "border border-dashed border-fs-ink3", text
 
 /**
  * By meaning: running is blueprint, done is green, failed is red, not yet
- * started is a dashed outline. Held, parked and cancelled are notes, not
+ * started is a dashed outline. Held and cancelled are notes, not
  * problems, so they stay in ink.
  */
 const STATUS_TONE: Record<string, Tone> = {
   pending: FALLBACK_TONE,
   in_progress: { glyph: "bg-fs-blue", text: "text-fs-blue" },
   held: { glyph: "border border-fs-ink2", text: "text-fs-ink2" },
-  parked: { glyph: "bg-fs-ink3", text: "text-fs-ink2" },
   completed: { glyph: "bg-fs-green", text: "text-fs-green" },
   errored: { glyph: "bg-fs-red", text: "text-fs-red" },
   cancelled: { glyph: "border border-fs-ink4", text: "text-fs-ink4" },
@@ -518,7 +518,6 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
     ["pending", counts.pending, STATUS_TONE.pending!.glyph],
     ["active", counts.in_progress, STATUS_TONE.in_progress!.glyph],
     ["held", counts.held, STATUS_TONE.held!.glyph],
-    ["parked", counts.parked, STATUS_TONE.parked!.glyph],
     ["done", counts.completed, STATUS_TONE.completed!.glyph],
     ["error", counts.errored, STATUS_TONE.errored!.glyph],
     ["canc", counts.cancelled, STATUS_TONE.cancelled!.glyph],

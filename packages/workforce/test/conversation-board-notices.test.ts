@@ -153,26 +153,28 @@ describe("an attempt that fails", () => {
   });
 });
 
-describe("a task parked on a question (BR-25)", () => {
-  it("gives one parked notice with the question, and a completed one once it's answered and done", async () => {
+describe("a task held on a question (FIX-2131)", () => {
+  it("gives no notice while it waits, and one completed notice once it's answered and done", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const filed = await file(host, "alice", conv, { goal: "pick a region [park:Which region?]", assignee: "eng.tasker" });
+      const goal = "pick a region [ask:Which region?]";
+      const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
       await host.settled();
       await touch(host, "alice", conv);
-      expect(await linesAbout(host, conv, "pick a region [park:Which region?]")).toEqual([
-        expect.stringMatching(/is waiting on a question from eng\.tasker: Which region\?$/)
-      ]);
-      // Answered: back in the queue with its answer, as an answer leaves it.
-      const parked = (await host.row("alice", filing, filed.taskId!))!;
-      const { partition: _p, ...stored } = parked;
-      await host.writeRow("alice", filing, { ...(stored as Task), status: "pending", feedback: "eu" });
+      // Nothing ended: until FIX-2070 the filer is told nothing when its task asks.
+      expect(await linesAbout(host, conv, goal)).toEqual([]);
+      const held = (await host.row("alice", filing, filed.taskId!))!;
+      expect(held.status).toBe("in_progress");
+      const question = held.holds!.find((hold) => hold.source.kind === "row")!;
+      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: question.id, message: "eu" });
+      expect(answered.output).toMatchObject({ ok: true });
+      await host.settled();
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
-      const lines = await linesAbout(host, conv, "pick a region [park:Which region?]");
-      expect(lines).toEqual([expect.stringContaining("is waiting on a question"), expect.stringContaining("completed by eng.tasker")]);
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining("completed by eng.tasker")]);
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", attempts: 1 });
     } finally {
       await host.dispose();
     }

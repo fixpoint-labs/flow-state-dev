@@ -30,7 +30,7 @@ export function taskMessage(task: TaskWorkerInput): string {
 }
 
 /** A task's steers, as its brief shows them, or `undefined` when it has none. */
-export function steersBrief(task: Pick<TaskWorkerInput, "steers">): string | undefined {
+function steersBrief(task: Pick<TaskWorkerInput, "steers">): string | undefined {
   return task.steers === undefined || task.steers.length === 0 ? undefined : renderSteers(task.steers, STEERED_SINCE_FILED);
 }
 

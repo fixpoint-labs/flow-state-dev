@@ -40,8 +40,9 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { Client, FlowHandle } from "@flow-state-dev/client";
+import { isUserSuspension } from "@flow-state-dev/core/types";
 import { deriveSuspensions } from "@flow-state-dev/react";
-import { describeFailure, PERSON_REASONS } from "./reads";
+import { describeFailure } from "./reads";
 
 /**
  * Why a delivered line's request stopped short of finishing: on a user's ask
@@ -154,7 +155,7 @@ async function stopOf(
     ) as { items?: unknown } | undefined;
     if (request === undefined) return null;
     const pending = deriveSuspensions((Array.isArray(request.items) ? request.items : []) as OutputItem[]).pending;
-    candidate = pending.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : pending.length > 0 ? "wait" : null;
+    candidate = pending.some((view) => isUserSuspension(view.item)) ? "ask" : pending.length > 0 ? "wait" : null;
   } catch {
     // Fall through to the recheck with `wait`.
   }

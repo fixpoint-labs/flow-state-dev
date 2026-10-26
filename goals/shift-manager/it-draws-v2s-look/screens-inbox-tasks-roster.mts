@@ -38,7 +38,7 @@ export type StoreScreens = {
   /** Every seat's rows waiting on the person: Roster's task WAITING entries, by id and title. */
   parked: Array<{ id: string; title: string; seatId: string }>;
   onShift: number;
-  /** The WAITING ON YOU entries every seat has: its parked rows and its asks. */
+  /** The WAITING ON YOU entries every seat has: its rows held on a question and its asks. */
   waits: number;
 };
 
@@ -48,10 +48,14 @@ export type StoreScreens = {
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 const DONE = new Set(["completed", "cancelled"]);
 const RUNNING = "in_progress";
-/** `awaiting_review` is the word a row stored before `parked` replaced it. */
-const isParked = (status: string) => status === "parked" || status === "awaiting_review";
-/** Queued is every open row that isn't running or waiting on the person: v2's QUEUED (v2:916). */
-const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && !isParked(status) && status !== "errored";
+/** A row waiting on the person: running, held on a question no steer answers yet (FIX-2131; it was `parked`). */
+const onQuestion = (row: Record<string, any>) => {
+  if (row.status !== RUNNING || !Array.isArray(row.holds)) return false;
+  const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
+  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+};
+/** Queued is every open row that isn't running: v2's QUEUED (v2:916). A row waiting on the person is running, held on its question. */
+const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && status !== "errored";
 
 /**
  * The shape the registry's cards decide an approval by: anything but a
@@ -159,7 +163,7 @@ export async function readScreensStore(
   let onShift = 0;
   let waits = 0;
   for (const seat of seen.seats) {
-    const held = seen.rows.filter((r) => isParked(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name));
+    const held = seen.rows.filter((r) => onQuestion(r) && (r.assignee === seat.id || r.assignee === seat.name));
     parked.push(...held.map((r) => ({ id: String(r.id), title: String(r.title ?? ""), seatId: seat.id })));
     const asked = asks.filter((a) => a.seatId === seat.id).length;
     waits += held.length + asked;
@@ -379,7 +383,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
     }
     const drawnTasks: string[] = [];
     for (const wait of texts.rosterWaits ?? []) {
-      // Both lines come from the store: an ask's kind and message, a parked row's id and title.
+      // Both lines come from the store: an ask's kind and message, a held row's id and title.
       let want: [string, string] | null = null;
       if (wait.data.kind === "ask") {
         const ask = store.asks.find((a) => a.suspensionId === wait.data.id);
@@ -390,7 +394,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
         if (row !== undefined) want = [`you · ${row.id}`, row.title];
       }
       if (want === null) {
-        fail("content", `Roster lists ${wait.data.kind === "ask" ? "an ask" : "a task"} ${wait.data.id} waiting on the person, and the store holds no such ${wait.data.kind === "ask" ? "pending ask" : "parked row"} (audit R6)`);
+        fail("content", `Roster lists ${wait.data.kind === "ask" ? "an ask" : "a task"} ${wait.data.id} waiting on the person, and the store holds no such ${wait.data.kind === "ask" ? "pending ask" : "row held on a question"} (audit R6)`);
         continue;
       }
       if (wait.parts["roster-wait-tag"] !== "WAITING" || wait.parts["roster-wait-what"] !== want[0] || wait.parts["roster-wait-when"] !== want[1]) {
@@ -399,7 +403,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
     }
     const parkedIds = store.parked.map((r) => r.id).sort();
     if (texts.rosterWaits !== undefined && JSON.stringify(drawnTasks.sort()) !== JSON.stringify(parkedIds)) {
-      fail("content", `Roster's waiting tasks are ${list(drawnTasks)}, the store's parked rows are ${list(parkedIds)} (audit R6)`);
+      fail("content", `Roster's waiting tasks are ${list(drawnTasks)}, the store's rows held on a question are ${list(parkedIds)} (audit R6)`);
     }
   }
 }

@@ -29,6 +29,8 @@ import {
   taskWorkerInputSchema,
 } from "../../src/task-board";
 import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/skills/steer-context";
+import { createAskQuestion, createWaitForUserTool } from "../../src/skills/task-tools-capability";
+import { runForTest } from "@flow-state-dev/testing";
 import {
   createResourceBackedTaskCollection,
   filedWorkHolds,
@@ -883,5 +885,101 @@ describe("a task's background error fails its attempt", () => {
     expect(row).toMatchObject({ status: "pending", attempts: 1 });
     expect(row?.feedback).toContain("the notice broke");
     expect(row?.feedback).not.toContain("the notice's write failed");
+  });
+});
+
+/**
+ * The model's two ways to wait on a person from a task turn (FIX-2131):
+ * `askQuestion` holds the task, `waitForUser` suspends its run for an
+ * approval or a review, and a turn opens one of them, never both. The tools
+ * run inside the gate's real request, so their claim is the gate's.
+ */
+describe("a task turn's model waits on a person one way per turn (FIX-2131)", () => {
+  const tools = (ledger: TaskCollectionRef) => ({
+    question: createAskQuestion({ resolve: async () => ledger }).tool,
+    wait: createWaitForUserTool({ resolve: async () => ledger }).tool,
+  });
+
+  it("askQuestion holds the task on the question: the turn ends unsettled, and the answer owes one more turn on the same attempt", async () => {
+    const h = await harness();
+    const said: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      said.push(await runForTest(tools(ledger).question, { question: "Which region?" }, ctx));
+      return "what I have so far";
+    });
+    await h.run();
+    expect(said).toEqual([{ ok: true, taskId: "t1", questionId: expect.any(String) }]);
+    const held = (await h.row())!;
+    expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(held.leaseUntil).toBeUndefined();
+    expect(openHolds(held).map((hold) => hold.ask)).toEqual([{ kind: "question", prompt: "Which region?" }]);
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+
+    await (await h.ledger()).answer!("t1", { hold: openHolds(held)[0]!.id, message: "EU", from: "user", by: "u1" });
+    h.setBehaviour(async () => "the EU answer");
+    const turn = (await h.reclaim())!;
+    expect(turn).toMatchObject({ attempts: 1 });
+    await h.run(turn);
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: "the EU answer" });
+  });
+
+  it("waitForUser refuses input on a task turn, naming askQuestion, and writes nothing", async () => {
+    const h = await harness();
+    const said: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      said.push(await runForTest(tools(ledger).wait, { kind: "input", prompt: "Which region?" }, ctx));
+      return "done without asking";
+    });
+    await h.run();
+    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^input_is_a_question: .*askQuestion/) }]);
+    const row = (await h.row())!;
+    expect(row.holds ?? []).toEqual([]);
+    expect(row).toMatchObject({ status: "completed", output: "done without asking" });
+  });
+
+  it("askQuestion and waitForUser in one step: the question, first, holds; the review is refused naming it, and the row has one source of holds", async () => {
+    const h = await harness();
+    const said: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      const { question, wait } = tools(ledger);
+      const settled = await Promise.allSettled([
+        runForTest(question, { question: "Which region?" }, ctx),
+        runForTest(wait, { kind: "review", prompt: "Does this draft read right?" }, ctx),
+      ]);
+      said.push(...settled.map((s) => (s.status === "fulfilled" ? s.value : String(s.reason))));
+      return "partial";
+    });
+    await h.run();
+    expect(said).toEqual([
+      { ok: true, taskId: "t1", questionId: expect.any(String) },
+      { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*askQuestion/) },
+    ]);
+    const row = (await h.row())!;
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+  });
+
+  it("waitForUser and askQuestion in one step: the review, first, suspends the run; the question is refused naming it, and no question is kept", async () => {
+    const h = await harness();
+    const said: unknown[] = [];
+    h.setBehaviour(async (ctx, ledger) => {
+      const { question, wait } = tools(ledger);
+      const settled = await Promise.allSettled([
+        runForTest(wait, { kind: "review", prompt: "Does this draft read right?" }, ctx),
+        runForTest(question, { question: "Which region?" }, ctx),
+      ]);
+      said.push(settled[1]!.status === "fulfilled" ? settled[1]!.value : settled[1]!.reason);
+      if (settled[0]!.status === "rejected") throw settled[0]!.reason;
+      return settled[0]!.value;
+    });
+    const first = await h.run();
+    expect(said).toEqual([{ ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*waitForUser/) }]);
+    const row = (await h.row())!;
+    expect(openHolds(row).map((hold) => [hold.source.kind, hold.ask.kind])).toEqual([["suspension", "review"]]);
+
+    // The review's verdict resumes the block on its attempt, which settles with it.
+    await h.resume(first.requestId!, "looks right");
+    const done = (await h.row())!;
+    expect(done).toMatchObject({ status: "completed", attempts: 1 });
+    expect(done.output).toEqual({ ok: true, kind: "review", answered: true, answer: "looks right" });
   });
 });

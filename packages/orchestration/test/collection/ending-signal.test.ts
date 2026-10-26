@@ -94,10 +94,9 @@ describe("the choke point both backings write through", () => {
       },
     };
     applyTransition(waitedRow(), { status: "pending", feedback: "boom" }, NOW, recording);
-    applyTransition(waitedRow(), { status: "parked", feedback: "which one?" }, NOW, recording);
     applyTransition(waitedRow(), { priority: 3 }, NOW, recording);
     applyTransition(waitedRow({ status: "errored" }), { status: "errored" }, NOW, recording);
-    expect(kinds).toEqual(["retried", "parked"]);
+    expect(kinds).toEqual(["retried"]);
   });
 });
 

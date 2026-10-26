@@ -83,7 +83,7 @@ export interface ThreadView {
 }
 
 /** A task's status, as the task tools name it. */
-export type TaskStatus = "pending" | "in_progress" | "held" | "parked" | "completed" | "errored" | "cancelled";
+export type TaskStatus = "pending" | "in_progress" | "held" | "completed" | "errored" | "cancelled";
 
 /** One background task, as a `listTasks` row carries it. */
 export interface TaskRow {
@@ -94,7 +94,7 @@ export interface TaskRow {
   assignee?: string;
   /** The worker's last one-line progress note. */
   statusNote?: string;
-  /** What the task waits on you for, while it is held or parked: a question, or its review. */
+  /** What the task waits on you for: a question it holds on, or its run's stop for your approval or review. */
   waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
   /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
   harness?: string;

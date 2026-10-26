@@ -1317,15 +1317,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
-      // An answer re-queues the row assigned and pending, which is its start
-      // owed, in the unpark's own write (FIX-1817); then it starts the board,
-      // as a filing does. A lost wake leaves the row startable for the next touch.
-      async unpark(id, feedback, unparkOptions) {
-        await owePass(ctx);
-        const outcome = await ref.unpark(id, feedback, unparkOptions);
-        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
-        return outcome;
-      },
       async patchMetadata(id, patch) {
         return ref.patchMetadata(id, callerMetadata(patch) ?? {});
       }
@@ -1538,7 +1529,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               await plan.refresh?.(id);
             }
           }),
-      unpark: byRow("unpark") as TaskCollectionRef["unpark"],
       // A question is answered on the ledger holding its row (FIX-2133).
       ...(board.answer === undefined ? {} : { answer: byRow("answer") as NonNullable<TaskCollectionRef["answer"]> }),
       ...(board.ask === undefined ? {} : { ask: byRow("ask") as NonNullable<TaskCollectionRef["ask"]> }),

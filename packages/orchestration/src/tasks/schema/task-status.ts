@@ -13,20 +13,12 @@ export const taskStatusSchema = z.enum([
   "pending",
   "in_progress",
   "held",
-  "parked",
   "completed",
   "errored",
   "cancelled",
 ]);
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
-
-/**
- * The member `parked` replaced (FIX-1245). Rows persisted before that change
- * still carry it, so it stays readable — as a value on the way in, never one a
- * caller may write.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
 
 /**
  * The member `held` replaced (FIX-2080 D1). A row stored before then still
@@ -49,42 +41,22 @@ const LEGACY_BLOCKED_STATUS = "blocked";
  * The mapping is a **fixed point**, which is what makes it safe to use on a
  * persisted schema at all: `assertStableResourceState` re-parses any value a
  * schema rewrote and rejects the write if the second parse moves it again.
- * Parsing `parked` yields `parked`, so the second parse is a no-op; the same
- * holds for `blocked`, which reads as `held` (FIX-2080).
+ * Parsing `blocked` yields `held`, and `held` parses as itself, so the second
+ * parse is a no-op (FIX-2080).
  *
  * This covers the parse paths only. A **task collection instance is never
  * parsed on read** — the engine skips collection configs when it normalizes
  * scope resources, and both backings cast the stored row — so the durable
- * board is covered by {@link withMigratedStatus} instead. The two together
- * are the dual read.
+ * board is covered by the retired-shape map (`./retired-shapes`) instead.
+ * The two together are the dual read.
  *
  * Use this wherever a stored row is decoded. Use {@link taskStatusSchema} for
  * everything a caller writes or a type is derived from.
  */
 export const persistedTaskStatusSchema = z.preprocess(
-  (value) =>
-    value === LEGACY_PARKED_STATUS ? "parked" : value === LEGACY_BLOCKED_STATUS ? "held" : value,
+  (value) => (value === LEGACY_BLOCKED_STATUS ? "held" : value),
   taskStatusSchema
 );
-
-/**
- * The same mapping for a stored row that is **cast rather than parsed**.
- *
- * A task collection instance never reaches {@link persistedTaskStatusSchema}:
- * the engine skips collection configs when it normalizes scope resources and
- * copies their instances through verbatim, and both backings' read helpers
- * cast the stored row straight to `Task`. So the schema above covers the parse
- * paths (`taskSchema` as a block's input schema, the delegation board field)
- * and this covers the durable board — the two together are the dual read.
- *
- * Call it at the read boundary, once, so every consumer downstream — the
- * transition guard, `count`, drain, park-exit, the UI — sees one vocabulary.
- * A row already at `parked` is returned as-is, so the common path allocates
- * nothing.
- */
-export function withMigratedStatus<T extends { status?: unknown }>(row: T): T {
-  return row.status === LEGACY_PARKED_STATUS ? { ...row, status: "parked" } : row;
-}
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "errored", "cancelled"]);
 
@@ -100,9 +72,8 @@ export function isTerminalStatus(status: TaskStatus): boolean {
  */
 const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
   pending: ["in_progress", "held", "cancelled"],
-  in_progress: ["completed", "errored", "parked", "pending", "cancelled"],
+  in_progress: ["completed", "errored", "pending", "cancelled"],
   held: ["pending", "cancelled"],
-  parked: ["pending", "completed", "cancelled", "errored"],
   completed: [],
   errored: [],
   cancelled: [],

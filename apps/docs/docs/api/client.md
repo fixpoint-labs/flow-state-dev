@@ -126,9 +126,10 @@ await fsd.flow("chat").request("req_1").resume({
   suspensionId: "susp_abc",
   action: "approve",        // "approve" | "reject" | "submit" | "skip"
   data: { approved: true }, // payload for submit/approve; ctx.suspend() returns it
-  resumedBy: "user_xyz",    // optional; stored on the audit record
 });
 ```
+
+The server records the signed-in caller as who resumed it. When the app doesn't authenticate, that's the request's owner.
 
 `submit` carries a payload in `data` that the server validates against the suspension's `resumeSchema`. `skip` declines an optional step and carries no payload. `approve` and `reject` are the binary outcomes. An `action` outside those four rejects with status `0` before sending.
 

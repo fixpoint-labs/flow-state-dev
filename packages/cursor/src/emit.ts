@@ -6,14 +6,17 @@
  * the shape `codex/emit.ts` established and the item contract in
  * `docs/architecture/items.md` describes.
  *
- * Thinner than the Claude Code emitter by three whole concerns, and the reason
- * is the wire rather than a scope cut: `run.stream()` yields WHOLE messages, so
- * there are no content deltas to coalesce; a subagent's work arrives through the
- * parent's own `task` tool call rather than as a nested run, so there are no
- * containers to nest; and Cursor's per-token deltas ride a separate `onDelta`
- * callback this package does not consume, so there is no open streaming item to
- * close at a run boundary. What remains is the open/settle pair for tool calls,
- * which is the only correlation this stream has.
+ * Thinner than the Claude Code emitter, and the reason is the wire rather than
+ * a scope cut: a subagent's work arrives through the parent's own `task` tool
+ * call rather than as a nested run, so there are no containers to nest.
+ *
+ * Text is the one thing that needs state. `run.stream()` delivers an answer, and
+ * the thinking before it, as a run of small `assistant` / `thinking` messages,
+ * a few tokens each. One item per message would draw one row per token, so
+ * consecutive chunks of one kind stream into ONE open item as content deltas.
+ * It closes when the kind changes, when a tool call, a note or an error comes
+ * between, or when the run ends. The other correlation is the open/settle pair
+ * for tool calls.
  */
 import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
 import type { TranslatedEvent } from "./types";
@@ -27,8 +30,9 @@ interface EmitProvenance {
 }
 
 /**
- * Emission bookkeeping for one run: the `tool_output` items opened by a call
- * and awaiting their result, and the run's last assistant text.
+ * Emission bookkeeping for one run: the message or reasoning item still taking
+ * chunks, the `tool_output` items opened by a call and awaiting their result,
+ * and the run's last assistant text.
  *
  * An open tool keeps the `itemIndex` it was added with. `getItemCount()`
  * counts items by id, and settling an item the stream already has does not
@@ -43,17 +47,22 @@ interface EmitProvenance {
  * reads, or inventing a consumer to justify writing it.
  */
 export interface EmitState {
+  /**
+   * The message or reasoning item still taking chunks, or `null`. `item` is the
+   * in-progress item as added, so closing it keeps every field it was born with.
+   */
+  openText: { kind: "message" | "reasoning"; item: Record<string, unknown> & { id: string }; text: string } | null;
   readonly openTools: Map<
     string,
     { id: string; itemIndex: number; name: string; arguments: string }
   >;
-  /** The last completed assistant message — the run's `finalMessage`. */
+  /** The last completed assistant message, all its chunks — the run's `finalMessage`. */
   finalMessage: string | null;
 }
 
 /** Create a fresh {@link EmitState} for one run. */
 export function createEmitState(): EmitState {
-  return { openTools: new Map(), finalMessage: null };
+  return { openText: null, openTools: new Map(), finalMessage: null };
 }
 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
@@ -116,6 +125,16 @@ export async function emitTranslatedEvent(
   blockName: string,
 ): Promise<void> {
   const provenance = deriveProvenance(ctx, blockName);
+  // Anything that is part of the stream but not text ends the text before it.
+  // Facts about the run (usage, model, plan) are not in the stream's order.
+  if (
+    event.kind === "tool_call" ||
+    event.kind === "tool_result" ||
+    event.kind === "status" ||
+    event.kind === "error"
+  ) {
+    await closeOpenText(ctx, state);
+  }
   switch (event.kind) {
     case "message":
       return emitText(event.text, "message", ctx, state, provenance);
@@ -139,10 +158,20 @@ export async function emitTranslatedEvent(
   }
 }
 
+/** The item's body for `text`: a message's `content`, a reasoning item's `summary`. */
+function textBody(kind: "message" | "reasoning", text: string) {
+  return kind === "message"
+    ? { role: "assistant" as const, content: [{ type: "output_text" as const, text }] }
+    : { summary: [{ type: "reasoning_text" as const, text }] };
+}
+
+const partTypeOf = (kind: "message" | "reasoning") => (kind === "message" ? ("output_text" as const) : ("reasoning_text" as const));
+
 /**
- * Emit a complete message or reasoning item: added(in_progress) → content.added
- * → content.done → item.done(completed). Cursor carries whole messages, so
- * there is never a partially-accumulated one to reconcile with.
+ * Stream one chunk of a message or reasoning item. The first chunk of a kind
+ * opens the item (added(in_progress) → content.added); each chunk is a
+ * content.delta. {@link closeOpenText} finishes it. A chunk of the other kind
+ * closes the open item first.
  */
 async function emitText(
   text: string,
@@ -151,37 +180,60 @@ async function emitText(
   state: EmitState,
   provenance: EmitProvenance,
 ): Promise<void> {
-  const base = buildBase(ctx, provenance, kind === "message" ? "msg" : "reason");
-  const partType = kind === "message" ? ("output_text" as const) : ("reasoning_text" as const);
-  const body = (partText: string) =>
-    kind === "message"
-      ? { role: "assistant" as const, content: [{ type: partType, text: partText }] }
-      : { summary: [{ type: partType, text: partText }] };
-  const inProgress = {
-    ...base,
-    type: kind,
-    status: "in_progress" as const,
-    itemVisibility: CONVERSATIONAL_VISIBILITY,
-    ...body(""),
-  };
-  await ctx.response.emit({ type: "item.added", item: inProgress });
+  if (state.openText !== null && state.openText.kind !== kind) await closeOpenText(ctx, state);
+  if (state.openText === null) {
+    const base = buildBase(ctx, provenance, kind === "message" ? "msg" : "reason");
+    const item = {
+      ...base,
+      type: kind,
+      status: "in_progress" as const,
+      itemVisibility: CONVERSATIONAL_VISIBILITY,
+      ...textBody(kind, ""),
+    };
+    await ctx.response.emit({ type: "item.added", item });
+    await ctx.response.emit({
+      type: "content.added",
+      itemId: base.id,
+      contentIndex: 0,
+      content: { type: partTypeOf(kind), text: "" },
+    });
+    state.openText = { kind, item, text: "" };
+  }
+  state.openText.text += text;
   await ctx.response.emit({
-    type: "content.added",
-    itemId: base.id,
+    type: "content.delta",
+    itemId: state.openText.item.id,
     contentIndex: 0,
-    content: { type: partType, text: "" },
+    delta: text,
   });
+}
+
+/**
+ * Finish the message or reasoning item still taking chunks, if there is one:
+ * content.done → item.done. A message that completed is the run's
+ * `finalMessage`; one cut short (`incomplete`) is kept as far as it got and is
+ * not.
+ */
+export async function closeOpenText(
+  ctx: BlockContext,
+  state: EmitState,
+  status: "completed" | "incomplete" = "completed",
+): Promise<void> {
+  const open = state.openText;
+  if (open === null) return;
+  // Before the awaits, so a second close can't finish it twice.
+  state.openText = null;
   await ctx.response.emit({
     type: "content.done",
-    itemId: base.id,
+    itemId: open.item.id,
     contentIndex: 0,
-    content: { type: partType, text },
+    content: { type: partTypeOf(open.kind), text: open.text },
   });
   await ctx.response.emit({
     type: "item.done",
-    item: { ...inProgress, status: "completed", ...body(text) },
+    item: { ...open.item, status, ...textBody(open.kind, open.text) } as never,
   });
-  if (kind === "message") state.finalMessage = text;
+  if (open.kind === "message" && status === "completed") state.finalMessage = open.text;
 }
 
 /** Open a `tool_output` item on a tool call. */
@@ -288,6 +340,7 @@ export async function finalizeOpenItems(
   blockName: string,
 ): Promise<void> {
   const provenance = deriveProvenance(ctx, blockName);
+  await closeOpenText(ctx, state, "incomplete");
   for (const [callId, open] of state.openTools) {
     await ctx.response.emit({
       type: "item.done",

@@ -46,26 +46,8 @@
  * `counts.in_progress` is exactly the number of rows still running elsewhere —
  * there is no other kind of remaining row left for it to count.
  *
- * ## Why the park reason is carried in rather than derived here
- *
- * This block runs *after* the worker pool finishes and it reads the collection
- * fresh. A resume landing in that window turns the parked row back into a
- * `pending` one, so a reason inferred from the rows at this moment cannot see
- * why the drain stopped — it would report a board that exited successfully for
- * review as a failure. So the causal verdict is recorded where it is decided,
- * in `checkBoard`, and travels here on the worker loop's own output.
- *
- * That path is the drain's dataflow, not a shared bag: each worker's final
- * `checkBoard` output is an element of the `forEach` result, which is the value
- * this block's `.tap` receives. It is therefore scoped to this drain
- * *invocation* by construction — two drains of the same board, even inside one
- * request, each read their own pool's outputs and cannot see the other's. A
- * verdict parked on the board's flow-state bag would not have that property:
- * that object is allocated once per board *definition*, so one drain's teardown
- * would clear the other's mid-run.
- *
- * The `counts`, by contrast, stay a final snapshot. They are descriptive, and a
- * caller reading them wants the board's actual last state.
+ * The `counts` are a final snapshot. They are descriptive, and a caller
+ * reading them wants the board's actual last state.
  *
  * The retry reason is read from a persisted DENIAL MARKER on the tasks,
  * never inferred from `counts.retries === maxTotalRetries` — that
@@ -74,17 +56,6 @@
  * fails normally, leaving the count exactly at the limit with an errored
  * task on the board and no retry ever denied. A termination reason that
  * can lie is worse than no new reason at all.
- *
- * ## Why a question gets a reason of its own
- *
- * A row held on an open question or confirm (filed with `questions`, or asked
- * midway) is not claimable until a person answers, so a drain that runs out of
- * other work stops on it. Before `"awaiting-answer"` that stop fell to a
- * failure rung: a filed row is `pending` and reached the last rung, and a row
- * that asked midway has dropped its lease, so the going-nowhere closure read it
- * as abandoned. Nothing had failed. It is the same defect dispatch and parking
- * each had, facing a third way a board waits, so it is the same fix: a reason
- * that names the state.
  *
  * The emitted item is keyed by `collectionId`, so the latest state
  * replaces the previous one in the client UI — `active` then
@@ -95,7 +66,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { awaitsAnswer, isDispatched, waitsOnAnswer, type RunsElsewhere } from "../shared";
+import { heldOnPerson, isDispatched, waitsOnPerson, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
@@ -144,93 +115,19 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
 }
 
 /**
- * Is any remaining row going nowhere — stuck on dependencies that answering
- * every review would not satisfy (FIX-1234)?
+ * Is any remaining row going nowhere — stuck on dependencies that no running
+ * work will satisfy (FIX-1234)?
  *
- * This is the question that keeps a review gate from masking an unrelated
- * stall. A parked row moves when a person acts; a dispatched row is moving
- * elsewhere right now; a `pending` row waiting on a task that will never
- * complete is moving nowhere at all, and that is the fact an operator needs
- * even when a review also happens to be outstanding.
+ * A dispatched row is moving elsewhere right now; a `pending` row waiting on a
+ * task that will never complete is moving nowhere at all, and that is the fact
+ * an operator needs.
  *
- * **A reachability closure, not a one-level check**, and the difference is
- * load-bearing. `A` depends on the parked row and `B` depends on `A`: answering
- * the review releases both, so neither is going nowhere. A one-level test —
- * "would this row be claimable if the parked rows completed?" — sees `B`'s
- * dependency unsatisfied and would report a stall on a board that only needs an
- * answer. So the seed set is everything that will resolve on its own (already
- * completed, parked and therefore answerable, or handed to a child session) and
- * the loop closes over the rows those release.
- *
- * **The condition is causal, not positional, and that distinction is the whole
- * design.** "Is anything here stuck?" is the cheap question and it is the wrong
- * one: a `pending` row that depends on the parked row is stuck by that measure,
- * and answering the review releases it. Reporting a stall there would be wrong
- * on the *expected* shape rather than a corner — §6 decision 3 refuses
- * `onIdle: "complete"` precisely because a parked task's dependent is the
- * normal case. So the question asked is "would resuming the parked work unstick
- * this?", and only a row the answer cannot reach is reported.
- *
- * **Two routes were available and this takes the more expensive one.**
- * Establishing downstream-ness costs this closure; declining to establish it
- * and keeping `blocked-by-failures` whenever causality is unproven costs
- * nothing but misreports every dependent of a parked row — the common shape.
- * The cost objection that ruled a dependency walk out once does not transfer:
- * §6 decision 3 rejected one in the **exit predicate**, which `boardQuiescence`
- * evaluates on every idle-wait fan-out event, the hottest read the board has.
- * This runs once, after the pool has finished, at the same position where the
- * board's dependents cascade (a failed or cancelled row's ending) already
- * walks the graph transitively. Same walk, three orders of magnitude fewer evaluations.
- *
- * **Why not "the park was the sole cause".**
- * The tempting shape for rung 5 is a guard asking whether anything
- * *other than the park* contributed to the exit. It was considered and
- * rejected, and rung 4 exists because of what it got wrong: on a board
- * with a parked row **and** a dispatched row, the dispatch exclusion
- * also contributed, so under a sole-cause rule the reason falls
- * through to `dispatched` and the operator loses the one fact they
- * need. Rung 4 asks a different question — is anything here going
- * nowhere? — and dispatched work is going somewhere, so it is not
- * caught. That is the whole distinction: `parked-for-review` must keep
- * beating `dispatched`, and must not beat a row that will never run.
- *
- * **Three routes to a park verdict standing beside a row this closure did not
- * flag, and they do not have the same answer.** The empty `deps` list is
- * vacuously true, so any row admitted to the expansion loop joins `willResolve`
- * whatever it is waiting for. Whether that matters depends on how the row got
- * there:
- *
- * 1. **An unrelated *ready* `pending` row — unreachable.** Such a row stops the
- *    park verdict from being issued at all. `classifyBoard` carries
- *    `excusedParked: true` out of exactly two returns and a ready row defeats
- *    both: `"drained"` needs `inFlight.waiting === 0`, and `countWaitable`
- *    counts a `pending` row that is neither dispatched nor parked; `"blocked"`
- *    needs `!hasClaimableTask`, and `isClaimable` reduces to `depsSatisfied`
- *    for a `pending` row (there is deliberately no attempts arm), which is
- *    vacuously true here. The classifier answers `continue`, carrying
- *    `excusedParked: false`. An exhausted `maxIterations` cannot manufacture
- *    one either: the cap trips on whatever the last classification returned,
- *    and that was the `continue`.
- * 2. **A row added *after* the pool's last classification — real, and the
- *    reason correctly stays `parked-for-review`.** The excusal was decided
- *    honestly, when nothing else was waitable; the collection moved afterwards.
- *    The late row is not something this drain declined to run, and reporting
- *    `blocked-by-failures` would announce a failure on a board where nothing
- *    failed and the new row is perfectly runnable — the same defect class this
- *    rung exists to remove, since that is how dispatch used to report its own
- *    success as a terminal failure. "Another drain is required" is not evidence
- *    against the reason; it is what the reason means.
- * 3. **A row whose lease lapsed after that classification — real, and it is
- *    what the lease check in the seed handles.** A dispatched row with a live
- *    lease is excused by `countWaitable`, so the drain can exit `drained` with
- *    a park verdict while that row is still in flight. If the lease then lapses
- *    before this block takes its own `collection.now()`, the row is abandoned
- *    rather than in flight, and answering the review does not recover it — a
- *    lease reclaim on a later drain does. Here `parked-for-review` genuinely
- *    would be wrong, and the ladder already agrees: with no review outstanding,
- *    `allRemainingDispatched` re-reads the lease, finds it lapsed, and falls
- *    through to `blocked-by-failures`. Seeding on the lease rather than on
- *    `in_progress` is what keeps the park rung from masking that.
+ * **A reachability closure, not a one-level check**: the seed set is
+ * everything that will resolve on its own (already completed, or worked right
+ * now under a live lease) and the loop closes over the `pending` rows those
+ * release, so a dependent of a dependent of running work is not called stuck.
+ * It runs once, after the pool has finished, never on the exit predicate's
+ * hot path.
  */
 function hasRowGoingNowhere(
   all: readonly Task[],
@@ -238,8 +135,8 @@ function hasRowGoingNowhere(
   now: number
 ): boolean {
   // Seed: rows this board's dependency graph is not what resolves. Either they
-  // are already done, or a person owes an answer on them (a review, or a
-  // question asked midway), or somebody is working them right now.
+  // are already done, or a running row waits on a person, or somebody is
+  // working them right now.
   //
   // **The last of those is a lease question, not a status or routing one**, and
   // that is the whole correctness of this seed. `in_progress` alone would seed
@@ -254,12 +151,11 @@ function hasRowGoingNowhere(
   for (const task of all) {
     if (
       task.status === "completed" ||
-      task.status === "parked" ||
       // A row that asked midway dropped its lease, so the lease test below
       // would call it abandoned; the answer owes it a turn, so it is not.
       // Only the running one: a `pending` row filed on questions still needs
       // its deps once answered, so it enters through the expansion below.
-      awaitsAnswer(task) ||
+      waitsOnPerson(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -291,58 +187,6 @@ function hasRowGoingNowhere(
 }
 
 /**
- * Did this drain's worker pool stop because rows parked for a human were
- * excused from the board's waitable count (FIX-1234)?
- *
- * **This answers about the pool, not about the board, and the ladder pairs it
- * with a check on the board.** A carried verdict is a statement about a moment
- * that has passed: the pool decided, and the collection kept moving. It can
- * therefore be *stale* — a resume landing before the pool finishes, on a board
- * whose other workers then stop for their own reasons, leaves this reading
- * `true` with nothing parked any more.
- *
- * Rung 5 requires `counts.parked > 0` alongside it for that reason, and
- * the shape of that guard is deliberate. Three separate attempts were made to
- * enumerate the routes by which this verdict can go stale, and each turned up
- * another one. `"parked-for-review"` names a state, so the cheap and complete
- * check is whether the board is in it — a check that cannot be wrong about the
- * thing it names beats one that has to be right about how it got there.
- *
- * The verdict is still necessary: the counts alone cannot tell a board that
- * stopped *because* of a review from one that merely happens to have a parked
- * row while stopping for another reason. Verdict says why, counts say whether;
- * the reason needs both.
- *
- * `input` is the value the completion tap receives, which in the composed board
- * is the `forEach` result — one final `checkBoard` output per worker loop. Any
- * one worker deciding it stopped for that reason is enough: workers exit
- * independently, and the ladder above is what keeps a *stale* park claim from
- * mattering (a resumed row that then completed reaches rung 2, an errored one
- * rung 3, both before the park rung is consulted).
- *
- * Written defensively, and permissively, rather than by declaring an
- * `inputSchema` on the block: this block is exported and constructed directly
- * by callers outside the composed drain, so an input that is anything else has
- * to mean "no park verdict was carried", not a validation failure. The
- * end-to-end board tests are what hold the wiring, since a rewiring that broke
- * the carry would change the reported reason.
- */
-function excusedParkedByPool(input: unknown): boolean {
-  if (!Array.isArray(input)) return false;
-  // A property check rather than a cast: this input crosses no schema boundary
-  // (the block declares `inputSchema: z.unknown()` so callers outside the
-  // composed drain keep working), so asserting the shape with `as` would be
-  // claiming a guarantee nothing checked.
-  return input.some(
-    (exit) =>
-      typeof exit === "object" &&
-      exit !== null &&
-      "excusedParked" in exit &&
-      (exit as { excusedParked?: unknown }).excusedParked === true
-  );
-}
-
-/**
  * Emit `{ status: "completed", terminationReason, counts }` after the forEach
  * drains. The counts snapshot the final lifecycle distribution so a renderer can
  * display "5 completed, 1 errored" without re-walking the per-task event stream.
@@ -358,11 +202,9 @@ function excusedParkedByPool(input: unknown): boolean {
  *   establish that a refusal happened.
  * - `"dispatched"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
- * - `"parked-for-review"` — the board stopped because the work it has left is
- *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
- *   reports it; `counts.parked` is how many.
- * - `"awaiting-answer"` — the board stopped because the work it has left is
- *   waiting on a person's answer to a question or confirm (FIX-2214).
+ * - `"waiting-on-a-person"` — the board stopped because the work it has left
+ *   waits on a person: a question, a confirm, or a run's stop for a review or
+ *   approval (FIX-2214). The same words `goalSeekLoop` ends a pass with.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -374,22 +216,10 @@ function excusedParkedByPool(input: unknown): boolean {
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. the exit decision excused rows as parked, **and a row is still parked** →
- *    `parked-for-review`. The verdict comes from this drain's own pool, never
- *    from the rows as they stand now — but the reason names a state, so it is
- *    also checked against that state: a board with nothing in `parked`
- *    never reports it, whatever the pool carried.
- * 6. any remaining row waits on an answer → `awaiting-answer`. Rung 4 already
- *    vouches for the other rows.
- * 7. every remaining row is dispatched → `dispatched`.
- * 8. otherwise → `blocked-by-failures`.
- *
- * **On a board with no parked row the reason is exactly what it was before
- * FIX-1234.** Rung 5 is unreachable without a parked row — checkable by looking
- * at `counts.parked`, not by reasoning about how the verdict got here —
- * and rung 4 fires only where rung 8 already reported `blocked-by-failures` by
- * another route. Likewise a board with no open question reports what it did
- * before FIX-2214: rung 6 needs one, and so does the seed rung 4 gained.
+ * 5. any remaining row waits on a person → `waiting-on-a-person`. Rung 4
+ *    already vouches for the other rows.
+ * 6. every remaining row is dispatched → `dispatched`.
+ * 7. otherwise → `blocked-by-failures`.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -408,7 +238,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
     // auto-emitted block_output trace is redundant noise.
     transient: true,
     inputSchema: z.unknown(),
-    execute: async (input, ctx) => {
+    execute: async (_input, ctx) => {
       const collection = await collectionFactory(ctx);
       const all = collection.list();
       const counts = {
@@ -417,7 +247,6 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         errored: collection.count({ status: "errored" }),
         cancelled: collection.count({ status: "cancelled" }),
         held: collection.count({ status: "held" }),
-        parked: collection.count({ status: "parked" }),
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
         /** Failure retries this board authorized (FIX-948). */
@@ -439,7 +268,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         remaining.length > 0 &&
         remaining.every((task) => isDispatched(task, now, runsElsewhere));
       // Rung 3: a row that is stuck for a reason of its own. `held` joins the
-      // two failure statuses here so an unrelated review gate cannot mask it.
+      // two failure statuses here.
       const anyRemainingStuck = remaining.some(
         (task) =>
           task.status === "errored" ||
@@ -451,8 +280,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "blocked-by-failures"
         | "retry-budget-exhausted"
         | "dispatched"
-        | "parked-for-review"
-        | "awaiting-answer" = anyRetryDeniedByBudget(all)
+        | "waiting-on-a-person" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -460,13 +288,11 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : excusedParkedByPool(input) && counts.parked > 0
-                ? "parked-for-review"
-                : remaining.some(waitsOnAnswer)
-                  ? "awaiting-answer"
-                  : allRemainingDispatched
-                    ? "dispatched"
-                    : "blocked-by-failures";
+              : remaining.some(heldOnPerson)
+                ? "waiting-on-a-person"
+                : allRemainingDispatched
+                  ? "dispatched"
+                  : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },

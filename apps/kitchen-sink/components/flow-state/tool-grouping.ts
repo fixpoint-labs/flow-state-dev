@@ -119,24 +119,6 @@ export function composeToolGroupLabel(toolNames: string[]): string {
   return capitalizeFirst(joinClauses(clauses));
 }
 
-/** A `description` on any other tool can be a payload, not an intent. */
-export const TOOL_INTENT_ARG: Record<string, string> = {
-  Bash: "description",
-  bash: "description",
-  Task: "description",
-  Agent: "description",
-};
-
-/** Trimmed allowlisted intent, or undefined when the call left it empty. */
-export function toolIntent(toolName: string, args: unknown): string | undefined {
-  const key = TOOL_INTENT_ARG[toolName];
-  if (key === undefined || args === null || typeof args !== "object") return undefined;
-  const value = (args as Record<string, unknown>)[key];
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 /** One call, as the label composer sees it. */
 export type ToolCallLabelInput = { name: string; intent?: string };
 

@@ -125,6 +125,7 @@ export {
   ItemsRenderer,
   buildItemRenderStream,
   type BuildItemRenderStreamOptions,
+  type ActivityItem,
   type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";

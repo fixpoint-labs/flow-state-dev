@@ -516,26 +516,17 @@ await runGoal(async (failures, tell) => {
       await h.writeRow(partition, { ...base, id: recorded, goal: word("stored recorded"), status: "pending", undispatched: true });
       // On since FIX-2083: a post row reads as a routed task, its status as stored.
       await h.writeRow(partition, { ...base, id: `post-${RUN_STAMP}`, goal: word("stored post"), status: "completed", sealed: { kind: "post" } });
-      await h.writeRow(partition, { ...base, id: `split-${RUN_STAMP}`, goal: word("stored split"), status: "parked", metadata: { splitInto: { session: "s", flow: "doer" } } });
-      // On since FIX-2086: a row parked for a person's turn goes back to the queue, uncharged.
-      const turned = `turn-${RUN_STAMP}`;
-      await h.writeRow(partition, { ...base, id: turned, goal: word("stored turn park"), status: "parked", parkedForTurn: true });
+      // A stored `parked` row (a split, or a row parked for a person's turn) is
+      // not written here: FIX-2131 retired the status with stores reset, so no
+      // store holds one to read.
       for (let i = 0; i < 3; i += 1) await h.act(conversation, "listTasks_tasks", {});
       await h.idle();
       const listed = new Map(((await h.act(conversation, "listTasks_tasks", {})).tasks as Array<{ id: string; status: string }>).map((t) => [t.id, t.status]));
       for (const id of [blocked, recorded]) {
         if (listed.get(id) !== "held" || proofsOf(id).length !== 0) failures.push(`e:a retired not-started row reads as held — ${id} reads ${listed.get(id)}, ran ${proofsOf(id).length} time(s)`);
       }
-      // A stored post keeps its status; a stored split reads as running since FIX-2077 turned its entry on.
-      for (const [id, stored] of [[`post-${RUN_STAMP}`, "completed"], [`split-${RUN_STAMP}`, "in_progress"]] as const) {
-        if (listed.get(id) !== stored) failures.push(`e:a stored post keeps its status and a stored split runs — ${id} reads ${listed.get(id)}, stored ${stored}`);
-      }
-      // A turn-parked row is queued again, so a touch starts it; the attempt it gets is not charged.
-      const turnRow = await h.byId(turned);
-      const charged = (turnRow?.attempts ?? 0) - ((turnRow as { turnReentries?: number } | undefined)?.turnReentries ?? 0);
-      if (turnRow?.status !== "completed" || proofsOf(turned).length !== 1 || charged !== 0) {
-        failures.push(`e:a turn-parked row goes back to the queue, uncharged — ${turned} is ${turnRow?.status} after ${proofsOf(turned).length} run(s), ${charged} attempt(s) charged`);
-      }
+      // A stored post keeps its status.
+      if (listed.get(`post-${RUN_STAMP}`) !== "completed") failures.push(`e:a stored post keeps its status — post-${RUN_STAMP} reads ${listed.get(`post-${RUN_STAMP}`)}`);
       for (const id of [blocked, recorded]) await h.act(conversation, "updateTask_tasks", { id, status: "pending" });
       await h.idle();
       for (const id of [blocked, recorded]) {

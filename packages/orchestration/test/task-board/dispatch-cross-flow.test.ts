@@ -30,8 +30,9 @@ import {
   type Task,
   type TaskDispatcher,
   type TaskWorkerInput,
+  openRowHolds,
 } from "../../src/tasks";
-import { taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
+import { askMidway, taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 import { currentLeaseRenewal } from "../../src/tasks/lease-renewal-scope";
 import { heard } from "../fixtures/heard";
 
@@ -341,8 +342,9 @@ function agentWorker() {
       }
       if (step === "slow") await sleep(MIN_LEASE_DURATION_MS * 2);
       if (step === "park") {
-        // The worker parks its row in the partition that filed it, which is
-        // never the one this (child) session's own context would name.
+        // The worker holds its row on a question in the partition that filed
+        // it, which is never the one this (child) session's own context would
+        // name.
         const tasks = await getOrCreateTaskCollection({
           ctx,
           backing: "resource",
@@ -350,7 +352,8 @@ function agentWorker() {
           collection: resolveResourceCollection(ctx, PARTITION_LEDGER)!,
           partition: parkIn.get(input.taskId),
         });
-        await tasks.awaitReview(input.taskId, "needs a person");
+        const asked = await askMidway(ctx, tasks, [{ prompt: "needs a person" }]);
+        if (!asked.ok) throw new Error(`the question was refused: ${asked.reason}`);
       }
       return { handled: input.taskId };
     },
@@ -596,17 +599,21 @@ describe("a ledger kept per conversation, handed to a task session", () => {
     }
   }, 20_000);
 
-  it("V2 · a cross-flow task session parks its row in the named partition", async () => {
+  it("V2 · a cross-flow task session holds its row on a question in the named partition", async () => {
     const h = await bootPartitioned();
     try {
       scripts.set("ask", () => "park");
       parkIn.set("ask", "conv_a#0");
       await h.act(ALICE, "conv_a", "file", { id: "ask" });
       await h.drained(ALICE, "conv_a");
-      await until(async () => (await h.row(ALICE, "conv_a#0", "ask"))?.status === "parked", "the park");
-      // The recorders leave a parked row parked.
+      const held = async () => {
+        const row = await h.row(ALICE, "conv_a#0", "ask");
+        return row !== undefined && row.status === "in_progress" && openRowHolds(row).length === 1;
+      };
+      await until(held, "the question");
+      // The request's end leaves a held row held: nothing settles it.
       await sleep(100);
-      expect((await h.row(ALICE, "conv_a#0", "ask"))?.status).toBe("parked");
+      expect(await held()).toBe(true);
     } finally {
       await h.state.dispose();
     }

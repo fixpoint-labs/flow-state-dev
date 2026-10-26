@@ -40,7 +40,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `holds` | `TaskHold[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run is parked on. See [holding a task on questions](#holding-a-task-on-questions). |
+| `holds` | `TaskHold[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [holding a task on questions](#holding-a-task-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -63,17 +63,13 @@ A task moves through a fixed set of statuses, and the substrate enforces the tra
 pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
          │                ├─→ pending           (reclaim, after a stale lease)
-         │                ├─→ cancelled
-         │                └─→ parked ─┬─→ completed
-         │                            ├─→ errored
-         │                            ├─→ pending    (unpark)
-         │                            └─→ cancelled
+         │                └─→ cancelled
          ├─→ held ─┬─→ pending                  (release)
          │         └─→ cancelled
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every status write treats it as final, and its output never changes. Its labels, priority and metadata still take a write ([below](#what-a-write-reports)). To correct or extend finished work, file a follow-up task (`followUpOf`); see [Task board](./task-board.md#which-session-a-task-runs-in). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `held`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every status write treats it as final, and its output never changes. Its labels, priority and metadata still take a write ([below](#what-a-write-reports)). To correct or extend finished work, file a follow-up task (`followUpOf`); see [Task board](./task-board.md#which-session-a-task-runs-in). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, and `held` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
 
 Any other move not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -92,7 +88,7 @@ import {
 
 isTerminalStatus("completed"); // true
 isTransitionAllowed("pending", "completed"); // false — must go through in_progress
-allowedTransitionsFrom("in_progress"); // ["completed", "errored", "parked", "pending", "cancelled"]
+allowedTransitionsFrom("in_progress"); // ["completed", "errored", "pending", "cancelled"]
 ```
 
 ### Soft fail vs hard fail
@@ -114,13 +110,13 @@ A task can also wait on a person's answers. Its `holds` list what it waits on, e
 There are two kinds, told apart by `source.kind`:
 
 - **A question or a confirm** (`"row"`). File the task with `addTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
-- **A stop its run is parked on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
+- **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
 
 `answer(id, { hold, message, from })` answers one question. The answer is kept on the task as a message carrying the hold's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
 
 A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payHoldDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
-A held task settles only by a cancel, which closes every hold. A turn waits once: it can't ask questions while its run is parked on a stop, and its run can't stop for a person while its own questions are open.
+A task with open holds settles only by a cancel, which closes every hold; an answer closes its own hold and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
 ### Changing a filing before it starts
 
@@ -158,7 +154,7 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 The mutation surface:
 
 - **Create** — `addTask`, `addTasks`.
-- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `awaitReview` / `unpark`, `cancel`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
+- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `cancel`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
 - **Mutate** — `patchSettings` (until the task starts), `steer` / `takeSteers` (until the task finishes; [below](#messages-on-an-open-task)), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
 
@@ -212,7 +208,7 @@ export const seedResearchPlan = handler({
 
 ### Recording a result that may no longer apply
 
-Every lifecycle method that moves a task's status — `complete`, `fail`, `awaitReview`, `unpark`, `cancel` — takes an optional trailing options argument. The options argument exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded. `hold` and `release` take no options argument. Like `patchSettings`, they only apply to a task that hasn't started.
+Every lifecycle method that moves a task's status — `complete`, `fail`, `cancel` — takes an optional trailing options argument. The options argument exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded. `hold` and `release` take no options argument. Like `patchSettings`, they only apply to a task that hasn't started.
 
 Passing options makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
 
@@ -232,29 +228,16 @@ await tasks.complete(task.id, output, {
 
 `ifAllowed` asks whether the task can take this write right now. It declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded, and when the state machine has no transition from the task's current status to the one the call targets.
 
-`refuseWhenParked` is a third guard, for the caller reporting the result of its own run. It declines with reason `parked` when the task is sitting in `parked`, and it is worth having because nothing else refuses that write: `parked` is a status your attempt still owns, and both `parked → completed` and `parked → errored` are legal moves. So a worker that parked the task it was holding and then finished would settle it a moment later and erase the review — and if the task carries `maxAttempts`, a failure would re-queue it for another worker while the person is still being asked. Pass it on `complete` and `fail` when the work you are reporting is your own:
-
-```ts
-await tasks.complete(task.id, output, {
-  ifAllowed: true,
-  claim,
-  refuseWhenParked: true, // a review I asked for outranks my result
-});
-```
-
-It is opt-in because settling a parked task is otherwise legitimate: a review that comes back rejected is recorded as `fail`, and a coordinator ending one calls `complete` or `cancel` with no claim at all. Neither passes this, and neither changes.
-
 A legal status transition is necessary but not sufficient. A verb that owns a single edge runs only from that edge's source status, so a call can be refused where the [status diagram](#the-status-state-machine) shows a line. The paths back to `pending` each have their own verb:
 
 | Returning a task to `pending` from | Call |
 |------------------------------------|------|
 | `held` | `release(id)` |
-| `parked` | `unpark(id, feedback?)` |
 | `in_progress`, once its lease has expired | `reclaim()` |
 
 A finished task (`completed`, `errored` or `cancelled`) has no path back.
 
-`release` on a task that isn't held reports `unchanged` and writes nothing. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way. `unpark` runs on a parked task and refuses every other status whether or not you pass options: `{ outcome: "declined", reason: "disallowed", status }` for a live task, `reason: "terminal"` for a settled one, and nothing written either way. A task that has already been answered is `pending`, so a second answer is refused and the first stands. To re-queue and run the answered task in one request, use the board's `unparkAndDrain` step; see [Task board](./task-board.md#picking-it-back-up).
+`release` on a task that isn't held reports `unchanged` and writes nothing. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved.
 
 #### Messages on an open task
 
@@ -273,7 +256,7 @@ Messages are appended in order on the task's `steers`. Each one records the atte
 
 `complete` with `refuseUntakenSteers: true` declines, reason `untaken-steers`, while the task holds a message its attempt hasn't taken. It is decided inside the write, so a message that lands after your own read of the row still holds the task open. Pass it only where something then gives the message a turn, as a task board's end check does.
 
-`claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `parked`). Two refusals come out of it, and they mean different things:
+`claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress`). Two refusals come out of it, and they mean different things:
 
 - The ticket names a different task, a different board, or an id that has since been reused for a new task: `not-my-task`. Nothing about the target's state can make that write legal.
 - The ticket names the right task but a claim that has moved on, or an `in_progress` task whose lease has run out: `lost-claim`. Somebody else holds it now, or is entitled to.
@@ -288,9 +271,9 @@ While a task is `in_progress`, your writes are good for as long as you hold the 
 
 One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it: `{ outcome: "declined", reason: "lost-claim" }` if another claimant has meanwhile taken the task, and `{ outcome: "recorded" }` if nobody has, which means the task is yours again for the deadline you just wrote. Pass `committedLeaseSpan(task)` past `now()` as that deadline, so the task keeps the lease length its claim was granted. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
 
-The lease answers one question: is a live worker on this right now? A task in `parked` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: an `unpark` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
+The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [hold](#holding-a-task-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
 
-With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` and `unpark` are the exceptions and need nothing: `cancel` runs the terminal check whether you pass options or not, and `unpark` refuses anything not parked (see above).
+With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing: it runs the terminal check whether you pass options or not.
 
 
 ### What a write reports
@@ -303,7 +286,6 @@ type TaskWriteDeclineReason =
   | "terminal"
   | "not-my-task"
   | "disallowed"
-  | "parked"
   | "lost-claim";
 
 type TaskWriteOutcome =
@@ -314,18 +296,17 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
-- `immutable-assignee` — the board dispatches work to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or held task can still be reassigned; `unpark` a parked one first.
+- `immutable-assignee` — the board dispatches work to a dispatch run, and an attempt still holds the task (*in progress*, one waiting on a person included): the run was addressed by its assignee. A pending or held task can still be reassigned.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
-- `parked` — you passed `refuseWhenParked` and the task is sitting in `parked`. This is not a lost claim: nobody took the task from you, and a person is deciding what happens to it. The two ask for opposite responses, which is why they are separate reasons — `lost-claim` means re-claim the task and redo the work, `parked` means do neither, because the work is done.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed or re-queued while you were working on it, or its lease ran out while it was still `in_progress`.
 - `started` — a `hold` or a `patchSettings` on a task that has already started. What a task was filed with is fixed once it runs.
 - `held` — the task has an open [hold](#holding-a-task-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a held task.
 - `answered` — an `answer` with other words, or from another sender, for a question already answered.
 - `no-such-hold` — an `answer` naming no question or confirm on the task.
 
-When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `parked`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
+When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
 A decline is a value, not an error. Nothing throws, nothing is written, and discarding the return value compiles:
 
@@ -341,7 +322,7 @@ if (outcome.outcome === "declined") {
 }
 ```
 
-`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. `unpark` behaves the same way: it declines on anything not parked. The remaining lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
+`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. The remaining lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to a terminal task, which is how a post-drain audit labels what went wrong, so those four answer only `recorded` or `unchanged`. `patchMetadata` merges the patch rather than comparing it, so it answers `recorded` even for a patch that changes nothing.
 
@@ -408,7 +389,7 @@ Surface `undefined` as its own condition instead of guessing. It means the task 
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
-**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail`, `awaitReview`, `unpark` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
@@ -512,7 +493,7 @@ A `resource`-backed board is the one two things can reach at the same time, so i
 
 This is not exactly-once dispatch. A lease that runs out sends the task back to the queue, whether its worker crashed or only stalled, so the work can run twice. Only one attempt can *record* a result: a ticketed write from a worker that no longer holds the task is refused. Side effects the losing worker already caused stand. If running the work twice is expensive, make it idempotent.
 
-**A ticket, not a promise.** A worker's write is checked against the ticket it presents, not against who it says it is. Present no ticket and no ownership check runs — which is what a coordinator wants when it settles, cancels, or parks a task on its own board, having never claimed anything. The check is opt-in at the call, and the substrate has no notion of "coordinator" to test against.
+**A ticket, not a promise.** A worker's write is checked against the ticket it presents, not against who it says it is. Present no ticket and no ownership check runs — which is what a coordinator wants when it settles or cancels a task on its own board, having never claimed anything. The check is opt-in at the call, and the substrate has no notion of "coordinator" to test against.
 
 **The limit.** The guarantee covers concurrent executions inside one process. Every store backend satisfies that. Two separate OS processes over a filesystem-backed store do not: comparison there happens under an in-process lock, so each process compares against its own view. Use SQLite or Postgres for a board two processes share.
 

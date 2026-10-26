@@ -155,7 +155,6 @@ function buildScenario() {
         eligibility: (task) => task.id === "parked",
       });
       observed.claimedByActor = claimed === null ? null : claimed.id;
-      await tasks.awaitReview("parked", "needs a human");
 
       await tasks.cancel("unreachable", "its dep is never released");
 
@@ -163,7 +162,8 @@ function buildScenario() {
       // A correctly sleeping worker is still parked when this elapses.
       await delay(150);
       observed.drainDoneBeforeResume = drain.done;
-      await tasks.unpark("parked");
+      // Taken back from the actor, as a lapsed lease would be: back in the queue.
+      await tasks.reclaim(Date.now() + 10 * 60_000);
     },
   });
 

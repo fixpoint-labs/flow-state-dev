@@ -43,7 +43,7 @@ import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
-import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isUserSuspension, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
@@ -61,7 +61,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { PERSON_REASONS, readPendingSuspensions } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { readPendingSuspensions } from "../../../packages/shift-manager/src/lib/reads.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -496,7 +496,7 @@ const clients = () => connect({ baseUrl: "http://goal", userId: USER });
 /** The Inbox's pending read of a task session: Shift Manager's own, filtered as its Inbox filters it. */
 async function pendingIn(sessionId: string | undefined) {
   if (sessionId === undefined) return [];
-  return (await readPendingSuspensions(clients(), sessionId)).filter((view) => PERSON_REASONS.has(view.item.reason));
+  return (await readPendingSuspensions(clients(), sessionId)).filter((view) => isUserSuspension(view.item));
 }
 /** Answer a task's pending stop as a screen does, as `as` (the user by default). What the route said. */
 /** The stop each task was last answered at, so a second answer names the same one. */

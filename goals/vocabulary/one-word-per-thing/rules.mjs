@@ -157,6 +157,20 @@ export const KEEP = [
     why: "a task's holds (FIX-2133): a hold's `ask` and the midway ask that opens one, a question to the user"
   },
   {
+    path: /^(packages\/(orchestration|workforce)\/(src|test)\/|apps\/docs\/(docs|guides)\/|packages\/(orchestration|workforce)\/README\.md$)/,
+    // The worker's question tool and the one-wait-per-turn rule's names only: a question to the user.
+    line: /\b(askQuestion|createAskQuestion|turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
+    rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
+    why: "FIX-2131: the worker's `askQuestion`, a question to the user that holds its task, and the turn-asked fact it is refused on"
+  },
+  {
+    path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/task-collections-reason\.test\.tsx)$/,
+    // The DevTool's wire mirror of a hold's `ask` only, and the reason slot reading its prompt.
+    line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
+    rules: ["ask-mark"],
+    why: "FIX-2131: the DevTool's mirror of a task's holds (FIX-2133's TaskHold), whose `ask` is what the user was asked"
+  },
+  {
     path: /^packages\/harness-manager\//,
     line: /question|marker|inbox/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
