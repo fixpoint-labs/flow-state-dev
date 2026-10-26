@@ -123,8 +123,9 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * an operator needs.
  *
  * **A reachability closure, not a one-level check**: the seed set is
- * everything that will resolve on its own (already completed, or worked right
- * now under a live lease) and the loop closes over the `pending` rows those
+ * everything that will resolve on its own (already completed, worked right
+ * now under a live lease, or running and waiting on a person's answer) and the
+ * loop closes over the `pending` rows those
  * release, so a dependent of a dependent of running work is not called stuck.
  * It runs once, after the pool has finished, never on the exit predicate's
  * hot path.
