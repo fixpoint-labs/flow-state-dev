@@ -136,8 +136,9 @@ export interface MovedBack {
    */
   kept?: string;
   /**
-   * The commit the host made of what was uncommitted, on `from` (or `kept`),
-   * before switching. Only on `"switched"` from a tree with changes.
+   * The last commit the host made of what was uncommitted, on `from` (or
+   * `kept`), before switching: one for what was staged, then one for the
+   * rest. Only on `"switched"` from a tree with changes.
    */
   saved?: string;
 }
@@ -391,8 +392,12 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
    * committed onto the branch the checkout is on, by the host's identity, so
    * the switch moves only files that are committed somewhere named.
    *
+   * Staged changes are saved as they stand before the tree is, and the
+   * caller's ignored directory is never part of a save.
+   *
    * Refused, unchanged: a half-done git operation, whose HEAD is git's scratch
-   * state, and the run's branch checked out in another worktree.
+   * state; the run's branch checked out in another worktree; and a switch
+   * that would overwrite a file ignored on the branch the run left.
    */
   async function moveBack(on: string | null): Promise<MovedBack> {
     const found = on === null ? "a detached HEAD" : `branch "${on}"`;
@@ -441,34 +446,36 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
     const dirty = (await git(checkout, ["status", "--porcelain", "--untracked-files=all"], left())) !== "";
     let kept: string | undefined;
     if (on === null && (dirty || (await git(repo, ["for-each-ref", "--contains", commit, "--format=%(refname)", "refs/heads/"], left())) === "")) {
-      kept = `${branch}-detached-${commit.slice(0, 12)}`;
-      // Create only: an all-zero old value fails if the name is taken.
-      await git(checkout, ["update-ref", `refs/heads/${kept}`, commit, "0".repeat(commit.length)], left());
+      kept = await keepDetached(commit);
       await git(checkout, ["symbolic-ref", "HEAD", `refs/heads/${kept}`], left());
     }
     let saved: string | undefined;
     if (dirty) {
       const onto = on ?? kept!;
-      await git(checkout, ["add", "--all"], left());
-      await git(
-        checkout,
-        [
-          ...SAVED_WORK_IDENTITY,
-          "commit",
-          "--quiet",
-          "--no-verify",
-          "-m",
-          `WIP: uncommitted work saved by the workspace host`,
-          "-m",
-          `The checkout was left on "${onto}" with these changes uncommitted, off the run's branch ` +
-            `"${branch}". They were committed here so the host could check "${branch}" back out ` +
-            `without losing them. Reset this commit (git reset HEAD~1) to have them uncommitted again.`,
-        ],
-        left(),
-      );
-      saved = await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"], left());
+      // The caller's own files stay out of the save: the branch the run left
+      // may not ignore their directory the way the run's branch does.
+      const outside = request.ignored === undefined ? [] : [`:(exclude)${request.ignored.dir}`];
+      if (outside.length > 0) await git(checkout, ["reset", "--quiet", "--", request.ignored!.dir], left());
+      // **The index first, as it stands**, then the tree on top: a file staged
+      // and then deleted lives only in the index, and staging the tree would
+      // drop it before any commit held it.
+      if (await hasStaged()) saved = await saveCommit("staged", onto);
+      await git(checkout, ["add", "--all", "--", ".", ...outside], left());
+      if (await hasStaged()) saved = await saveCommit("unstaged", onto);
     }
-    await git(checkout, ["checkout", "--quiet", branch, "--"], left());
+    // An ignored file on this branch can be a tracked one on the run's, and
+    // git's default is to overwrite it. Refused instead, after the saves
+    // above, so the next hand-back finds a clean tree and says the same.
+    try {
+      await git(checkout, ["checkout", "--quiet", "--no-overwrite-ignore", branch, "--"], left());
+    } catch (err) {
+      if ((err as Error).message?.startsWith("provisioning exceeded its budget")) throw err;
+      refuse(
+        `checking "${branch}" out would overwrite files that are ignored here (${firstLine(err) ?? "git refused"})`,
+        `Move those files aside, or delete them if they are not needed, in ${checkout}; the next turn then ` +
+          `moves it back.${saved !== undefined ? ` Its uncommitted changes are already committed on "${on ?? kept}".` : ""}`,
+      );
+    }
     return {
       from: on,
       commit: tip,
@@ -476,6 +483,68 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       ...(kept !== undefined ? { kept } : {}),
       ...(saved !== undefined ? { saved } : {}),
     };
+  }
+
+  /** Whether the index differs from HEAD in the checkout. */
+  async function hasStaged(): Promise<boolean> {
+    try {
+      await git(checkout, ["diff", "--cached", "--quiet"], left());
+      return false;
+    } catch (err) {
+      if (gitAnsweredNo(err)) return true;
+      throw err;
+    }
+  }
+
+  /** Commit the index as the host, saying why; returns the commit. */
+  async function saveCommit(what: "staged" | "unstaged", onto: string): Promise<string> {
+    await git(
+      checkout,
+      [
+        ...SAVED_WORK_IDENTITY,
+        "commit",
+        "--quiet",
+        "--no-verify",
+        "-m",
+        `WIP: ${what} changes saved by the workspace host`,
+        "-m",
+        `The checkout was left on "${onto}" with these changes ${what}, off the run's branch ` +
+          `"${branch}". They were committed here so the host could check "${branch}" back out ` +
+          `without losing them. \`git reset HEAD~1\` undoes this commit and leaves them uncommitted.`,
+      ],
+      left(),
+    );
+    return await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"], left());
+  }
+
+  /**
+   * A new branch at `commit` for a detached HEAD's work, never one that exists:
+   * an earlier hand-back's kept branch may hold a save of its own.
+   */
+  async function keepDetached(commit: string): Promise<string> {
+    const base = `${branch}-detached-${commit.slice(0, 12)}`;
+    for (let n = 1; ; n += 1) {
+      const name = n === 1 ? base : `${base}-${n}`;
+      try {
+        // Create only: an all-zero old value fails when the name is taken.
+        await git(checkout, ["update-ref", `refs/heads/${name}`, commit, "0".repeat(commit.length)], left());
+        return name;
+      } catch (err) {
+        if ((err as Error).message?.startsWith("provisioning exceeded its budget")) throw err;
+        if (!(await refExists(`refs/heads/${name}`))) throw err;
+      }
+    }
+  }
+
+  /** Whether `ref` exists in the repository; a probe that failed is raised. */
+  async function refExists(ref: string): Promise<boolean> {
+    try {
+      await git(repo, ["show-ref", "--verify", "--quiet", ref], left());
+      return true;
+    } catch (err) {
+      if (gitAnsweredNo(err)) return false;
+      throw err;
+    }
   }
 
   /** `true` when `ancestor` is reachable from `commit`; a probe that failed is raised. */

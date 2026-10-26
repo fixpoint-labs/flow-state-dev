@@ -6,7 +6,7 @@
  * that matter most are about processes: a refused remote starts none, and a
  * retry starts no fetch.
  */
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
@@ -425,6 +425,81 @@ describe("a run that switched its checkout's branch is moved back, not stranded"
     expect(again.repo?.movedBack).toMatchObject({ from: null, how: "switched", kept });
     expect(git(again.cwd, "rev-parse", kept)).toBe(detached);
     expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+  });
+
+  it("saves a file that lives only in the index, staged and then deleted, before switching", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    git(first.cwd, "checkout", "-q", "-b", "split/a", "HEAD~1");
+    writeFileSync(join(first.cwd, "staged-only.txt"), "only in the index");
+    git(first.cwd, "add", "staged-only.txt");
+    rmSync(join(first.cwd, "staged-only.txt"));
+
+    const again = await provision(h);
+
+    expect(again.repo?.movedBack).toMatchObject({ from: "split/a", how: "switched" });
+    expect(git(again.cwd, "show", "split/a^:staged-only.txt")).toBe("only in the index");
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+  });
+
+  it("leaves the caller's own files out of the save, though the side branch doesn't ignore them", async () => {
+    remote.commit("main", ".gitignore", ".fsdev\n");
+    const ignored = { dir: ".fsdev", rule: ".fsdev", why: "the caller's questions are written there" };
+    const h = host();
+    const place = () => h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1", ignored });
+    const first = await place();
+    git(first.cwd, "checkout", "-q", "-b", "old", "HEAD~1");
+    mkdirSync(join(first.cwd, ".fsdev"));
+    writeFileSync(join(first.cwd, ".fsdev", "question.md"), "the caller's");
+    writeFileSync(join(first.cwd, "marker.txt"), "the run's edit");
+
+    const again = await place();
+
+    const saved = again.repo!.movedBack!.saved!;
+    expect(git(again.cwd, "show", "--name-only", "--format=", saved)).toBe("marker.txt");
+    expect(readFileSync(join(again.cwd, ".fsdev", "question.md"), "utf8")).toBe("the caller's");
+    expect(git(again.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+  });
+
+  it("refuses, unchanged, a switch that would overwrite a file ignored on the side branch", async () => {
+    // Git's default overwrites an ignored file that the target branch tracks.
+    const h = host();
+    const first = await provision(h);
+    writeFileSync(join(first.cwd, "notes.txt"), "committed on the run's branch");
+    git(first.cwd, "add", "notes.txt");
+    git(first.cwd, "commit", "-q", "-m", "notes");
+    git(first.cwd, "checkout", "-q", "-b", "side", "HEAD~1");
+    writeFileSync(join(first.cwd, ".gitignore"), "notes.txt\n");
+    git(first.cwd, "add", ".gitignore");
+    git(first.cwd, "commit", "-q", "-m", "ignore notes");
+    writeFileSync(join(first.cwd, "notes.txt"), "precious local notes");
+
+    const refusal = await refusalOf(provision(h));
+
+    expect(refusal.reason).toBe("checkout-moved");
+    expect(refusal.message).toMatch(/overwrite files that are ignored here/);
+    expect(readFileSync(join(first.cwd, "notes.txt"), "utf8")).toBe("precious local notes");
+    expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("side");
+  });
+
+  it("names a second kept branch for a second visit to the same detached commit, keeping the first", async () => {
+    const h = host();
+    const first = await provision(h);
+    git(first.cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const base = git(first.cwd, "rev-parse", "HEAD~1");
+    git(first.cwd, "checkout", "-q", "--detach", base);
+    writeFileSync(join(first.cwd, "marker.txt"), "first visit");
+    const once = await provision(h);
+    const kept = once.repo!.movedBack!.kept!;
+    git(first.cwd, "checkout", "-q", "--detach", base);
+    writeFileSync(join(first.cwd, "marker.txt"), "second visit");
+
+    const twice = await provision(h);
+
+    expect(twice.repo?.movedBack?.kept).toBe(`${kept}-2`);
+    expect(git(first.cwd, "show", `${kept}:marker.txt`)).toBe("first visit");
+    expect(git(first.cwd, "show", `${kept}-2:marker.txt`)).toBe("second visit");
   });
 
   it("refuses a checkout in the middle of a merge, even on a branch it could fast-forward to", async () => {
