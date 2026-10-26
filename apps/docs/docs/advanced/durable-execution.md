@@ -158,12 +158,11 @@ Request body:
 {
   "suspensionId": "susp_abc123",
   "action": "approve",
-  "data": { "approved": true, "feedback": null },
-  "resumedBy": "user_xyz"
+  "data": { "approved": true, "feedback": null }
 }
 ```
 
-`action` is one of `"approve" | "reject" | "submit" | "skip"`, and must be in the suspension's `allow` set (a `409` otherwise). `submit` carries a typed payload in `data` (a question answer, a form, a selection); `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. `data` is the payload that `ctx.suspend()` returns on the resumed step. `resumedBy` is optional — it's stored on the suspension record for audit purposes.
+`action` is one of `"approve" | "reject" | "submit" | "skip"`, and must be in the suspension's `allow` set (a `409` otherwise). `submit` carries a typed payload in `data` (a question answer, a form, a selection); `skip` declines an optional step and carries no payload; `approve` / `reject` are the binary outcomes. `data` is the payload that `ctx.suspend()` returns on the resumed step. The suspension record names who resumed it: the signed-in caller, or the request's owner when the app doesn't authenticate. A `resumedBy` in the body is ignored.
 
 When the inbound action is `submit` (or `approve` with a schema present), the server validates `data` against the suspension's stored `resumeSchema` before any state transition. An invalid payload returns `400` with path-keyed `validationErrors` and the suspension stays pending.
 
