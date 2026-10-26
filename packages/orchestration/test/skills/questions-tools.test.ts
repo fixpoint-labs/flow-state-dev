@@ -185,6 +185,22 @@ describe("updateTask's question", () => {
     expect(b.get("t4")).toMatchObject({ turnOwed: true, steers: [expect.objectContaining({ from: "filer", answers: hold })] });
   });
 
+  it("the filer's own tool answers no midway question on a task routed to a workstream: the user answers it in that session", async () => {
+    for (const routed of [{ targetSessionId: "s_workstream" }, { target: "pricing-page" }]) {
+      const b = await board();
+      await b.ref.addTask({ id: "t5", goal: "clean the export", ...routed });
+      const claimed = (await b.ref.claim("w"))!;
+      const asked = await b.ref.ask!("t5", [{ kind: "question", prompt: COLUMN }], { claim: ticketForClaim(b.ref.collectionId, claimed) });
+      const hold = asked.holds![0]!;
+      expect(await b.call("updateTask", { id: "t5", question: hold, message: "signup_date" })).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/^question_is_the_users: .*, since the task runs in a workstream/),
+      });
+      expect(b.get("t5")!.steers).toBeUndefined();
+      expect(openHolds(b.get("t5")!).map((h) => h.id)).toEqual([hold]);
+    }
+  });
+
   it("an answer is sent alone, and names its question", async () => {
     const b = await held();
     expect(await b.act("updateTask", { id: b.id, question: b.csv, message: "x", priority: 2 })).toMatchObject({ ok: false, error: expect.stringMatching(/^answer_takes_no_edits:/) });

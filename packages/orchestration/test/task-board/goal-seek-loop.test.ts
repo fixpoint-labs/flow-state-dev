@@ -7,7 +7,8 @@
  * construction guards.
  */
 import { describe, expect, it } from "vitest";
-import { handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 
@@ -21,7 +22,7 @@ import {
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
+import { defineTaskCollection, getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
@@ -910,5 +911,94 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
     const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
     expect(row?.status).toBe("in_progress");
+  });
+});
+
+describe("goalSeekLoop - a later run after the person answers", () => {
+  it("takes the owed turn on the same attempt, then judges the finished task", async () => {
+    // A pass ends waiting on a person, and the person answers after the request
+    // that ran it has ended. A later run of the loop over the same durable board
+    // must take the turn the answer earned, on the task's same attempt, and judge
+    // the finished work: not judge the half-done task, and not seed it again.
+    const name = "answered-later";
+    const ledger = defineTaskCollection({ id: name, scope: "user" });
+    // The board's capability, for its own worker to read the board it is on.
+    const { capability } = taskBoard({ name: `${name}-board`, collection: ledger, workers: completingWorker(`${name}-probe`) });
+    let turns = 0;
+    const board: TaskBoardHandle<any, any, any> = taskBoard({
+      name: `${name}-board`,
+      collection: ledger,
+      workers: handler({
+        name: `${name}-w`,
+        inputSchema: taskWorkerInputSchema,
+        outputSchema: z.unknown(),
+        uses: [capability],
+        execute: async (_input, ctx) => {
+          turns += 1;
+          if (turns > 1) return { answer: "whole" };
+          await askMidway(ctx, await (ctx.cap as any)[capability.name].tasks(), [{ prompt: "Which region?" }]);
+          return { answer: "partial" };
+        },
+      }),
+    });
+    const tasksOf = async (ctx: unknown) => (await ((ctx as { cap: any }).cap[board.capability.name].tasks())) as ReturnType<typeof Object>;
+    const seed = handler({
+      name: `${name}-seed`,
+      inputSchema: z.unknown(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks = (await tasksOf(ctx)) as any;
+        if (tasks.get("a") === undefined) await tasks.addTask({ id: "a", goal: "write the report" });
+      },
+    });
+    const judgedOn: Array<{ status: string; attempts: number }> = [];
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed,
+      judge: ({ collection }): Verdict => {
+        const row = collection.get("a")!;
+        judgedOn.push({ status: row.status, attempts: row.attempts });
+        return { decision: "done", reason: "converged" };
+      },
+      maxIterations: 3,
+    });
+    const answer = handler({
+      name: `${name}-answer`,
+      inputSchema: z.object({ message: z.string() }),
+      uses: [board.capability],
+      execute: async (input, ctx) => {
+        const tasks = (await tasksOf(ctx)) as any;
+        const [hold] = openRowHolds(tasks.get("a"));
+        return tasks.answer("a", { hold: hold!.id, message: input.message, from: "user", by: "u_1" });
+      },
+    });
+    const flow = defineFlow({
+      kind: `${name}-flow`,
+      actions: {
+        plan: { inputSchema: z.unknown(), block: loop },
+        answer: { inputSchema: z.object({ message: z.string() }), block: answer },
+      },
+    } as never)();
+    const stores = createInMemoryStores();
+    const run = (action: string, input: unknown) =>
+      runAction({ flow, actionName: action, input, sessionId: "s_1", userId: "u_1", orgId: DEFAULT_ORG_ID, stores, runtimeConfig: {} } as never) as Promise<{
+        error?: unknown;
+        items: unknown[];
+      }>;
+
+    const first = await run("plan", {});
+    expect(first.error).toBeUndefined();
+    expect(readTermination(first.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    expect(judgedOn).toEqual([]);
+
+    const answered = (await run("answer", { message: "eu-west" })) as { error?: unknown; output?: { outcome?: string } };
+    expect(answered.error).toBeUndefined();
+
+    const later = await run("plan", {});
+    expect(later.error).toBeUndefined();
+    expect(turns).toBe(2);
+    expect(judgedOn).toEqual([{ status: "completed", attempts: 1 }]);
+    expect(readTermination(later.items)).toMatchObject({ reason: "converged", iterations: 1 });
   });
 });

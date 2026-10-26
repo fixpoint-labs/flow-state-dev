@@ -239,9 +239,9 @@ function labApi(origin: string, bearer: string | undefined) {
 type LabApi = ReturnType<typeof labApi>;
 
 /** The stored row's retry counters, read from DevTeam's store file. */
-type Counters = { attempts: number; abandonments: number; turnReentries: number };
+type Counters = { attempts: number; abandonments: number };
 /** Retry standing: the attempts the row has been charged for (BR-9). */
-const standing = (c: Counters) => c.attempts - c.abandonments - c.turnReentries;
+const standing = (c: Counters) => c.attempts - c.abandonments;
 
 /** The lab user's storage cell, where the conversation ledger is kept. */
 const USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
@@ -255,7 +255,6 @@ async function storedCounters(topic: string): Promise<Counters | undefined> {
     return {
       attempts: Number(state.attempts ?? 0),
       abandonments: Number(state.abandonments ?? 0),
-      turnReentries: Number(state.turnReentries ?? 0),
     };
   } finally {
     stores.close();
@@ -369,7 +368,7 @@ async function grade(
   if (after === undefined) fail("standing", `the row ${turn.row.id} is no longer stored`);
   else if (after.attempts === turn.counters.attempts) fail("standing", `no next attempt was claimed (attempts still ${after.attempts})`);
   else if (standing(after) !== standing(turn.counters)) {
-    fail("standing", `retry standing went ${standing(turn.counters)} → ${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments}, turn re-entries ${after.turnReentries})`);
+    fail("standing", `retry standing went ${standing(turn.counters)} → ${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments})`);
   }
   // delivered, read again after delivery: the next attempt's run link still
   // names the session the line was delivered into, so the task's Session view
@@ -387,7 +386,7 @@ async function grade(
 
   evidence.push(
     `${turn.route} → ${turn.row.id}: ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}, linked after ${linked?.sessionId === run.sessionId ? "same session" : (linked?.sessionId ?? "none")}, request ${record}, ` +
-      `next attempt resume=${next?.resume ?? "none"} (previous ${turn.previousSession}), standing ${standing(turn.counters)} → ${after === undefined ? "?" : `${standing(after)} (attempts ${after.attempts}, turn re-entries ${after.turnReentries})`}`,
+      `next attempt resume=${next?.resume ?? "none"} (previous ${turn.previousSession}), standing ${standing(turn.counters)} → ${after === undefined ? "?" : `${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments})`}`,
   );
 }
 
