@@ -19,7 +19,7 @@ import { after } from "next/server";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
@@ -42,11 +42,28 @@ import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-/** The local SQLite file, its folder made first: SQLite opens a file in a folder that exists, and a fresh checkout has no `.fsdev/data`. */
-function sqliteFile(): string {
+/**
+ * The local SQLite store, its folder made when the store is first used, not when
+ * this file loads: a deployment on Postgres never opens it and may not be able
+ * to write here. SQLite opens a file in a folder that exists, and a fresh
+ * checkout has no `.fsdev/data`.
+ */
+function localSqliteStores(): StoreAdapter {
   const dir = path.join(process.cwd(), ".fsdev", "data");
-  mkdirSync(dir, { recursive: true });
-  return path.join(dir, "flowstate.db");
+  let inner: StoreAdapter | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve(slots) {
+      if (inner === undefined) {
+        mkdirSync(dir, { recursive: true });
+        inner = sqliteStores({ filename: path.join(dir, "flowstate.db") });
+      }
+      return inner.resolve(slots);
+    },
+    dispose() {
+      return inner?.dispose?.();
+    },
+  };
 }
 
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
@@ -175,7 +192,7 @@ const flowstate = createFlowState({
           ? inMemoryStores()
           : process.env.STORE_TYPE === "filesystem"
             ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-            : sqliteStores({ filename: sqliteFile() }),
+            : localSqliteStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured
