@@ -26,6 +26,20 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef, TaskInit } from "../../tasks";
 
+/**
+ * The input that runs a board's drain over the board as it stands, without
+ * its `initialTasks` seed (FIX-2210). For a consumer that drains again within
+ * one pass it already seeded: `goalSeekLoop` taking a turn an answer earned
+ * just as the drain stopped. An id-less initial task would otherwise be added
+ * a second time. Package-internal: not exported from the package.
+ */
+export const DRAIN_WITHOUT_SEED = { taskBoardDrain: "without-seed" } as const;
+
+/** Whether a drain's input is {@link DRAIN_WITHOUT_SEED}. Read by value: the input may have been cloned between steps. */
+function drainsWithoutSeed(input: unknown): boolean {
+  return (input as { taskBoardDrain?: unknown } | null | undefined)?.taskBoardDrain === DRAIN_WITHOUT_SEED.taskBoardDrain;
+}
+
 export interface SeedCollectionOptions<TInput = unknown> {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef<TInput, unknown>>;
@@ -43,8 +57,8 @@ export function createSeedCollection<TInput = unknown>(
     // `task-change kind:"added"` items emitted by `collection.addTask`.
     transient: true,
     inputSchema: z.unknown(),
-    execute: async (_input, ctx) => {
-      if (initialTasks.length === 0) return;
+    execute: async (input, ctx) => {
+      if (initialTasks.length === 0 || drainsWithoutSeed(input)) return;
       const collection = await collectionFactory(ctx);
       // ONE atomic `addTasks`, not a per-task loop (FIX-931). A loop that awaits
       // each insert commits tasks up to a creation cap and only then throws — a
