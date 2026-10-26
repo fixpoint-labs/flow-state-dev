@@ -192,18 +192,6 @@ export function waitsOnPerson(row: Task): boolean {
 }
 
 /**
- * Whether a row waits on a person, running or not (FIX-2214): a running row
- * {@link waitsOnPerson}, or a `pending` one filed on questions. The board's
- * completion reason reads it; the exit counts read the narrower
- * {@link waitsOnPerson}, since a `pending` row held on questions is already
- * unclaimable there. A `held`-status row is not one: a release moves it, not
- * an answer.
- */
-export function heldOnPerson(row: Task): boolean {
-  return (row.status === "pending" || row.status === "in_progress") && hasOpenHold(row);
-}
-
-/**
  * Count tasks the loop must wait on: `pending` and `in_progress`, a running
  * row waiting on a person included. Terminal statuses don't count.
  *
