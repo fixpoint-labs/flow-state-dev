@@ -16,6 +16,13 @@
 let counter = 0;
 
 /**
+ * Ten digits, so a same-millisecond text compare follows mint order. Past that
+ * the counter grows a digit and sorts first. Two processes in one millisecond
+ * still have no order between them.
+ */
+const COUNTER_WIDTH = 10;
+
+/**
  * A process-unique id under `prefix`.
  *
  * Three parts, and each is doing something: the timestamp keeps ids roughly
@@ -26,5 +33,5 @@ let counter = 0;
  */
 export function generateId(prefix: string): string {
   counter += 1;
-  return `${prefix}_${Date.now().toString(36)}_${counter}_${Math.random().toString(16).slice(2, 8)}`;
+  return `${prefix}_${Date.now().toString(36)}_${String(counter).padStart(COUNTER_WIDTH, "0")}_${Math.random().toString(16).slice(2, 8)}`;
 }
