@@ -35,6 +35,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { SessionConversationLoading } from "@/components/flow-state/session-conversation-loading";
 import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
 
 import { AgentResponseCard } from "@/components/agent-response-card";
@@ -449,6 +450,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   );
 
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
+  const conversationLoading =
+    flow.isLoading || session.isLoading || flow.activeSessionId === undefined;
 
   const chatPanel = (
     <ChatPanel
@@ -459,6 +462,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       thinkingEnabled={thinkingEnabled}
       features={features}
       isDisabled={isDisabled}
+      conversationLoading={conversationLoading}
       session={session}
       voice={voice}
       ttsEnabled={ttsEnabled}
@@ -755,6 +759,7 @@ interface ChatPanelProps {
   thinkingEnabled: boolean;
   features: Features;
   isDisabled: boolean;
+  conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
   ttsEnabled: boolean;
@@ -794,10 +799,21 @@ const ConversationBody = memo(function ConversationBody({
       <ScrollOnNewRequest items={items} />
       <SessionItemsProvider value={items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-          {items.length === 0 && !isLoading && (
-            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+          {isLoading ? (
+            <SessionConversationLoading />
+          ) : (
+            <>
+              {items.length === 0 && (
+                <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+              )}
+              <RequestGroupRenderer
+                items={items}
+                isStreaming={isStreaming}
+                isFinishing={isFinishing}
+                statusMessage={statusMessage}
+              />
+            </>
           )}
-          <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
           {error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{error.message}</span>
@@ -866,6 +882,7 @@ function ChatPanel({
   thinkingEnabled,
   features,
   isDisabled,
+  conversationLoading,
   session,
   voice,
   ttsEnabled,
@@ -891,14 +908,16 @@ function ChatPanel({
           isStreaming={session.isStreaming}
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
-          isLoading={session.isLoading}
+          isLoading={conversationLoading}
           error={session.error}
         />
         <ConversationScrollButton />
       </Conversation>
 
       <div className="border-t">
-        {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
+        {!conversationLoading && session.items.length === 0 && (
+          <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />
+        )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
             part of the transcript and nothing folds it in. */}
