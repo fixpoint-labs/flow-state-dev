@@ -1,9 +1,3 @@
-/**
- * An inline board's drain returns once nothing is claimable, even while one of
- * its rows is held on a question nobody has answered yet. The held row waits
- * for its answer; the drain that runs after the answer claims the turn it owes,
- * on the same attempt, and that turn settles the task. On both backings.
- */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
@@ -71,7 +65,6 @@ describe.each([
       workers: worker,
     });
 
-    // Once the worker asks, nothing is claimable: the drain returns, the row stays held and unsettled.
     await within(testBlock(board.drain, { input: undefined }), PROMPT_MS, "the drain with a held row");
     expect(attempts).toEqual([1]);
     const held = await collection.get("t");
@@ -79,7 +72,6 @@ describe.each([
     const [hold] = openHolds(held!);
     expect(hold).toBeDefined();
 
-    // The answer owes one more turn on the same attempt; the next drain claims it and settles the task.
     expect(await collection.answer!("t", { hold: hold!.id, message: "signup_date", from: "user", by: "u1" })).toEqual({
       outcome: "recorded",
     });
