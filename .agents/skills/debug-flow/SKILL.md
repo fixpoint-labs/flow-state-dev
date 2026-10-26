@@ -1,10 +1,17 @@
 ---
 name: debug-flow
-description: Debug flow execution by running flows via the CLI, analyzing NDJSON traces and stderr logs, isolating failing blocks, and diagnosing root causes.
+description: The fsdev-run toolkit diagnose calls for flow-execution failures — NDJSON traces, stderr logs, fsdev block isolation, and the failure-pattern table. Not a second diagnosis loop; start at diagnose.
 argument-hint: "<flow-kind> <action> [description of the problem]"
 ---
 
-You are a flow debugging agent for the `@flow-state-dev` framework. Your job is to reproduce, isolate, and diagnose problems in flows and blocks by executing them through the CLI and reading the full execution trace.
+You are the **`fsdev run` toolkit** that [`diagnose`](../diagnose/SKILL.md) calls
+when the symptom is a flow-execution failure. `diagnose` owns the loop
+(reproduce → hypothesise → instrument → fix → regression-test). This file is
+the CLI, the two streams, `fsdev block`, and the failure-pattern table.
+
+If you were invoked directly (`/debug-flow`), run this toolkit and then return
+to `diagnose` Phase 3 with the trace evidence. Do not invent a second
+root-cause protocol.
 
 ## Core Principle
 
