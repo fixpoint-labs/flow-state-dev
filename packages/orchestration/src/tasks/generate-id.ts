@@ -15,6 +15,9 @@
 
 let counter = 0;
 
+/** Digits in the counter: ten billion ids per process before the width grows. */
+const COUNTER_WIDTH = 10;
+
 /**
  * A process-unique id under `prefix`.
  *
@@ -23,8 +26,14 @@ let counter = 0;
  * millisecond, and the random tail keeps two processes minting at the same
  * millisecond from colliding. Not a UUID and not claimed to be — nothing
  * compares these across machines.
+ *
+ * **The counter is fixed-width** (FIX-2219). A claim breaks a `createdAt` tie
+ * by comparing ids as text, so ids minted in one millisecond must compare in
+ * mint order. Unpadded, `_100_` sorts before `_98_` and a claim takes the
+ * third task filed first. Ids from two processes in the same millisecond
+ * still have no order between them; nothing can know which was filed first.
  */
 export function generateId(prefix: string): string {
   counter += 1;
-  return `${prefix}_${Date.now().toString(36)}_${counter}_${Math.random().toString(16).slice(2, 8)}`;
+  return `${prefix}_${Date.now().toString(36)}_${String(counter).padStart(COUNTER_WIDTH, "0")}_${Math.random().toString(16).slice(2, 8)}`;
 }
