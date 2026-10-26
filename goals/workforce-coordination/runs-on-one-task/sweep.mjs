@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * FIX-2087 task-surface sweep: no task tool beyond the five (and `answerTask` and
- * `parkOnQuestion` until FIX-2058), nothing the epic's migration table removes is live,
+ * FIX-2087 task-surface sweep: no task tool beyond the five (and the worker's `askQuestion`
+ * and `waitForUser`, FIX-2131), nothing the epic's migration table removes is live,
  * nothing records a task's ending except the claim gate or the drain, and nothing but the
  * Inbox read builds a list of what waits on the user (FIX-2133). CI's Typecheck job runs
  * it, and again with `--control`; `run.mts` runs the same engine as the goal's sweep leg.
@@ -15,9 +15,9 @@
  * recorder's name names more than one function).
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { sweepTaskSurface } from "./engine.mjs";
 import { MIGRATION_TABLE, ROOTS, TOOLS_ALLOWED } from "./rules.mjs";
 
@@ -221,6 +221,30 @@ function floorPlant(root) {
   return [{ path: CAPABILITY, text: capability.replace(anchor, "const createTask = ((config: any) => config)({") }];
 }
 
+/**
+ * An extracted tree has no `node_modules`, so a type from a dependency (zod's, which
+ * `workerConfigSchema()` returns) wouldn't resolve. Give it this checkout's: the pnpm store
+ * linked whole, and each `node_modules` link copied with its relative target, so a workspace
+ * package still resolves to the extracted tree's source and a third-party one to the store.
+ */
+function linkDependencies(from, to) {
+  const dirs = execFileSync("find", [from, "-name", "node_modules", "-type", "d", "-prune", "-not", "-path", "*/node_modules/*"], { encoding: "utf8" }).split("\n").filter(Boolean);
+  for (const dir of dirs) {
+    const target = join(to, relative(from, dir));
+    if (!existsSync(dirname(target))) continue;
+    mkdirSync(target, { recursive: true });
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === ".pnpm") symlinkSync(join(dir, entry.name), join(target, entry.name));
+      else if (entry.isSymbolicLink()) symlinkSync(readlinkSync(join(dir, entry.name)), join(target, entry.name));
+      else if (entry.isDirectory() && entry.name.startsWith("@")) {
+        mkdirSync(join(target, entry.name));
+        for (const scoped of readdirSync(join(dir, entry.name), { withFileTypes: true }))
+          if (scoped.isSymbolicLink()) symlinkSync(readlinkSync(join(dir, entry.name, scoped.name)), join(target, entry.name, scoped.name));
+      }
+    }
+  }
+}
+
 const started = Date.now();
 const control = args.has("--control");
 // `--at <commit>`: sweep another commit's tree (extracted with `git archive`), against this
@@ -232,6 +256,7 @@ let tracked;
 if (at !== undefined) {
   root = mkdtempSync(join(tmpdir(), "task-surface-"));
   execFileSync("sh", ["-c", `git -C "${repo}" archive --format=tar "${at}" | tar -x -C "${root}"`]);
+  linkDependencies(repo, root);
   tracked = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", at, "--", ...ROOTS], { encoding: "utf8" }).split("\n").filter(Boolean);
 }
 const table = at === undefined ? undefined : join(repo, MIGRATION_TABLE);

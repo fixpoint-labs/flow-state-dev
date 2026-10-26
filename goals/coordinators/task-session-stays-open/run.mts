@@ -43,7 +43,7 @@ const FOLLOW_UPS = [
 ] as const;
 const BRIEF =
   "Deploy the billing service. First draw a deployment ticket with drawTicket. Then, before deploying, " +
-  "ask the person who assigned this which region to deploy to, with parkOnQuestion, and stop there. " +
+  "ask the person who assigned this which region to deploy to, with askQuestion, and stop there. " +
   "Once you have the answer, finish with one line that names the ticket you drew and the region.";
 const LEG_B = "Which ticket did you draw?";
 /** What `drop-answer` hands the re-entered turn in place of the app's answer: not one of `REGIONS`, nor contains one. */
@@ -61,7 +61,10 @@ interface Control {
 const CONTROLS: Record<string, Control> = {
   "new-session": {
     name: "new-session",
-    assertions: ["a:names-ticket", "c:names-ticket"],
+    // `c:names-ticket` alone since FIX-2131: an answer owes the same attempt
+    // one more turn, started in the row's own session, so no hand-off session
+    // key reaches it; only the follow-up is keyed.
+    assertions: ["c:names-ticket"],
     patches: [
       {
         module: "packages/workforce/src/conversation-board/board.ts",
@@ -69,19 +72,24 @@ const CONTROLS: Record<string, Control> = {
         to: "return { key: taskSessionKey(`${task.taskId}#${task.input.attempts}`, worker) };",
       },
     ],
-    does: "every attempt, and every follow-up, is handed to a fresh session: the answer's re-entry and the follow-up run where nothing was done",
+    does: "every attempt, and every follow-up, is handed to a fresh session: the follow-up runs where nothing was done",
   },
   "drop-answer": {
     name: "drop-answer",
     assertions: ["a:names-region"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/task-entry.ts",
-        from: String.raw`\$\{task\.answer\}`,
-        to: `Use ${DECOY_REGION}.`,
+        module: "packages/orchestration/src/skills/steer-context.ts",
+        from: String.raw`answering "\$\{question\}": \$\{words\}`,
+        to: `answering "\${question}": Use ${DECOY_REGION}.`,
+      },
+      {
+        module: "packages/orchestration/src/skills/steer-context.ts",
+        from: String.raw`ctx\.emit\.message\(\`Message from \$\{sender\}: \$\{steer\.message\}\``,
+        to: `ctx.emit.message(\`Message from \${sender}: \${steer.answers === undefined ? steer.message : "Use ${DECOY_REGION}."}\``,
       },
     ],
-    does: `the answer re-queues the task in its session, but the re-entered turn is handed an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
+    does: `the answer owes the task its next turn in its session, but that turn reads an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
   },
 };
 
@@ -151,13 +159,14 @@ async function drive(origin: string, store: string) {
   const conv = (await fsd.flow("coordinator").createSession({ state: { workerId: "desk.lead" } })).id as string;
   const filingSessionId = (await act("coordinator", conv, "listDelegates", {})).output?.filingSessionId as string | undefined;
 
-  // Leg a: file, wait for the park, answer, wait for the ending.
+  // Leg a: file, wait for the question, answer it, wait for the ending.
   const filed = await act("coordinator", conv, "createTask_tasks", { goal: BRIEF, assignee: "desk.ops" });
   const taskId = filed.output?.taskId as string | undefined;
-  const parked = await waitFor(() => row(taskId)?.status === "parked", 120_000);
+  const parked = await waitFor(() => openQuestionOf(row(taskId)) !== undefined, 120_000);
   const parkedRow = row(taskId);
+  const question = openQuestionOf(parkedRow);
   await quiet();
-  const answered = parked ? await act("coordinator", conv, "answerTask_tasks", { taskId, answer: `Use ${region}.` }) : null;
+  const answered = parked ? await act("coordinator", conv, "updateTask_tasks", { id: taskId, question: question?.id, message: `Use ${region}.` }) : null;
   const answeredAt = Date.now();
   const ended = parked && (await waitFor(() => ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 90_000));
   const endedIn = Date.now() - answeredAt;
@@ -178,7 +187,15 @@ async function drive(origin: string, store: string) {
   await sleep(5_000);
   await quiet();
 
-  return { region, followUp, conv, filingSessionId, filed, taskId, parked, parkedRow, answered, ended, endedIn, endedRow, found, asked, follow, followId };
+  return { region, followUp, conv, filingSessionId, filed, taskId, parked, parkedRow, question, answered, ended, endedIn, endedRow, found, asked, follow, followId };
+}
+
+/** A row's open question: a row hold on a running row that no steer answers yet. */
+function openQuestionOf(t: StoredTask | undefined): { id: string; ask: { kind: string; prompt: string } } | undefined {
+  const row = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
+  if (row?.status !== "in_progress") return undefined;
+  const answered = new Set((row.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
+  return row.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
 }
 
 // ---- grading ----------------------------------------------------------------------------
@@ -187,7 +204,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const failures: string[] = [];
   const notes: string[] = [];
   const rows = taskRows(store, ALICE.userId, ORG);
-  const task = o.endedRow as (StoredTask & { turnReentries?: number; abandonments?: number }) | undefined;
+  const task = o.endedRow as (StoredTask & { abandonments?: number }) | undefined;
   const afterTalk = rows.find((t) => t.id === o.taskId);
   const follow = rows.find((t) => t.id === o.followId) as (StoredTask & { followUpOf?: string }) | undefined;
   const all = sessions(store);
@@ -207,10 +224,11 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const attemptOf = (key: string) => Number(key.split(":").at(-2));
 
   // Leg a.
-  if (!o.parked || noticesOf(o.taskId, "parked").length !== 1) {
-    failures.push(`a:parked — wanted the task to park on its question with one parked notice; filing ${show(o.filed.output ?? o.filed.error)}, row ${show(o.parkedRow?.status)}, notices ${show(noticesOf(o.taskId, "parked"))}`);
+  // A question is no ending: it holds the task, running (FIX-2131).
+  if (!o.parked || o.question?.ask.kind !== "question") {
+    failures.push(`a:parked — wanted the task held on its question; filing ${show(o.filed.output ?? o.filed.error)}, row ${show(o.parkedRow?.status)}, question ${show(o.question)}`);
   }
-  if (o.answered?.output?.ok !== true) failures.push(`a:answered — answerTask_tasks answered ${show(o.answered?.output ?? o.answered?.error)}`);
+  if (o.answered?.output?.ok !== true) failures.push(`a:answered — updateTask_tasks answered ${show(o.answered?.output ?? o.answered?.error)}`);
   if (task?.status !== "completed" || o.endedIn > 90_000) failures.push(`a:completed-90s — wanted completed within 90 s of the answer; it is ${task?.status} after ${o.endedIn} ms`);
   if (parkedSession === undefined || task?.run?.sessionId !== parkedSession) {
     failures.push(`a:same-session — wanted the answer's re-entry in the session that parked (${parkedSession}); it ran in ${task?.run?.sessionId}`);
@@ -219,8 +237,9 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   if (!names(outputText(task), o.region)) failures.push(`a:names-region — wanted the output to name the answered region (${o.region}); it said ${show(task?.output)}`);
   const aCompleted = noticesOf(o.taskId, "completed").filter((k) => attemptOf(k) <= (task?.attempts ?? 0));
   if (aCompleted.length !== 1) failures.push(`a:one-completed — wanted one completed notice before leg b; ${show(aCompleted)}`);
-  const charged = (task?.attempts ?? 0) - (task?.turnReentries ?? 0) - (task?.abandonments ?? 0);
-  if (charged !== 1) failures.push(`a:unspent — wanted the answer's re-entry not charged: one attempt charged; attempts ${task?.attempts}, re-entries ${task?.turnReentries}`);
+  // The answer owes the same attempt one more turn: it spends no attempt.
+  const charged = (task?.attempts ?? 0) - (task?.abandonments ?? 0);
+  if (charged !== 1) failures.push(`a:unspent — wanted the answer's turn on the same attempt: one attempt charged; attempts ${task?.attempts}`);
 
   // Leg b: the line in the finished task's session is talk. Its reply names the
   // ticket, from the session's history, and the task is as it ended (FIX-2086).
@@ -245,7 +264,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   if (noticesOf(o.followId, "completed").length !== 1) failures.push(`c:one-completed — wanted one completed notice for the follow-up; ${show(noticesOf(o.followId, "completed"))}`);
 
   notes.push(
-    `region ${o.region}; ticket ${ticket}; task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} (parked in ${parkedSession}), attempts ${task?.attempts}, re-entries ${task?.turnReentries}, ended ${o.endedIn} ms after the answer; output ${show(task?.output)}`,
+    `region ${o.region}; ticket ${ticket}; task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} (asked in ${parkedSession}), attempts ${task?.attempts}, ended ${o.endedIn} ms after the answer; output ${show(task?.output)}`,
     `b: ${show(o.asked?.output)}`,
     `c: "${o.followUp}" → ${follow?.status} in ${follow?.run?.sessionId}; output ${show(follow?.output)}; draws ${draws.length}`,
   );

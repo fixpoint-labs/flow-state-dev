@@ -54,11 +54,44 @@ fsdev ui add reasoning
 
 ## Tool
 
-Rich tool invocation display: arguments, result, status, and Claude-Code-style grouping for consecutive calls. Pairs with the `tool-grouping` utility for collapsing repeated calls.
+Displays a tool call with its arguments, result, and status. `ToolGroup` folds a run of consecutive tool calls and reasoning into one collapsed line that opens to every step in order. A failed call is labelled on the line, for example "(1 failed)" on a group or "(failed)" on a single call.
 
 ```bash
 fsdev ui add tool
 ```
+
+`tool` also installs `tool-naming`, two pure functions (no React, no DOM) that name a call from its tool name and arguments. Install it alone to label tool calls in your own components or in non-React code.
+
+```bash
+fsdev ui add tool-naming
+```
+
+```ts
+import { toolIntent, toolSubject } from "@/components/flow-state/tool-naming";
+
+toolSubject("read_file", { path: "src/a.ts" });
+// { text: "Read src/a.ts", code: false }
+
+toolSubject("shell", { command: "cd app && pnpm test" });
+// { text: "pnpm test", code: true }
+
+toolSubject("mcp__linear__get_issue", { id: "ENG-1" });
+// { text: "Calling MCP tool Linear Get Issue", code: false }
+
+toolSubject("web_search", { query: "tool naming" });
+// { text: "Search \"tool naming\"", code: false }
+
+toolIntent("Bash", { command: "pnpm test", description: " Run the tests " });
+// "Run the tests"
+```
+
+`toolSubject(toolName, args)` returns a short line naming what one call did, or `undefined` when the args give nothing to name. Which line depends on the tool:
+
+- **Shell tools** (`shell`, `bash`, `command_execution`, `run_command`, `terminal`, in any casing) show the first line of the `command` arg, without a leading `cd <dir> &&`, and set `code: true` so you can render it in monospace.
+- **MCP tools** named `mcp__<server>__<tool>` show `Calling MCP tool <Server> <Tool>`, both parts title-cased.
+- **Every other tool** shows a verb and the first of these args it carries: `query`, `pattern`, `glob_pattern`, `globPattern`, `url`, `file_path`, `path`, `target_file`, `target_directory`, `dir`. The verb is the tool name title-cased, after dropping a `web_` prefix and a `_file` suffix, so `read_file` reads "Read" and `web_search` reads "Search". `ls` reads "List" and `multiedit` reads "Edit". A `query` or `pattern` is shown in quotes, a URL as is, and a path with more than three segments as `…/` plus its last three.
+
+`toolIntent(toolName, args)` returns the `description` a call states about itself, trimmed, or `undefined` when there is none. Only the shell tools above, `Task` and `Agent` are read this way; every other tool returns `undefined`. `Tool` and `ToolGroup` use both functions for their status lines, preferring the intent.
 
 ## CodeBlock
 

@@ -1,10 +1,11 @@
 /**
- * The conductor flow — a board, one handed-off worker, and three zero-model
+ * The conductor flow — a board, one handed-off worker, and its zero-model
  * actions.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
  * claims a row and hands it to the manager in its own child session. `status`
- * reads back what happened.
+ * reads back what happened, and the questions a run's task is held on. The
+ * board's `updateTask` action answers one, as the Inbox does.
  *
  * ## The board's own ledger is a deliverable, not a default
  *
@@ -16,10 +17,9 @@
  * to.
  *
  * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
- * later answer lands, through a NEW request, so a parked row has to outlive the
- * coordinator session that created it. `user` rather than `org` because it
- * matches the already-user-scoped inbox where the other half of that round trip
- * arrives, while `org` would share a claim pool across users. At `user` scope
+ * later answer lands, through a NEW request, so a row held on a question has to
+ * outlive the coordinator session that created it. `user` rather than `org`
+ * because `org` would share a claim pool across users. At `user` scope
  * the `sharedToLineage` refusal never fires — it is conditional on session
  * scope — and the other two requirements still apply exactly as stated.
  *
@@ -58,9 +58,12 @@ import {
   defineTaskCollection,
   isClaimable,
   DEFAULT_MAX_ABANDONMENTS,
+  getOrCreateTaskCollection,
+  openRowHolds,
+  resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   assertBaseRefExists,
@@ -73,9 +76,6 @@ import {
   harnessSessionDoor,
   harnessTaskInputSchema,
   type HarnessSlot,
-  INBOX,
-  inboxCollection,
-  listQuestions,
   type PhaseRunContext,
   type PhaseSpec,
   type PromptRunContext,
@@ -87,7 +87,6 @@ import {
   runRecordStateSchema,
   RUNS,
   runTopic,
-  withdrawQuestion,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import {
@@ -99,13 +98,6 @@ import {
   tenantSegment,
 } from "@flow-state-dev/harness-manager/checkout";
 import { implementPhase } from "./implement";
-import {
-  answerInputSchema,
-  answerOutputSchema,
-  decideAnswer,
-  type AnswerBoard,
-  type AnswerOutput,
-} from "./answer";
 
 /** The one assignee this board routes to. */
 const ASSIGNEE = "harness" as const;
@@ -142,23 +134,16 @@ export interface ConductorFlowOptions {
    * Forwarded to the coding agent (model, tools, permission mode, a test stub).
    *
    * This lab picks Claude Code, so this is `claudeCodeAgent`'s option surface
-   * minus the four the manager's slot supplies — see where the factory is
-   * written below. A host that wanted Codex would write a different factory and
+   * minus the four feeds the manager's slot supplies and the two options this
+   * lab fixes (`detached`, `recordWork`) — see where the factory is written
+   * below. A host that wanted Codex would write a different factory and
    * change nothing in `@flow-state-dev/harness-manager`.
    */
   agent?: Omit<
     Parameters<typeof claudeCodeAgent>[0],
-    "detached" | "recordWork" | "cwd" | "resume" | "onSession"
+    "detached" | "recordWork" | "cwd" | "resume" | "onSession" | "onUsage"
   >;
   ownership?: Parameters<typeof harnessManager>[0]["ownership"];
-  /**
-   * Told, after the park, that a question exists. Defaults to a no-op.
-   *
-   * The seam Relay (FIX-1230) fills once it lands. Absent, an operator finds
-   * the question by calling `status` rather than by being told — which is why
-   * `status` reports the open rows and not only the board row.
-   */
-  announce?: Parameters<typeof harnessManager>[0]["announce"];
 }
 
 /** The flow's `kind`, which is how the HTTP routes address it. */
@@ -232,7 +217,7 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *
  * **Drainability is ASKED, not re-derived.** Six review rounds found six
  * separate inputs to "can a drain run this" — assignee, retry budget, `deps`,
- * `blocked`, `parked`, and a spent abandonment allowance — because this
+ * `blocked`, a parked status, and a spent abandonment allowance — because this
  * function was enumerating, field by field, a question the substrate already
  * answers. `@flow-state-dev/orchestration/tasks` says so at the export:
  * `isClaimable` is THE admission predicate, and "a caller implementing
@@ -253,8 +238,8 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  * And two questions delegated whole:
  *
  * - `isClaimable` — the status and lease arm (`pending`, or `in_progress` with a
- *   lapsed lease) and `depsSatisfied`. This subsumes the parked statuses and the
- *   dependency check that used to be spelled out here.
+ *   lapsed lease), a row held on a question, and `depsSatisfied`. This
+ *   subsumes the status and dependency checks that used to be spelled out here.
  * - `claimDisposition` — **admission is not dispatch.** A lapsed row whose
  *   abandonment allowance is spent is admitted by `isClaimable` and then settled
  *   `errored` by the claim write instead of being handed to a worker. `seed`
@@ -340,7 +325,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
     phase: callerPhase = implementPhase(),
     agent,
     ownership,
-    announce,
   } = options;
 
   // **Validate what is retained, and retain a copy.** The caller's object was
@@ -551,7 +535,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   // **The slot, and the only place this repository names a coding harness.**
   //
-  // The manager hands down three feeds and knows nothing else about what it
+  // The manager hands down four feeds and knows nothing else about what it
   // is driving; everything Claude-specific is written here, where it belongs.
   // Pointing this board at Codex is this one expression.
   //
@@ -566,12 +550,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
   //
   // Shared by the manager and the run's door, which resumes a finished run's
   // coding session for a person's line (FIX-2086).
-  const harness: HarnessSlot = ({ cwd, resume, onSession }) =>
+  //
+  // The feeds are spread, not listed, so a feed the manager adds reaches the
+  // harness without an edit here.
+  const harness: HarnessSlot = (feeds) =>
     claudeCodeAgent({
       ...(agent ?? {}),
-      cwd,
-      resume,
-      onSession,
+      ...feeds,
       detached: true,
       recordWork: true,
     });
@@ -585,7 +570,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
     runTimeoutMs,
     harness,
     ...(ownership !== undefined ? { ownership } : {}),
-    ...(announce !== undefined ? { announce } : {}),
   });
 
   const board = taskBoard({
@@ -608,26 +592,23 @@ export function conductorFlow(options: ConductorFlowOptions) {
       [ASSIGNEE]: dispatcher({
         name: `${boardId}-hand-off`,
         action: ASSIGNEE,
-        session: "per-task",
+        // A task whose run already has a session goes on in it: the turn an
+        // answer owes can be started from that run session (a line typed
+        // there), and a child derived from it would move the task's run to a
+        // session no later line is typed in. A first run gets its own child.
+        session: {
+          by: async (task, ctx) => {
+            const collection = resolveResourceCollection(ctx, collectionId);
+            const row =
+              collection === undefined
+                ? undefined
+                : (await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId, collection })).get(task.taskId);
+            const existing = row?.run?.sessionId;
+            return existing !== undefined ? { id: existing } : { key: `task|${boardId}|${task.taskId}` };
+          },
+        },
       }),
     },
-    // **A run parked on a person is not this drain's to wait on.**
-    //
-    // Without it the drain holds its launching request open on the parked row
-    // until it runs out its iteration budget, and then returns with the row
-    // abandoned where it sits — worse than a hang, because it reports
-    // `blocked-by-failures` on a board with no failures. With it, the drain
-    // returns `parked-for-review`, the row stays parked and durable, and the
-    // drain `answer` runs later is what picks it up.
-    //
-    // Its three construction refusals are all satisfied here, and each was
-    // confirmed rather than assumed: the ledger is a `defineTaskCollection()`
-    // (a request-backed one is refused); `onIdle` is left at its default
-    // `complete-or-blocked` (both `wait` and `complete` are refused); and this
-    // board seeds through the `seed` action rather than `initialTasks`, so the
-    // stable-id refusal never fires. Every refusal throws at construction, so
-    // getting this wrong fails before `seed` can run.
-    onReview: "exit",
   });
 
   const seedInput = harnessTaskInputSchema;
@@ -692,8 +673,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
               `it is routed to an assignee other than "${ASSIGNEE}", its retry budget is ` +
               `not the ${maxAttempts} this conductor configures, or it carries dependencies ` +
-              `that would keep it unclaimable, or a parked status a drain never ` +
-              `admits. Refusing to report ` +
+              `that would keep it unclaimable. Refusing to report ` +
               `this seed as filed: draining that row charges it an attempt and then finds ` +
               `nothing to run it, and the task asked for here would never exist.`,
           );
@@ -752,7 +732,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
               `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
               `than "${ASSIGNEE}", a retry budget that is not ${maxAttempts}, or dependencies ` +
-              `that would keep it unclaimable, or a parked status. Refusing ` +
+              `that would keep it unclaimable. Refusing ` +
               `to report this seed as filed: the task asked ` +
               `for here would never exist.`,
           );
@@ -806,32 +786,22 @@ export function conductorFlow(options: ConductorFlowOptions) {
          */
         run: runRecordStateSchema.nullable(),
         /**
-         * The questions this issue-phase is waiting on, oldest first.
-         *
-         * **This is how an operator sees a question with no UI built and with
-         * Relay absent**, which is the whole reason `status` grew a second
-         * half. Open rows only: an answered or withdrawn one is history, and
-         * the two ledgers stay independent — the board row is the authority on
-         * the job's state and the inbox row on the question's, neither inferred
-         * from the other.
+         * The questions the task is held on, oldest first: read off the board
+         * row, the one place a question and its answer are kept. Open ones
+         * only: an answered question is history, and a cancel closes them all.
          */
         questions: z.array(
           z.object({
-            /** The row's name — pass this verbatim to `answer`. */
+            /** The question's id: pass it as `question` to the board's `updateTask` action. */
             question: z.string(),
-            /** What the run actually asked. */
+            /** What the run asked. */
             text: z.string(),
-            /** Which attempt asked it. */
-            attempt: z.number(),
-            askedAt: z.number().nullable(),
+            askedAt: z.number(),
           }),
         ),
       }),
     ),
   });
-
-/** Board statuses from which a question can never be answered. */
-const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   /**
    * **The tenant gate. Every action passes it before touching the board.**
@@ -896,7 +866,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     inputSchema: z.object({ issue: z.string().optional() }),
     outputSchema: statusOutput,
     uses: [board.capability],
-    resources: { [RUNS]: runRecordCollection, [INBOX]: inboxCollection },
+    resources: { [RUNS]: runRecordCollection },
     execute: async (input, ctx) => {
       // Before the listing, not after it — a refusal that has already read the
       // rows has already disclosed them.
@@ -933,50 +903,19 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         // caller asking what is on the board should see the malformed row exists,
         // and see that nothing is known about its run. Throwing would hide the
         // whole listing behind one bad row.
-        // One reading, used by both reads below: a row that does not own its
-        // identity cannot have its topic or its inbox key derived, because both
-        // go through the owned-segment grammar and it RAISES.
+        // A row that does not own its identity cannot have its topic derived,
+        // because that goes through the owned-segment grammar and it RAISES.
         const owns = issue !== null && phaseName !== null && rowOwnsItsIdentity(task);
 
         const record = owns
           ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
           : undefined;
 
-        // **`status` RECONCILES what it reads.** The board's `cancel` writes the
-        // task row and nothing else — the manager never runs again, so neither
-        // of its withdrawal arms ever fires — and the `answer` guard refuses a
-        // terminal task, so the question is unanswerable by construction. Left
-        // alone it shows here forever as a question nobody can act on.
-        //
-        // Reconciling at the READ rather than wrapping the board's `cancel` is
-        // deliberate: an operator can cancel through the board's own verb, so a
-        // conductor `cancel` wrapper is a step that can be bypassed, while the
-        // only surface that can DISPLAY a stranded row is the one that clears
-        // it. The `answer` guard does the same on its way to refusing. Both
-        // writes are the ordinary forward-only withdraw, so running either twice
-        // is a read.
-        const questions = [];
-        // **Guarded exactly as the run record above is, and for the same
-        // reason.** `listQuestions` builds the inbox key through the same
-        // grammar, so a malformed neighbour raised here and took the whole
-        // listing with it — the failure this surface's own comment says it
-        // exists to prevent. The guard was applied to one of the two reads.
-        if (owns) {
-          const terminal = TERMINAL_TASK_STATUSES.has(task.status);
-          for (const row of await listQuestions(ctx as never, issue, phaseName)) {
-            if (row.state.status !== "open") continue;
-            if (terminal) {
-              await withdrawQuestion(ctx as never, row.topic);
-              continue;
-            }
-            questions.push({
-              question: row.topic,
-              text: row.state.question,
-              attempt: row.attempt,
-              askedAt: row.state.askedAt,
-            });
-          }
-        }
+        const questions = openRowHolds(task).map((hold) => ({
+          question: hold.id,
+          text: hold.ask.prompt,
+          askedAt: hold.openedAt,
+        }));
 
         rows.push({
           taskId: task.id,
@@ -995,44 +934,16 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   });
 
   /**
-   * Answer a question, re-queue the run, and drain — the operator's one verb.
-   *
-   * The decision, the guard and the recovery rule live in `./answer`; this is
-   * the wiring. Two things about the shape are load-bearing:
-   *
-   * - **The drain is a real step of this action**, gated on the decision. Not a
-   *   call the handler makes: `board.drain` is the board's own sequencer, and
-   *   running it as a step is what makes the re-dispatch a genuine drain of this
-   *   board in this request rather than a second entry point into its machinery.
-   * - **`.tapIf` and not `.stepIf`** (BP-036): the drain's output must not
-   *   replace the chain value, because the chain value is what the operator gets
-   *   back — the decision and its reason.
+   * The board's `updateTask` action, as a screen sends it: answering the
+   * question a run's task is held on (`{ id, question, message }`), a steer, a
+   * cancel. Gated like every other action, and followed by a drain when it
+   * succeeds: an answer owes the task one more turn on its attempt, and the
+   * drain that handed it out exited `blocked` around the held row, so no drain
+   * is still running to take it.
    */
-  const answerQuestionStep = handler({
-    name: "conductor-answer",
-    inputSchema: answerInputSchema,
-    outputSchema: answerOutputSchema,
-    uses: [board.capability],
-    resources: { [INBOX]: inboxCollection },
-    execute: async (input, ctx) => {
-      // Before the board is read and before the row is written, like every
-      // other action: a refusal that has already disclosed a question, or
-      // already applied an answer, is not a refusal.
-      assertRequestTenant(ctx);
-      const tasks = await ctx.cap[boardId].tasks();
-      const surface: AnswerBoard = {
-        get: (id) => tasks.get(id),
-        unpark: (id, feedback) => tasks.unpark(id, feedback),
-        // The collection's own clock, never `Date.now()` — a lease is a
-        // comparison and a comparison needs one clock. Reading the wall clock
-        // works right up until the collection is built on an injected one, at
-        // which point a live task reads as abandoned and an abandoned one as
-        // live: exactly the distinction the recovery rule's third arm turns on.
-        now: () => tasks.now(),
-      };
-      return decideAnswer(ctx as never, surface, input);
-    },
-  });
+  const updateTaskAction = `updateTask_${taskToolSuffix(collectionId)}`;
+  const updateTaskEntry = taskToolActions(board)[updateTaskAction]!;
+  const updateTaskBlock = updateTaskEntry.block as unknown as { inputSchema: z.ZodTypeAny };
 
   /**
    * A person's line typed in a run's session (FIX-2086): a steer on the run's
@@ -1114,8 +1025,8 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
        * empty board, and reports success having reached nothing. This board is
        * `user`-scoped so its ledger is not the exposure, but the failure looks
        * like nothing happened either way. A requirement on the caller, stated
-       * rather than assumed; `answer` inherits it by running its drain inside
-       * its own request.
+       * rather than assumed; `updateTask` inherits it by running its drain
+       * inside its own request.
        */
       wake: {
         // **Wrapped, so the gate runs before the claim.** A bare `board.drain`
@@ -1132,26 +1043,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       },
       /** The read surface. Zero-model, server-side, board row first. */
       status: { block: readStatus },
-      /**
-       * Answer a parked run's question and start it again holding the answer.
-       *
-       * **The drain is this action's**, not the operator's next step.
-       * `unpark` only re-queues the row, and with `onReview: "exit"`
-       * the drain that observed the question has already ended — so an `answer`
-       * that stopped after two calls would leave the row waiting for whatever
-       * happens to drain next.
-       */
-      answer: {
-        block: sequencer({
-          name: "conductor-answer-question",
-          inputSchema: answerInputSchema,
-          outputSchema: answerOutputSchema,
-        })
-          .step(answerQuestionStep)
-          // Only when the decision actually authorized it. A drain is NOT a
-          // no-op — on a `pending` row it claims and dispatches — so a
-          // declined answer must not run one.
-          .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+      [updateTaskAction]: {
+        ...updateTaskEntry,
+        block: sequencer({ name: "conductor-update-task", inputSchema: updateTaskBlock.inputSchema })
+          .tap(tenantGate)
+          .step(updateTaskEntry.block as never)
+          .tapIf((outcome: { ok?: unknown }) => outcome?.ok === true, board.drain),
       },
       /**
        * Send a person's line into a run. Called in the run's own session (the
@@ -1166,7 +1063,10 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           inputSchema: door.inputSchema,
         })
           .tap(tenantGate)
-          .step(door.block),
+          .step(door.block)
+          // A line that answered the task's last question owes it a turn: the same drain
+          // `updateTask` runs after an answer takes it, since no drain is running to.
+          .tapIf((outcome: { steered?: unknown }) => typeof outcome?.steered === "string", board.drain),
       },
     },
   });
@@ -1206,6 +1106,8 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     boardId,
     collectionId,
     runs: runRecordCollection,
+    /** The board's `updateTask` action's name: how a question is answered. */
+    updateTaskAction,
     drainBudgetMs,
   };
 }

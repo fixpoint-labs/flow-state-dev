@@ -119,9 +119,11 @@ export {
   taskToolActions,
   taskToolSuffix,
   type TaskToolActionsBoard,
-  // A task turn's question park and the rule for offering it (FIX-1817).
-  createParkOnQuestion,
-  type ParkOnQuestionOptions,
+  // A task turn's question and a turn's stop for the user, and the rules for
+  // offering them (FIX-2131).
+  createAskQuestion,
+  createWaitForUserTool,
+  type TaskTurnToolOptions,
   // A task turn's own progress report and the rule for offering it (FIX-2081).
   createReportProgress,
   type ReportProgressOptions,

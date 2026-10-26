@@ -6,7 +6,7 @@
  * whose input requires a string `taskId` acts on one task, and so does a
  * board's generated `getTask_<board>` or `updateTask_<board>`, which names it
  * `id` ({@link taskIdField}). That covers the framework's task tools and an
- * app's own actions (an `answer` for a parked row) alike, and leaves an app's
+ * app's own actions alike, and leaves an app's
  * unrelated `{ id }` action, such as a `deleteProject`, off task rows.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
@@ -41,8 +41,8 @@ function isIdTool(action: string, generated?: ReadonlySet<string>): boolean {
 }
 
 /**
- * The field `action` names its task in: `taskId` (`answerTask`, and an
- * app's own), which wins when both are present; else
+ * The field `action` names its task in: `taskId` (an app's own action's),
+ * which wins when both are present; else
  * `id`, only for a board's generated `getTask` or `updateTask`. `undefined`
  * when it names none, required unless `optional`.
  *
@@ -67,8 +67,7 @@ export function taskIdField(
 
 /**
  * The filer's four task tools `taskToolActions` generates for a board, always
- * together (FIX-2081). It also generates `answerTask`; these four are enough
- * to find a board's family.
+ * together (FIX-2081): enough to find a board's family.
  */
 const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 

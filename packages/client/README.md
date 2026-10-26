@@ -105,7 +105,7 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 | `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
-| `resume({ suspensionId, action, data?, resumedBy? })` | Answer a pending suspension. The run carries on under the same id. `{ stream: true }` returns its SSE `Response`. |
+| `resume({ suspensionId, action, data? })` | Answer a pending suspension. The run carries on under the same id, and the server records the signed-in caller as who answered. `{ stream: true }` returns its SSE `Response`. |
 | `answer({ suspensionId, action, data? })` | Answer a stop that waits for a user, in any run, a task board's included, which `resume` refuses (below). Resolves to the same handle. |
 | `stream(callbacks)` | Follow the request's events (below). |
 

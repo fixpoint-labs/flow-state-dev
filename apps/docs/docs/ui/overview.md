@@ -35,7 +35,7 @@ Status gets its own tokens:
 | `success` | done, approved, a passing result |
 | `warning` | something is off but nobody is being asked: a blocked task, a stuck request |
 | `info` | running, in progress, informational |
-| `attention` | a person must act: a tool call waiting for approval, a task parked for review |
+| `attention` | a person must act: a tool call waiting for approval, a task waiting on a review |
 | `destructive` | failed, rejected, an error |
 
 Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate tokens, so an app can make "waiting on you" stand out without every warning looking like a request.

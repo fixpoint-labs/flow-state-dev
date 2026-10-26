@@ -55,7 +55,7 @@ import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
 export const finishedTaskSchema = z.object({
   taskId: z.string(),
   /** How it ended. */
-  ending: z.enum(["completed", "errored", "parked", "cancelled"]),
+  ending: z.enum(["completed", "errored", "cancelled"]),
   /** The delegate it went to, under whose name the line was said. */
   worker: z.string().optional(),
   /** The line said in the conversation: the task, how it ended, and what came back. */

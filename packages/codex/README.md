@@ -16,7 +16,7 @@ contract both harnesses implement is
 ## Install
 
 ```bash
-pnpm add @flow-state-dev/codex @openai/codex-sdk@0.152.1
+pnpm add @flow-state-dev/codex @openai/codex-sdk@0.164.0
 ```
 
 The SDK is an **exact-pinned optional peer**, and the pin is enforced: building a

@@ -929,6 +929,26 @@ describe("cursorAgent — the model, per run", () => {
     expect(rec.resumed[0]).toMatchObject({ id: "agent_saved", options: { model: { id: "model-for-run-2" }, mode: "agent" } });
   });
 
+  // A model's settings (a Grok's effort) are chosen per run like its id, so a
+  // resolver names both; `agent.model` is one value for every run.
+  it("hands a resolved model's parameters to create and to resume", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    const high = { id: "grok-4.7", params: [{ id: "reasoning_effort", value: "high" }] };
+    const resumes = [null, "agent_saved"];
+    let resumeRun = 0;
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      model: () => high,
+      resume: () => resumes[resumeRun++],
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.created[0]).toMatchObject({ model: high });
+    expect(rec.resumed[0]).toMatchObject({ id: "agent_saved", options: { model: high } });
+  });
+
   it("leaves `agent.model` in charge when the resolver has none", async () => {
     for (const none of [null, undefined, ""]) {
       const { resolve, rec } = scripted(OK_STREAM);

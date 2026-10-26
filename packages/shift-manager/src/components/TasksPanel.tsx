@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { columnFor, isDone, readStatus } from "../lib/columns";
+import { columnFor, isDone } from "../lib/columns";
 import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
@@ -36,7 +36,7 @@ export const isOpen = (task: ConversationTask) => task.status === "pending" || t
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-const isErrored = (task: ConversationTask) => readStatus(task.status) === "errored";
+const isErrored = (task: ConversationTask) => task.status === "errored";
 
 export function TasksPanel({
   worker,

@@ -32,7 +32,7 @@ canonical item.
 The SDK is an optional peer dependency, pinned to an exact version:
 
 ```bash
-pnpm add @flow-state-dev/codex @openai/codex-sdk@0.152.1
+pnpm add @flow-state-dev/codex @openai/codex-sdk@0.164.0
 ```
 
 Codex's JSONL output sits behind the CLI's `--experimental-json` flag and can

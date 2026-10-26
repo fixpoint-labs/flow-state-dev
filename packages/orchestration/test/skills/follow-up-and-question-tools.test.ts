@@ -1,8 +1,8 @@
 /**
- * The question path's task tools (FIX-1817 S1, S2, S4): a task turn parks its
- * own row on a question (`parkOnQuestion`), whoever may write the board answers
- * it (`answerTask`), and a finished task takes a follow-up (`createTask`'s
- * `followUpOf`).
+ * A finished task takes a follow-up (`createTask`'s `followUpOf`, FIX-1817
+ * S4), and a task turn's own question tool (`askQuestion`, FIX-2131) acts only
+ * on the row its turn holds. How the question holds the task is pinned where
+ * the gate runs for real (`task-board/settles-when-its-work-is-over.test.ts`).
  *
  * Each leg reads both the tool's answer and the row the board holds, so a
  * refusal that wrote anything anyway fails here.
@@ -12,7 +12,7 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import {
   buildTaskToolsList,
-  createParkOnQuestion,
+  createAskQuestion,
   taskToolsForTurn,
 } from "../../src/skills/task-tools-capability";
 import { createResourceBackedTaskCollection, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
@@ -49,16 +49,6 @@ async function claimAsGate(ref: TaskCollectionRef, id: string, base: object, req
   return turnCtx(base, requestId);
 }
 
-/**
- * `answerTask` as a caller whose pre-read saw `asOf`: the tool runs with a
- * board whose `get` answers that row, so its write is the late one.
- */
-async function answerAsOf(b: Awaited<ReturnType<typeof board>>, asOf: Task, answer: string) {
-  const stale = { ...b.ref, get: (id: string) => (id === asOf.id ? asOf : b.ref.get(id)) } as TaskCollectionRef;
-  const tools = buildTaskToolsList(async () => stale);
-  return runForTest(toolNamed(tools, "answerTask"), { taskId: asOf.id, answer }, b.ctx) as Promise<any>;
-}
-
 /** File `id` for researcher and run it to completion, as a board does: claimed, run-linked, completed. */
 async function ranAndCompleted(ref: TaskCollectionRef, id: string) {
   await ref.addTask({ id, goal: `do ${id}`, assignee: "researcher" });
@@ -73,101 +63,6 @@ const turnCtx = (base: object, requestId: string) => ({
   ...base,
   session: { identity: { id: "s-task" }, state: { taskId: "t" } },
   request: { identity: { id: requestId } },
-});
-
-describe("answerTask (S2)", () => {
-  it("is one of the task tools, beside the filer's four", () => {
-    const names = buildTaskToolsList(ownStateResolver).map((t) => (t as any).config.name);
-    expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
-    expect(names).toHaveLength(5);
-  });
-
-  it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {
-    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1, maxAttempts: 1 })]);
-    expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
-    expect(b.get("t")).toMatchObject({ status: "pending", feedback: "eu-west", answered: true, turnReentries: 1 });
-  });
-
-  it("declines a second answer, naming the status, and re-queues nothing (BR-9)", async () => {
-    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1 })]);
-    await b.call("answerTask", { taskId: "t", answer: "eu-west" });
-    const second = await b.call("answerTask", { taskId: "t", answer: "us-east" });
-    expect(second).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: .*pending/) });
-    expect(b.get("t")).toMatchObject({ feedback: "eu-west", turnReentries: 1 });
-  });
-
-  it.each([
-    ["pending", {}],
-    ["in_progress", { attempts: 1 }],
-    ["held", {}]
-  ] as const)("declines a %s task, naming why, and writes nothing (BR-10)", async (status, extra) => {
-    const b = await board([row("t", { status, ...extra })]);
-    const before = JSON.stringify(b.get("t"));
-    const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(new RegExp(`^not_parked_on_question: .*${status}`)) });
-    expect(JSON.stringify(b.get("t"))).toBe(before);
-  });
-
-  it.each(["completed", "errored", "cancelled"] as const)(
-    "declines a %s task as terminal_task_write_declined (BR-9, BR-26)",
-    async (status) => {
-      const b = await board([row("t", { status, attempts: 1 })]);
-      const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
-      expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^terminal_task_write_declined: task "t" is/) });
-      expect(b.get("t")!.status).toBe(status);
-    }
-  );
-
-  it("declines a quiet park, such as a task waiting on its pieces, as not_parked_on_question, writing nothing", async () => {
-    const b = await board([row("t", { assignee: "w" })]);
-    const claimed = (await b.ref.claim("w"))!;
-    await b.ref.awaitReview("t", undefined, { claim: ticketForClaim(BOARD_FIELD, claimed), quiet: true });
-    const before = JSON.stringify(b.get("t"));
-    const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: /) });
-    expect(JSON.stringify(b.get("t"))).toBe(before);
-  });
-
-  it("refuses a stale answer that arrives after the task re-parked on a newer question, leaving that question parked", async () => {
-    const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
-    const b = await board([row("t", { assignee: "w", maxAttempts: 3 })]);
-    const first = await claimAsGate(b.ref, "t", b.ctx);
-    await runForTest(park.tool, { question: "Which region?" }, first as never);
-    // Two answers to "Which region?" leave together; the first lands.
-    const stale = b.get("t")!;
-    expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
-    // The task runs again and parks on a newer question.
-    const second = await claimAsGate(b.ref, "t", b.ctx, "r-turn-2");
-    await runForTest(park.tool, { question: "Which account?" }, second as never);
-    expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which account?" });
-    expect(b.get("t")!.attempts).toBeGreaterThan(stale.attempts);
-    // The late answer to the first question, read against the row as it stood then.
-    const late = await answerAsOf(b, stale, "us-east");
-    expect(late).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: /) });
-    expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which account?" });
-  });
-
-  it("declines a reassign once the task has started, its answer pending or not (FIX-2081)", async () => {
-    const b = await board([row("t", { status: "parked", parkedOnQuestion: true, feedback: "Which region?", attempts: 1, assignee: "researcher" })]);
-    // The tool reads the row before the answer...
-    const before = b.get("t")!;
-    expect(await b.call("answerTask", { taskId: "t", answer: "eu-west" })).toEqual({ ok: true });
-    // ...and writes after it: the write itself must refuse.
-    const stale = { ...b.ref, get: (id: string) => (id === "t" ? before : b.ref.get(id)) } as TaskCollectionRef;
-    const tools = buildTaskToolsList(async () => stale);
-    const out = (await runForTest(toolNamed(tools, "updateTask"), { id: "t", assignee: "writer" }, b.ctx)) as any;
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: /) });
-    expect(b.get("t")!.assignee).toBe("researcher");
-  });
-
-  it("answers an unknown task as not found: another board's rows are unknown here (BR-11)", async () => {
-    const b = await board([]);
-    expect(await b.call("answerTask", { taskId: "elsewhere", answer: "x" })).toEqual({
-      ok: false,
-      error: "task_not_found",
-      taskId: "elsewhere"
-    });
-  });
 });
 
 describe("createTask's followUpOf (S4)", () => {
@@ -199,7 +94,7 @@ describe("createTask's followUpOf (S4)", () => {
     }
   );
 
-  it.each(["in_progress", "parked"] as const)(
+  it.each(["in_progress"] as const)(
     "files a follow-up of a %s task that runs in its session: it waits for that task to end (FIX-2080)",
     async (status) => {
       const b = await board([
@@ -378,66 +273,29 @@ describe("createTask's followUpOf (S4)", () => {
   });
 });
 
-describe("parkOnQuestion off a task turn (BR-2)", () => {
-  const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
+describe("askQuestion off a task turn (FIX-2131)", () => {
+  const ask = createAskQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
 
   it("is not offered, and reaches nothing, on a person's turn in the task session (another request)", async () => {
     const b = await board([row("t", { assignee: "w" })]);
     await claimAsGate(b.ref, "t", b.ctx);
     const person = turnCtx(b.ctx, "r-person");
-    expect(await park.offered(person as never)).toBe(false);
+    expect(await ask.offered(person as never)).toBe(false);
     // A task id on input is not an input the tool reads.
-    const out = (await runForTest(park.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
+    const out = (await runForTest(ask.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_a_task_turn/) });
     expect(b.get("t")!.status).toBe("in_progress");
+    expect(b.get("t")!.holds ?? []).toEqual([]);
   });
 
   it("is not offered outside a task session at all", async () => {
     const b = await board([row("t", { assignee: "w" })]);
-    expect(await park.offered(b.ctx as never)).toBe(false);
-  });
-});
-
-describe("parkOnQuestion (S1)", () => {
-  const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
-  const ask = (ctx: unknown, question = "Which region?") => runForTest(park.tool, { question }, ctx as never) as Promise<any>;
-
-  it("parks the row the turn's claim holds, with its question (BR-1)", async () => {
-    const b = await board([row("t", { assignee: "w" })]);
-    const turn = await claimAsGate(b.ref, "t", b.ctx);
-    expect(await ask(turn)).toEqual({ ok: true, taskId: "t", status: "parked" });
-    expect(b.get("t")).toMatchObject({ status: "parked", feedback: "Which region?" });
+    expect(await ask.offered(b.ctx as never)).toBe(false);
   });
 
-  it("declines a second call in the same turn, naming the status, and writes nothing (BR-3, BR-5)", async () => {
-    const b = await board([row("t", { assignee: "w" })]);
-    const turn = await claimAsGate(b.ref, "t", b.ctx);
-    await ask(turn);
-    const second = await ask(turn, "And the account?");
-    expect(second).toMatchObject({ ok: false, error: expect.stringMatching(/^park_declined: .*parked/) });
-    expect(b.get("t")!.feedback).toBe("Which region?");
-  });
-
-  it("declines once the claim was displaced (a cancel landed), writing nothing (BR-3)", async () => {
-    const b = await board([row("t", { assignee: "w" })]);
-    const turn = await claimAsGate(b.ref, "t", b.ctx);
-    await b.ref.cancel("t");
-    const out = await ask(turn);
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^park_declined: .*cancelled/) });
-    expect(b.get("t")!.status).toBe("cancelled");
-  });
-
-  it("is not offered, and declines, on a waited-on row (BR-1a, ER-22)", async () => {
+  it("is offered on a task turn working a running row, a waited-on one included", async () => {
     const b = await board([row("t", { assignee: "w", wait: { gateId: "g", deadline: 9e12 } })]);
     const turn = await claimAsGate(b.ref, "t", b.ctx);
-    expect(await park.offered(turn as never)).toBe(false);
-    expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^waited_on_task/) });
-    expect(b.get("t")!.status).toBe("in_progress");
-  });
-
-  it("is offered on a task turn working a row that isn't asked (BR-1a)", async () => {
-    const b = await board([row("t", { assignee: "w", followUpOf: "root" })]);
-    const turn = await claimAsGate(b.ref, "t", b.ctx);
-    expect(await park.offered(turn as never)).toBe(true);
+    expect(await ask.offered(turn as never)).toBe(true);
   });
 });

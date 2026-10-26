@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import type { SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 import {
   acquireCheckout,
   encodeSegment,
@@ -63,8 +64,8 @@ type StatusRow = {
     requestId: string | null;
     updatedAt: number | null;
   } | null;
-  /** The open questions this issue-phase is waiting on (LAB-139). */
-  questions: Array<{ question: string; text: string; attempt: number }>;
+  /** The open questions the task is held on. */
+  questions: Array<{ question: string; text: string; askedAt: number }>;
 };
 
 const ISSUE = "FIX-1219";
@@ -146,7 +147,7 @@ async function settleAsTenant(
       tenant,
     );
     const row = rows[0];
-    if (row !== undefined && row.status !== "in_progress") return row;
+    if (row !== undefined && (row.status !== "in_progress" || row.questions.length > 0)) return row;
     if (Date.now() >= deadline) {
       throw new Error(`the row never left in_progress within ${timeoutMs}ms`);
     }
@@ -290,6 +291,48 @@ describe("the manager — the verdict at each exit", () => {
 
     expect(row.status).toBe("errored");
     expect(row.run?.outcome).toBe("failed");
+  });
+});
+
+describe("the manager — what a run reports about its subscription", () => {
+  it("records the usage window a run reports in the run owner's usage record", async () => {
+    // The slot is where the lab names its harness, so a feed it does not pass
+    // on is lost: a run's rate-limit windows never reach the person's usage
+    // record, and the Usage view shows nothing for runs this lab started.
+    const rateLimit = {
+      type: "rate_limit_event",
+      session_id: "sess_stub",
+      rate_limit_info: { status: "allowed", resetsAt: 1_800_000_000, rateLimitType: "five_hour" },
+    } as unknown as SdkMessageLike;
+    live = createConductorHarness({
+      // A real run names its account; a window whose account is unknown is dropped.
+      resolveClaudeAgent: () => ({
+        query: () =>
+          Object.assign(
+            (async function* () {
+              yield rateLimit;
+              yield sdkResult("success");
+            })(),
+            { accountInfo: async () => ({ email: "alice@example.com" }) },
+          ),
+      }),
+      isDone: () => true,
+    });
+
+    const row = await seedAndDrain(live);
+    expect(row.status).toBe("completed");
+
+    // Read at the store, since the lab exposes no usage query: the run owner's
+    // cell, so a window written for the session or anyone else misses.
+    const { stores } = await live.state.getRuntime();
+    const stored = await stores.resourceState.get(
+      "user",
+      `${USER_ID}:~org:${DEFAULT_ORG_ID}`,
+      "harness-usage/claude-code",
+    );
+    expect(stored?.state["windows"]).toEqual([
+      expect.objectContaining({ id: "five_hour", origin: "run" }),
+    ]);
   });
 });
 
@@ -1691,10 +1734,10 @@ describe("the ledger is partitioned by tenant", () => {
 
     it("refuses a foreign ANSWER before it writes and before it dispatches", async () => {
       // The fourth action, and it carries BOTH harms the other three split
-      // between them: an unchecked `answer` writes to another tenant's question
-      // AND ends in a drain, so it would start that tenant's coding run in this
-      // one's workspace. Asserting only that it threw would pass with the
-      // answer already applied, or with the drain already away.
+      // between them: an unchecked `updateTask` writes to another tenant's
+      // question AND ends in a drain, so it would start that tenant's coding run
+      // in this one's workspace. Asserting only that it threw would pass with
+      // the answer already applied, or with the drain already away.
       //
       // Staged against a genuinely answerable row, so the refusal is the tenant
       // gate rather than the guard declining a question that was not open —
@@ -1706,22 +1749,22 @@ describe("the ledger is partitioned by tenant", () => {
         tenant: OTHER,
       });
       await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
-      const parked = await settleAsTenant(live, OTHER);
-      expect(parked.status).toBe("parked");
-      const topic = parked.questions[0]!.question;
+      const held = await settleAsTenant(live, OTHER);
+      expect(held.status).toBe("in_progress");
+      const question = held.questions[0]!.question;
       const runsBefore = seen.prompts.length;
 
       await expect(
-        live.call("answer", { question: topic, answer: "not yours" }, undefined, "globex"),
+        live.call(live.built.updateTaskAction, { id: held.taskId, question, message: "not yours" }, undefined, "globex"),
       ).rejects.toThrow(/serves "acme"/);
 
       // Nothing was applied and nothing was dispatched. Read as the RIGHT
       // tenant, or the read would be refused too and this would pass because it
       // saw nothing either way.
       const after = await settleAsTenant(live, OTHER);
-      expect(after.status).toBe("parked");
-      expect(after.questions[0]?.question).toBe(topic);
-      expect(after.attempts).toBe(parked.attempts);
+      expect(after.status).toBe("in_progress");
+      expect(after.questions[0]?.question).toBe(question);
+      expect(after.attempts).toBe(held.attempts);
       expect(seen.prompts).toHaveLength(runsBefore);
     });
 

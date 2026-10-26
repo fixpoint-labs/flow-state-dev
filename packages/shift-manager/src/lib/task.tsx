@@ -24,7 +24,6 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
-import { readStatus } from "./columns";
 import { allRows, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
 import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
@@ -93,13 +92,12 @@ export function useTask(): TaskView {
 
 /** Whether the row should be re-read while the screen waits (BR-3). */
 function awaitingLink(row: BoardRow | undefined): boolean {
-  return row === undefined || (readStatus(row.status) === "in_progress" && row.run === null);
+  return row === undefined || (row.status === "in_progress" && row.run === null);
 }
 
-/** A row the board may still hand to a run: queued or running, not finished, parked or failed. */
+/** A row the board may still hand to a run: queued or running, not finished or failed. */
 function isOpen(row: BoardRow): boolean {
-  const status = readStatus(row.status);
-  return status === "pending" || status === "in_progress";
+  return row.status === "pending" || row.status === "in_progress";
 }
 
 /** Hold one open task. */

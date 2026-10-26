@@ -14,10 +14,10 @@
  *
  * Legs (each failure is tagged `<leg>:<assertion>`):
  *   a  the tools each worker's model is offered: a coordinator's and an agent
- *      worker's turn get the filer's four, `answerTask` and `listDelegates`,
+ *      worker's turn get the filer's four and `listDelegates`,
  *      and none of the removed six nor `dispatchTask`; only a coordinator set
  *      to `editsOwnDelegates` gets `addDelegate`, `removeDelegate`,
- *      `setFallback`; `reportProgress` and `parkOnQuestion` only on a task
+ *      `setFallback`; `reportProgress` and `askQuestion` only on a task
  *      turn; an inline plan step that calls `reportProgress({ output })`
  *      checkpoints its own row, and the task's result is still the answering
  *      turn's
@@ -317,7 +317,8 @@ await runGoal(async (failures) => {
 
     // ---- leg a: the tools each worker's model is offered -------------------------------
     await leg("a", async () => {
-      const REMOVED = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "readTask", "blockTask"];
+      // `answerTask` and `parkOnQuestion` joined the removed list with FIX-2131.
+      const REMOVED = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "readTask", "blockTask", "answerTask", "parkOnQuestion"];
       const FOUR = ["createTask", "getTask", "listTasks", "updateTask"];
       const OWN = ["addDelegate", "removeDelegate", "setFallback"];
       /** The model requests of `tag`'s own turn: the one its message opens, or a step's. */
@@ -359,10 +360,10 @@ await runGoal(async (failures) => {
           }
         }
       };
-      check("a-desk", [...FOUR, "answerTask", "listDelegates"], [...REMOVED, ...OWN, "dispatchTask", "reportProgress", "parkOnQuestion"], "coordinator offered the four, not its own delegate tools");
+      check("a-desk", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "dispatchTask", "reportProgress", "askQuestion"], "coordinator offered the four, not its own delegate tools");
       check("a-chief", [...FOUR, "listDelegates", ...OWN], [...REMOVED], "a coordinator set to manage its delegates gets addDelegate, removeDelegate, setFallback");
-      check("a-conv", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "parkOnQuestion"], "no reportProgress off a task turn");
-      check("a-task", [...FOUR, "listDelegates", "reportProgress", "parkOnQuestion"], [...REMOVED, ...OWN], "a task turn offered reportProgress and parkOnQuestion");
+      check("a-conv", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "askQuestion"], "no reportProgress off a task turn");
+      check("a-task", [...FOUR, "listDelegates", "reportProgress", "askQuestion"], [...REMOVED, ...OWN], "a task turn offered reportProgress and askQuestion");
       check("a-step", ["reportProgress"], [...REMOVED, ...OWN], "a step turn offered reportProgress");
 
       // The step's own row holds the checkpoint; the task's result is the answering turn's.

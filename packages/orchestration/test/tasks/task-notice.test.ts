@@ -161,19 +161,7 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     expect(heldWhileRunning(withMeta(held, clearNotice(notice)), notice)).toBeUndefined();
   });
 
-  it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {
-    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
-    const completed = recordEnding({ ...parked, status: "completed", attempts: 2, output: "eu" }, {
-      kind: "completed",
-      output: "eu"
-    });
-    expect(owedNotices(completed, "tasks").map((n) => [n.ending, n.attempt, n.question])).toEqual([
-      ["parked", 1, "Which region?"],
-      ["completed", 2, undefined]
-    ]);
-  });
-
-  it("owes a notice for a cancel the filer didn't make itself (D2), and none for a park that asks nobody anything", () => {
+  it("owes a notice for a cancel the filer didn't make itself (D2)", () => {
     const base = row({ status: "cancelled" });
     expect(owedNotices(recordEnding(base, { kind: "cancelled", reason: "not needed" }), "tasks").map((n) => n.ending)).toEqual(["cancelled"]);
     // Its own model's cancel told the filer already.
@@ -183,9 +171,6 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     expect(recordEnding(cascaded, { kind: "cancelled" }, { causeSharesFiler: true })).toBe(cascaded);
     // One whose cause another session filed is that filer's to hear.
     expect(owedNotices(recordEnding(cascaded, { kind: "cancelled" }, { causeSharesFiler: false }), "tasks")).toHaveLength(1);
-    const quiet = row({ status: "parked" });
-    // FIX-1802's split park: the board parks a row for its own reasons.
-    expect(recordEnding(quiet, { kind: "parked", question: "waiting on my pieces", quiet: true })).toBe(quiet);
   });
 
   it("leaves the row's other metadata alone", () => {
@@ -206,22 +191,12 @@ describe("a notice delivered", () => {
     expect(owedNotices(cleared, "tasks")).toEqual([]);
   });
 
-  it("clears only its own marker, so a later ending's owed notice survives the clear", () => {
-    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
-    const [first] = owedNotices(parked, "tasks") as [TaskNotice];
-    const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
-    const cleared = { ...completed, metadata: { ...completed.metadata, ...clearNotice(first) } } as Task;
-    expect(owedNotices(cleared, "tasks").map((n) => n.ending)).toEqual(["completed"]);
-  });
-
-  it("by a wait that found the row ended drops the ending's notice only (FIX-2112)", () => {
-    // An earlier attempt's question is not what the wait returned: it stays owed.
-    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
-    const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
+  it("by a wait that found the row ended drops the ending's notice (FIX-2112)", () => {
+    const completed = recordEnding(row({ attempts: 2 }), { kind: "completed", output: 1 });
     const read = { ...completed, metadata: { ...completed.metadata, ...deliveredByWait(completed) } } as Task;
-    expect(owedNotices(read, "tasks").map((n) => n.ending)).toEqual(["parked"]);
+    expect(owedNotices(read, "tasks")).toEqual([]);
     // A row still running owes nothing a wait could have read.
-    expect(deliveredByWait(parked)).toEqual({});
+    expect(deliveredByWait(row({ status: "in_progress" }))).toEqual({});
     // A notice held for the request whose wait lapsed is that request's read to deliver, not this one's.
     const held = recordEnding(row({ wait: { gateId: "g", deadline: 1, requestId: "r", lapsed: true } } as Partial<Task>), { kind: "completed", output: 1 });
     expect(deliveredByWait(held)).toEqual({});
@@ -248,7 +223,7 @@ describe("what an ending does: one decision", () => {
   });
 
   it("wakes the judgment turn for an ending, or lands a line under a fixed policy", () => {
-    for (const ending of ["completed", "errored", "parked"] as const) {
+    for (const ending of ["completed", "errored"] as const) {
       expect(decideNotice(notice(ending), "judgment")).toEqual({ act: "wake-turn" });
       expect(decideNotice(notice(ending), "fixed")).toEqual({ act: "line" });
     }
@@ -261,9 +236,6 @@ describe("what an ending does: one decision", () => {
     );
     expect(noticeText({ ...notice("errored"), error: "no network" }, task)).toBe(
       'Task "Audit licenses" (t1) failed for good with researcher: no network'
-    );
-    expect(noticeText({ ...notice("parked"), question: "Which region?" }, task)).toBe(
-      'Task "Audit licenses" (t1) is waiting on a question from researcher: Which region?'
     );
   });
 });

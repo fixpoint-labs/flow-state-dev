@@ -90,6 +90,9 @@ const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
  */
 const SEARCH_TOOLS = ["Grep", "Glob"] as const;
 
+/** The live status from the moment a run starts until Claude Code says anything. */
+const STARTING_STATUS = "Starting Claude Code…";
+
 /** Session-state key holding the SDK session id to resume across requests. */
 export const SDK_SESSION_ID_KEY = "sdkSessionId" as const;
 /** Session-state key under which run handles accumulate. */
@@ -1082,6 +1085,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // terminal `item.done`, or a recorder observation landing after
           // `stop()` and never flushed.
           loop = (async () => {
+            // Starting Claude Code can take a while on a busy host and the SDK
+            // says nothing until it is up, so the person is told it is starting.
+            // This covers the gap before `query()` only: the MCP tools set up above
+            // run before it. A status records no work, so the recorder is not
+            // handed it. The first output from Claude Code clears it.
+            if (!ctx.signal.aborted) {
+              translateState.quietStatus = true;
+              inFlightRef.current = emitTranslatedEvent({ kind: "status", message: STARTING_STATUS }, ctx, emitState, name);
+              try {
+                await inFlightRef.current;
+              } finally {
+                inFlightRef.current = null;
+              }
+            }
             const running = resolved.query({
               prompt: promptText,
               options: queryOptions,

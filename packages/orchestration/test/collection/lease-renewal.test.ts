@@ -446,6 +446,23 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     expect(driver.signal.aborted).toBe(true);
   });
 
+  it("stops WITHOUT aborting when the row waits on a person: a `held` renewal is not a lost claim", async () => {
+    // The turn asked a question: the row holds no lease while it waits, and
+    // the worker still owns its turn. Aborting it would fail work that did
+    // what it meant to (FIX-2131).
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const ticket = ticketForClaim("tasks", task);
+    const timer = fakeTimer();
+    const driver = startLeaseRenewal({ collection: h.collection, ticket, claimedTask: task, now: h.now, timer: timer.timer });
+
+    await h.collection.ask!("t", [{ kind: "question", prompt: "Which region?" }], { claim: ticket });
+    await timer.fireNext();
+
+    expect(driver.signal.aborted).toBe(false);
+    expect(timer.pending()).toBe(0);
+  });
+
   it("does NOT abort when the store throws inside the lease — the unknown case is not the dead case", async () => {
     // A store that threw tells us nothing about who holds the row, and the
     // fence refuses whatever this worker writes if it turns out to be gone.
@@ -499,30 +516,6 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     expect(renew).toHaveBeenCalledTimes(1);
     release();
     driver.stop();
-  });
-
-  it("stops WITHOUT aborting when the worker parks its own task for review", async () => {
-    // A review park is an explicit park, not a lost claim — which is exactly
-    // why the substrate's write fence is scoped to `in_progress`. Aborting the
-    // worker here would contradict that rule one layer up. Stop renewing a row
-    // the lease no longer speaks for, and leave the worker be.
-    const h = harness();
-    const task = await claimed(h, 30_000);
-    const ticket = ticketForClaim("tasks", task);
-    const timer = fakeTimer();
-    const driver = startLeaseRenewal({
-      collection: h.collection,
-      ticket,
-      claimedTask: task,
-      now: h.now,
-      timer: timer.timer,
-    });
-
-    await h.collection.awaitReview("t", "over to you", { ifAllowed: true, claim: ticket });
-    await timer.fireNext();
-
-    expect(driver.signal.aborted).toBe(false);
-    expect(timer.pending()).toBe(0); // and it stopped renewing
   });
 
   it("stops renewing when the request's own signal aborts", async () => {

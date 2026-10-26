@@ -76,12 +76,11 @@ import type { TaskEnding } from "../collection/ending";
  * The endings a filer hears about. `retried` is read only off a marker stored
  * before FIX-2078, which recorded one.
  */
-export type NoticeEnding = "completed" | "errored" | "parked" | "retried" | "cancelled";
+export type NoticeEnding = "completed" | "errored" | "retried" | "cancelled";
 
 /**
  * One notice: plain data, the same whether the ending's writer sends it or the
- * filer's pass sends it again. `output` rides a completion, `error` a failure,
- * `question` a park.
+ * filer's pass sends it again. `output` rides a completion, `error` a failure.
  */
 export interface TaskNotice {
   /** The ledger the task is on, by id. */
@@ -92,7 +91,6 @@ export interface TaskNotice {
   readonly ending: NoticeEnding;
   readonly output?: unknown;
   readonly error?: string;
-  readonly question?: string;
   /** The row is waited on: a turn is parked on its ending (read off a marker stored before FIX-2078). */
   readonly asked?: true;
   /**
@@ -199,14 +197,6 @@ function plainMarkerFor(row: Task, ending: TaskEnding, recording: NoticeRecordin
       return { attempt: row.attempts, ending: "errored", error: ending.error, due };
     case "retried":
       return undefined;
-    case "parked":
-      if (ending.quiet) return undefined;
-      return {
-        attempt: row.attempts,
-        ending: "parked",
-        ...(ending.question !== undefined ? { question: ending.question } : {}),
-        due
-      };
     case "cancelled":
       if (recording.ownCancel === true) return undefined;
       if (row.causedBy !== undefined && recording.causeSharesFiler === true) return undefined;
@@ -405,7 +395,6 @@ export function owedNotices(
       ending: value.ending,
       ...(value.ending === "completed" ? { output: row.output } : {}),
       ...(value.error !== undefined ? { error: value.error } : {}),
-      ...(value.question !== undefined ? { question: value.question } : {}),
       ...(row.wait != null ? { asked: true as const } : {}),
       ...(cancelled.length > 0 ? { cancelled } : {})
     });
@@ -631,8 +620,6 @@ export function noticeText(
       return `${named} completed by ${worker}: ${summary(notice.output ?? null)}`;
     case "errored":
       return `${named} failed for good with ${worker}: ${notice.error ?? "no error was recorded"}${cascade}`;
-    case "parked":
-      return `${named} is waiting on a question from ${worker}: ${notice.question ?? "no question was recorded"}`;
     case "retried":
       return `${named} failed with ${worker} and runs again: ${notice.error ?? "no error was recorded"}`;
     case "cancelled":

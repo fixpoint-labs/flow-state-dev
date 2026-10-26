@@ -89,7 +89,8 @@ import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutC
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
-import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
+import { WorkspaceRefusedError } from "./refused";
+import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -125,26 +126,8 @@ const HELD_DIR = "held";
  */
 const FETCH_BUDGET_SHARE = 0.5;
 
-/**
- * The host would not provision this run, and says why — before anything was
- * created and before any agent was paid for.
- *
- * `reason` is stable: `"invalid-remote"`, `"remote-not-allowed"`,
- * `"remote-unreadable"`, `"base-diverged"` (a repository on this machine
- * whose base and its upstream each have commits the other lacks), or
- * whatever reason a run source refused with. A caller should fail the run
- * with it rather than retry: none of these clears by itself, and
- * `base-diverged` clears once someone pulls or rebases, or pushes, there.
- */
-export class WorkspaceRefusedError extends Error {
-  constructor(
-    readonly reason: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "WorkspaceRefusedError";
-  }
-}
+/** The host's typed refusal, defined in `./refused` and exported from here as it always was. */
+export { WorkspaceRefusedError };
 
 export interface LocalWorkspaceHostOptions {
   /** The host directory every clone and place lives under. */
@@ -297,6 +280,19 @@ export interface WorkspacePlace {
     baseRef?: string;
     /** The commit it was cut at. Only when `created`. */
     baseCommit?: string;
+    /**
+     * Present when the checkout was handed back off the run's branch and moved
+     * back onto it (see `MovedBack`). Tell the run, which may still think it is
+     * on the branch it switched to.
+     */
+    movedBack?: MovedBack;
+    /**
+     * Present when the checkout was handed back off the run's branch and left
+     * there, because moving it would move uncommitted changes (see
+     * `OffBranch`). Tell the run; a caller that must only run on the run's
+     * branch refuses with its `message`.
+     */
+    offBranch?: OffBranch;
   };
   /** Where a repository place came from. */
   origin?: PlaceOrigin;
@@ -705,6 +701,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         created: worktree.created,
         ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
         ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+        ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
+        ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
       };
     });
   }
@@ -761,13 +759,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
         const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
         // Equal, or local ahead: the person's branch, as it always was.
-        if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
+        if (upstream === undefined || (await isAncestor(git, repo, upstream.commit, local, left()))) {
           // The commit compared, not the name: the name can move while the fetch runs.
           return { ref, commitish: local, commit: local };
         }
         // Behind: cut at the commit, never the ref's name, so the run's branch
         // doesn't come out tracking the person's upstream.
-        if (await isAncestor(repo, local, upstream.commit, left)) {
+        if (await isAncestor(git, repo, local, upstream.commit, left())) {
           return { ref, commitish: upstream.commit, commit: upstream.commit };
         }
         throw new WorkspaceRefusedError(
@@ -785,6 +783,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       created: worktree.created,
       ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
       ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+      ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
+      ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
     };
   }
 
@@ -946,16 +946,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return undefined;
   }
 
-  /** Whether `ancestor` is in `commit`'s history. A probe that failed is raised, never read as no. */
-  async function isAncestor(repo: string, ancestor: string, commit: string, left: () => number): Promise<boolean> {
-    try {
-      await git(repo, ["merge-base", "--is-ancestor", ancestor, commit], left());
-      return true;
-    } catch (error) {
-      if (gitAnsweredNo(error)) return false;
-      throw error;
-    }
-  }
 
   /** The repository a source's `repo` names, when the operator listed it as local. */
   function localRepository(repo: string): string | undefined {

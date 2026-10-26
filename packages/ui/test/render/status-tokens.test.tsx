@@ -51,7 +51,6 @@ describe("tool card states", () => {
 
 describe("task plan states", () => {
   const expected: Array<[string, string]> = [
-    ["parked", "attention"],
     ["held", "warning"],
     ["in_progress", "info"],
     ["completed", "success"],

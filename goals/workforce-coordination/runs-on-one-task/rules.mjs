@@ -8,7 +8,8 @@
  * {@link FORWARDERS} are not recorders, and their callers are read instead. Each of those keys
  * names exactly one function, or the sweep can't tell. A line that names a removed surface on
  * purpose carries the `retired-name-refusal` marker. The lists change only with a reason a
- * reviewer can read; FIX-2058, retiring `answerTask`, edits {@link TOOLS_ALLOWED}.
+ * reviewer can read; FIX-2131 (FIX-2058) retired `answerTask` and `parkOnQuestion` from
+ * {@link TOOLS_ALLOWED}, and added the worker's `askQuestion` and `waitForUser`.
  */
 import { REFUSAL_MARKER, ROOTS } from "../../vocabulary/one-word-per-thing/rules.mjs";
 
@@ -21,8 +22,8 @@ export const MIGRATION_TABLE = "specs/epics/FIX-2056/migration.md";
 export const TOOLS_ALLOWED = new Set([
   "createTask", "getTask", "listTasks", "updateTask", // FIX-2081: the filer's five
   "reportProgress", // FIX-2081: the worker's progress checkpoint, one of the five
-  "answerTask", // FIX-2056 D2: kept until FIX-2058 retires it
-  "parkOnQuestion", // FIX-2056 D2: the worker's question park, kept until FIX-2058
+  "askQuestion", // FIX-2131: the worker's question, which holds its task (FIX-2133's hold)
+  "waitForUser", // FIX-2131: the model's stop for an approval, a review or (with no task row) input
 ]);
 
 /** Code under the swept roots: the files the AST rules (tools, members, endings) read. */
@@ -131,7 +132,8 @@ export const REMOVED = [
   { row: "`TaskCollection.reopen`", kind: "member", module: "orchestration/tasks", type: "TaskCollectionRef", props: ["reopen"], owner: "FIX-2086" },
   { row: "`Task.reopened`", kind: "declared", module: "orchestration/tasks", type: "Task", props: ["reopened"], owner: "FIX-2086" },
   { row: "The `reopened` change kind", kind: "union", module: "orchestration/tasks", type: "TaskChangeKind", members: ["reopened"], owner: "FIX-2086" },
-  { row: "`Task.parkedForTurn`", kind: "declared", module: "orchestration/tasks", type: "AwaitReviewOptions", props: ["forTurn"], owner: "FIX-2086" },
+  // `AwaitReviewOptions` itself is gone (FIX-2131), so its `forTurn` is read as text.
+  { row: "`Task.parkedForTurn`", kind: "text", files: SWEPT_TEXT, pattern: words("parkedForTurn"), owner: "FIX-2086" },
   { row: "A board's `reopenIn`", kind: "text", files: SWEPT_TEXT, pattern: words("reopenIn"), owner: "FIX-2086" },
   {
     row: "`harnessMessageDoor`",
@@ -201,6 +203,46 @@ export const PERSON_STOPS_REMOVED = [
   { name: "keepWaitingFor", owner: "FIX-2133" },
   { name: "ROW_HOLD_UNANSWERABLE", owner: "FIX-2133" },
   { name: "inboxQuestionAnswer", owner: "FIX-2133" },
+  // FIX-2132: a coding run's question holds its task on the board, through one ask step; the
+  // harness manager's own question inbox, its board park and its announcement are gone.
+  // `answerQuestion` is also the board's own `updateTask` step, so only harness-manager's is swept.
+  { name: "answerQuestion", owner: "FIX-2132", files: /^packages\/harness-manager\/.*\.(ts|tsx|mts)$|^packages\/harness-manager\/README\.md$/ },
+  { name: "inboxCollection", owner: "FIX-2132" },
+  { name: "parkOnBoardQuestion", owner: "FIX-2132" },
+  { name: "parkOnMismatch", owner: "FIX-2132" },
+  { name: "HarnessRunParked", owner: "FIX-2132" },
+  { name: "QuestionAnnouncement", owner: "FIX-2132" },
+  { name: "listQuestions", owner: "FIX-2132" },
+  { name: "readQuestion", owner: "FIX-2132" },
+  { name: "withdrawQuestion", owner: "FIX-2132" },
+  { name: "withdrawEarlierQuestions", owner: "FIX-2132" },
+  { name: "questionTopic", owner: "FIX-2132" },
+  { name: "questionTopicPrefix", owner: "FIX-2132" },
+  { name: "questionFingerprint", owner: "FIX-2132" },
+  { name: "parseQuestionTopic", owner: "FIX-2132" },
+  { name: "announce", owner: "FIX-2132", files: /^packages\/harness-manager\/src\/.*\.ts$/ },
+  // FIX-2131: a question holds its task and a review suspends; the question park, its answer
+  // and the review park are gone, with the board's park exit. `onReview` is still named once, by
+  // the board's refusal of it (marked).
+  { name: "parkOnQuestion", owner: "FIX-2131" },
+  { name: "createParkOnQuestion", owner: "FIX-2131" },
+  { name: "ParkOnQuestionOptions", owner: "FIX-2131" },
+  { name: "answerTask", owner: "FIX-2131" },
+  { name: "awaitReview", owner: "FIX-2131" },
+  { name: "AwaitReviewOptions", owner: "FIX-2131" },
+  { name: "unparkAndDrain", owner: "FIX-2131" },
+  { name: "UnparkAndDrainInput", owner: "FIX-2131" },
+  { name: "unparkAndDrainInputSchema", owner: "FIX-2131" },
+  { name: "unpark", owner: "FIX-2131" },
+  { name: "UnparkOptions", owner: "FIX-2131" },
+  { name: "onReview", owner: "FIX-2131" },
+  { name: "TaskBoardOnReview", owner: "FIX-2131" },
+  { name: "assertParkExitSupported", owner: "FIX-2131" },
+  { name: "parkedOnQuestion", owner: "FIX-2131" },
+  { name: "turnReentries", owner: "FIX-2131" },
+  { name: "refuseWhenParked", owner: "FIX-2131" },
+  { name: "excusedParked", owner: "FIX-2131" },
+  { name: "PERSON_REASONS", owner: "FIX-2131" },
 ];
 
 /**
@@ -213,6 +255,8 @@ export const KEEP = [
   { path: /^(apps\/docs\/docs\/server\/scheduled\.md|packages\/scheduled\/README\.md)$/, line: /idempotency(WindowMs|Options)/, why: "says the adapter refuses the removed options (FIX-2085)" },
   { path: /^packages\/scheduled\/src\/createScheduledTransportAdapter\.ts$/, line: /idempotency(WindowMs|Options)/, why: "BP-030: the adapter refuses a removed option loudly, naming it" },
   { path: /^packages\/harness-manager\/README\.md$/, line: /Upgrading from `messageDoor`|^Before `harnessSessionDoor`, a manager's `messageDoor`/, why: "the README's upgrade note: says the door is gone and what replaces it" },
+  { path: /^packages\/harness-manager\/src\/manager\.ts$/, line: /^if \("announce" in \(options as object\)\) \{$|^"\[harness-manager\] `announce` was removed: /, why: "BP-030: the manager refuses the removed `announce` option loudly, naming it (FIX-2132)" },
+  { path: /^packages\/harness-manager\/README\.md$/, line: /^- The manager keeps no questions of its own\. Removed: /, why: "the README's migration note: says the question inbox is gone and what replaces it (FIX-2132)" },
   { path: /^packages\/orchestration\/README\.md$/, line: /^\*\*Migrating from `resumeOwedWaits`\.\*\* `resumeOwedWaits\(ctx, collection\)` is no longer exported/, why: "the README's migration note: says the helper is gone" },
   { path: /^packages\/workforce\/src\/conversation-board\/(board-entries|ledger)\.ts$/, line: /\bRETRY_OF\b/, why: "BP-030: the retired marker's key, kept only so a row an older host wrote has it stripped from what a caller reads; nothing writes it" },
   { path: /^packages\/workforce\/src\/workers\/upgrade-entry-names\.ts$/, line: /from: "runTaskBoard"/, why: "BP-030: the host-start rewrite of a request stored under the old entry name (FIX-2084)" },

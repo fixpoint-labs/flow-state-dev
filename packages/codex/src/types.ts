@@ -38,7 +38,7 @@ export const CODEX_SOURCE = "codex/sdk" as const;
  * own. `codexAgent` refuses to build against any other installed version, and
  * the escape is a release of this package — there is no override option.
  */
-export const TESTED_SDK_VERSION = "0.152.1" as const;
+export const TESTED_SDK_VERSION = "0.164.0" as const;
 
 /**
  * Codex's full token breakdown for a turn.

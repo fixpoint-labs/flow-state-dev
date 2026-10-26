@@ -242,14 +242,14 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
       // A decline is the only stop condition — a throw below is the unknown
       // case, not the dead case. But there are two kinds of decline and they
       // mean different things to the worker.
-      if (outcome.reason === "disallowed") {
-        // The task moved to a status the lease does not govern, which today
-        // means the worker parked it for review. It has NOT been displaced:
-        // review is an explicit park, and the substrate's write fence is
-        // scoped to `in_progress` for exactly this reason. So stop asserting
+      if (outcome.reason === "disallowed" || outcome.reason === "held") {
+        // The row no longer takes a lease, but nobody displaced the worker:
+        // it moved to a status the lease does not govern (`disallowed`), or
+        // it waits on a person with an open hold (`held`: the turn asked a
+        // question, which ends its lease, FIX-2131). So stop asserting
         // liveness on a row the lease no longer speaks for, and leave the
-        // worker alone — aborting it here would contradict the same rule one
-        // layer down.
+        // worker alone: aborting it would fail a turn that did what it meant
+        // to.
         stop();
         return;
       }

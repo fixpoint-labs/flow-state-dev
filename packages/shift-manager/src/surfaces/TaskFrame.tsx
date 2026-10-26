@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
-import { columnFor, readStatus } from "../lib/columns";
+import { columnFor } from "../lib/columns";
 import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
@@ -73,7 +73,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         <p className="text-xs text-muted-foreground" data-testid="task-status">
           {row === undefined ? "Not on this board yet." : `${row.status} · ${columnFor(row.status)}`}
           {worker === null ? "" : ` · ${worker}`}
-          {row !== undefined && readStatus(row.status) === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} /> : null}
+          {row !== undefined && row.status === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} /> : null}
           {row?.run == null ? "" : ` · attempt ${row.run.attempt}`}
         </p>
         {task.rowFailure === undefined ? null : (

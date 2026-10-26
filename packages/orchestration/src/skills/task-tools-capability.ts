@@ -10,15 +10,17 @@
  * running request before its next model call, using no attempt. Every refusal
  * names the field, the state and the next move. A finished task's output never
  * changes: more work is a follow-up, and the task view reads the latest
- * completed follow-up as `current`. `answerTask` answers a task parked on its
- * worker's question, until FIX-2058.
+ * completed follow-up as `current`. A question a task holds on is answered
+ * with `updateTask({ id, question, message })` (FIX-2133).
  *
  * Nothing on this surface settles a task: a task ends when its worker returns
  * or throws, and the drain or the claim gate records that. The worker's own
- * tool, `reportProgress` (`createReportProgress`), reports a note and a
- * checkpoint of its output while it runs; the question park,
- * `parkOnQuestion` (`createParkOnQuestion`), asks a question. Both act on the
- * row the turn's claim holds, never on a task id from input.
+ * tools act on the row the turn's claim holds, never on a task id from input:
+ * `reportProgress` (`createReportProgress`) reports a note and a checkpoint of
+ * its output while it runs, and `askQuestion` (`createAskQuestion`) asks the
+ * user a question the task holds on (FIX-2131). `waitForUser`
+ * (`createWaitForUserTool`) stops a turn for the user's approval, review or,
+ * on a turn with no task row, input.
  *
  * ## Dispatching (FIX-1875)
  *
@@ -49,7 +51,7 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -73,6 +75,7 @@ import {
   withoutNoticeMarkers,
   cancelledDependents,
   MAX_STEERS,
+  MAX_HOLD_PROMPT,
   isRowHold,
   openHolds,
   steerPlacesTaken,
@@ -90,6 +93,9 @@ import { currentWorkerClaim, currentWorkerTask } from "../task-board/flow-policy
 import { boardResolverOf } from "../task-board/board-resolver";
 // The one task-turn test (FIX-1816 BR-5a), owned by the task-board.
 import { isTaskTurn } from "../task-board/task-turn";
+// One wait on a person per task turn (FIX-2131), and the board's one write that opens a question (FIX-2133).
+import { takeTurnWait } from "../task-board/turn-wait";
+import { askMidway } from "../task-board/task-request";
 import {
   arrivesAsNoticeAnswer,
   canHoldWait,
@@ -289,8 +295,8 @@ const capError = (err: TaskCapExceededError) => ({
  * The one renderer for "this task is finished, so your write was refused"
  * (FIX-976, Decision 6).
  *
- * `answerTask` and the question park report it, and they must not drift into
- * two ways of saying the same thing: one sentence shape, one `snake_case`
+ * Every tool that refuses a write to a finished task reports it, and they must
+ * not drift into two ways of saying the same thing: one sentence shape, one `snake_case`
  * prefix convention (the one `task_not_found` / `unknown_assignee` already
  * use), and exactly one clause that varies: **what would not change**.
  */
@@ -348,7 +354,6 @@ const declinedWriteToolError = (
       clause,
     });
   }
-  if (declined.reason === "awaiting-answer") return awaitingAnswerError(taskId);
   if (declined.reason === "follow-up") {
     return {
       ok: false as const,
@@ -386,41 +391,6 @@ const okOrError = z.union([
 // ---------------------------------------------------------------------------
 // Questions and follow-ups (FIX-1817)
 // ---------------------------------------------------------------------------
-
-/**
- * Why `answerTask` can't answer `task`, or `undefined` when it is parked on a
- * question. A terminal row answers as every other write to one does; anything
- * else isn't waiting on an answer.
- */
-function notParkedOnQuestion(task: Task) {
-  if (isTerminalStatus(task.status)) {
-    return terminalWriteToolError({
-      code: "terminal_task_write_declined",
-      taskId: task.id,
-      status: task.status,
-      clause: STATUS_CLAUSE,
-    });
-  }
-  if (task.status !== "parked") {
-    return {
-      ok: false as const,
-      taskId: task.id,
-      error:
-        `not_parked_on_question: task "${task.id}" is ${task.status}, so it isn't waiting ` +
-        `on an answer. Nothing was written.`,
-    };
-  }
-  if (task.parkedOnQuestion !== true) {
-    return {
-      ok: false as const,
-      taskId: task.id,
-      error:
-        `not_parked_on_question: task "${task.id}" is parked, but not on its worker's ` +
-        `question (it may be waiting on its own sub-tasks). Nothing was written.`,
-    };
-  }
-  return undefined;
-}
 
 const followUpAssigneeError = (followUpOf: string) => ({
   ok: false as const,
@@ -483,18 +453,6 @@ function isTakenTaskId(err: unknown): boolean {
 }
 
 /**
- * The refusal for reassigning a task an answer has re-queued and that hasn't
- * run again yet. Lifts once the re-entry is claimed.
- */
-const awaitingAnswerError = (taskId: string) => ({
-  ok: false as const,
-  taskId,
-  error:
-    `task_awaiting_answer: task "${taskId}" was just answered and is about to pick up again ` +
-    `with its worker, in the session that filed it. Reassign it after that run starts. Nothing was written.`,
-});
-
-/**
  * The metadata key a row filed under an id picked from the board (a
  * follow-up's) names the call that filed it in (its logical id), so a replay
  * of the call finds its own row and no other. Server-written: a caller's
@@ -519,8 +477,8 @@ function followUpTakenError(id: string) {
   };
 }
 
-/** Where a task turn's own tools (`parkOnQuestion`, `reportProgress`) read the row the turn holds. */
-export interface ParkOnQuestionOptions {
+/** Where a task turn's own tools (`askQuestion`, `reportProgress`) read the row the turn holds. */
+export interface TaskTurnToolOptions {
   /**
    * The ledger the running task turn's row is on, or `undefined` when this
    * flow can't reach it. Resolve from server-set state only (a task session's
@@ -530,7 +488,7 @@ export interface ParkOnQuestionOptions {
 }
 
 /** {@link createReportProgress}'s options: where it reads the row the turn holds. */
-export type ReportProgressOptions = ParkOnQuestionOptions;
+export type ReportProgressOptions = TaskTurnToolOptions;
 
 /** The row a task turn holds, with the ticket that proves it. */
 interface HeldRow {
@@ -566,8 +524,8 @@ async function heldRowOf(
   const sessionId = ctx.session?.identity?.id;
   const requestId = ctx.request?.identity?.id;
   if (sessionId === undefined || requestId === undefined) return undefined;
-  // Any status: a row this turn held and that has since parked, settled or
-  // been cancelled is still this turn's, and a write declines naming it.
+  // Any status: a row this turn held and that has since settled or been
+  // cancelled is still this turn's, and a write declines naming it.
   const row = ledger
     .list()
     .find((task) => task.run?.sessionId === sessionId && task.run.requestId === requestId && task.run.attempt === task.attempts);
@@ -675,82 +633,185 @@ export function createReportProgress(options: ReportProgressOptions) {
 }
 
 /**
- * The worker's question park (FIX-1817 S1): `parkOnQuestion({ question })`,
+ * The longest question `askQuestion` takes, in characters: what a row keeps
+ * of a question (`MAX_HOLD_PROMPT`), so the person reads the whole of it.
+ */
+const QUESTION_LIMIT = MAX_HOLD_PROMPT;
+
+/**
+ * The worker's question (FIX-2131, on FIX-2133's hold): `askQuestion({ question })`,
  * for a task turn, and the rule for when a turn is offered it.
  *
  * - **Which row.** The one the turn holds ({@link heldRowOf}), never a task
  *   id from input.
- * - **The park.** `awaitReview` with the question, fenced by that ticket and
- *   to a running row (`fromRunning`), so it is declined once the claim was
- *   displaced (a cancel landed) and once the row has already parked this
- *   attempt, for its question or for anything else. A task waits on one
- *   thing at a time.
- * - **When it is offered** (`offered`). On a task turn ({@link isTaskTurn})
- *   that holds a running row, when the row isn't waited on: in v1 a waited-on task's worker
- *   answers with what it has, or fails (epic ER-22).
- *
- * The turn's own answer after a park is not recorded: the board refuses to
- * settle a parked row from its worker's result (FIX-1234).
+ * - **The question.** The board's one write that opens it (`askMidway`): it is kept
+ *   on the row as a hold, the row's lease is dropped, and the turn ends
+ *   unsettled. What the turn did stands; the answer (a steer naming the
+ *   question, from the Inbox, a line in the task's session, or the filer's
+ *   `updateTask`) owes the task one more turn on the same attempt, which
+ *   starts from the brief, the last checkpoint and the answer. Its deadline is
+ *   the hold's, which the host sets.
+ * - **One wait per turn.** A turn whose `waitForUser` took the turn's wait on a
+ *   person first is refused, naming it; and this tool, first, refuses that one.
+ *   Both tools take the wait at the same point of their call, before anything
+ *   they write, so a durable turn's replay decides as its first run did.
+ * - **When it is offered** (`offered`). On a task turn holding a running row.
  */
-export function createParkOnQuestion(options: ParkOnQuestionOptions) {
-  const claimedRow = (ctx: BlockContext) => heldRowOf(options.resolve, ctx);
-
+export function createAskQuestion(options: TaskTurnToolOptions) {
   const tool = handler({
-    name: "parkOnQuestion",
+    name: "askQuestion",
     description:
-      "Stop work on the task you are running and ask the person who assigned it a question " +
-      "you can't go on without: which region, which account, whether you may delete " +
-      "something. The task waits, and your next turn in this session is their answer. " +
-      "Use it instead of guessing. After calling it, end your turn with a short note; " +
-      "nothing you answer now is recorded as the task's result.",
-    inputSchema: z.object({ question: z.string().min(1) }),
+      "Ask the user a question about the task you are running that you can't go on without: " +
+      "which region, which account, whether you may delete something. The task waits for their " +
+      "answer, and your turn ends: after calling this, end your turn with a short note. Their " +
+      "answer starts your next turn on this task, with everything you did so far. Use it instead " +
+      "of guessing.",
+    inputSchema: z.object({ question: z.string().min(1).max(QUESTION_LIMIT) }),
     outputSchema: z.union([
-      z.object({ ok: z.literal(true), taskId: z.string(), status: z.literal("parked") }),
+      z.object({ ok: z.literal(true), taskId: z.string(), questionId: z.string() }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     execute: async (input, ctx) => {
-      const held = await claimedRow(ctx);
+      const held = await heldRowOf(options.resolve, ctx);
       if (held === undefined) {
         return {
           ok: false as const,
-          error: "not_a_task_turn: this turn isn't running a task, so there is no task to park.",
+          error: "not_a_task_turn: this turn isn't running a task, so there is no task to ask about.",
         };
       }
-      const { claim, ledger, row } = held;
-      if (row?.wait !== undefined) {
+      const { claim, ledger } = held;
+      if (takeTurnWait(ctx, held, "askQuestion") === "waitForUser") {
         return {
           ok: false as const,
           error:
-            `waited_on_task: task "${claim.taskId}" was dispatched to you by a turn that is waiting ` +
-            `for it. Answer with what you have, or end your turn with an error.`,
+            `one_wait_per_turn: this turn already waits on the user with waitForUser, so it can't ` +
+            `also ask a question. Ask it after they answer. Nothing was written.`,
         };
       }
-      const outcome: TaskWriteOutcome | undefined = await ledger.awaitReview(claim.taskId, input.question, {
-        claim,
-        fromRunning: true,
-        onQuestion: true,
-      });
-      if (outcome == null || outcome.outcome === "declined") {
-        const status = outcome?.status ?? ledger.get(claim.taskId)?.status ?? "unknown";
+      const asked = await askMidway(ctx, ledger, [{ prompt: input.question }]);
+      if (asked.ok) return { ok: true as const, taskId: claim.taskId, questionId: asked.holds[0] ?? "" };
+      if (asked.reason === "steer-limit") {
         return {
           ok: false as const,
           error:
-            `park_declined: task "${claim.taskId}" is ${status}, so it can't wait on your ` +
-            `question now. Nothing was written.`,
+            `question_limit: task "${claim.taskId}" has no room left for another answer. Go on ` +
+            `with what you have. Nothing was written.`,
         };
       }
-      return { ok: true as const, taskId: claim.taskId, status: "parked" as const };
+      const status = ledger.get(claim.taskId)?.status ?? "unknown";
+      return {
+        ok: false as const,
+        error:
+          `ask_declined: task "${claim.taskId}" is ${status}, and this turn no longer holds it ` +
+          `(${asked.reason}), so it can't wait on your question. Nothing was written.`,
+      };
     },
   });
 
   return {
     /** The tool, for a task turn's tool list. */
     tool,
-    /** Whether the running turn is offered the tool: a task turn holding a claim on a row that isn't waited on. */
+    /** Whether the running turn is offered the tool: a task turn holding a running row. */
     offered: async (ctx: BlockContext): Promise<boolean> => {
-      const held = await claimedRow(ctx);
-      return held !== undefined && held.row?.status === "in_progress" && held.row.wait === undefined;
+      const held = await heldRowOf(options.resolve, ctx);
+      return held !== undefined && held.row?.status === "in_progress";
     },
+  };
+}
+
+/** What a model's `waitForUser` asks for: an approval, a review or, on a turn with no task row, input. */
+const WAIT_KINDS = ["approval", "review", "input"] as const;
+
+/**
+ * The model's stop for the user (FIX-2131, on FIX-2129's `ctx.waitForUser`):
+ * `waitForUser({ kind, prompt })`, an approval, a review or an input, and the
+ * rule for when a turn is offered it.
+ *
+ * - **Which kinds where.** On a task turn, approvals and reviews: the request
+ *   suspends, the row mirrors the stop as its suspension hold, and the Inbox
+ *   lists it. A question on a task turn holds the task instead, so `input` is
+ *   refused there by name, pointing at `askQuestion`. On a turn with no task
+ *   row there is nothing to hold, so a question is `input`, and its answer is
+ *   the tool's result.
+ * - **Its deadline** is the host's setting for a person's stop, where the host
+ *   sets one, and none otherwise; the tool takes none. A model can't catch, so
+ *   at the deadline the tool returns a no-answer result (`answered: false`,
+ *   `deadline: true`), and an approval reads as a no.
+ * - **One wait per turn.** On a task turn, a turn that asked a question first
+ *   is refused, naming `askQuestion`. Read off the turn-asked fact, never off
+ *   the row's open holds.
+ * - **When it is offered** (`offered`). On any turn of a host that can stop a
+ *   request for the user (durable execution, `ctx.suspend`).
+ */
+export function createWaitForUserTool(options: TaskTurnToolOptions) {
+  const tool = handler({
+    name: "waitForUser",
+    description:
+      "Stop and wait for the user. kind approval asks a yes or a no before you do something; " +
+      "kind review asks them to look at work and give a verdict; kind input asks for a value you " +
+      "need, and is only for a turn that isn't running a task (on a task, use askQuestion). The " +
+      "user's answer is this tool's result. It may come back with answered: false when nobody " +
+      "answered in time: then go on without it, or end your turn.",
+    inputSchema: z.object({
+      kind: z.enum(WAIT_KINDS),
+      prompt: z.string().min(1),
+      title: z.string().min(1).optional(),
+    }),
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true), kind: z.literal("approval"), approved: z.boolean(), deadline: z.literal(true).optional(), answer: z.unknown().optional() }),
+      z.object({ ok: z.literal(true), kind: z.enum(["review", "input"]), answered: z.literal(true), answer: z.unknown() }),
+      z.object({ ok: z.literal(true), kind: z.enum(["review", "input"]), answered: z.literal(false), deadline: z.literal(true) }),
+      z.object({ ok: z.literal(true), cancelled: z.literal(true) }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+    execute: async (input, ctx) => {
+      const held = await heldRowOf(options.resolve, ctx);
+      if (held !== undefined) {
+        if (input.kind === "input") {
+          return {
+            ok: false as const,
+            error:
+              `input_is_a_question: you are running task "${held.claim.taskId}", so a question you ` +
+              `need answered holds the task: ask it with askQuestion. Nothing was asked.`,
+          };
+        }
+        if (takeTurnWait(ctx, held, "waitForUser") === "askQuestion") {
+          return {
+            ok: false as const,
+            error:
+              `one_wait_per_turn: this turn already asked the user a question with askQuestion, so ` +
+              `it can't also wait on them. End your turn; their answer starts the next one.`,
+          };
+        }
+      }
+      const wait = { prompt: input.prompt, ...(input.title !== undefined ? { title: input.title } : {}) };
+      if (input.kind === "approval") {
+        const answer = await ctx.waitForUser({ kind: "approval", ...wait });
+        if (answer.cancelled) return { ok: true as const, cancelled: true as const };
+        return {
+          ok: true as const,
+          kind: "approval" as const,
+          approved: answer.approved,
+          ...(!answer.approved && answer.deadline ? { deadline: true as const } : {}),
+          ...(answer.answer !== undefined ? { answer: answer.answer } : {}),
+        };
+      }
+      try {
+        const answer = await ctx.waitForUser({ kind: input.kind, ...wait });
+        if (answer.cancelled) return { ok: true as const, cancelled: true as const };
+        return { ok: true as const, kind: input.kind, answered: true as const, answer: answer.answer };
+      } catch (error) {
+        if (!(error instanceof SuspensionTimeoutError)) throw error;
+        return { ok: true as const, kind: input.kind, answered: false as const, deadline: true as const };
+      }
+    },
+  });
+
+  return {
+    /** The tool, for a turn's tool list. */
+    tool,
+    /** Whether the running turn is offered the tool: a host that can stop a request for the user. */
+    offered: async (ctx: BlockContext): Promise<boolean> => ctx.suspend !== undefined,
   };
 }
 
@@ -1331,7 +1392,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         }
       }
       if (input.assignee !== undefined && input.assignee !== current.assignee) {
-        if (current.answered === true) return awaitingAnswerError(input.id);
         const bad = checkAssignee(input.assignee, await rosterFor(roster, ctx));
         if (bad) return bad;
       }
@@ -1529,7 +1589,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "your turn, and its ending wakes you.",
     inputSchema: z.object({
       status: z
-        .enum(["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"])
+        .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
         .optional(),
       assignee: z.string().optional(),
       filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
@@ -1607,8 +1667,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "context and input), every field you can edit before it starts, how it stands, its " +
       "worker's latest status note, and its output: the result so far while it runs, or its " +
       "result once it completed. checkpoint: true means the output came from a reported " +
-      "checkpoint. Its error when it failed, the question it waits on when it is " +
-      "parked. current is the latest follow-up in its chain that completed, with its output: " +
+      "checkpoint. Its error when it failed. holds are what it waits on now: a question " +
+      "(answer it with updateTask, naming it), or a stop for the user. current is the latest follow-up in its chain that completed, with its output: " +
       "the version that stands now; output stays the task's own. steers are the messages sent " +
       "into it, oldest first, each marked taken once its work read it. When this read is how you " +
       "hear the task failed or was cancelled, cancelled lists the tasks you filed that depended " +
@@ -1667,8 +1727,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           /** Its worker's last one-line progress note. */
           statusNote: z.string().optional(),
           error: z.string().optional(),
-          /** The question the task is parked on, when it is parked on one. */
-          question: z.string().optional(),
           ...waitingShape,
           followUpOf: z.string().optional(),
           filedByTask: z.string().optional(),
@@ -1811,7 +1869,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
           ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
           ...(t.error !== undefined ? { error: t.error } : {}),
-          ...(t.parkedOnQuestion === true && t.feedback ? { question: t.feedback } : {}),
           ...waitingOf(t),
           ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
@@ -1845,59 +1902,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  const answerTask = defineTool({
-    name: named("answerTask"),
-    description:
-      "Answer a task that is parked on its worker's question. The task goes back in the " +
-      "queue with your answer, and its worker picks it up in the same session, with " +
-      "everything it did before it asked. Answering does not use up the task's retries. " +
-      "A task that isn't waiting on a question, or one already answered, is turned away.",
-    inputSchema: z.object({ taskId: z.string(), answer: z.string() }),
-    outputSchema: okOrError,
-    execute: async (input, ctx) => {
-      const collection = await resolve(ctx);
-      if (!collection) return noBoardError;
-      const task = collection.get(input.taskId);
-      if (!task) return taskNotFoundError(input.taskId);
-      const refused = notParkedOnQuestion(task);
-      if (refused !== undefined) return refused;
-      // The question this answer is for is the park read above, on its
-      // attempt: the write is fenced by a ticket minted from that read, so an
-      // answer that arrives after the task was answered, ran again and parked
-      // on a newer question is refused inside the atomic write rather than
-      // taken as the newer question's answer. Server-derived: the row, never
-      // input. The fenced `unpark` also refuses a row that left `parked`.
-      const outcome: TaskWriteOutcome | undefined = await collection.unpark(input.taskId, input.answer, {
-        answer: true,
-        claim: ticketForClaim(collection.collectionId, task, collection.partition),
-      });
-      if (outcome != null && outcome.outcome === "declined") {
-        if (outcome.reason === "terminal") return declinedWriteToolError(input.taskId, outcome, STATUS_CLAUSE);
-        if (outcome.status === "parked") {
-          return {
-            ok: false as const,
-            taskId: input.taskId,
-            error:
-              `not_parked_on_question: task "${input.taskId}" has moved on to a newer question ` +
-              `since this answer was given. Nothing was written.`,
-          };
-        }
-        return (
-          notParkedOnQuestion({ ...task, status: outcome.status }) ?? {
-            ok: false as const,
-            taskId: input.taskId,
-            error:
-              `task_write_declined: the answer to task "${input.taskId}" was refused ` +
-              `(${outcome.reason}); the task is ${outcome.status}. Nothing was written.`,
-          }
-        );
-      }
-      return { ok: true as const };
-    },
-  });
-
-  // The filer's four, then `answerTask` (until FIX-2058).
-  return [createTask, getTask, listTasks, updateTask, answerTask];
+  // The filer's four.
+  return [createTask, getTask, listTasks, updateTask];
 }
 
 /**
@@ -1991,7 +1997,7 @@ export interface TaskToolsOptions {
 /**
  * The task tools as a turn gets them: a list of the same names per kind of
  * turn (waiting or not), each built once, and the one
- * the turn can use: the filer's four and `answerTask`. `getTask` carries `wait`
+ * the turn can use: the filer's four. `getTask` carries `wait`
  * and `deadline` only on a board that resumes waits (`options.resumesWaits`)
  * and a host that can hold and bound one ({@link canHoldWait}). `createTask`
  * never waits.

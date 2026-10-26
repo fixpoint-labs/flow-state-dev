@@ -68,6 +68,7 @@ import {
   type TaskWaitingOn,
 } from "../tasks";
 import { ticketHoldsRow } from "../tasks/collection/internal";
+import { askedOnTicket } from "../tasks/collection/holds";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";
@@ -165,8 +166,7 @@ function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task |
  * the asking turn, whose own record is new).
  */
 function askedThisTurn(record: Admitted, row: Task | undefined): boolean {
-  if (record.askedQuestions === true) return true;
-  return row !== undefined && row.askedInTurn !== undefined && row.askedInTurn === record.ticket.turn && row.attempts === record.ticket.attempt;
+  return record.askedQuestions === true || askedOnTicket(row, record.ticket);
 }
 
 /** A task's request ended with a result that settles it, or that the next request picks up. */
@@ -303,8 +303,8 @@ async function endRequest(key: string, record: Admitted, ending: RequestEnding):
   }
 }
 
-/** The guards every write of the check presents: advisory, fenced on the claim, a review park left alone. */
-const guardsOf = (ticket: TaskClaimTicket) => ({ ifAllowed: true, claim: ticket, refuseWhenParked: true }) as const;
+/** The guards every write of the check presents: advisory, fenced on the claim. */
+const guardsOf = (ticket: TaskClaimTicket) => ({ ifAllowed: true, claim: ticket }) as const;
 
 /** Whether a request ending is one that fails the attempt. */
 const failsTheAttempt = (status: RequestEnding["status"]) =>
@@ -327,7 +327,7 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
     if (stop !== undefined) cancelRefusedStop(record.ctx, ticket.taskId, stop.source);
     return undefined;
   }
-  // Settled, retried, parked for review, taken back or claimed for a later
+  // Settled, retried, taken back or claimed for a later
   // turn meanwhile: not this request's to write.
   if (!claimHolds(ref, ticket, row)) return undefined;
   // A later request (a notice, a steer's turn) while the task's own request is

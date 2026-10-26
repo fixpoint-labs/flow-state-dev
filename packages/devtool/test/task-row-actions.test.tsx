@@ -20,7 +20,7 @@ import {
 import type { Task, TaskStreamItem } from "../src/react/lib/task-collection-state";
 import { TaskRowActions } from "../src/react/components/workspace/task-row-actions";
 
-const parked: Task = { id: "task-a", goal: "refund", status: "parked", feedback: "needs a person" };
+const parked: Task = { id: "task-a", goal: "refund", status: "in_progress", feedback: "needs a person" };
 
 function taskItem(task: Task): TaskStreamItem {
   return {

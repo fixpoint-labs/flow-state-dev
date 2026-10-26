@@ -237,7 +237,16 @@ await host.release(place);
 
 For a repository, the host keeps one clone of each remote under `root` and gives every run its own branch in `checkout/`. `https://github.com/acme/x`, `https://github.com/acme/x.git` and `git@github.com:acme/x.git` share one clone. A non-default port, like `ssh://github.com:2222/acme/x`, is another server and gets its own. Before it cuts a new branch, the host fetches and reads the remote's default branch again, so a renamed `main` is followed. `place.repo` says which clone, branch, base branch and commit the run got. Record the remote and base on your run, and log the clone path so whoever runs the host can find it.
 
-A checkout that already exists is handed back exactly as it was left. The host doesn't fetch, reset or rebase it, so a retry finds its uncommitted work. A checkout it can't explain, such as one on a different branch or with no `.git`, is refused and left alone. The one exception is a checkout whose `git worktree add` was killed before it finished: the host marks the place while that command runs, and when the mark is still there and the tree only has files missing, it rebuilds the checkout instead of handing a run a tree with half the repository gone. If the tree shows any other change, the host refuses it and keeps it.
+A checkout that already exists is handed back exactly as it was left. The host doesn't fetch, reset or rebase it, so a retry finds its uncommitted work. A checkout it can't explain, such as one with no `.git`, is refused and left alone.
+
+Coding agents switch branches, for example to split their work into several pull requests. The run's branch stays the run's root: at the next provision the host puts the checkout back on it, and what the run made on the other branch stays there.
+
+- **The checkout's commit already contains everything on the run's branch** (the run branched off and kept committing): the host fast-forwards the run's branch to that commit and points the checkout back at it. Only refs move. Files, staged changes and untracked files stay as they were.
+- **It doesn't** (the run cut a branch from the base and cherry-picked onto it, say): the host checks out the run's branch as it stands. A detached HEAD whose commits no branch holds first gets a branch named `<run's branch>-detached-<commit>`. If the checkout has uncommitted changes, though, the host leaves it exactly as it is, because switching would carry those changes or lose them, and what to do with them is the run's decision. `place.repo.offBranch` then says so: `on` is the branch the checkout is on (`null` for a detached HEAD), and `message` tells the run to commit, stash or discard the changes, or to switch back itself. The next hand-back moves the checkout back once the tree is clean. A caller that must only run on the run's branch refuses with that message.
+
+`place.repo.movedBack` then says what happened. `from` is the branch the checkout was on (`null` for a detached HEAD), `commit` is where the run's branch points, and `how` is `"fast-forward"`, `"re-pointed"` (already there) or `"switched"`. On a switch, `kept` names a branch the host made. Tell the run, because it may still think it's on the other branch.
+
+These cases are refused as `checkout-moved`: a merge, rebase, cherry-pick, revert or bisect is half done, another worktree now has the run's branch checked out, or checking out the run's branch would overwrite a file the other branch ignores. Nothing is changed in any of them. The message says what to run in the checkout. The one exception is a checkout whose `git worktree add` was killed before it finished: the host marks the place while that command runs, and when the mark is still there and the tree only has files missing, it rebuilds the checkout instead of handing a run a tree with half the repository gone. If the tree shows any other change, the host refuses it and keeps it.
 
 The host runs none of the repository's git hooks while it makes or hands back a checkout, whether they live in `.git/hooks` or in a `core.hooksPath` directory such as `.husky`. A `post-checkout` hook that builds or installs would fail in a fresh tree with no dependencies, and a run can write to the hooks directory its worktree shares with the repository. Run any setup the checkout needs as part of the run.
 
@@ -457,9 +466,10 @@ interface HeldWorkStore {
 | `remote-not-allowed` | Its host isn't listed, it's `file://` and `"file"` isn't listed, or its scheme isn't `https`, `ssh` or `file` |
 | `remote-unreadable` | The host is allowed but git couldn't read it, or it has no branch to cut from |
 | `base-diverged` | A repository on this machine: the base and its upstream each have commits the other lacks. Nothing is made |
+| `checkout-moved` | A checkout handed back off the run's branch is mid-way through a git operation, its branch is checked out in another worktree, or switching back would overwrite an ignored file. Nothing is changed, and the message names what fixes it |
 | anything else | The source answered `refused`, with that reason |
 
-Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry by itself, so fail the run with the reason. `base-diverged` clears once someone pulls or rebases, or pushes, in that repository.
+Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry by itself, so fail the run with the reason. `base-diverged` clears once someone pulls or rebases, or pushes, in that repository. `checkout-moved` clears once someone runs the command its message names in the checkout.
 
 ## API
 

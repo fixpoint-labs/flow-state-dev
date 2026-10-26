@@ -99,6 +99,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --control
 
+      # `--at` sweeps a tree extracted with `git archive`, which has no node_modules.
+      # On this commit's own tree it must give the plain sweep's verdict, or `--at`
+      # on an older commit says CAN'T TELL where it should name what it found.
+      - name: The task-surface sweep reads an extracted tree
+        if: ${{ !cancelled() }}
+        run: node goals/workforce-coordination/runs-on-one-task/sweep.mjs --at HEAD
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.

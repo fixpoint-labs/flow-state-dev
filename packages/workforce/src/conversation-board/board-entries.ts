@@ -15,8 +15,8 @@ export const DISPATCH_ENTRY = "dispatch";
 
 /**
  * The internal entry that checks a task session's waiting task, and does
- * nothing else (FIX-2077): what the upgrade's backfill wakes for a split an
- * older host parked, which may have no notice left to wake it. **Pinned**:
+ * nothing else (FIX-2077): what the upgrade's backfill wakes for a row an
+ * older host held open, which may have no notice left to wake it. **Pinned**:
  * a wake stores it by name.
  */
 export const CHECK_TASK_ENTRY = "checkWaitingTask";
@@ -37,9 +37,8 @@ export const TASK_SETTLED_ENTRY = "onTaskSettled";
 
 /**
  * The metadata key a split row parked on its pieces carried (FIX-1802 S4).
- * Retired by FIX-2077, which no longer parks a split: a row stored with it
- * reads as running (orchestration's retired-shape map), and a caller's filing
- * or patch still never writes it, so no row can be made to look like one.
+ * Retired by FIX-2077, which no longer parks a split. A caller's filing or
+ * patch still never writes it, so no row can be made to look like one.
  */
 export const SPLIT_MARKER = "splitInto";
 

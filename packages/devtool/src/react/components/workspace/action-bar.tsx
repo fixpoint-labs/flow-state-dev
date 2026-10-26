@@ -30,7 +30,11 @@ export function getDefaults(schema: ActionInputSchema | undefined): Record<strin
   for (const [key, field] of Object.entries(schema.fields)) {
     if (field.default !== undefined) {
       defaults[key] = field.default;
-    } else if (field.type === "enum" && field.enumValues?.length) {
+    } else if (field.type === "enum" && field.required && field.enumValues?.length) {
+      // Only a required choice starts on its first value. An optional one
+      // starts on the form's "—" and is left out unless picked: an action that
+      // refuses a field alongside another (an answer sent with a status) must
+      // not be sent one nobody chose.
       defaults[key] = field.enumValues[0];
     }
   }

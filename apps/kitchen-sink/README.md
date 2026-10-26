@@ -19,6 +19,8 @@ pnpm --filter @flow-state-dev/kitchen-sink dev
 
 The app runs at [http://localhost:3000](http://localhost:3000). Every model it uses goes through the Vercel AI Gateway, so `AI_GATEWAY_API_KEY` is required for real answers. `OPENAI_API_KEY` is optional and only enables voice. [Environment variables](#environment-variables) covers the rest.
 
+The dev command uses polling for Next's route-file watcher. Workspace source edits still reload through HMR.
+
 To serve on another port, set `PORT`:
 
 ```bash
@@ -151,7 +153,7 @@ This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both
 
 ### Hiring while the app runs
 
-Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
+Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). Locally it is still there after `pnpm build && pnpm start`, because the default store is a SQLite file at `.fsdev/data/flowstate.db`. Set `STORE_TYPE=memory` for a store that starts empty each time, or point `FSD_DB_URL` at a database.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
@@ -216,7 +218,7 @@ In local development the mode uses the checkout the server runs from. To point i
 
 **The plan panel** shows what Claude Code recorded of its to-do list for the session's latest turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete, and why. A turn where Claude Code kept no to-do list says "No plan recorded for this turn." Claude Code keeps one when the job is big enough to plan, or when you ask it to. Nothing in the panel starts work.
 
-Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across a restart.
+Sessions, and the conversations they're bound to, are kept across a restart in the default SQLite store. Set `STORE_TYPE=memory` to start empty each time.
 
 ## Codex mode
 
@@ -224,7 +226,9 @@ Pick **Codex** to work a Codex session the way you would on its own. Each turn c
 
 It runs on your machine through the Codex SDK, and needs the SDK version that `@flow-state-dev/codex` supports; any other version shows the mode as unavailable, with both versions named. Sign in with `codex login`, or put `CODEX_API_KEY` in the server's environment. A host where Codex isn't signed in, or where Codex's sandbox can't run, shows the mode as unavailable with the reason.
 
-**Picking a model.** Codex can't list its models, so New session offers a short list Kitchen Sink keeps (`CODEX_MODELS` in `lib/codex-mode.ts`), its first entry preselected. A model Codex has added since isn't offered until someone adds it there. The session runs the model you picked on every turn, resumes included, and its header names it. A model Codex won't run fails the turn in Codex's words. A session from before the picker runs on Codex's own default, and its header says so.
+**Picking a model.** New session offers GPT-6.1-Sol (the default), GPT-6-Sol, GPT-6-Luna, GPT-6-Astra, GPT-5.6-Sol, GPT-5.6-Terra and GPT-5.6-Luna. Kitchen Sink maintains this list in `CODEX_MODELS` in `lib/codex-mode.ts`; model access depends on your account and Codex client. The session runs the model you picked on every turn, resumes included, and its header names it. If Codex can't run that model, the turn shows Codex's error without switching models. A session with no saved model uses `CODEX_DEFAULT_MODEL`, currently GPT-6.1-Sol.
+
+**Codex settings.** Kitchen Sink supplies the session's model and the default service tier, and disables the MCP servers it discovers in your Codex inventory. It reads that inventory on the first turn and reuses it for the server process; restart Kitchen Sink after changing your MCP servers. If the inventory can't be read, the turn warns that your configured MCP servers may start, and the next turn retries discovery. Your personal `config.toml` is unchanged.
 
 **Where it works.** Codex works in the session's own worktree and branch, on `kitchen-sink/codex-session/<session>`, the same way Claude Code mode does (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). It runs without asking for approval, inside its own sandbox, which lets it write only in that worktree: not in its git data, and not in `/tmp`. Its work waits uncommitted for you. Kitchen Sink never runs Codex without that sandbox unless you set `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` (see [Environment variables](#environment-variables)). It sees only the environment variables Kitchen Sink passes it, not the server's whole environment. That filters what it's handed and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
 
@@ -244,7 +248,7 @@ It runs on your machine through the Cursor SDK, which brings its own runtime, so
 
 Its commands start with only the environment variables Kitchen Sink passes it, not the server's whole environment: Cursor's runtime runs in a separate process that is handed only those. That is not a security boundary; the process runs as the server's OS user, so a command that goes looking can still read the server's environment on Linux. Containing that takes a separate user or a container. A command Cursor started can keep running briefly after you stop a turn.
 
-**Picking a model.** New session offers the models Cursor lists for your account, with `composer-2.5` preselected. The session runs the model you picked on every turn, resumes included, and its header names it. A model Cursor won't run fails the turn in Cursor's words. If Cursor's list can't be read, New session says why and offers `composer-2.5` alone. A session from before the picker runs on `composer-2.5`.
+**Picking a model.** New session offers a fixed list, kept in the app and not read from your Cursor account: Grok 4.7 at four efforts (shown "Grok 4.7 · Low", "· Medium", "· High" and "· Extra High"), Composer 2.5 (preselected), Gemini 4 Argon, Muse Wonder, Kimi K3, GLM 5.3, GLM 5.3 Flash, and "Auto (Cursor picks)". The effort is part of a Grok pick and reaches Cursor as the model's effort setting; every other model runs on Cursor's own defaults for its settings. The session runs the model you picked on every turn, resumes included, and its header names it. A model your Cursor account can't run fails the turn in Cursor's words. A session with no saved model runs on Composer 2.5.
 
 **Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A run Cursor reports as errored shows as an error, and the next turn still continues the same agent. It never quietly starts a new agent; start a new session for that.
 
@@ -302,7 +306,7 @@ Most are optional. These are the ones you're likely to set:
 | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 | `KITCHEN_SINK_HARNESS_UNSANDBOXED` | Set to `1` to run the coding harness modes (Claude Code, Codex and Cursor) without their sandbox. Each mode's card then says so, and the mode stays available on a machine where the sandbox can't start. Without the sandbox a run is not confined to its worktree: it can write anywhere the server's OS user can, the repository's `.git` included, and run any command, and Claude Code still asks for no approval. Unset, every run is sandboxed, and a mode whose sandbox can't start here is unavailable. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
-| `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
+| `STORE_TYPE` | The default keeps sessions and hired workers in a SQLite file, `.fsdev/data/flowstate.db`, across restarts. `memory` starts empty each time, and `filesystem` keeps JSON files in `.fsdev/data` instead. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |

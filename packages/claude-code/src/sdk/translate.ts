@@ -204,6 +204,13 @@ export interface TranslateState {
    * and a guess is not something this record is allowed to label as confirmed.
    */
   readonly inputsMayBeRevised: boolean;
+  /**
+   * Whether the live status line describes a quiet stretch (the run starting, a
+   * retry, a compaction) that the next output from Claude Code ends. The
+   * request's status slot holds its latest value for the whole run, so a line
+   * left behind would sit beside the answer that follows.
+   */
+  quietStatus: boolean;
   /** File mutations whose call was seen, awaiting the result that settles them. */
   readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
   /**
@@ -235,6 +242,7 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
     inputsMayBeRevised: options.inputsMayBeRevised ?? false,
+    quietStatus: false,
     openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
     openPlanCreates: new Map<string, { title: string | null }>(),
     openPlanUpdates: new Map<
@@ -311,9 +319,20 @@ export function translateSdkMessage(
   msg: SdkMessageLike,
   state: TranslateState,
 ): TranslatedEvent[] {
+  const events = translateByType(msg, state);
+  // The first output after a quiet stretch ends its line. A `system` message is
+  // not output: `init` and the like arrive while the run is still starting.
+  if (state.quietStatus && msg.type !== "system") {
+    state.quietStatus = false;
+    return [{ kind: "status", message: "" }, ...events];
+  }
+  return events;
+}
+
+function translateByType(msg: SdkMessageLike, state: TranslateState): TranslatedEvent[] {
   switch (msg.type) {
     case "system":
-      return translateSystem(msg);
+      return translateSystem(msg, state);
     case "assistant":
       return translateAssistant(msg, state);
     case "user":
@@ -339,19 +358,42 @@ const MAX_STATUS_LENGTH = 120;
  */
 function toolStatus(name: string, input: unknown): string {
   const intent = name === "Bash" ? readString(input, "description")?.trim() : undefined;
-  const line = intent || `Using ${name}…`;
-  return line.length > MAX_STATUS_LENGTH ? `${line.slice(0, MAX_STATUS_LENGTH - 1)}…` : line;
+  return clipStatus(intent || `Using ${name}…`);
+}
+
+/** A live status line, cut to {@link MAX_STATUS_LENGTH}. */
+function clipStatus(text: string): string {
+  return text.length > MAX_STATUS_LENGTH ? `${text.slice(0, MAX_STATUS_LENGTH - 1)}…` : text;
 }
 
 /**
- * `system` compact_boundary → a transient status notice.
+ * `system` messages that tell the person what a quiet stretch is:
+ * - `compact_boundary` → a transient notice.
+ * - `api_retry` → the failed call is being retried, with the attempt and wait.
+ * - `task_progress` → what a sub-agent is on: its own summary, else its
+ *   description and the last tool it used.
  *
  * `init` says nothing: the session id reaches the host through `onSession`, and
  * a "session started" line only read as stale once the run was working.
  */
-function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): TranslatedEvent[] {
+function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>, state: TranslateState): TranslatedEvent[] {
   if (msg.subtype === "compact_boundary") {
+    state.quietStatus = true;
     return [{ kind: "status", message: "Claude Code agent compacted its context." }];
+  }
+  if (msg.subtype === "api_retry") {
+    const { attempt, max_retries: max, retry_delay_ms: delay } = msg;
+    if (typeof attempt !== "number" || typeof max !== "number") return [];
+    const wait = typeof delay === "number" ? `, in ${Math.ceil(delay / 1000)} s` : "";
+    state.quietStatus = true;
+    return [{ kind: "status", message: `Claude Code is retrying a failed API call (attempt ${attempt} of ${max}${wait})…` }];
+  }
+  if (msg.subtype === "task_progress") {
+    const summary = readString(msg, "summary")?.trim();
+    const description = readString(msg, "description")?.trim();
+    const tool = readString(msg, "last_tool_name");
+    if (summary) return [{ kind: "status", message: clipStatus(summary) }];
+    if (description) return [{ kind: "status", message: clipStatus(tool === null ? description : `${description} (${tool})`) }];
   }
   return [];
 }

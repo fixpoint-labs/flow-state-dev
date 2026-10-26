@@ -43,7 +43,6 @@ describe("the field table", () => {
   it("takes a message on a started task, and none on a finished one (FIX-2086)", () => {
     const base = { id: "t", goal: "g", createdAt: 1, updatedAt: 1 } as const;
     expect(lockedFields({ ...base, status: "in_progress", attempts: 1 }, ["message"])).toEqual([]);
-    expect(lockedFields({ ...base, status: "parked", attempts: 1 }, ["message"])).toEqual([]);
     expect(lockedFields({ ...base, status: "completed", attempts: 1 }, ["message"])).toEqual(["message"]);
   });
 

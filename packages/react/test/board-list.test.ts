@@ -197,19 +197,18 @@ describe("BoardList · the list (V1)", () => {
     expect(source.listCollectionItems).toHaveBeenCalledWith(SESSION, BOARD, {});
   });
 
-  it("shows a status it does not know as its own word, and a pre-rename row as parked (BR-4)", async () => {
+  it("shows a status it does not know as its own word (BR-4)", async () => {
     render(
       createElement(BoardList, {
         sessionId: SESSION,
         boardRef: BOARD,
-        client: hostClient(fixedSource([card("t-1", "blocked_upstream"), card("t-2", "awaiting_review")]))
+        client: hostClient(fixedSource([card("t-1", "blocked_upstream")]))
       })
     );
-    await waitFor(() => expect(rowIds()).toHaveLength(2));
+    await waitFor(() => expect(rowIds()).toHaveLength(1));
     const status = (id: string) =>
       document.querySelector(`li[data-task-id="${id}"] [data-task-status]`)?.textContent;
     expect(status("t-1")).toBe("blocked_upstream");
-    expect(status("t-2")).toBe("parked");
   });
 
   it("keeps loading, empty and a failed read apart, and offers a retry on failure (BR-6, BR-7)", async () => {

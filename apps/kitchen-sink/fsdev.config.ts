@@ -9,19 +9,21 @@
  * behind `@flow-state-dev/vercel/next`.
  *
  * Profile selection: `FSD_ENV` picks the active profile, falling back to
- * `defaultProfile: "dev"` (in-memory) for local development and CI. Production
+ * `defaultProfile: "dev"` (SQLite) for local development and CI. Production
  * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
  *
  * Run a flow from the CLI without the browser (from this directory):
  *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
  */
 import { after } from "next/server";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
-import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, filesystemStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
@@ -40,6 +42,30 @@ import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+/**
+ * The local SQLite store, its folder made when the store is first used, not when
+ * this file loads: a deployment on Postgres never opens it and may not be able
+ * to write here. SQLite opens a file in a folder that exists, and a fresh
+ * checkout has no `.fsdev/data`.
+ */
+function localSqliteStores(): StoreAdapter {
+  const dir = path.join(process.cwd(), ".fsdev", "data");
+  let inner: StoreAdapter | undefined;
+  return {
+    capabilities: ["primary"],
+    resolve(slots) {
+      if (inner === undefined) {
+        mkdirSync(dir, { recursive: true });
+        inner = sqliteStores({ filename: path.join(dir, "flowstate.db") });
+      }
+      return inner.resolve(slots);
+    },
+    dispose() {
+      return inner?.dispose?.();
+    },
+  };
+}
+
 const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
@@ -156,13 +182,17 @@ const flowstate = createFlowState({
     : undefined,
   stores: {
     prod: { primary: pgStores, scheduler: pgStores },
-    // `STORE_TYPE=filesystem` opts the local profile into on-disk persistence
-    // (`.fsdev/data`); otherwise dev runs against ephemeral in-memory stores.
+    // The local profile persists to SQLite (`.fsdev/data/flowstate.db`) so
+    // sessions and hired workers survive a restart. `STORE_TYPE=memory` opts
+    // into ephemeral in-memory stores (tests, e2e); `STORE_TYPE=filesystem`
+    // keeps the JSON-file store.
     dev: {
       primary:
-        process.env.STORE_TYPE === "filesystem"
-          ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-          : inMemoryStores(),
+        process.env.STORE_TYPE === "memory"
+          ? inMemoryStores()
+          : process.env.STORE_TYPE === "filesystem"
+            ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+            : localSqliteStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured

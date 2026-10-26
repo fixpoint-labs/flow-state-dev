@@ -49,10 +49,19 @@ const agent = cursorAgent({
 block to a generator as a tool.
 
 **A model is required.** Cursor's SDK refuses to create a local agent without one.
-Name it with `model`, an id or a resolver asked once per run (a resumed agent is
-handed it too), or with `agent.model`, which also takes Cursor's model `params`.
-Setting `model` beside `agent.model` or `send.model` is refused when the block is
-built. `Cursor.models.list()` from the SDK enumerates what your account can select.
+Name it with `model`: an id, a model with its settings
+(`{ id, params: [{ id, value }] }`, Cursor's own parameter list, such as a
+reasoning effort), or a resolver returning either, asked once per run. The result
+goes to the agent on create and on resume alike, so a resolver that reads the
+session can run a different model and settings for each one.
+`Cursor.models.list()` from the SDK enumerates what your account can select.
+
+A resolver that returns `null`, `undefined` or an empty id names no model. With no
+model named from `model` or `agent.model`, Cursor's SDK refuses to open the agent
+and the run fails. `agent.model` also takes `{ id, params }`, is the model when
+`model` is unset, and is one value for every run. `model` beside `agent.model` or `send.model` throws
+when the block is built; `agent` and `send` are the SDK's option groups, described
+under [Option groups](#option-groups).
 
 **The block's input is the prompt and nothing else.** Where a run writes, which
 conversation it continues and which model it runs are configuration, because the same block can be handed
