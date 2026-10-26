@@ -7,7 +7,7 @@
  * construction guards.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 
@@ -21,7 +21,7 @@ import {
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection } from "../../src/tasks";
+import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -636,5 +636,60 @@ describe("goalSeekLoop - a task waiting on a person", () => {
     // The loop's output is the board as the drain left it: the task still running, waiting.
     const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
     expect(row?.status).toBe("in_progress");
+  });
+});
+
+describe("goalSeekLoop - an answer that lands as the drain returns", () => {
+  it("drains the owed turn before judging, and spends no iteration on it", async () => {
+    // The drain stops `blocked` on a task waiting on its question, and the
+    // person answers before the loop reads the board. The question is closed,
+    // but the task still owes the turn the answer earned: judging now would
+    // rule on its partial work.
+    const name = "answered-late";
+    const collectionOf = (ctx: Parameters<typeof getOrCreateTaskCollection>[0]["ctx"]) =>
+      getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name });
+    let turns = 0;
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        turns += 1;
+        if (turns > 1) return { answer: "whole" };
+        await askMidway(ctx, await collectionOf(ctx), [{ prompt: "Which region?" }]);
+        return { answer: "partial" };
+      },
+    });
+    const real = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    // The answer lands once, between the drain's return and the loop's read of the board.
+    const answerOnce = handler({
+      name: `${name}-answer`,
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = await collectionOf(ctx);
+        const [hold] = openRowHolds(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+      },
+    });
+    const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerOnce);
+    const board = { ...real, drain } as TaskBoardHandle<any, any, any>;
+    const judgedOn: string[] = [];
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: ({ collection }): Verdict => {
+        judgedOn.push(collection.get("a")!.status);
+        return { decision: "done", reason: "converged" };
+      },
+      maxIterations: 3,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(judgedOn).toEqual(["completed"]);
+    expect(turns).toBe(2);
+    expect(readTermination(result.items)).toMatchObject({ reason: "converged", iterations: 1 });
   });
 });

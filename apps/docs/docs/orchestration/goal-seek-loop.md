@@ -47,7 +47,7 @@ type Verdict =
 
 The loop stops by default when the judge throws, returns something that isn't a `Verdict`, or asks to `replan` without producing work (no non-empty `tasks`, no `replanner` configured). It exits with `reason: "judge-error"` and still runs `finalize` over the settled board. Pass `onError: "fail"` to have the failure propagate as a request error instead. A failure in `seed` or in the drain itself always propagates either way.
 
-The loop never judges work that waits on a person. When a drain leaves a task waiting on an answer to a question its worker asked midway, the loop ends there with `reason: "waiting-on-a-person"`. It runs no judge, no replan and no `finalize`, and the drain doesn't count against `maxIterations`. On a resource-backed board, once the person answers, run the loop again: its drain takes the task's next turn, and the loop goes on from there.
+The loop never judges work that waits on a person. When a drain leaves a task waiting on an answer to a question its worker asked midway, the loop ends there with `reason: "waiting-on-a-person"`. It runs no judge, no replan and no `finalize`, and the drain doesn't count against `maxIterations`. On a resource-backed board, once the person answers, run the loop again: its drain takes the task's next turn, and the loop goes on from there. If the answer arrives just as a drain stops, the loop drains again to take that next turn before it judges, and those extra drains don't count as iterations either.
 
 When your judge already produces some other decision shape, `mapToVerdict` adapts it and fills in a default `reason`, so a decision-only source is never treated as malformed:
 
