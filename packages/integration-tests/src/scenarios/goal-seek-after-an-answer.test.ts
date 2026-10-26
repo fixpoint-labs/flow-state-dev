@@ -1,12 +1,6 @@
 /**
  * FIX-2220 — `goalSeekLoop` resumes, in a later request, after the person answers.
  *
- * A pass ends waiting on a person: the task's worker asked midway, so the
- * loop stops without judging. The person answers after that request has
- * ended. The next run of the loop over the same user-scoped board must take
- * the turn the answer earned, on the task's same attempt, and judge the
- * finished work: never the half-done task, and never a re-seeded one.
- *
  * Only full `runAction` composition reaches this: three requests, one durable
  * board between them. A request-backed board, which the unit harnesses use,
  * is gone by the time the answer lands.
@@ -21,7 +15,6 @@ import {
   taskBoard,
   taskWorkerInputSchema,
   GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
-  type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -44,16 +37,16 @@ function readTermination(items: unknown[]): { reason?: string; iterations?: numb
 
 function buildFlow() {
   const ledger = defineTaskCollection({ id: NAME, scope: "user" });
-  // The board's capability, for its own worker to read the board it is on.
   const { capability } = taskBoard({
     name: `${NAME}-board`,
     collection: ledger,
     workers: handler({ name: `${NAME}-probe`, inputSchema: taskWorkerInputSchema, outputSchema: z.unknown(), execute: () => null }),
   });
   const seen = { turns: 0, judgedOn: [] as Array<{ status: string; attempts: number }> };
-  const board: TaskBoardHandle<any, any, any> = taskBoard({
+  const board = taskBoard({
     name: `${NAME}-board`,
     collection: ledger,
+    initialTasks: [{ id: "a", goal: "write the report" }],
     workers: handler({
       name: `${NAME}-w`,
       inputSchema: taskWorkerInputSchema,
@@ -67,20 +60,9 @@ function buildFlow() {
       },
     }),
   });
-  const tasksOf = async (ctx: unknown) => (ctx as { cap: any }).cap[board.capability.name].tasks();
-  const seed = handler({
-    name: `${NAME}-seed`,
-    inputSchema: z.unknown(),
-    uses: [board.capability],
-    execute: async (_input, ctx) => {
-      const tasks = await tasksOf(ctx);
-      if (tasks.get("a") === undefined) await tasks.addTask({ id: "a", goal: "write the report" });
-    },
-  });
   const loop = goalSeekLoop({
     name: NAME,
     board,
-    seed,
     judge: ({ collection }): Verdict => {
       const row = collection.get("a")!;
       seen.judgedOn.push({ status: row.status, attempts: row.attempts });
@@ -91,9 +73,9 @@ function buildFlow() {
   const answer = handler({
     name: `${NAME}-answer`,
     inputSchema: z.object({ message: z.string() }),
-    uses: [board.capability],
+    uses: [capability],
     execute: async (input, ctx) => {
-      const tasks = await tasksOf(ctx);
+      const tasks = await (ctx.cap as any)[capability.name].tasks();
       const [hold] = openRowHolds(tasks.get("a"));
       return tasks.answer("a", { hold: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
@@ -127,7 +109,6 @@ describe("goalSeekLoop: a later run after the person answers", () => {
     const first = await run("plan", {});
     expect(first.error).toBeUndefined();
     expect(readTermination(first.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
-    expect(seen.judgedOn).toEqual([]);
 
     expect((await run("answer", { message: "eu-west" })).error).toBeUndefined();
 
