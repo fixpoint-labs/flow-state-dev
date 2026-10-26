@@ -175,63 +175,16 @@ export function readAbandonments(task: Task): number {
 }
 
 /**
- * How many times this row re-entered after an answer to its question
- * (FIX-1817), or, on a row stored before FIX-2086, after a person's turn
- * stopped its worker. **Absent reads as zero** (BP-030), as {@link readAbandonments}.
- */
-function readTurnReentries(task: Task): number {
-  return task.turnReentries ?? 0;
-}
-
-/**
- * The fields `awaitReview` writes besides the status. `feedback` is written
- * unconditionally (a park with no reason clears the note); the question mark
- * is set only for a worker's question (FIX-1817), so no park inherits an
- * earlier one's.
- */
-export function parkPatch(feedback: string | undefined, onQuestion?: boolean): Partial<Task> {
-  return {
-    feedback,
-    parkedOnQuestion: onQuestion === true ? true : undefined,
-    answered: undefined,
-  };
-}
-
-/**
- * The fields `unpark` writes besides the status. Clears the lease and the
- * claim coordinate. A row re-queued by an answer to its question (`answer`,
- * FIX-1817) counts one more turn re-entry, so the claim that follows is not
- * charged, and marks `feedback` as the answer (`answered`) for the next
- * attempt.
- */
-export function unparkPatch(task: Task, feedback: string | undefined, answer = false): Partial<Task> {
-  return {
-    feedback: feedback ?? undefined,
-    leaseUntil: undefined,
-    claimedBy: undefined,
-    parkedOnQuestion: undefined,
-    answered: answer ? true : undefined,
-    ...(answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
-  };
-}
-
-/**
  * Why an assignee change to `assignee` is refused on `task`, beyond the
  * terminal and attempt-held rules each backing applies (FIX-1817), or
- * `undefined` when it isn't. Decided inside the atomic write, so an answer or
- * a claim landing between a caller's read and the write is honoured.
+ * `undefined` when it isn't. Decided inside the atomic write, so a claim
+ * landing between a caller's read and the write is honoured.
  *
- * - `awaiting-answer`: an answer re-queued the row and it hasn't run again
- *   (pending, or blocked since); it must run in the session that filed it,
- *   which its assignee keys.
  * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
  *   session it runs in.
  */
 export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDeclineReason | undefined {
   if (task.assignee === assignee) return undefined;
-  // The answer is unconsumed until its re-entry is claimed: pending, or
-  // blocked on the way there. Terminal rows are refused before this.
-  if (task.answered === true && task.status !== "in_progress") return "awaiting-answer";
   if (task.followUpOf !== undefined) return "follow-up";
   return undefined;
 }
@@ -516,36 +469,32 @@ export const DEFAULT_MAX_ABANDONMENTS = 3;
  * configured for real failures. `attempts - abandonments` is the count of
  * attempts this task actually got to run out of its own budget.
  *
- * **So are re-entries after an answer (FIX-1817)**, for the same reason: the
- * claim after an answer advances `attempts`, and the budget prices failures,
- * not conversation. A steer (FIX-2086) uses no attempt at all.
+ * An answer to a question (FIX-2133) and a steer (FIX-2086) take a turn on
+ * the same attempt, so neither uses one.
  */
-export function shouldRetryOnFail(task: Task): boolean {
+function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
-  return task.attempts - readAbandonments(task) - readTurnReentries(task) < task.maxAttempts;
+  return task.attempts - readAbandonments(task) < task.maxAttempts;
 }
 
 /**
- * The two statuses an in-flight attempt can be said to *hold*.
+ * The status an in-flight attempt can be said to *hold*.
  *
- * Everything else means the attempt was displaced (reclaimed, re-queued,
- * parked) or the task was settled by someone else.
+ * Everything else means the attempt was displaced (reclaimed, re-queued) or
+ * the task was settled by someone else.
  *
  * Exported because the retry budget (FIX-948) is scoped to exactly this set, and
  * that reuse is exact rather than coincidental — see {@link routeFailure}.
  */
-export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
-  "in_progress",
-  "parked",
-]);
+export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress"]);
 
 /**
  * The change kinds that mean "this attempt is reporting its result" (FIX-1234).
  *
  * Named because {@link transitionDeclineReason} refuses exactly these on a row
- * that is parked for review, and the set is not guessable from the target
+ * that is held (FIX-2133), and the set is not guessable from the target
  * status: a failure with retries left targets `pending`, which is also where a
- * `unpark` lands. The kind separates them; the status cannot.
+ * reclaim lands. The kind separates them; the status cannot.
  */
 const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "completed",
@@ -646,7 +595,7 @@ export type FailRouting =
  *    only ever refuse a retry that would otherwise have happened, and it can
  *    never refuse a first attempt.
  * 2. **The budget applies only to attempt-owned failures.** `errored` is
- *    reachable from `in_progress` and `parked` and from NEITHER
+ *    reachable from `in_progress` and from NEITHER
  *    `pending` nor `held`, while this routing is status-blind on the
  *    `maxAttempts` half — so a `fail()` on a pending task carrying
  *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
@@ -841,11 +790,8 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
  * @param requireFrom The one status this verb may run from, when the verb owns a
- *   single edge rather than every legal path to its target. One verb does:
- *   `unpark` (`parked → pending`, FIX-1244).
- *   The status table cannot express this — it maps status to status, not verb
- *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
- *   fence `unpark` would re-queue a row a worker is holding.
+ *   single edge rather than every legal path to its target. The status table
+ *   cannot express this — it maps status to status, not verb to edge.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -903,35 +849,6 @@ export function transitionDeclineReason(
   }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
-  }
-  // FIX-1234: the caller asked not to settle a row somebody parked for review.
-  //
-  // Nothing above refuses this on its own, and that is deliberate rather than an
-  // oversight: `parked` is in ATTEMPT_OWNED_STATUSES, `terminal` does
-  // not fire on a parked row, `isTransitionAllowed` permits both
-  // `parked → completed` and `→ errored`, and `leaseLapsed`
-  // short-circuits to `false` for any status other than `in_progress`. A holder
-  // recording a review's REJECTION as a failure is a supported write, and it
-  // travels exactly this path.
-  //
-  // So this is opt-in. What it exists for is the write-back that follows a
-  // worker's own run: a worker that parked its task and then returned or threw
-  // owes the substrate no result, and letting its settlement land would erase
-  // the park — or, with retries left, re-queue the row in front of a sibling
-  // while a human is still being asked. Those callers pass
-  // `refuseWhenParked` and get a decline; every other caller sees the contract
-  // it always had.
-  //
-  // Scoped to settlement kinds so the flag cannot refuse the verbs that legally
-  // move a parked row: `unpark` targets `pending`, which a retrying
-  // failure also targets, and only the kind separates them.
-  if (
-    options.refuseWhenParked === true &&
-    task.status === "parked" &&
-    changeKind !== undefined &&
-    SETTLEMENT_CHANGE_KINDS.has(changeKind)
-  ) {
-    return "parked";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   // FIX-2133 D3: two turns can share an attempt, so the ticket's turn
@@ -1022,11 +939,8 @@ function depsSatisfied(
  * the same committed row, so nothing has to be scheduled and nothing has to
  * agree with anything — there is no window between them to get wrong.
  *
- * **Scoped to `in_progress` on purpose.** {@link ATTEMPT_OWNED_STATUSES} also
- * contains `parked`, and `awaitReview` deliberately does *not* clear
- * `leaseUntil` — so an unscoped reading would take back (and refuse writes on)
- * any task a human took longer than a lease to review. A review park is an
- * explicit park; the lease governs `in_progress` and nothing else.
+ * **Scoped to `in_progress` on purpose:** the lease governs a running row and
+ * nothing else.
  *
  * `!= null` rather than truthiness: a row persisted without a lease is not a
  * lapsed one (BP-030).
@@ -1544,11 +1458,6 @@ export interface EndingRecording {
    */
   readonly recordEnding?: TaskEndingRecorder;
   /**
-   * The park asks nobody anything (`awaitReview(..., { quiet: true })`). A park
-   * for a person's turn is quiet on its own, read off the row.
-   */
-  readonly quiet?: boolean;
-  /**
    * Whether this ending owes a cascade (FIX-2080 D2), answered by the backing
    * from the committed board inside the write: a failed or cancelled row with
    * an open dependent, or a task whose board pays the tasks it filed
@@ -1618,7 +1527,7 @@ function recordEnding<TInput, TOutput>(
   recording: EndingRecording | undefined
 ): Task<TInput, TOutput> {
   const resumed = recordResumeOwed(prev, next);
-  const ending = endingOf(prev as Task, next as Task, recording?.quiet);
+  const ending = endingOf(prev as Task, next as Task);
   if (ending === undefined) return resumed;
   const owed = recordCascadeOwed(resumed, ending, recording);
   const noticed =

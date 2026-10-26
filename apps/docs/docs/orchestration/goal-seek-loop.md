@@ -87,7 +87,7 @@ const loop = goalSeekLoop({
 
 The board must be **request- or resource-backed** so its tasks survive across drains. `goalSeekLoop()` throws at construction, before anything runs, on a sequencer- or factory-backed board. Request backing is the default, so the common case needs no extra configuration.
 
-The board must also be a **plan board**, whose drain returns only once every task it could run has ended, so the judge rules on finished work. `goalSeekLoop()` throws on a board declared `mode: "delegation"`, whose drain returns while the tasks it handed out still run, and on a board with `onReview: "exit"`, whose drain can return with a task still parked for review.
+The board must also be a **plan board**, whose drain returns only once every task it could run has ended, so the judge rules on finished work. `goalSeekLoop()` throws on a board declared `mode: "delegation"`, whose drain returns while the tasks it handed out still run.
 
 It also throws when the loop's `maxIterations` is greater than 1 and the board's `initialTasks` include a task with no `id`: an idless initial task is re-added on every drain. Give each initial task an `id`, or seed through the loop's own `seed` slot. A single-drain loop (`maxIterations: 1`) is unaffected.
 

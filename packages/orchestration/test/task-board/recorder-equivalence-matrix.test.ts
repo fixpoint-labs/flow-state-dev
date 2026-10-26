@@ -72,8 +72,6 @@ interface FixtureOptions {
   fail?: WriteMode;
   /** The row has no claim on it. */
   noClaim?: boolean;
-  /** The worker parked its own row for review before leaving. */
-  parked?: boolean;
   /** The best-effort release write throws too. */
   releaseThrows?: boolean;
   /** How the awaited emission seam behaves. */
@@ -184,7 +182,6 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
     },
   } as unknown as TaskCollectionRef;
 
-  if (opts.parked) await inner.awaitReview("t", "needs a human", { claim: ticket });
   if (opts.complete === "declined" || opts.fail === "declined") {
     // Settled out from under the worker: the claim fence declines terminal rows.
     await inner.cancel("t", "cancelled by a coordinator");
@@ -271,18 +268,6 @@ describe("the success recorder", () => {
     expect(fx.seen).toEqual([]);
     expect(fx.pending()).toBe(0);
     expect(fx.status()).toBe("in_progress");
-  });
-
-  it("writes nothing, stops renewal and clears the claim on a row the worker parked (BR-2)", async () => {
-    openLeaseRenewalScope();
-    const fx = await fixture({ parked: true });
-
-    await expect(runForTest(success(fx), { ok: true }, fx.ctx)).resolves.toBeUndefined();
-
-    expect(fx.seen).toEqual([]);
-    expect(fx.pending()).toBe(0);
-    expect(fx.claimSet()).toBe(false);
-    expect(fx.status()).toBe("parked");
   });
 
   it.each<[WriteMode, string]>([
@@ -500,24 +485,6 @@ describe("the error recorder", () => {
       expect(fx.seen).toEqual([]);
       expect(fx.pending()).toBe(0);
       expect(fx.status()).toBe("in_progress");
-    }
-  );
-
-  it.each(["skip", "fail"] as const)(
-    "writes nothing on a parked row, clears the claim, stops renewal; `onError: %s` decides (BR-11)",
-    async (onError) => {
-      openLeaseRenewalScope();
-      const fx = await fixture({ parked: true });
-      const worker = new Error("worker blew up");
-
-      const run = runForTest(failure(fx, onError, DEFERRING), worker, fx.ctx);
-      if (onError === "fail") await expect(run).rejects.toBe(worker);
-      else await expect(run).resolves.toEqual({ recorded: "errored", error: "worker blew up" });
-
-      expect(fx.seen).toEqual([]);
-      expect(fx.claimSet()).toBe(false);
-      expect(fx.pending()).toBe(0);
-      expect(fx.status()).toBe("parked");
     }
   );
 

@@ -2,19 +2,15 @@
  * The upgrade's one-off backfill of wakes (FIX-2078, BP-030).
  *
  * A debt a board recorded before wakes existed has no due time the engine
- * keeps: an owed notice or report marker on a row, or a split parked on its
- * pieces. Nothing would pay it in a quiet conversation. Run once at host start
+ * keeps: an owed notice or report marker on a row. Nothing would pay it in a quiet conversation. Run once at host start
  * (or as a migration step), this reads every user's conversation rows and owes
  * a wake, due now, for the board's pass in each session that holds such a
  * debt. The pass then pays it the way it pays any debt: an old notice is
  * stamped due and sent, and an old report marker is sent to the Error
- * Reporter once. A split parked on its pieces gets a wake for its task
- * session's check entry instead (`CHECK_TASK_ENTRY`, FIX-2077): it reads as
- * running, and the check settles it once no piece holds it, also when every
- * piece's notice was acted on before the upgrade and none is left to wake it.
- * So does a running task a queued message held open (`waitingOn: "queued"`):
- * it reads as answered and waiting on its filed work, and the check settles
- * it with the answer it kept.
+ * Reporter once. A running task a queued message held open (`waitingOn:
+ * "queued"`) gets a wake for its task session's check entry instead
+ * (`CHECK_TASK_ENTRY`, FIX-2077): it reads as answered and waiting on its
+ * filed work, and the check settles it with the answer it kept.
  *
  * Safe to run again: a wake coalesces into the one already kept, and a pass
  * that finds nothing owed clears it.
@@ -84,7 +80,7 @@ const OWED_MARKER = /^(noticeOwed|reportOwed):/;
 /** The session a row's debt is paid in and the entry that pays it, or `undefined` when it owes nothing. */
 function payerOf(row: StoredRow, partition: string): { session: string; entry: string } | undefined {
   // Known gap: a "queued" row with no `run.sessionId` names no session, so it gets no check.
-  const checked = row.status === "parked" || (row.status === "in_progress" && row.waitingOn === "queued");
+  const checked = row.status === "in_progress" && row.waitingOn === "queued";
   if (checked) return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
   // A paid marker is kept as `null`.
   if (!Object.entries(row.metadata ?? {}).some(([key, value]) => value != null && OWED_MARKER.test(key))) return undefined;
@@ -107,7 +103,7 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
   const now = options.now ?? Date.now();
   const sessions = new Map<string, StoredSession>();
   // Every session, not only the ones a user started: a task session (a
-  // child session) is where a piece's notice and a parked split are paid.
+  // child session) is where a piece's notice and a held-open row are paid.
   for (const session of await stores.session.list({ parentage: "all" })) sessions.set(bareId(session), session);
 
   const cells = new Map<string, { userId: string; orgId: string }>();

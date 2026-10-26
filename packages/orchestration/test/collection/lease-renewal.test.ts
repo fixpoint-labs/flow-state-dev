@@ -501,30 +501,6 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     driver.stop();
   });
 
-  it("stops WITHOUT aborting when the worker parks its own task for review", async () => {
-    // A review park is an explicit park, not a lost claim — which is exactly
-    // why the substrate's write fence is scoped to `in_progress`. Aborting the
-    // worker here would contradict that rule one layer up. Stop renewing a row
-    // the lease no longer speaks for, and leave the worker be.
-    const h = harness();
-    const task = await claimed(h, 30_000);
-    const ticket = ticketForClaim("tasks", task);
-    const timer = fakeTimer();
-    const driver = startLeaseRenewal({
-      collection: h.collection,
-      ticket,
-      claimedTask: task,
-      now: h.now,
-      timer: timer.timer,
-    });
-
-    await h.collection.awaitReview("t", "over to you", { ifAllowed: true, claim: ticket });
-    await timer.fireNext();
-
-    expect(driver.signal.aborted).toBe(false);
-    expect(timer.pending()).toBe(0); // and it stopped renewing
-  });
-
   it("stops renewing when the request's own signal aborts", async () => {
     // A cancelled request is not a live worker, so it should stop asserting it
     // is one rather than holding a lease open for work nobody is waiting on.

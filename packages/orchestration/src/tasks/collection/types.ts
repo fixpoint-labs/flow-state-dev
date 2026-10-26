@@ -55,17 +55,15 @@ import type { TaskWriteToken } from "../write-provenance";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
- * `immutable-assignee` by FIX-982; `parked` by FIX-1234). Resolved in a **fixed
- * precedence order** — `immutable-assignee` → `terminal` → `not-my-task` →
- * `disallowed` → `parked` → `lost-claim` — so a decline where two conditions
- * hold always reports the same one, and two callers cannot render two different
- * messages for the same refusal.
+ * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
+ * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
+ * `lost-claim` — so a decline where two conditions hold always reports the
+ * same one, and two callers cannot render two different messages for the same
+ * refusal.
  *
  * - `immutable-assignee` — the board dispatches work, and an attempt holds the
- *   task (`in_progress` or `parked`): its dispatch is keyed by the assignee it
- *   was claimed with, and a parked attempt can still settle. A pending or
- *   held task can change hands, and a parked one once `unpark` has ended
- *   its attempt (FIX-1780).
+ *   task (`in_progress`): its dispatch is keyed by the assignee it was claimed
+ *   with. A pending or held task can change hands (FIX-1780).
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
@@ -73,11 +71,6 @@ import type { TaskWriteToken } from "../write-provenance";
  *   the caller never held.
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
  *   status (`pending → errored`, `held → errored`).
- * - `parked` — the caller passed `refuseWhenParked` and the task is sitting in
- *   `parked`. **Not a lost claim:** nobody took the row, the attempt
- *   still owns it, and a person is deciding what happens to it. The recoveries
- *   are opposite — `lost-claim` says re-claim and redo, `parked` says do
- *   neither, because the work is done.
  * - `lost-claim` — the presented `claim` names this task but no longer owns it:
  *   it was reclaimed or re-queued while the caller was working, or its lease
  *   ran out while it was still `in_progress`.
@@ -95,18 +88,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * another for the same cross-task write: accidental protection, not a
  * guarantee, and a reason no caller can act on.
  *
- * **Where `parked` sits, and the one case it takes from `lost-claim`.** It is
- * evaluated after the transition arms and before the ownership arms. For the
- * caller it is meant for — a worker reporting the result of its own run — the
- * two never compete: `parked` is an attempt-owned status and the lease
- * does not govern it, so neither ownership arm fires and the order is
- * immaterial. They overlap on one narrow row: a *displaced* attempt writing to
- * a task that was parked, resumed, re-claimed, and parked again reports
- * `parked` where `lost-claim` is the more precise fact. Both tell that caller
- * the same thing — do not redo the work — so the order is left where the guard
- * reads most simply rather than split to chase the rarer reason.
- *
- * **Where `immutable-assignee` sits.** It holds only for `in_progress` and `parked`, and
+ * **Where `immutable-assignee` sits.** It holds only for `in_progress`, and
  * `terminal` only for a settled task, so the two never compete and either order
  * reports the same reason. It reads the status inside the atomic write, like
  * `terminal`, so a claim that lands first is what the decline reports.
@@ -117,21 +99,6 @@ export type TaskWriteDeclineReason =
   | "not-my-task"
   | "disallowed"
   | "lost-claim"
-  /**
-   * The row is parked for review, and the refused write was a claim-fenced
-   * settlement (FIX-1234). Distinct from `lost-claim` on purpose: nobody took
-   * this row — the attempt still owns it — so the recoveries differ. A caller
-   * that reads `lost-claim` should re-claim and redo the work; a caller that
-   * reads `parked` should do neither, because the work is done and a person is
-   * deciding what happens to it.
-   */
-  | "parked"
-  /**
-   * An assignee change on a task an answer has re-queued and that hasn't run
-   * again yet (FIX-1817): it must run in the session that filed it, which its
-   * assignee keys. Lifts once the re-entry is claimed.
-   */
-  | "awaiting-answer"
   /**
    * An assignee change on a follow-up (FIX-1817): it runs in the session of
    * the task it follows, with that task's worker, so it keeps its assignee.
@@ -333,8 +300,8 @@ export interface TaskTransitionOptions {
    *   same id. This is the question a bare attempt number could not ask, which
    *   is why it replaced one.
    * - **Do I still hold it?** Declines `lost-claim` unless `task.attempts`
-   *   equals the ticket's attempt *and* the task is still `in_progress` or
-   *   `parked`. The status half is not belt-and-braces: `reclaim()`
+   *   equals the ticket's attempt *and* the task is still `in_progress`.
+   *   The status half is not belt-and-braces: `reclaim()`
    *   returns a task to `pending` without advancing `attempts`, so between a
    *   reclaim and the next claim a displaced worker matches the counter by
    *   construction — and since `held` is reachable only from `pending`, a
@@ -345,35 +312,6 @@ export interface TaskTransitionOptions {
    * for a coordinator writing to a board it never claimed from.
    */
   claim?: TaskClaimTicket;
-  /**
-   * Decline this write if the task is parked for review (FIX-1234).
-   *
-   * For the caller that is reporting the result of its own run — a task board's
-   * result recorders are the ones in tree. A worker that called `awaitReview()`
-   * on the task it was holding has handed that task to a person and owes the
-   * substrate no result, but nothing else refuses its write-back on the way out:
-   * `parked` is a status the attempt still owns, and both
-   * `parked → completed` and `→ errored` are legal. So the settlement
-   * would land and erase the park, and a failure with retries left would go
-   * further and re-queue the row for a sibling worker while the person is still
-   * being asked.
-   *
-   * **Opt-in, because settling a parked task is otherwise legitimate.** A holder
-   * recording a review's rejection as a failure travels the same path, and a
-   * coordinator ending a review with `complete` or `cancel` travels it without a
-   * ticket at all. Neither passes this, and neither changes.
-   *
-   * Applies only to a write that reports a result — `complete`, and `fail` on
-   * both its terminal and its retrying route. `unpark` and `cancel`
-   * keep working on a parked task with this set, which matters because a
-   * retrying failure and a resume both target `pending` and only the change kind
-   * tells them apart.
-   *
-   * Declines with reason `parked`, evaluated inside the same atomic write as
-   * every other guard here — a pre-read cannot carry this, because a park
-   * arriving between the read and the write is exactly the case it has to catch.
-   */
-  refuseWhenParked?: boolean;
   /**
    * Decline a `complete` while the task holds a steer no request of its
    * attempt took (FIX-2086 D2), reason `untaken-steers`. Decided inside the
@@ -459,34 +397,6 @@ export interface TaskTransitionOptions {
 }
 
 /**
- * `awaitReview`'s options: the ordinary transition guards, plus what the park
- * is for.
- */
-export interface AwaitReviewOptions extends TaskTransitionOptions {
-  /**
-   * Runs only from `in_progress`, whatever `ifAllowed` says (FIX-1817): a row
-   * that settled, re-pended or parked first comes back `declined` naming the
-   * status it found. A worker parking on its question passes it, so a row
-   * that already parked this attempt (for a question, or for anything else)
-   * is not parked again, and its question isn't overwritten.
-   */
-  fromRunning?: boolean;
-  /**
-   * The park is the worker's question (FIX-1817, `parkOnQuestion`): marks the
-   * row `parkedOnQuestion`, the one kind of park `answerTask` answers.
-   */
-  onQuestion?: boolean;
-  /**
-   * The holder parks the row for its own reasons, not to ask anyone anything
-   * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
-   * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer
-   * that tells someone about each park can leave this one out. Changes nothing
-   * else about the park.
-   */
-  quiet?: boolean;
-}
-
-/**
  * `fail`'s options: the ordinary transition guards, plus whether this failure
  * may be retried at all.
  */
@@ -500,20 +410,6 @@ export interface FailOptions extends TaskTransitionOptions {
    * like any other.
    */
   noRetry?: boolean;
-}
-
-/**
- * `unpark`'s options: the ordinary transition guards, plus whether the
- * feedback answers the question the row's worker parked on (FIX-1817).
- */
-export interface UnparkOptions extends TaskTransitionOptions {
-  /**
-   * `feedback` is the answer to the row's question (`answerTask`). The row is
-   * marked `answered`, so its next attempt is handed the answer as its
-   * message, and counts one more turn re-entry, so the claim that follows is
-   * not charged against `maxAttempts`. Every other `unpark` caller is unchanged.
-   */
-  answer?: boolean;
 }
 
 /**
@@ -570,7 +466,7 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * the shape the two built-in backings happen to return.
  *
  * If you write one, every worker-callable transition — `complete`, `fail`,
- * `awaitReview`, `unpark`, `cancel` — should
+ * `cancel` — should
  * accept and honour the optional `TaskTransitionOptions` argument. The type
  * system cannot hold you to this: an implementation taking only `(id, output)`
  * structurally satisfies the interface, and JavaScript discards the extra
@@ -732,42 +628,6 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * `settings_changed`.
    */
   patchSettings(id: string, patch: TaskSettingsPatch): Promise<TaskWriteOutcome>;
-  /**
-   * Park the task for a person to review (`→ parked`). `feedback` becomes the
-   * task's note, and omitting it clears any note already there, so an earlier
-   * attempt's failure text is never left standing as the reason for the park.
-   */
-  awaitReview(
-    id: string,
-    feedback?: string,
-    options?: AwaitReviewOptions
-  ): Promise<TaskWriteOutcome>;
-  /**
-   * Hand a parked task its answer and put it back in the queue (FIX-1244).
-   *
-   * Fenced to the one edge it owns: `parked → pending`. A task that is not
-   * waiting on a person — one a worker is running, one already answered and
-   * queued, a held one, a settled one — is **refused as a value**: the
-   * returned {@link TaskWriteOutcome} is `declined`, naming the status the
-   * write found (`disallowed` for a live row, `terminal` for a settled one).
-   * Nothing is written on a refusal. One park takes one answer: the first
-   * accepted `feedback` queues the work, and a second delivery declines with
-   * `status: "pending"` rather than overwriting it.
-   *
-   * Advisory by construction, like `cancel`: `options.ifAllowed` is forced on
-   * regardless of what you pass, so a terminal row declines instead of
-   * throwing. `options.claim` and `options.write` are honoured as on every
-   * other transition. The check runs inside the atomic write, so a row that
-   * leaves `parked` between your read and the write is refused, not re-queued.
-   *
-   * Re-queues only. Nothing runs the work until something drains the board;
-   * `TaskBoardHandle.unparkAndDrain` is the one-call form that does both.
-   */
-  unpark(
-    id: string,
-    feedback?: string,
-    options?: UnparkOptions
-  ): Promise<TaskWriteOutcome>;
   /**
    * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
    * for every later attempt to read. Changes nothing else: no status, no
@@ -1021,8 +881,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
-   * — the same kind used by `unpark` since the lifecycle UI
-   * cares only that the task is back to pending.
+   * — the lifecycle UI cares only that the task is back to pending.
    *
    * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
    * `claim`, so nothing has to call this for you; the verb is unchanged and
@@ -1036,7 +895,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * re-dispatching it past the bound, and the failure will present as a spent
    * `maxAttempts` instead of an abandonment cap.
    *
-   * That is the same stance `release` and `unpark` already take, and
+   * That is the same stance `release` already takes, and
    * for the same reason: a bound exists to make a judgment nobody is present to
    * make, and a caller invoking this verb by hand *is* present. Counting it
    * would settle a task an operator explicitly asked to requeue.
@@ -1075,10 +934,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * key addresses is keyed the moment the work is dispatched. Changing it while
    * the attempt runs does not redirect anything: the work in flight keeps
    * running under the old coordinate, and the new one addresses a session
-   * nothing will ever wake. So an `in_progress` task is refused, and so is a
-   * `parked` one, whose attempt can still settle it. A pending or held task
-   * has no attempt; its next claim reads the new assignee, so it can change
-   * hands. `unpark` a parked task first to move it.
+   * nothing will ever wake. So an `in_progress` task is refused. A pending or
+   * held task has no attempt; its next claim reads the new assignee, so it can
+   * change hands.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;

@@ -35,8 +35,8 @@ const CONTROLS: Record<string, ModulePatch[]> = {
       to: "if (false) {"
     },
     {
-      module: "packages/orchestration/src/task-board/goal-seek-loop.ts",
-      from: String.raw`if \(board\.onReview === "exit"\) \{`,
+      module: "packages/orchestration/src/task-board/index.ts",
+      from: String.raw`if \("onReview" in \(config as object\)\) \{`,
       to: "if (false) {"
     }
   ]
@@ -131,16 +131,12 @@ const WRONG: Array<{ name: string; build: () => unknown; setting: RegExp; fix: R
     fix: /Loop over a plan board/
   },
   {
-    name: "a goal-seek loop over a board that lets a parked row out",
-    build: () =>
-      goalSeekLoop({
-        name: "seek-over-park-exit",
-        maxIterations: 3,
-        judge,
-        board: taskBoard({ name: "parks-out", collection: ledger("parks-out"), workers: inline("parks-out-w"), onReview: "exit" })
-      }),
-    setting: /onReview: "exit"/,
-    fix: /Use the default onReview: "hold"/
+    // A board written before FIX-2131, when a task waiting on a person parked:
+    // the option is gone, and a board that still sets it is refused by name.
+    name: "a board that still sets the removed onReview",
+    build: () => taskBoard({ name: "parks-out", collection: ledger("parks-out"), workers: inline("parks-out-w"), onReview: "exit" } as never),
+    setting: /"parks-out" sets `onReview`/,
+    fix: /Remove the option/
   }
 ];
 

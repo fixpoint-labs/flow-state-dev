@@ -4,11 +4,14 @@
  *
  * A row in a persistent store is a user's open work, so a shape that stops
  * being written is still read, never dropped (BP-030). Every retired shape is
- * read here, at the collection's read boundary, beside the `parked` and `wait`
- * migrations (`withMigratedStatus`, `withMigratedWait`). No other module reads
- * a retired shape of its own.
+ * read here, at the collection's read boundary, beside the `wait` migration
+ * (`withMigratedWait`). No other module reads a retired shape of its own.
  *
- * Seven entries, each with its own switch. An entry is turned on in the change
+ * The `parked` status is not read at all (FIX-2131): stores were reset when it
+ * was retired, so no row parked before it is read (the owner's call for epic
+ * FIX-2058).
+ *
+ * Five entries, each with its own switch. An entry is turned on in the change
  * that stops writing its shape, by that shape's owner:
  *
  * | Entry | Reads | As | On |
@@ -16,9 +19,7 @@
  * | `blocked` | status `blocked` | `held` | FIX-2080 |
  * | `recorded` | the recorded-not-started mark (`undispatched`) | `held` | FIX-2080 |
  * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session, its result to the conversation | FIX-2083 |
- * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
  * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
- * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
  * | `queued` | a running row held open for a message queued to its session (`waitingOn: "queued"`) | running, `waitingOn: "filed"`, no lease | FIX-2103 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
@@ -41,7 +42,7 @@ const REOPENED_STEER =
 export const QUEUED_WAIT = "queued";
 
 /** The retired shapes, one entry each. */
-export type RetiredShape = "blocked" | "recorded" | "post" | "parked-split" | "reopened" | "parked-for-turn" | "queued";
+export type RetiredShape = "blocked" | "recorded" | "post" | "reopened" | "queued";
 
 /** One entry: whether it is read, who turns it on, and how it reads a row. */
 export interface RetiredShapeEntry {
@@ -114,18 +115,6 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       };
     },
   },
-  // A split task parked on its pieces stays running (FIX-2077), waiting on
-  // them with no lease (`waitingOn: "filed"`), so no reclaim takes it back:
-  // the request its last piece's ending wakes checks it, as for any task.
-  "parked-split": {
-    on: true,
-    owner: "FIX-2077",
-    read: (row) => {
-      if (row.status !== "parked" || !isObject(row.metadata) || row.metadata.splitInto === undefined) return undefined;
-      const { splitInto: _split, ...metadata } = row.metadata;
-      return { ...without(row, "leaseUntil", "feedback"), status: "in_progress", waitingOn: "filed", metadata };
-    },
-  },
   // A row a person's line reopened before FIX-2086 (FIX-1764): the line is the
   // latest in the task's session. Still open, it reads unmarked with one
   // untaken steer pointing at that line, so the attempt that picks it up (or
@@ -144,21 +133,6 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...rest, steers: [...steers, { id: "reopened", message: REOPENED_STEER, from: "user", at }] };
     },
   },
-  // A row parked for a person's turn (FIX-1690: a door that stopped the run
-  // and crashed before it re-queued it) goes back to the queue, and its next
-  // attempt is not charged against `maxAttempts`: one more turn re-entry. The
-  // person's line is a turn the coding door kept, which harness-manager's
-  // upgrade step writes onto the row as a steer.
-  "parked-for-turn": {
-    on: true,
-    owner: "FIX-2086",
-    read: (row) => {
-      if (row.status !== "parked" || row.parkedForTurn !== true) return undefined;
-      const rest = without(row, "parkedForTurn", "leaseUntil", "claimedBy");
-      const reentries = typeof row.turnReentries === "number" ? row.turnReentries : 0;
-      return { ...rest, status: "pending", turnReentries: reentries + 1 };
-    },
-  },
   // A running row a queued message held open: its work had answered, and the
   // answer is kept as its output. A message no longer holds a task, so it
   // reads as a task whose request answered and that waits on its filed work,
@@ -172,7 +146,7 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
   },
 };
 
-const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "parked-split", "reopened", "parked-for-turn", "queued"];
+const ORDER: readonly RetiredShape[] = ["blocked", "recorded", "post", "reopened", "queued"];
 
 /**
  * A stored row read in the current shapes: every entry that is on, in order.

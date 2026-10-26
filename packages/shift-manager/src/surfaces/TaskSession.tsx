@@ -20,8 +20,7 @@ import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { EmptyState, SectionFailure } from "../components/ui";
-import { readStatus } from "../lib/columns";
-import { asksOfTask } from "../lib/derive";
+import { asksOfTask, heldOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -33,8 +32,9 @@ export function TaskSession() {
   const task = useTask();
   const { row, run } = task;
   const { snapshot } = useLab();
-  // A parked row whose run holds a pending ask shows that ask inline instead (BR-17).
-  const parked = row !== undefined && readStatus(row.status) === "parked" && asksOfTask(snapshot, row).length === 0;
+  // A task held on a question for you points at the Inbox; its run's stop for
+  // you shows inline as an ask instead (BR-17).
+  const waiting = heldOnYou(snapshot, row) && asksOfTask(snapshot, row).length === 0;
 
   const body = (() => {
     switch (run.kind) {
@@ -77,10 +77,9 @@ export function TaskSession() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col outline-none" data-testid="task-session" tabIndex={0}>
-      {parked ? (
-        <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-parked">
+      {waiting ? (
+        <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-waiting">
           <p className="font-medium">This task is waiting on you.</p>
-          {row?.error == null ? null : <p className="mt-0.5 text-muted-foreground">{row.error}</p>}
           <button type="button" className="mt-1 underline" onClick={() => navigate({ level: "inbox", item: null })}>
             Answer it in Inbox
           </button>

@@ -216,7 +216,7 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *
  * **Drainability is ASKED, not re-derived.** Six review rounds found six
  * separate inputs to "can a drain run this" — assignee, retry budget, `deps`,
- * `blocked`, `parked`, and a spent abandonment allowance — because this
+ * `blocked`, a parked status, and a spent abandonment allowance — because this
  * function was enumerating, field by field, a question the substrate already
  * answers. `@flow-state-dev/orchestration/tasks` says so at the export:
  * `isClaimable` is THE admission predicate, and "a caller implementing
@@ -237,8 +237,8 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  * And two questions delegated whole:
  *
  * - `isClaimable` — the status and lease arm (`pending`, or `in_progress` with a
- *   lapsed lease) and `depsSatisfied`. This subsumes the parked statuses and the
- *   dependency check that used to be spelled out here.
+ *   lapsed lease), a row held on a question, and `depsSatisfied`. This
+ *   subsumes the status and dependency checks that used to be spelled out here.
  * - `claimDisposition` — **admission is not dispatch.** A lapsed row whose
  *   abandonment allowance is spent is admitted by `isClaimable` and then settled
  *   `errored` by the claim write instead of being handed to a worker. `seed`
@@ -607,23 +607,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
         },
       }),
     },
-    // **A run parked on a person is not this drain's to wait on.**
-    //
-    // Without it the drain holds its launching request open on the parked row
-    // until it runs out its iteration budget, and then returns with the row
-    // abandoned where it sits — worse than a hang, because it reports
-    // `blocked-by-failures` on a board with no failures. With it, the drain
-    // returns `parked-for-review`, the row stays parked and durable, and the
-    // drain the `updateTask` action runs after an answer is what picks it up.
-    //
-    // Its three construction refusals are all satisfied here, and each was
-    // confirmed rather than assumed: the ledger is a `defineTaskCollection()`
-    // (a request-backed one is refused); `onIdle` is left at its default
-    // `complete-or-blocked` (both `wait` and `complete` are refused); and this
-    // board seeds through the `seed` action rather than `initialTasks`, so the
-    // stable-id refusal never fires. Every refusal throws at construction, so
-    // getting this wrong fails before `seed` can run.
-    onReview: "exit",
   });
 
   const seedInput = harnessTaskInputSchema;
@@ -688,8 +671,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
               `it is routed to an assignee other than "${ASSIGNEE}", its retry budget is ` +
               `not the ${maxAttempts} this conductor configures, or it carries dependencies ` +
-              `that would keep it unclaimable, or a parked status a drain never ` +
-              `admits. Refusing to report ` +
+              `that would keep it unclaimable. Refusing to report ` +
               `this seed as filed: draining that row charges it an attempt and then finds ` +
               `nothing to run it, and the task asked for here would never exist.`,
           );
@@ -748,7 +730,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
               `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
               `than "${ASSIGNEE}", a retry budget that is not ${maxAttempts}, or dependencies ` +
-              `that would keep it unclaimable, or a parked status. Refusing ` +
+              `that would keep it unclaimable. Refusing ` +
               `to report this seed as filed: the task asked ` +
               `for here would never exist.`,
           );
@@ -953,8 +935,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
    * The board's `updateTask` action, as a screen sends it: answering the
    * question a run's task is held on (`{ id, question, message }`), a steer, a
    * cancel. Gated like every other action, and followed by a drain when it
-   * succeeds: an answer owes the task one more turn on its attempt, and with
-   * `onReview: "exit"` no drain is still running to take it.
+   * succeeds: an answer owes the task one more turn on its attempt, and the
+   * drain that handed it out exited `blocked` around the held row, so no drain
+   * is still running to take it.
    */
   const updateTaskAction = `updateTask_${taskToolSuffix(collectionId)}`;
   const updateTaskEntry = taskToolActions(board)[updateTaskAction]!;

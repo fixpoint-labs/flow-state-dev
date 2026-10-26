@@ -7,7 +7,7 @@
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its
  * own command over the shift-lab (`lab/`), once per spread in the fixture:
- * which worker holds a running row, a parked row, a queued row, or a pending
+ * which worker holds a running row, a row held on a question, a queued row, or a pending
  * ask. Chromium clicks Roster, then each team. What the page draws is graded
  * against the Lab's store, read through the Lab's HTTP routes by this script,
  * with this script's own status rule and its own seat matching (a row's
@@ -21,7 +21,7 @@
  *   status    each worker's group equals the store's
  *   slots     each worker's slots equal its held rows
  *   holding   each worker's HOLDING chips are exactly its held rows
- *   waits     each worker's waits-on entries are exactly its parked rows and asks
+ *   waits     each worker's waits-on entries are exactly its rows held on a question and asks
  *   summary   the counts at the top equal the store's, for the workers shown
  *   sidebar   the Roster entry's and the footer's counts equal the store's
  *   TEAMS     one row per team, General first, a square per worker with its status
@@ -60,7 +60,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-type ShiftState = "held" | "parked" | "queued" | "ask";
+type ShiftState = "held" | "asked" | "queued" | "ask";
 const fixture = loadFixture<{ spreads: Array<Record<string, ShiftState[]>> }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -198,9 +198,9 @@ type Worker = {
   id: string;
   team: string;
   status: Status;
-  /** `<boardRef>/<taskId>` of each row it holds that is running or parked. */
+  /** `<boardRef>/<taskId>` of each row it holds that is running, held on a question included. */
   held: string[];
-  /** Task ids of its parked rows, and suspension ids of its pending asks. */
+  /** Task ids of its rows held on a question, and suspension ids of its pending asks. */
   waits: string[];
   /** How many of its rows are queued (pending or blocked). */
   queued: number;
@@ -246,14 +246,19 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   // ledger, read through the first session whose flow publishes it. A row is
   // kept under its conversation's partition, the conversation's session id or
   // that id and a `~` suffix, and its board is `<conversation>.<ledger>`.
-  const rows: Array<{ key: string; id: string; status: string; assignee: string }> = [];
+  const rows: Array<{ key: string; id: string; status: string; assignee: string; question: boolean }> = [];
   for (const host of topLevel) {
     if (!(await published(host)).some((r) => r.ref === CONVERSATION_LEDGER)) continue;
     for (const { topic, data } of await api.entries(host.id, CONVERSATION_LEDGER)) {
       const partition = decodeURIComponent(topic.slice(0, topic.indexOf("/")));
       const holder = sessions.find((s) => partition === s.id || partition.startsWith(`${s.id}~`))?.id ?? partition;
       const ref = `${holder}.${CONVERSATION_LEDGER}`;
-      rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? "") });
+      // Held on a question (FIX-2131): running, with a row hold no steer answers.
+      const answered = new Set(((data.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
+      const question =
+        data.status === "in_progress" &&
+        ((data.holds ?? []) as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+      rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? ""), question });
     }
     break;
   }
@@ -263,16 +268,15 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   const unmatched = rows.filter((r) => workerOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
   const workers = seats.map((id): Worker => {
     const mine = rows.filter((r) => workerOf(seats, r.assignee) === id);
-    const word = (s: string) => (s === "awaiting_review" ? "parked" : s);
-    const running = mine.filter((r) => word(r.status) === "in_progress");
-    const parked = mine.filter((r) => word(r.status) === "parked");
+    const running = mine.filter((r) => r.status === "in_progress" && !r.question);
+    const asked = mine.filter((r) => r.question);
     const myAsks = asks.filter((a) => a.seat === id);
     return {
       id,
       team: id.includes(".") ? id.slice(0, id.indexOf(".")) : GENERAL,
-      status: running.length > 0 || parked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
-      held: [...running, ...parked].map((r) => r.key),
-      waits: [...parked.map((r) => r.id), ...myAsks.map((a) => a.id)],
+      status: running.length > 0 || asked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
+      held: [...running, ...asked].map((r) => r.key),
+      waits: [...asked.map((r) => r.id), ...myAsks.map((a) => a.id)],
       queued: mine.filter((r) => r.status === "pending" || r.status === "held").length,
     };
   });
@@ -359,7 +363,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
 
     // ---- store: what the spread built, settled ------------------------------
     const built = (state: ShiftState) => Object.values(spread).flat().filter((s) => s === state).length;
-    const settled = (s: Store) => s.workers.reduce((k, w) => k + w.held.length, 0) === built("held") + built("parked") && s.asks === built("ask");
+    const settled = (s: Store) => s.workers.reduce((k, w) => k + w.held.length, 0) === built("held") + built("asked") && s.asks === built("ask");
     let store = await readStore(api, userId);
     for (let waited = 0; waited < 30_000 && !settled(store); waited += 250) {
       await sleep(250);
@@ -367,7 +371,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     }
     const heldStored = store.workers.reduce((k, w) => k + w.held.length, 0);
     const queuedStored = store.workers.reduce((k, w) => k + w.queued, 0);
-    if (heldStored !== built("held") + built("parked")) fail("store", `${heldStored} running or parked row(s), the spread built ${built("held") + built("parked")}`);
+    if (heldStored !== built("held") + built("asked")) fail("store", `${heldStored} running or asked row(s), the spread built ${built("held") + built("asked")}`);
     if (queuedStored !== built("queued")) fail("store", `${queuedStored} queued row(s), the spread built ${built("queued")}`);
     if (store.asks !== built("ask")) fail("store", `${store.asks} pending ask(s), the spread built ${built("ask")}`);
     if (store.unmatched.length > 0) fail("store", `rows whose assignee names no single seat: ${store.unmatched.join(", ")}`);

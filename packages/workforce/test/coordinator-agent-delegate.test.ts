@@ -157,16 +157,20 @@ describe("the agent flow as a delegate (S9)", () => {
     expect(heard).toContain("alice, through desk: what's our refund policy?");
   });
 
-  it("parks a routed task on its question, which lands in the conversation under the delegate's name", async () => {
-    // A routed turn is a task turn (FIX-2083): it may ask the conversation that filed it.
+  it("holds a routed task on its question, for the user to answer: nothing lands in the conversation meanwhile (FIX-2131)", async () => {
+    // A routed turn is a task turn (FIX-2083): it may ask a question, which holds its task. Its filer is
+    // the conversation, which doesn't answer it (ER-4); until FIX-2070 nothing tells the conversation.
     const answer = mockGenerator({
       name: "agent-answer",
-      script: [{ toolCalls: [{ toolCallId: "q1", toolName: "parkOnQuestion", args: { question: "Which policy?" } }] }]
+      script: [
+        { toolCalls: [{ toolCallId: "q1", toolName: "askQuestion", args: { question: "Which policy?" } }] },
+        { text: "Waiting on your answer." }
+      ]
     });
     const conversation = await postToOtto(answer, "what's our refund policy?");
-    const lines = await conversation.until(conversation.lines, (found) => found.length > 0);
-    expect(lines).toEqual([{ agentName: "otto", text: expect.stringContaining("Which policy?") }]);
-    expect((await conversation.postRows()).map((row) => row.status)).toEqual(["parked"]);
+    const [row] = await conversation.until(conversation.postRows, (found) => (found[0]?.holds ?? []).length > 0);
+    expect(row).toMatchObject({ status: "in_progress", holds: [expect.objectContaining({ ask: expect.objectContaining({ kind: "question", prompt: "Which policy?" }) })] });
+    expect(await conversation.lines()).toEqual([]);
   });
 
   it("reports a failed turn back at once when its answer could go back out (BR-24b)", async () => {

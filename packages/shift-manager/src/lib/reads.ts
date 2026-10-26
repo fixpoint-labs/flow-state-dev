@@ -59,7 +59,7 @@
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-import { waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
+import { isUserSuspension, waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
@@ -188,11 +188,6 @@ export type BoardRow = {
   run: RunLink | null;
   error: string | null;
   /**
-   * The question a row parked on a question waits on, or absent: not parked
-   * on one, or published before boards showed it.
-   */
-  question?: string;
-  /**
    * What holds the row (FIX-2133): its questions and confirms, and its run's
    * stop for the user. Empty when nothing does. The Inbox lists the task's
    * item from the open ones.
@@ -209,7 +204,7 @@ export type BoardRow = {
 /** A conversation's board and every row on it. */
 export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
 
-/** A pending approval or question, and the session that holds it. */
+/** A pending approval, review or question, and the session that holds it. */
 export type Ask = {
   /** The worker session the ask waits in. */
   sessionId: string;
@@ -223,7 +218,7 @@ export type Ask = {
   flowId: string | null;
   /** The session that started this run, for a dispatch run. */
   parentSessionId: string | null;
-  kind: "approval" | "question";
+  kind: "approval" | "review" | "question";
   item: SuspensionItem;
   /** When the ask was raised, epoch ms. */
   since: number;
@@ -329,8 +324,11 @@ const ASK_READ_BATCH = 6;
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
-/** The suspension reasons that are a user's ask: the only ones Inbox lists. */
-export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
+/** What a user's ask asks for: an approval, a review, or a question (an input). */
+function askTypeOf(item: SuspensionItem): Ask["kind"] {
+  const asked = waitForUserKindOf(item) ?? (suspensionShape(item) === "approval" ? "approval" : "input");
+  return asked === "input" ? "question" : asked;
+}
 
 /** One still-pending suspension, as `deriveSuspensions` reduces it. */
 export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][number];
@@ -512,9 +510,6 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
-    ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
-      ? { question: text(field(data, "feedback")) as string }
-      : {}),
     holds: toHolds(field(data, "holds")),
     steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
@@ -903,13 +898,14 @@ export function createLabReader(client: Client): LabReader {
 
   /** The pending user-asks in one session. */
   const readAsks = async (session: SessionSummary, workerId: string | null): Promise<Ask[]> => {
-    const pending = (await readPendingSuspensions(client, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
+    // A user's ask, by ER-1's one predicate: the only suspensions Inbox lists.
+    const pending = (await readPendingSuspensions(client, session.id)).filter((view) => isUserSuspension(view.item));
     return pending.map((view) => ({
       sessionId: session.id,
       workerId,
       flowId: session.flowId ?? null,
       parentSessionId: session.parentSessionId ?? null,
-      kind: suspensionShape(view.item) === "approval" ? ("approval" as const) : ("question" as const),
+      kind: askTypeOf(view.item),
       item: view.item,
       since: typeof view.item.ts === "number" ? view.item.ts : session.updatedAt,
       unanswerable: session.flowId == null ? UNOWNED_SESSION_UNANSWERABLE : null,

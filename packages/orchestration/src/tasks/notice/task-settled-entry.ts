@@ -52,7 +52,7 @@ export const taskSettledInputSchema = z
     boardId: z.string().min(1),
     taskId: z.string().min(1),
     attempt: z.number().int().nonnegative(),
-    ending: z.enum(["completed", "errored", "parked", "retried", "cancelled"]),
+    ending: z.enum(["completed", "errored", "retried", "cancelled"]),
     output: z.unknown().optional(),
     error: z.string().optional(),
     question: z.string().optional(),

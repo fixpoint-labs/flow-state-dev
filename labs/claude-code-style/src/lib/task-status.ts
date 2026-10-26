@@ -5,7 +5,6 @@ export const TASK_STATUS: Record<TaskStatus, { label: string; tone: string; dot:
   pending: { label: "queued", tone: "text-muted-foreground", dot: "bg-muted-foreground" },
   in_progress: { label: "running", tone: "text-info", dot: "bg-info" },
   held: { label: "held", tone: "text-muted-foreground", dot: "bg-muted-foreground" },
-  parked: { label: "waiting", tone: "text-warning", dot: "bg-warning" },
   completed: { label: "done", tone: "text-success", dot: "bg-success" },
   errored: { label: "failed", tone: "text-destructive", dot: "bg-destructive" },
   cancelled: { label: "cancelled", tone: "text-muted-foreground", dot: "bg-muted-foreground" },

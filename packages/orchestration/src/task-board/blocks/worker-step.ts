@@ -142,8 +142,6 @@ export async function packWorkerInput(
     ...(task.input !== undefined ? { input: task.input } : {}),
     attempts: task.attempts,
     ...(task.feedback !== undefined ? { feedback: task.feedback } : {}),
-    // Only to the attempt an answer re-queued (FIX-1817): a failure's feedback is not an answer.
-    ...(task.answered === true && task.feedback !== undefined ? { answer: task.feedback } : {}),
     // Every steer, taken or not (FIX-2086 D1): the brief a retry runs from too.
     ...(task.steers !== undefined && task.steers.length > 0
       ? { steers: task.steers.map((steer) => shownSteer(task, steer)) }

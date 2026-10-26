@@ -12,7 +12,7 @@ import { TaskPlan } from "./flow-state/task-plan";
 import { extractTaskPlanState, TASK_CHANGE_COMPONENT } from "./flow-state/task-plan-state";
 import { isOpen, TASKS_POLL_MS } from "./TasksPanel";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
-import { columnFor, readStatus } from "../lib/columns";
+import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { workerLabel } from "../lib/derive";
@@ -133,10 +133,10 @@ function FiledTasks({ requestId, boardRef, read }: { requestId: string; boardRef
   );
 }
 
-const STATUS_WORD: Record<string, string> = { pending: "queued", in_progress: "running", parked: "needs you" };
+const STATUS_WORD: Record<string, string> = { pending: "queued", in_progress: "running" };
 
 function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goal" | "title" | "status" | "assignee">; boardRef: string }) {
-  const status = readStatus(task.status);
+  const status = task.status;
   const name = task.title || task.goal;
   return (
     <div className="group/task flex flex-wrap items-center gap-2 py-0.5 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>

@@ -1,7 +1,7 @@
 /**
  * `taskToolActions` — a durable board's task tools, as flow actions: the
- * filer's four (`createTask`, `getTask`, `listTasks`, `updateTask`) and
- * `answerTask` (FIX-2081). None settles a task.
+ * filer's four (`createTask`, `getTask`, `listTasks`, `updateTask`)
+ * (FIX-2081). None settles a task.
  *
  * What the actions are for is changing a task from OUTSIDE the request that
  * filed it: a person in the DevTool cancelling a stuck row, holding or
@@ -33,7 +33,7 @@ import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { heard } from "../fixtures/heard";
 
-const TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"] as const;
+const TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
 let seq = 0;
 
@@ -136,7 +136,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 }
 
 describe("taskToolActions — the set", () => {
-  it("names the filer's four and answerTask for the board, and nothing that settles a task", async () => {
+  it("names the filer's four for the board, and nothing that settles a task", async () => {
     const h = await host();
     try {
       const names = Object.keys(taskToolActions(h.board)).sort();

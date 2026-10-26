@@ -27,18 +27,15 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
-`pending | in_progress | held | parked | completed | errored | cancelled`.
+`pending | in_progress | held | completed | errored | cancelled`. A task waiting on a
+person is `in_progress`: what it waits on is in its `holds`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
          │                ├─→ in_progress       (claim, after a lease runs out)
          │                ├─→ pending           (reclaim)
-         │                ├─→ cancelled
-         │                └─→ parked ─┬─→ completed
-         │                            ├─→ errored
-         │                            ├─→ pending    (unpark)
-         │                            └─→ cancelled
+         │                └─→ cancelled
          ├─→ held ─┬─→ pending                  (release)
          │         └─→ cancelled
          └─→ cancelled
@@ -59,7 +56,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`release`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
+the re-entries that do not spend the budget (`release`, `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
 rather than parsing the error string.
@@ -124,8 +121,6 @@ const work = defineTaskCollection({
 Whatever it adds lands with the ending or not at all, so a follow-up the ending owes
 (someone to tell) can't be lost between two writes. Keep it a pure function of the row
 and the ending: a write that loses a version race runs it again on the fresher row.
-A park passed `awaitReview(..., { quiet: true })` reaches it as `{ kind: "parked",
-quiet: true }`, for a park nobody needs to hear about.
 
 **Server-only task fields.** A `task-change` item carries the whole post-mutation
 row, and that stream is client-visible. A few fields on `Task` are substrate
@@ -167,15 +162,10 @@ Removals reconcile when you resolve. A task the running request removed (an expl
 from the next resolution onward. A ref you are already holding keeps reporting such
 a task until it resolves again.
 
-Every lifecycle transition — `complete`, `fail`, `awaitReview`,
-`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
-argument that makes the write advisory. `ifAllowed` skips the write when the task is
-already settled, or when the transition is one the state machine or the calling verb
-refuses. A legal status transition is necessary but not sufficient: a verb that owns
-one edge runs only from that edge's source status: `unpark` runs on a `parked` task and no other. Like `cancel`, `unpark`
-declines without options: `disallowed` for a live task, `terminal` once settled, and a
-second answer to an already-queued task is refused. No write moves a task out of a
-finished status. `in_progress → pending` sits in the status table too,
+Every lifecycle transition — `complete`, `fail`, `cancel` — takes an optional
+trailing `TaskTransitionOptions` argument that makes the write advisory. `ifAllowed`
+skips the write when the task is already settled, or when the transition is one the
+state machine refuses. No write moves a task out of a finished status. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -203,13 +193,11 @@ Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
 emitted), `unchanged` (the task already held the state asked for, nothing written),
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
-`disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
+`disallowed` / `lost-claim`, resolved in that precedence order) and the
 `status` the task was in when the write was refused. `immutable-assignee` means the
-board dispatches rows to a child session and an attempt holds the task (`in_progress` or `parked`), where the assignee is fixed; `not-my-task`
+board dispatches rows to a child session and an attempt holds the task (`in_progress`), where the assignee is fixed; `not-my-task`
 means the ticket names a different task, a different collection, or an id since
-reused; `parked` means the caller passed `refuseWhenParked` and the task is in
-`parked` — nobody took it, so unlike `lost-claim` the answer is not to
-re-claim and redo; `lost-claim` means it names the right task but a claim that has
+reused; `lost-claim` means it names the right task but a claim that has
 moved on. A
 decline never throws, and discarding the return value is supported. `cancel` is
 advisory whether or not options are passed: cancelling a settled task declines
@@ -351,7 +339,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, mode, onReview, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, mode, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
@@ -366,14 +354,10 @@ dispatcher are refused at construction, naming the fix),
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
-`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`),
-`onReview` (`"hold"` default | `"exit"` — whether a task parked with `awaitReview`
-keeps the drain open, or is excused from the in-flight counts so the drain returns
-and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
-`defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
-and is refused at construction otherwise; `board.unparkAndDrain` takes `{ taskId, feedback }`,
-re-queues the parked task, and drains in the same request, returning the write outcome
-and draining only when it was `recorded`), `initialTasks`,
+`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`; a running task waiting
+on a person, held on a question or stopped for a review or an approval, is in flight but no
+active worker, so a `"complete-or-blocked"` board whose open tasks only wait on a person stops
+`blocked` and leaves them as they are), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
@@ -499,9 +483,8 @@ export default defineFlow({
 a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency?, defer? })`
 builds that entry; `defineFlow` refuses a flow that holds a board that dispatches without one,
 whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSettledInput`:
-`{ boardId, taskId, attempt, ending, output?, error?, question?, cancelled? }`, where `ending` is
-`"completed"`, `"errored"` (failed for good), `"parked"` (on its worker's question) or
-`"cancelled"`, and `cancelled` lists, on a failure or a cancel, the dependents it cancelled that
+`{ boardId, taskId, attempt, ending, output?, error?, cancelled? }`, where `ending` is
+`"completed"`, `"errored"` (failed for good) or `"cancelled"`, and `cancelled` lists, on a failure or a cancel, the dependents it cancelled that
 the same session filed (they send no notice of their own). A retry sends nothing, nor does a row
 the filer waited on (`getTask` with `wait`), nor a cancel the filer's own model made with its
 task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
@@ -663,7 +646,8 @@ only when that row is one the running session may take; it arrives on the dispat
 too, and the gate re-reads the row it names. `uses` declares the ledgers' resources,
 `onError` defaults to `"skip"`, and `allowSessionState` accepts an entry whose blocks
 keep session state. Each run of the entry is a task turn (`isTaskTurn(ctx)`): the run
-gets `parkOnQuestion`, whose question goes to whoever filed the task. The entry runs
+gets `askQuestion`, whose question holds the task until the user answers, and
+`waitForUser`. The entry runs
 only if its claim on the task is still current, and task-tool writes from the run can
 touch only the task it holds.
 
@@ -725,7 +709,7 @@ current: same attempt, same row (not deleted and recreated under the same id), s
 left exactly as it was. If the row is still `in_progress`, whether a newer attempt,
 another assignee, or a row recreated under the same id holds it, that claim runs until its
 lease runs out and the next drain reclaims it; a row that was deleted, or is already
-settled or parked, has no outstanding claim, so there is nothing to reclaim. On the drain
+settled, has no outstanding claim, so there is nothing to reclaim. On the drain
 side the dispatch block returns `{ dispatched: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
@@ -806,9 +790,8 @@ state on the task.
 
 A board that dispatches anything fixes a task's assignee while an attempt holds it:
 the worker name is what a running row is routed by, so `setAssignee` on an
-`in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
-or held task can still change hands, and a parked one can once `unpark` has
-ended its attempt. The rule belongs to the collection rather than
+`in_progress` task declines with reason `immutable-assignee`. A pending or held task
+can still change hands. The rule belongs to the collection rather than
 the board, so a second board over the same `defineTaskCollection` value declines too.
 
 A claim carries a lease (two minutes by default), and nothing renews it between the
@@ -835,8 +818,7 @@ repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
 The board must be request- or resource-backed and a plan board: a delegation board, whose
-drain returns while its tasks still run, and an `onReview: "exit"` board, whose drain can return
-with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
+drain returns while its tasks still run, is refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Task tools
@@ -846,8 +828,8 @@ import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 ```
 
 `taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
-`getTask`, `listTasks` and `updateTask`, with `answerTask`. The worker's own tool, `reportProgress`, is built apart
-([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
+`getTask`, `listTasks` and `updateTask`. The worker's own tools, `reportProgress`, `askQuestion` and
+`waitForUser`, are built apart ([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
 returns or throws.
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `createTask` and `updateTask` refuse
@@ -911,8 +893,8 @@ the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`
 A `listTasks` row names it by id only (`current: { id }`).
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
 comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
-`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `question` is set only
-on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `holds` lists what the
+task waits on. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 > **Which surfaces are capped.** The caps come from the code that constructs the
@@ -929,14 +911,14 @@ fields and the task's status. So the recoverable set across the tools is
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `field_locked_after_start`, `task_finished`, `cancel_takes_no_edits`, `nothing_to_update`,
 `create_task_does_not_wait`, `terminal_task_write_declined`,
-`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
-`task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
+`follow_up_takes_no_assignee`, `follow_up_of_unrun`,
+`task_id_taken`, and a filing refusal, which names its rule
 (`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
 `TaskFilingRule`), and the `wait_*` codes when `getTask`
 [waits](#waiting-for-a-tasks-answer). A
 coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
-`not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
-and [follow-ups](#following-up-on-a-finished-task), below.
+`follow_up_takes_no_assignee` through `task_id_taken` come from
+[follow-ups](#following-up-on-a-finished-task), below.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
@@ -1061,31 +1043,33 @@ even when its process died. Until that pass runs, a cancelled task's worker may 
 The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
 sure the flow holding the board declares `onTaskSettled`.
 
-### When a task stops on a question
+### When a worker waits on a person
 
-A worker that can't go on without an answer parks its task on a question until someone
-answers it. Anyone who can call `answerTask` on the board can answer.
-`createParkOnQuestion({ resolve })` builds the worker's side:
-`parkOnQuestion({ question })` parks the task the current turn is working on, and
-`offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
-task that no turn is waiting on (`getTask` with `wait`).
+A worker that can't go on without an answer asks the user. `createAskQuestion({ resolve })` builds
+the worker's side: `askQuestion({ question })` holds the task the current turn is working on, on
+that question, and the turn ends without settling it; `offered(ctx)` says whether the turn gets the
+tool, on a task turn for a running task. The answer is a message naming the question,
+`updateTask({ id, question, message })`, from the Inbox, a line the user types in the task's
+session, or the filer's own tool for a question asked midway on a task not routed. The first answer
+wins, and it owes the task one more turn on the same attempt, which starts from the brief, the last
+checkpoint and the answer.
 
-`answerTask({ taskId, answer })` answers a task parked on its worker's question:
-the task goes back to `pending` with the answer, its worker picks it up again in the
-same session, the next attempt gets the answer as `input.answer`, and the claim that
-follows isn't charged against `maxAttempts`.
-It takes only a task its worker parked with `parkOnQuestion`, for the question it
-is waiting on now. It declines any other task (including one parked with `awaitReview`,
-one parked while a person talks to its worker, or one waiting on its own sub-tasks), a late answer to a question the task has
-moved past (`not_parked_on_question: …`), and a finished task
-(`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
-its own; on your own board, drain it afterwards. An answered task has started, so `updateTask`
-refuses to move it to another worker, and the answer reaches the session that asked.
+`createWaitForUserTool({ resolve })` builds `waitForUser({ kind, prompt })`, the model's stop for
+the user: an approval or a review on a task turn, whose answer is the tool's result, or, on a turn
+working no task, an input. On a task turn it refuses `input` and names `askQuestion`. It takes the
+host's person-stop deadline (`userDeadlineMs`) and none otherwise, and at a deadline it returns
+`answered: false` rather than throwing. A turn waits on a person once: `askQuestion` and
+`waitForUser` in the same step open one wait, and the other is refused with a tool error naming it.
+
+**Moving from the question and review parks.** `createParkOnQuestion` and `parkOnQuestion` are gone: build `createAskQuestion`. <!-- retired-name-refusal: migration note -->
+`answerTask` and its action are gone: answer with `updateTask({ id, question, message })`. <!-- retired-name-refusal: migration note -->
+`TaskCollectionRef.awaitReview` and `unpark`, `board.unparkAndDrain` and a board's `onReview` are gone: a block asks for a review with `ctx.waitForUser({ kind: "review", prompt })`. <!-- retired-name-refusal: migration note -->
+The `parked` status, `counts.parked`, the `parked-for-review` termination reason and the `parked` notice ending are gone. <!-- retired-name-refusal: migration note -->
 
 ### Progress from the worker
 
 `createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
-and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
+and an `offered(ctx)` check, the way `createAskQuestion` does. It is offered only on a task
 turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
 (at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
 task carries as its output (`Task.checkpointed: true`; `getTask` shows `checkpoint: true`). Neither changes the task's status. When the
@@ -1148,8 +1132,7 @@ request takes mid-run shows in the task's session as a line from its sender
 
 Rows written before steers existed read in their new shape, with nothing to run. A row stored with
 `reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
-at the latest line in its session, so its next turn reads it. A row stored `parked` for a
-person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged.
+at the latest line in its session, so its next turn reads it.
 
 ## Skills
 

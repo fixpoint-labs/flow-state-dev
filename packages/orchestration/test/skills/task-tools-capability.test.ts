@@ -100,12 +100,12 @@ function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
 }
 
 describe("taskTools capability", () => {
-  it("offers the filer's four task tools and answerTask, and nothing that settles a task (FIX-2081)", () => {
+  it("offers the filer's four task tools, and nothing that settles a task (FIX-2081, FIX-2131)", () => {
     const presetDefs = (taskTools as unknown as {
       __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
     const names = resolvedControlTools(presetDefs?.tools?.controlTools).map((t) => t.config?.name).sort();
-    expect(names).toEqual(["answerTask", "createTask", "getTask", "listTasks", "updateTask"]);
+    expect(names).toEqual(["createTask", "getTask", "listTasks", "updateTask"]);
   });
 
   it("createTaskToolsCapability returns a freshly composable capability", () => {
@@ -217,20 +217,6 @@ describe("getTask", () => {
     expect(read.task).toMatchObject({ output: "two sections", checkpoint: true, statusNote: "Drafting the summary" });
   });
 
-  it("names the question a task is parked on, and only a question park", async () => {
-    const parked = { goal: "propose a plan", status: "parked", attempts: 1, createdAt: Date.now(), updatedAt: Date.now() };
-    const { ctx } = buildCtx({
-      preTasks: {
-        asks: { ...parked, id: "asks", parkedOnQuestion: true, feedback: "Approve the plan?" },
-        held: { ...parked, id: "held", feedback: "a person's turn" },
-      },
-    });
-    const asks = (await runForTest(findTool("getTask"), { id: "asks" }, ctx)) as { task: Record<string, unknown> };
-    expect(asks.task.question).toBe("Approve the plan?");
-    const held = (await runForTest(findTool("getTask"), { id: "held" }, ctx)) as { task: Record<string, unknown> };
-    expect(held.task).not.toHaveProperty("question");
-  });
-
   it("cuts an output too long to return, and says so", async () => {
     const { ctx } = buildCtx({
       preTasks: {
@@ -334,7 +320,6 @@ const STATES: Array<[name: string, seed: Record<string, unknown>, started: boole
   ["held", { status: "held", attempts: 0 }, false],
   ["pending after a retry", { status: "pending", attempts: 1, startedAt: 1 }, true],
   ["running", { status: "in_progress", attempts: 1, startedAt: 1 }, true],
-  ["parked", { status: "parked", attempts: 1, startedAt: 1 }, true],
   ["completed", { status: "completed", attempts: 1, startedAt: 1 }, true],
   ["errored", { status: "errored", attempts: 1, startedAt: 1 }, true],
   ["cancelled", { status: "cancelled", attempts: 0 }, false],
@@ -426,7 +411,6 @@ describe("updateTask — a cancel", () => {
     ["pending", { status: "pending", attempts: 0 }],
     ["held", { status: "held", attempts: 0 }],
     ["running", { status: "in_progress", attempts: 1, startedAt: 1 }],
-    ["parked", { status: "parked", attempts: 1, startedAt: 1 }],
   ])("lands on a %s task, until it finishes, and records it was a model's tool", async (_name, seed) => {
     const ctx = ctxWithTask(seed.status as string, seed);
     expect(await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)).toEqual({ ok: true });

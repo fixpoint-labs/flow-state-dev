@@ -24,6 +24,7 @@ import { describe, expect, it } from "vitest";
 import {
   createStateBackedTaskCollection,
   DEFAULT_LEASE_DURATION_MS,
+  ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
@@ -40,9 +41,36 @@ type OnIdle = "wait" | "complete" | "complete-or-blocked";
  */
 const BOARD_NOW = 1000;
 
+/**
+ * Claim row `id` and leave it waiting on a person (FIX-2131), the two ways a
+ * running row does: held on a question it asked (a row hold, its lease
+ * dropped), or its run stopped for the user's review (the mirror of that stop,
+ * a suspension hold, no lease). Neither deadline is set.
+ */
+async function waitOnPerson(collection: TaskCollectionRef, id: string, how: "question" | "review"): Promise<void> {
+  const claimed = await collection.claim("w1", { eligibility: (task) => task.id === id });
+  const claim = ticketForClaim(collection.collectionId, claimed!);
+  if (how === "question") {
+    expect(await collection.ask!(id, [{ kind: "question", prompt: "Which region?" }], { claim })).toMatchObject({ outcome: "recorded" });
+    return;
+  }
+  expect(
+    await collection.setWaitingOn!(id, "wait", {
+      claim,
+      hold: {
+        id: `s-${id}`,
+        actor: "user",
+        openedAt: BOARD_NOW,
+        source: { kind: "suspension", requestId: `r-${id}`, suspensionId: `s-${id}` },
+        ask: { kind: "review", prompt: "Does this draft read right?" },
+      },
+    }),
+  ).toMatchObject({ outcome: "recorded" });
+}
+
 /** A collection in one of the board states the classifier discriminates. */
 async function collectionInState(
-  state: "empty" | "claimable" | "working" | "parked" | "dep-blocked" | "settled"
+  state: "empty" | "claimable" | "working" | "held" | "review" | "dep-blocked" | "settled"
 ): Promise<TaskCollectionRef> {
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
@@ -63,10 +91,10 @@ async function collectionInState(
       await collection.addTask({ id: "a", goal: "a" });
       await collection.claim("w1");
       break;
-    case "parked":
+    case "held":
+    case "review":
       await collection.addTask({ id: "a", goal: "a" });
-      await collection.claim("w1");
-      await collection.awaitReview("a");
+      await waitOnPerson(collection, "a", state === "held" ? "question" : "review");
       break;
     case "dep-blocked":
       // `pending` until something releases its dep: the dep is held, so
@@ -107,12 +135,18 @@ const rows: Row[] = [
   { state: "empty", onIdle: "complete", verdict: "drained", wakes: true },
   { state: "empty", onIdle: "complete-or-blocked", verdict: "drained", wakes: true },
 
-  // --- A sibling is working, or a task is parked for review: keep waiting,
-  // --- and stay asleep. This is the abandonment-fix path for `parked`.
+  // --- A sibling is working: keep waiting, and stay asleep.
   { state: "working", onIdle: "complete", verdict: "continue", wakes: false },
   { state: "working", onIdle: "complete-or-blocked", verdict: "continue", wakes: false },
-  { state: "parked", onIdle: "complete", verdict: "continue", wakes: false },
-  { state: "parked", onIdle: "complete-or-blocked", verdict: "continue", wakes: false },
+
+  // --- A row waits on a person, on a question or a review (FIX-2131): in
+  // --- flight, so never drained, but no active worker, so `complete-or-blocked`
+  // --- calls it `blocked` on its first idle pass rather than spinning, and the
+  // --- wake test stirs a sleeping worker into that exit.
+  { state: "held", onIdle: "complete", verdict: "continue", wakes: false },
+  { state: "held", onIdle: "complete-or-blocked", verdict: "blocked", wakes: true },
+  { state: "review", onIdle: "complete", verdict: "continue", wakes: false },
+  { state: "review", onIdle: "complete-or-blocked", verdict: "blocked", wakes: true },
 
   // --- Dep-blocked: `complete-or-blocked` calls it, `complete` waits on an
   // --- external pump (its documented legacy behaviour).
@@ -188,7 +222,7 @@ async function boardWithRows(
     id: string;
     assignee?: string;
     /** Omitted leaves the row `pending`. */
-    drive?: "claim" | "park";
+    drive?: "claim" | "question" | "review";
   }[],
   /**
    * Where the collection's clock sits when the classifier reads it. Defaults to
@@ -215,8 +249,8 @@ async function boardWithRows(
   }
   for (const spec of specs) {
     if (spec.drive === undefined) continue;
-    await collection.claim("w1", { eligibility: (task) => task.id === spec.id });
-    if (spec.drive === "park") await collection.awaitReview(spec.id);
+    if (spec.drive === "claim") await collection.claim("w1", { eligibility: (task) => task.id === spec.id });
+    else await waitOnPerson(collection, spec.id, spec.drive);
   }
   now = readAt();
   return collection;
@@ -313,15 +347,21 @@ describe("boardQuiescence - work handed to a child session", () => {
     }
   );
 
-  it("keeps a parked dispatched row holding the drain, and says so on purpose", async () => {
-    // A documented bound, not an oversight: `parked` waits on an
-    // external actor whichever way the row was dispatched, so it is left alone.
-    // Pinned here so removing the limit is a deliberate edit to this line
-    // rather than a silent widening of the exclusion.
-    const collection = await boardWithRows([{ id: "a", drive: "park" }]);
-    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allDispatched };
+  it("reports a plan board whose only open rows wait on a person blocked, leaving both rows as they were (FIX-2131)", async () => {
+    // A row waiting on a person is in flight, so the board isn't drained. It
+    // is no active worker either, so the board stops `blocked` on its first
+    // idle pass, far under its iteration limit, which with no deadline on
+    // either wait it would never leave by spinning.
+    const collection = await boardWithRows([
+      { id: "asks", drive: "question" },
+      { id: "reviewed", drive: "review" },
+    ]);
+    const before = collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }));
+    const options = { onIdle: "complete-or-blocked" as OnIdle };
 
-    expect(boardQuiescence(collection, options)).toBe("continue");
+    expect(boardQuiescence(collection, options)).toBe("blocked");
+    expect(whenBoardClaimable(collection, options)([])).toBe(true);
+    expect(collection.list().map((row) => ({ id: row.id, status: row.status, holds: row.holds }))).toEqual(before);
   });
 
   it.each(onIdles)(

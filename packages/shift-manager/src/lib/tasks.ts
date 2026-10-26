@@ -4,7 +4,7 @@
  * Inbox's sentence. Every count comes from the same snapshot reads the other
  * screens use (`openRows`, `workerStates`), so Tasks, Inbox and Roster agree.
  */
-import { columnFor, readStatus } from "./columns";
+import { columnFor } from "./columns";
 import { openRows, workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
 import type { BoardRow } from "./reads";
 
@@ -19,7 +19,7 @@ export function isQueued(row: BoardRow): boolean {
  * or never recorded its start: only a running row's clock runs.
  */
 export function elapsed(row: BoardRow, now: number): string | null {
-  if (readStatus(row.status) !== "in_progress" || row.startedAt == null) return null;
+  if (row.status !== "in_progress" || row.startedAt == null) return null;
   const seconds = Math.max(0, Math.floor((now - row.startedAt) / 1000));
   const minutes = Math.floor(seconds / 60);
   return minutes < 10 ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${minutes}m`;
@@ -64,7 +64,7 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
  * its own session.
  */
 export function runningSessions(rows: readonly BoardRow[]): number {
-  const running = rows.filter((row) => readStatus(row.status) === "in_progress");
+  const running = rows.filter((row) => row.status === "in_progress");
   const linked = new Set(running.flatMap((row) => (row.run == null ? [] : [row.run.sessionId])));
   return linked.size + running.filter((row) => row.run == null).length;
 }

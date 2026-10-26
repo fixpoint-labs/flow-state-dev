@@ -7,7 +7,7 @@
  * - `tasker` takes tasks and nothing else. Its turn records each run (who,
  *   where, which attempt, as whom) and does what the task's goal says:
  *   `[fail]` throws, `[fail-until:N]` throws on every attempt below N,
- *   `[park:<question>]` parks the task on its question on the first attempt,
+ *   `[ask:<question>]` holds the task on its question, once,
  *   `[slow:<ms>]` takes that long, `[hold:<name>]` waits until the test
  *   releases the gate of that name (`holds`), and anything else is done.
  * - `helper` answers the message a routed task hands it.
@@ -22,7 +22,8 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { createClient } from "@flow-state-dev/client";
-import { ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
@@ -117,10 +118,11 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
       if (message.includes("[fail]")) throw new Error(`${worker.id} could not do it`);
       const until = /\[fail-until:(\d+)\]/.exec(message);
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
-      const park = /\[park:([^\]]+)\]/.exec(message);
-      if (park !== null && attempt === 1 && held !== undefined) {
-        await tasks!.awaitReview(taskId, park[1], { claim: ticketForClaim(tasks!.collectionId, held, partition), onQuestion: true });
-        return "parked";
+      const ask = /\[ask:([^\]]+)\]/.exec(message);
+      if (ask !== null && held !== undefined && held.askedInTurn === undefined && tasks !== undefined) {
+        const asked = await askMidway(ctx as never, tasks, [{ prompt: ask[1]! }]);
+        if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
+        return "asked";
       }
       return `${worker.id} did: ${message}`;
     }

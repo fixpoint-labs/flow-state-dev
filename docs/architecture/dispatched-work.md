@@ -258,8 +258,8 @@ assignee. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
 writes nothing, so the row is left exactly as the gate found it. What that
 leaves behind depends on which arm refused: a superseded attempt or a row
 routed elsewhere is still a live `in_progress` claim, and stays one until its
-lease runs out and the next drain reclaims it; a row already settled, parked
-or deleted has nothing left to reclaim. Every one of those arms is an identity
+lease runs out and the next drain reclaims it; a row already settled or
+deleted has nothing left to reclaim. Every one of those arms is an identity
 check, decided by reading, and they run before the lease arm — which writes —
 so a dispatch about to be refused never extends a lease on a row someone else
 is entitled to.
@@ -551,19 +551,27 @@ stirs into an exit check that no longer calls the board drained.
 
 ### Two exclusions, and why only one is lease-gated
 
-The routing exclusion above is not the only way a row drops out of the board's
-in-flight count. A board declaring `onReview: "exit"` also excuses rows sitting
-in `parked`, and the two live side by side in `countWaitable` as
-separate predicates rather than one widened predicate. They answer different
-questions:
+The routing exclusion above is not the only way a row drops out of a count. A
+running row waiting on a person — an open hold on it, a question or a
+suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
+`activeWorkerCount`, though `inFlightCount` keeps it. Both live in
+`countWaitable` as separate predicates rather than one widened predicate,
+because they answer different questions:
 
-| | routing exclusion (`runsElsewhere`) | park exclusion (`onReview: "exit"`) |
+| | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnPerson`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the board's declared `mode` (FIX-2076) | the row's status |
-| Applies to | `in_progress` rows only | `parked` rows only |
-| Applies on | `mode: "delegation"` boards, every row | any board, however it dispatches |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |
+| Applies to | `in_progress` rows | `in_progress` rows with an open hold |
+| Applies on | `mode: "delegation"` boards, every row | any board, in the active-worker count only |
 | Liveness conjunct | **yes** — the lease | **no** |
+
+The person-wait exclusion is what lets a `complete-or-blocked` board whose only
+open rows wait on a person stop `blocked` instead of polling them: nobody is
+working them, and the answer is a write that starts the row's next turn on its
+own. It needs no lease conjunct because a row waiting on a person holds no
+lease — the turn that asked gave it up — so there is no claimant that could
+have died while the row still says someone is on it.
 
 `runsElsewhere` is the board's declared mode, not an inference from its
 assignees (FIX-2076): a delegation board's every assignee dispatches, so every
@@ -571,7 +579,7 @@ running row is another session's, and a plan board's runs in the drain, so none
 is. `taskBoard()` refuses a board whose assignees contradict its mode, which is
 what keeps the predicate true without reading the row. It needs no run state, so
 it survives a restart. A dispatching board still freezes the assignee while an
-attempt holds the row (`setAssignee` on an `in_progress` or `parked` row
+attempt holds the row (`setAssignee` on an `in_progress` row
 declines `immutable-assignee`), because the child's routing key derives from it;
 a waiting row can change hands (FIX-1780), and its next claim hands it to the
 new assignee.
@@ -579,29 +587,6 @@ new assignee.
 carries the session of the parent that claimed it.
 The run's own coordinate is `run`, which the claim gate writes from inside the
 run (FIX-1668).
-
-**The missing liveness conjunct on the park exclusion is deliberate, not an
-oversight.** The routing exclusion needs one because a routed row can be
-abandoned by a claimant that died while the row still says the work belongs
-elsewhere — the paragraph above is that case. A parked row cannot be in that
-state. Parking moves it off `in_progress`, and the lease deliberately stops
-governing a row there so that a slow human cannot have the task reclaimed out
-from under them (`ticketForClaim`'s status fence, and the lease short-circuit for
-any status other than `in_progress`). A lease conjunct on the park exclusion
-would therefore either exclude nothing or reintroduce exactly the reclaim the
-substrate prevents on purpose.
-
-The practical consequence for a board that declares both: a dispatched row that
-parks stops being excused by *routing* — it is no longer `in_progress` — and
-starts being excused by the *park* exclusion instead, if and only if the board
-asked for that. On the default `onReview: "hold"` it is excused by neither and
-holds the drain open. What hands an excused row back into a drain is
-`board.unparkAndDrain` (FIX-1244): the fenced `unpark` write, then the board's
-own drain in the answering request, so the row is claimed there rather than by
-whatever happens to drain next. Note that this is not the same as saying a board with a
-dispatcher needs park-exit for its launching request to end: the dispatch
-already released that request before the park, and the parent's collection
-mirror cannot observe a write the child made in a separate concurrent request.
 
 **The request record** depends on how far the child got. Four endings; only the
 third leaves a row mid-flight, and the fourth leaves no row at all:

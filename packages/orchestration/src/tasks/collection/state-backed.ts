@@ -22,7 +22,6 @@ import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
   assertTransitionAllowed,
   isTerminalStatus,
-  withMigratedStatus,
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type { FilingStamp, TaskSettingsPatch } from "./internal";
@@ -73,8 +72,6 @@ import {
   settingsWrite,
   settingsChangeKind,
   type EndingRecording,
-  parkPatch,
-  unparkPatch,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
@@ -175,10 +172,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the `parked` rename arrives carrying the legacy status, one
-   * written before the wait rename its legacy wait mark, and one in a shape
-   * the retired-shape map reads (`withRetiredShapes`, FIX-2080); all are
-   * mapped forward here, before any filter or the transition guard sees it.
+   * before the wait rename arrives carrying its legacy wait mark, and one in
+   * a shape the retired-shape map reads (`withRetiredShapes`, FIX-2080); both
+   * are mapped forward here, before any filter or the transition guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -188,7 +184,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withRetiredShapes(withMigratedWait(withMigratedStatus(task)));
+      const next = withRetiredShapes(withMigratedWait(task));
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;
@@ -856,7 +852,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               kind: "retried" as const,
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
-                answered: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -894,43 +889,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async patchSettings(id, settings) {
       return writeSettings(id, settings);
-    },
-
-    async awaitReview(id, feedback, options) {
-      // Writes `feedback` unconditionally, the way `unpark` does: a park with
-      // no reason clears the note, so a failed attempt's text never reads as
-      // why the task is waiting on a person.
-      // A worker's own park is fenced to a running attempt: a row that settled
-      // or re-pended first declines naming what it found, instead of being
-      // parked behind the attempt that already ended it. `ifAllowed` is forced
-      // on that path only, the way `unpark` forces its own fence.
-      const fenced = options?.fromRunning === true;
-      return transitionTo(
-        id,
-        "parked",
-        "review_requested",
-        () => parkPatch(feedback, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
-        fenced ? { ...options, ifAllowed: true } : options,
-        fenced ? "in_progress" : undefined
-      );
-    },
-
-    async unpark(id, feedback, options) {
-      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
-      // this may run from, and the check runs inside the atomic write, so a
-      // row a worker is holding, or one somebody already answered, comes back
-      // `declined` naming the status it found — never re-queued. `ifAllowed` is
-      // forced AFTER the spread, the way `cancel` forces it: the fence is the
-      // verb's contract, not an option a caller can switch off, and a terminal
-      // row declines `terminal` instead of throwing.
-      return transitionTo(
-        id,
-        "pending",
-        "resumed",
-        (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "parked"
-      );
     },
 
     async steer(id, input) {

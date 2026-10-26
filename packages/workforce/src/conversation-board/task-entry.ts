@@ -67,25 +67,7 @@ import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
 import { noteRoutedLines } from "../coordinator/routed-brief";
-import { steersBrief, taskMessage } from "./task-message";
-
-
-/**
- * What a task turn says (FIX-1817): the answer to the worker's question on
- * the attempt that answer re-queued, labelled as one, and the task as filed
- * on every other attempt, with every steer sent into it since (FIX-2086). A
- * retry after a failure is handed the task again, never an answer. Shares its
- * invariant with `packWorkerInput`'s `answer` (orchestration `worker-step.ts`,
- * `answer-envelope.test.ts`). The answer's attempt is handed the steers too:
- * a steer sent while the task waited on its question is taken when it
- * resumes, and never answers the question.
- */
-function taskTurnMessage(task: TaskWorkerInput): string {
-  if (task.answer === undefined) return taskMessage(task);
-  const steers = steersBrief(task);
-  const answer = `Answer to your question:\n\n${task.answer}`;
-  return steers === undefined ? answer : `${answer}\n\n${steers}`;
-}
+import { taskMessage } from "./task-message";
 
 
 /**
@@ -321,7 +303,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
       : base
           // A routed task's lines, for its model to be shown on this turn only.
           .tap(noteRoutedLines)
-          .step((task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!);
+          .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), options.turn!);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or
@@ -330,7 +312,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    * through the board's claim gate, so its input is the dispatch envelope and
    * the task is its payload.
    */
-  const userMessage = (dispatch: TaskDispatchInput) => taskTurnMessage(dispatch.payload as TaskWorkerInput);
+  const userMessage = (dispatch: TaskDispatchInput) => taskMessage(dispatch.payload as TaskWorkerInput);
 
   return { block, from, userMessage, concurrency: REPLY_CONCURRENCY };
 }

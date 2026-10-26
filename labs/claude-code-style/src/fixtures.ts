@@ -231,7 +231,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     writeStep(s, s.tasks.find((t) => t.id === ref.id), patch, line);
 
   const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", waitingOn: { kind: "question", prompt }, statusNote: prompt });
-  const review = (prompt: string): Partial<FixtureTask> => ({ status: "parked", waitingOn: { kind: "review", prompt }, statusNote: prompt });
+  const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", waitingOn: { kind: "review", prompt }, statusNote: prompt });
 
   const threadsScript = (s: FixtureSession, origin: string): Step[] => {
     const [a, b, c]: Ref[] = [{}, {}, {}];
@@ -264,7 +264,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
     // The task the line names (by a word of its title), finished or not, else the first one running.
     // The stop script re-reads its status, so a finished one is reported, not swapped for another.
-    const runningTasks = s.tasks.filter((t) => t.status === "in_progress" || t.status === "held" || t.status === "parked");
+    const runningTasks = s.tasks.filter((t) => t.status === "in_progress" || t.status === "held");
     // One tokenizer for the line and the titles, so punctuation (`second.ts`) splits the same on both sides.
     const tokens = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
     const words = new Set(tokens(text));

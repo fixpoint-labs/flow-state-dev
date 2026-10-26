@@ -423,22 +423,12 @@ interface ClaimView {
  * claim a displaced worker matches the counter by construction. This mirrors
  * the substrate's own `ATTEMPT_OWNED_STATUSES` rather than guessing at it.
  */
-const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "parked"]);
+const ATTEMPT_OWNED_STATUSES = new Set(["in_progress"]);
 
-/**
- * The status `parked` replaced. A row persisted before that rename still
- * carries it. The substrate maps it forward at its own read boundary, but the
- * fence reads the board as a plain resource collection and never passes that
- * boundary — so it maps the value forward itself, or a parked attempt from
- * before the rename has every write refused and its run record freezes.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
-/** The board row as the fence reads it, with the legacy status mapped forward. */
+/** The board row as the fence reads it. */
 function readClaim(state: unknown): ClaimView | undefined {
   if (state === undefined) return undefined;
-  const claim = state as ClaimView;
-  return claim.status === LEGACY_PARKED_STATUS ? { ...claim, status: "parked" } : claim;
+  return state as ClaimView;
 }
 
 /**
@@ -455,9 +445,8 @@ function readClaim(state: unknown): ClaimView | undefined {
  * remove, so the conjunct is taken from the same rule rather than reasoned
  * about separately.
  *
- * Only `in_progress` rows can lapse. A `parked` row is
- * waiting on a person, not on a lease, so its writes still apply — which is the
- * behaviour the substrate has too.
+ * Only `in_progress` rows can lapse, which is the behaviour the substrate has
+ * too.
  *
  * **The clock is the wall clock, and that is a limit.** A lease is a
  * comparison, and a comparison needs one clock; the board collection's own is

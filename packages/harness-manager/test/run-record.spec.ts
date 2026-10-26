@@ -197,24 +197,6 @@ describe("the run record — obligation A", () => {
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
   });
 
-  it("applies a write for a row parked before the status was renamed", async () => {
-    // A board row persisted before `awaiting_review` became `parked` still
-    // carries the old word, and the fence reads the board as a plain resource
-    // collection, so no substrate read boundary maps it forward on the way in.
-    // A parked attempt owns its row, whichever spelling the row arrived with;
-    // reading the old one as "not an owning status" would refuse every write
-    // the attempt makes and leave the run record frozen on an active park.
-    const runs = fakeCollection(RUNS);
-    const board = fakeCollection(BOARD);
-    const ctx = contextWith(runs, board);
-
-    await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), OPENED);
-    await board.upsert(TASK, claimed(1, "awaiting_review"));
-
-    expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("applied");
-  });
-
   it("refuses a write once this attempt's lease has lapsed", async () => {
     // The substrate refuses a SETTLEMENT on a lapsed lease exactly as it
     // refuses one on a lost claim — both are `"lost-claim"`. A fence that took
@@ -250,21 +232,19 @@ describe("the run record — obligation A", () => {
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("applied");
   });
 
-  it("still applies a write to a PARKED row whose lease is in the past", async () => {
-    // A row waiting on a person is not waiting on a lease, and the substrate's
-    // own predicate returns false for anything that is not `in_progress`. A
-    // mirror that dropped that guard would refuse every write from an answered
-    // run — the exact surface LAB-139 builds on.
+  it("still applies a write to a running row held on a question, which holds no lease", async () => {
+    // A row waiting on a person is not waiting on a lease: its question
+    // dropped the lease (FIX-2133), and the substrate reads a row with none as
+    // not lapsed. A mirror that read it as lapsed would refuse every write from
+    // the run that asked.
     const runs = fakeCollection(RUNS);
     const board = fakeCollection(BOARD);
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
     await openRunRow(ctx, identity(1), OPENED);
-    await board.upsert(TASK, {
-      ...claimed(1, "parked"),
-      leaseUntil: Date.now() - 1_000,
-    });
+    const { leaseUntil: _lease, ...held } = claimed(1) as Record<string, unknown>;
+    await board.upsert(TASK, held as never);
 
     expect(await writeRunRow(ctx, identity(1), { reason: "asked" })).toBe("applied");
   });

@@ -1,12 +1,13 @@
 /**
- * J4, the journey no other check walks: an assigned task parked on its
- * question, with the server killed while it waits (FIX-1820). See ../goal.md.
+ * J4, the journey no other check walks: an assigned task held on its
+ * question, with the server killed while it waits (FIX-1820; a hold, not a
+ * park, since FIX-2131). See ../goal.md.
  *
  * Leg b's goal-local Lab (`goals/coordinators/task-session-stays-open/lab/`
  * over its `fixtures/`), served by Shift Manager's own command on a fresh
  * SQLite store. Alice files leg b's brief for `desk.ops`: draw a ticket, then
- * ask which region, and stop. The moment the store shows the row `parked` with
- * its one `parked` notice, the server and every process under it get SIGKILL.
+ * ask which region, and stop. The moment the store shows the row held on its
+ * open question, the server and every process under it get SIGKILL.
  * A new process starts on the same store file. From there Alice only does what
  * a person does: she answers, lists the board's tasks every five seconds,
  * answers once more, and asks the finished session which ticket it drew.
@@ -140,7 +141,7 @@ async function connect(origin: string) {
     const found = listed.find((r) => r.id === requestId);
     return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
   };
-  return { act, app, sessionsApi };
+  return { act, app, sessionsApi, fsd };
 }
 
 // ---- one attempt --------------------------------------------------------------------------
@@ -149,10 +150,12 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   const calls: string[] = [];
   const row = (file: string, taskId: string | undefined): StoredTask | undefined =>
     taskId === undefined || !existsSync(file) ? undefined : taskRows(file, ALICE.userId, ORG).find((t) => t.id === taskId);
-  const noticesIn = (file: string, conv: string, taskId: string | undefined, ending: string) => {
-    if (taskId === undefined || !existsSync(file)) return [] as string[];
-    const keys = (sessions(file).find((s) => s.id === conv)?.state.taskNotices as string[] | undefined) ?? [];
-    return keys.filter((k) => k.startsWith(`${taskId}:`) && k.endsWith(`:${ending}`));
+  /** The row's open question: a row hold on a running row no steer answers yet. */
+  const questionOf = (t: StoredTask | undefined) => {
+    const held = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
+    if (held?.status !== "in_progress") return undefined;
+    const answered = new Set((held.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
+    return held.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
   };
   const waitFor = async (check: () => boolean, ms: number, every = 300) => {
     for (const until = Date.now() + ms; Date.now() < until; await sleep(every)) if (check()) return true;
@@ -166,7 +169,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     }
   };
 
-  // Before the kill: file the brief and wait for the park.
+  // Before the kill: file the brief and wait for the question.
   let served = await o.serve(`${o.label}-before`, o.store);
   let alice = await connect(served.origin);
   const conv = (await alice.fsd.flow("coordinator").createSession({ state: { workerId: "desk.lead" } })).id as string;
@@ -177,17 +180,18 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   calls.push("createTask_tasks");
   const filedAt = Date.now();
   const taskId = filed.output?.taskId as string | undefined;
-  say(`${o.label}: filed ${taskId} for desk.ops; waiting for it to park`);
-  const parked = await waitFor(() => row(o.store, taskId)?.status === "parked" && noticesIn(o.store, conv, taskId, "parked").length === 1, 120_000, 40);
+  say(`${o.label}: filed ${taskId} for desk.ops; waiting for it to hold on its question`);
+  const parked = await waitFor(() => questionOf(row(o.store, taskId)) !== undefined, 120_000, 40);
   const killed = killTree(served.child.pid!);
   const killedAfterMs = Date.now() - filedAt;
-  say(`${o.label}: ${parked ? "the row read parked with its notice" : "the row never parked"}; SIGKILL to ${killed.join(", ")} ${killedAfterMs} ms after the filing`);
+  say(`${o.label}: ${parked ? "the row held on its question" : "the row never held on a question"}; SIGKILL to ${killed.join(", ")} ${killedAfterMs} ms after the filing`);
   await served.exited;
   // What the store says now is what the dead server left.
-  const atKill = { row: row(o.store, taskId), parkedNotices: noticesIn(o.store, conv, taskId, "parked"), draws: drawsIn(o.store) };
-  // A task that never parked, or parked with no draw persisted, leaves nothing to restart: a setup failure, never a grade.
-  if (!parked || atKill.row?.status !== "parked") {
-    throw new Error(`the task never read parked with its one notice within 120 s (the dead server left ${show(atKill.row?.status)}; filing ${show(filed.output ?? filed.error)}), so there was no wait to kill`);
+  const atKillRow = row(o.store, taskId);
+  const atKill = { row: atKillRow, question: questionOf(atKillRow), draws: drawsIn(o.store) };
+  // A task that never asked, or asked with no draw persisted, leaves nothing to restart: a setup failure, never a grade.
+  if (!parked || atKill.question === undefined) {
+    throw new Error(`the task never held on its question within 120 s (the dead server left ${show(atKill.row?.status)}; filing ${show(filed.output ?? filed.error)}), so there was no wait to kill`);
   }
   if (atKill.draws.length !== 1 || atKill.draws[0]!.ticket === undefined) {
     throw new Error(`the dead server's store held ${atKill.draws.length} drawTicket output(s) at the kill, not one: ${show(atKill.draws)}; the draw must be persisted before the server dies`);
@@ -198,8 +202,8 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   served = await o.serve(`${o.label}-after`, storeAfter);
   alice = await connect(served.origin);
   try {
-    const answered = await alice.act("coordinator", conv, "answerTask_tasks", { taskId, answer: `Use ${o.region}.` });
-    calls.push("answerTask_tasks");
+    const answered = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, question: atKill.question.id, message: `Use ${o.region}.` });
+    calls.push("updateTask_tasks (the answer)");
     const answeredAt = Date.now();
     let ended = ENDED.has(row(storeAfter, taskId)?.status ?? "");
     for (const until = answeredAt + 90_000; !ended && Date.now() < until; ) {
@@ -212,10 +216,10 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     await quiet(storeAfter);
     const finished = row(storeAfter, taskId);
 
-    // A second answer to the finished task.
+    // A second answer to the same question, on the finished task.
     const before = JSON.stringify(taskRows(storeAfter, ALICE.userId, ORG));
-    const second = await alice.act("coordinator", conv, "answerTask_tasks", { taskId, answer: `Use ${pick(["eu-west", "us-east"])} instead.` });
-    calls.push("answerTask_tasks (second)");
+    const second = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, question: atKill.question.id, message: `Use ${pick(["eu-west", "us-east"])} instead.` });
+    calls.push("updateTask_tasks (a second answer)");
     await quiet(storeAfter);
     const secondWroteNothing = before === JSON.stringify(taskRows(storeAfter, ALICE.userId, ORG));
 
@@ -241,17 +245,17 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
 function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failures: string[]; notes: string[] } {
   const failures: string[] = [];
   const parkedRow = o.atKill.row;
-  if (parkedRow?.status !== "parked" || o.atKill.parkedNotices.length !== 1) {
-    failures.push(`kill:parked — wanted the row parked with one parked notice when SIGKILL went out; the dead server left ${show(parkedRow?.status)}, notices ${show(o.atKill.parkedNotices)} (filing ${show(o.filed.output ?? o.filed.error)})`);
+  if (o.atKill.question === undefined) {
+    failures.push(`kill:parked — wanted the row held on its question when SIGKILL went out; the dead server left ${show(parkedRow?.status)} (filing ${show(o.filed.output ?? o.filed.error)})`);
   }
-  if (o.answered.output?.ok !== true) failures.push(`j:answered — after the restart answerTask_tasks answered ${show(o.answered.output ?? o.answered.error ?? o.answered.status)}`);
+  if (o.answered.output?.ok !== true) failures.push(`j:answered — after the restart updateTask_tasks answered ${show(o.answered.output ?? o.answered.error ?? o.answered.status)}`);
 
   const store = o.storeAfter;
   const task = o.finished;
   const parkedSession = parkedRow?.run?.sessionId;
   if (task?.status !== "completed" || o.endedIn > 90_000) failures.push(`j:completed — wanted completed within 90 s of the answer; it is ${task?.status} after ${o.endedIn} ms`);
   if (parkedSession === undefined || task?.run?.sessionId !== parkedSession) {
-    failures.push(`j:same-session — wanted it to complete in the session that parked (${parkedSession}); it ran in ${task?.run?.sessionId}`);
+    failures.push(`j:same-session — wanted it to complete in the session that asked (${parkedSession}); it ran in ${task?.run?.sessionId}`);
   }
 
   const all = existsSync(store) ? sessions(store) : [];
@@ -286,7 +290,7 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
   }
 
   const notes = [
-    `killed ${o.killedAfterMs} ms after the filing, the dead server leaving the row ${parkedRow?.status} in ${parkedSession} with ${o.atKill.parkedNotices.length} parked notice(s) and the draw ${show(drawn)}`,
+    `killed ${o.killedAfterMs} ms after the filing, the dead server leaving the row ${parkedRow?.status} in ${parkedSession} ${o.atKill.question === undefined ? "with no open question" : `held on question ${o.atKill.question.id}`} and the draw ${show(drawn)}`,
     `restarted on ${o.storeAfter}; answer: ${show(o.answered.output ?? o.answered.error)}; region ${region}; ticket ${ticket}; draws ${draws.length}`,
     `task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} ${o.endedIn} ms after the answer, attempts ${task?.attempts}; output ${show(task?.output)}`,
     `second answer: ${show(o.second.output ?? o.second.error)}, rows ${o.secondWroteNothing ? "unchanged" : "changed"}`,
@@ -362,5 +366,5 @@ await runGoal(async () => {
         : `control fresh-store: j:answered did NOT fail with kill:parked green, so the check can't see what the control removes`,
     );
   }
-  return { failures, evidence: `J4 PASS on attempt ${passedOn} of ${attempts}, desk.ops on ${MODEL}, SQLite, SIGKILL while parked; ${result.notes.join("; ")}` };
+  return { failures, evidence: `J4 PASS on attempt ${passedOn} of ${attempts}, desk.ops on ${MODEL}, SQLite, SIGKILL while held on its question; ${result.notes.join("; ")}` };
 });

@@ -193,7 +193,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
         scanned.tools++;
         tools.push(name);
         if (!TOOLS_ALLOWED.has(name) && !isMarked(lineText(sf, node))) {
-          findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, answerTask or parkOnQuestion` });
+          findings.push({ rule: "tools", where: `${rel(sf)}:${lineOf(sf, node)}`, what: `the task surface offers "${name}", which is not one of the five, askQuestion or waitForUser` });
         }
       }
       ts.forEachChild(node, visit);

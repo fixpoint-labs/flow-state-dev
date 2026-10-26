@@ -98,13 +98,12 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     expect(elapsed(row("A", "in_progress", { startedAt: 0 }), 5_000)).toBe("0m 05s");
     expect(elapsed(row("A", "in_progress", { startedAt: 0 }), 12 * 60_000 + 30_000)).toBe("12m");
     expect(elapsed(row("A", "in_progress", { startedAt: null }), 5_000)).toBeNull();
-    // Only a running row's clock runs: a queued or parked row shows no TIME.
+    // Only a running row's clock runs: a queued row shows no TIME.
     expect(elapsed(row("A", "pending", { startedAt: 0 }), 5_000)).toBeNull();
-    expect(elapsed(row("A", "parked", { startedAt: 0 }), 5_000)).toBeNull();
   });
 
   it("queued is every row in the QUEUED column, blocked ones included", () => {
-    expect(["pending", "held", "mystery", "in_progress", "parked", "errored"].filter((s) => isQueued(row("x", s)))).toEqual(["pending", "held", "mystery"]);
+    expect(["pending", "held", "mystery", "in_progress", "errored"].filter((s) => isQueued(row("x", s)))).toEqual(["pending", "held", "mystery"]);
   });
 
   it("the summary counts what is in flight (not queued, not done), the asks, the shift and the streams in flight", () => {
@@ -117,14 +116,18 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     const s = snapshot(
       [
         row("A", "in_progress", { assignee: "eng.coder" }),
-        row("B", "parked", { holderSessionId: "s_desk" }),
+        // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
+        row("B", "in_progress", {
+          holderSessionId: "s_desk",
+          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "row", releasedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+        }),
         row("C", "pending"),
         row("D", "completed", { holderSessionId: "s_other" }),
       ],
       asks,
       workers,
     );
-    expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 2 on shift · 2 streams");
+    expect(tasksSummary(s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
   });
 
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
@@ -159,7 +162,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
       "Nothing needs you. 2 sessions are still running.",
     );
-    expect(emptyInboxSentence(snapshot([row("A", "parked", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
+    expect(emptyInboxSentence(snapshot([row("A", "completed", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
       "Nothing needs you. 1 session is still running.",
     );
   });

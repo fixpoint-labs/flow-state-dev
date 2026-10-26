@@ -7,8 +7,8 @@
  *
  * Every door used here is one a person or an app already has — the session
  * route to open each worker's session, and the action route on the planner's
- * conversation to file (`createTask_tasks`), answer (`answerTask_tasks`) and
- * reassign (`updateTask_tasks`, before the row starts). What the board holds is read off the
+ * conversation to file (`createTask_tasks`), and to answer a row's question and
+ * reassign a row before it starts (`updateTask_tasks`). What the board holds is read off the
  * server's SQLite file, read-only: the session route sends a browser only a
  * row's board fields, and the checks grade a row's input and answer too.
  * Nothing is written into a store by hand, and nothing runs in this process
@@ -187,8 +187,8 @@ export interface ChangeRecord {
 export type BoardRow = StoredTask & {
   input?: PieceInput;
   feedback?: string;
-  answered?: boolean;
-  parkedOnQuestion?: boolean;
+  holds?: { id: string; source: { kind: string }; ask: { kind: string; prompt: string } }[];
+  steers?: { id: string; message: string; answers?: string }[];
   deps?: string[];
   startedAt?: number;
 };
@@ -328,15 +328,20 @@ export class Scenario {
   }
 
   /**
-   * A person answers a row parked on its worker's question, through the
-   * planner's conversation's `answerTask_tasks`.
+   * A person answers a row held on its worker's question, through the
+   * planner's conversation's `updateTask_tasks`, naming the question: the
+   * row's open one, else the last it asked, so a second answer names the
+   * question the first one closed.
    *
    * @param settleWithinMs How long to wait for the request to settle. A
    *   delivery the server will not run may never settle at all, so the caller
    *   bounds the wait.
    */
   answer(taskId: string, answer: string, userId: string = LAB_USER_ID, settleWithinMs = 30_000): Promise<ActResult> {
-    return this.onConversation("answerTask_tasks", { taskId, answer }, userId, settleWithinMs);
+    const questions = (this.rows().find((row) => row.id === taskId)?.holds ?? []).filter((hold) => hold.source.kind === "row");
+    const answeredIds = new Set((this.rows().find((row) => row.id === taskId)?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
+    const question = questions.find((hold) => !answeredIds.has(hold.id)) ?? questions[questions.length - 1];
+    return this.onConversation("updateTask_tasks", { id: taskId, question: question?.id ?? "none", message: answer }, userId, settleWithinMs);
   }
 
   /** Every row the lab user's conversations filed, read off the server's store. */

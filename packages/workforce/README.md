@@ -833,7 +833,7 @@ const agent = defineAgentWorkerFlow({
 
 For full control, build your own block around `takeFinishedTasks`. It takes what finished, says
 each line in the conversation, and returns `FinishedTask[]`: `{ taskId, ending, worker?, line }`,
-where `ending` is `"completed"`, `"errored"`, `"parked"` or `"cancelled"` and `worker` is the
+where `ending` is `"completed"`, `"errored"` or `"cancelled"` and `worker` is the
 delegate the line was said under. It returns `[]` when nothing finished.
 
 ```ts
@@ -2060,8 +2060,8 @@ same problems without throwing.
 ### The coordinator's task board
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask` and
-`answerTask`), and the conversation's session takes them as actions named for the board:
+Orchestration's task tools (`createTask`, `getTask`, `listTasks` and `updateTask`), and the
+conversation's session takes them as actions named for the board:
 `createTask_tasks`, `updateTask_tasks`, `listTasks_tasks` and so on. A turn working a task also
 has `reportProgress` (the `progress` entry of the session board), which is not an action.
 
@@ -2133,10 +2133,13 @@ five boards deep and 100 tasks under one top task; a filing past either is answe
 
 ### Questions, messages and follow-ups
 
-A worker on a task turn has `parkOnQuestion`: it parks the task on its question, and the
-conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
-the task picks up in its own session with the answer as its next message, without spending a
-retry.
+A worker on a task turn has `askQuestion`: the task holds on its question, which the user's
+Inbox lists. The answer is a message naming the question, `updateTask_tasks({ id, question,
+message })`, from the Inbox, a line typed in the task's session, or the coordinator's `updateTask`
+tool for a question asked midway on a task not routed. The task takes one more turn in its own
+session, on the same attempt, with the answer, without spending a retry. The worker also has
+`waitForUser`, which stops its turn for the user's approval or review; only the user answers that,
+in the Inbox.
 
 `updateTask_tasks({ id, message })`, or the coordinator's `updateTask` tool, steers a task that
 hasn't finished: the message is kept on the task and reaches its worker's next model call, or the

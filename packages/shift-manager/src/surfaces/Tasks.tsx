@@ -10,7 +10,7 @@
  * ships them (BR-16).
  */
 import { useEffect, useState } from "react";
-import { COLUMNS, columnFor, readStatus } from "../lib/columns";
+import { COLUMNS, columnFor } from "../lib/columns";
 import { holderOf, openRows, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
@@ -49,7 +49,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const all = openRows(snapshot);
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
-  const now = useNow(rows.some((row) => readStatus(row.status) === "in_progress"));
+  const now = useNow(rows.some((row) => row.status === "in_progress"));
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>

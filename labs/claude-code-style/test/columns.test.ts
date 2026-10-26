@@ -15,10 +15,10 @@ describe("columnOf", () => {
     ["in progress", task({}), "working"],
     ["held with no open question", task({ status: "held" }), "working"],
     ["held on a question", task({ status: "held", waitingOn: { kind: "question", prompt: "EU or US?" } }), "waiting"],
-    ["waiting on your input", task({ status: "parked", waitingOn: { kind: "input", prompt: "Which plan?" } }), "waiting"],
-    ["waiting on your approval", task({ status: "parked", waitingOn: { kind: "approval", prompt: "Send it?" } }), "waiting"],
+    ["waiting on your input", task({ status: "in_progress", waitingOn: { kind: "input", prompt: "Which plan?" } }), "waiting"],
+    ["waiting on your approval", task({ status: "in_progress", waitingOn: { kind: "approval", prompt: "Send it?" } }), "waiting"],
     ["failed", task({ status: "errored" }), "waiting"],
-    ["waiting on your review", task({ status: "parked", waitingOn: { kind: "review", prompt: "Draft attached" } }), "review"],
+    ["waiting on your review", task({ status: "in_progress", waitingOn: { kind: "review", prompt: "Draft attached" } }), "review"],
     ["completed", task({ status: "completed" }), "resolved"],
     ["cancelled", task({ status: "cancelled" }), "resolved"],
   ])("puts a task that is %s under its column", (_name, row, column) => {
@@ -26,7 +26,7 @@ describe("columnOf", () => {
   });
 
   it("puts a pinned task under Pinned whatever its status", () => {
-    expect(columnOf(task({ status: "parked", waitingOn: { kind: "review", prompt: "x" } }), true)).toBe("pinned");
+    expect(columnOf(task({ status: "in_progress", waitingOn: { kind: "review", prompt: "x" } }), true)).toBe("pinned");
     expect(columnOf(task({ status: "completed" }), true)).toBe("pinned");
   });
 });
