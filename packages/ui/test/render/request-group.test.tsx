@@ -117,6 +117,7 @@ describe("the elapsed time beside a live request", () => {
 
   it("stops ticking when the request ends", () => {
     const { unmount } = live([bash("Read core harness contract", "completed")]);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
