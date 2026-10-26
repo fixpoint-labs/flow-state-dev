@@ -354,3 +354,26 @@ describe("two epics on one issue-phase get different run rows", () => {
     expect(await runs.list(runTopicPrefix("conductor-tasks-alpha", ISSUE))).toHaveLength(1);
   });
 });
+
+describe("two turns of one attempt (FIX-2133 D3)", () => {
+  // An answered question owes its task one more turn on the same attempt, so
+  // the attempt alone no longer tells the asking run from the answer's run.
+  it("refuses the earlier turn's write once a later turn of the attempt has opened the record", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, { ...claimed(1), turn: 1 });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 1 }, OPENED)).toBe("applied");
+
+    // The answer's turn claims the row and opens the record on the same attempt.
+    await board.upsert(TASK, { ...claimed(1), turn: 2 });
+    expect(await openRunRow(ctx, { ...identity(1), turn: 2 }, OPENED)).toBe("applied");
+
+    // The board row's turn has moved on, and so has the record's.
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 1 }, { sessionId: "late" })).toBe("refused");
+    // Read against a board row that still shows the earlier turn, the record alone refuses it.
+    await board.upsert(TASK, { ...claimed(1), turn: 1 });
+    expect(await writeRunRow(ctx, { ...identity(1), turn: 1 }, { sessionId: "late" })).toBe("refused");
+    expect(((await runs.getOptional(TOPIC))!.state as RunRecordState).sessionId).toBeNull();
+  });
+});

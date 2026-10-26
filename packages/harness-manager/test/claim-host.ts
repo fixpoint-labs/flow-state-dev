@@ -26,6 +26,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  openRowHolds,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
@@ -145,6 +146,8 @@ export interface HostOptions {
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
+  /** Run inside the phase's prompt builder, on its context, before the prompt is built. */
+  beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
   ledgers?: (ledgerId: string, ctx: BlockContext, partition: string | undefined) => Promise<TaskCollectionRef | undefined>;
 }
@@ -192,13 +195,15 @@ export function claimHost(options: HostOptions) {
     tenant: undefined,
     phase: {
       phase: PHASE,
-      buildPrompt: (run: PromptRunContext) =>
-        [
+      buildPrompt: async (run: PromptRunContext) => {
+        await options.beforePrompt?.(run.ctx);
+        return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
           ...(run.feedback !== undefined ? [`FEEDBACK: ${run.feedback}`] : []),
           ...run.answers.map((a) => `ANSWERED: ${a.question} => ${a.answer}`),
           `ASK: ${run.askMarkerPath}`,
-        ].join("\n"),
+        ].join("\n");
+      },
       isDone: (run: CompletionRunContext) => {
         const answer = (run as { answer?: string | null }).answer;
         answersSeen.push(answer);
@@ -272,6 +277,7 @@ export function claimHost(options: HostOptions) {
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
     },
   });
+  // Answer the row's oldest open question as its user, through the board's one hold write.
   const answer = handler({
     name: "claim-host-answer",
     inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), answer: z.string() }),
@@ -280,7 +286,10 @@ export function claimHost(options: HostOptions) {
     execute: async (input, ctx) => {
       // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
-      return ref.unpark(input.id, input.answer, { answer: true });
+      const row = ref.get(input.id);
+      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { hold: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
   const cancel = handler({

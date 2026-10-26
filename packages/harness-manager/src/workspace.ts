@@ -587,7 +587,7 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
   rule: ASK_MARKER_IGNORE_RULE,
   guards: isAskMarkerPath,
   why:
-    "A run writes the question it needs answered to a file named for its attempt inside " +
+    "A run writes the question it needs answered to a file named for its attempt and run inside " +
     "that directory, and the coding agent's `git add -A` would commit it to the branch and " +
     "the pull request.",
 };
