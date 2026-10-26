@@ -35,19 +35,19 @@ import {
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
-import { composeToolCallsLabel, toolIntent, toolSubject } from "./tool-grouping";
+import { composeToolCallsLabel } from "./tool-grouping";
+import { toolIntent, toolSubject } from "./tool-naming";
 
 export {
   composeToolCallsLabel,
   composeToolGroupLabel,
-  toolIntent,
   TOOL_GROUP_DISTINCT_CAP,
   TOOL_GROUP_INTENT_CAP,
-  TOOL_INTENT_ARG,
   TOOL_VERB_MAP,
   type ToolCallLabelInput,
   type ToolVerbs,
 } from "./tool-grouping";
+export { toolIntent, TOOL_INTENT_ARG } from "./tool-naming";
 
 /**
  * Framework-agnostic tool execution state.
