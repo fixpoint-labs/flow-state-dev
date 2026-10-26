@@ -137,7 +137,7 @@ function RequestGroup({
       className="flex flex-col gap-2"
       style={isLast ? { minHeight: "70dvh" } : undefined}
     >
-      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} />
+      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
       {isLast && isStreaming && <StreamingIndicator message={statusMessage} isFinishing={isFinishing} />}
     </div>

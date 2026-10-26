@@ -87,7 +87,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 
 ## RequestGroup
 
-Groups items by request id. Renders a streaming indicator while a request is in flight, surfaces sources at the bottom, and collapses consecutive tool calls into a single summary.
+Groups items by request id. Renders a streaming indicator while a request is in flight, surfaces sources at the bottom, and folds each run of tool calls and reasoning between the agent's messages into one collapsed line using [`ToolGroup`](./common-components#tool). While the agent works, the line names what it is doing now (the call in flight, or "Thinking…"). When the run finishes, it summarizes the calls (for example "Ran 2 searches and wrote a file"), or reads "Thought" when the run holds only thinking. Opening the line shows every step in order, with each thought's text. A failed call is noted on the line as "(1 failed)".
 
 ```bash
 fsdev ui add request-group

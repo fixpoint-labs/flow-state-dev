@@ -9,6 +9,7 @@ import {
   composeToolCallsLabel,
   composeToolGroupLabel,
   toolIntent,
+  toolSubject,
   TOOL_GROUP_DISTINCT_CAP,
   TOOL_GROUP_INTENT_CAP,
 } from "../registry/components/tool-grouping";
@@ -125,5 +126,30 @@ describe("composeToolCallsLabel", () => {
     expect(composeToolCallsLabel(calls)).toBe(
       `Step 1 · Step 2 · Step 3 · +${10 - TOOL_GROUP_INTENT_CAP} more`
     );
+  });
+});
+
+describe("toolSubject", () => {
+  it("names a shell call by the first line of its command, in code", () => {
+    expect(toolSubject("shell", { command: "git log --oneline\ngit diff" })).toEqual({ text: "git log --oneline", code: true });
+    expect(toolSubject("command_execution", { command: ["ls", "-la"] })).toEqual({ text: "ls -la", code: true });
+  });
+
+  it("names a file or search call by verb and target, shortening deep paths", () => {
+    expect(toolSubject("read", { path: "src/a.ts" })).toEqual({ text: "Read src/a.ts", code: false });
+    expect(toolSubject("Read", { file_path: "/a/b/c/d/e.ts" })).toEqual({ text: "Read …/c/d/e.ts", code: false });
+    expect(toolSubject("grep", { pattern: "foo" })).toEqual({ text: 'Grep "foo"', code: false });
+  });
+
+  it("says nothing for an unknown tool or a call without the arg", () => {
+    expect(toolSubject("custom", { command: "x" })).toBeUndefined();
+    expect(toolSubject("read", {})).toBeUndefined();
+    expect(toolSubject("shell", null)).toBeUndefined();
+  });
+
+  it("clips a long command to one line", () => {
+    const out = toolSubject("shell", { command: "x".repeat(200) });
+    expect(out?.text.length).toBe(80);
+    expect(out?.text.endsWith("…")).toBe(true);
   });
 });

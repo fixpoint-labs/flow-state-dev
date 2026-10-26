@@ -54,7 +54,7 @@ fsdev ui add reasoning
 
 ## Tool
 
-Rich tool invocation display: arguments, result, status, and Claude-Code-style grouping for consecutive calls. Pairs with the `tool-grouping` utility for collapsing repeated calls.
+Displays a tool call with its arguments, result, and status. `ToolGroup` folds a run of consecutive tool calls and reasoning into one collapsed line that opens to every step in order. A failed call is labelled on the line, for example "(1 failed)" on a group or "(failed)" on a single call.
 
 ```bash
 fsdev ui add tool

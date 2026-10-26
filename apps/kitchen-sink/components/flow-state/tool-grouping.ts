@@ -137,6 +137,78 @@ export function toolIntent(toolName: string, args: unknown): string | undefined 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+const SHELL_TOOLS = new Set(["shell", "bash", "command_execution", "run_command", "terminal"]);
+
+/** Tool name (lower-case) → the verb that heads its subject, and the args that carry it, first found wins. */
+const SUBJECT_TOOLS: Record<string, { verb: string; keys: string[]; quote?: boolean }> = {
+  read: { verb: "Read", keys: ["path", "file_path", "target_file"] },
+  read_file: { verb: "Read", keys: ["path", "file_path", "target_file"] },
+  write: { verb: "Write", keys: ["path", "file_path", "target_file"] },
+  write_file: { verb: "Write", keys: ["path", "file_path", "target_file"] },
+  create_file: { verb: "Create", keys: ["path", "file_path", "target_file"] },
+  edit: { verb: "Edit", keys: ["path", "file_path", "target_file"] },
+  edit_file: { verb: "Edit", keys: ["path", "file_path", "target_file"] },
+  multiedit: { verb: "Edit", keys: ["file_path", "path"] },
+  delete: { verb: "Delete", keys: ["path", "file_path", "target_file"] },
+  delete_file: { verb: "Delete", keys: ["path", "file_path", "target_file"] },
+  grep: { verb: "Grep", keys: ["pattern", "query"], quote: true },
+  glob: { verb: "Glob", keys: ["globPattern", "glob_pattern", "pattern"] },
+  ls: { verb: "List", keys: ["path", "target_directory", "dir"] },
+  web_search: { verb: "Search", keys: ["query"], quote: true },
+  search: { verb: "Search", keys: ["query"], quote: true },
+  web_fetch: { verb: "Fetch", keys: ["url"] },
+  fetch: { verb: "Fetch", keys: ["url"] },
+};
+
+const SUBJECT_MAX = 80;
+
+function firstArg(args: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return undefined;
+}
+
+/** A path as its last three segments, so a deep one still fits on a line. */
+function shortPath(path: string): string {
+  const parts = path.split("/").filter((part) => part !== "");
+  return parts.length > 3 ? `…/${parts.slice(-3).join("/")}` : path;
+}
+
+function clip(text: string): string {
+  return text.length > SUBJECT_MAX ? `${text.slice(0, SUBJECT_MAX - 1)}…` : text;
+}
+
+/** What one call acted on, read off its args. `code` marks a shell command, shown in mono. */
+export type ToolSubject = { text: string; code: boolean };
+
+/**
+ * Names what a call did, so a run of calls to one tool reads as distinct steps:
+ * the command a shell ran, the file a read opened, the pattern a grep sought.
+ * Undefined for a tool this doesn't know, which keeps its name.
+ */
+export function toolSubject(toolName: string, args: unknown): ToolSubject | undefined {
+  if (args === null || typeof args !== "object") return undefined;
+  const record = args as Record<string, unknown>;
+  const lower = toolName.toLowerCase();
+
+  if (SHELL_TOOLS.has(lower)) {
+    const raw = record.command;
+    const command = Array.isArray(raw) ? raw.join(" ") : raw;
+    if (typeof command !== "string") return undefined;
+    const line = command.trim().split("\n")[0]!.replace(/\s+/g, " ");
+    return line === "" ? undefined : { text: clip(line), code: true };
+  }
+
+  const entry = SUBJECT_TOOLS[lower];
+  if (entry === undefined) return undefined;
+  const value = firstArg(record, entry.keys);
+  if (value === undefined) return undefined;
+  const shown = entry.quote ? `"${value}"` : entry.keys.includes("url") ? value : shortPath(value);
+  return { text: clip(`${entry.verb} ${shown}`), code: false };
+}
+
 /** One call, as the label composer sees it. */
 export type ToolCallLabelInput = { name: string; intent?: string };
 
