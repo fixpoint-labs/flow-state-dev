@@ -34,12 +34,14 @@ import type { TaskCollectionRef, TaskInit } from "../../tasks";
  * task would otherwise be added a second time. Marked by that consumer and
  * taken by the next seed of that board in that request, never read off the
  * drain's input: a drain can be mounted as a flow action, and its caller must
- * not be able to drop the board's configured work (BP-031).
+ * not be able to drop the board's configured work (BP-031). Mark only a board
+ * with id-less initial tasks, so its seed is there to take the mark. Keyed on
+ * the request's incarnation too: a request id can name a later request.
  */
 const unseededDrains = new Set<string>();
 
 function unseededKey(ctx: BlockContext, collectionId: string): string {
-  return `${ctx.request.identity.id}\u0000${collectionId}`;
+  return `${ctx.request.identity.id}\u0000${ctx.request.incarnation}\u0000${collectionId}`;
 }
 
 /** Marks the next drain of the board on `collectionId`, in this request, to run without its seed. Package-internal. */

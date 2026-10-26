@@ -711,6 +711,61 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(readTermination(result.items)).toMatchObject({ reason: "converged", iterations: 1 });
   });
 
+  it("leaves a later drain in the same request its initial tasks after an owed-turn drain", async () => {
+    // The owed-turn drain's seed skip belongs to that one drain. A board with
+    // no initial tasks has nothing to skip, and a later board on the same
+    // collection in the same request must still seed what it was given.
+    const name = "answered-late-then-seeded";
+    const collectionOf = (ctx: Parameters<typeof getOrCreateTaskCollection>[0]["ctx"]) =>
+      getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name });
+    let turns = 0;
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (input, ctx) => {
+        if (input.goal === "later") return { answer: "later" };
+        turns += 1;
+        if (turns > 1) return { answer: "whole" };
+        await askMidway(ctx, await collectionOf(ctx), [{ prompt: "Which region?" }]);
+        return { answer: "partial" };
+      },
+    });
+    const real = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    const answerOnce = handler({
+      name: `${name}-answer`,
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = await collectionOf(ctx);
+        const [hold] = openRowHolds(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+      },
+    });
+    const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerOnce);
+    const board = { ...real, drain } as TaskBoardHandle<any, any, any>;
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: (): Verdict => ({ decision: "done", reason: "converged" }),
+      maxIterations: 3,
+    });
+    const trace: string[] = [];
+    const later = taskBoard({
+      name: `${name}-later`,
+      collection: { collectionId: name },
+      workers: completingWorker(`${name}-later-w`, trace),
+      initialTasks: [{ goal: "later" }],
+    });
+    const both = sequencer({ name: `${name}-both`, inputSchema: z.unknown() }).step(loop).step(later.drain);
+
+    const result = await testBlock(both, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(turns).toBe(2);
+    expect(trace).toEqual(["later"]);
+  });
+
   it("drains the owed turn without seeding the board's id-less initial tasks again", async () => {
     // A one-pass loop may run over a board whose initial tasks carry no id;
     // its drain seeds them anew on every call. The drain that takes the owed
