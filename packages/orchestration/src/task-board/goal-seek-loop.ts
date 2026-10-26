@@ -11,11 +11,21 @@
  *
  * Assembly (see the factory below):
  *
- *   [seed?] → board.drain → incrementDrainCount → [afterDrain?] →
+ *   [seed?] → board.drain → noteWaiting → incrementDrainCount → [afterDrain?] →
  *   stashDrainProjection → judgeStep (judge + validation, judge-scoped rescue) →
  *   coerceAtCap → [replanner?] → applyReplanTasks → normalize →
  *   loopBack(board.drain, when: decision !== "done") →
  *   emitTermination → projectBoard → [finalize?]
+ *
+ * A task waiting on a person (FIX-2131). A plan board's drain returns
+ * `blocked` while a task waits on a person's answer: nobody is working it,
+ * and only the answer moves it. The loop never judges that board: the judge
+ * would rule on unfinished work, and on every later pass the same open
+ * question, until the cap. So a drain that leaves a task waiting on a person
+ * ends the loop's pass there: no judge, no replan, no finalize, and no
+ * iteration spent, with the termination reason `"waiting-on-a-person"`. The
+ * answer owes the task its next turn; run the loop again once it is answered,
+ * and its drain takes that turn and the loop goes on.
  *
  * Preconditions (rejected at construction — `goalSeekLoop()` is a new public
  * API, so misuse fails fast rather than at first execution):
@@ -36,7 +46,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import type { TaskCollectionRef, TaskInit } from "../tasks";
+import { hasOpenHold, type TaskCollectionRef, type TaskInit } from "../tasks";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 
@@ -215,7 +225,16 @@ const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrains: z.number().default(0),
   goalSeekLoopVerdict: z.unknown().nullable().default(null),
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
+  /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
+  goalSeekLoopWaiting: z.boolean().default(false),
 });
+
+/** The termination reason of a pass a task waiting on a person ended. */
+const WAITING_ON_A_PERSON = "waiting-on-a-person";
+
+/** Whether the loop's last drain left a task waiting on a person. */
+const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
+  (ctx.sequencer?.state as { goalSeekLoopWaiting?: boolean } | undefined)?.goalSeekLoopWaiting === true;
 
 /** Verdict validation — requires `reason` (mapped sources get a default via
  *  `mapToVerdict`; an inline judge must return a complete `Verdict`). */
@@ -310,11 +329,32 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
 
   // ---- Small state-touching helpers (read/patch the loop-owner container) --
 
+  // After each drain: does a task still wait on a person? Read through the
+  // board's own accessor, as the projection below is.
+  const noteWaiting = handler({
+    name: `${name}-gsl-note-waiting`,
+    inputSchema: z.unknown(),
+    uses: [board.capability],
+    sequencerStateSchema: merged,
+    execute: async (_input, ctx) => {
+      const ref = await resolveBoardRef(ctx, boardCapName);
+      await ctx.sequencer!.patchState({ goalSeekLoopWaiting: ref.list().some((row) => hasOpenHold(row)) } as any);
+    },
+  });
+
+  // A pass a task waiting on a person ended judges nothing, so it spends no iteration.
+  const waitingVerdict = handler({
+    name: `${name}-gsl-waiting-verdict`,
+    inputSchema: z.unknown(),
+    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_PERSON }),
+  });
+
   const incrementDrainCount = handler({
     name: `${name}-gsl-increment-drains`,
     inputSchema: z.unknown(),
     sequencerStateSchema: merged,
     execute: async (_input, ctx) => {
+      if (waitingNow(undefined, ctx)) return;
       const next =
         ((ctx.sequencer!.state as { goalSeekLoopDrains?: number }).goalSeekLoopDrains ?? 0) + 1;
       await ctx.sequencer!.patchState({ goalSeekLoopDrains: next } as any);
@@ -496,11 +536,13 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
 
   pipeline = pipeline
     .step(board.drain)
+    .tap(noteWaiting)
     .tap(incrementDrainCount);
   if (afterDrain !== undefined) pipeline = pipeline.tap(afterDrain);
   pipeline = pipeline
     .tap(stashDrainProjection)
-    .step(judgeStep)
+    .stepIf(waitingNow, waitingVerdict)
+    .stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !waitingNow(input, ctx), judgeStep)
     .step(coerceAtCap);
   if (wrappedReplanner !== undefined) {
     pipeline = pipeline.stepIf(
@@ -539,7 +581,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     .tap(emitTermination)
     .step(projectBoard);
 
-  if (finalize !== undefined) pipeline = pipeline.step(finalize);
+  // Nothing is final while a task waits on a person.
+  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !waitingNow(input, ctx), finalize);
 
   return pipeline as SequencerDefinition<any, any>;
 }
