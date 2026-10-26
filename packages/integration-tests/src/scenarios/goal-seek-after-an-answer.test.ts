@@ -1,7 +1,7 @@
 /**
  * FIX-2220 — `goalSeekLoop` resumes, in a later request, after the person answers.
  *
- * A pass ends waiting on a person: the task's worker asked midway, so the
+ * A pass ends waiting on the user: the task's worker asked midway, so the
  * loop stops without judging. The person answers after that request has
  * ended. The next run of the loop over the same user-scoped board must take
  * the turn the answer earned, on the task's same attempt, and judge the
@@ -126,7 +126,7 @@ describe("goalSeekLoop: a later run after the person answers", () => {
 
     const first = await run("plan", {});
     expect(first.error).toBeUndefined();
-    expect(readTermination(first.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    expect(readTermination(first.items)).toMatchObject({ reason: "waiting-on-a-user", iterations: 0 });
     expect(seen.judgedOn).toEqual([]);
 
     expect((await run("answer", { message: "eu-west" })).error).toBeUndefined();
