@@ -68,6 +68,7 @@ Zero-model actions:
 | `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
 | `status` | Reads the board row beside the run's own record, and the questions its task is held on. |
 | `updateTask_<board>` | The board's own `updateTask`, as the Inbox sends it: answers one of those questions (`{ id, question, message }`), then drains so the answer's turn starts. Its name is `conductorFlow(...).updateTaskAction`. |
+| `message` | A line typed in a run's own session: steers the task while it is open, answers its oldest question while it is held on one, and is talk once it has finished. |
 
 `status` reads the **board row** for completion, always. The board ledger cannot be made
 client-readable (`defineTaskCollection()` exposes no `client` option, so its collection-state route

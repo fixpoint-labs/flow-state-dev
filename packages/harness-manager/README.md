@@ -259,9 +259,15 @@ A cancel while the task waits closes the question and starts nothing: what the r
 
 The judge's *ask*, and held work that doesn't match its record, ask the same way.
 
-The recorded session is the one the harness *confirmed* it was in. If the agent has lost that session, the run that asked for it ends without one and the next run starts fresh, told the brief, the question and the answer.
+The recorded session is the one the harness *confirmed* it was in. If the agent can't find that session, the next run starts a fresh one, with the brief, the question and the answer in its prompt.
 
-**Upgrading from the question inbox.** The manager no longer keeps questions of its own: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type are gone, and `harnessManager({ announce })` is refused at construction: read held tasks from the board (its rows' open holds, `openRowHolds`) and answer with its `updateTask` action. `run.answers` now reads the task's answered questions, and `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`, so a phase that names the old `<attempt>.md` path must take the one it is handed. `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
+### Upgrading from the question inbox
+
+- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type.
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open holds, `openRowHolds`) and answer with its `updateTask` action.
+- `run.answers` reads the task's answered questions from its row.
+- `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
+- `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
 
 ## Talking to a run
 

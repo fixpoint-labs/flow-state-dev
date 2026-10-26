@@ -145,7 +145,7 @@ The user answers from the Inbox, or by typing a line in the run's session (see [
 await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
 ```
 
-Once the task's last question is answered, the task takes one more turn on **the same attempt**, and that turn's run picks up **the same coding session**, not a new one told what was answered. Everything the run had worked out is still there. The phase's prompt builder runs again, and `run.answers` hands it the task's answered questions, oldest first, each with its answer. The run can ask again; each run writes its question to a path of its own, so it never re-reads one an earlier run asked.
+Once the task's last question is answered, the task takes one more turn on **the same attempt**, and that turn's run picks up **the same coding session**. Everything the run had worked out is still there. The phase's prompt builder runs again, and `run.answers` hands it the task's answered questions, oldest first, each with its answer. The run can ask again; each run writes its question to a path of its own, so it never re-reads one an earlier run asked.
 
 **An answer spends no retry.** Budget your retries for failures alone.
 
@@ -153,7 +153,7 @@ A cancel while the task waits closes the question and starts nothing; what the r
 
 The judge's *ask*, and saved work that doesn't match the run's record, ask the same way.
 
-**A lost session doesn't wedge the run.** The manager records only a session the harness *confirmed* it was in. If the agent can no longer find the session a run asked to continue, that run ends without naming one, and the next starts a fresh session, told the brief, the question and the answer, instead of asking for the dead one again.
+**A session the agent can't find is replaced.** The manager records only a session the harness *confirmed* it was in. If the agent can't find the session a run asked to continue, the next run starts a fresh one, with the brief, the question and the answer in its prompt.
 
 ## Talking to a run
 
