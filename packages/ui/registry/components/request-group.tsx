@@ -16,7 +16,7 @@
 
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { ItemsRenderer } from "@flow-state-dev/react";
+import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
 import { collectTaskOwnedItemIds } from "./task-plan-state";
@@ -107,18 +107,16 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
 }
 
 /**
- * Whether the stream ends on a step in flight: a tool call or a thought still
- * running that renders in the group (not one under a container or a task).
- * The group's own line names it, so the indicator would repeat it.
+ * Whether the stream ends on a run of tool calls and thoughts with one still
+ * running. The group's own line names that step, so the indicator would repeat
+ * it. Read from the same render stream the group draws, so an item it drops
+ * (a trace, a hidden step, one a container owns) is not counted, and a call
+ * running behind one that finished is.
  */
-function endsOnStepInFlight(items: readonly OutputItem[]): boolean {
-  const last = items[items.length - 1];
-  return (
-    last !== undefined &&
-    (last.type === "tool_output" || last.type === "reasoning") &&
-    last.status === "in_progress" &&
-    last.ownedBy === undefined
-  );
+function endsOnRunningStep(items: OutputItem[], renderers: RendererRegistry | undefined): boolean {
+  const stream = buildItemRenderStream(items, renderers, { groupToolCalls: true });
+  const last = stream[stream.length - 1];
+  return last?.kind === "group" && last.items.some((item) => item.status === "in_progress");
 }
 
 function RequestGroup({
@@ -146,7 +144,11 @@ function RequestGroup({
     return group.items.filter((item) => !owned.has(item.id));
   }, [group.items, owned]);
 
-  const stepInFlight = isLast && isStreaming && endsOnStepInFlight(filteredItems);
+  const { renderers } = useFlowContext();
+  const stepInFlight = useMemo(
+    () => isLast && isStreaming && endsOnRunningStep(filteredItems, renderers),
+    [isLast, isStreaming, filteredItems, renderers],
+  );
 
   return (
     <div
