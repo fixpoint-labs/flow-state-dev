@@ -22,7 +22,6 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { ResourceStateStore } from "@flow-state-dev/engine";
 import type { SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 import {
   acquireCheckout,
@@ -297,16 +296,12 @@ describe("the manager — the verdict at each exit", () => {
 
 describe("the manager — what a run reports about its subscription", () => {
   it("records the usage window a run reports in the run owner's usage record", async () => {
-    // The slot is where the lab names its harness, so a feed it does not pass
-    // on is lost: a run's rate-limit windows never reach the person's usage
-    // record, and the Usage view shows nothing for runs this lab started.
     const rateLimit = {
       type: "rate_limit_event",
       session_id: "sess_stub",
       rate_limit_info: { status: "allowed", resetsAt: 1_800_000_000, rateLimitType: "five_hour" },
     } as unknown as SdkMessageLike;
     live = createConductorHarness({
-      // A real run names its account; a window whose account is unknown is dropped.
       resolveClaudeAgent: () => ({
         query: () =>
           Object.assign(
@@ -314,32 +309,24 @@ describe("the manager — what a run reports about its subscription", () => {
               yield rateLimit;
               yield sdkResult("success");
             })(),
+            // A window whose account is unknown is dropped.
             { accountInfo: async () => ({ email: "alice@example.com" }) },
           ),
       }),
       isDone: () => true,
     });
 
-    // Observed at the store, since the lab exposes no usage query: every
-    // resource write the run makes, by key.
-    const runtime = await (live.state as unknown as {
-      getRuntime(): Promise<{ stores: { resourceState: ResourceStateStore } }>;
-    }).getRuntime();
-    const store = runtime.stores.resourceState;
-    const set = store.set.bind(store);
-    const written: Array<{ scope: string; key: string; state: Record<string, unknown> }> = [];
-    store.set = (scopeType, scopeId, key, state, expected) => {
-      written.push({ scope: scopeType, key, state });
-      return set(scopeType, scopeId, key, state, expected);
-    };
-
     const row = await seedAndDrain(live);
     expect(row.status).toBe("completed");
 
-    const usage = written.filter((w) => w.key === "harness-usage/claude-code");
-    expect(usage.length).toBeGreaterThan(0);
-    expect(usage.every((w) => w.scope === "user")).toBe(true);
-    expect(usage.at(-1)!.state["windows"]).toEqual([
+    // The lab has no usage query.
+    const { stores } = await live.state.getRuntime();
+    const stored = await stores.resourceState.get(
+      "user",
+      `${USER_ID}:~org:${DEFAULT_ORG_ID}`,
+      "harness-usage/claude-code",
+    );
+    expect(stored?.state["windows"]).toEqual([
       expect.objectContaining({ id: "five_hour", origin: "run" }),
     ]);
   });
