@@ -23,7 +23,7 @@
 import { Fragment, type ReactNode } from "react";
 import { isSuspensionWait, type ToolOutputItem } from "@flow-state-dev/core/items";
 import { ChevronRightIcon } from "lucide-react";
-import type { RendererRegistry } from "@flow-state-dev/react";
+import type { ItemRenderSegment, RendererRegistry } from "@flow-state-dev/react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -220,6 +220,39 @@ export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
       </ul>
     </QuietLine>
   );
+}
+
+/** A feed segment: one item, or a run of calls and nothing else. */
+export type CallRunSegment = Extract<ItemRenderSegment, { kind: "item" }> | { kind: "group"; items: ToolOutputItem[] };
+
+/**
+ * The feed's segments with each stretch of activity split back into runs of
+ * calls, which {@link ToolLineGroup} draws, and the thoughts between them, which
+ * draw as they always have. The renderer groups thinking with calls; Shift
+ * Manager's quiet lines are for calls alone.
+ */
+export function callRuns(segments: readonly ItemRenderSegment[]): CallRunSegment[] {
+  const out: CallRunSegment[] = [];
+  for (const segment of segments) {
+    if (segment.kind === "item") {
+      out.push(segment);
+      continue;
+    }
+    let run: ToolOutputItem[] = [];
+    const flush = () => {
+      if (run.length > 0) out.push({ kind: "group", items: run });
+      run = [];
+    };
+    for (const item of segment.items) {
+      if (item.type === "tool_output") run.push(item);
+      else {
+        flush();
+        out.push({ kind: "item", item });
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 /** One call, as the registry hands it to a `tool_output` renderer. */
