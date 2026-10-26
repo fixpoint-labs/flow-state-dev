@@ -748,4 +748,62 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(judgedOn).toEqual([["completed"]]);
     expect(turns).toBe(2);
   });
+
+  it("never judges or finalizes a task that still owes a turn when the owed-turn drains run out", async () => {
+    // The owed-turn drains are bounded by `maxIterations`. A worker that asks
+    // again on each turn, answered each time as the drain returns, still owes
+    // a turn when they run out: the task is unfinished, so judging would rule
+    // on its partial work, and finalizing would report it as the result.
+    const name = "answered-late-twice";
+    const collectionOf = (ctx: Parameters<typeof getOrCreateTaskCollection>[0]["ctx"]) =>
+      getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name });
+    let turns = 0;
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        turns += 1;
+        await askMidway(ctx, await collectionOf(ctx), [{ prompt: `Question ${turns}?` }]);
+        return { answer: "partial" };
+      },
+    });
+    const real = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    // Every question is answered between the drain's return and the loop's read of the board.
+    const answerEach = handler({
+      name: `${name}-answer`,
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = await collectionOf(ctx);
+        const [hold] = openRowHolds(collection.get("a")!);
+        if (hold !== undefined) await collection.answer!("a", { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+      },
+    });
+    const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerEach);
+    const board = { ...real, drain } as TaskBoardHandle<any, any, any>;
+    let judged = 0;
+    let finalized = 0;
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: (): Verdict => {
+        judged += 1;
+        return { decision: "done", reason: "converged" };
+      },
+      finalize: handler({ name: `${name}-finalize`, inputSchema: z.unknown(), execute: () => { finalized += 1; return null; } }),
+      maxIterations: 1,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    // One drain, then one owed-turn drain (the cap for `maxIterations: 1`), each turn asking again.
+    expect(turns).toBe(2);
+    expect(judged).toBe(0);
+    expect(finalized).toBe(0);
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-a-person", iterations: 0 });
+    const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
+    expect(row?.status).toBe("in_progress");
+  });
 });

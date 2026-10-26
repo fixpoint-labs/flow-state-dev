@@ -33,6 +33,8 @@
  * turn the answer earned, and judging would rule on its partial work. So the
  * pass drains again while a task owes a turn and none waits on a person, at
  * most `maxIterations` times, and none of those drains counts as an iteration.
+ * If a task still owes a turn when those drains run out, the pass ends as a
+ * wait on a person does: its work is unfinished, so nothing judges it.
  * Those drains take the board as it stands, without its `initialTasks` seed,
  * so a one-pass loop over id-less initial tasks still has one row per task.
  *
@@ -253,6 +255,10 @@ const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): b
 const owedNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
   (ctx.sequencer?.state as { goalSeekLoopOwed?: boolean } | undefined)?.goalSeekLoopOwed === true;
 
+/** Whether the pass must not judge: a task waits on a person, or still owes a turn when the owed-turn drains ran out. */
+const unfinishedNow = (input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
+  waitingNow(input, ctx) || owedNow(input, ctx);
+
 /** Verdict validation — requires `reason` (mapped sources get a default via
  *  `mapToVerdict`; an inline judge must return a complete `Verdict`). */
 const verdictSchema = z.discriminatedUnion("decision", [
@@ -370,7 +376,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     },
   });
 
-  // A pass a task waiting on a person ended judges nothing, so it spends no iteration.
+  // A pass a task waiting on a person (or owing a turn) ended judges nothing, so it spends no iteration.
   const waitingVerdict = handler({
     name: `${name}-gsl-waiting-verdict`,
     inputSchema: z.unknown(),
@@ -382,7 +388,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     inputSchema: z.unknown(),
     sequencerStateSchema: merged,
     execute: async (_input, ctx) => {
-      if (waitingNow(undefined, ctx)) return;
+      if (unfinishedNow(undefined, ctx)) return;
       const next =
         ((ctx.sequencer!.state as { goalSeekLoopDrains?: number }).goalSeekLoopDrains ?? 0) + 1;
       await ctx.sequencer!.patchState({ goalSeekLoopDrains: next } as any);
@@ -578,8 +584,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   if (afterDrain !== undefined) pipeline = pipeline.tap(afterDrain);
   pipeline = pipeline
     .tap(stashDrainProjection)
-    .stepIf(waitingNow, waitingVerdict)
-    .stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !waitingNow(input, ctx), judgeStep)
+    .stepIf(unfinishedNow, waitingVerdict)
+    .stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), judgeStep)
     .step(coerceAtCap);
   if (wrappedReplanner !== undefined) {
     pipeline = pipeline.stepIf(
@@ -618,8 +624,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     .tap(emitTermination)
     .step(projectBoard);
 
-  // Nothing is final while a task waits on a person.
-  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !waitingNow(input, ctx), finalize);
+  // Nothing is final while a task waits on a person or owes a turn.
+  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), finalize);
 
   return pipeline as SequencerDefinition<any, any>;
 }
