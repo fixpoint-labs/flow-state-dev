@@ -16,6 +16,7 @@ describe("formatRunDuration", () => {
   it("counts hours without listing the seconds of a long run", () => {
     expect(formatRunDuration((3600 + 3 * 60 + 9) * 1000)).toBe("1 hr, 3 mins");
     expect(formatRunDuration(2 * 3600 * 1000)).toBe("2 hrs");
+    expect(formatRunDuration(3_600_000)).toBe("1 hr");
   });
 
   it("rounds to the nearest second", () => {
