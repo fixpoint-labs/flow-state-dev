@@ -50,6 +50,7 @@ import {
   acquireLock,
   localWorkspaceHost,
   releaseLock,
+  WorkspaceRefusedError,
   type IgnoredDirectory,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
@@ -614,8 +615,12 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
  * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
  * runs every git command: idempotent, never resets, forces or discards work,
  * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
- * and a checkout whose branch was deleted, switched, or cut from another
- * repository is refused rather than recreated. The checkout is exactly
+ * and a checkout whose branch was deleted or that was cut from another
+ * repository is refused rather than recreated. A checkout a run switched to
+ * another branch is moved back onto the run's branch, keeping what the run made
+ * on the other, so the attempt commits where the prompt says. One left there
+ * with uncommitted changes is refused (`checkout-moved`): those changes are the
+ * run's to commit, stash or discard. The checkout is exactly
  * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
  */
 export async function provisionCheckout(
@@ -628,6 +633,9 @@ export async function provisionCheckout(
     { kind: "repo", repo: resolve(config.sourceRepo), baseRef: config.baseRef },
     { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
   );
+  if (place.repo?.offBranch !== undefined) {
+    throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
+  }
   return { path: place.cwd, branch, created: place.repo?.created ?? false };
 }
 

@@ -1690,6 +1690,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ...(recorded !== undefined ? { recorded } : {}),
         ...(holding ? { progress: (reported: "lost" | "restoring") => recordPlace(ctx, before!, reported) } : {}),
       });
+      // A checkout left on another branch with uncommitted changes is the
+      // run's to sort out; running on it would commit to the wrong branch.
+      if (place.repo?.offBranch !== undefined) {
+        throw new WorkspaceRefusedError("checkout-moved", place.repo.offBranch.message);
+      }
       if (holding) await recordPlace(ctx, host.hostId(), "ready");
       return place;
     } catch (cause) {
