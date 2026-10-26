@@ -5,8 +5,8 @@
  * The indicator comes back whenever no step is in flight, which is when it is
  * the only sign the request is alive.
  */
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RequestGroupRenderer } from "../../registry/components/request-group";
 import { messageItem, reasoningItem, toolItem } from "../../stories/fixtures/items";
 
@@ -64,5 +64,60 @@ describe("the streaming indicator beside a live group", () => {
     const hidden = { ...bash("Read core harness contract", "in_progress"), itemVisibility: { history: false } } as StreamItem;
     renderStream([hidden]);
     expect(screen.getByText("Working...")).toBeTruthy();
+  });
+});
+
+// A run that works for minutes with nothing new to say still reads as alive:
+// the line carries how long the request has been going, counted from its first
+// item, whether or not the indicator is showing its own words.
+describe("the elapsed time beside a live request", () => {
+  const START = 1_000_000;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(START);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const startedAt = (items: StreamItem[]) => [{ ...messageItem({ role: "user" }), ts: START }, ...items];
+  const live = (items: StreamItem[], statusMessage?: string) =>
+    render(<RequestGroupRenderer items={startedAt(items)} isStreaming statusMessage={statusMessage} />);
+  const tick = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+
+  it("counts up beside the indicator from the request's first item", () => {
+    live([bash("Read core harness contract", "completed")]);
+    expect(screen.queryByTestId("run-timer")).toBeNull();
+    tick(84_000);
+    expect(screen.getByTestId("run-timer").textContent).toBe("(1m 24s)");
+    tick(1_000);
+    expect(screen.getByTestId("run-timer").textContent).toBe("(1m 25s)");
+  });
+
+  it("is still there while a step is in flight and the indicator is hidden", () => {
+    live([bash("Read core harness contract", "in_progress")], "Read core harness contract");
+    tick(42_000);
+    expect(screen.getByTestId("run-timer").textContent).toBe("(42s)");
+    expect(screen.queryByTestId("streaming-indicator")).toBeNull();
+    expect(screen.getAllByText(/Read core harness contract/)).toHaveLength(1);
+  });
+
+  it("runs in hours for a long request, and from the first item, not from mount", () => {
+    vi.setSystemTime(START + 3_780_000);
+    live([bash("Read core harness contract", "completed")]);
+    expect(screen.getByTestId("run-timer").textContent).toBe("(1h 3m)");
+  });
+
+  it("is gone once the request stops streaming", () => {
+    const { rerender } = live([bash("Read core harness contract", "completed")]);
+    tick(5_000);
+    rerender(<RequestGroupRenderer items={startedAt([bash("Read core harness contract", "completed")])} isStreaming={false} />);
+    expect(screen.queryByTestId("run-timer")).toBeNull();
+  });
+
+  it("stops ticking when the request ends", () => {
+    const { unmount } = live([bash("Read core harness contract", "completed")]);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
