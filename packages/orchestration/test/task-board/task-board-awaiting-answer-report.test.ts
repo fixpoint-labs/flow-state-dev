@@ -176,6 +176,29 @@ describe("a row that waits on something other than an answer", () => {
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
   });
 
+  it("reports blocked-by-failures for a row filed on a question whose dependency can never complete", async () => {
+    // Answering releases the hold but not the dependency: an older build
+    // could store a dep on a row that is not on the board.
+    const collection = await storedCollection([
+      {
+        id: "held-on-missing",
+        status: "pending",
+        attempts: 0,
+        deps: ["missing"],
+        holds: [
+          {
+            id: "q-1",
+            actor: "user",
+            openedAt: 1,
+            source: { kind: "row", releasedBy: [{ by: "answer" }] },
+            ask: { kind: "question", prompt: "Which date column?" },
+          },
+        ],
+      },
+    ]);
+    expect(await reasonOf(collection)).toBe("blocked-by-failures");
+  });
+
   it("reports blocked-by-failures for a held-status row, even with an open question on it", async () => {
     const collection = await storedCollection([
       {

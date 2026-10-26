@@ -95,7 +95,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, waitsOnAnswer, type RunsElsewhere } from "../shared";
+import { awaitsAnswer, isDispatched, waitsOnAnswer, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
@@ -238,8 +238,8 @@ function hasRowGoingNowhere(
   now: number
 ): boolean {
   // Seed: rows this board's dependency graph is not what resolves. Either they
-  // are already done, or a person owes an answer on them (a review, or an open
-  // question), or somebody is working them right now.
+  // are already done, or a person owes an answer on them (a review, or a
+  // question asked midway), or somebody is working them right now.
   //
   // **The last of those is a lease question, not a status or routing one**, and
   // that is the whole correctness of this seed. `in_progress` alone would seed
@@ -257,7 +257,9 @@ function hasRowGoingNowhere(
       task.status === "parked" ||
       // A row that asked midway dropped its lease, so the lease test below
       // would call it abandoned; the answer owes it a turn, so it is not.
-      waitsOnAnswer(task) ||
+      // Only the running one: a `pending` row filed on questions still needs
+      // its deps once answered, so it enters through the expansion below.
+      awaitsAnswer(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
