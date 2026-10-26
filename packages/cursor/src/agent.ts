@@ -54,7 +54,7 @@ import {
   readInstalledCursorSdkVersion,
 } from "./cursor-client";
 import { createChildProcessResolveCursorClient } from "./child-runtime";
-import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
+import { closeOpenText, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { addUsage, normalizeUsage, translateCursorMessage } from "./translate";
 import { estimateCursorCost } from "./cost";
 import {
@@ -664,6 +664,9 @@ async function mirrorRun(
   }
 }
 
+    // The last text has no event after it to close it; the handle reads
+    // `finalMessage` as soon as the stream is done.
+    await closeOpenText(ctx, emitState);
 /**
  * Read the run's outcome from `run.wait()` — the sole authority.
  *

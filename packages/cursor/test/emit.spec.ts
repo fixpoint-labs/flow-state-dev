@@ -11,6 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
+import { translateCursorMessage } from "../src/translate";
 import { closeOpenText, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "../src/emit";
 
 /** A context standing inside a task scope, as the runtime provides one. */
@@ -101,6 +102,8 @@ describe("reasoning item shape", () => {
     const runtime = await createTestContext({});
     const state = createEmitState();
     await emitTranslatedEvent({ kind, text }, runtime.ctx as never, state, "cursor-agent");
+    // Text stays open for more chunks until something closes it.
+    await closeOpenText(runtime.ctx as never, state);
     return { state, events: runtime.response.getEvents() };
   }
 
@@ -111,8 +114,10 @@ describe("reasoning item shape", () => {
       .map((e) => (e as { item: Record<string, unknown> }).item);
 
     expect(items.map((item) => item.type)).toEqual(["reasoning", "reasoning"]);
+    // The engine folds streamed deltas into the item it was handed, so the
+    // added event's object reads as the accumulated text; the shape is the claim.
     expect(items.map((item) => item.summary)).toEqual([
-      [{ type: "reasoning_text", text: "" }],
+      [{ type: "reasoning_text", text: expect.any(String) }],
       [{ type: "reasoning_text", text: "weighing the options" }],
     ]);
     for (const item of items) {
@@ -382,5 +387,34 @@ describe("streamed text arrives in chunks", () => {
     expect(doneItems[0]!.status).toBe("incomplete");
     expect(doneItems[0]!.content).toEqual([{ type: "output_text", text: "Half an answ" }]);
     expect(state.finalMessage).toBeNull();
+  });
+});
+
+/** The start of a real Cursor turn ("Do you work?"), as its stream delivered it: token-sized chunks. */
+describe("a recorded Cursor stream", () => {
+  const thinking = ["The", " user is asking whether", " I am operational."];
+  const answer = ["Yes", ".", " I\u2019m here and", " working", " in your", " workspace", " at `/Users/j", "akehoffner/.", "local/state/flow"];
+
+  it("reads as one thought and one answer, not a row per chunk", async () => {
+    const wire = [
+      ...thinking.map((text) => ({ type: "thinking", text })),
+      ...answer.map((text) => ({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text }] } })),
+    ];
+    const runtime = await createTestContext({});
+    const state = createEmitState();
+    for (const message of wire) {
+      for (const event of translateCursorMessage(message as never)) {
+        await emitTranslatedEvent(event, runtime.ctx as never, state, "cursor-agent");
+      }
+    }
+    await closeOpenText(runtime.ctx as never, state);
+
+    const done = (runtime.response.getEvents() as Array<{ type: string; item?: Record<string, unknown> }>)
+      .filter((e) => e.type === "item.done")
+      .map((e) => e.item!);
+    expect(done.map((i) => i.type)).toEqual(["reasoning", "message"]);
+    expect(done[0]!.summary).toEqual([{ type: "reasoning_text", text: thinking.join("") }]);
+    expect(done[1]!.content).toEqual([{ type: "output_text", text: answer.join("") }]);
+    expect(state.finalMessage).toBe(answer.join(""));
   });
 });
