@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SessionConversationLoading } from "@/components/flow-state/session-conversation-loading";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;

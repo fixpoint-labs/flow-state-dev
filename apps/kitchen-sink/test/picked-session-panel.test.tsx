@@ -43,6 +43,7 @@ function session(
     childSessionsStale?: boolean;
     isStreaming?: boolean;
     isStuck?: boolean;
+    isLoading?: boolean;
     sendAction?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
@@ -59,7 +60,7 @@ function session(
     isStreaming: over.isStreaming ?? false,
     isStuck: over.isStuck ?? false,
     isFinishing: false,
-    isLoading: false,
+    isLoading: over.isLoading ?? false,
     statusMessage: "",
     error: null,
     sendAction: over.sendAction ?? vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } })),
@@ -122,6 +123,19 @@ describe("a coordinator's panel", () => {
     expect(labels).toEqual(["devuser", "support.devices", "coordinator"]);
     // The stream is not drawn for a coordinator: its lines are.
     expect(screen.queryByTestId("stream-items")).toBeNull();
+  });
+
+  it("shows a loader and no empty copy while the session snapshot is loading", () => {
+    panel(
+      "coordinator",
+      session({
+        isLoading: true,
+        items: [line("1", "from the page")],
+      }),
+    );
+    expect(screen.getByTestId("session-loading")).toBeTruthy();
+    expect(screen.queryByText("Nothing has been posted here yet.")).toBeNull();
+    expect(screen.queryAllByTestId("coordinator-line")).toHaveLength(0);
   });
 
   it("shows no lines and still posts, when the session holds no kept message", async () => {

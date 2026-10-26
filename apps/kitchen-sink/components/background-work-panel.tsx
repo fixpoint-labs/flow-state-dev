@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Hourglass, RotateCw } from "lucide-react";
 
@@ -259,9 +260,11 @@ function BackgroundWorkDetail({
 
   return (
     <ScrollArea className="min-h-0 flex-1 pr-3">
-      {childSession.items.length === 0 ? (
+      {childSession.isLoading ? (
+        <SessionConversationLoading />
+      ) : childSession.items.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          {childSession.isLoading ? "Loading…" : "Nothing has been recorded yet."}
+          Nothing has been recorded yet.
         </p>
       ) : (
         <ItemsRenderer items={childSession.items} />

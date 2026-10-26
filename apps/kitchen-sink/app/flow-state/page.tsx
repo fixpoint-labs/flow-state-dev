@@ -35,7 +35,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
-import { SessionConversationLoading } from "@/components/flow-state/session-conversation-loading";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
 
 import { AgentResponseCard } from "@/components/agent-response-card";
@@ -450,8 +450,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   );
 
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
-  const conversationLoading =
-    flow.isLoading || session.isLoading || flow.activeSessionId === undefined;
+  const conversationLoading = flow.isLoading || session.isLoading;
 
   const chatPanel = (
     <ChatPanel
@@ -796,13 +795,13 @@ const ConversationBody = memo(function ConversationBody({
 }) {
   return (
     <>
-      <ScrollOnNewRequest items={items} />
       <SessionItemsProvider value={items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {isLoading ? (
             <SessionConversationLoading />
           ) : (
             <>
+              <ScrollOnNewRequest items={items} />
               {items.length === 0 && (
                 <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
               )}
