@@ -90,8 +90,8 @@ describe("retry budget — the storm the creation caps cannot see (FIX-948 repro
 });
 
 describe("retry budget — what is counted", () => {
-  it("counts only authorized failure retries, never `release` / `unpark` / `reclaim`", async () => {
-    // A budget of 1 with three non-retry re-entries in front of it. If any of
+  it("counts only authorized failure retries, never `release` / `reclaim`", async () => {
+    // A budget of 1 with two non-retry re-entries in front of it. If any of
     // them consumed the budget, the single real failure below would settle
     // terminally — a board reporting "retry budget exhausted" having never
     // retried a failure, which is exactly the dishonest report this bound
@@ -101,9 +101,6 @@ describe("retry budget — what is counted", () => {
 
     await collection.hold(task.id);
     await collection.release(task.id);
-    await collection.claim("w1");
-    await collection.awaitReview(task.id);
-    await collection.unpark(task.id);
     await collection.claim("w1");
     // Reclaim needs an expired lease — claim above set one 30s out.
     await collection.reclaim(Date.now() + 60_000);

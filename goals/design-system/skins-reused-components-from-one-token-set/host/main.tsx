@@ -96,7 +96,6 @@ const routedDone = f.routedSpecialists("req-rs-done", true);
 
 const task = (id: string, status: string, extra: Record<string, unknown> = {}) => ({ id, goal: `A ${status} task`, status, ...extra });
 const boards: Array<{ name: string; means?: "attention" | "warning"; items: OutputItem[] }> = [
-  { name: "task-plan:parked", means: "attention", items: f.board("b-parked", "active", [task("t1", "parked")]) },
   {
     name: "task-plan:blocked",
     means: "warning",
@@ -158,7 +157,7 @@ const seats = [
   { topic: "billing", clientData: { workerId: "billing", flow: "agent", instructions: "Handle refunds." } },
   { topic: "triage", clientData: { workerId: "triage", flow: "agent", instructions: null } },
 ];
-const cards = ["pending", "in_progress", "parked", "held", "completed"].map((status, i) => ({
+const cards = ["pending", "in_progress", "held", "completed"].map((status, i) => ({
   topic: `card-${i}`,
   clientData: { id: `card-${i}`, status, title: `Card ${status}`, assignee: i % 2 ? "billing" : undefined },
 }));

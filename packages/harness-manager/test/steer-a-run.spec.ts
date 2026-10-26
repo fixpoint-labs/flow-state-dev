@@ -161,7 +161,6 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: { coder: dispatcher({ name: "steer-board-dispatch", action: "work", session: "per-task" }) },
   });

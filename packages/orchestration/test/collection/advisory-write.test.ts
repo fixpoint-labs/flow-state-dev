@@ -453,17 +453,6 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("completed");
     });
 
-    it("still writes from parked — legal today, must stay legal", async () => {
-      await claimed({ id: "t" });
-      await collection.awaitReview("t", "needs a look");
-      events.length = 0;
-
-      await collection.fail("t", "reviewer rejected it", ADVISORY);
-
-      expect(collection.get("t")?.status).toBe("errored");
-      expect(events.at(-1)?.kind).toBe("errored");
-    });
-
     it("declines rather than throws from pending and held", async () => {
       // Correction 3 on the filed issue: terminal statuses are the majority
       // of the exposure, not all of it. Both of these reach `errored`
@@ -566,16 +555,6 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("completed");
     });
 
-    it("permits the write from parked, which an attempt also holds", async () => {
-      const a = await claimed({ id: "t" });
-      await collection.awaitReview("t");
-      events.length = 0;
-
-      await collection.fail("t", "rejected", { ...ADVISORY, claim: ticket(a) });
-
-      expect(collection.get("t")?.status).toBe("errored");
-    });
-
     it("is skipped entirely when no ticket is supplied", async () => {
       // The unguarded posture, asserted rather than assumed (BP-035, and the
       // coordinator contract). A caller with no claim — a coordinator, a
@@ -652,45 +631,20 @@ describe.each([
       const a = await claimed({ id: "a" });
       const stranger = { ...ADVISORY, claim: ticket(a) };
 
-      // Two targets, each parked in a status the write in question is legal
-      // from, so no refusal below can be produced by `ifAllowed` standing in
-      // for the ownership arm.
+      // A target in a status the write is legal from, so no refusal below can
+      // be produced by `ifAllowed` standing in for the ownership arm.
       await claimed({ id: "b" }); // in_progress
-      await claimed({ id: "d" });
-      await collection.awaitReview("d", "queued for review"); // → parked
 
-      expect(await collection.awaitReview("b", "not yours", stranger)).toMatchObject({
-        outcome: "declined",
-        reason: "not-my-task",
-      });
       expect(await collection.cancel("b", "not yours", stranger)).toMatchObject({
         outcome: "declined",
         reason: "not-my-task",
       });
       expect(collection.get("b")?.status).toBe("in_progress");
       expect(collection.get("b")?.error).toBeUndefined();
-
-      expect(await collection.unpark("d", "not yours", stranger)).toMatchObject({
-        outcome: "declined",
-        reason: "not-my-task",
-      });
-      expect(collection.get("d")?.status).toBe("parked");
     });
 
-    it("permits the five for the task's own holder", async () => {
+    it("permits them for the task's own holder", async () => {
       // The control. A guard that refused everything would pass the case above.
-      const t = await claimed({ id: "t" });
-      const own = { ...ADVISORY, claim: ticket(t) };
-
-      expect(await collection.awaitReview("t", "look at this", own)).toEqual({
-        outcome: "recorded",
-      });
-      expect(collection.get("t")?.status).toBe("parked");
-      expect(await collection.unpark("t", "looks fine", own)).toEqual({
-        outcome: "recorded",
-      });
-      expect(collection.get("t")?.status).toBe("pending");
-
       const u = await claimed({ id: "u" });
       expect(await collection.cancel("u", "no longer needed", { claim: ticket(u) })).toEqual({
         outcome: "recorded",

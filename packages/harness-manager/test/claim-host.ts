@@ -423,7 +423,6 @@ export function claimHost(options: HostOptions) {
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
-          ...(claimed.answered === true && claimed.feedback !== undefined ? { answer: claimed.feedback } : {}),
           ...(onInput !== null ? { claim: onInput } : {}),
         },
       },

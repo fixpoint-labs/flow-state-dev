@@ -54,7 +54,7 @@ export const taskSchema = z.object({
    * `granted` counts AUTHORIZED failure retries — incremented when `fail()`
    * re-pends the task, not when the retry is later observed at claim time. It is
    * therefore not derivable from `attempts`, which also moves for re-claims
-   * after an `unblock`, a `unpark`, or a `reclaim` — none of which are
+   * after an `unblock` or a `reclaim` — none of which are
    * failure retries and none of which touch this field.
    *
    * `deniedByBudget` is what the board's `terminationReason` reads. It exists so
@@ -110,33 +110,6 @@ export const taskSchema = z.object({
   abandonments: z.number().int().nonnegative().optional(),
 
   /**
-   * How many times this row re-entered after an answer to the question it
-   * parked on (`unpark(..., { answer: true })`, FIX-1817), or, on a row stored
-   * before FIX-2086, after a person's turn stopped its worker (FIX-1690, read
-   * by the retired-shape map). The claim that follows advances `attempts` as
-   * every claim does, and `shouldRetryOnFail` discounts this beside
-   * `abandonments`, so an answer never spends the task's retries. The board's
-   * `maxTotalRetries` is untouched already: `unpark` is not a failure retry.
-   *
-   * Top level, never in `metadata` (BP-031), for `abandonments`' reason.
-   * **Absent reads as zero** (BP-030).
-   */
-  turnReentries: z.number().int().nonnegative().optional(),
-
-  /**
-   * The row's `feedback` is the answer to the question its worker parked on
-   * (FIX-1817). Set by the answering `unpark` (`{ answer: true }`), so the
-   * next attempt is handed it as its answer rather than the task again.
-   * Cleared by every other write of `feedback`: a park, a plain `unpark`, a
-   * failure that re-pends. It survives the claim, so an attempt recovered
-   * after its worker died is still handed the answer.
-   *
-   * Top level and server-written for `abandonments`' reason (BP-031).
-   * **Absent reads as false** (BP-030).
-   */
-  answered: z.boolean().optional(),
-
-  /**
    * Words sent into this task while it was open (FIX-2086): `updateTask`'s
    * `message`, or a line typed in its session. Server-written by the
    * collection's `steer`, append-only, at most `MAX_STEERS`; never patched. Each
@@ -145,18 +118,6 @@ export const taskSchema = z.object({
    * a task never steered (BP-030).
    */
   steers: z.array(taskSteerSchema).optional(),
-
-  /**
-   * The row is parked on its worker's question (FIX-1817): set by the park
-   * `parkOnQuestion` writes (`awaitReview(..., { onQuestion: true })`),
-   * cleared by every other park and by `unpark`. Only such a row takes an
-   * answer, so a park for any other reason (a person's turn, a task waiting
-   * on its pieces) can't be answered as a question.
-   *
-   * Top level and server-written for `abandonments`' reason (BP-031): no
-   * caller-writable surface reaches it. **Absent reads as false** (BP-030).
-   */
-  parkedOnQuestion: z.boolean().optional(),
 
   /**
    * The finished task this one follows up (FIX-1817): its root, never another

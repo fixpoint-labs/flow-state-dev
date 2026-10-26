@@ -113,9 +113,9 @@ describe("a delegated post's task in the feed", () => {
     render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
     await tick(0);
     expect(cards()[0]!.status).toBe("in_progress");
-    rows = [{ ...rows[0]!, status: "parked" }];
+    rows = [{ ...rows[0]!, status: "completed" }];
     await tick(TASKS_POLL_MS);
-    expect(cards()[0]).toMatchObject({ status: "parked", text: expect.stringContaining("needs you") });
+    expect(cards()[0]).toMatchObject({ status: "completed", text: expect.stringContaining("completed") });
     // The task moved: the Lab is read again, so what it counts agrees with the card.
     expect(refreshes).toBe(1);
     const read = calls.length;

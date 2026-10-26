@@ -124,7 +124,7 @@ A change recorded in a different session does not reach a live list until someth
 
 Each live list holds its own connection to its session's stream while it is mounted, the same kind [`useSession`'s `live`](../client/react.md#hearing-requests-you-didnt-send) opens. A page that also follows that session with `useSession(..., { live: true })` holds two connections to it. If the server doesn't offer the stream, or refuses it, the list reads once, as if you hadn't asked, with no error.
 
-Each row shows the task's `title` (its `goal` if there is no title, its `id` if there is neither), its status word, and the assignee when there is one. The words are the ones the columns are headed with (`pending`, `in_progress`, and so on, with `awaiting_review` shown as `parked`). A task in a status the list doesn't recognise shows with its own word. No row is hidden. A row without a `createdAt` follows the dated ones.
+Each row shows the task's `title` (its `goal` if there is no title, its `id` if there is neither), its status word, and the assignee when there is one. The words are the ones the columns are headed with (`pending`, `in_progress`, and so on). A task in a status the list doesn't recognise shows with its own word. No row is hidden. A row without a `createdAt` follows the dated ones.
 
 Loading, an empty board and a failed read look different from each other. A failed read says what failed and offers a Retry button. The `empty` slot replaces the empty note. The `row` slot returns the body that goes inside the list's own `<li>`, which carries `data-task-id`.
 

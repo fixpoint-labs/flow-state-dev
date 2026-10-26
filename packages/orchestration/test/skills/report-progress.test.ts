@@ -159,15 +159,4 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
     expect(collection.get("t")).toMatchObject({ status: "completed", output: "partial", checkpointed: true });
   });
 
-  it("keeps a checkpoint through a park and an answer: a re-entry claims again but makes no new rule", async () => {
-    const collection = boardCollection("progress-park");
-    await collection.addTask({ id: "t", goal: "g" });
-    const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
-    await collection.reportProgress!("t", { output: "draft" }, { claim: first });
-    await collection.awaitReview("t", "which region?", { claim: first });
-    await collection.unpark("t", "EU");
-    const second = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
-    await collection.complete("t", "the final answer", { claim: second });
-    expect(collection.get("t")).toMatchObject({ status: "completed", output: "draft" });
-  });
 });

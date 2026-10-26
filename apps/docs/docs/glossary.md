@@ -80,7 +80,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Task** | orchestration | One unit of work: a goal, a status (`pending`, `in_progress`, `held`, `parked`, `completed`, `errored` or `cancelled`), dependencies, an optional assignee, input and output. See [Task substrate](./orchestration/task-substrate.md). | None |
+| **Task** | orchestration | One unit of work: a goal, a status (`pending`, `in_progress`, `held`, `completed`, `errored` or `cancelled`), dependencies, an optional assignee, input and output. See [Task substrate](./orchestration/task-substrate.md). | None |
 | **Task collection** | orchestration | Where tasks are kept, with one API (add, claim, complete, fail, park) whichever store backs it. | State, or a resource collection |
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Task tools** | orchestration | What a model changes a task with: the filer's `createTask`, `getTask`, `listTasks` and `updateTask`, and the worker's `reportProgress`. Each `updateTask` field has one rule: edits before the task starts, a cancel until it finishes. See [One task, five tools](./orchestration/task-board.md#one-task-five-tools). | Task, task board |
@@ -147,7 +147,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a user. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
-| **Roster** | Shift Manager | Your workers, grouped as on shift (running a task, or waiting on you with a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
+| **Roster** | Shift Manager | Your workers, grouped as on shift (running a task, or waiting on you with a task waiting on questions or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
 | **General** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things

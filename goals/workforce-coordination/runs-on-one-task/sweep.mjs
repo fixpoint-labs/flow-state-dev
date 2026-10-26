@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * FIX-2087 task-surface sweep: no task tool beyond the five (and `answerTask` and
- * `parkOnQuestion` until FIX-2058), nothing the epic's migration table removes is live,
+ * FIX-2087 task-surface sweep: no task tool beyond the five (and the worker's `askQuestion`
+ * and `waitForUser`, FIX-2131), nothing the epic's migration table removes is live,
  * nothing records a task's ending except the claim gate or the drain, and nothing but the
  * Inbox read builds a list of what waits on the user (FIX-2133). CI's Typecheck job runs
  * it, and again with `--control`; `run.mts` runs the same engine as the goal's sweep leg.

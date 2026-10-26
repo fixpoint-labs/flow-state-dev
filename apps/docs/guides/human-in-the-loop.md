@@ -11,7 +11,13 @@ This guide builds one approval gate from end to end. The server pauses a flow wi
 
 HITL is built on suspend/resume, which is part of [durable execution](/docs/advanced/durable-execution). That page covers the runtime mechanics in depth (checkpoints, the resume endpoint, retention). Here we focus on building a working approval flow and wiring the UI.
 
-If what you're gating is a board of tasks rather than one step of a flow, the task board has its own way to wait on a person: a worker parks the task, the drain returns, and a later request delivers the answer. See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview).
+If what you're gating is a task on a board rather than one step of a flow, the same stop works from inside the task's run, and the task board adds one more way to wait. Pick by who reads the answer:
+
+- **The code that asked reads it on its next line.** An approval or a review: `ctx.waitForUser({ kind: "approval" | "review", prompt })`, or a model's `waitForUser` tool. The run stops, and the answer resumes it.
+- **The work can go on from the answer later.** A question: the worker's model calls `askQuestion`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
+- **You need a form.** `ctx.suspend()` with your own schema, as this guide builds.
+
+The first two show in the user's Inbox, and so does a `ctx.suspend()` whose reason is `human_approval` or `human_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task held on questions](/docs/orchestration/task-board#a-task-held-on-questions).
 
 ## How a pause works
 
@@ -429,4 +435,4 @@ POST /:flowKind/requests/:requestId/resume
 - [React client](/docs/client/react#suspensions-and-approvals) — `useSuspensions`, the renderer registry, and inline rendering.
 - [Flow-aware components](/docs/ui/flow-aware-components) — the `Approval` card and the rest of the `chatAssistantRenderers` set.
 - [Block memoization and replay](/docs/advanced/block-memoization-and-replay) — why the suspending block re-runs, and how to guard side effects with `runOnce`.
-- [Task board](/docs/orchestration/task-board#waiting-on-a-person-onreview) — waiting on a person when the unit of work is a task on a board: parking it, letting the drain return, and delivering the answer later.
+- [Task board](/docs/orchestration/task-board#a-task-waiting-on-a-user) — waiting on a person when the unit of work is a task on a board: a stop for an approval or a review, or a question the task holds on.

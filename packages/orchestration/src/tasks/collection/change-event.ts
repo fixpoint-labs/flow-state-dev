@@ -25,7 +25,6 @@ export type TaskChangeKind =
   | "released"
   /** A task's start or attempts settings changed before it started (FIX-2080). */
   | "settings_changed"
-  | "review_requested"
   | "resumed"
   | "cancelled"
   | "label_changed"

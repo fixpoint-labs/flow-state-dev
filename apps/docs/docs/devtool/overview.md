@@ -148,7 +148,7 @@ The Tasks tab lists the task boards the open session emitted. A task board is th
 
 Click a row, or focus it and press Enter, to open it in place. The open row shows what the task carries: the full goal, attempts, assignee, priority, labels, the note and any error, input and output, metadata, revision and timestamps, and the dispatch run working it. Fields the task doesn't have are left out. The raw record is folded at the bottom if you want the JSON. A row stays open while the task changes underneath it, and you can keep several open at once.
 
-The note is the task's `feedback` field. Parking a task for review records why it is waiting, or clears the note when you give no reason. A failure with retries left records the error and sends the row back to `pending`. Resuming a parked task writes the answer you hand it, or clears the note when you hand it none. The row shows whichever wrote last. The note slot appears only on boards where some task carries one.
+The note is the task's `feedback` field. A failure with retries left records the error there and sends the row back to `pending`. The note slot appears only on boards where some task carries one.
 
 A note is not an error. A failure with no retries left writes the task's `error` field instead, and a task can hold both. A long goal or note is clipped to one line on the collapsed row, so hover it for the whole string or open the row.
 
@@ -171,7 +171,7 @@ The DevTool changes tasks only through your flow's actions. There is no way to e
 
 A row shows the changes made in the session you're looking at. When a worker dispatches a task to a run of its own, the row here shows the dispatch and the row's dispatch-run link opens the run where the task finished.
 
-See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
+See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) for how a task waits on a person and picks up again.
 
 ## Inventory
 

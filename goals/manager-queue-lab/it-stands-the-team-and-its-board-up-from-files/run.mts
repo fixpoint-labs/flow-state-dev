@@ -38,13 +38,13 @@ import { QUEUE_COLUMNS, queueView } from "../lab/queue.mts";
  * The task status set as FIX-443 §2 fixed it, written out — asserted on the
  * enum against this list, not against a reading of itself.
  */
-const STATUS_SET = ["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"];
+const STATUS_SET = ["pending", "in_progress", "held", "completed", "errored", "cancelled"];
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,
- * each once: the filer's four since FIX-2081, and `answerTask` (FIX-1817).
+ * each once: the filer's four since FIX-2081 (`answerTask` left with FIX-2131).
  */
-const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"];
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"];
 
 /** Frontmatter keys that would declare a board or grant the task tools. None may appear. */
 const BOARD_KEYS = /^(boards|boardActions|filing|mailboxes|members)\s*:/m;

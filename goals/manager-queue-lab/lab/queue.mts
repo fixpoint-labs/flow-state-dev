@@ -35,7 +35,7 @@
  * own, so that strip went with the drain.)
  */
 
-import { isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
+import { hasOpenHold, isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
 
 /** One row as a column carries it — what a reader of the queue needs and no more. */
 export interface QueueRow {
@@ -54,7 +54,7 @@ export interface QueueView {
   queued: QueueRow[];
   /** `in_progress` with a live claim. */
   running: QueueRow[];
-  /** `parked` or `held`, carrying the reason already on the row, when it has one. */
+  /** Running with an open hold (a question, or a stop for a person), or `held`, carrying the reason already on the row, when it has one. */
   waitingOnYou: QueueRow[];
   /** Terminal: `completed`, `errored`, `cancelled`. */
   done: QueueRow[];
@@ -65,8 +65,8 @@ export interface QueueView {
 /** The statuses nothing moves out of. */
 const TERMINAL: ReadonlySet<Task["status"]> = new Set(["completed", "errored", "cancelled"]);
 
-/** The statuses that mean a person is holding this up: a park, and a held row nobody released yet. */
-const WAITING: ReadonlySet<Task["status"]> = new Set(["parked", "held"]);
+/** The status that means a person is holding this up before it starts: a held row nobody released yet. */
+const WAITING: ReadonlySet<Task["status"]> = new Set(["held"]);
 
 /** Project one row down to what a column shows. */
 function project(task: Task): QueueRow {
@@ -123,8 +123,10 @@ export function queueView(rows: readonly Task[], now: number = Date.now()): Queu
     // row is `in_progress` and would otherwise be read as running by a check
     // on status alone — which is the reading this column exists to correct.
     if (isClaimable(row, lookup, now)) view.queued.push(project(row));
+    // A running row waiting on a person is asked before the live claim: it
+    // keeps its claim while nobody works it.
+    else if (WAITING.has(row.status) || hasOpenHold(row)) view.waitingOnYou.push(project(row));
     else if (liveClaim(row, now)) view.running.push(project(row));
-    else if (WAITING.has(row.status)) view.waitingOnYou.push(project(row));
     else if (TERMINAL.has(row.status)) view.done.push(project(row));
     else view.uncolumned.push(project(row));
   }

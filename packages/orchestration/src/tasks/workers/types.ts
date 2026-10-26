@@ -64,13 +64,6 @@ export const taskWorkerInputSchema = z.object({
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),
   /**
-   * The answer to the question this task's worker parked on, present only on
-   * the attempt that answer re-queued (FIX-1817): `feedback` as the answer
-   * left it. Absent on a first attempt and on a retry after a failure, so a
-   * worker reads its presence as "this turn is the answer".
-   */
-  answer: z.string().optional(),
-  /**
    * Every steer on the task (`Task.steers`, FIX-2086), oldest first: words sent
    * into it while it was open, with who sent each. Part of the brief, taken or
    * not, so a retry is never run as first filed. Absent on a task never

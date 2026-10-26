@@ -8,11 +8,11 @@
 <text class="t" x="40" y="122">dependencies, an optional</text>
 <text class="t" x="40" y="138">assignee, input and output.</text>
 <text class="c" x="40" y="162">pending · in_progress</text>
-<text class="c" x="40" y="180">parked · completed …</text>
+<text class="c" x="40" y="180">held · completed …</text>
 <rect class="solid" x="348" y="56" width="240" height="140"/>
 <text class="nm" x="360" y="84">Task collection</text>
 <text class="t" x="360" y="106">One API: add, claim,</text>
-<text class="t" x="360" y="122">complete, fail, park,</text>
+<text class="t" x="360" y="122">complete, fail, hold,</text>
 <text class="t" x="360" y="138">whichever store backs it.</text>
 <rect class="solid" x="698" y="56" width="194" height="140"/>
 <text class="lb" x="710" y="80">KEPT IN · YOU CHOOSE</text>

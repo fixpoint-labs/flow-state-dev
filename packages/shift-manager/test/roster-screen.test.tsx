@@ -36,6 +36,15 @@ const ORG = "acme";
 const worker = (id: string, kind = "worker") => toWorker({ id, kind })!;
 const row = (holder: string, id: string, status: string, assignee: string): BoardRow =>
   toBoardRow(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
+/** A running row held on a question for you (FIX-2131): what a task waiting on you is. */
+const waiting = (holder: string, id: string, assignee: string): BoardRow =>
+  toBoardRow(`${holder}.tasks`, holder, id, {
+    id,
+    title: `${id} title`,
+    status: "in_progress",
+    assignee,
+    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", releasedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+  });
 const ask = (workerId: string, suspensionId: string, message: string): Ask =>
   ({
     sessionId: `s_${suspensionId}`,
@@ -49,9 +58,9 @@ const ask = (workerId: string, suspensionId: string, message: string): Ask =>
   }) as unknown as Ask;
 
 /**
- * Two teams and one org worker: eng.coder running (and one parked), eng.reviewer
- * parked, ops.asker with a pending ask and a queued row, ops.idle nothing,
- * chief-of-staff nothing.
+ * Two teams and one org worker: eng.coder running (and one held on a question
+ * for you), eng.reviewer held on one, ops.asker with a pending ask and a queued
+ * row, ops.idle nothing, chief-of-staff nothing.
  */
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
   const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("chief-of-staff", "cos")];
@@ -65,7 +74,7 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
       options.inventory === "failed"
         ? {}
         : {
-            s_eng: ok([row("s_eng", "E-1", "in_progress", "coder"), row("s_eng", "E-2", "parked", "coder"), row("s_eng", "E-3", "parked", "reviewer")]),
+            s_eng: ok([row("s_eng", "E-1", "in_progress", "coder"), waiting("s_eng", "E-2", "coder"), waiting("s_eng", "E-3", "reviewer")]),
             s_ops: options.boards === "ops failed" ? { ok: false, failure: { message: "board offline" } } : ok([row("s_ops", "O-1", "pending", "asker")]),
           },
     asks: options.asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: [ask("ops.asker", "q1", "Approve: ship it")] },
@@ -294,7 +303,8 @@ describe("Tasks (BR-14)", () => {
     await open("/tasks", snapshot);
     await screen.findByTestId("tasks-table");
     expect(screen.getByTestId("tasks-queued-count").textContent).toBe("0");
-    expect(shown()).toEqual(["E-1", "O-1", "E-2", "E-3"]);
+    // A task held on a question for you is running (FIX-2131): no column of its own.
+    expect(shown()).toEqual(["E-1", "E-2", "E-3", "O-1"]);
   });
 
   it("draws v2's columns in v2's order, each row's id, and TIME from the row's start for a running row only", async () => {
@@ -310,8 +320,6 @@ describe("Tasks (BR-14)", () => {
     // No display name on this row, so the worker reads as its id.
     expect(cell("E-1", "task-row-worker")).toBe("eng.coder");
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
-    // E-2 is parked: it waits on you, so its clock isn't running.
-    expect(cell("E-2", "task-row-time")).toBe("—");
   });
 
   it("names a task the chief-of-staff worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
@@ -358,7 +366,8 @@ describe("Tasks (BR-14)", () => {
 
   it("sums up what is in flight, what waits on you, the shift and the streams", async () => {
     await open("/tasks");
-    expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 1 needs you · 3 on shift · 1 stream");
+    // What needs you is the Inbox's count: the two tasks held on a question, and the ask.
+    expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 3 need you · 3 on shift · 1 stream");
   });
 });
 

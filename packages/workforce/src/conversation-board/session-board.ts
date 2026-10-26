@@ -61,7 +61,7 @@ import { defineConversationBoard, type RoutedFiling } from "./board";
 import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
-import { questionPark } from "./question-park";
+import { userWaits } from "./user-waits";
 import { taskProgress } from "./task-progress";
 import { steerTurnEntry } from "./steer";
 import { taskSteers } from "./task-steers";
@@ -160,10 +160,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The model's task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
     /**
-     * `parkOnQuestion`, on a task turn that may park its row on a question
-     * (FIX-1817): one entry for the model block's `uses`, beside `tools`.
+     * `askQuestion` on a task turn, and `waitForUser` for an approval, a review
+     * or (with no task row) input (FIX-2131): one entry for the model block's
+     * `uses`, beside `tools`.
      */
-    questions: questionPark,
+    questions: userWaits,
     /**
      * `reportProgress`, on a task turn holding a running row (FIX-2081 D3):
      * one entry for the model block's `uses`, beside `tools`.
@@ -243,7 +244,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
           "manager"
         ),
         // A check of the session's waiting task, on the notices' line: what
-        // the upgrade's backfill wakes for a split an older host parked.
+        // the upgrade's backfill wakes for a row an older host held open.
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.

@@ -227,7 +227,6 @@ await runGoal(async (failures) => {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: { shared: filedFrom(`shared/${PROJECT}`), private: filedFrom(`private/${PROJECT}`) },
   });

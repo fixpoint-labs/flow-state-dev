@@ -45,7 +45,6 @@ export type TaskStatus =
   | "pending"
   | "in_progress"
   | "held"
-  | "parked"
   | "completed"
   | "errored"
   | "cancelled"
@@ -87,7 +86,6 @@ export type TaskChangeKind =
   | "held"
   | "released"
   | "settings_changed"
-  | "review_requested"
   | "resumed"
   | "cancelled"
   | "label_changed"
@@ -103,7 +101,6 @@ export type BoardCounts = {
   pending: number;
   in_progress: number;
   held: number;
-  parked: number;
   completed: number;
   errored: number;
   cancelled: number;
@@ -140,24 +137,16 @@ export type TaskPlanState = {
 // ---------------------------------------------------------------------------
 
 /**
- * The status `awaiting_review` shipped as `parked` (FIX-1245). Item logs are
- * immutable — a trace recorded before that rename still carries the old word on
- * `task-change.task.status`, and a `counts.awaiting_review` key on
- * `task-board-meta` — and no resource-level migration can reach them. So they
- * are mapped forward here, at the fold every consumer of this state reads
- * through. A trace recorded after the rename allocates nothing.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
-/**
  * The status `held` replaced (FIX-2080): a trace recorded before then carries
  * `blocked` on `task-change.task.status` and a `counts.blocked` key on
- * `task-board-meta`, read here as `held`, as the parked rename is above.
+ * `task-board-meta`. Item logs are immutable and no resource-level migration
+ * can reach them, so they are read here as `held`, at the fold every consumer
+ * of this state reads through. A trace recorded after the rename allocates
+ * nothing.
  */
 const LEGACY_HELD_STATUS = "blocked";
 
 function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
-  if (task.status === LEGACY_PARKED_STATUS) return { ...task, status: "parked" };
   if (task.status === LEGACY_HELD_STATUS) return { ...task, status: "held" };
   return task;
 }
@@ -171,9 +160,9 @@ function foldCount<T>(counts: T, legacyKey: string, key: string): T {
   return { ...rest, [key]: (typeof current === "number" ? current : 0) + legacy } as unknown as T;
 }
 
-function migrateCounts<T extends { parked?: number; held?: number }>(counts: T | undefined): T | undefined {
+function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | undefined {
   if (counts === undefined) return counts;
-  return foldCount(foldCount(counts, LEGACY_PARKED_STATUS, "parked"), LEGACY_HELD_STATUS, "held");
+  return foldCount(counts, LEGACY_HELD_STATUS, "held");
 }
 
 export const TASK_CHANGE_COMPONENT = "task-change";
@@ -195,7 +184,6 @@ export const STATUS_SECTIONS: ReadonlyArray<{
   { status: "pending", label: "Todo" },
   { status: "in_progress", label: "In progress" },
   { status: "held", label: "Held" },
-  { status: "parked", label: "Parked" },
   { status: "completed", label: "Done" },
   { status: "errored", label: "Failed" },
   { status: "cancelled", label: "Cancelled" },

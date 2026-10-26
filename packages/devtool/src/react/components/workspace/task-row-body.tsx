@@ -13,7 +13,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import type { ResolvedTask } from "../../lib/task-collection-state";
+import { waitPrompt, type ResolvedTask } from "../../lib/task-collection-state";
 
 type Props = {
   entry: ResolvedTask;
@@ -84,6 +84,7 @@ export function TaskRowBody({ entry, id, children }: Props) {
   add("Labels", listText(task.labels), task.labels !== undefined);
   add("Deps", listText(task.deps), task.deps !== undefined);
   // Keyed on presence and rendered as stored, as the collapsed slot is.
+  add("Waiting for", waitPrompt(task), waitPrompt(task) !== undefined, true);
   add("Reason", task.feedback, task.feedback !== undefined, true);
   add("Error", <span className="text-fs-red">{task.error}</span>, task.error !== undefined, true);
   add("Input", <JsonBlock value={task.input} />, task.input !== undefined, true);

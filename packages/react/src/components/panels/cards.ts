@@ -30,23 +30,6 @@ export type BoardCardRow = {
   readonly card: BoardCard;
 };
 
-/**
- * The status `awaiting_review` shipped as `parked` (FIX-1245).
- *
- * The substrate maps it forward at its own read boundary, but a client read
- * does not pass through that boundary: the collection route projects the
- * stored row and the task collection's `withMigratedStatus` never runs. So a
- * row persisted before the rename arrives here still carrying the old word,
- * and without this it would be treated as a status this version does not
- * know — earning its own column beside `parked` rather than landing in it.
- *
- * `packages/ui/registry/components/task-plan-state.ts` carries the same
- * mapping for the other renderer, at the same kind of fold and for the same
- * reason. This matches it rather than inventing a second spelling. A row
- * written after the rename allocates nothing.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
 /** Whether a row read off a board has the fields every card has. */
 export function isCard(value: unknown): value is BoardCard {
   if (value === null || typeof value !== "object") return false;
@@ -54,16 +37,11 @@ export function isCard(value: unknown): value is BoardCard {
   return typeof row.id === "string" && typeof row.status === "string";
 }
 
-/** Map a stored row's status forward, so a panel only ever sees one vocabulary. */
-export function migrateCardStatus(card: BoardCard): BoardCard {
-  return card.status === LEGACY_PARKED_STATUS ? { ...card, status: "parked" } : card;
-}
-
-/** Every row a read returned that is a card, its status mapped forward, in read order. */
+/** Every row a read returned that is a card, in read order. */
 export function cardRows(rows: readonly PanelRow[]): BoardCardRow[] {
   const cards: BoardCardRow[] = [];
   for (const { topic, clientData } of rows) {
-    if (isCard(clientData)) cards.push({ topic, card: migrateCardStatus(clientData) });
+    if (isCard(clientData)) cards.push({ topic, card: clientData });
   }
   return cards;
 }

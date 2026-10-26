@@ -323,7 +323,7 @@ A board that dispatches work keeps a running task on the worker it was given to,
 
 Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of two groups:
 
-- **On shift**: it holds a task that is running, or it is waiting on you, either on a task it parked for you or on an ask in Inbox.
+- **On shift**: it holds a task that is running, or it is waiting on you, either on a task waiting on questions or on an ask in Inbox.
 - **Off shift**: neither. A worker with only queued tasks is off shift until it claims one.
 
 Each worker shows its team and the flow it runs on, how many slots it has in use (one square per task it holds), the tasks it holds, and what it is waiting on. Click a task to open it. The counts at the top are for the workers shown.

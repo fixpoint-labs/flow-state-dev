@@ -5,7 +5,7 @@
  * Every worker flow's door was `run` (Shift Manager's own, `message`) and its
  * board's pass `runTaskBoard`; they are `respond` and `dispatch` now, and no
  * alias takes the old names. A request an older host left unfinished under
- * an old name (running when it stopped, or parked on a question) would resume
+ * an old name (running when it stopped, or stopped for the user) would resume
  * by that name, and a wake an older host owed would fire it, and both would
  * fail as an unknown action. Run once at host start, after the workers are
  * hired, this rewrites each to the new name, so an upgrade mid-reply or

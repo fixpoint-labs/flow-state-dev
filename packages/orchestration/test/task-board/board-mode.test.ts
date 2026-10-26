@@ -10,9 +10,9 @@
  *   waits on one. An inline assignee is refused, and so is a board with no
  *   dispatcher at all.
  *
- * `goalSeekLoop` refuses the two boards whose drain can return with a row not
- * ended: a delegation board, and one that lets a parked row out of its drain.
- * Its judge would rule while work still runs.
+ * `goalSeekLoop` refuses a board whose drain can return with a row not ended,
+ * a delegation board: its judge would rule while work still runs. A board
+ * built with the retired `onReview` is refused by name (FIX-2131).
  *
  * Each refusal is asserted by the setting it names and the fix it gives, so a
  * refusal that starts firing for another cause fails here.
@@ -201,16 +201,17 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
     );
   });
 
-  it("refuses a board that lets a parked row out of its drain", () => {
-    const board = taskBoard({
-      name: "gsl-park-exit",
-      collection: durable("gsl-park-exit"),
-      workers: inline("gsl-park-exit-w"),
-      onReview: "exit",
-    });
-    expect(() => goalSeekLoop({ name: "gsl-park-exit-loop", board, judge, maxIterations: 2 })).toThrow(
-      /\[goalSeekLoop\] "gsl-park-exit-loop".*onReview: "exit".*parked/s
-    );
+  it("refuses a board built with the retired onReview, by name (FIX-2131)", () => {
+    for (const onReview of ["exit", "hold"]) {
+      expect(() =>
+        taskBoard({
+          name: "gsl-park-exit",
+          collection: durable("gsl-park-exit"),
+          workers: inline("gsl-park-exit-w"),
+          onReview,
+        } as never),
+      ).toThrow(/"gsl-park-exit" sets `onReview`, which was removed \(FIX-2131\).*askQuestion.*waitForUser.*blocked/s);
+    }
   });
 
   it("still loops over a plan board, whose judge sees every row ended", async () => {
