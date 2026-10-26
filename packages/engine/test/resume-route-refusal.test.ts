@@ -2,15 +2,23 @@
  * The public resume route's answer when the shared resume path refuses:
  * another resume holding the lease is a 409 the caller can retry; any other
  * refusal is a broken invariant, never reported as a concurrency conflict.
+ * The same route records who resumed: the signed-in caller, or the request's
+ * owner when nothing authenticates, never a `resumedBy` in the body.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 
-const refusal = vi.hoisted(() => ({ value: { ok: false, busy: true } as Record<string, unknown> }));
+const recorded = vi.hoisted(() => ({
+  args: [] as Array<Record<string, unknown>>,
+  value: { ok: false, busy: true } as Record<string, unknown>
+}));
 vi.mock("../src/durability/resume-under-lease", () => ({
-  resumeUnderLease: async () => refusal.value
+  resumeUnderLease: async (_deps: unknown, args: Record<string, unknown>) => {
+    recorded.args.push(args);
+    return recorded.value;
+  }
 }));
 
 import { createFlowRegistry, createInMemoryStores } from "../src";
@@ -18,7 +26,10 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { RequestRecord } from "../src/stores/types";
 
-async function resume(): Promise<Response> {
+async function resume(
+  body: Record<string, unknown> = { suspensionId: "sus_1", action: "approve" },
+  principal?: { userId: string; orgId: string }
+): Promise<Response> {
   const stores = createInMemoryStores();
   const provider = createCheckpointDurabilityProvider(stores);
   const registry = createFlowRegistry();
@@ -67,7 +78,7 @@ async function resume(): Promise<Response> {
     new Request(`https://x/api/flows/resume-refusal/requests/${requestId}/resume`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ suspensionId: "sus_1", action: "approve" })
+      body: JSON.stringify(body)
     }),
     { kind: "resume_suspension", flowKind: "resume-refusal", requestId },
     {
@@ -75,6 +86,7 @@ async function resume(): Promise<Response> {
       registry,
       stores,
       durabilityProvider: provider,
+      ...(principal !== undefined ? { principal } : {}),
       seams: {} as never,
       requestContext: {} as never
     }
@@ -83,12 +95,31 @@ async function resume(): Promise<Response> {
 
 describe("resume route: refusals from the shared resume path", () => {
   it("another resume holding the lease answers 409", async () => {
-    refusal.value = { ok: false, busy: true };
+    recorded.value = { ok: false, busy: true };
     expect((await resume()).status).toBe(409);
   });
 
   it("any other refusal answers 500, not a concurrency conflict", async () => {
-    refusal.value = { ok: false, refusal: "unexpected" };
+    recorded.value = { ok: false, refusal: "unexpected" };
     expect((await resume()).status).toBe(500);
+  });
+});
+
+describe("resume route: who resumed", () => {
+  const accepted = { ok: true, handle: { requestId: "req_refusal", liveStream: null } };
+
+  it.each([
+    { who: "the signed-in caller", principal: { userId: "u1", orgId: "acme" } },
+    { who: "the request's owner, when nothing authenticates", principal: undefined }
+  ])("records $who, not the body's resumedBy", async ({ principal }) => {
+    recorded.value = accepted;
+    recorded.args = [];
+    const response = await resume(
+      { suspensionId: "sus_1", action: "approve", resumedBy: "someone-else" },
+      principal
+    );
+    expect(response.status).toBe(202);
+    expect(recorded.args).toHaveLength(1);
+    expect(recorded.args[0]!.resumedBy).toBe("u1");
   });
 });
