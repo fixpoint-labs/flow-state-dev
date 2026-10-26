@@ -83,6 +83,24 @@ describe("a run's question holds its task", () => {
     expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", attempts: 1 });
   }, 60_000);
 
+  it("the answer's run in the asking run's own request (an inline drain) has a marker of its own, and completes", async () => {
+    // An inline drain takes the owed turn in the request it ran the asking turn in.
+    const lab = claimHost({ mode: "claim", script: [{ ask: "which branch should I read?" }, { answer: "read main" }] });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at the repo", input: {} });
+    const request = "req_one_drain";
+
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a", undefined, request);
+    await lab.act("answer", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", answer: "main, please" });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a", undefined, request);
+
+    expect(lab.seen).toHaveLength(2);
+    const marker = (prompt: string) => /ASK: (\S+)/.exec(prompt)?.[1];
+    expect(marker(lab.seen[1]!.prompt)).not.toBe(marker(lab.seen[0]!.prompt));
+    const done = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(openRowHolds(done)).toEqual([]);
+    expect(done).toMatchObject({ status: "completed", attempts: 1 });
+  }, 60_000);
+
   it("cancelled while it waits: no further run starts, and the work its run committed stays on its branch", async () => {
     const lab = claimHost({ mode: "claim", script: [{ ask: "which branch should I read?", commits: 1 }] });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at the repo", input: {} });

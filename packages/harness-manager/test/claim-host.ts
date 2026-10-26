@@ -361,7 +361,7 @@ export function claimHost(options: HostOptions) {
   let sessions = 0;
   // Every action runs in this organization; `inOrg` moves the host's person to another.
   let orgId = ORG_ID;
-  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string) => {
+  const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string, requestId?: string) => {
     const runtime = await (state as unknown as {
       getRuntime(): Promise<{ stores: any; runtimeConfig: object }>;
     }).getRuntime();
@@ -373,6 +373,7 @@ export function claimHost(options: HostOptions) {
       orgId,
       sessionId,
       ...(source !== undefined ? { source } : {}),
+      ...(requestId !== undefined ? { requestId } : {}),
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     } as never)) as { output?: unknown; error?: unknown };
@@ -395,6 +396,8 @@ export function claimHost(options: HostOptions) {
     id: string,
     partition?: string,
     claimOnInput?: InputClaim | null,
+    /** Run the attempt under this request id: as an inline drain runs every turn it takes in its own request. */
+    requestId?: string,
   ) => {
     const claimed = (await act("claim", { ...at(ledgerId, partition), id })).output as Task | null;
     if (claimed === null) throw new Error(`row ${id} was not claimable`);
@@ -426,6 +429,7 @@ export function claimHost(options: HostOptions) {
       },
       `s_task_${orgId === ORG_ID ? "" : `${orgId}_`}${ledgerId}_${partition ?? "none"}_${id}`,
       "task",
+      requestId,
     );
     return { claimed, result };
   };

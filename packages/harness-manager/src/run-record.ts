@@ -163,8 +163,8 @@ export const runRecordStateSchema = z.object({
    * turn, attempt or task under the same id already wrote.
    */
   runs: z.number().nullable().default(null),
-  /** The request that opened run {@link runs}, so its own replay counts it once. */
-  runRequestId: z.string().nullable().default(null),
+  /** What opened run {@link runs} (its request, turn and task), so a replay of that run counts it once. */
+  runKey: z.string().nullable().default(null),
   /** The board task this row describes. */
   taskId: z.string().nullable().default(null),
 
@@ -620,14 +620,14 @@ export async function writeRunRow(
 export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; requestId?: string },
+  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
     childSessionId: opened.childSessionId,
-    ...(opened.run !== undefined ? { runs: opened.run, runRequestId: opened.requestId ?? null } : {}),
+    ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
     outcome: "running",
   });
 }

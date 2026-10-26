@@ -1930,10 +1930,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const previousSessionId = recorded?.sessionId ?? null;
       // **Which run this is**, counted on the record and never reset: the
       // second number of the ask marker, so this run is never pointed at a
-      // question an earlier turn already asked (`./ask`). This request's own
-      // replay counts it once.
-      const requestId = ctx.request.identity.id;
-      const run = recorded?.runRequestId === requestId && recorded.runs != null ? recorded.runs : (recorded?.runs ?? 0) + 1;
+      // question an earlier turn already asked (`./ask`). A replay of this
+      // run counts it once: the same request, on the same turn of the same
+      // task. An inline drain runs the turn an answer owes in the request it
+      // ran the asking turn in, so the request alone would reuse that run's
+      // number, and its marker.
+      const runKey = `${ctx.request.identity.id}:${ticket.turn}:${ticket.incarnationId ?? ""}`;
+      const run = recorded?.runKey === runKey && recorded.runs != null ? recorded.runs : (recorded?.runs ?? 0) + 1;
       await ctx.sequencer!.patchState({ previousSessionId, run });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
@@ -1945,7 +1948,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         openRunRow(
           ctx,
           identityOf(ctx, harnessCtxState(ctx)),
-          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, requestId },
+          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey },
         ),
         "the run row was opened",
       );
