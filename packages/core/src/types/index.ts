@@ -479,4 +479,10 @@ export type {
   HarnessRunUsage,
   HarnessSessionHook,
   HarnessSource,
+  HarnessUsageHook,
+  HarnessUsageLevel,
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+  HarnessUsageWindow,
 } from "./harness";

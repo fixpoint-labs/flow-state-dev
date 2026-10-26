@@ -25,6 +25,7 @@ import type {
   HarnessCallbackContext,
   HarnessRunOutcome,
   HarnessRunStatus,
+  HarnessUsageHook,
 } from "@flow-state-dev/core/types";
 
 /** One run the stub was asked to perform, exactly as it arrived. */
@@ -113,6 +114,8 @@ export interface HarnessStub {
     cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
     resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
     onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
+    /** Where a run's usage windows go. The stub reports none. */
+    onUsage: HarnessUsageHook;
     /** The Lab's relayed MCP servers. The stub takes none, and says so when the project names some. */
     mcpTools?: ProjectMcpToolsResolver;
   }) => HarnessBlock;

@@ -82,6 +82,8 @@ Its [Shift Coordinator](../workforce/shift-coordinator.md) is a coordinator with
 
 Rows run on the scripted coder (`stub`), with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead; the Lab then checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as the `fsd` profile does.
 
+Usage shows how much of each Codex window your machine's Codex sign-in has used. Opening Usage asks the Codex CLI, at most once a minute. That read works only on your own machine (see [Reading usage left](../tools/codex.md#reading-usage-left)).
+
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points, so projects, their workstreams and your conversations survive a restart. Delete the file to start fresh.
 
 ### Its Shift Coordinator's memory

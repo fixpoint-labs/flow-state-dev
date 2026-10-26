@@ -1273,8 +1273,8 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // whole finding is that they were refusing with each other's reason.
     const config = workspace();
     execFileSync("mkdir", ["-p", join(config.sourceRepo, ".fsdev", "ask")]);
-    writeFileSync(join(config.sourceRepo, ".fsdev", "ask", "1.md"), "leaked\n");
-    execFileSync("git", ["add", "-f", ".fsdev/ask/1.md"], {
+    writeFileSync(join(config.sourceRepo, ".fsdev", "ask", "1-1.md"), "leaked\n");
+    execFileSync("git", ["add", "-f", ".fsdev/ask/1-1.md"], {
       cwd: config.sourceRepo,
       stdio: "pipe",
     });
@@ -1296,7 +1296,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // Tracked and ignored are independent, so a target can carry the rule and
     // still track a `.gitkeep` inside the directory it excludes. Measured, that
     // costs nothing: the tracked sibling forces git to descend, and `git add -A`
-    // still leaves an untracked `1.md` ignored. Refusing on the whole `ls-files`
+    // still leaves an untracked `1-1.md` ignored. Refusing on the whole `ls-files`
     // listing turned a safe repository away for a file that cannot ever become
     // a question — the same shape of wrong answer `--no-index` was added to
     // stop giving, one directory over.

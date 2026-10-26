@@ -58,6 +58,7 @@ function lab(...more: Worker[]): LabSnapshot {
     inventory: { ok: true, value: { workers: [toWorker({ id: "researcher", kind: "agent", rules: true })!, toWorker({ id: "eng.coder", kind: "coder" })!, toWorker({ id: "eng.helper", kind: "agent", rules: false })!, ...more] } },
     boards: {},
     asks: { ok: true, value: [] },
+    inbox: { ok: true, value: [] },
     resources: { ok: true, value: [] },
     projects: { ok: true, value: { rows: [] } },
   };

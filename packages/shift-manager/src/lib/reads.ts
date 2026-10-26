@@ -59,11 +59,12 @@
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-import type { ResumeAction } from "@flow-state-dev/core/types";
+import { waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
+import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -191,6 +192,14 @@ export type BoardRow = {
    * on one, or published before boards showed it.
    */
   question?: string;
+  /**
+   * What holds the row (FIX-2133): its questions and confirms, and its run's
+   * stop for the user. Empty when nothing does. The Inbox lists the task's
+   * item from the open ones.
+   */
+  holds: TaskHold[];
+  /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
+  steers: Array<{ id: string; answers?: string }>;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -274,7 +283,15 @@ export type LabSnapshot =
       projects: Section<Projects>;
       /** Per board holder: the id of a conversation that keeps a board. */
       boards: Record<string, Section<ConversationBoards>>;
+      /** The pending asks in worker sessions: the Inbox's suspension arm, and what a task's screen shows inline. */
       asks: Section<Ask[]>;
+      /**
+       * Everything waiting on the user, as one list of orchestration's one
+       * item type (`@flow-state-dev/orchestration/inbox`): an item per task
+       * row that holds the user, and one per ask no row claims. Inbox, its
+       * counts and every "needs you" total read this, and nothing else.
+       */
+      inbox: Section<InboxItem<Ask>[]>;
       /** The declared documents Jump to finds and opens read-only (BR-10). */
       resources: Section<DeclaredResource[]>;
     };
@@ -453,6 +470,28 @@ function strings(value: unknown): string[] {
 }
 
 /**
+ * The holds a row publishes (FIX-2133), each read against the hold's own
+ * shape: one that doesn't parse is none, never a guess.
+ */
+function toHolds(value: unknown): TaskHold[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((hold) => {
+    const parsed = taskHoldSchema.safeParse(hold);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** A row's steers as the Inbox reads them: each one's id, and the question it answers when it answers one. */
+function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((steer) => {
+    const id = text(field(steer, "id"));
+    const answers = text(field(steer, "answers"));
+    return id === null ? [] : [{ id, ...(answers !== null ? { answers } : {}) }];
+  });
+}
+
+/**
  * A board row, from what the board publishes.
  *
  * `title` is never absent: a row filed with none reads its goal there. The
@@ -476,6 +515,8 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
       ? { question: text(field(data, "feedback")) as string }
       : {}),
+    holds: toHolds(field(data, "holds")),
+    steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),
@@ -517,6 +558,64 @@ export function conversationOfTopic(topic: string): string {
   return sessionIdOfFiling(decodeURIComponent(topic.split("/")[0] ?? ""));
 }
 
+/**
+ * The Inbox section: orchestration's list over every board row and the asks
+ * the worker sessions hold, a task run's ask listing from its row alone. A
+ * list that can't hold one of them is a failure, never a shorter list: a
+ * task held on a board that didn't load would be missing from it.
+ *
+ * `sessions` names the flow that owns each run's session, where a task's
+ * answer goes.
+ */
+export function inboxSection(
+  asks: Section<Ask[]>,
+  boards: Record<string, Section<ConversationBoards>>,
+  sessions: readonly Pick<SessionSummary, "id" | "flowId">[],
+): Section<InboxItem<Ask>[]> {
+  if (!asks.ok) return asks;
+  const rows: BoardRow[] = [];
+  for (const board of Object.values(boards)) {
+    if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what holds each task from its board, and a board did not load. ${board.failure.message}` } };
+    rows.push(...board.value.rows);
+  }
+  const flows = new Map(sessions.map((session) => [session.id, session.flowId ?? null]));
+  return {
+    ok: true,
+    value: inboxItems<Ask>({
+      rows: rows.map((row) => ({ ...row, board: row.boardRef, holder: holderOf(row) })),
+      suspensions: asks.value.map((ask) => ({
+        sessionId: ask.sessionId,
+        flowId: ask.flowId,
+        requestId: ask.item.requestId,
+        suspensionId: ask.item.suspensionId,
+        kind: waitForUserKindOf(ask.item) ?? "input",
+        prompt: ask.item.message,
+        ...(ask.item.title ? { title: ask.item.title } : {}),
+        since: ask.since,
+        detail: ask,
+      })),
+      flowOf: (sessionId) => flows.get(sessionId),
+    }),
+  };
+}
+
+/**
+ * Where a row's questions are answered (FIX-2133): the board's `updateTask`
+ * action on the conversation that holds it, as the signed-in user. A board
+ * that isn't a conversation's has no action Shift Manager names: `null`,
+ * and its questions read as unanswerable here.
+ */
+function holderOf(row: BoardRow): InboxRow["holder"] {
+  return row.boardRef === conversationBoardRef(row.holderSessionId) ? { sessionId: row.holderSessionId, action: UPDATE_TASK_ACTION } : null;
+}
+
+/**
+ * The action a conversation answers a task's question through: the task
+ * tools' `updateTask`, named for the conversation board's id (`tasks`) by the
+ * task tools' action rule.
+ */
+export const UPDATE_TASK_ACTION = "updateTask_tasks";
+
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
@@ -537,6 +636,13 @@ export type LabReader = {
    * names no owner, or when the Lab refuses the answer.
    */
   resume(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
+  /**
+   * Answer one of an Inbox item's holds through orchestration's one answer
+   * call, routed by its source: a task's question or confirm through its
+   * board's `updateTask`, as the user (FIX-2133). Rejects with the board's
+   * refusal.
+   */
+  answerHold(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /**
@@ -905,28 +1011,48 @@ export function createLabReader(client: Client): LabReader {
       readProjects(sessions, readers.failure),
     ]);
 
+    const boards = Object.fromEntries(conversationBoards);
     return {
       readAt: Date.now(),
       sessions,
       orgId,
       inventory,
       projects,
-      boards: Object.fromEntries(conversationBoards),
+      boards,
       asks,
+      inbox: inboxSection(asks, boards, sessions),
       resources,
     };
   };
 
   // The answer route (FIX-2129): the Lab sets who answered, and checks the
   // ask is this user's before it reads it.
+  const inbox = createInboxClient(client);
   const resume: LabReader["resume"] = async (ask, answer) => {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
-    await client.flow(ask.flowId).request(ask.item.requestId).answer({
-      suspensionId: ask.item.suspensionId,
-      action: answer.action,
-      ...(answer.data === undefined ? {} : { data: answer.data }),
-    });
+    // Orchestration's one answer call, as the Inbox makes it for an item's hold:
+    // the card's resolution read as the answer its ask takes.
+    const asks = waitForUserKindOf(ask.item) ?? "input";
+    const typed: InboxAnswer =
+      asks === "approval"
+        ? { approved: answer.action === "approve", ...(answer.data === undefined ? {} : { data: answer.data }) }
+        : answer.action === "skip"
+          ? { skipped: true }
+          : { value: answer.data };
+    await inbox.answerHold(
+      {
+        id: ask.item.suspensionId,
+        source: { kind: "suspension", flowId: ask.flowId, sessionId: ask.sessionId, requestId: ask.item.requestId, suspensionId: ask.item.suspensionId },
+        ask: { kind: asks, prompt: ask.item.message },
+        openedAt: ask.since,
+        answerable: true,
+        unanswerable: null,
+      },
+      typed,
+    );
   };
 
-  return { read, readBoard, resume };
+  const answerHold: LabReader["answerHold"] = (hold, answer) => inbox.answerHold(hold, answer);
+
+  return { read, readBoard, resume, answerHold };
 }

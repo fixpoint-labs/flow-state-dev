@@ -194,6 +194,31 @@ export const PERSON_STOPS_REMOVED = [
   { name: "REOPENED_SOURCES", owner: "FIX-2129" },
   { name: "DISPATCHED_RUN_UNANSWERABLE", owner: "FIX-2129" },
   { name: "isExpiredApproval", owner: "FIX-2129" },
+  // FIX-2133: a task run's stop for a person is a suspension hold in `holds`, not `waitingFor`
+  // beside `waitingOn: "user"`; and a row hold is answered from the Inbox, so none is unanswerable.
+  { name: "waitingFor", owner: "FIX-2133" },
+  { name: "MAX_WAITING_FOR_PROMPT", owner: "FIX-2133" },
+  { name: "keepWaitingFor", owner: "FIX-2133" },
+  { name: "ROW_HOLD_UNANSWERABLE", owner: "FIX-2133" },
+  { name: "inboxQuestionAnswer", owner: "FIX-2133" },
+  // FIX-2132: a coding run's question holds its task on the board, through one ask step; the
+  // harness manager's own question inbox, its board park and its announcement are gone.
+  // `answerQuestion` is also the board's own `updateTask` step, so only harness-manager's is swept.
+  { name: "answerQuestion", owner: "FIX-2132", files: /^packages\/harness-manager\/.*\.(ts|tsx|mts)$|^packages\/harness-manager\/README\.md$/ },
+  { name: "inboxCollection", owner: "FIX-2132" },
+  { name: "parkOnBoardQuestion", owner: "FIX-2132" },
+  { name: "parkOnMismatch", owner: "FIX-2132" },
+  { name: "HarnessRunParked", owner: "FIX-2132" },
+  { name: "QuestionAnnouncement", owner: "FIX-2132" },
+  { name: "listQuestions", owner: "FIX-2132" },
+  { name: "readQuestion", owner: "FIX-2132" },
+  { name: "withdrawQuestion", owner: "FIX-2132" },
+  { name: "withdrawEarlierQuestions", owner: "FIX-2132" },
+  { name: "questionTopic", owner: "FIX-2132" },
+  { name: "questionTopicPrefix", owner: "FIX-2132" },
+  { name: "questionFingerprint", owner: "FIX-2132" },
+  { name: "parseQuestionTopic", owner: "FIX-2132" },
+  { name: "announce", owner: "FIX-2132", files: /^packages\/harness-manager\/src\/.*\.ts$/ },
 ];
 
 /**
@@ -206,6 +231,8 @@ export const KEEP = [
   { path: /^(apps\/docs\/docs\/server\/scheduled\.md|packages\/scheduled\/README\.md)$/, line: /idempotency(WindowMs|Options)/, why: "says the adapter refuses the removed options (FIX-2085)" },
   { path: /^packages\/scheduled\/src\/createScheduledTransportAdapter\.ts$/, line: /idempotency(WindowMs|Options)/, why: "BP-030: the adapter refuses a removed option loudly, naming it" },
   { path: /^packages\/harness-manager\/README\.md$/, line: /Upgrading from `messageDoor`|^Before `harnessSessionDoor`, a manager's `messageDoor`/, why: "the README's upgrade note: says the door is gone and what replaces it" },
+  { path: /^packages\/harness-manager\/src\/manager\.ts$/, line: /^if \("announce" in \(options as object\)\) \{$|^"\[harness-manager\] `announce` was removed: /, why: "BP-030: the manager refuses the removed `announce` option loudly, naming it (FIX-2132)" },
+  { path: /^packages\/harness-manager\/README\.md$/, line: /^- The manager keeps no questions of its own\. Removed: /, why: "the README's migration note: says the question inbox is gone and what replaces it (FIX-2132)" },
   { path: /^packages\/orchestration\/README\.md$/, line: /^\*\*Migrating from `resumeOwedWaits`\.\*\* `resumeOwedWaits\(ctx, collection\)` is no longer exported/, why: "the README's migration note: says the helper is gone" },
   { path: /^packages\/workforce\/src\/conversation-board\/(board-entries|ledger)\.ts$/, line: /\bRETRY_OF\b/, why: "BP-030: the retired marker's key, kept only so a row an older host wrote has it stripped from what a caller reads; nothing writes it" },
   { path: /^packages\/workforce\/src\/workers\/upgrade-entry-names\.ts$/, line: /from: "runTaskBoard"/, why: "BP-030: the host-start rewrite of a request stored under the old entry name (FIX-2084)" },
@@ -265,3 +292,13 @@ export const FORWARDERS = {
  * their place, so a new caller of a helper is a finding like a direct write.
  */
 export const PASS_THROUGHS = ["advisoryComplete", "advisoryFail", "advisoryCancel"];
+
+/**
+ * FIX-2133's Inbox rule: one item type says what waits on the user, built in one place. The
+ * functions allowed to build an orchestration `InboxItem`, each with its reason. Keyed like
+ * {@link RECORDERS}. An item built anywhere else is a finding: a second list of what waits on
+ * the user, which the Inbox and its counts would disagree with.
+ */
+export const INBOX_READ = {
+  "orchestration:itemOf": "the Inbox read's one constructor of an item: `inboxItems`, the read, lists every item through it",
+};

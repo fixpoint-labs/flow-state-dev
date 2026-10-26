@@ -8,23 +8,32 @@ import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 import { isTaskTurn } from "../task-board/task-turn";
 import {
   readCommittedTask,
+  shownSteer,
   steersTakenIn,
   ticketForClaim,
   untakenSteers,
+  type ShownSteer,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../tasks";
 
-/** One steer as a worker is shown it: the words, and who sent them. */
-export interface ShownSteer {
-  readonly message: string;
-  readonly from: "filer" | "user";
-}
+export type { ShownSteer };
 
 /** Who sent a steer, in a worker's words. */
 function senderOf(from: ShownSteer["from"]): string {
+  if (from === "board") return "the board";
   return from === "user" ? "the user" : "whoever assigned you the task";
+}
+
+/** One steer's line: who sent it, and the question it answers when it answers one (FIX-2133). */
+function steerLine(steer: ShownSteer): string {
+  const words = steer.message.split("\n").join("\n  ");
+  if (steer.question === undefined) return `- From ${senderOf(steer.from)}: ${words}`;
+  const question = steer.question.split("\n").join(" ");
+  return steer.from === "board"
+    ? `- From ${senderOf(steer.from)}, for your question "${question}": ${words}`
+    : `- From ${senderOf(steer.from)}, answering "${question}": ${words}`;
 }
 
 /**
@@ -35,9 +44,7 @@ function senderOf(from: ShownSteer["from"]): string {
  * @param lead What the steers are, for this reader.
  */
 export function renderSteers(steers: readonly ShownSteer[], lead: string): string {
-  return [lead, ...steers.map((steer) => `- From ${senderOf(steer.from)}: ${steer.message.split("\n").join("\n  ")}`)].join(
-    "\n"
-  );
+  return [lead, ...steers.map(steerLine)].join("\n");
 }
 
 /**
@@ -48,12 +55,13 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
  */
 export function showTakenSteers(
   ctx: Pick<BlockContext, "emit">,
-  steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user"; readonly by?: string }>
+  steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user" | "board"; readonly by?: string }>
 ): void {
   for (const steer of steers) {
     if (steer.id.startsWith("line:")) continue;
-    const sender = steer.from === "filer" ? "the task's filer" : (steer.by ?? "the user");
-    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName: steer.from === "filer" ? "filer" : (steer.by ?? "user") });
+    const sender = steer.from === "filer" ? "the task's filer" : steer.from === "board" ? "the board" : (steer.by ?? "the user");
+    const agentName = steer.from === "filer" ? "filer" : steer.from === "board" ? "board" : (steer.by ?? "user");
+    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName });
   }
 }
 
@@ -116,7 +124,7 @@ export async function takeRunningSteers(
   // this request first read can't say): a read, no write. A steer that lands
   // after it is taken before the next model call, or by the gate's check.
   const stored = (await readCommittedTask(ledger, row.id)) ?? row;
-  if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
+  if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map((steer) => shownSteer(stored, steer));
   const outcome = await ledger.takeSteers(row.id, { claim, takenIn });
   if (outcome.outcome === "declined") return [];
   const now = ledger.get(row.id);
@@ -124,7 +132,7 @@ export async function takeRunningSteers(
   // Shown once: only the steers this write took, as it says. A read under the
   // same name that ran beside it, or again, took none.
   if (show !== undefined) showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
-  return steersTakenIn(now, takenIn).map(({ message, from }) => ({ message, from }));
+  return steersTakenIn(now, takenIn).map((steer) => shownSteer(now, steer));
 }
 
 /** {@link createSteerContext}'s options: where it reads the row the request holds. */

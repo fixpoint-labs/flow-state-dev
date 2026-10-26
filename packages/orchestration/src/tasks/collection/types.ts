@@ -13,6 +13,8 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
+import type { HoldAsk, SuspensionHold } from "../schema/hold";
+import type { HoldAnswer } from "./holds";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**
@@ -29,6 +31,14 @@ export type CancelOptions = TaskTransitionOptions & {
    * how it was built (a tool, or an action), never from input (BP-031).
    */
   readonly via?: TaskCancelSource;
+  /**
+   * The cancel is a confirm's No (FIX-2133, owner 2026-10-25): it lands only
+   * while this row hold is open, decided on the committed row in the cancel's
+   * own write, as an answer is. Declines `answered` once the hold has an
+   * answer (a yes first, say), and `no-such-hold` for an id that isn't a
+   * question or a confirm on the row.
+   */
+  readonly whileHoldOpen?: string;
 };
 
 /** What a running task waits on (`Task.waitingOn`, FIX-2077). */
@@ -141,9 +151,23 @@ export type TaskWriteDeclineReason =
   | "untaken-steers"
   /**
    * A steer past the most a task takes (`MAX_STEERS`, FIX-2086 D1): cancel
-   * it and file it again, or file a follow-up once it ends.
+   * it and file it again, or file a follow-up once it ends. Each open question
+   * keeps its answer's place under the cap (FIX-2133), so questions that
+   * would take the row past it are refused this way too.
    */
-  | "steer-limit";
+  | "steer-limit"
+  /**
+   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
+   * a turn's mirror of its stop, refused while a hold is open. A held row
+   * settles only by cancel; it starts no turn and renews no lease until its
+   * holds close. Its open holds come from one source at a time, so a turn that
+   * waits once can't wait again.
+   */
+  | "held"
+  /** An answer to a question already answered with other words, or by another sender (FIX-2133). */
+  | "answered"
+  /** An answer naming no question or confirm on the row (FIX-2133). */
+  | "no-such-hold";
 
 /**
  * What a write actually did (FIX-976).
@@ -425,6 +449,13 @@ export interface TaskTransitionOptions {
    * so the cancel owes it no notice.
    */
   viaTool?: boolean;
+  /**
+   * @internal Refuse the write `held` while the row is held (FIX-2133):
+   * `"any"` hold (a lease renewal), or an open `"row"` hold (the claim gate's
+   * mirror of its run's stop, one source at a time). Decided on the committed
+   * row inside the write. Set by the backings' own verbs, never by a caller.
+   */
+  refuseWhenHeld?: "any" | "row";
 }
 
 /**
@@ -918,12 +949,74 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
       claim: TaskClaimTicket;
       leaseUntil?: number;
       answer?: { output: unknown };
-      /** With `"user"`: the stop it waits on, copied onto the row (`Task.waitingFor`, FIX-2129). */
-      waitingFor?: Task["waitingFor"];
-      /** With `null`: keep the stop the row records, for a later request admitted while the task's own run stays parked on it. */
-      keepWaitingFor?: boolean;
+      /**
+       * With a wait: the task run's stop for a person, mirrored on the row as
+       * a suspension hold in the same write (FIX-2133). Refused `held` while a
+       * row hold is open: the stop arm then cancels the stop.
+       */
+      hold?: SuspensionHold;
+      /**
+       * With `null`: the run's own resume, which closes the mirror. A later
+       * request admitted while the run stays parked passes none and keeps it.
+       */
+      resume?: boolean;
+      /**
+       * With `"steer"`: the turn a steer no request took is owed (FIX-2086
+       * D2), marked on the row (`turnOwed`) so the claim can take it when no
+       * wake starts it (FIX-2133 D3).
+       */
+      owesTurn?: boolean;
     }
   ): Promise<TaskWriteOutcome>;
+  /**
+   * Ask questions midway (FIX-2133): the turn holding the task's claim opens
+   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
+   * one write. The row stays `in_progress` on its attempt with no lease until
+   * every question is answered (or a deadline the host set passes), then owes
+   * one more turn on that attempt (`turnOwed`), which the claim takes.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, and the write
+   * declines `terminal`, `not-my-task` or `lost-claim` (a later turn's claim
+   * included) otherwise. Declines `held` while a stop for a person holds the
+   * row (one wait per turn), and `steer-limit` when the questions' answers
+   * would take the row past `MAX_STEERS` places. A recorded ask names the new
+   * holds' ids (`holds`). Publishes `asked`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); a board
+   * without it can't hold a task midway.
+   */
+  ask?(
+    id: string,
+    asks: readonly HoldAsk[],
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome & { readonly holds?: readonly string[] }>;
+  /**
+   * Answer one of the row's questions or confirms (FIX-2133 D1): the answer is
+   * kept as a steer carrying the hold's id, from `answer.from`, and joins the
+   * brief. The last open row hold's answer lets the work go on in the same
+   * write: a task that hasn't started becomes claimable, its first attempt a
+   * start; a running one owes one more turn on its same attempt (`turnOwed`).
+   *
+   * The same words from the same sender again are `unchanged`, even after the
+   * task has finished. Declines `answered` for other words or another sender,
+   * `terminal` on a finished row, and `no-such-hold` for an id that isn't a
+   * question or a confirm on it. Who may answer which hold is the caller's
+   * rule (the board's `updateTask`); this write never checks a caller.
+   * Publishes `answered`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030).
+   */
+  answer?(id: string, answer: HoldAnswer): Promise<TaskWriteOutcome>;
+  /**
+   * A touch of the board (FIX-2133): close every open question past the due
+   * time a host set, with the board's "no answer came" steer, which lets the
+   * work go on as an answer would. A question with no due time is never
+   * closed here. Returns the ids of the rows it wrote, so a board wakes only
+   * those.
+   *
+   * Optional: both built-in backings implement it.
+   */
+  payHoldDeadlines?(): Promise<string[]>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
@@ -994,8 +1087,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
   /**
    * Clear the row's resume-owed marker (`Task.resumeOwed`) once its waiting
-   * turn has its answer (FIX-1816), and the stop a cancelled row kept to pay
-   * it (`Task.waitingFor`, FIX-2129). `unchanged` when no marker is set.
+   * turn has its answer (FIX-1816), and with it the mirror of the stop a
+   * cancelled row kept to pay it (its suspension hold, FIX-2129, FIX-2133).
+   * `unchanged` when no marker is set.
    *
    * Optional: both built-in backings implement it, together with writing the
    * marker when a waited-on row ends. A hand-written ref that does neither cannot

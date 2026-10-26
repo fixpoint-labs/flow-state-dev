@@ -26,6 +26,8 @@ export interface IdleQueryOptions {
   env: Record<string, string>;
   /** How long to wait for the answer. */
   timeoutMs: number;
+  /** Stops waiting and closes the query when it aborts, read as `timeout`. */
+  signal?: AbortSignal;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
   importSdk?: SdkImporter;
 }
@@ -57,10 +59,16 @@ export async function runIdleQuery<H extends { close?: () => void }, T>(
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   let handle: H | undefined;
   try {
+    if (options.signal?.aborted) return { status: "timeout" };
     handle = query({ prompt: noMessages(), options: { env: options.env } });
-    const timedOut = new Promise<typeof TIMEOUT>((resolve) => (timer = setTimeout(() => resolve(TIMEOUT), options.timeoutMs)));
+    const timedOut = new Promise<typeof TIMEOUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMEOUT), options.timeoutMs);
+      onAbort = () => resolve(TIMEOUT);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+    });
     const value = await Promise.race([ask(handle), timedOut]);
     if (value === TIMEOUT) return { status: "timeout" };
     return { status: "answer", value: value as T };
@@ -68,6 +76,7 @@ export async function runIdleQuery<H extends { close?: () => void }, T>(
     return { status: "error", reason: messageOf(error) };
   } finally {
     clearTimeout(timer);
+    if (onAbort !== undefined) options.signal?.removeEventListener("abort", onAbort);
     release();
     try {
       handle?.close?.();

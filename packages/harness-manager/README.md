@@ -26,9 +26,9 @@ const manager = harnessManager({
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
 
-  // The slot. Called once; the manager hands down three feeds.
-  harness: ({ cwd, resume, onSession }) =>
-    claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+  // The slot. Called once; the manager hands down four feeds.
+  harness: ({ cwd, resume, onSession, onUsage }) =>
+    claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
 });
 ```
 
@@ -77,9 +77,9 @@ The run record shows where that stands. `place` names the machine the run is on 
 
 A failed save of either kind, kept files or repository work, doesn't fail the run, and the next save point tries again. The exception is an attempt that would complete: completing is its last save point, so it fails instead and the retry saves the work.
 
-If the saved work doesn't match the run's record, the harness doesn't run. The row's status becomes `parked`, `place.state` is `lost`, and the run's owner gets a question naming what disagreed. Nothing saved is changed or deleted. Once the owner answers, the run starts again from its base, with the saved files in `held/` beside the checkout when they can be read.
+If the saved work doesn't match the run's record, the harness doesn't run. The task is held on a question for the run's owner, naming what disagreed, and `place.state` is `lost`. Nothing saved is changed or deleted. Once the owner answers, the next run, on the same attempt, starts from its base, with the saved files in `held/` beside the checkout when they can be read.
 
-Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, parks anyway and asks its owner rather than starting over.
+Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
 A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts.
 
@@ -168,14 +168,12 @@ On a board read from the claim:
 
 - **A refused run fails the task for good** (`errored`, never retried), so the conversation
   hears why. On a fixed board it is cancelled, as before.
-- **A question parks the task on the board**, the way the conversation parks any task. The
-  user answers there, and the next attempt gets the answer in its prompt, in the same
-  checkout and agent session.
 - **A judge, when you give one, reads the run** after the phase's own check passes, for a task
   with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
   count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
-  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* parks
-  the task with the reason as its question. A verdict under `floor` counts as done. `confidence`
+  reason }`. *Not done* fails the attempt and the next prompt carries the reason; *ask* holds
+  the task on the reason as a question, as a run's own question does
+  ([Continuing a run](#continuing-a-run)). A verdict under `floor` counts as done. `confidence`
   and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
   your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
@@ -185,13 +183,14 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with three feeds:
+The manager calls your factory once, with four feeds (`HarnessFeeds`):
 
 | Feed | What it does |
 |---|---|
 | `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
+| `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
 
@@ -211,7 +210,7 @@ harness: ({ cwd, resume, onSession }) =>
   cursorAgent({ cwd, resume, onSession, agent: { model: { id: "composer-2.5" } } }),
 ```
 
-Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
+Any block that takes the four feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
@@ -242,13 +241,33 @@ Collections a phase reads ride the standard `uses` option:
 harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
-A capability claiming one of the manager's own accessors (`runs`, `inbox`, the board's ledger) is refused when you build the manager, naming the key.
+A capability claiming one of the manager's own accessors (`runs`, `harness-usage`, the board's ledger) is refused when you build the manager, naming the key.
 
 ## Continuing a run
 
-A run that needs a decision writes a question and parks. Answer it, and the next attempt **continues the same coding session** rather than starting over told what was answered.
+A run that needs a decision writes its question to the file its prompt names (`run.askMarkerPath`) and stops. Its task is then held on the question: it stays on its attempt, its lease is dropped, and nothing settles it or starts another run while the question is open. Its work is saved first, and the checkout is free. The Inbox lists the held task as a question, and the board's own `getTask` shows it among the task's open holds.
 
-The recorded session is the one the harness *confirmed* it was in. If the agent has lost that session, the attempt that asked for it ends without one and the next attempt starts fresh.
+The answer goes through the board's `updateTask` action, naming the question, as the Inbox sends it:
+
+```ts
+await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
+```
+
+A line the user types in the run's session answers the task's oldest open question the same way (see [Talking to a run](#talking-to-a-run)). Once its last question is answered, the task takes one more turn **on the same attempt**: no retry is spent. That turn's run **continues the same coding session** rather than starting over told what was answered. Its prompt is the phase's `buildPrompt` again, with `run.answers` holding the task's answered questions, oldest first, each with its answer. A run may ask again, and the next answer works the same way. Each run writes its question to a path of its own (`.fsdev/ask/<attempt>-<run>.md`), so a run never reads a question an earlier one already asked.
+
+A cancel while the task waits closes the question and starts nothing: what the run committed stays on its branch, and its kept files stay saved. A question has no deadline unless the host sets one on the board; at a deadline it closes with a "no answer came" message, and the next run goes on in the same session with it.
+
+The judge's *ask*, and held work that doesn't match its record, ask the same way.
+
+The recorded session is the one the harness *confirmed* it was in. If the agent can't find that session, the next run starts a fresh one, with the brief, the question and the answer in its prompt.
+
+### Upgrading from the question inbox
+
+- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type.
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open holds, `openRowHolds`) and answer with its `updateTask` action.
+- `run.answers` reads the task's answered questions from its row.
+- `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
+- `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
 
 ## Talking to a run
 
@@ -294,7 +313,7 @@ defineFlow({
 
 The session's task is found in the chain of the task that ran there (the task and its follow-ups, which run in the session one at a time), the way Workforce's door finds it: the open one running here, else the latest open one, a follow-up waiting to start, else the latest that ran here. Sent `{ message }`, the door writes the line into the session as the user's message, then:
 
-- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. Answers `{ steered: <taskId> }`.
+- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. While the task is held on a question, the line answers its oldest open question instead, and the turn the answer owes resumes the coding session ([Continuing a run](#continuing-a-run)). Answers `{ steered: <taskId> }`.
 - **every task in the chain finished** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. It holds the checkout while it runs, as a run does, so a follow-up claimed meanwhile waits for it; `talkTimeoutMs` (default 10 minutes) bounds it. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
 
 A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:
@@ -338,13 +357,37 @@ It writes each kept line no attempt took onto its task as an untaken steer from 
 
 Neither bounds what the run *spawned*. A command the agent's process started can outlive the kill; the sandbox you configure on the harness is the fence for that, not this deadline.
 
+## Subscription usage
+
+`harnessUsageAction({ readers, timeoutMs? })` is one flow-level action, the `harnessUsage` query: how much of each coding harness's subscription a user has used, window by window, with how old each reading is. `readers` holds one core `HarnessUsageReader` per harness, keyed by its name. Put it on one flow, the one your screens and workers call:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { readCodexUsage } from "@flow-state-dev/codex";
+import { harnessUsageAction } from "@flow-state-dev/harness-manager";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] });
+const actions = {
+  harnessUsage: harnessUsageAction({ readers: { codex: (options) => readCodexUsage({ env, ...options }) } }),
+};
+```
+
+- **Input** `{ refresh?: boolean }`. **Output** `{ harnesses: HarnessUsageRow[] }`, sorted by harness: `status` (`windows`, `api-key`, `signed-out`, `unavailable`), `reason`, `plan`, `windows` (each with `checkedAt`, `origin`, `ageMs` and `rolledOver`; `origin` is `"read"` for a reader's refresh and `"run"` for a window a run reported), `checkedAt`, `ageMs` and `refreshError`. No model call.
+- **Without `refresh`, nothing is read.** A harness with a reader and no reading yet is listed as `unavailable`, `"Not checked yet"`.
+- **`refresh: true` runs the readers**, at most once a minute per user and harness (`USAGE_REFRESH_EVERY_MS`), counted from the last attempt whether or not it worked. Refreshes that arrive together share one call. A reader that throws or outlasts `timeoutMs` (default `USAGE_READ_TIMEOUT_MS`, 10 s) leaves the stored reading and sets `refreshError`.
+- **`ageMs` and `rolledOver` are worked out by the server's clock** when the query runs. `rolledOver` is true once a window's `resetsAt` has passed.
+- **Run windows land on their own.** Pass the slot's `onUsage` to the harness (`claudeCodeAgent` takes it) and each window a run reports is stored with `origin: "run"`; the session door stores a talk's windows for the user talking. For Claude Code, register `readClaudeUsage` from `@flow-state-dev/claude-code/sdk` as the `claude-code` reader: it names the account and plan, and the windows come from runs.
+- **One current record per user and harness.** A reading replaces the last reading's windows and keeps run windows it doesn't name; on a shared window the newer wins. A newer report for a window replaces an older one, and an older one arriving late is ignored, as is a reading older than the stored one. A reading or run window from a different account clears the earlier account's windows and plan. A no-number reading (`api-key`, `signed-out`) clears every window, and a run that started before it doesn't bring them back. The account is kept as a hash; no email is stored. No history.
+
+The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, user scope, not client-readable, not writable by a model). On the server, `readHarnessUsage(ctx, now, expected?)` returns the query's rows without refreshing, and `recordHarnessUsage` is the one writer, in two forms: `recordHarnessUsage(ctx, report)` for one window a run reported (the manager's and session door's `onUsage` call it), and `recordHarnessUsage(ctx, harness, reading, checkedAt)` for a whole reading. It answers `"recorded"`, `"kept-stored"` or `"refused-older"`. Both throw when the calling block doesn't have the collection under `HARNESS_USAGE`.
+
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
-The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` aren't exported. Read with `readRunRow` and the collections.
+The run record's writes (`openRunRow`, `writeRunRow`) aren't exported. Read with `readRunRow` and the collection.
 
 ## Telling the guard where you live
 
@@ -368,11 +411,12 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 
 ## Limits
 
-- **Saving work across machines is opt-in.** Without a held-work store, a run's checkout exists only on the machine that made it, and a retry that lands elsewhere starts from the base branch. A run whose record says its work was saved, with no store and no live checkout on this machine, parks and asks its owner rather than starting over.
+- **Saving work across machines is opt-in.** Without a held-work store, a run's checkout exists only on the machine that made it, and a retry that lands elsewhere starts from the base branch. A run whose record says its work was saved, with no store and no live checkout on this machine, asks its owner rather than starting over.
 - **A turn in progress can be lost.** Work is saved when a turn ends, so a machine that dies mid-turn loses that turn.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
 - **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. Each acquisition carries its own token, so a displaced process never removes its replacement's lock. The token gives no stronger cross-process exclusion than that.
-- **No retention policy.** Run records and question rows grow without bound.
+- **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's plan and percents.
+- **No retention policy.** Run records grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
 - **A steer waits for the step to end** unless the manager is built with `stopsOnAbort: true`.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.

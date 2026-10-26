@@ -188,6 +188,8 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
       // against the row — not so it can trust it. Every field comes off the
       // ticket the board minted from the row it claimed.
       attempt: claim.attempt,
+      // Which turn of that attempt (FIX-2133 D3): a later turn's claim moves it.
+      turn: claim.turn,
       createdAt: claim.createdAt,
       // Spread conditionally: the payload beside it has to clear a gate that
       // rejects a present key holding `undefined` by name.

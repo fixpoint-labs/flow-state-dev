@@ -20,6 +20,7 @@ import {
   CODE,
   EXCLUDE,
   FORWARDERS,
+  INBOX_READ,
   KEEP,
   MIGRATION_TABLE,
   PASS_THROUGHS,
@@ -502,6 +503,68 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     };
     visit(sf);
   }
+  // ---- inbox · one item type, built in one place (FIX-2133) -----------------------------------
+  // Read by type: an object literal typed as orchestration's `InboxItem` (its contextual type, a cast
+  // included), or one whose own type carries an item's `task`, `holds` and `answerable` however
+  // its properties are written (shorthand, spread). Allowed only in a function `INBOX_READ` names:
+  // an item is the only thing an Inbox can draw, so building one is the only way to list one.
+  const INBOX_MODULE = "packages/orchestration/src/inbox/types.ts";
+  const declaredIn = (sym, module, name) => (sym?.declarations ?? []).some((d) => rel(d.getSourceFile()) === module && (name === undefined || d.name?.getText?.() === name));
+  const typeDeclaredIn = (type, module, name) => {
+    if (type === undefined) return false;
+    if (declaredIn(type.aliasSymbol, module, name)) return true;
+    return type.isUnion() && type.types.some((t) => declaredIn(t.aliasSymbol, module, name));
+  };
+  const inboxItemDecl = ownFiles.find((sf) => rel(sf) === INBOX_MODULE)?.statements.find((s) => ts.isTypeAliasDeclaration(s) && s.name.text === "InboxItem");
+  // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
+  // definition: a finding, not a rule that read nothing.
+  if (inboxItemDecl === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
+  const ITEM_SHAPE = ["task", "holds", "answerable"];
+  // A literal typed `any` or `unknown` (a spread of an `any` value) is no item: every slot accepts it.
+  const isInboxItem = (node) => {
+    if (typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem")) return true;
+    const own = checker.getTypeAtLocation(node);
+    if (own.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
+    return ITEM_SHAPE.every((p) => own.getProperty(p) !== undefined);
+  };
+  const inboxScanned = { items: 0 };
+  for (const sf of ownFiles) {
+    const path = rel(sf);
+    const visit = (node) => {
+      // Any syntax that can give the literal an item's `holds`: assigned, shorthand, quoted or computed, or a spread.
+      const mayHoldHolds = (p) =>
+        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "holds"));
+      if (inboxItemDecl !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldHolds) && isInboxItem(node)) {
+        inboxScanned.items++;
+        const key = `${packageOf(path)}:${recorderOf(node)}`;
+        if (!(key in INBOX_READ) && !isMarked(lineText(sf, node))) {
+          findings.push({ rule: "inbox", where: `${path}:${lineOf(sf, node)}`, what: `builds an Inbox item in ${key}, outside the Inbox read: a second list of what waits on the user` });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  // The floor: the Inbox read itself must be read, or the rule is reading nothing.
+  if (inboxItemDecl !== undefined && inboxScanned.items === 0) cantTell.push("inbox: no object typed as InboxItem was read, so the rule can't see an Inbox item being built");
+  scanned.inbox = inboxScanned.items;
+  for (const key of inboxItemDecl === undefined ? [] : Object.keys(INBOX_READ)) {
+    const at = [];
+    for (const sf of ownFiles) {
+      const visit = (node) => {
+        const name = nameOfFunction(node);
+        if (name !== undefined && `${packageOf(rel(sf))}:${name}` === key) at.push(`${rel(sf)}:${lineOf(sf, node)}`);
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    if (at.length !== 1) {
+      const what = `CAN'T TELL: ${key} names ${at.length} functions, so the Inbox read can't be told from another`;
+      cantTell.push(`inbox: ${what}`);
+      findings.push({ rule: "inbox", where: at.join(" and ") || "rules.mjs", what });
+    }
+  }
+
   const unreadFlows = (doorRule?.floor ?? []).filter((f) => !workerFlows.some((w) => w.startsWith(`${f}:`)));
   if (unreadFlows.length > 0) cantTell.push(`removed: the door rule read no worker flow in ${unreadFlows.join(", ")}, so it stopped reading the built-in flows`);
 

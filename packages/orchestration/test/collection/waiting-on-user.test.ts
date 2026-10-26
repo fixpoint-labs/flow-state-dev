@@ -1,9 +1,10 @@
 /**
  * A task whose run waits for a user (FIX-2129), on both backings: the row's
- * record of the stop (`waitingFor`), the resume a cancel owes the parked run
- * (`resumeOwed`, the board's existing mark), who pays it (`cancelAndResume` at once,
- * under the stop's fence; `payOwedResumes` on the next touch), and the filing
- * a cancelled task makes afterwards (refused).
+ * mirror of the stop (a suspension hold in `holds`, FIX-2133), the resume a
+ * cancel owes the parked run (`resumeOwed`, the board's existing mark), who
+ * pays it (`cancelAndResume` at once, under the stop's fence; `payOwedResumes`
+ * on the next touch), and the filing a cancelled task makes afterwards
+ * (refused).
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext, ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/types";
@@ -11,22 +12,25 @@ import {
   cancelAndResume,
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
+  openHolds,
   ticketForClaim,
   TaskFilingRefusedError,
-  type Task,
+  type SuspensionHold,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-const STOP: NonNullable<Task["waitingFor"]> = {
-  requestId: "req_run",
-  suspensionId: "susp_1",
-  kind: "input",
-  prompt: "Which region?",
-  deadline: 9_999_999,
+const STOP: SuspensionHold = {
+  id: "susp_1",
+  actor: "user",
+  openedAt: 1000,
+  due: 9_999_999,
+  source: { kind: "suspension", requestId: "req_run", suspensionId: "susp_1" },
+  ask: { kind: "input", prompt: "Which region?" },
 };
+const ADDRESS = { requestId: STOP.source.requestId, suspensionId: STOP.source.suspensionId };
 
 async function sequencerBacking(): Promise<TaskCollectionRef> {
   return createStateBackedTaskCollection({
@@ -63,38 +67,46 @@ describe.each([
     await collection.addTask({ id: "t", goal: "t" });
     const task = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
     const claim = ticketForClaim(collection.collectionId, task);
-    await collection.setWaitingOn!("t", "user", { claim, waitingFor: STOP });
+    await collection.setWaitingOn!("t", "wait", { claim, hold: STOP });
     return { collection, claim };
   }
 
-  it("records the stop it waits on in the write that drops the lease, and admission clears it", async () => {
+  it("mirrors the stop it waits on in the write that drops the lease, and the run's own resume closes it", async () => {
     const { collection, claim } = await waiting();
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", waitingOn: "user", waitingFor: STOP });
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", waitingOn: "wait", holds: [STOP] });
+    expect(openHolds(collection.get("t")!)).toEqual([STOP]);
     expect(collection.get("t")!.leaseUntil).toBeUndefined();
-    // A wait on anything else records no stop.
-    await collection.setWaitingOn!("t", "filed", { claim, waitingFor: STOP });
-    expect(collection.get("t")!.waitingFor).toBeUndefined();
-    await collection.setWaitingOn!("t", "user", { claim, waitingFor: STOP });
-    // A later request admitted while the run stays parked keeps it; the run's own resume clears it.
-    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000, keepWaitingFor: true });
-    expect(collection.get("t")).toMatchObject({ waitingFor: STOP });
-    expect(collection.get("t")!.waitingOn).toBeUndefined();
+    // A later request admitted while the run stays parked keeps it; the run's own resume closes it.
     await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000 });
-    expect(collection.get("t")!.waitingFor).toBeUndefined();
+    expect(collection.get("t")).toMatchObject({ holds: [STOP] });
+    expect(collection.get("t")!.waitingOn).toBeUndefined();
+    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000, resume: true });
+    expect(collection.get("t")!.holds).toBeUndefined();
+  });
+
+  it("refuses to mirror a stop on a row a question holds: one wait per turn", async () => {
+    const { collection, claim } = await waiting();
+    await collection.setWaitingOn!("t", null, { claim, leaseUntil: 50_000, resume: true });
+    expect((await collection.ask!("t", [{ kind: "question", prompt: "Which date column?" }], { claim })).outcome).toBe("recorded");
+    const refused = await collection.setWaitingOn!("t", "wait", { claim, hold: STOP });
+    expect(refused).toMatchObject({ outcome: "declined", reason: "held" });
+    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
   });
 
   it("a cancel owes the parked run its resume in the same write, keeping the stop it is owed to; the clear drops both", async () => {
     const { collection } = await waiting();
     await collection.cancel("t", "no longer needed");
     const ended = collection.get("t")!;
-    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, waitingFor: STOP });
+    // Closed with the row (no open hold), its address kept for the debt.
+    expect(ended).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
+    expect(openHolds(ended)).toEqual([]);
     expect(ended.waitingOn).toBeUndefined();
     // A later write to the ended row keeps the debt's address.
     await collection.patchMetadata("t", { note: "x" });
-    expect(collection.get("t")!.waitingFor).toEqual(STOP);
+    expect(collection.get("t")!.holds).toEqual([STOP]);
     await collection.clearResumeOwed!("t");
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.waitingFor).toBeUndefined();
+    expect(collection.get("t")!.holds).toBeUndefined();
   });
 
   it("an ending of a row that waits on nothing owes nothing", async () => {
@@ -109,13 +121,13 @@ describe.each([
     await collection.cancel("t");
     const busy = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
     expect((await payOwedResumes(busy.ctx, collection)).stillOwed).toEqual(["t"]);
-    expect(busy.calls).toEqual([{ suspension: { requestId: STOP.requestId, suspensionId: STOP.suspensionId }, outcome: { cancelled: true }, taskCancelled: true }]);
+    expect(busy.calls).toEqual([{ suspension: ADDRESS, outcome: { cancelled: true }, taskCancelled: true }]);
     expect(collection.get("t")!.resumeOwed).toBe(true);
 
     const paid = hostThat(async () => ({ ok: true }));
     expect((await payOwedResumes(paid.ctx, collection)).resumed).toEqual(["t"]);
     expect(collection.get("t")!.resumeOwed).toBeUndefined();
-    expect(collection.get("t")!.waitingFor).toBeUndefined();
+    expect(collection.get("t")!.holds).toBeUndefined();
   });
 
   it("cancelAndResume writes the cancel under the stop's fence, then the resume is paid and nothing stays owed", async () => {
@@ -146,7 +158,7 @@ describe.each([
     const { collection } = await waiting();
     const host = hostThat(async () => ({ ok: false, refused: "busy", detail: "held" }));
     await cancelAndResume(host.ctx, collection, "t");
-    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, waitingFor: STOP });
+    expect(collection.get("t")).toMatchObject({ status: "cancelled", resumeOwed: true, holds: [STOP] });
   });
 
   it("refuses a filing by a task that is already cancelled, on the same board", async () => {

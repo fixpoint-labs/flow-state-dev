@@ -140,9 +140,11 @@ import {
   settingsWrite,
   settingsChangeKind,
   type TaskSettingsPatch,
+  type FilingStamp,
   parkPatch,
   unparkPatch,
 } from "./internal";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
@@ -262,6 +264,8 @@ export interface ResourceBackedOptions {
    * `defineTaskCollection({ settings })`). Omitted, only the defaults.
    */
   settings?: TaskSettingsSupport;
+  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  filing?: FilingStamp;
   /**
    * The board's payer for the tasks a task filed (FIX-2080 D2;
    * `defineTaskCollection({ cascadeFiled })`), bound to the running context.
@@ -794,6 +798,26 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return write();
   }
 
+  /**
+   * The one hold write (FIX-2133), decided on the committed row inside the
+   * serialized write: `decline` first (a claim fence), then the hold rule.
+   */
+  function writeHolds(
+    id: string,
+    kind: TaskChangeKind,
+    change: HoldChange,
+    decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
+  ): Promise<TaskWriteOutcome> {
+    return patchRef(id, kind, (task) => {
+      const fenced = decline?.(task);
+      if (fenced !== undefined) throw new WriteDeclined(fenced, task.status);
+      const decided = holdWrite(task as Task, change);
+      if (decided === "unchanged") return undefined;
+      if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+      return decided.patch as Partial<Task<TInput, TOutput>>;
+    });
+  }
+
   /** The board's committed row by id, read through the mirror. */
   function lookupRow(id: string): Task | undefined {
     const r = mirror.get(id);
@@ -902,7 +926,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async addTask(init) {
       assertFilingSettings(init, options.settings, options.collectionId);
-      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init));
+      const task = buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing);
       await refreshDeps([task as Task]);
       assertDepsFileable([task as Task], lookupRow);
       assertParentsOpen([task as Task], lookupRow);
@@ -920,7 +944,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async addTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, options.collectionId);
       const built = inits.map((init) =>
-        buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init))
+        buildInitialTask<TInput, TOutput>(withFollowUpPlacement(init, lookupRow), now(), options.createdBy, filerFor(init), options.filing)
       );
       // Every row is checked before any is written; ids in the batch count (FIX-2080).
       await refreshDeps(built as Task[]);
@@ -1071,12 +1095,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // than an exception: the claim commits `leaseUntil` and `updatedAt` from
       // one clock, so keeping them in step is what preserves
       // `leaseUntil - updatedAt === the committed span` across a renewal.
+      // A held row renews no lease (FIX-2133): a renewal racing a midway question loses.
       return transitionRef(
         id,
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true }
+        { ...renewOptions, ifAllowed: true, refuseWhenHeld: "any" }
       );
     },
 
@@ -1100,8 +1125,42 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "in_progress",
         null,
         (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
-        linkRunGuards({ claim: waitOptions.claim })
+        // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWhenHeld: "row" as const } : {}) }
       );
+    },
+
+    async ask(id, asks, askOptions) {
+      requireClaimTicket(askOptions?.claim, "ask", "of the turn that asks. Only the request holding a task's claim asks midway.");
+      assertAskable(asks);
+      const guards = linkRunGuards({ claim: askOptions.claim });
+      // Minted once, outside the write, so a retried write opens the same holds.
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const outcome = await confirmedDecline(id, () =>
+        writeHolds(id, "asked", { op: "ask", holds }, (task) =>
+          transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now())
+        )
+      );
+      return outcome.outcome === "recorded" ? { ...outcome, holds: holds.map((hold) => hold.id) } : outcome;
+    },
+
+    async answer(id, answer) {
+      // Minted once, outside the write, so a retried write keeps one steer.
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      return confirmedDecline(id, () => writeHolds(id, "answered", change));
+    },
+
+    async payHoldDeadlines() {
+      // Rows another process filed are read too, so their deadlines are paid.
+      await adoptUnknownRows(mirror, options.collection);
+      const at = now();
+      const paid: string[] = [];
+      for (const row of listAll() as Task[]) {
+        if (holdsDue(row, at).length === 0) continue;
+        const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
+        if (outcome.outcome === "recorded") paid.push(row.id);
+      }
+      return paid;
     },
 
     async complete(id, output, options) {
@@ -1309,7 +1368,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         if (
           task.status !== "in_progress" ||
           task.leaseUntil === undefined ||
-          task.leaseUntil >= at
+          task.leaseUntil >= at ||
+          // A held row is never taken back (FIX-2133).
+          hasOpenHold(task as Task)
         ) {
           continue;
         }
@@ -1319,7 +1380,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           if (
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
-            t.leaseUntil >= at
+            t.leaseUntil >= at ||
+            hasOpenHold(t as Task)
           ) {
             return { state: current, result: undefined };
           }

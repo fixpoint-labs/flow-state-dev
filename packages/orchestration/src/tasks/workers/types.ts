@@ -76,7 +76,16 @@ export const taskWorkerInputSchema = z.object({
    * not, so a retry is never run as first filed. Absent on a task never
    * steered.
    */
-  steers: z.array(z.object({ message: z.string(), from: z.enum(["filer", "user"]) })).optional(),
+  steers: z
+    .array(
+      z.object({
+        message: z.string(),
+        from: z.enum(["filer", "user", "board"]),
+        /** The question this steer answers (FIX-2133), as it was asked; absent on a steer that answers none. */
+        question: z.string().optional(),
+      })
+    )
+    .optional(),
   /**
    * The finished task this one follows up (`Task.followUpOf`), present only
    * on a follow-up: a `per-task` dispatch runs it in that task's session.

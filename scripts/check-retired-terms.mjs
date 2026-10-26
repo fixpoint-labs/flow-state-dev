@@ -154,8 +154,8 @@ export const EXCEPTIONS = [
   {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|`Kind`/g,
-    why: "a type discriminant's own type, and the engine flow kinds a test registers (BR-10)",
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:waitForUserKindOf|WaitForUserKind)\b|`Kind`/g,
+    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
   },
   {
     id: "engine-flow-kind",

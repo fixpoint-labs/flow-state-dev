@@ -35,6 +35,7 @@ import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
 import { Messages } from "./surfaces/Messages";
 import { Schedules } from "./surfaces/Schedules";
+import { Usage } from "./surfaces/Usage";
 import { SessionView } from "./surfaces/SessionView";
 import { isTyping, usePanels } from "./lib/panels";
 
@@ -167,7 +168,7 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
     case "roster":
       return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
-      return <Inbox snapshot={snapshot} suspensionId={route.suspensionId} gaps={gaps} />;
+      return <Inbox snapshot={snapshot} itemId={route.item} gaps={gaps} />;
     case "tasks":
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
@@ -176,6 +177,8 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
       return <Messages snapshot={snapshot} />;
     case "schedules":
       return <Schedules snapshot={snapshot} />;
+    case "usage":
+      return <Usage snapshot={snapshot} />;
     case "session":
       return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":

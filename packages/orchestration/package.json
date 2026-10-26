@@ -40,6 +40,14 @@
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",
       "default": "./src/task-board/index.ts"
+    },
+    "./inbox": {
+      "types": "./dist/inbox/index.d.ts",
+      "default": "./src/inbox/index.ts"
+    },
+    "./inbox/check": {
+      "types": "./dist/inbox/check.d.ts",
+      "default": "./src/inbox/check.ts"
     }
   },
   "license": "MIT",
@@ -63,6 +71,10 @@
       "./task-board": {
         "types": "./dist/task-board/index.d.ts",
         "default": "./dist/task-board/index.js"
+      },
+      "./inbox": {
+        "types": "./dist/inbox/index.d.ts",
+        "default": "./dist/inbox/index.js"
       }
     }
   },
@@ -71,6 +83,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "zod": "^3.24.1"
   },

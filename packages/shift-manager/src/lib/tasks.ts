@@ -39,16 +39,19 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /**
  * Tasks' summary line (v2:1384): the rows in flight (open and not queued), the
- * asks waiting on the user, who is on shift, and how many
+ * Inbox items waiting on the user, who is on shift, and how many
  * streams (the conversations holding their boards) the rows in flight run in.
  */
 export function tasksSummary(snapshot: LoadedSnapshot): string {
   const inFlight = openRows(snapshot).filter((row) => !isQueued(row));
-  const asks = snapshot.asks.ok ? snapshot.asks.value.length : 0;
+  // An Inbox that didn't load says so: a count of 0 would read as all clear.
+  const waiting = snapshot.inbox.ok
+    ? `${snapshot.inbox.value.length} ${snapshot.inbox.value.length === 1 ? "needs" : "need"} you`
+    : "Inbox didn't load";
   const counts = shiftCounts(workerStates(snapshot));
   return [
     `${inFlight.length} in flight`,
-    `${asks} ${asks === 1 ? "needs" : "need"} you`,
+    waiting,
     `${counts["on shift"]} on shift`,
     plural(new Set(inFlight.map((row) => row.holderSessionId)).size, "stream", "streams"),
   ].join(" · ");

@@ -93,6 +93,8 @@ const ICON_PATHS = {
   messages: "M1.5 2.5h11v7h-6l-3 2.5v-2.5h-2z",
   /** Scheduled work: a clock face. */
   schedules: "M7 1.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11z M7 4v3l2 1.5",
+  /** Usage: a gauge. */
+  usage: "M1.5 10.5a5.5 5.5 0 0 1 11 0 M7 10.5l2.5-3",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
   /** Settings: a key. */
   settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
@@ -236,7 +238,7 @@ function SidebarRail({
             SC
           </span>
         </RailItem>
-        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", suspensionId: null })} testId="rail-inbox">
+        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", item: null })} testId="rail-inbox">
           <NavIcon name="inbox" />
           {waiting ? (
             <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
@@ -255,6 +257,9 @@ function SidebarRail({
         </RailItem>
         <RailItem label="Scheduled work" active={route.level === "schedules"} onClick={() => navigate({ level: "schedules" })} testId="rail-schedules">
           <NavIcon name="schedules" />
+        </RailItem>
+        <RailItem label="Usage" active={route.level === "usage"} onClick={() => navigate({ level: "usage" })} testId="rail-usage">
+          <NavIcon name="usage" />
         </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
           <NavIcon name="jump" />
@@ -415,9 +420,9 @@ export function Sidebar({
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
 
-  const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
+  const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
-  const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
+  const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
@@ -464,7 +469,7 @@ export function Sidebar({
                   </span>
                 }
                 active={route.level === "inbox"}
-                onClick={() => navigate({ level: "inbox", suspensionId: null })}
+                onClick={() => navigate({ level: "inbox", item: null })}
                 testId="nav-inbox"
               />
               <NavItem
@@ -501,6 +506,13 @@ export function Sidebar({
                 active={route.level === "schedules"}
                 onClick={() => navigate({ level: "schedules" })}
                 testId="nav-schedules"
+              />
+              <NavItem
+                label="Usage"
+                icon={<NavIcon name="usage" />}
+                active={route.level === "usage"}
+                onClick={() => navigate({ level: "usage" })}
+                testId="nav-usage"
               />
             </div>
 

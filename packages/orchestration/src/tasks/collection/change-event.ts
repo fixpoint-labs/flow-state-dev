@@ -48,7 +48,11 @@ export type TaskChangeKind =
   /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
   | "cancel_owed"
   /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released (FIX-2082). */
-  | "wait_changed";
+  | "wait_changed"
+  /** A running task's turn asked questions: the row is held on them, with no lease (FIX-2133). */
+  | "asked"
+  /** A question or a confirm was answered, or its deadline closed it: the last one lets the work go on (FIX-2133). */
+  | "answered";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the
@@ -109,7 +113,7 @@ export function createTaskChangeEmitter<TInput, TOutput>(
  * which is the right answer: a required field cannot be omitted from the
  * payload without breaking the shape consumers parse.
  */
-export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer"] as const satisfies ReadonlyArray<
+export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer", "filedUnder"] as const satisfies ReadonlyArray<
   keyof Task
 >;
 

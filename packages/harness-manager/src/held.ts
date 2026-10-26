@@ -2,8 +2,8 @@
  * Held work, as the manager records it and tells a run about it.
  *
  * The workspace host does the git (`checkpoint`, `provision`, `dropHeld`). The
- * manager decides when, writes the run record around each step, and parks a
- * run whose held work disagrees with its record. This module holds the pure
+ * manager decides when, writes the run record around each step, and asks the
+ * owner of a run whose held work disagrees with its record. This module holds the pure
  * half of that: what goes on the record, how many times a hold is tried, and
  * the words a run and its owner are shown.
  */

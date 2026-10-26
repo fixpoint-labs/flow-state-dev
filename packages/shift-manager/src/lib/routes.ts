@@ -6,11 +6,12 @@
  * route. The rest are Shift Manager's own.
  *
  *     /cos                           Chief of Staff: where `/` and any unknown path land
- *     /inbox[/<suspensionId>]
+ *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /messages                      every message between the user's workers (FIX-1989)
  *     /schedules                     the user's scheduled work, each with its next run (FIX-2085)
+ *     /usage                         how much of each harness's subscription the user has used (FIX-2141)
  *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
@@ -33,11 +34,12 @@ export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 /** Where the user is. */
 export type Route =
   | { level: "cos" }
-  | { level: "inbox"; suspensionId: string | null }
+  | { level: "inbox"; item: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "messages" }
   | { level: "schedules" }
+  | { level: "usage" }
   | { level: "session"; sessionId: string }
   | {
       level: "project";
@@ -79,8 +81,9 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "messages") return { level: "messages" };
   if (head === "schedules") return { level: "schedules" };
+  if (head === "usage") return { level: "usage" };
   if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
-  if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
+  if (head === "inbox") return { level: "inbox", item: a ?? null };
   if (head === "settings") return { level: "settings" };
   return { level: "cos" };
 }
@@ -100,7 +103,7 @@ export function pathFor(route: Route): string {
     case "cos":
       return "/cos";
     case "inbox":
-      return route.suspensionId === null ? "/inbox" : `/inbox/${e(route.suspensionId)}`;
+      return route.item === null ? "/inbox" : `/inbox/${e(route.item)}`;
     case "tasks":
       return route.by === "state" ? "/tasks" : `/tasks?by=${route.by}`;
     case "task":
@@ -109,6 +112,8 @@ export function pathFor(route: Route): string {
       return "/messages";
     case "schedules":
       return "/schedules";
+    case "usage":
+      return "/usage";
     case "session":
       return `/s/${e(route.sessionId)}`;
     case "project": {

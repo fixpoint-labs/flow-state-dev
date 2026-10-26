@@ -25,6 +25,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  openRowHolds,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
@@ -250,9 +251,25 @@ function lab(options: {
       return tasks.steer!(TASK_ID, { message: "Write one more step.", from: "user", by: ALICE });
     },
   });
+  // The person cancels the task, as `updateTask({ cancel })` does.
+  const cancel = handler({
+    name: "host-cancel",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.cancel(TASK_ID, "cancelled while it waited");
+    },
+  });
   const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "host-flow",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "host-flow" } as never);
   const state = createFlowState({
@@ -293,6 +310,20 @@ function lab(options: {
     }
   };
 
+  /** Wait until the task is held on a question: still running, with no lease. */
+  const held = async (): Promise<Task> => {
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const rt = await runtime();
+      const row = (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as
+        | Task
+        | undefined;
+      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowHolds(row).length > 0) return row;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(row)}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+
   /** The run record, as stored now. */
   const record = async (): Promise<Record<string, any>> => {
     const rt = await runtime();
@@ -300,7 +331,7 @@ function lab(options: {
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 
-  return { act, settled, record, seen, collection, remoteA, duringVerdict, asked: () => asked };
+  return { act, settled, held, record, seen, collection, remoteA, duringVerdict, asked: () => asked };
 }
 
 describe("a run's kept files are saved wherever the run stops", () => {
@@ -329,18 +360,25 @@ describe("a run's kept files are saved wherever the run stops", () => {
     expect(Object.keys(run.collection.contents()).sort()).toEqual(["sandbox/step-1.md", "sandbox/step-2.md"]);
   }, 60_000);
 
-  it("when the run parks on a question, before anyone answers it", async () => {
-    // A parked run can wait for days. What it wrote is in the collection the
-    // moment it parks, not when the answer comes back.
+  it("when the run's question holds its task, before anyone answers it", async () => {
+    // A held task can wait for days. What its run wrote is in the collection
+    // the moment the question holds it, not when the answer comes back.
     const run = lab({ script: ["write-ask"], source: "files" });
     await run.act("seed");
     await run.act("drain");
-    await run.settled("parked");
+    await run.held();
 
     expect(run.collection.contents()["sandbox/notes.md"]).toBe("what the run wrote");
     // The question is the manager's own file, not the project's: it is never
     // saved with the run's work.
     expect(Object.keys(run.collection.contents())).toEqual(["sandbox/notes.md"]);
+
+    // Cancelled while it waits: no further run starts, and the work it saved stays.
+    await run.act("cancel");
+    await run.settled("cancelled");
+    await run.act("drain");
+    expect(run.seen).toEqual(["write-ask"]);
+    expect(run.collection.contents()).toEqual({ "sandbox/notes.md": "what the run wrote" });
   }, 60_000);
 
   it("and a run is not completed on files it could not save, so the retry saves them", async () => {

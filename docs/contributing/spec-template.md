@@ -276,14 +276,9 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > </details>
 > ```
 
-Two things about that body. **The sign-off is the compact form** of
-[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3: a ratified decision is its heading,
-its trade-off figure, and one line, because the reader is confirming a direction, not weighing a
-fork. The figure shows what the call came down to; the argument stays in `DECISIONS.md`. **A
-live fork is not compact**: it gets its trade-off figure, the recommendation marked, and the full
-six-part shape from [`asking-for-decisions.md`](asking-for-decisions.md), under its own heading,
-above the ratified ones. Zero to two per spec; more than that and the direction isn't ready for
-review.
+The sign-off is the compact form of [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3;
+a live fork is never compact and takes the full shape from
+[`asking-for-decisions.md`](asking-for-decisions.md).
 
 ---
 

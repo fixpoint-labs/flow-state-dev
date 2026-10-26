@@ -33,7 +33,10 @@
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
  * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
  *   own shutdown needs the same numbers the manager enforces.
- * - The run record and inbox collections, so a host can build a status surface.
+ * - The run record collection, so a host can build a status surface. A run's
+ *   question holds its task on the board, so a host reads questions there.
+ * - `harnessUsageAction`, the one query for how much of each harness's
+ *   subscription a person has used, and the collection behind it.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -58,7 +61,6 @@ export {
   MAX_ANSWER_CHARS,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
-  HarnessRunParked,
   HarnessRunRefused,
   RUNS,
   STEER_POLL_MS,
@@ -74,7 +76,6 @@ export {
   type PromptRunContext,
   type CompletionRunContext,
   type AnsweredQuestion,
-  type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
 
@@ -127,24 +128,26 @@ export {
  */
 export { runBoardSegment } from "./workspace";
 
-// ── The question inbox ──────────────────────────────────────────────────────
+// ── Subscription usage left, per person and harness ─────────────────────────
 //
-// `withdrawEarlierQuestions` is not here for the same reason the run-record
-// writes are not: it is attempt-scoped reconciliation the manager performs at
-// the start of a run, and calling it from outside one withdraws a question a
-// live attempt is still waiting on.
+// The query is the read path: a host puts `harnessUsageAction({ readers })`
+// on one flow. `recordHarnessUsage` is the collection's one writer, for a
+// harness that reports usage during a run.
 export {
-  INBOX,
-  askQuestion,
-  answerQuestion,
-  inboxCollection,
-  listQuestions,
-  parseQuestionTopic,
-  questionFingerprint,
-  questionTopic,
-  readQuestion,
-  withdrawQuestion,
-} from "./inbox";
+  HARNESS_USAGE,
+  USAGE_READ_TIMEOUT_MS,
+  USAGE_REFRESH_EVERY_MS,
+  harnessUsageAction,
+  harnessUsageCollection,
+  harnessUsageStateSchema,
+  readHarnessUsage,
+  recordHarnessUsage,
+  type HarnessUsageActionOptions,
+  type HarnessUsageRow,
+  type HarnessUsageState,
+  type HarnessUsageWindowRow,
+  type UsageWrite,
+} from "./harness-usage";
 
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";

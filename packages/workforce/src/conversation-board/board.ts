@@ -103,6 +103,7 @@ import {
   hasStarted,
   isClaimable,
   isTerminalStatus,
+  nextHoldDue,
   NOTICE_DUE_MS,
   noticeDueAt,
   filerResolver,
@@ -728,6 +729,9 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
     if (notice !== undefined && notice <= now) return true;
     if (row.cascadeOwed != null && row.cascadeOwed.due <= now) return true;
     if ((row.resumeOwed === true || row.cancelOwed === true) && row.updatedAt + NOTICE_DUE_MS <= now) return true;
+    // A held question past a deadline the host set (FIX-2133): the pass closes it.
+    const held = nextHoldDue(row);
+    if (held !== undefined && held <= now) return true;
     // A report owed by a row stored before FIX-2078: due at once (BP-030).
     return owedReports(row).length > 0;
   });
@@ -1198,6 +1202,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         }
         return outcome;
       };
+    /**
+     * After an answer or a deadline closed a question on `id`: a running row
+     * that now owes its turn has that turn started in its session (a wake,
+     * FIX-2086's steer turn), and a row now startable starts the board, whose
+     * claim takes either. Whichever claims first wins (FIX-2133 D3).
+     */
+    const goOnAfterAnswer = async (id: string): Promise<void> => {
+      const after = ref.get(id);
+      if (after?.turnOwed === true && after.assignee !== undefined) {
+        await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
+      }
+      if (hasStartable(ref, id)) await triggerPass(ctx);
+    };
     return {
       ...ref,
       addTask,
@@ -1224,6 +1241,30 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
                 await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
               }
               return outcome;
+            }
+          }),
+      // An answer (FIX-2133): the last one lets the work go on. A task that
+      // hasn't started is startable, which starts the board; a running one
+      // owes its next turn on the same attempt, which the claim takes (D3),
+      // and the turn's own start in its session only takes it sooner.
+      ...(ref.answer === undefined
+        ? {}
+        : {
+            async answer(id: string, answer: Parameters<NonNullable<TaskCollectionRef["answer"]>>[1]) {
+              await owePass(ctx);
+              const outcome = await ref.answer!(id, answer);
+              if (outcome.outcome === "recorded") await goOnAfterAnswer(id);
+              return outcome;
+            }
+          }),
+      ...(ref.payHoldDeadlines === undefined
+        ? {}
+        : {
+            async payHoldDeadlines() {
+              const paid = await ref.payHoldDeadlines!();
+              // Only the rows whose questions just closed go on.
+              for (const id of paid) await goOnAfterAnswer(id);
+              return paid;
             }
           }),
       // The one guarded edit (FIX-2080, FIX-2081): the field table holds inside
@@ -1342,6 +1383,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         throw new TaskWriteRefusedError(
           "step_session_new_unsupported",
           'a step filed session: "new" runs in a new session of yours, through the entry your flow takes tasks through, and your flow declares none. File it without session to run it here. Nothing was filed.'
+        );
+      }
+      // A step runs in this request, after this turn, so nothing would answer
+      // one filed on questions (FIX-2133), as nothing would release one held.
+      if (init.questions !== undefined && init.questions.length > 0) {
+        throw new TaskWriteRefusedError(
+          "step_cannot_hold_questions",
+          "a step for yourself runs after this turn, in this request, so it can't wait on the user's answers. Ask them in your answer, or file the task for a delegate with its questions. Nothing was filed."
         );
       }
       // A step runs in this request, after this turn, so nothing would release
@@ -1490,6 +1539,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
             }
           }),
       unpark: byRow("unpark") as TaskCollectionRef["unpark"],
+      // A question is answered on the ledger holding its row (FIX-2133).
+      ...(board.answer === undefined ? {} : { answer: byRow("answer") as NonNullable<TaskCollectionRef["answer"]> }),
+      ...(board.ask === undefined ? {} : { ask: byRow("ask") as NonNullable<TaskCollectionRef["ask"]> }),
       // A step takes no message: its task's steers reach it (FIX-2086).
       async steer(id, steer) {
         if (isStep(id)) {

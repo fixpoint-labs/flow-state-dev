@@ -95,7 +95,19 @@ describe("probeClaudeAccount, scripted", () => {
   it("says none when Claude Code does not answer within timeoutMs", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
     const result = await probeClaudeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
-    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms" });
+    expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms", unanswered: true });
+    expect(sdk.seen.closed).toBe(true);
+  });
+
+  it("stops and closes Claude Code when its signal aborts, without waiting out timeoutMs", async () => {
+    // A usage refresh that gives up must not leave the probe's process running.
+    const sdk = scriptedSdk(() => new Promise(() => {}));
+    const stop = new AbortController();
+    const started = Date.now();
+    setTimeout(() => stop.abort(), 20);
+    const result = await probeClaudeAccount({ env: {}, timeoutMs: 60_000, signal: stop.signal, importSdk: sdk.importSdk });
+    expect(result.status).toBe("none");
+    expect(Date.now() - started).toBeLessThan(5_000);
     expect(sdk.seen.closed).toBe(true);
   });
 
@@ -106,6 +118,7 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
       status: "none",
       reason: "Claude Code could not be asked for its account: spawn claude ENOENT",
+      unanswered: true,
     });
   });
 

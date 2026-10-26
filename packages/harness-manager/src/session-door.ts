@@ -28,6 +28,7 @@ import {
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
 
 /** What the door takes: the line. Shift Manager builds it without knowing the kind. */
@@ -148,7 +149,8 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
   const name = options.name ?? "harness-manager";
   const capability = defineCapability({
     name: `harness-manager-session-door:${name}`,
-    resources: { [RUNS]: runRecordCollection },
+    // The usage record a talk's harness writes its windows into, as a run's does.
+    resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
   }) as unknown as DefinedCapability;
   const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
@@ -166,6 +168,10 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     cwd: (ctx) => stateOf(ctx as never).cwd ?? "",
     resume: (ctx) => stateOf(ctx as never).resume,
     onSession: () => undefined,
+    // The person talking is the principal, so the window lands in their row.
+    onUsage: async (report, ctx) => {
+      await recordHarnessUsage(ctx, report);
+    },
   });
 
   const decide = handler({
@@ -182,7 +188,8 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
         const refused = await steerFromLine(board.tasks, row.id, input.message, ctx as never);
         if (refused !== undefined) throw new SessionDoorRefused(refused);
         const after = board.tasks.get(row.id);
-        if (after?.waitingOn === "steer") await options.onSteered?.(ctx, after);
+        // A line that answered the task's last open question owes it its turn too (FIX-2133).
+        if (after?.waitingOn === "steer" || after?.turnOwed === true) await options.onSteered?.(ctx, after);
         return { steered: row.id };
       }
       const identity = board.runOf(row);

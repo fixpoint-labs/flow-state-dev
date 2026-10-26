@@ -540,12 +540,7 @@ The epic-specific delta:
 
 ## Spec review: converge, don't grind
 
-Each sub-issue's spec gets its own spec PR and its own review, and each of those draws
-**automated reviewers we don't control** — tuned for code, pointed at a deliberately
-directional document. Left unbounded that's N parallel grinding loops instead of one, which
-is how an epic of five directionally-sound specs turns into fifty review rounds.
-
-The bar, the three dispositions, and the **two-round convergence budget** are canonical in
+Each sub-issue's spec PR draws its own bot review; unbounded, that is N grinding loops. The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
 spec-review round budget". Every spec and the epic-spec also get
@@ -573,12 +568,8 @@ Convergence is per issue and independent — issue B doesn't wait on issue A's s
 
 ### When a thread turns on a fact, dispatch a POC — don't buy another round
 
-A budget bounds *how many* rounds an issue spends; it doesn't help when the rounds keep
-flipping because the thread turns on a **factual claim about how the system behaves**. Running
-N specs in parallel makes this worse, not better: N threads each capable of an unbounded
-flip-flop. Once such a claim has been asserted and counter-asserted **twice**, it gets **run**
-instead of argued — the trigger is that loop, not a single assertion, so expect this to fire on
-a minority of issues rather than routinely. The rules are canonical in
+Once a factual claim about how the system behaves has been asserted and counter-asserted
+**twice**, it gets **run** instead of argued. The rules are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
 (POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement".
 
@@ -606,25 +597,17 @@ dispatches), replacing what would have been a fourth epic-review round.
 
 ### The epic PR gets the same budget
 
-The epic-spec is a direction artifact too, so it is reviewed at the same altitude and
-**carries its own two-round budget** — without one, the epic PR is the single place an
-unbounded review loop would survive, right at the top-level gate.
-
-The `epic-wake` script applies **the same `atReviewBudget()`** to it that it applies to an
+The epic-spec **carries its own two-round budget** (orchestration.md → "The convergence rule"). The `epic-wake` script applies **the same `atReviewBudget()`** to it that it applies to an
 issue spec, dispatches `epic-agent` to fold while the budget allows, and returns the updated
 `epic.reviewRounds` / `epic.aboveBarFound` for you to persist. At budget it stops folding, logs
 that the epic-spec converged, and sets `epic.converged` — remaining epic-PR threads are then
 carried the way an issue spec carries its review notes, routed to the relevant issues' implementer
 notes (`epicFold.fanOut`) rather than held against the gate.
 
-**The design budget never waives merge policy.** Human direction approval is distinct
-from required checks, required review/thread resolution, and observed spec merge. A bot
-review does not extend design rounds; a blocked merge remains a real wait. Post-merge
-feedback continues through meaningful amendment PRs, not edits to the historical original.
-
-**The budget bounds design rounds, not meaningful corrections.** Dispatch `epic-agent`
-for a correction on the current unmerged review PR, or after merge on a follow-up PR from
-`main`. Material direction changes need renewed approval; never rewrite the original PR.
+**The design budget never waives merge policy, and it bounds design rounds, not
+corrections.** Dispatch `epic-agent` for a correction on the unmerged review PR, or after
+merge on a follow-up PR from `main`; never rewrite the original, and material direction
+changes need renewed approval. Both rules are
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The convergence rule".
 
 ## Epic setup (the coordination layer every run has)

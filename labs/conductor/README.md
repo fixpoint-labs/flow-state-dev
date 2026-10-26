@@ -19,17 +19,16 @@ Research software. Unpublished, private to this workspace.
 ## Where the code lives now
 
 **The loop is a published package.** `@flow-state-dev/harness-manager` holds everything the worker
-needs to execute a claimed row: the manager sequencer and its blocks, the run record, the question
-inbox and the ask marker, the checkout derivation and its lease, and the guards a host runs at its
+needs to execute a claimed row: the manager sequencer and its blocks, the run record, the ask
+marker and the step that holds a task on its question, the checkout derivation and its lease, and the guards a host runs at its
 own door. This lab is its **first consumer**.
 
 What stays here is what is this repository's rather than every host's:
 
 | Here | Why |
 |---|---|
-| `flow.ts` — the flow and its four actions | Seeding a Linear issue, waking the board, reading status, answering a question |
+| `flow.ts` — the flow and its actions | Seeding a Linear issue, waking the board, reading status, answering a question through the board's `updateTask` |
 | `implement.ts` — the implement phase | Its done-condition is a `gh` probe for a pull request, which is this repository's definition of finished |
-| `answer.ts` | The operator's verb, wired to this flow's board |
 | `config-env.ts` — `CONDUCTOR_REPO` and friends | *Reading* the environment. The rules those values are checked against are the package's |
 | `patterns.ts` | The remote-URL grammar the GitHub probe parses. The identity grammar moved with the checkout |
 
@@ -61,14 +60,15 @@ const { flow } = conductorFlow({
 });
 ```
 
-Three zero-model actions:
+Zero-model actions:
 
 | Action | What it does |
 |---|---|
 | `seed` | Files one issue-phase as a durable row and drains the board. Returns without waiting for the run. |
 | `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
-| `status` | Reads the board row beside the run's own record, and the questions the run is waiting on. |
-| `answer` | Answers one of those questions and starts the run again holding it. |
+| `status` | Reads the board row beside the run's own record, and the questions its task is held on. |
+| `updateTask_<board>` | The board's own `updateTask`, as the Inbox sends it: answers one of those questions (`{ id, question, message }`), then drains so the answer's turn starts. Its name is `conductorFlow(...).updateTaskAction`. |
+| `message` | A line typed in a run's own session: steers the task while it is open, answers its oldest question while it is held on one, and is talk once it has finished. |
 
 `status` reads the **board row** for completion, always. The board ledger cannot be made
 client-readable (`defineTaskCollection()` exposes no `client` option, so its collection-state route
@@ -82,7 +82,7 @@ open.
 existing for the branch. Either one alone completes a row that should not be: a run can open the
 pull request and *then* exhaust its turn budget.
 
-**Waiting on a person** needs a run that did not fail **and** a question it wrote down. Both
+**Waiting on a person** (the task held on its question) needs a run that did not fail **and** a question it wrote down. Both
 halves, for the same reason: a run that asked and then ran out of budget is not waiting on
 anybody, and holding the board for it would stall the job silently.
 
@@ -102,44 +102,40 @@ beginning, in the checkout the last one left behind, and is told why the last on
 
 A run that hits a real ambiguity has two bad options: guess, or stop with nothing useful to show.
 It gets a third one here. The prompt tells it to write the question — and only the question — to a
-file in its own checkout. The manager reads that file, files the question as a durable row, puts
-the job on hold and returns. Nothing is held open while you think about it, and the run costs
-nothing.
+file in its own checkout. The manager reads that file and holds the task on the question: the row
+stays on its attempt with no lease, and nothing settles it or starts another run until you answer.
+Nothing is held open while you think about it, and the run costs nothing.
 
-You answer the row by name:
+You answer through the board's `updateTask`, naming the question `status` lists:
 
 ```bash
 pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
-# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
+# → questions: [{ question: "hold_8f2c…", text: "Which path did you mean?" }]
 
-pnpm fsdev run conductor answer -i '{
-  "question": "FIX-1219/implement/1/a3f19c…",
-  "answer": "Correct the path only. Leave the symlink alone."
+pnpm fsdev run conductor updateTask_<board> -i '{
+  "id": "fix-1219--implement",
+  "question": "hold_8f2c…",
+  "message": "Correct the path only. Leave the symlink alone."
 }'
 ```
 
-`answer` does the whole round trip: it records the answer, takes the job off hold, and starts it
-again. The next attempt is told what you said, alongside every earlier answer, oldest first. There
-is nothing else to run afterwards.
+The action records the answer and drains, so the run takes one more turn on the **same attempt**,
+continuing the coding session that asked, with every answer so far in its prompt, oldest first.
+There is nothing else to run afterwards. An answer spends no retry.
 
-A refusal comes back as a refusal, never as silence — `result: "declined"` with a reason and both
-rows' statuses. Answering a question the job is not actually waiting on does nothing, and says so.
+A refusal comes back as a refusal, never as silence: `{ ok: false, error }`, naming the rule, with
+nothing written. Answering a question the task does not hold does nothing, and says so.
 
-**Three live limits, worth knowing before they surprise you.**
-
-- **An answer spends one of the run's retries.** Ask three questions of a job budgeted for three
-  and it has none left for a real failure. Budget for questions *plus* failures.
 - **The answered run continues the session that asked.** It picks up the earlier conversation in
-  the same checkout, holding your answer and whatever the last attempt left on disk. If the coding
-  agent can no longer find that session, the attempt starts fresh rather than failing.
-- **A second answer arriving while the first is still being applied is dropped, not refused.** The
-  run comes back holding the first one. Answer once, and read `status` before answering again.
+  the same checkout, holding your answer and whatever the run left on disk. If the coding agent
+  can no longer find that session, the run starts fresh rather than failing.
+- **A cancel closes the question.** `updateTask_<board>` with `{ "id": …, "status": "cancelled" }`
+  ends the task, and no run starts again.
 
-There is no inbox UI, and no way to redirect a run mid-flight or send it on a side errand. The one
-thing you can do to a live run is answer what it asked.
+There is no inbox UI here, and no way to send a run on a side errand. A line typed in the run's own
+session (`message`) steers it, and while the task holds on a question it answers that question.
 
-Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
-outside the lease's governance, so a question nobody answers holds its row indefinitely.
+Nothing bounds how long a question may stay open unless the board's host sets a deadline.
 
 ### Reading it back
 
@@ -232,8 +228,7 @@ commits land on another is the kind of agreement where every layer is wrong toge
   one a request reaches. Dispatching by instance id is framework work; until it exists, one
   conductor per host.
 - **No "made progress but is not finished" outcome.** It would have to settle the row either done
-  (dishonest) or waiting on a person (which now means something specific: a question with an
-  answer coming). A run that stalled without asking anything is a failed attempt.
+  (dishonest) or waiting on a person (which means something specific: a task held on a question). A run that stalled without asking anything is a failed attempt.
 - **Resume is conductor's own, not the task's.** An answered run does continue the session that
   asked, off the session id on the run record. The typed resume association on the *task* is
   FIX-1179 / FIX-1246's and is a different thing — nothing here stands in for it.

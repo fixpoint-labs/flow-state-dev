@@ -425,6 +425,14 @@ function buildTaskGate(options: {
               `attempt ${dispatch.attempt} was superseded by attempt ${row.attempts}`
             );
           }
+          // Two turns can share an attempt (FIX-2133 D3): a dispatch for an
+          // earlier turn of it is stale once a later turn is claimed.
+          if (dispatch.turn !== undefined && dispatch.turn !== (row.turn ?? 0)) {
+            throw new StaleTaskClaimError(
+              dispatch.taskId,
+              `turn ${dispatch.turn} of attempt ${dispatch.attempt} was superseded by turn ${row.turn ?? 0}`
+            );
+          }
           if (row.createdAt !== dispatch.createdAt) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
@@ -493,7 +501,7 @@ function buildTaskGate(options: {
           // second implementation of the fence.
           // On a partitioned ledger it names the partition the row was read
           // in, which is where the recorders below settle it.
-          const ticket = ticketForClaim(board.collectionId, held, board.partition);
+          let ticket = ticketForClaim(board.collectionId, held, board.partition);
 
           // THE RUN LINK (FIX-1668): this run names itself on the row. Only
           // the run knows which session it landed in, so the coordinate comes
@@ -512,8 +520,9 @@ function buildTaskGate(options: {
           stampCurrentClaim(ticket, ctx);
           // ADMISSION (FIX-2077): a row waiting on something (a stop, filed
           // work, a steer's turn) gets a lease again, renewed until this
-          // request ends, and the task is checked at that end.
-          const renewal = await admitClaimedTask(ctx, {
+          // request ends, and the task is checked at that end. A turn the row
+          // owed, taken here, moves the claim to its turn (FIX-2133 D3).
+          const admitted = await admitClaimedTask(ctx, {
             ref: board,
             row: held,
             ticket,
@@ -523,7 +532,12 @@ function buildTaskGate(options: {
             onStale: (reason) =>
               new StaleTaskClaimError(held.id, `it was waiting, and its lease could not be restored (${reason})`),
           });
-          if (renewal !== undefined) stampLeaseRenewal(renewal);
+          if (admitted.ticket.turn !== ticket.turn) {
+            ticket = admitted.ticket;
+            await ctx.sequencer!.patchState({ currentClaim: ticket });
+            stampCurrentClaim(ticket, ctx);
+          }
+          if (admitted.renewal !== undefined) stampLeaseRenewal(admitted.renewal);
         });
       })
       // The worker receives the payload the parent packed at claim time, not a

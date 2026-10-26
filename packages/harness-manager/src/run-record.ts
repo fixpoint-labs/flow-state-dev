@@ -147,6 +147,24 @@ export const runRecordStateSchema = z.object({
    * itself. See {@link writeRunRow}.
    */
   attempt: z.number().nullable().default(null),
+  /**
+   * The row's turn generation when this run opened the record (FIX-2133 D3).
+   * Two turns can share an attempt (an answered question owes one more), so a
+   * write from an earlier turn of the same attempt is refused once a later
+   * one has opened. See {@link writeRunRow}.
+   */
+  turn: z.number().nullable().default(null),
+  /** The incarnation of the task that last wrote the record: what {@link turn} is compared within. */
+  incarnationId: z.string().nullable().default(null),
+  /**
+   * How many runs the manager has opened on this issue-phase, this one
+   * included: the second number of the run's ask marker (`./ask`). Kept across
+   * attempts and never reset, so no run is pointed at a marker an earlier
+   * turn, attempt or task under the same id already wrote.
+   */
+  runs: z.number().nullable().default(null),
+  /** What opened run {@link runs} (its request, turn and task), so a replay of that run counts it once. */
+  runKey: z.string().nullable().default(null),
   /** The board task this row describes. */
   taskId: z.string().nullable().default(null),
 
@@ -221,14 +239,6 @@ export const runRecordStateSchema = z.object({
    * attempts. Never set while {@link place} is `null` (BR-27).
    */
   held: heldSchema.nullable().default(null),
-  /**
-   * The question the run last parked its row on, on a board read from the
-   * claim, where the row itself carries the question to the person and gives
-   * back only the answer. The next attempt pairs the answer with it in its
-   * prompt. Kept across attempts. Absent on a fixed board, whose questions are
-   * kept in its inbox, and on a record written before it existed (BP-030).
-   */
-  question: z.string().nullable().optional(),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
@@ -315,8 +325,7 @@ export const runRecordCollection = defineResourceCollection({
  * fold closed.
  *
  * The rule this applies: a key two boards write, whose reader is a JOB, needs
- * the board's discriminator. A key whose reader is a PERSON does not — which is
- * why the inbox's key does not move.
+ * the board's discriminator. A key whose reader is a PERSON does not.
  *
  * Three segments, which `runs/**` matches and `runs/*` would not.
  */
@@ -368,6 +377,12 @@ export interface AttemptIdentity {
   taskId: string;
   /** `attempts` as the board packed it into this worker's input at claim time. */
   attempt: number;
+  /**
+   * The turn generation of the claim this run holds (FIX-2133 D3). Two turns
+   * can share an attempt, so a write is refused once a later turn is claimed.
+   * Absent only for a run that holds no claim ticket.
+   */
+  turn?: number;
   /** The bare topic — `<epic>/<issue>/<phase>`. See {@link runTopic}. */
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
@@ -395,6 +410,7 @@ export interface AttemptIdentity {
 interface ClaimView {
   status?: string;
   attempts?: number;
+  turn?: number;
   leaseUntil?: number | null;
   incarnationId?: string;
 }
@@ -531,6 +547,7 @@ export async function writeRunRow(
   const claim = readClaim(row);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
+  if (identity.turn !== undefined && (claim.turn ?? 0) !== identity.turn) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
   if (leaseHasLapsed(claim, Date.now())) return "refused";
   if (
@@ -545,10 +562,26 @@ export async function writeRunRow(
     | RunRecordState
     | undefined;
   if (existing?.attempt != null && existing.attempt > identity.attempt) return "refused";
+  // A later turn of the same attempt, of the same task, has opened the record: this one is
+  // over. Only within one task: a task filed again under the same id starts its turns over,
+  // and the board row's fence above already refuses the old task's writes.
+  const sameTask =
+    existing?.incarnationId == null || identity.incarnationId === undefined || existing.incarnationId === identity.incarnationId;
+  if (
+    identity.turn !== undefined &&
+    sameTask &&
+    existing?.attempt === identity.attempt &&
+    existing.turn != null &&
+    existing.turn > identity.turn
+  ) {
+    return "refused";
+  }
 
   await runs.upsert(identity.topic, {
     ...update,
     attempt: identity.attempt,
+    ...(identity.turn !== undefined ? { turn: identity.turn } : {}),
+    ...(identity.incarnationId !== undefined ? { incarnationId: identity.incarnationId } : {}),
     taskId: identity.taskId,
     updatedAt: Date.now(),
   });
@@ -587,13 +620,14 @@ export async function writeRunRow(
 export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string },
+  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
     childSessionId: opened.childSessionId,
+    ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
     outcome: "running",
   });
 }
