@@ -550,13 +550,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
   //
   // Shared by the manager and the run's door, which resumes a finished run's
   // coding session for a person's line (FIX-2086).
-  const harness: HarnessSlot = ({ cwd, resume, onSession, onUsage }) =>
+  //
+  // The feeds are spread, not listed, so a feed the manager adds reaches the
+  // harness without an edit here.
+  const harness: HarnessSlot = (feeds) =>
     claudeCodeAgent({
       ...(agent ?? {}),
-      cwd,
-      resume,
-      onSession,
-      onUsage,
+      ...feeds,
       detached: true,
       recordWork: true,
     });
