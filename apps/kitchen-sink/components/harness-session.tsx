@@ -36,6 +36,7 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
@@ -111,18 +112,24 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
           </span>
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
-          <ScrollOnNewRequest items={session.items} />
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-              {session.items.length === 0 && !session.isLoading && (
-                <ConversationEmptyState title={label} description={`Each turn continues the same ${label} conversation.`} />
+              {session.isLoading ? (
+                <SessionConversationLoading />
+              ) : (
+                <>
+                  <ScrollOnNewRequest items={session.items} />
+                  {session.items.length === 0 && (
+                    <ConversationEmptyState title={label} description={`Each turn continues the same ${label} conversation.`} />
+                  )}
+                  <RequestGroupRenderer
+                    items={session.items}
+                    isStreaming={session.isStreaming}
+                    isFinishing={session.isFinishing}
+                    statusMessage={session.statusMessage}
+                  />
+                </>
               )}
-              <RequestGroupRenderer
-                items={session.items}
-                isStreaming={session.isStreaming}
-                isFinishing={session.isFinishing}
-                statusMessage={session.statusMessage}
-              />
             </ConversationContent>
           </SessionItemsProvider>
           <ConversationScrollButton />

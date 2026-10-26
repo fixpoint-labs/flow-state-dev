@@ -37,6 +37,7 @@ export type UseFlowResult = {
   readonly flows: FlowListEntry[];
   readonly sessions: SessionSummary[];
   readonly activeSessionId?: string;
+  /** True on the first paint and while the flow/session list is being read. */
   readonly isLoading: boolean;
   createSession: (
     metadata?: Record<string, unknown>
@@ -65,7 +66,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const [activeSessionId, setActiveSessionId] = useState<
     string | undefined
   >();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const createSession = useCallback(
     async (

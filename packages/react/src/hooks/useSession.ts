@@ -278,6 +278,11 @@ export type SessionView = {
    * session record has loaded. `undefined` for unbound sessions.
    */
   readonly orgId?: string;
+  /**
+   * True while this session's snapshot is being read. Starts true on the
+   * first paint when a session id is given, so a transcript can hide
+   * itself instead of flashing empty.
+   */
   readonly isLoading: boolean;
   readonly isStreaming: boolean;
   /** True when the main execution chain has completed but background work tasks are still running. */
@@ -594,7 +599,12 @@ export function useSession(
   const childSessionGenerationRef = useRef(0);
   const childSessionSequenceRef = useRef(0);
   const childSessionAppliedSequenceRef = useRef(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(sessionId !== undefined);
+  const [loadingSessionId, setLoadingSessionId] = useState(sessionId);
+  if (sessionId !== loadingSessionId) {
+    setLoadingSessionId(sessionId);
+    setIsLoading(sessionId !== undefined);
+  }
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [isStuck, setIsStuck] = useState(false);
@@ -1406,7 +1416,6 @@ export function useSession(
     }
 
     let cancelled = false;
-    setIsLoading(true);
     setError(null);
     setSnapshotAppliedFor(undefined);
 
