@@ -33,6 +33,8 @@
  * turn the answer earned, and judging would rule on its partial work. So the
  * pass drains again while a task owes a turn and none waits on a person, at
  * most `maxIterations` times, and none of those drains counts as an iteration.
+ * Those drains take the board as it stands, without its `initialTasks` seed,
+ * so a one-pass loop over id-less initial tasks still has one row per task.
  *
  * Preconditions (rejected at construction — `goalSeekLoop()` is a new public
  * API, so misuse fails fast rather than at first execution):
@@ -57,6 +59,7 @@ import { owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
 import { awaitsAnswer } from "./shared";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
+import { DRAIN_WITHOUT_SEED } from "./blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Public contract
@@ -562,8 +565,10 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   // One pass's drain: drain, read the board, and drain again while a task owes
   // a turn and none waits on a person (see the file header). No state schema,
   // so its blocks read and write the loop's own state, as the judge step's do.
+  // The drain that takes an owed turn does not seed the board again: the pass
+  // already did, and an id-less initial task would be added twice.
   const drainPass = sequencer({ name: `${name}-gsl-drain-pass`, inputSchema: z.unknown(), uses: [board.capability] })
-    .step(board.drain)
+    .step((input: unknown, ctx: BlockContext) => (owedNow(input, ctx) ? DRAIN_WITHOUT_SEED : input), board.drain)
     .tap(noteWaiting)
     .loopBack(board.drain.name, { when: owedNow, maxIterations });
 

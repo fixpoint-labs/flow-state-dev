@@ -692,4 +692,60 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
     expect(turns).toBe(2);
     expect(readTermination(result.items)).toMatchObject({ reason: "converged", iterations: 1 });
   });
+
+  it("drains the owed turn without seeding the board's id-less initial tasks again", async () => {
+    // A one-pass loop may run over a board whose initial tasks carry no id;
+    // its drain seeds them anew on every call. The drain that takes the owed
+    // turn must take it on the board as it stands, not add the task twice.
+    const name = "answered-late-idless";
+    const collectionOf = (ctx: Parameters<typeof getOrCreateTaskCollection>[0]["ctx"]) =>
+      getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name });
+    let turns = 0;
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        turns += 1;
+        if (turns > 1) return { answer: "whole" };
+        await askMidway(ctx, await collectionOf(ctx), [{ prompt: "Which region?" }]);
+        return { answer: "partial" };
+      },
+    });
+    const real = taskBoard({
+      name: `${name}-board`,
+      collection: { collectionId: name },
+      workers: worker,
+      initialTasks: [{ goal: "write the report" }],
+    });
+    const answerOnce = handler({
+      name: `${name}-answer`,
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = await collectionOf(ctx);
+        for (const row of collection.list()) {
+          const [hold] = openRowHolds(row);
+          if (hold !== undefined) await collection.answer!(row.id, { hold: hold.id, message: "eu-west", from: "user", by: "u1" });
+        }
+      },
+    });
+    const drain = sequencer({ name: `${name}-racing-drain`, inputSchema: z.unknown() }).step(real.drain).tap(answerOnce);
+    const board = { ...real, drain } as TaskBoardHandle<any, any, any>;
+    const judgedOn: string[][] = [];
+    const loop = goalSeekLoop({
+      name,
+      board,
+      judge: ({ collection }): Verdict => {
+        judgedOn.push(collection.list().map((row) => row.status));
+        return { decision: "done", reason: "converged" };
+      },
+      maxIterations: 1,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(judgedOn).toEqual([["completed"]]);
+    expect(turns).toBe(2);
+  });
 });
