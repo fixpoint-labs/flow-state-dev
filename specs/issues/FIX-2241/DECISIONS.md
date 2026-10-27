@@ -24,9 +24,12 @@ this spec carries no decision card.
   The message id is derived from the task and the hold (for example
   `q:<taskId>:<holdId>`), and the row's take keeps any repeat to one message: a server-only id on
   the send's server function, with no new debt or reset when the row exists (FIX-2240's). After the message row,
-  FIX-2240's delivery takes over, except from a flow with no session board (the coder's): there the
-  send takes the fast path only, `askMidway`'s replay is its resend, and a server send never leaves
-  a "wasn't delivered" line (cross-spec review, approved by Jake 2026-10-27). On a host without durable execution a crash before the row loses
+  FIX-2240's delivery takes over, except when the sending flow has no session board pass (the
+  coder's; `j1b` proves it). The send keys off the board's presence, not the worker:
+  - the send takes the fast path only and enrolls no pass debt;
+  - `askMidway`'s durable replay is its only resend;
+  - a server send never leaves a "wasn't delivered" line.
+  Jake approved this loss window in the cross-spec review (2026-10-27). On a host without durable execution a crash before the row loses
   the message, as the epic's D2 leaves every send; the Inbox item stands.
 - **One message per hold**, so each names the one question id the filer answers.
 - **Who is told.** The row's filer session (`Task.filer`), whatever its result setting

@@ -131,7 +131,7 @@ the midway ask (a board's `onMidwayQuestion` delivery; without one the filer rea
 |---|---|
 | **Removes** | The concept's and docs' "until then the filer reads it with `getTask`" |
 | **Adds** | One optional hook on `DeclaredDelivery`; one budget-exempt send, permanent by design (epic ER-6) |
-| **Leaves** | On a host without durable execution, a crash between the hold write and the message row loses the message (the Inbox item stands), as the epic's D2 leaves for every send. On a durable host the replay sends it, once. A question sent from a flow with no session board (the coder's) goes on FIX-2240's fast path only: no pass retries it, and `askMidway`'s replay is its only resend, so a fast-path failure on a host without durable execution leaves it to the Inbox. A server send never leaves FIX-2240's "wasn't delivered" line (Jake approved this loss window, 2026-10-27) |
+| **Leaves** | On a host without durable execution, a crash between the hold write and the message row loses the message (the Inbox item stands), as the epic's D2 leaves for every send. On a durable host the replay sends it, once. From a sending flow with no session board pass (the coder's), a failed fast path on such a host means the filer never hears it; the hold and its Inbox item remain ([DECISIONS](DECISIONS.md#decided-not-asked)) |
 
 **Net: flat.** One hook and one send, against a rule the code doesn't keep today.
 
