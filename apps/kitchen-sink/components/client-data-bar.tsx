@@ -44,9 +44,9 @@ export function ClientDataBar({
           <Separator orientation="vertical" className="hidden h-4 md:block" />
           <div className="flex items-center gap-1.5 text-muted-foreground">
             {activeSkills.some((s) => s.mode === "pattern") ? (
-              <Workflow className="h-3.5 w-3.5 text-blue-500" />
+              <Workflow className="h-3.5 w-3.5" />
             ) : (
-              <Wand2 className="h-3.5 w-3.5 text-purple-500" />
+              <Wand2 className="h-3.5 w-3.5" />
             )}
             <span className="hidden sm:inline">Skill{activeSkills.length > 1 ? "s" : ""}:</span>
             <div className="flex flex-wrap items-center gap-1">

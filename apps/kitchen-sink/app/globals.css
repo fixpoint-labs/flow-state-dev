@@ -1,14 +1,45 @@
+/*
+ * Kitchen Sink's stylesheet. Everything it draws references a token by name,
+ * and it holds no colour value of its own.
+ *
+ * The token definitions are the registry's `tokens` item (`./tokens.css`):
+ * neutral defaults in a base layer, and the Tailwind names pointed at them.
+ * The Flow State look is the design-system package's one import, whose
+ * unlayered values win over those defaults: Kitchen Sink's light theme is its
+ * evening (the warm Draft stock, the `evening` class) and its dark theme is
+ * night (`.dark`), set by `components/theme-provider.tsx`. Remove that one
+ * line and Kitchen Sink draws the neutral defaults.
+ */
 @import "tailwindcss";
-@import "../../../packages/ui/registry/token-defaults.css";
+@import "@flow-state-dev/design-system/shift-manager.css";
+@import "./tokens.css";
 @source "../node_modules/streamdown/dist/*.js";
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Two surfaces are the design system's, not the registry's: `sidebar`, the
+ * navigation rail, and `inspector`, the right-hand panel, each a step darker
+ * than the page. They fall back to registry tokens here, in the base layer,
+ * so the design-system import's values win and, without it, both read as the
+ * registry's neutral defaults.
+ */
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-inspector: var(--inspector);
+}
+
 @layer base {
+  :root,
+  .dark {
+    --sidebar: var(--muted);
+    --inspector: var(--card);
+  }
+
   * {
     @apply border-border;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 }

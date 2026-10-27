@@ -1,8 +1,8 @@
 /**
  * The one `@theme` copy of the registry's token defaults.
  *
- * Storybook and kitchen-sink import `registry/token-defaults.css` rather than
- * keeping their own. This holds that file to the `tokens` item, token by
+ * Storybook imports `registry/token-defaults.css` rather than keeping its
+ * own. This holds that file to the `tokens` item, token by
  * token, light and dark, and holds the preview to importing it.
  */
 import { readFileSync } from "node:fs";

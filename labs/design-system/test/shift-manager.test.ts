@@ -18,7 +18,7 @@ const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
 const dark = rule(css, ".dark, html[data-theme=dark]");
 /** Evening sets only what differs from day; everything else it reads from day. */
-const eveningOverrides = rule(css, ':root[data-theme=evening]');
+const eveningOverrides = rule(css, ":root[data-theme=evening], :root.evening");
 const evening = { ...light, ...eveningOverrides };
 
 /** The token names the registry's `tokens` item installs, as custom properties. */
