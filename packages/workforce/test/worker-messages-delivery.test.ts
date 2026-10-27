@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false, throwAfterTake: false };
+const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false, throwAfterTake: false, refuseResends: false };
 
 // A recipient that dies between its take and its items: the first message
 // turn's start (a hop past the user's own) throws, once.
@@ -42,6 +42,9 @@ vi.mock("@flow-state-dev/core/types", async (original) => {
         return Promise.reject(new Error("the connection dropped"));
       }
       if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.refuseFastPath) {
+        return Promise.resolve({ ok: false, refused: "session-not-found", detail: "no such session" });
+      }
+      if (spec.action === "onMessageReceived" && spec.from === "worker-message-resend" && fault.refuseResends) {
         return Promise.resolve({ ok: false, refused: "session-not-found", detail: "no such session" });
       }
       // Accepted, and the request it starts ends before its take: as a queued
@@ -79,6 +82,7 @@ afterEach(async () => {
   fault.loseFastPath = false;
   fault.refuseFastPath = false;
   fault.throwAfterTake = false;
+  fault.refuseResends = false;
   await open?.dispose();
   open = undefined;
 });
@@ -334,6 +338,22 @@ describe("a message that can't land after its send returned", () => {
     await h.settled();
     const lines = (await h.messages(otto)).map((m) => m.text);
     expect(lines.filter((line) => line.startsWith(`Your message ${row!.id} to lead wasn't delivered`))).toHaveLength(1);
+  }, 30_000);
+
+  it("is refused past the age when it was taken and its destination is gone for good, and its sender told", async () => {
+    // Taken, then the taker died; every resend after is refused for good (its
+    // session was deleted), while the recipient's recheck still passes.
+    fault.throwAfterTake = true;
+    fault.refuseResends = true;
+    const { h, otto } = await boot("lead", { maxDebtAgeMs: 1_000 });
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const row = await rowUntil(h, (r) => r.status !== "unconfirmed" && r.toldAt !== undefined);
+    expect(row).toMatchObject({ status: "refused", reason: expect.stringMatching(/^session-not-found/), takenBy: expect.any(String) });
+    await h.settled();
+    const lines = (await h.messages(otto)).map((m) => m.text);
+    expect(lines.filter((line) => line.startsWith(`Your message ${row!.id} to lead wasn't delivered`))).toHaveLength(1);
+    expect((await h.session(otto)).state?.workerMessagesOwed ?? []).toEqual([]);
   }, 30_000);
 });
 

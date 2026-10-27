@@ -302,7 +302,8 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
       }
       if (outcome !== undefined && !outcome.ok) {
         const reason = `${outcome.refused}: ${outcome.detail}`;
-        if (isFinalRefusal(outcome.refused) && (await close(ref, entry.id, "refused", reason))) continue;
+        // A final refusal ends a taken message too once it is past the age, as a recheck's does.
+        if (isFinalRefusal(outcome.refused) && (await close(ref, entry.id, "refused", reason, pastAge))) continue;
         await ref.patchState({ reason });
       }
     }
