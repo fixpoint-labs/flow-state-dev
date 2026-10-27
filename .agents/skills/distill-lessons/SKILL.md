@@ -413,4 +413,5 @@ this table; `AGENTS.md` points here.
 | A new way to do a job is named on the spec (question 7) | `review` coherence lens (job check) | review |
 | Spec review converges in two rounds | `orchestration.md` + `epic-wake` `atReviewBudget()` | architecture |
 | PR-feedback auto-handle cap of twelve | `orchestration.md` + `epic-wake` `atPrFeedbackCap()` | architecture |
+| A rule asking "did X happen?" reads X's mark, never a state other causes also produce (BP-035) | the behaviour test at each fix (the one-wait rule: `settles-when-its-work-is-over.test.ts`); judgment otherwise | test + docs |
 | Judgment that cannot be encoded | tenets / existing BPs / a skill checklist line — last | docs |
