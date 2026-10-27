@@ -4,7 +4,8 @@
  * row, no delegate, no result owed.
  *
  * Its input is strict (`to`, `text`, `inReplyTo`), so a call can't name a
- * sender, a hop count or a session, and there is no `wait`: an answer arrives
+ * sender or a hop count, and a session only as a target the server checks
+ * (FIX-2160), and there is no `wait`: an answer arrives
  * later as a message of the recipient's own and wakes this worker. Its description
  * lists who the worker can message, read before each model call: the roster's
  * workers that have a conversation, by id and description.
@@ -17,6 +18,7 @@ import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageTurnStateSchema } from "./hop";
 import { SEND_MESSAGE_TOOL } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
+import { conversationLedgerResources } from "../conversation-board/ledger";
 import { recipientRefusal, sendMessage } from "./send-message";
 
 /** The most workers the description lists, and the longest description it quotes for one. */
@@ -26,7 +28,16 @@ const MAX_DESCRIPTION = 160;
 /** What the model passes. Strict: nothing else is taken. */
 export const sendMessageInputSchema = z
   .object({
-    to: z.string().min(1).describe("The id of the worker to message, as the list below names it."),
+    to: z
+      .union([
+        z.string().min(1),
+        z.object({ task: z.string().min(1) }).strict(),
+        z.object({ session: z.string().min(1) }).strict()
+      ])
+      .describe(
+        "Who to message: a worker's id, as the list below names it; { task: id } for the session that works a task; " +
+          "or { session: id } for one of the user's conversations, when the user gives you its id."
+      ),
     // Something other than blank space: the send refuses a blank message too.
     text: z.string().max(MAX_MESSAGE_CHARS).regex(/\S/, "say something").describe("What to say."),
     inReplyTo: z
@@ -47,7 +58,9 @@ const BASE_DESCRIPTION =
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed, and you don't wait for an " +
   "answer. If it answers, it sends you a message of its own, which wakes you. To answer a message " +
   "you were sent, pass its id as inReplyTo. A message can't be waited on: to wait on a colleague's result before " +
-  "you answer, file a task for them with createTask, then call getTask({ id, wait: true }) where getTask takes wait.";
+  "you answer, file a task for them with createTask, then call getTask({ id, wait: true }) where getTask takes wait. " +
+  "To ask about a task, send to { task: id }: it lands in the session working that task, after its current turn, " +
+  "and doesn't change the task. To reach a conversation the user named, send to { session: id }.";
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {
@@ -77,7 +90,8 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       inputSchema: sendMessageInputSchema,
       outputSchema: sendMessageOutputSchema,
       requestStateSchema: messageTurnStateSchema,
-      resources: { ...installation.resources, ...workerMessagesResources },
+      // The conversation ledger finds a `{ task }` target's row by id (FIX-2160).
+      resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
       execute: async (input, ctx) => {
         const sent = await sendMessage(ctx as never, installation, flowKind, input, SEND_MESSAGE_TOOL);
         if (!sent.ok) return { ok: false as const, error: sent.error };
