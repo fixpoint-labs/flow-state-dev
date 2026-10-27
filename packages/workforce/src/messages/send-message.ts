@@ -88,7 +88,8 @@ export function recipientRefusal(
   recipient: RosterWorker | undefined,
   answering = false
 ): string | undefined {
-  if (to === sender) return "not_yourself: you can't message yourself.";
+  // An answer to yourself comes from another of your conversations, and goes back there.
+  if (to === sender && !answering) return "not_yourself: you can't message yourself.";
   if (recipient === undefined) return `no_worker: no worker "${to}" on your roster.`;
   if (recipient.problem !== undefined) return `worker_unavailable: worker "${to}" can't be messaged: ${recipient.problem}.`;
   // An answer lands in the session its original came from, which is one of
@@ -230,6 +231,7 @@ export async function sendMessage(
       if (answered === undefined || answered.to !== sender || answered.from !== to) {
         return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${to}" sent you. Leave inReplyTo out to start a new one.`);
       }
+      if (answered.fromSession === ctx.session.identity.id) return refuse("not_yourself: that message came from this session.");
       // In the session that sent the original, even after its task ended.
       destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
       exchange = answered.exchange;

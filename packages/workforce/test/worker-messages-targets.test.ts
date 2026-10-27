@@ -257,6 +257,55 @@ describe("a message to a conversation by its id", () => {
     }
   });
 
+  it("lets a worker's other conversation answer it, back in the conversation that asked", async () => {
+    // The second conversation answers by name, as every answer does: to the
+    // worker that sent the question, which here is the same worker.
+    const ids: { second?: string } = {};
+    let answered = false;
+    const answer = { toolCalls: [{ toolCallId: "answer-self", toolName: "sendMessage", args: {} as Record<string, unknown> }] };
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callsOnce("Ask your other conversation", () => [{ to: { session: ids.second }, text: "Which name did we pick?" }]),
+        { when: (input: unknown) => answered && textOf(input).includes("Which name did we pick?"), then: { text: "" } },
+        {
+          when: (input: unknown) => {
+            const text = textOf(input);
+            const message = /Message (msg_\w+) from curious/.exec(text);
+            if (answered || message === null || text.includes("Ask your other conversation")) return false;
+            answered = true;
+            answer.toolCalls[0]!.args = { to: "curious", text: "Bluebird.", inReplyTo: message[1] };
+            return true;
+          },
+          then: answer
+        },
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      const second = await h.create("alice", "agent", { sessionId: "s_alice_curious_second", state: { workerId: "curious" } });
+      expect(second.status, JSON.stringify(second.body)).toBeLessThan(300);
+      ids.second = second.body.session!.id;
+      const first = await h.client("alice").ensureWorkerSession({ worker: "curious" });
+      await h.post("alice", first.id, "respond", { message: "Ask your other conversation" }, "agent");
+      await h.settled();
+
+      const rows = await logRows(h, "alice");
+      const question = rows.find((row) => row.inReplyTo === undefined);
+      expect(question).toMatchObject({ from: "curious", to: "curious", toSession: ids.second, status: "delivered" });
+      expect(rows.find((row) => row.inReplyTo !== undefined), JSON.stringify(await toolOutputs(h, ids.second))).toMatchObject({
+        from: "curious",
+        to: "curious",
+        inReplyTo: question!.id,
+        toSession: first.id,
+        status: "delivered"
+      });
+      expect(await receivedIn(h, first.id)).toEqual([expect.objectContaining({ from: "curious", text: "Bluebird.", inReplyTo: question!.id })]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("refuses a task's session, a missing one, another user's, a coder's and its own, by name, writing nothing", async () => {
     const ids: { taskSession?: string; bobs?: string; tasker?: string; own?: string } = {};
     const agentAnswer = mockGenerator({
