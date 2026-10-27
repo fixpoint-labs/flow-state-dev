@@ -323,7 +323,7 @@ role's entries from a **factory**.
 
 | Entry | Input |
 | -- | -- |
-| `onMessageReceived` | `{ id, from, text, waiting, inReplyTo?, budget }`, the server setting `from`, `waiting` and `budget` |
+| `onMessageReceived` | `{ id, from, text, call, inReplyTo?, budget }`, the server setting `from`, `call` and `budget` |
 | `work` | `{ taskId, attempt, boardId, partition?, payload }`, `payload` being the task's brief and input |
 
 `boardId` names the board the row is on; `partition?`, the user's slice of a ledger kept per
