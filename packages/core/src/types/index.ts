@@ -22,7 +22,8 @@ export type {
   ResponseEmitterHandle,
   RetryPolicy,
   StateRef,
-  TargetRef
+  TargetRef,
+  GeneratorModelResultPayload
 } from "./block";
 
 export { asRuntime, itemScope } from "./block";

@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
+import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, GeneratorModelResultPayload, RescueHandlerSpec } from "../types/block";
 import { asRuntime } from "../types/block";
 import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
@@ -518,19 +518,7 @@ export async function executeBlock(
           ...scopedCtx,
           _runtimeHooks: {
             ...scopedCtx._runtimeHooks,
-            onGeneratorModelResult: (payload: {
-              model: string;
-              usage?: {
-                promptTokens: number;
-                completionTokens: number;
-                totalTokens: number;
-                cacheReadInputTokens?: number;
-                cacheCreationInputTokens?: number;
-              };
-              providerMetadata?: Record<string, Record<string, unknown>>;
-              identity?: ModelIdentity;
-              countsIn?: "ledger" | "trace";
-            }) => {
+            onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
               // A ledger-only report is not this block's row: forward it only.
               if (block.kind === "evaluator" && payload.countsIn !== "ledger" && payload.identity !== undefined) {
                 evaluatorModelIdentity = payload.identity;

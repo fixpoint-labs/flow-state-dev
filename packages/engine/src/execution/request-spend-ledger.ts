@@ -17,20 +17,12 @@
  * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding}.
  */
 import { cacheTokensOf } from "@flow-state-dev/core";
-import type { GeneratorModelUsage, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
-
-/** A model result as the base `onGeneratorModelResult` handler receives it. */
-export interface ModelResultReport {
-  model: string;
-  usage?: GeneratorModelUsage;
-  providerMetadata?: Record<string, Record<string, unknown>>;
-  countsIn?: "ledger" | "trace";
-}
+import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
 
 /** One request's ledger. */
 export interface RequestSpendLedger {
   /** Add one model result, unless it is an aggregate the ledger already counted. */
-  addModelResult(report: ModelResultReport): void;
+  addModelResult(report: GeneratorModelResultPayload): void;
   /** Append one settled harness run. */
   reportHarnessRun(run: HarnessRunSpend): void;
   /** Everything counted so far. */
@@ -105,7 +97,7 @@ function copyOf(byModel: Record<string, ModelUsageEntry>): Record<string, ModelU
  * normalised ones and fall back to Anthropic's provider metadata, as the
  * trace capture reads them.
  */
-function entryOf(report: ModelResultReport): ModelUsageEntry {
+function entryOf(report: GeneratorModelResultPayload): ModelUsageEntry {
   const usage = report.usage!;
   const cache = cacheTokensOf(usage, report.providerMetadata);
   return {

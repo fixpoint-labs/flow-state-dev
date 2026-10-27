@@ -262,6 +262,28 @@ export type InferFlowConfigFromSchema<TSchema extends ZodTypeAny | undefined> =
       : Readonly<Record<string, unknown>>
     : Readonly<Record<string, unknown>>;
 
+/**
+ * One model result as `onGeneratorModelResult` reports it.
+ */
+export interface GeneratorModelResultPayload {
+  model: string;
+  usage?: GeneratorModelUsage;
+  providerMetadata?: GeneratorModelResult["providerMetadata"];
+  /** Resolved identity of the model that produced this result. */
+  identity?: ModelIdentity;
+  /**
+   * Where this report counts (FIX-2145). Absent: both on the reporting
+   * block's trace row and in the request's spend ledger, as one model
+   * call. `"ledger"`: the ledger only. A finished step of a multi-step
+   * run, counted when the step ends so a run that later suspends or fails
+   * keeps it; or an evaluator called as a tool, which must not overwrite
+   * its caller's row. `"trace"`: the trace row only. A multi-step run's
+   * aggregate, whose steps the ledger already counted. A capture that
+   * records the row ignores `"ledger"` reports and forwards every report.
+   */
+  countsIn?: "ledger" | "trace";
+}
+
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -608,24 +630,7 @@ export interface BlockContext<
      * the chosen branch can never persist before its decision anchor (FIX-814).
      */
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void | Promise<void>;
-    onGeneratorModelResult?: (payload: {
-      model: string;
-      usage?: GeneratorModelUsage;
-      providerMetadata?: GeneratorModelResult["providerMetadata"];
-      /** Resolved identity of the model that produced this result. */
-      identity?: ModelIdentity;
-      /**
-       * Where this report counts (FIX-2145). Absent: both on the reporting
-       * block's trace row and in the request's spend ledger, as one model
-       * call. `"ledger"`: the ledger only. A finished step of a multi-step
-       * run, counted when the step ends so a run that later suspends or fails
-       * keeps it; or an evaluator called as a tool, which must not overwrite
-       * its caller's row. `"trace"`: the trace row only. A multi-step run's
-       * aggregate, whose steps the ledger already counted. A capture that
-       * records the row ignores `"ledger"` reports and forwards every report.
-       */
-      countsIn?: "ledger" | "trace";
-    }) => void;
+    onGeneratorModelResult?: (payload: GeneratorModelResultPayload) => void;
     /**
      * Unified block-lifecycle capture hook. Fires four phases per block:
      * `added` (at start), `input` (post-connectInput, only on transform),
