@@ -214,7 +214,7 @@ export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageRow) => Pro
  * - ended and not yet told: D1's line, then `toldAt`, then the id goes;
  * - owed past the host's debt age, counted from the send, and never taken:
  *   `undeliverable`, D1's line, the id goes. A taken one is never ended for
- *   its age (its taker may hold it on a person), unless its recipient is gone;
+ *   its age (its taker may hold it while it waits on the user), unless its recipient is gone;
  * - past its next send (orchestration's backoff): the recipient check again,
  *   then the same dispatch as the first, and `resent` recorded. A failed
  *   check or a final refusal ends it `refused`, told.
@@ -257,8 +257,8 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
       } else later(now + NOTICE_DUE_MS);
       continue;
     }
-    // Taken, and past the age: a taker may still hold it (a turn waiting on a
-    // person), so it is never ended for its age; it is sent again at the
+    // Taken, and past the age: a taker may still hold it (a turn waiting on the
+    // user), so it is never ended for its age; it is sent again at the
     // backoff's cap, which a copy takes over from a taker that ended.
     const due = nextResendAt(ref.state.resent, ref.state.at + NOTICE_DUE_MS);
     if (due > now) {
