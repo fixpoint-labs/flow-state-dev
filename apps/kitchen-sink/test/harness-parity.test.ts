@@ -2,28 +2,14 @@
  * The item contract all three harness modes owe, held against all three at once.
  *
  * Kitchen Sink is the one place that runs Claude Code, Codex and Cursor over
- * the same session flow, so it is the one place a rule can be stated once and
- * checked against every harness. Each mode's own suite proves what that
- * harness does; this proves the three AGREE, which is the claim a reader of
- * the rail makes when they move between `/claude-code`, `/codex` and `/cursor`
- * and expect the same page to work.
- *
- * Each case below is a rule about items, not about a vendor. A harness added
- * later joins this table and is held to the same list — which is the point:
- * the three adapters share a contract (`@flow-state-dev/core`'s
- * `types/harness.ts`) and no shared implementation, so nothing but a check
- * like this notices when one of them drifts.
+ * the same session flow. Each mode's own suite proves that harness; this
+ * proves the three agree. The SDKs are the scripted ones (`lib/scripted-*.ts`);
+ * translation, emission and the handle are the real adapters.
  *
  * Red states produced before this was trusted:
- *   - settle a tool item with a re-read `getItemCount()`, as Claude Code and
- *     Codex both did until this suite caught it: the unique-index case fails
- *     for those two and passes for Cursor, which already kept the opened index.
- *   - drop `finalizeOpenItems` from a harness's failure path: the nothing-left-
- *     open case fails for it.
- *
- * The SDKs are replaced by each mode's scripted harness (`lib/scripted-*.ts`),
- * so this runs with no model, no process and no network. Everything past that
- * seam — translation, emission, the handle — is the real adapter.
+ *   - settle a tool item with a re-read `getItemCount()`: the unique-index case
+ *     fails for Claude Code and Codex, and passes for Cursor.
+ *   - drop `finalizeOpenItems` from a failure path: the nothing-left-open case fails.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -53,13 +39,9 @@ interface EmittedItem {
 }
 
 /**
- * One harness mode: its flow with the scripted SDK behind it, and a prompt
- * that makes its script run a tool.
- *
- * The prompts differ because the scripts do, not because the rule does: Codex
- * runs a command on every turn, Claude Code runs five under `[bash]`, and
- * Cursor's only tool call is the to-do update under `[plan]`. What each case
- * then asserts is identical for all three.
+ * Prompts differ because the scripts do: Codex runs a command every turn,
+ * Claude Code runs five under `[bash]`, Cursor's tool call is the to-do under `[plan]`.
+ * Each case asserts the same thing.
  */
 const HARNESSES = [
   {
@@ -129,8 +111,7 @@ async function itemsOfOneTurn(harness: (typeof HARNESSES)[number]): Promise<Emit
 
 describe.each(HARNESSES)("$mode, against the item contract every harness owes", (harness) => {
   it("runs the turn, and shows the model's reply and the tool it used", async () => {
-    // The floor the rest of this file stands on: a case that asserted a
-    // property of an empty list would pass for a harness that emitted nothing.
+    // An empty list would pass every later case.
     const items = await itemsOfOneTurn(harness);
     expect(items.length).toBeGreaterThan(0);
     expect(items.some((i) => i.type === "message")).toBe(true);
@@ -138,12 +119,7 @@ describe.each(HARNESSES)("$mode, against the item contract every harness owes", 
   });
 
   it("gives every item its own itemIndex", async () => {
-    // `itemIndex` orders a request's items, and core's replay picks among
-    // same-id traces by the highest one (`blocks/internal/replay-log.ts`). Two
-    // items sharing an index make that order a guess. The trap is settling an
-    // item the stream already holds: `getItemCount()` counts items by id and
-    // does not grow on a settle, so re-reading it there returns the index the
-    // NEXT item is about to take.
+    // `itemIndex` orders a request's items. Replay picks same-id traces by the highest one.
     const items = await itemsOfOneTurn(harness);
     const indices = items.map((i) => i.itemIndex);
     expect(indices.every((i) => typeof i === "number")).toBe(true);
@@ -151,8 +127,7 @@ describe.each(HARNESSES)("$mode, against the item contract every harness owes", 
   });
 
   it("stamps the request, the block and a timestamp on every item", async () => {
-    // The fields a reader of the rail needs to attribute an item at all. A
-    // harness that omitted one would render items the page cannot place.
+    // Without these the rail cannot attribute the item.
     const items = await itemsOfOneTurn(harness);
     for (const item of items) {
       expect(typeof item.id, `${harness.mode} id`).toBe("string");
@@ -163,9 +138,7 @@ describe.each(HARNESSES)("$mode, against the item contract every harness owes", 
   });
 
   it("leaves nothing open when the turn is over", async () => {
-    // A tool item still `in_progress` after the run ended renders as a call
-    // that never came back — the state every adapter's `finalizeOpenItems`
-    // exists to prevent, and the one a reader would read as a hung run.
+    // An `in_progress` item after the turn reads as a call that never came back.
     const items = await itemsOfOneTurn(harness);
     const open = items.filter((i) => i.status === "in_progress");
     expect(open, `${harness.mode} left items open`).toEqual([]);

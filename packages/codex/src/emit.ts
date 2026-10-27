@@ -37,11 +37,8 @@ interface EmitProvenance {
  */
 export interface EmitState {
   /**
-   * An open tool keeps the `itemIndex` it was added with. `getItemCount()`
-   * counts items by id, and settling an item the stream already has does not
-   * grow it — so re-reading the count on completion would hand the settled
-   * item the index the NEXT item is about to get, and two items would share
-   * one.
+   * An open tool keeps the `itemIndex` it was added with. Re-reading
+   * `getItemCount()` on completion would share that index with the next item.
    */
   readonly openTools: Map<string, { id: string; itemIndex: number; name: string; arguments: string }>;
   /** The last completed assistant message — the run's `finalMessage`. */

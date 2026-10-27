@@ -255,11 +255,7 @@ describe("where a session works (V6)", () => {
     expect(new Set(branches).size).toBe(hostile.length);
     for (const branch of branches) execFileSync("git", ["check-ref-format", `refs/heads/${branch}`]);
     for (const [i, cwd] of cwds.entries()) expect(git(cwd, "branch", "--show-current").trim()).toBe(branches[i]);
-    // One worktree and branch per hostile id, created serially: thirteen times
-    // the work of its neighbours here, which take a second each for one turn.
-    // Measured at ~14s, so the default 5s budget fails this on any machine
-    // that is not the fastest. The breadth is the point of the case — an id
-    // dropped to fit a budget is a spelling nobody checks again.
+    // Thirteen worktrees, serially, about 14s. The default 5s fails on a slow machine. Dropping an id to fit it drops a spelling.
   }, 60_000);
 
   it("a run's edit lands in its worktree; the main checkout is unchanged (BR-12)", async () => {
@@ -317,9 +313,6 @@ describe("where a session works (V6)", () => {
   });
 
   it("asks for no sandbox: Kitchen Sink confines no run", async () => {
-    // Kitchen Sink is a showcase meant for a machine that allows any edits, so
-    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
-    // nothing confines the run — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");

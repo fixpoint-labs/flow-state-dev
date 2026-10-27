@@ -277,7 +277,6 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(client.env!.CODEX_HOME).toBe("/codex-home");
     expect(client.env!.CODEX_API_KEY).toBe("sk-key");
     expect(client.config).toEqual({ service_tier: "default" });
-    // No approvals and no sandbox: Kitchen Sink confines no run.
     // The model is the session's, through the block's own option, never a fixed thread setting.
     expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "danger-full-access" });
     expect(options.model).toBeTypeOf("function");
@@ -357,10 +356,7 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     });
     expect(recorder.opens[0]).toMatchObject({ resumed: null });
     expect(recorder.opens[0]!.options.workingDirectory).not.toBe(repo);
-    // The caller's `danger-full-access` is ignored because the block's own
-    // thread options replace it wholesale — it happens to be the same value
-    // Kitchen Sink sets, so this asserts the caller's `resume` and `cwd` were
-    // dropped rather than that the mode is sandboxed.
+    // The block replaces thread options wholesale. This value matches the caller's; resume and cwd above are what was dropped.
     expect(recorder.opens[0]!.options.sandboxMode).toBe("danger-full-access");
   });
 });

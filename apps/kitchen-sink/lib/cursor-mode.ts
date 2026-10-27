@@ -8,12 +8,9 @@
  * whose environment is exactly the allowlist. That filters what the run's
  * commands start with; it is not a security boundary.
  *
- * **Kitchen Sink confines no run.** Cursor's own sandbox is off and the run
- * asks for no approval, so it writes, commits and runs commands wherever the
- * server's OS user can — this checkout included, not just the session's
- * worktree. Kitchen Sink is a showcase meant to run on a machine where that is
- * fine. Run the server as a separate OS user, or in a container, when it is
- * not.
+ * **No sandbox, and no approval prompts.** The run writes, commits and runs
+ * commands wherever the server's OS user can, this checkout included. Run the
+ * server as a separate OS user, or in a container, when that is not fine.
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Cursor
  * (`lib/scripted-cursor.ts`), with `env` left unset (the scripted client runs
@@ -111,7 +108,6 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     recordPlan: goalControl() !== "no-record",
     agent: {
       mode: "agent",
-      // Cursor's sandbox is off: Kitchen Sink confines no run. See the header.
       local: { sandboxOptions: { enabled: false } },
     },
     // A stand-in client runs in this process, so it takes no `env`; the real
@@ -243,8 +239,7 @@ export const HOST_CHECKS: CursorHostChecks = {
  * SDK is installed, the worktree root can be made, a process with only the
  * run's environment can start (the Cursor package runs the runtime in one),
  * and Cursor is signed in over that environment. The first that fails is the
- * reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
- * sandbox off (see the header).
+ * reason.
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {

@@ -11,10 +11,8 @@
  * The command reads a variable set on the server but left off the allowlist,
  * and writes a file in the worktree the run was given.
  *
- * **Confinement is NOT under test, because there is none.** Kitchen Sink runs
- * Codex with its sandbox off, so a run writes wherever the server's OS user
- * can. What is still true, and is what this holds, is that the run is HANDED
- * only the allowlisted environment and works in the session's own worktree.
+ * Confinement is not under test: Codex runs with its sandbox off. This holds
+ * the allowlisted environment and that the run works in the session's worktree.
  *
  * Red state produced before this was trusted:
  *   - leave `client.env` unset: the command prints the planted value.

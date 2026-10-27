@@ -8,12 +8,10 @@
  * panel says "Codex reports no plan": the pinned Codex gives its model no
  * to-do tool in the headless mode the package drives.
  *
- * **Kitchen Sink confines no run.** Codex runs without approval prompts and
- * with its sandbox off (`danger-full-access`), so it writes, commits and runs
- * commands wherever the server's OS user can — this checkout included, not
- * just the session's worktree. Kitchen Sink is a showcase meant to run on a
- * machine where that is fine. Run the server as a separate OS user, or in a
- * container, when it is not.
+ * **No sandbox (`danger-full-access`), and no approval prompts.** The run
+ * writes, commits and runs commands wherever the server's OS user can, this
+ * checkout included. Run the server as a separate OS user, or in a container,
+ * when that is not fine.
  *
  * Its process still starts with an allowlisted environment (`client.env`);
  * left unset, the SDK would hand it the server's whole environment. That
@@ -24,9 +22,8 @@
  * Codex mode takes nothing from your own Codex settings (`config.toml`) that
  * changes what a run is: not its model, not its service tier, not its MCP
  * servers, the way Claude Code mode loads no settings files. A model set there
- * may be one the signed-in account can't use, a tier like Fast (`priority`)
- * spends more of the account's usage, and a server signed in for your own use
- * fails to start inside the sandbox. Codex reads the file either way; the run
+ * may be one the signed-in account can't use, and a tier like Fast (`priority`)
+ * spends more of the account's usage. Codex reads the file either way; the run
  * overrides each of those (`codexClientOptions`). Sign-in, history and every
  * other setting still come from Codex's home.
  *
@@ -123,7 +120,7 @@ export const CODEX_PASS = [
   "SSL_CERT_FILE",
 ] as const;
 
-/** The environment Codex's process gets, and the one its sign-in and sandbox are checked over. */
+/** The environment Codex's process gets, and the one its sign-in is checked over. */
 export function codexEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
   return harnessEnv({ pass: CODEX_PASS, env });
 }
@@ -136,8 +133,7 @@ export function codexIsScripted(env: Record<string, string | undefined> = proces
 /** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
 export function codexThreadOptions(): CodexThreadOptions {
   return {
-    // No approval prompts: nobody is there to answer one, and nothing fences
-    // the run either — Kitchen Sink confines no run (see the header).
+    // Nobody is there to answer an approval prompt. No sandbox: see the header.
     approvalPolicy: "never",
     sandboxMode: "danger-full-access",
   };
@@ -151,14 +147,11 @@ export interface CodexMcpServer {
 
 /**
  * The SDK's client options Codex mode runs with: the allowlisted environment,
- * the standard service tier, every MCP server in `mcpServers` turned off, and
- * the sandbox's writable list narrowed to the run's own directory.
+ * the standard service tier, and every MCP server in `mcpServers` turned off.
  *
  * Codex's overrides add to its settings rather than replace them (an empty
  * `mcp_servers` leaves every configured server on), so each server is turned
- * off by name, and the tier is set to `default`, which sends none. Codex's
- * `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by default,
- * where a repository or another session's files may sit.
+ * off by name, and the tier is set to `default`, which sends none.
  *
  * @param mcpServers The MCP servers Codex's settings name (`userMcpServers`).
  */
@@ -265,8 +258,8 @@ export function codexSessionFlow(seams: CodexSeams = {}) {
 export interface CodexHostChecks {
   /** Which `@openai/codex-sdk` is installed beside the Codex package. */
   readonly sdk: InstalledSdkVersionReader;
-  /** Make the worktree root and return it, or throw why it can't be made. */
-  readonly makeRoot: (repository: string) => string;
+  /** Make the worktree root, or throw why it can't be made. */
+  readonly makeRoot: (repository: string) => void;
   /** Whether Codex's own `codex login status` succeeds over `env`. No run. */
   readonly loggedIn: (env: Record<string, string>) => Promise<boolean>;
 }
@@ -331,9 +324,7 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
 export const HOST_CHECKS: CodexHostChecks = {
   sdk: readInstalledCodexSdkVersion,
   makeRoot: (repository) => {
-    const root = worktreeRoot(repository);
-    mkdirSync(root, { recursive: true });
-    return root;
+    mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   loggedIn: async (env) => (await runCodex(["login", "status"], env)).status === 0,
 };
@@ -342,9 +333,7 @@ export const HOST_CHECKS: CodexHostChecks = {
  * Codex mode's own check, for the gate's mode-check slot: the pinned Codex SDK
  * is installed (the Codex package's own version refusal is the reason
  * otherwise), the worktree root can be made, and Codex is signed in over the
- * run's environment. The first that fails is the reason. Nothing is asked
- * about a sandbox: Kitchen Sink runs Codex with its sandbox off (see the
- * header).
+ * run's environment. The first that fails is the reason.
  *
  * The block itself is built only once the mode is available, so another SDK
  * version is a reason here and never a crash at server start.
@@ -361,9 +350,8 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
     } catch (error) {
       return { available: false, reason: error instanceof Error ? error.message : String(error) };
     }
-    let root: string;
     try {
-      root = checks.makeRoot(repository);
+      checks.makeRoot(repository);
     } catch (error) {
       return {
         available: false,

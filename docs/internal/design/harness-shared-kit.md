@@ -207,51 +207,12 @@ alongside Cursor and Codex, so a fourth is in view.)
 
 ---
 
-## 6. What is already built on this branch
+## 6. What landed with phase 0
 
-| Change | File | Why |
-|---|---|---|
-| Phase 0 parity check | `apps/kitchen-sink/test/harness-parity.test.ts` (new) | 12 tests, 3 modes, 4 shared rules |
-| Settled tool items keep their index | `packages/codex/src/emit.ts` | §3.1 |
-| Same, incl. streamed message/reasoning and subagent containers | `packages/claude-code/src/sdk/emit.ts` | §3.1 |
-| Harness sandboxing removed from Kitchen Sink | `apps/kitchen-sink/lib/harness-sandbox.ts` (deleted) + the three mode files | see below |
+The parity check is `apps/kitchen-sink/test/harness-parity.test.ts`. The index fix is in `packages/codex/src/emit.ts` and `packages/claude-code/src/sdk/emit.ts` (§3.1).
 
-**Harness sandboxing is gone from Kitchen Sink** (owner's call, 2026-10-26).
-It was ~45% of each mode file, it is a showcase app that should not carry that
-much custom confinement code, and the design wants rethinking before it comes
-back. Kitchen Sink now assumes a machine that allows any edits: no sandbox on
-any of the three, `KITCHEN_SINK_HARNESS_UNSANDBOXED` deleted, 357 lines
-removed against 122 added. The per-session git worktree stays — that is where
-a session works, not a fence — as do the env allowlists and `settingSources: []`.
+Kitchen Sink no longer sandboxes a harness run (owner's call, 2026-10-26). `lib/harness-sandbox.ts` is gone. The per-session worktree, the env allowlists, and `settingSources: []` stay. Preflight no longer asks about sandboxes, so a later kit absorbs less per-mode code than §2 measured. The shape is the same. `@flow-state-dev/tools/bash`'s `Sandbox` runs commands the framework dispatches. A harness runs its own tools, so that sandbox was never this job.
 
-That is worth noting *here* because it changes §2's arithmetic: with preflight
-no longer asking about sandboxes, the per-mode code the kit would absorb is
-smaller than measured, though the shape is unchanged. Note also that
-`@flow-state-dev/tools/bash`'s `Sandbox` was never a candidate for this job —
-it is an execution seam for commands the framework dispatches, and a harness
-runs its own tools inside its own loop, so there is no command to intercept.
+Three macOS-only specs were wrong on a Mac and green on `ubuntu-latest`: `__CF_USER_TEXT_ENCODING` in the Cursor and Claude Code env fences, `realpath` of the workspace scratch dir, and a 60s budget on the hostile-ids worktree case. The comments on those lines say why.
 
-Plus three test-portability defects found while verifying, all macOS-only
-(this repo's CI is `ubuntu-latest`, so none of them fail there):
-
-| Fix | File | Cause |
-|---|---|---|
-| Ignore OS-injected env vars | `packages/cursor/test/env-fence.spec.ts` | macOS adds `__CF_USER_TEXT_ENCODING` to every process linking CoreFoundation, which Node does |
-| Same, in the allowlist spec | `packages/claude-code/test/sdk/harness-env.spec.ts` | as above |
-| Resolve the scratch dir's physical path | `packages/claude-code/test/sdk/workspace.spec.ts` | `/tmp` → `/private/tmp`; the agent realpaths `cwd`, so `toBe(base)` compared two spellings of one directory |
-| Explicit 60s budget | `apps/kitchen-sink/test/harness-session.test.ts` | the hostile-ids case creates 13 worktrees serially — measured 13.9s against vitest's default 5s |
-
-### Verification
-
-| Suite | Result |
-|---|---|
-| `packages/claude-code` | 362 passed (16 files) |
-| `packages/codex` | 110 passed (9 files) |
-| `packages/cursor` | 148 passed (11 files) |
-| `apps/kitchen-sink` | 351 passed (39 files) |
-| Red-state check | reverting the codex index fix fails exactly one parity test |
-
-**Not run:** `apps/kitchen-sink/test/codex-real-cli.test.ts`, which binds a port
-on `127.0.0.1` and starts the real `codex` program. The sandbox this was
-verified in forbids `listen`. It needs a run on an ordinary host before this
-branch is trusted.
+`apps/kitchen-sink/test/codex-real-cli.test.ts` was not run here. It binds `127.0.0.1` and starts the real `codex` program.

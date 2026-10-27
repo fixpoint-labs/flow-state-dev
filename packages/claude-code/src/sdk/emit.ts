@@ -34,11 +34,9 @@ interface EmitProvenance {
  */
 export interface EmitState {
   /** Item id + accumulated text of the in-progress streamed message, if any.
-   *  `itemIndex` is the index it was added with, which its close keeps.
    *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
   message: { id: string; itemIndex: number; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Item id + accumulated text of the in-progress streamed reasoning, if any.
-   *  `itemIndex` is the index it was added with, which its close keeps.
    *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
   reasoning: { id: string; itemIndex: number; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Open tool_output items keyed by SDK tool-use callId. */
@@ -130,11 +128,8 @@ function itemFields(
 /**
  * Per-item base for a newly opened item: a fresh id plus {@link itemFields}.
  *
- * An item this opens must carry its `itemIndex` forward to whatever closes it
- * — the open state records below all keep one. `getItemCount()` counts items
- * by id, and closing an item the stream already has does not grow it, so a
- * close that re-read the count would take the index the NEXT item is about to
- * get, and two items would share one.
+ * The open records this `itemIndex`. A close that re-read `getItemCount()` would
+ * take the next item's index, and two items would share one.
  */
 function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string, ownedBy?: string) {
   return { id: mintId(kind), ...itemFields(ctx, provenance, ownedBy) };

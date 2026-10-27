@@ -5,8 +5,6 @@
  * sign-in and the runtime's process are checked over the environment the run
  * is handed, not the server's.
  *
- * Nothing is asked about a sandbox: Kitchen Sink confines no run.
- *
  * Red state produced before this was trusted: report a host with no key and no
  * stored login as available, and the sign-in case fails.
  */

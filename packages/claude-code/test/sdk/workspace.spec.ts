@@ -70,15 +70,9 @@ function toolOf(cap: unknown) {
 }
 
 /**
- * A fresh scratch directory, by its PHYSICAL path.
- *
- * Resolved here rather than at each assertion because the agent resolves `cwd`
- * through `realpath` before handing it to the SDK (the symlink spec below is
- * the one that proves it). On macOS `tmpdir()` is itself reached through a
- * symlink — `/tmp` → `/private/tmp` — so an unresolved base would make every
- * `toBe(base)` here compare two spellings of one directory and fail on a Mac
- * while passing on CI's Linux. The symlink spec builds its own link inside
- * this directory, so resolving the base does not weaken it.
+ * Scratch dir by its real path. On macOS `tmpdir()` is `/tmp` → `/private/tmp`,
+ * and the agent realpaths `cwd`, so an unresolved base fails `toBe` on a Mac.
+ * The symlink spec builds its link inside this directory.
  */
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ws-cap-")));
 const discard = (p: string) => rmSync(p, { recursive: true, force: true });

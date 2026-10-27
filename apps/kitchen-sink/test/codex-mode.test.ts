@@ -3,8 +3,7 @@
  * each reason this host can't run it disables the mode with that reason, an
  * SDK at another version leaves the server up with both versions named, and an
  * unavailable mode registers no flow. Sign-in is checked over the environment
- * the run is handed, not the server's. Nothing is asked about a sandbox:
- * Kitchen Sink confines no run.
+ * the run is handed, not the server's.
  *
  * Red states produced before these were trusted:
  *   - count only `codex login status` as signed in: the key-only case reads unavailable.
@@ -22,7 +21,7 @@ import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harn
 
 const able: CodexHostChecks = {
   sdk: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
-  makeRoot: () => "/worktrees",
+  makeRoot: () => undefined,
   loggedIn: async () => true,
 };
 

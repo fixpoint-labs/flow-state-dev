@@ -273,7 +273,6 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.env!.HOME).toBe(process.env.HOME);
     expect(options.env!.CURSOR_API_KEY).toBe("key");
     expect(options.recordPlan).toBe(true);
-    // Cursor's sandbox is off: Kitchen Sink confines no run.
     expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: false } } });
     expect(options.model).toBeTypeOf("function");
   });

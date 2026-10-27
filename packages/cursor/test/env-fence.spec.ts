@@ -51,20 +51,12 @@ const inProcessFake = async (): Promise<ResolvedCursorClient> => {
 };
 
 /**
- * Variables the OS puts into a child it starts, whatever environment the
- * parent handed it. macOS adds `__CF_USER_TEXT_ENCODING` to every process that
- * links CoreFoundation, which Node does — so on a Mac the fenced child holds
- * it even though nothing passed it. Dropped here rather than asserted around,
- * so the exact-equality below keeps saying what it means (the fence passes
- * exactly `env` and nothing of the SERVER's) on both this repo's CI (Linux)
- * and a developer's Mac.
+ * macOS adds `__CF_USER_TEXT_ENCODING` to every Node process, whatever env the
+ * parent passed. Dropped so the equality below still means exactly `env`.
  */
 const OS_INJECTED = new Set(["__CF_USER_TEXT_ENCODING"]);
 
-/**
- * What the scripted run's shell command printed, and the variables its process
- * held — minus {@link OS_INJECTED}, which no caller put there.
- */
+/** What the scripted run's shell command printed, and the variables its process held, minus {@link OS_INJECTED}. */
 function shellReport(items: unknown[]): { stdout: string; envKeys: string[] } {
   const text = JSON.stringify(items);
   const match = /"stdout":"([^"]*)","envKeys":(\[[^\]]*\])/.exec(text.replace(/\\"/g, '"'));

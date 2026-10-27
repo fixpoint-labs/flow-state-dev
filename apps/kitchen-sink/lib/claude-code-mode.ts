@@ -5,11 +5,9 @@
  * Server only. The block runs as background work (`detached`) with its work
  * recorded (`recordWork`), so its plan lands in the shared plan record.
  *
- * **Kitchen Sink confines no run.** It asks for no approval and runs with no
- * sandbox, so it writes, commits and runs commands wherever the server's OS
- * user can — this checkout included, not just the session's worktree. Kitchen
- * Sink is a showcase meant to run on a machine where that is fine. Run the
- * server as a separate OS user, or in a container, when it is not.
+ * **No sandbox, and no approval prompts.** The run writes, commits and runs
+ * commands wherever the server's OS user can, this checkout included. Run the
+ * server as a separate OS user, or in a container, when that is not fine.
  *
  * The run still starts with an allowlisted environment. That filters what it
  * is handed and nothing more: a command it starts as the same OS user can
@@ -105,8 +103,7 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     recordWork: goalControl() !== "no-record",
     permissionMode: "bypassPermissions",
     // The run doesn't load the worktree's own Claude Code settings: a turn can
-    // edit `.claude/settings.json`, and a hook it added would run outside the
-    // sandbox on the next turn.
+    // edit `.claude/settings.json`, and a hook it added would run on the next turn.
     settingSources: [],
     env: claudeCodeEnv(),
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
@@ -194,8 +191,7 @@ export const HOST_CHECKS: ClaudeCodeHostChecks = {
  * Claude Code mode's own check, for the gate's mode-check slot: the server
  * isn't root, the worktree root can be made, and Claude Code finds its SDK and
  * a sign-in over the environment the run gets. The first that fails is the
- * reason. Nothing is asked about a sandbox: Kitchen Sink runs Claude Code
- * without one (see the header).
+ * reason.
  */
 export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {

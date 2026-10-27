@@ -32,9 +32,8 @@ import { MODES, isHarnessMode, type HarnessModeId, type KitchenSinkMode, type Mo
 
 /**
  * Whether one mode can run here. An available mode's `note`, when set, is shown
- * where an unavailable mode's reason is. No mode sets one today — it carried
- * the "runs without its sandbox" warning before Kitchen Sink stopped
- * confining runs; the slot is kept for the next thing a mode needs to say.
+ * where an unavailable mode's reason is. No mode sets one today; the slot stays
+ * for the next thing a mode needs to say.
  */
 export type ModeAvailability =
   | { readonly available: true; readonly note?: string }
