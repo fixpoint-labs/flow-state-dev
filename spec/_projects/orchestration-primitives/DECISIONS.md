@@ -59,6 +59,11 @@ tasks, and the sender must know which kind it sends. Accepted: one answer-once c
 to keep right. It would have flipped back had FIX-2056's closure shown those can't run as routed
 tasks; FIX-2087's closure passed on `main` on Oct 24, so it holds.
 
+**Amended by FIX-2070** (approved with its epic spec, #3983): "expects an answer" means tracked
+work. Tracked work (attempts, a retry, an ending owed to its filer) is a task. A call is talk that
+waits on the wait gate and is owed no tracked ending (concept rule 9; the owner's Oct 20 call).
+One model-facing message tool, `sendMessage`, replaces `messageWorker`; no epic adds a second.
+
 ![PD-3's trade-off](figures/pd3-asks-are-tasks.svg)
 
 It comes down to a post that expects an answer: a ledger-backed message needs a second once-only check to get one, which is why FIX-1872 removed the ledger on Oct 13.

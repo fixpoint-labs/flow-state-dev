@@ -7,7 +7,7 @@ Each rule has one owner: the epic that implements and proves it. The others inhe
 | | Rule | Owner | Checked where |
 |---|---|---|---|
 | **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-2056, by FIX-2083 | FIX-2083's acceptance check; FIX-2087's closure run |
-| **PR-2** | When a post between workers expects an answer, then it is a task filed with `createTask` and waited on through `getTask({ id, wait })`, claimed once and ended to its filer once, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-2056, by FIX-2081 | FIX-2081's acceptance check; FIX-2087's tool sweep |
+| **PR-2** | When a post between workers is tracked work (attempts, a retry, an ending owed to its filer), then it is a task filed with `createTask` and waited on through `getTask({ id, wait })`, claimed once and ended to its filer once, with the claim ticket the only once-only check; otherwise it is a message on the one message tool, `sendMessage`: a call is talk that waits on the engine's wait gate and is owed no tracked ending, and a tell waits on nothing | FIX-2056, by FIX-2081; the message, FIX-2070 | FIX-2081's acceptance check; FIX-2087's tool sweep |
 | **PR-3** | When work stops for a person, then it is one Inbox item, answered once: a `waitForUser` suspension (an approval, a review, input) when code reads the answer on its next line, otherwise a hold on its task row (a question or a confirm), with no deadline unless the host or the call sets one | FIX-2058, by FIX-2129 and FIX-2133 | FIX-2134's closure walk and its `PERSON_STOPS_REMOVED` sweep ([#3951](https://github.com/fixpoint-labs/flow-state-dev/pull/3951)) |
 
 Both rules moved from FIX-1870, canceled Oct 21, to FIX-2056 at its approval
@@ -24,7 +24,7 @@ answer route and a row hold through the board's `updateTask` action, and the ser
 answered ([FIX-2058 ER-7](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2058/DECISIONS.md#who-owns-what)).
 
 **No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's five
-task tools, or a model-facing tool for tells ([PD-3](DECISIONS.md)); add a park, or a third route
+task tools, or a second model-facing message tool beside `sendMessage` ([PD-3](DECISIONS.md)); add a park, or a third route
 that answers a person's stop beside the two PR-3 names; add a second once-only check beside the claim ticket; add a task store or
 status vocabulary outside TaskCollection ([PD-1](DECISIONS.md)); or let a skill pick how its work
 executes ([PD-2](DECISIONS.md)).
