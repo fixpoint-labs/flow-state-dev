@@ -76,6 +76,21 @@ describe("askMidway tells the filer only the asking turn's questions", () => {
   });
 });
 
+describe("askMidway keeps the question when the telling's row read fails", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("answers the recorded question and logs the failed read", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { ledger, told } = fakeLedger({ outcome: "recorded", holds: ["hold_1"] } as never, heldRow(2));
+    (ledger as { getCommitted: unknown }).getCommitted = async () => {
+      throw new Error("store unavailable");
+    };
+    expect(await questionAsWorker(ledger)).toEqual({ ok: true, holds: ["hold_1"] });
+    expect(told).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/couldn't be read.*store unavailable/));
+  });
+});
+
 describe("a board's telling of midway questions", () => {
   afterEach(() => vi.restoreAllMocks());
 

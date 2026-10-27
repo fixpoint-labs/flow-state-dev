@@ -763,8 +763,13 @@ export async function askMidway(
   // running) tells nothing: the row's questions aren't this turn's. Outside
   // `runOnce` on purpose: a durable replay tells again, by the same hold ids.
   if (ledger.tellMidwayQuestions !== undefined) {
-    const row = await readCommittedTask(ledger, claim.taskId);
-    if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
+    try {
+      const row = await readCommittedTask(ledger, claim.taskId);
+      if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
+    } catch (error) {
+      // Best effort: the question stands on the row and in the Inbox either way.
+      console.warn(`[task-board] task "${claim.taskId}": its row couldn't be read to tell the filer its question; it stays in the Inbox: ${(error as Error).message}`);
+    }
   }
   return asked;
 }
