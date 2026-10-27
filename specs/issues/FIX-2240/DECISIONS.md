@@ -173,5 +173,13 @@ Recorded for the implementer, not folded:
 Round 1 (2026-10-27), folded: Codex, a crash after a row's terminal write and before D1's line
 left the sender untold, so the row is owed its line (`toldAt`) and the id stays owed until it is
 written. FSD Architect, the take rule and the backoff are lifted into one pure piece each in
-`orchestration` and named as deliverables, so `workforce` holds no second copy. Not folded:
+`orchestration` and named as deliverables, so `workforce` holds no second copy. Cursor, folded: the epic's message-row seam now names where the delivery's state lives. Not folded:
 the merge order (FIX-2238's spec #3986 and the epic #3983 have already merged).
+
+## Notes from review
+
+Recorded for the implementer, verbatim in substance:
+
+- Cursor: "the explicit final vs retryable refusal code list will drift when send/dispatch errors move. A rule-shaped summary … plus a pointer at today's taxonomy might be easier to maintain."
+- Cursor: split leg 6's *Signal* cell into one row per sub-leg (fault · timeout · pass criteria) in the goal file.
+- Cursor: `payMessageDebts` should run once per pass and batch row reads where possible.
