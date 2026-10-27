@@ -58,8 +58,12 @@ It comes down to the handle: a call id finds the reply whatever words the model 
   a call, waiting again and a held message use it; each dispatches, or not, itself. A call
   dispatches with `waits: true`, so the engine stamps the child and counts its depth. A tool adds
   the per-step claim, as `getTask` does (`toolCallOf`).
-- **Which request a call waits on:** the one its delivery became, kept on the row by FIX-2240. A
-  resend makes a new request and updates the row, so waiting again finds the current one.
+- **Which request a call waits on:** the one that acted on the message, kept on the row. The entry
+  writes it once, when its dedupe first takes the message id; a resend's duplicate request doesn't
+  overwrite it and outputs nothing. A call parks on the request its own dispatch became; when that
+  request ended as a duplicate, the call reads the row and returns, or parks on, the request named
+  there. Waiting again by `callId` always reads the row. This is the durable once evidence FIX-2240
+  keeps (epic D2), written by the recipient's admission, not by the sender's dispatch.
 - **The person's stop holds the message** (epic ER-4, D3), at the entry's admission, the one point
   every send, call and FIX-2240 resend passes. In a task's session it reads the row's open holds
   (`hasOpenHold`, FIX-2058 ER-2): a stop for a person and a question both hold. In a plain
@@ -134,3 +138,13 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
   the entry parking on the stopped request.
 - **Analysis fold** — waiting again by call id, not by repeating the words (D1, amending ER-1); a
   task's question holds a message; the shared helper is the park alone.
+
+## Notes from review
+
+- **Codex (P2, on e94985c), folded:** a resend after a crash makes a duplicate request whose turn is
+  skipped, so pointing the call at the newest request would lose the reply. The row now names the
+  request that acted on the message, written once by the entry's dedupe; a call parked on a
+  duplicate reads the row.
+- **FSD Architect coherence check, recorded:** FIX-2071's renames table and FIX-2249's sweep treat
+  `callId` as a sixth field; FIX-2240's spec must keep the acting request's id on the row; FIX-2241's
+  spec (#3994) should match ER-4 on a question hold holding admission. Routed to the epic's thread.

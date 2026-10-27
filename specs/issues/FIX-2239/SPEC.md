@@ -116,8 +116,8 @@ flowchart LR
   `callId`).
 - The landing rules, the refusals and the budget (FIX-2238). A call is paid like a send: one place,
   when its row is written. Waiting again pays nothing.
-- FIX-2240's delivery debt and resend. A call reads the row's request id, which FIX-2240 keeps, to
-  find the request to wait on.
+- FIX-2240's delivery debt and resend. A call reads the row's id of the request that acted on the
+  message, written once by the recipient's dedupe, to find the reply.
 - `getTask({ id, wait })` for tracked work, and `dispatcher({ wait: true })`'s behaviour.
 - A person's stop, a task's question, their Inbox item and their answer routes (PR-3). A parked
   caller or a parked message is never one.
