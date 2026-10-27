@@ -27,7 +27,8 @@
  *
  * Key `<YYYY-MM-DD>/<worker>`, so a period is read as one prefix per day and
  * touches at most days × workers records. One entry per source: a model id
- * (`kind: "model"`, `runs` counts requests that called it) or a harness name
+ * (`kind: "model"`, `runs` counts request endings that called it: a
+ * request that suspends and resumes counts once per ending) or a harness name
  * with its billing (`kind: "harness"`, `runs` counts runs).
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
@@ -66,7 +67,7 @@ const sourceSpendSchema = z.object({
   outputTokens: z.number().default(0),
   /** The billed cost a harness reported on an `api-key` run, summed; `null` when none was. */
   costUsd: z.number().nullable().default(null),
-  /** Harness runs, or requests that called the model. */
+  /** Harness runs, or request endings that called the model. */
   runs: z.number().default(0),
   /** Runs that reported no tokens. */
   unreported: z.number().default(0)
@@ -273,8 +274,11 @@ export async function readWorkerUsage(
   const collection = collectionOn(ctx);
   if (collection === undefined) throw missingCollection();
   const byWorker = new Map<string, WorkerSourceSpend[]>();
-  for (let back = 0; back < days; back += 1) {
-    for (const ref of await collection.list(`${dayOf(now - back * DAY_MS)}/`)) {
+  const listed = await Promise.all(
+    Array.from({ length: days }, (_, back) => collection.list(`${dayOf(now - back * DAY_MS)}/`))
+  );
+  for (const refs of listed) {
+    for (const ref of refs) {
       const state = workerUsageStateSchema.parse(ref.state ?? {});
       if (state.worker === "") continue;
       byWorker.set(state.worker, state.sources.reduce(addSource, byWorker.get(state.worker) ?? []));

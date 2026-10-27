@@ -86,7 +86,7 @@ One row per worker that spent anything in the period, ordered by worker id. `tok
 | `billing` | For a harness: `"api-key"`, `"subscription"`, or `null` when the harness couldn't tell. Always `null` for a model. |
 | `inputTokens` / `outputTokens` | Tokens summed over the period. |
 | `costUsd` | Dollars, or `null` (see below). |
-| `runs` | For a harness, how many runs. For a model, how many requests called it. |
+| `runs` | For a harness, how many runs. For a model, how many requests called it; a request that pauses and resumes counts once for each time it ends. |
 | `unreported` | Runs that ended without reporting any tokens. |
 
 ### Cost appears only where a harness reported one

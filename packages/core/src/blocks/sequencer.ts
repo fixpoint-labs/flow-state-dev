@@ -26,6 +26,7 @@ import { absorbSequencerStateRequirement, foldSequencerStateRequirements } from 
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
+import { cacheTokensOf } from "../helpers/cache-tokens";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
@@ -535,25 +536,15 @@ export async function executeBlock(
                 evaluatorModelIdentity = payload.identity;
               }
               if (payload.usage && payload.countsIn !== "ledger") {
-                const anthropic = payload.providerMetadata?.anthropic ?? {};
-                // Prefer the adapter-normalised usage fields; fall back to
-                // provider metadata so older call paths keep working.
-                const cacheReadTokens =
-                  payload.usage.cacheReadInputTokens ??
-                  (typeof anthropic.cacheReadInputTokens === "number"
-                    ? anthropic.cacheReadInputTokens : undefined);
-                const cacheCreationTokens =
-                  payload.usage.cacheCreationInputTokens ??
-                  (typeof anthropic.cacheCreationInputTokens === "number"
-                    ? anthropic.cacheCreationInputTokens : undefined);
+                const cache = cacheTokensOf(payload.usage, payload.providerMetadata);
                 modelUsage = {
                   model: payload.model,
                   promptTokens: payload.usage.promptTokens,
                   completionTokens: payload.usage.completionTokens,
                   totalTokens: payload.usage.totalTokens,
                   providerMetadata: payload.providerMetadata,
-                  cacheReadTokens,
-                  cacheCreationTokens,
+                  cacheReadTokens: cache.read,
+                  cacheCreationTokens: cache.creation,
                 };
               }
               // Chain to original hook

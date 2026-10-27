@@ -7,6 +7,7 @@ import type { CapabilityRef } from "@flow-state-dev/core";
 import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { cacheTokensOf } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -93,25 +94,15 @@ async function executeByKind(
           modelIdentity = payload.identity;
         }
         if (payload.countsIn !== "ledger" && payload.usage !== undefined) {
-          const anthropic = payload.providerMetadata?.anthropic ?? {};
-          // Prefer adapter-normalised cache fields; fall back to raw
-          // Anthropic provider metadata for older call paths.
-          const readTokens =
-            payload.usage.cacheReadInputTokens ??
-            (typeof anthropic.cacheReadInputTokens === "number"
-              ? anthropic.cacheReadInputTokens : undefined);
-          const creationTokens =
-            payload.usage.cacheCreationInputTokens ??
-            (typeof anthropic.cacheCreationInputTokens === "number"
-              ? anthropic.cacheCreationInputTokens : undefined);
+          const cache = cacheTokensOf(payload.usage, payload.providerMetadata);
           modelUsage = {
             model: payload.model,
             promptTokens: payload.usage.promptTokens,
             completionTokens: payload.usage.completionTokens,
             totalTokens: payload.usage.totalTokens,
             providerMetadata: payload.providerMetadata,
-            cacheReadTokens: readTokens,
-            cacheCreationTokens: creationTokens
+            cacheReadTokens: cache.read,
+            cacheCreationTokens: cache.creation
           };
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);

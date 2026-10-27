@@ -16,6 +16,7 @@
  * development; a trace row's `modelUsage` is DevTool's and no longer read for
  * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding}.
  */
+import { cacheTokensOf } from "@flow-state-dev/core";
 import type { GeneratorModelUsage, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
 
 /** A model result as the base `onGeneratorModelResult` handler receives it. */
@@ -101,17 +102,12 @@ function copyOf(byModel: Record<string, ModelUsageEntry>): Record<string, ModelU
  */
 function entryOf(report: ModelResultReport): ModelUsageEntry {
   const usage = report.usage!;
-  const anthropic = report.providerMetadata?.anthropic ?? {};
-  const cacheRead =
-    usage.cacheReadInputTokens ?? (typeof anthropic.cacheReadInputTokens === "number" ? anthropic.cacheReadInputTokens : 0);
-  const cacheCreation =
-    usage.cacheCreationInputTokens ??
-    (typeof anthropic.cacheCreationInputTokens === "number" ? anthropic.cacheCreationInputTokens : 0);
+  const cache = cacheTokensOf(usage, report.providerMetadata);
   return {
     prompt: Number(usage.promptTokens ?? 0),
     completion: Number(usage.completionTokens ?? 0),
     total: Number(usage.totalTokens ?? 0),
-    cacheReadTokens: Number(cacheRead),
-    cacheCreationTokens: Number(cacheCreation)
+    cacheReadTokens: Number(cache.read ?? 0),
+    cacheCreationTokens: Number(cache.creation ?? 0)
   };
 }

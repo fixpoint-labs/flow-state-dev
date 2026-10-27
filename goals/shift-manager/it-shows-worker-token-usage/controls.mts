@@ -75,8 +75,8 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "ignore-period",
     assertions: ["g:not-in-7-days"],
     patches: [
-      { module: USAGE, from: String.raw`for \(let back = 0; back < days; back \+= 1\) \{`, to: "for (let back = 0; back < 1; back += 1) {" },
-      { module: USAGE, from: "await collection\\.list\\(`\\$\\{dayOf\\(now - back \\* DAY_MS\\)\\}/`\\)", to: "await collection.list()" },
+      { module: USAGE, from: String.raw`Array\.from\(\{ length: days \},`, to: "Array.from({ length: 1 }," },
+      { module: USAGE, from: "collection\\.list\\(`\\$\\{dayOf\\(now - back \\* DAY_MS\\)\\}/`\\)", to: "collection.list()" },
     ],
     does: "the query reads every record, whatever period is asked for",
   },
