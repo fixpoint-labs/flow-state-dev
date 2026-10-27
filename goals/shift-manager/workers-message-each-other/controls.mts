@@ -189,7 +189,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "task-to-conversation",
     legs: ["6"],
     assertion: "6:lands-in-task-session",
-    patches: [{ module: TARGET, from: String.raw`const sessionId = ledger\?\.get\(taskId\)\?\.run\?\.sessionId;`, to: "const sessionId = partitions[0];" }],
+    patches: [{ module: TARGET, from: String.raw`const sessionId = ledger\.get\(taskId\)\?\.run\?\.sessionId;`, to: "const sessionId = (await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId))[0];" }],
     does: "a { task } message lands in the conversation that filed the task, not in the session working it",
   },
   "no-kind-check": {

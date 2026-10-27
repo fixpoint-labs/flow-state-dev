@@ -74,17 +74,23 @@ export type SendOutcome =
  * or `undefined` when there is none), or `undefined` when it can. The one
  * rule: the send refuses with it, and the tool's description lists only the
  * workers it lets through.
+ *
+ * @param answering The send answers one of `to`'s messages (`inReplyTo`), so
+ *   it lands where that message came from, not by name.
  */
 export function recipientRefusal(
   installation: WorkerInstallation,
   sender: string,
   to: string,
-  recipient: RosterWorker | undefined
+  recipient: RosterWorker | undefined,
+  answering = false
 ): string | undefined {
   if (to === sender) return "not_yourself: you can't message yourself.";
   if (recipient === undefined) return `no_worker: no worker "${to}" on your roster.`;
   if (recipient.problem !== undefined) return `worker_unavailable: worker "${to}" can't be messaged: ${recipient.problem}.`;
-  if (messageHearingOf(installation.workerFlows()[recipient.flow]?.flow) === "task-sessions") {
+  // An answer lands in the session its original came from, which is one of
+  // the worker's tasks' sessions, so only a message by name is refused.
+  if (!answering && messageHearingOf(installation.workerFlows()[recipient.flow]?.flow) === "task-sessions") {
     return (
       `task_sessions_only: "${to}" answers only from its tasks' sessions, so it can't be messaged by name. ` +
       "File it a task instead."
@@ -171,7 +177,7 @@ export async function sendMessage(
   } else {
     // ---- by name: on the roster, and hearing by name ------------------------
     const named = await installation.rosterWorker(ctx as never, to);
-    const refused = recipientRefusal(installation, sender, to, named);
+    const refused = recipientRefusal(installation, sender, to, named, input.inReplyTo !== undefined);
     if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
     recipient = named;
     if (input.inReplyTo !== undefined) {

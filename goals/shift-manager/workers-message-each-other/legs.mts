@@ -676,19 +676,24 @@ export async function leg3(world: World): Promise<LegResult> {
   }
   if (stopped === undefined && sent.length <= 6) r.failures.push(`3:ring-stops-at-6 — no session shows a seventh send refused \`budget\``);
   if (stopped !== undefined) r.notes.push(`the seventh send was refused in ${stopped.sessionId}: ${errorOf(stopped).slice(0, 160)}`);
-  // Each received item says what is left: 6 minus its place.
+  // Each received item says what its chain has left when it is heard: at
+  // most 6 minus its place (less when the ring branched and spent more
+  // first), never below 0, and counting down along the ring.
   const wrong: string[] = [];
-  for (const m of sent) {
+  let previous = Number.POSITIVE_INFINITY;
+  for (const m of [...sent].sort((a, b) => a.hop - b.hop)) {
     const item = (await receivedIn(alice, m.toSession)).find((x) => x.id === m.id);
-    if (item?.budget !== 6 - m.hop) wrong.push(`${m.id}@${m.hop}: budget ${String(item?.budget)}`);
+    const budget = item?.budget;
+    if (typeof budget !== "number" || budget < 0 || budget > 6 - m.hop || budget > previous) wrong.push(`${m.id}@${m.hop}: budget ${String(budget)}`);
+    if (typeof budget === "number") previous = budget;
   }
-  if (wrong.length > 0) r.failures.push(`3:budget-left — a ring message's received item doesn't say 6 minus its place: ${show(wrong)}`);
+  if (wrong.length > 0) r.failures.push(`3:budget-left — a ring message's received item doesn't count down from 6 minus its place: ${show(wrong)}`);
   await quiet(alice, 300_000);
 
   // A refused send spends nothing: after a new line from the person, a refused send then a sent one, at 1.
   const nobody = `nobody-${hex()}`;
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
-  const pair = await talk(turns, "3", alice, HERALD, herald, `Do these two in order. First message the worker ${nobody} saying hi. Then message ${HELPER_A} saying "after ${ring}".`);
+  const pair = await talk(turns, "3", alice, HERALD, herald, `Do these two in order. First message the worker ${nobody} saying hi. Then, whether or not that worked, message ${HELPER_A} saying "after ${ring}".`);
   const refusedCall = pair.calls.find((c) => c.args.to === nobody);
   const afterCall = pair.calls.find((c) => c.args.to === HELPER_A && typeof c.output?.sent === "string");
   const added = (await logOf(alice)).filter((m) => !logBefore.has(m.id) && m.fromSession === herald.id);
@@ -781,7 +786,10 @@ export async function leg4(world: World, filedGoals: readonly string[], hireChec
     const session = world.conversation[worker];
     if (session === undefined) continue;
     const board = await boardOf(alice, session.flowKind, session.id).catch((e: unknown) => [{ error: messageOf(e) }] as Array<Record<string, unknown>>);
-    const stray = board.filter((row) => !filedGoals.some((goal) => String(row.goal ?? "").includes(goal)));
+    // Leg 3's ring hands each message on as a task for Helper B on Helper A's board, in the model's own words.
+    const stray = board.filter(
+      (row) => !filedGoals.some((goal) => String(row.goal ?? "").includes(goal)) && !(worker === HELPER_A && row.assignee === HELPER_B),
+    );
     if (stray.length > 0) r.failures.push(`4:no-task-row — ${worker}'s board holds row(s) no leg filed: ${show(stray.map((x) => ({ assignee: x.assignee, goal: String(x.goal ?? x.error ?? "").slice(0, 120) })))}`);
   }
   return r;

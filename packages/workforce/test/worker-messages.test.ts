@@ -12,9 +12,14 @@ import { describe, expect, it } from "vitest";
 import { runAction } from "@flow-state-dev/engine";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
-import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { boardWorkers, bootBoardHost, hearsMessages, messageOf, type BoardHost } from "./conversation-board-harness";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
 import { sendMessageInputSchema } from "../src/messages/message-tool";
+import { recipientRefusal } from "../src/messages/send-message";
+import { createWorkerInstallation, type RosterWorker } from "../src/workers/installation";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { workerConfigSchema } from "../src/worker-config";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { FILED_HOP } from "../src/conversation-board/board-entries";
 
@@ -833,6 +838,26 @@ describe("the hop count through a delegation", () => {
 });
 
 describe("who can be messaged", () => {
+  // A worker that hears only in its tasks' sessions still hears an answer:
+  // the answer lands in the task session its question came from.
+  it("refuses a worker that hears only in its tasks' sessions by name, and lets an answer to it through", () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+    const door = z.object({ message: z.string() });
+    flows = {
+      coder: defineFlow({
+        kind: "coder",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
+      })
+    };
+    const coder: RosterWorker = { id: "eng.coder", standard: true, flow: "coder", description: null, delegates: [] } as RosterWorker;
+    expect(recipientRefusal(installation, "otto", "eng.coder", coder)).toMatch(/^task_sessions_only/);
+    expect(recipientRefusal(installation, "otto", "eng.coder", coder, true)).toBeUndefined();
+  });
+
   it("refuses another user's worker as missing, a worker that hears only in its tasks' sessions with 'file a task', and itself, writing nothing; a round-robin coordinator hears one", async () => {
     const calls = [
       { to: "bob.friend", text: "Hi Bob's worker." },
@@ -944,6 +969,62 @@ describe("a busy recipient", () => {
       expect(texts.indexOf("Long answer.")).toBeGreaterThanOrEqual(0);
       expect(texts.indexOf("From otto: What is the codename?")).toBeGreaterThan(texts.indexOf("Long answer."));
       expect(texts.at(-1)).toBe("Heard otto.");
+    } finally {
+      release();
+      await h.dispose();
+    }
+  });
+
+  // A queued message's budget is what its chain has left when it is heard,
+  // not when it was sent: the sender's next send has spent one more.
+  it("tells a message heard after a busy turn what its chain has left by then", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = true;
+    let asked = false;
+    const h = boot({
+      judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("long question"), then: { text: "Long answer." } }, fallback] }),
+      agentAnswer: mockGenerator({
+        script: [
+          { when: (input) => asked && textOf(input).includes("Please ask the lead twice"), then: { text: "Sent." } },
+          {
+            when: (input) => {
+              if (asked || !textOf(input).includes("Please ask the lead twice")) return false;
+              asked = true;
+              return true;
+            },
+            then: {
+              toolCalls: [
+                { toolCallId: "call-first", toolName: "sendMessage", args: { to: "lead", text: "First." } },
+                { toolCallId: "call-second", toolName: "sendMessage", args: { to: "lead", text: "Second." } }
+              ]
+            }
+          },
+          fallback
+        ]
+      }),
+      afterModelCall: async (block) => {
+        if (block === "coordinator-judgment" && holding) {
+          holding = false;
+          await held;
+        }
+      }
+    });
+    try {
+      const lead = await h.client("alice").ensureWorkerSession({ worker: "lead" });
+      await h.post("alice", lead.id, "respond", { message: "A long question" }, "coordinator");
+      for (let i = 0; i < 200 && holding; i += 1) await new Promise((r) => setTimeout(r, 10));
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead twice" }, "agent");
+      for (let i = 0; i < 300 && (await logRows(h, "alice")).length < 2; i += 1) await new Promise((r) => setTimeout(r, 10));
+      expect((await logRows(h, "alice")).map((row) => row.hop).sort()).toEqual([1, 2]);
+      release();
+      await h.settled();
+      const heard = await receivedIn(h, lead.id);
+      expect(heard.map((item) => [item.text, item.budget])).toEqual([
+        ["First.", 4],
+        ["Second.", 4]
+      ]);
     } finally {
       release();
       await h.dispose();
