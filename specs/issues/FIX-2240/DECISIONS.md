@@ -186,5 +186,5 @@ the merge order (FIX-2238's spec #3986 and the epic #3983 have already merged).
 Recorded for the implementer, verbatim in substance:
 
 - Cursor: "the explicit final vs retryable refusal code list will drift when send/dispatch errors move. A rule-shaped summary … plus a pointer at today's taxonomy might be easier to maintain."
-- Cursor: split leg 6's *Signal* cell into one row per sub-leg (fault · timeout · pass criteria) in the goal file.
+- Cursor: split leg 6's (now leg 9's) *Signal* cell into one row per sub-leg (fault · timeout · pass criteria) in the goal file.
 - Cursor: `payMessageDebts` should run once per pass and batch row reads where possible.
