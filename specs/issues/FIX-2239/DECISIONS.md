@@ -58,7 +58,8 @@ It comes down to the handle: a call id finds the reply whatever words the model 
   a call, waiting again and a held message use it; each dispatches, or not, itself. A call
   dispatches with `waits: true`, so the engine stamps the child and counts its depth. A tool adds
   the per-step claim, as `getTask` does (`toolCallOf`).
-- **Which request a call waits on:** the one that acted on the message, kept on the row. The entry
+- **Which request a call waits on:** the one that acted on the message, kept on the row as FIX-2240's
+  `deliveredAs`. The entry
   writes it once, when its dedupe first takes the message id; a resend's duplicate request doesn't
   overwrite it and outputs nothing. A call parks on the request its own dispatch became; when that
   request ended as a duplicate, the call reads the row and returns, or parks on, the request named
@@ -145,6 +146,9 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
   skipped, so pointing the call at the newest request would lose the reply. The row now names the
   request that acted on the message, written once by the entry's dedupe; a call parked on a
   duplicate reads the row.
+- **FSD Architect (#4000), folded:** goal legs renumbered to 10, 10b and 10c, after FIX-2160's 6 to
+  8 and FIX-2240's 9; FIX-2160's `task_running` refuses a call to the coder's open task at send
+  time, before this issue's queue; the row's acting request is FIX-2240's `deliveredAs`.
 - **FSD Architect coherence check, recorded:** FIX-2071's renames table and FIX-2249's sweep treat
   `callId` as a sixth field; FIX-2240's spec must keep the acting request's id on the row; FIX-2241's
   spec (#3994) should match ER-4 on a question hold holding admission. Routed to the epic's thread.
