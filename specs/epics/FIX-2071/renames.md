@@ -40,6 +40,7 @@ count, is the check.
 | `runTaskBoard` left in `engine/src/stores/testing/wake-store-conformance.ts` (the rename to `dispatch` and `DISPATCH_ENTRY` is done) | `dispatch` | — | FIX-2246 | 1 / 0 / 0 |
 | `upgradeWorkerEntryNames` and its types (`workforce/src/workers/upgrade-entry-names.ts`), the reader that rewrites stored old entry names (`runTaskBoard`, the `run` and `message` doors) at host start, and its call in kitchen-sink's `stored-work-upgrade.ts` | Nothing: removed, since no stored old name is left to rewrite ([D1](DECISIONS.md#d1)) | — | FIX-2246 | 2 / 1 / 1 |
 | Workforce's `RETRY_OF` (`conversation-board/board-entries.ts`; nothing writes it since FIX-2077) | Nothing: deleted | The engine's request `retryOf`: a request the `/retry` route re-ran, kept in request metadata (`engine/src/execution/request-recovery.ts`, `past-turns.ts`, `routes/recovery-routes.ts`). Not a task attempt | FIX-2246 | 2 / 0 / 0 |
+| `hireWorkforce`'s `messages.hopLimit` | `messages.budget`: since FIX-2238 it caps the one budget per message a user types ([FIX-2070's ER-6](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2070/DECISIONS.md)), not a hop count. Derived spellings follow (`DEFAULT_MESSAGE_HOP_LIMIT`, the `hop_limit` refusal) | `messages.perTurn`: still the most one request sends, and a turn is that request's name for a person | FIX-2246 | 5 / 1 / — |
 | `delegationBoard`, `settleSplitTask`, `cancelSplitPieces` left over | Nothing new: the line goes | — | FIX-2246 | 1 / 2 / 1 |
 | `fsd.ask.*` run-once keys; a notice's `asked` flag; the wait-gate id prefix `ask:` (`orchestration/src/tasks/helpers/wait-on-task.ts`, `engine/src/context/wait-resume-operation.ts`); the two readers `.changeset/wait-vocabulary.md` names (a gate stored with reason `"ask"` read as a wait, a row's `ask` read as `wait`) | `fsd.wait.*`; `waitedOn`, the word `listTasks` already uses; `wait:`; the readers deleted, with no second spelling read | — | FIX-2246 | 2 source files, plus the readers |
 | `<board>-hand-off-<assignee>`, `<board>-hand-off-fallback`; a reader of the `"handed-off"` termination reason `.changeset/dispatch-vocabulary.md` names, if one is left | `<board>-dispatch-<assignee>`, `<board>-dispatch-fallback`; the reader deleted | — | FIX-2246 | 1 / 0 / 1 |
@@ -61,6 +62,8 @@ FIX-2249, puts them in `RETIRED`; one still in package source then is FIX-2246's
 | `workforceRelayTo` | Nothing: no relay | 1 / 2 / 0 |
 | `replyTo` | `inReplyTo` | 10 / 3 / 2 |
 | The `takes_tasks_only` and `no_turn` refusals | Nothing: anyone on the roster | — |
+| `workerMessageEntry`, `takesWorkerMessages`, `sendWorkerMessage`, `SendWorkerMessage`, `messageWorkerInputSchema`, `workerMessageInputSchema` (FIX-2238) | Nothing: the entry and tool above replace them | — |
+| `WORKER_MESSAGES_SEEN_STATE` (FIX-2240) | Nothing: delivery once replaces the seen window | — |
 
 The entry was first specced as `receive` (#3983); the owner renamed it `onMessageReceived` on 2026-10-27. FIX-2238 (#3986) builds it under the new name and amends FIX-2070's merged spec, figures and the coordination design docs. The closure puts `receiveProblem`, `receiveEntry` and `RECEIVE_ENTRY` in `RETIRED`, never a bare `receive`, which is an ordinary verb and a live identifier elsewhere.
 
@@ -73,4 +76,4 @@ note, add the names to `RETIRED`.
 The four meanings of *hold* on the task surface, FIX-2092's held phase steps, *waiting* (a task
 waiting on a person and FIX-2214's status; FIX-2070's `onMessageReceived` field is `call`, so it is not one), and `updateTask`'s `question` field
 ([the project spec](https://github.com/fixpoint-labs/flow-state-dev/pull/3102), *Decided since the
-last refresh*). FIX-2183's spec adds its rows to this table before it builds.
+last refresh*). FIX-2183's spec adds its rows to this table before it builds. FIX-2239's message row says `queuedBehind`, not `heldBy`, so a queued message is not one of them.
