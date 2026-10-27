@@ -106,12 +106,13 @@ export function recipientRefusal(
  * The recipient check a resend runs again (FIX-2240): the send's, as it reads
  * now, so a worker fired since the send is refused. A message to a task or a
  * conversation (FIX-2160) re-runs that target's check on its record; one by
- * name, the roster's. Not the budget: the row paid it once.
+ * name, the roster's, and an answer (`inReplyTo`) keeps the send's answering
+ * exception. Not the budget: the row paid it once.
  */
 export async function recheckRecipient(
   ctx: BlockContext,
   installation: WorkerInstallation,
-  row: Pick<WorkerMessageRow, "from" | "to" | "addressedBy" | "toTask" | "toSession">
+  row: Pick<WorkerMessageRow, "from" | "to" | "addressedBy" | "toTask" | "toSession" | "inReplyTo">
 ): Promise<string | undefined> {
   if (row.addressedBy === "task" || row.addressedBy === "session") {
     const checked =
@@ -120,7 +121,8 @@ export async function recheckRecipient(
         : await checkTargetSession(ctx, installation, row.toSession, { session: true });
     return checked.ok ? undefined : checked.error;
   }
-  return recipientRefusal(installation, row.from, row.to, await installation.rosterWorker(ctx as never, row.to));
+  const recipient = await installation.rosterWorker(ctx as never, row.to);
+  return recipientRefusal(installation, row.from, row.to, recipient, row.inReplyTo !== undefined);
 }
 
 /**
