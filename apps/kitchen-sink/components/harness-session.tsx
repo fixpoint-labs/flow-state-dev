@@ -161,13 +161,17 @@ function SessionBody({
         },
       };
       try {
-        setLastLine(await lines.send(prompt, streaming.current, sender));
+        const outcome = await lines.send(prompt, streaming.current, sender);
+        setLastLine(outcome);
         if (messageRef.current.trim() === prompt) setMessage("");
+        // The steer request records a taken line in session state, and this
+        // view follows only the turn's stream: re-read it so the line shows now.
+        if (outcome === "taken") void refresh();
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [client, flowKind, lines, session, sessionId, setMessage],
+    [client, flowKind, lines, refresh, session, sessionId, setMessage],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
