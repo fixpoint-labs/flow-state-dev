@@ -172,7 +172,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     const first = await marked({});
     const chain = expect.stringMatching(/^chain_/);
     expect(first.patches).toEqual([
-      { [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceTurnChain: chain, workforceMessagesSent: 0, workforceMessagedWorkers: [] }
+      { [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceTurnChain: chain, workforceMessagesSent: 0 }
     ]);
     // It counts one more user's line on the session, which a filed task's
     // record is checked against (FIX-2106).

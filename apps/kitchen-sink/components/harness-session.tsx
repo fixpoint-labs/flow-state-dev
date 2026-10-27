@@ -60,18 +60,30 @@ export interface HarnessSessionViewProps {
   readonly sessionId: string;
   /** The mode's models, for the name of the session's. */
   readonly models: ModelChoices;
+  /** Called when the session's title arrives or changes, so the rail can pick it up. */
+  readonly onTitled?: () => void;
 }
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId, models }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} />
+      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
 }
 
-function SessionBody({ label, sessionId, models }: { label: string; sessionId: string; models: ModelChoices }) {
+function SessionBody({
+  label,
+  sessionId,
+  models,
+  onTitled,
+}: {
+  label: string;
+  sessionId: string;
+  models: ModelChoices;
+  onTitled?: () => void;
+}) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useSessionDraft(sessionId);
   const messageRef = useRef(message);
@@ -85,6 +97,13 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
     if (wasStreaming.current && !session.isStreaming) void refresh();
     wasStreaming.current = session.isStreaming;
   }, [session.isStreaming, refresh]);
+
+  // The rail lists sessions by title. The flow sets it in a session's first
+  // turn, so re-read the rail when it arrives.
+  const title = session.detail?.title;
+  useEffect(() => {
+    if (title !== undefined) onTitled?.();
+  }, [title, onTitled]);
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
@@ -134,6 +153,8 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
                     items={session.items}
                     isStreaming={session.isStreaming}
                     isFinishing={session.isFinishing}
+                    showWorkedFor
+                    latestCompletedAtMs={latestRequest?.completedAtMs ?? latestRequest?.failedAtMs}
                     statusMessage={session.statusMessage}
                   />
                 </>

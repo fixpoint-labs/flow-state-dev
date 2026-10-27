@@ -1436,6 +1436,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     ...(delivery !== undefined ? { filerOf: (row: Task) => delivery.hooks.filerOf(row) } : {}),
+    ...(delivery?.hooks.tellMidwayQuestions !== undefined
+      ? { tellMidwayQuestions: (row: Task) => delivery.hooks.tellMidwayQuestions!(row) }
+      : {}),
 
     async markCancelOwed(id) {
       return patchRef(id, "cancel_owed", (task) =>

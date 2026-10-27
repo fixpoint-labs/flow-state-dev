@@ -93,7 +93,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
   // hears one (FIX-2238): checked as the door is, before anything registers.
   const deaf = Object.entries(installation.workerFlows())
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([flowName, { flow }]) => messageReceivedProblem(flowName, (flow as { internal?: { actions?: Readonly<Record<string, unknown>> } }).internal?.actions))
+    .map(([flowName, { flow }]) => messageReceivedProblem(flowName, flow))
     .filter((problem): problem is string => problem !== undefined);
   if (deaf.length > 0) {
     throw new Error(`hireWorkforce refused ${deaf.length} worker flow(s); nothing was registered:\n` + deaf.map((problem) => `  - ${problem}`).join("\n"));

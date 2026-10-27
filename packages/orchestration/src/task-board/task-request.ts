@@ -717,6 +717,13 @@ export type MidwayAsk =
  * server-set), never one from input, so only the turn holding the current
  * ticket asks. FIX-2131's model tool calls this.
  *
+ * After the question is opened, a ledger that declares `onMidwayQuestion` (FIX-2241) is told the
+ * row's open midway questions, read from the committed row, so its filer
+ * hears them; a replay whose ask is declined tells them again, and the
+ * declaration's implementer dedupes per hold (Workforce by message id). Only
+ * this turn's questions are told: a decline for any other reason tells
+ * nothing. The telling runs inline, before this returns.
+ *
  * Once per request for the same turn and questions (`ctx.runOnce`): a durable
  * turn that resumes from a stop replays the code before it, and that replay
  * gets the first ask's answer back rather than opening the questions twice.
@@ -749,6 +756,20 @@ export async function askMidway(
   if (asked.ok && record !== undefined) {
     record.askedQuestions = true;
     record.renewal?.stop();
+  }
+  // Tell the filer (FIX-2241), from the committed row: a replay whose ask is
+  // declined (its lease already gone) still tells the questions this turn
+  // opened. Any other decline (another turn's ticket, a row no longer
+  // running) tells nothing: the row's questions aren't this turn's. Outside
+  // `runOnce` on purpose: a durable replay tells again, by the same hold ids.
+  if (ledger.tellMidwayQuestions !== undefined) {
+    try {
+      const row = await readCommittedTask(ledger, claim.taskId);
+      if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
+    } catch (error) {
+      // Best effort: the question stands on the row and in the Inbox either way.
+      console.warn(`[task-board] task "${claim.taskId}": its row couldn't be read to tell the filer its question; it stays in the Inbox: ${(error as Error).message}`);
+    }
   }
   return asked;
 }

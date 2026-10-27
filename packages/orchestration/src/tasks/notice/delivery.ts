@@ -25,6 +25,8 @@
 import { dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
+import type { RowHold } from "../schema/hold";
+import { openRowHolds } from "../collection/holds";
 import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
 
 /** The internal entry a notice arrives on in the filer's session, unless a board names another. Pinned. */
@@ -61,6 +63,18 @@ export interface DeclaredDelivery {
   /** A notice settled undeliverable: its filer's session is gone. */
   readonly onUndeliverable?: (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => Promise<void>;
   /**
+   * A task on this ledger asked its filer's questions midway (FIX-2241): told
+   * with the row's open midway questions, read from the committed row, from
+   * the asking request. Not the notice pipeline: no marker, no wake, no
+   * `noticeEntry`. The same declaration, a different moment. Called again
+   * when a replayed turn asks again, so it must be idempotent per hold (a
+   * Workforce board sends one message per hold, its id derived from the
+   * hold). Called only for a row whose filer is known. Runs inline in the
+   * asking turn, after its lease is dropped, so a slow telling only delays
+   * that turn's end. A throw is logged, never fails the question.
+   */
+  readonly onMidwayQuestion?: (ctx: BlockContext, row: Task, holds: readonly RowHold[]) => Promise<void>;
+  /**
    * `false`: an ending owes its filer no notice, only the resume of a request
    * parked on it (FIX-2082). A plan board's ledger: its drain waits on every
    * row, so nobody else is told how one ended. Default: every ending owes one.
@@ -84,6 +98,11 @@ export function filerResolver(declared: DeclaredDelivery, partition: string | un
 
 /** What a backing runs around an ending's write, bound to the running request. */
 export interface DeliveryHooks {
+  /**
+   * Tell the filer of `row` its open midway questions, through the ledger's
+   * {@link DeclaredDelivery.onMidwayQuestion}. Absent when the ledger declares none.
+   */
+  tellMidwayQuestions?(row: Task): Promise<void>;
   /** `false` when an ending owes no notice, only a parked wait's resume ({@link DeclaredDelivery.notices}). */
   readonly notices?: false;
   /** The session that filed `row`, or `undefined` when none is known. */
@@ -181,8 +200,29 @@ export function createDelivery(
     beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
     owePassAt,
     afterEnding,
-    whenRequestEnds
+    whenRequestEnds,
+    ...(declared.onMidwayQuestion !== undefined ? { tellMidwayQuestions } : {})
   };
+
+  async function tellMidwayQuestions(row: Task): Promise<void> {
+    const holds = openRowHolds(row).filter((hold) => hold.midway === true);
+    if (holds.length === 0) return;
+    if (filerOf(row) === undefined) {
+      // A screen's or a schedule's filing, or a filer no longer known: the Inbox has it.
+      console.debug("[orchestration] a midway question has no filer to tell: it is in the Inbox only", { boardId: board.collectionId, taskId: row.id });
+      return;
+    }
+    try {
+      await declared.onMidwayQuestion!(ctx, row, holds);
+    } catch (error) {
+      // The question stands on the row and in the Inbox; only the filer's telling failed.
+      console.warn("[orchestration] a midway question couldn't be told to its filer: it stays in the Inbox", {
+        boardId: board.collectionId,
+        taskId: row.id,
+        error: (error as Error).message
+      });
+    }
+  }
 
   function whenRequestEnds(send: () => Promise<void>): void {
     // Only where a notice can be held for this request: a host that records

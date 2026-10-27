@@ -15,7 +15,7 @@ contract every harness implements is
 ## Install
 
 ```bash
-pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.31
+pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.40
 ```
 
 The SDK is an **exact-pinned optional peer**, and the pin is enforced: building a
