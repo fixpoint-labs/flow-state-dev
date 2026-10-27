@@ -84,7 +84,7 @@ already fills for its endings:
      noticeEntry: () => TASK_SETTLED_ENTRY,
      ...
 +    // a midway question, told to the filer through sendMessage's server path
-+    questionAsked: (ctx, row, holds) => sendQuestionToFiler(ctx, row, holds),
++    onMidwayQuestion: (ctx, row, holds) => sendQuestionToFiler(ctx, row, holds),
    };
  }
 ```
@@ -98,9 +98,9 @@ Answer it with updateTask({ id: "t7", question: "h1", message }), or leave it to
 
 **Docs:** update `apps/docs/docs/workforce/messaging-workers.md` (a task's question arrives as a
 message; answer with `updateTask`, not a reply) and `apps/docs/docs/orchestration/task-board.md` →
-the midway ask (a board's `questionAsked` delivery; without one the filer reads it with `getTask`);
+the midway ask (a board's `onMidwayQuestion` delivery; without one the filer reads it with `getTask`);
 `packages/workforce/README.md` and `packages/orchestration/README.md`. A changeset for
-`@flow-state-dev/orchestration` (`DeclaredDelivery.questionAsked`) and `@flow-state-dev/workforce`.
+`@flow-state-dev/orchestration` (`DeclaredDelivery.onMidwayQuestion`) and `@flow-state-dev/workforce`.
 
 ## What stays as it is
 
@@ -123,9 +123,9 @@ the midway ask (a board's `questionAsked` delivery; without one the filer reads 
 
 | Builds on / Adds | Existing piece considered | Why that doesn't fit, or how this is composed |
 |---|---|---|
-| `DeclaredDelivery.questionAsked` | `onUndeliverable`, the same declaration's hook | **Extends** the declaration a Workforce board already fills; no second registry |
+| `DeclaredDelivery.onMidwayQuestion` | `onUndeliverable`, the same declaration's hook | **Extends** the declaration a Workforce board already fills; no second registry |
 | `sendQuestionToFiler` | `sendMessage`'s server function | **Composes**: one call with a server-set sender and an exemption flag; no second delivery path |
-| A message id per hold | The receiver's dedupe by id | **Reuses** it: the id is derived from the task and the hold, so any repeat lands once |
+| A message id per hold | The message row's take by id (FIX-2240) | **Reuses** it: the id is derived from the task and the hold, so any repeat lands once |
 
 | The debt | |
 |---|---|
