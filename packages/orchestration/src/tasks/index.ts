@@ -255,6 +255,8 @@ export {
 
 // Filed work still holding a task (FIX-2077, rule 6).
 export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
+// The rows that run in one session: its tasks and their follow-ups (FIX-2160).
+export { rowsInSession } from "./helpers/session-rows";
 // A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.
 export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 

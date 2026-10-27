@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
@@ -23,6 +23,7 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
   harnessSessionDoor,
+  harnessTalkTurn,
   harnessTaskInputSchema,
   runOwnerDispatcher,
   STEER_POLL_MS,
@@ -220,24 +221,32 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
       return { id: FOLLOW_UP_ID };
     },
   });
+  const doorBoard = async (ctx: BlockContext) => ({
+    tasks: await getOrCreateTaskCollection({
+      ctx,
+      backing: "resource",
+      collectionId: BOARD_ID,
+      collection: resolveResourceCollection(ctx, BOARD_ID)!,
+    }),
+    runOf: () => ({ issue: ISSUE, phase: PHASE }),
+  });
   // The coding flow's own door: a line in the run's session.
   const message = harnessSessionDoor({
     name: "steer-host",
     uses: [board.capability],
     harness: stubHarness(options.script, seen, started),
-    board: async (ctx) => ({
-      tasks: await getOrCreateTaskCollection({
-        ctx,
-        backing: "resource",
-        collectionId: BOARD_ID,
-        collection: resolveResourceCollection(ctx, BOARD_ID)!,
-      }),
-      runOf: () => ({ issue: ISSUE, phase: PHASE }),
-    }),
+    board: doorBoard,
+  });
+  // The door's talk half on its own, as a coder runs it for a message (FIX-2160).
+  const talk = harnessTalkTurn({
+    name: "steer-host-talk",
+    uses: [board.capability],
+    harness: stubHarness(options.script, seen, started),
+    board: doorBoard,
   });
   const flow = defineFlow({
     kind: "steer-host",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel }, followUp: { block: followUp }, message },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel }, followUp: { block: followUp }, message, talk: { block: talk } },
     internal: { actions: { ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "steer-host" } as never);
@@ -572,6 +581,50 @@ describe("a line typed in a coding run's session", () => {
       const line = await h.act("message", { message: "Hello?" }, "s_elsewhere");
       expect(String(line.error?.message ?? line.error)).toContain("hasn't started here");
       expect(h.seen).toHaveLength(0);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+});
+
+describe("a message about a coding task, through the talk turn (FIX-2160)", () => {
+  it("answers a finished task from its coding session, and returns the reply as the turn's output", async () => {
+    const h = host({ script: ["finished", "finished"], stopsOnAbort: false });
+    try {
+      await h.act("seed");
+      await h.act("drain");
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+      const before = JSON.stringify(await h.row());
+
+      const turn = await h.act("talk", { message: "Which files changed?" }, done.run!.sessionId);
+
+      expect(turn.error).toBeUndefined();
+      // A call to a coder task reads this reply (FIX-2239), so it must be the run's final text.
+      expect(turn.output).toEqual({ reply: "done", taskId: TASK_ID });
+      expect(h.seen[1]).toMatchObject({ prompt: "Which files changed?", resume: "sess_1" });
+      expect(JSON.stringify(await h.row())).toBe(before);
+      expect(existsSync(`${h.seen[1]!.cwd}.lock`)).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("refuses a task still open, and never steers it: a message is not a steer", async () => {
+    const h = host({ script: ["finish-later", "finished"], stopsOnAbort: false });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+      const running = await h.until((t) => t.run !== undefined, "the run to link");
+
+      const turn = await h.act("talk", { message: "Rename the flag too." }, running.run!.sessionId);
+
+      expect(String(turn.error?.message ?? turn.error)).toContain("still running");
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+      // The control is the door's own line above, which steers the same open task.
+      expect(done.steers ?? []).toEqual([]);
+      expect(h.seen).toHaveLength(1);
     } finally {
       await h.dispose();
     }
