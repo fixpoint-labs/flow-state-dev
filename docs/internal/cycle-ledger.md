@@ -78,3 +78,4 @@ earlier cycle files are records and are not rewritten.
 | 23 | hand-offs epic wrap (FIX-1815) (2026-10-11) | [`cycle-23.md`](cycle-ledger/cycle-23.md) |
 | 24 | shift-manager:dev develops Shift Manager and FSD, epic wrap (FIX-1903) (2026-10-14) | [`cycle-24.md`](cycle-ledger/cycle-24.md) |
 | 25 | one task primitive epic wrap (FIX-2056) (2026-10-24) | [`cycle-25.md`](cycle-ledger/cycle-25.md) |
+| 26 | FIX-2058 one waiting-on-a-person epic wrap (2026-10-27) | [`cycle-26.md`](cycle-ledger/cycle-26.md) |
