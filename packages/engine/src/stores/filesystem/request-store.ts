@@ -169,6 +169,8 @@ export class FilesystemRequestStore implements RequestStore {
    * propagate persist failures instead of silently swallowing them (FIX-399).
    */
   private readonly lastEventError = new Map<string, Error>();
+  /** The same for item writes: `flushItems` throws (and clears) it. */
+  private readonly lastItemError = new Map<string, Error>();
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
 
@@ -419,6 +421,7 @@ export class FilesystemRequestStore implements RequestStore {
     // An event write failure not yet reported belonged to the deleted
     // request; the id's next owner must not be handed it by its first flush.
     this.lastEventError.delete(id);
+    this.lastItemError.delete(id);
   }
 
   async deleteIfStatus(
@@ -443,6 +446,7 @@ export class FilesystemRequestStore implements RequestStore {
     if (!deleted) return { applied: false, status: found };
     this.pendingNewEvents.delete(id);
     this.lastEventError.delete(id);
+    this.lastItemError.delete(id);
     return { applied: true, status: found };
   }
 
@@ -553,6 +557,13 @@ export class FilesystemRequestStore implements RequestStore {
     const queue = this.itemWriteQueues.get(requestId);
     if (queue !== undefined) {
       await queue.drain();
+    }
+    // A failed write rejects the flush, as `flushEvents` does: a caller that
+    // treats a resolved flush as proof the items are stored must not be told so.
+    const lastError = this.lastItemError.get(requestId);
+    if (lastError !== undefined) {
+      this.lastItemError.delete(requestId);
+      throw lastError;
     }
   }
 
@@ -719,6 +730,7 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-items:${requestId}`,
         onError: (err) => {
+          this.lastItemError.set(requestId, err);
           this.onPersistError?.({ store: "request", id: requestId, error: err });
           console.error(
             `[flow-state] item persistence failed for ${requestId}`,
