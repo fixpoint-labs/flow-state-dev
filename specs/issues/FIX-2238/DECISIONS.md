@@ -51,9 +51,12 @@ It comes down to where the coder's knowledge lives: in a task's coding session, 
   renamed and freed, so the coder, the error reporter and test-mode flows mount it without the
   delegation board. The session kit's `entries(turn)` still spreads it. A flow with no turn (a
   test-mode control) passes none: the message lands as an item and nothing runs.
-- **The hire checks `receive` as it checks `respond`:** a role-independent check in
-  `workerFlowProblems`, by the factory's mark (a new `markRolePiece`-style mark on the entry), with
-  the probe `{ messageId }`. The convergence point is
+- **The hire checks `receive` as it checks `respond`:** a `receiveProblem` beside `doorProblem`
+  (`worker-door.ts`), role-independent, called from `workerFlowProblems`: the entry is there, its
+  input schema takes the probe `{ messageId }`, and it carries `receiveEntry`'s one mark. That mark
+  holds `hears` and is not a role (no `markRolePiece`); it exists because the send reads `hears`
+  off the mounted entry. One reader of it serves the hire, the send's refusal and the tool's list
+  of who a send by name reaches. The convergence point is
   `workerFlowProblems`: the hire, the inventory and `workerFlowProblems`' callers all pass through
   it. Every worker flow in `packages/`, `apps/`, `goals/` and the test fixtures that has none gets
   the entry; the error reporter, which already offers the tool, starts hearing.
@@ -128,6 +131,8 @@ Recorded for the implementer, not folded:
 - "Held from its filing" is a hold without `midway` (`orchestration/.../holds.ts`); a task set
   `held` by `updateTask` before it starts counts as held from its filing.
 - The send tool's description lists only workers a send by name would reach, so not the coder.
+- The two items of a received message come from one helper, and the dedupe on the message id runs
+  before either is appended or the turn runs: until FIX-2240 a dispatch can be tried twice.
 - A person's line in a finished task's session runs `respond` there without `markUserTurn` today
   (`user-turn.ts` skips task sessions); whether it starts a fresh 6 is the concept's "one budget per
   message a user types", so mark it.
@@ -142,4 +147,7 @@ Recorded for the implementer, not folded:
 
 ## Notes from review
 
-None yet.
+- **Cursor simplify review (#3986), folded:** the hire check is a `receiveProblem` beside
+  `doorProblem` and the entry's one mark carries `hears`, with one reader (not a role mark); the
+  feature line drops `harness-manager`, whose door FIX-2160 owns. Noted for the implementer: one
+  helper writes the received message's two items, after the dedupe.

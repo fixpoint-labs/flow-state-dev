@@ -179,4 +179,4 @@ redirect and a leak; one refusal is now declared by the coder. If wrong: a leak 
 
 **Open: none.** D1 is the one to weigh. The engineering calls: [DECISIONS.md → Decided, not asked](DECISIONS.md#decided-not-asked).
 
-Feature · `workforce`, `harness-manager`, `shift-manager` + docs · large (the messages module, the session kit, the hire check, the budget, the coder entry, the received item; one goal amended) · 1 PR · epic FIX-2070
+Feature · `workforce`, `shift-manager` + docs (no `harness-manager` change: its door is FIX-2160's) · large (the messages module, the session kit, the hire check, the budget, the coder entry, the received item; one goal amended) · 1 PR · epic FIX-2070
