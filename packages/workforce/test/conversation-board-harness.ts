@@ -187,6 +187,8 @@ export type BoardHostOptions = {
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
   /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
   durable?: boolean;
+  /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
+  maxDebtAgeMs?: number;
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
   holds?: ReadonlyMap<string, Promise<void>>;
   /**
@@ -310,6 +312,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     flows: instances,
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
+    ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
     modelResolver: withJudgmentModel(

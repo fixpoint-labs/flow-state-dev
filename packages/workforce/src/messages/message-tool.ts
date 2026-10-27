@@ -38,7 +38,7 @@ export const sendMessageInputSchema = z
   .strict();
 
 export const sendMessageOutputSchema = z.union([
-  z.object({ sent: z.string(), unconfirmed: z.string().optional() }),
+  z.object({ sent: z.string() }),
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
 
@@ -81,7 +81,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       execute: async (input, ctx) => {
         const sent = await sendMessage(ctx as never, installation, flowKind, input, SEND_MESSAGE_TOOL);
         if (!sent.ok) return { ok: false as const, error: sent.error };
-        return sent.unconfirmed === undefined ? { sent: sent.id } : { sent: sent.id, unconfirmed: sent.unconfirmed };
+        return { sent: sent.id };
       }
     });
   // One tool per distinct list, so a roster that doesn't change keeps one block.

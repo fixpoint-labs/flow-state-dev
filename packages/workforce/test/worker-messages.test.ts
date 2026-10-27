@@ -991,7 +991,7 @@ describe("delivery", () => {
     }
   });
 
-  it("marks the row refused, and the tool says why, when the host refuses the dispatch", async () => {
+  it("keeps the row unconfirmed, and the tool answers it sent, when the host turns the dispatch away for now", async () => {
     const h = boot({
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
@@ -1001,10 +1001,11 @@ describe("delivery", () => {
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       lost.restore();
+      // Busy is not final (FIX-2240): the sending session's pass sends it again.
       const [row] = await logRows(h, "alice");
-      expect(row).toMatchObject({ status: "refused", reason: expect.stringMatching(/^dispatch-rejected/) });
+      expect(row).toMatchObject({ status: "unconfirmed", reason: expect.stringMatching(/^dispatch-rejected/) });
       const outputs = (await toolOutputs(h, otto)).map((output) => JSON.stringify(output));
-      expect(outputs[0]).toMatch(/not_delivered.*dispatch-rejected/);
+      expect(outputs[0]).toMatch(/^\{"sent":"msg_\w+"\}$/);
     } finally {
       await h.dispose();
     }

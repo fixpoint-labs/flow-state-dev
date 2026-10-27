@@ -19,28 +19,31 @@
  * guarded write that takes it only while the budget has one, and a send
  * refused before that leaves nothing spent.
  *
- * Then one row is written to the user's message log, and the message is
- * dispatched to the recipient's `onMessageReceived` where it lands: an answer
+ * Then the message is owed (FIX-2240, `delivery.ts`): the session's pass a
+ * wake, and the id on the session's owed list. Then one row is written to the
+ * user's message log, and the message is dispatched once to the recipient's
+ * `onMessageReceived` where it lands: an answer
  * in the session that sent the original, even after its task ended; a message
  * from a task's session (or a delegate's) to the worker that filed it, in the
  * session that filed it; any other in the recipient's own conversation (the
  * worker's derived address, opened by the dispatch when absent; the project
- * coordinator's for the sender's project). A dispatch the host refuses marks
- * the row refused. A thrown one may have started, so it is sent again once
- * (the entry acts on a message id once); if that throws too, the row stays
- * unconfirmed.
+ * coordinator's for the sender's project). A final refusal of that dispatch
+ * marks the row refused, and the send says so. Anything else (accepted,
+ * thrown, refused for now) leaves the row `unconfirmed` until the recipient
+ * takes it, and the sending session's board pass sends it again until then.
+ * A session whose flow carries no pass sends on that one dispatch only.
  *
  * The sender, the sessions and the budget come from the sending turn's own
  * session and request state, never from the tool's input.
  */
-import { dispatchThroughSeam, type BlockContext, type DispatchOutcome } from "@flow-state-dev/core/types";
+import type { BlockContext, DispatchOutcome } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board/filing-session";
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
-import { MESSAGE_RECEIVED_ENTRY } from "./keys";
+import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf } from "./message-received-entry";
 import {
@@ -61,7 +64,7 @@ export interface SendMessageInput {
 
 /** What a send came to. */
 export type SendOutcome =
-  | { readonly ok: true; readonly id: string; readonly unconfirmed?: string }
+  | { readonly ok: true; readonly id: string }
   | { readonly ok: false; readonly error: string };
 
 /**
@@ -86,6 +89,15 @@ export function recipientRefusal(
     );
   }
   return undefined;
+}
+
+/**
+ * The recipient check a resend runs again (FIX-2240): the send's, on the
+ * row's sender and recipient as the roster reads now, so a worker fired since
+ * the send is refused. Not the budget: the row paid it once.
+ */
+export async function recheckRecipient(ctx: BlockContext, installation: WorkerInstallation, row: Pick<WorkerMessageRow, "from" | "to">): Promise<string | undefined> {
+  return recipientRefusal(installation, row.from, row.to, await installation.rosterWorker(ctx as never, row.to));
 }
 
 /**
@@ -131,13 +143,17 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
  *
  * @param flowKind The flow the running session runs on.
  * @param from The sending block's name, for the dispatch's provenance.
+ * @param options.id A server-chosen id, so a send repeated after a crash is
+ *   one message: when its row is already written, the repeat owes nothing,
+ *   pays nothing and leaves the row as it is. Never a model's input.
  */
 export async function sendMessage(
   ctx: BlockContext,
   installation: WorkerInstallation,
   flowKind: string,
   input: SendMessageInput,
-  from: string
+  from: string,
+  options: { readonly id?: string } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -148,13 +164,15 @@ export async function sendMessage(
     return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${input.text.length}. Nothing was sent.`);
   }
 
+  const log = messageLogOf(ctx);
+  if (options.id !== undefined && (await log.getOptional(options.id)) !== undefined) return { ok: true, id: options.id };
+
   // ---- the recipient: on the roster, and hearing by name -------------------
   const recipient = await installation.rosterWorker(ctx as never, input.to);
   const refused = recipientRefusal(installation, sender, input.to, recipient);
   if (refused !== undefined || recipient === undefined) return refuse(refused ?? `no_worker: no worker "${input.to}" on your roster.`);
 
   // ---- where it lands ------------------------------------------------------
-  const log = messageLogOf(ctx);
   let destination: MessageAddress;
   let exchange: string | undefined;
   if (input.inReplyTo !== undefined) {
@@ -197,7 +215,7 @@ export async function sendMessage(
     return refuse(`per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.`);
   }
   const chain = reserved;
-  const id = newMessageId();
+  const id = options.id ?? newMessageId();
   const chainRow = await chains.getOrCreate(chain, { sent: [] });
   await chainRow.updateState((row) =>
     Math.max(floor, row.sent.length + 1) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
@@ -216,7 +234,9 @@ export async function sendMessage(
     return { [TURN_MESSAGED_STATE]: [...messaged, input.to] };
   });
 
-  // ---- the row, then the delivery ------------------------------------------
+  // ---- owed, the row, then one dispatch ------------------------------------
+  const resends = carriesPass(installation, flowKind);
+  if (resends) await oweMessage(ctx, id);
   const row: WorkerMessageRow = {
     id,
     from: sender,
@@ -228,6 +248,7 @@ export async function sendMessage(
     fromFlow: flowKind,
     toSession: destination.sessionId,
     toFlow: destination.flow,
+    ...(destination.state === undefined ? {} : { toState: destination.state }),
     hop,
     chain,
     status: "unconfirmed",
@@ -235,33 +256,20 @@ export async function sendMessage(
   };
   const ref = await log.getOrCreate(id, row);
 
-  const dispatch = () =>
-    dispatchThroughSeam(ctx, {
-      type: "internal",
-      action: MESSAGE_RECEIVED_ENTRY,
-      flowKind: destination.flow,
-      session: destination.state === undefined ? { id: destination.sessionId } : { id: destination.sessionId, state: destination.state },
-      payload: { messageId: id },
-      from
-    });
   let outcome: DispatchOutcome | undefined;
-  let thrown: unknown;
-  for (let attempt = 0; attempt < 2 && outcome === undefined; attempt += 1) {
-    try {
-      outcome = await dispatch();
-    } catch (error) {
-      thrown = error;
+  try {
+    outcome = await dispatchMessage(ctx, row, from);
+  } catch (error) {
+    // It may have started: the pass sends it again, and the take keeps it once.
+    await ref.patchState({ reason: error instanceof Error ? error.message : String(error) });
+  }
+  if (outcome !== undefined && !outcome.ok) {
+    const reason = `${outcome.refused}: ${outcome.detail}`;
+    if (isFinalRefusal(outcome.refused) && (await endMessage(ref, "refused", reason, { told: true }))) {
+      if (resends) await dropOwed(ctx, [id]);
+      return refuse(`not_delivered: the message to "${input.to}" was refused (${reason}).`);
     }
-  }
-  if (outcome === undefined) {
-    const reason = thrown instanceof Error ? thrown.message : String(thrown);
     await ref.patchState({ reason });
-    return { ok: true, id, unconfirmed: `the delivery couldn't be confirmed (${reason}); it may still arrive.` };
   }
-  if (!outcome.ok) {
-    await ref.patchState({ status: "refused", reason: `${outcome.refused}: ${outcome.detail}` });
-    return refuse(`not_delivered: the message to "${input.to}" was refused (${outcome.refused}: ${outcome.detail}).`);
-  }
-  await ref.patchState({ status: "delivered", toSession: outcome.sessionId });
   return { ok: true, id };
 }

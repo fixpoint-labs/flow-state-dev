@@ -50,7 +50,9 @@ import { messageHopStateShape } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
-import { messageReceivedEntry, messageReceivedStateShape, promptedMessageTurn } from "../messages/message-received-entry";
+import { messageDeliveryStateShape, payMessageDebts } from "../messages/delivery";
+import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
+import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
@@ -74,10 +76,10 @@ import {
 } from "./task-settled";
 
 /**
- * The session state worker messages keep (FIX-1989): the session's hop count
- * and the message ids it has acted on. Both server-owned.
+ * The session state worker messages keep (FIX-1989, FIX-2240): the session's
+ * hop count, and the messages it sent that are still owed. Both server-owned.
  */
-export const workerMessageStateShape = { ...messageHopStateShape, ...messageReceivedStateShape } as const;
+export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeliveryStateShape } as const;
 
 /**
  * The board action a screen files a task through: filed ready, the board
@@ -143,6 +145,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
+    // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
+    messages: {
+      resources: { ...options.installation.resources, ...workerMessagesResources },
+      payDebts: (ctx) => payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row))
+    },
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
 

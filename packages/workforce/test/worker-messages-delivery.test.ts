@@ -1,0 +1,280 @@
+/**
+ * A worker message lands once (FIX-2240): the send owes its session's pass,
+ * the recipient's `onMessageReceived` takes the message on its row, and only
+ * the sending session's board pass sends it again, until the row is
+ * delivered, refused, or owed past the host's debt age.
+ *
+ * Why it matters: a message the host accepted, or one whose dispatch threw,
+ * is not a message the recipient heard. Today's two tries leave it lost; a
+ * late copy must still land once; and a sender whose message can't land must
+ * be told, in the session its next turn reads.
+ *
+ * On a durable host whose router runs the sweeper, so the pass's wake fires.
+ * The send's own dispatch (`from: "sendMessage"`) can be made to throw, in
+ * this file alone; a resend (`MESSAGE_RESEND_FROM`) never is.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false };
+
+vi.mock("@flow-state-dev/core/types", async (original) => {
+  const actual = await original<typeof import("@flow-state-dev/core/types")>();
+  return {
+    ...actual,
+    dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) => {
+      if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.throwFastPath) {
+        return Promise.reject(new Error("the connection dropped"));
+      }
+      if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.refuseFastPath) {
+        return Promise.resolve({ ok: false, refused: "session-not-found", detail: "no such session" });
+      }
+      // Accepted, and the request it starts ends before its take: as a queued
+      // request the host stopped would.
+      if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.loseFastPath) {
+        return actual.dispatchThroughSeam(ctx, { ...(spec as never as Record<string, unknown>), payload: { messageId: "msg_never_taken" } } as never);
+      }
+      return actual.dispatchThroughSeam(ctx, spec as never);
+    }
+  };
+});
+
+const { runAction } = await import("@flow-state-dev/engine");
+const { mockGenerator } = await import("@flow-state-dev/testing");
+const { bootBoardHost } = await import("./conversation-board-harness");
+const { WORKER_MESSAGES_PATTERN } = await import("../src/messages/message-log");
+const { MESSAGE_RESEND_FROM } = await import("../src/messages/delivery");
+type BoardHost = import("./conversation-board-harness").BoardHost;
+
+const ORG = "acme";
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const textOf = (input: unknown) => JSON.stringify(input).replaceAll("\\", "");
+
+let open: BoardHost | undefined;
+afterEach(async () => {
+  fault.throwFastPath = false;
+  fault.loseFastPath = false;
+  fault.refuseFastPath = false;
+  await open?.dispose();
+  open = undefined;
+});
+
+/** Otto's first turn mentioning `marker` messages `to` once. */
+function ottoSends(to: string, marker = "ask the lead") {
+  let called = false;
+  return mockGenerator({
+    script: [
+      {
+        when: (input) => {
+          if (called || !textOf(input).includes(marker)) return false;
+          called = true;
+          return true;
+        },
+        then: { toolCalls: [{ toolCallId: "ask", toolName: "sendMessage", args: { to, text: "What is the codename?" } }] }
+      },
+      { when: () => true, then: { text: "" } }
+    ]
+  });
+}
+
+async function boot(to = "lead", extra: Parameters<typeof bootBoardHost>[0] = {}) {
+  const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "" } }] });
+  const h = bootBoardHost({ durable: true, judgment, agentAnswer: ottoSends(to), ...extra });
+  open = h;
+  await h.state.getRouter();
+  const created = await h.create("alice", "agent", { state: { workerId: "otto" } });
+  return { h, judgment, otto: created.body.session!.id as string };
+}
+
+async function logRows(h: BoardHost) {
+  const runtime = await h.state.getRuntime();
+  const entries = await runtime.stores.resourceState.getByPrefix("user", `alice:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
+  return Object.values(entries).map((value) => value.state as Record<string, any>);
+}
+
+async function receivedIn(h: BoardHost, sessionId: string, id: string) {
+  return (await h.requestsOf(sessionId))
+    .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+    .filter((item) => item.type === "component" && item.component === "workforce:received" && item.data?.id === id);
+}
+
+async function toolOutputs(h: BoardHost, sessionId: string) {
+  return (await h.requestsOf(sessionId))
+    .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+    .filter((item) => item.type === "tool_output")
+    .map((item) => JSON.stringify(item.output));
+}
+
+/** Wait until the one row in the log satisfies `done`, or give up. */
+async function rowUntil(h: BoardHost, done: (row: Record<string, any>) => boolean, ms = 15_000) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const [row] = await logRows(h);
+    if (row !== undefined && done(row)) return row;
+    if (Date.now() > deadline) return row;
+    await sleep(100);
+  }
+}
+
+/** Run `onMessageReceived` for `messageId` in `sessionId`, as another copy of the dispatch would. */
+async function deliverAgain(h: BoardHost, flow: string, sessionId: string, messageId: string) {
+  const runtime = await h.state.getRuntime();
+  const run = await runAction({
+    flow: h.instances[flow]!,
+    actionName: "onMessageReceived",
+    input: { messageId },
+    userId: "alice",
+    orgId: ORG,
+    sessionId,
+    source: "internal",
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig }
+  } as never);
+  await h.settled();
+  return run as { requestId?: string };
+}
+
+describe("a message whose send can't confirm it", () => {
+  it("is answered { sent }, then sent again by the sending session's pass and heard once", async () => {
+    fault.throwFastPath = true;
+    const { h, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    expect((await toolOutputs(h, otto))[0]).toMatch(/^\{"sent":"msg_\w+"\}$/);
+    const [first] = await logRows(h);
+    expect(first).toMatchObject({ status: "unconfirmed", reason: "the connection dropped" });
+
+    const row = await rowUntil(h, (r) => r.status === "delivered");
+    expect(row).toMatchObject({ status: "delivered", resent: { n: 1 } });
+    await h.settled();
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(1);
+    // The request it landed in was the pass's resend: nothing else sends it.
+    const landed = (await h.requestsOf(lead.id)).find((r) => r.id === row!.deliveredAs) as any;
+    expect(landed?.actionName).toBe("onMessageReceived");
+    expect(JSON.stringify(landed?.metadata ?? {})).toContain(MESSAGE_RESEND_FROM);
+    // Paid: the next pass finds it delivered and drops it, so the session owes nothing more.
+    let owed: unknown[] = [row!.id];
+    for (let i = 0; i < 100 && owed.length > 0; i += 1) {
+      await sleep(100);
+      owed = ((await h.session(otto)).state?.workerMessagesOwed as unknown[] | undefined) ?? [];
+    }
+    expect(owed).toEqual([]);
+  }, 30_000);
+
+  it("stays owed while the host accepts nothing, and lands once it does: an unaccepted dispatch is never final", async () => {
+    const { h, otto } = await boot();
+    const lost = await h.loseDispatches("onMessageReceived");
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [first] = await logRows(h);
+    expect(first).toMatchObject({ status: "unconfirmed" });
+    expect((await toolOutputs(h, otto))[0]).toMatch(/^\{"sent":"msg_\w+"\}$/);
+    lost.restore();
+
+    const row = await rowUntil(h, (r) => r.status === "delivered");
+    expect(row?.status).toBe("delivered");
+    await h.settled();
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(1);
+  }, 30_000);
+});
+
+describe("a final refusal of the send's own dispatch", () => {
+  it("ends the row refused and told, the tool says why, and nothing sends it again", async () => {
+    fault.refuseFastPath = true;
+    const { h, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [row] = await logRows(h);
+    expect(row).toMatchObject({ status: "refused", reason: "session-not-found: no such session", toldAt: expect.any(Number) });
+    expect((await toolOutputs(h, otto))[0]).toMatch(/not_delivered.*session-not-found/);
+    expect((await h.session(otto)).state?.workerMessagesOwed ?? []).toEqual([]);
+    // The tool's answer told the model: no line beside it.
+    await sleep(2_500);
+    expect((await h.messages(otto)).some((m) => m.text.includes("wasn't delivered"))).toBe(false);
+    expect((await logRows(h))[0]?.resent).toBeUndefined();
+  }, 30_000);
+});
+
+describe("a message the host accepted", () => {
+  it("isn't delivered until the recipient takes it: one whose request ended before the take is sent again and heard once", async () => {
+    fault.loseFastPath = true;
+    const { h, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [first] = await logRows(h);
+    expect(first).toMatchObject({ status: "unconfirmed" });
+    const row = await rowUntil(h, (r) => r.status === "delivered");
+    expect(row).toMatchObject({ status: "delivered", resent: { n: 1 } });
+    await h.settled();
+    expect(await receivedIn(h, row!.toSession, row!.id)).toHaveLength(1);
+  }, 30_000);
+});
+
+describe("the take on the row", () => {
+  it("keeps a message heard once at any distance: a copy after it landed runs nothing", async () => {
+    const { h, judgment, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [row] = await logRows(h);
+    expect(row).toMatchObject({ status: "delivered", deliveredAs: expect.any(String) });
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    const turns = judgment.calls.length;
+    await deliverAgain(h, "coordinator", lead.id, row!.id);
+    expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(1);
+    expect(judgment.calls.length).toBe(turns);
+  }, 30_000);
+
+  it("is taken over from a taker that ended without delivering: the message lands, once", async () => {
+    const { h, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [row] = await logRows(h);
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    // As a crash after the take leaves it: taken by a request that ended, items gone, not delivered.
+    const ended = (await h.requestsOf(lead.id)).find((r) => r.id === row!.deliveredAs)!;
+    const runtime = await h.state.getRuntime();
+    const key = `${WORKER_MESSAGES_PATTERN.replace("*", "")}${row!.id}`;
+    const { deliveredAs: _a, deliveredAt: _b, ...taken } = row!;
+    await runtime.stores.resourceState.set("user", `alice:~org:${ORG}`, key, { ...taken, status: "unconfirmed", takenBy: ended.id } as never, "any" as never);
+
+    const copy = await deliverAgain(h, "coordinator", lead.id, row!.id);
+    const [after] = await logRows(h);
+    expect(after).toMatchObject({ status: "delivered", takenBy: copy.requestId, deliveredAs: copy.requestId });
+    // The taker's items landed with it; the copy's are the second: the one window left (D: "delivered" before the turn).
+    expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(2);
+  }, 30_000);
+});
+
+describe("a message that can't land after its send returned", () => {
+  it("is refused when its recipient was fired before the resend, and the sending session gets a line its next turn reads", async () => {
+    fault.throwFastPath = true;
+    const { h, otto } = await boot("my.lead");
+    expect((await h.hire("alice", { id: "my.lead", flow: "coordinator", instructions: "Mine." })).error).toBeUndefined();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    expect((await h.fire("alice", "my.lead")).error).toBeUndefined();
+
+    const row = await rowUntil(h, (r) => r.status !== "unconfirmed" && r.toldAt !== undefined);
+    expect(row).toMatchObject({ status: "refused", reason: expect.stringMatching(/^worker_unavailable|^no_worker/) });
+    await h.settled();
+    const lines = (await h.messages(otto)).map((m) => m.text);
+    expect(lines.filter((line) => line.startsWith(`Your message ${row!.id} to my.lead wasn't delivered`))).toHaveLength(1);
+    expect(await receivedIn(h, row!.toSession, row!.id)).toEqual([]);
+    expect((await h.session(otto)).state?.workerMessagesOwed ?? []).toEqual([]);
+  }, 30_000);
+
+  it("is ended undeliverable past the host's debt age, and its sender told", async () => {
+    fault.throwFastPath = true;
+    const { h, otto } = await boot("lead", { maxDebtAgeMs: 1_000 });
+    const lost = await h.loseDispatches("onMessageReceived");
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const row = await rowUntil(h, (r) => r.status === "undeliverable" && r.toldAt !== undefined);
+    lost.restore();
+    expect(row?.status).toBe("undeliverable");
+    await h.settled();
+    const lines = (await h.messages(otto)).map((m) => m.text);
+    expect(lines.filter((line) => line.startsWith(`Your message ${row!.id} to lead wasn't delivered`))).toHaveLength(1);
+  }, 30_000);
+});
