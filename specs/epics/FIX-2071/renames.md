@@ -62,6 +62,8 @@ FIX-2249, puts them in `RETIRED`; one still in package source then is FIX-2246's
 | `replyTo` | `inReplyTo` | 10 / 3 / 2 |
 | The `takes_tasks_only` and `no_turn` refusals | Nothing: anyone on the roster | — |
 
+The entry was first specced as `receive` (#3983); the owner renamed it `onMessageReceived` on 2026-10-27. FIX-2238 (#3986) builds it under the new name and amends FIX-2070's merged spec, figures and the coordination design docs. The closure puts `receiveProblem`, `receiveEntry` and `RECEIVE_ENTRY` in `RETIRED`, never a bare `receive`, which is an ordinary verb and a live identifier elsewhere.
+
 The message door (`parkedForTurn`, `messageDoor`, `harnessMessageDoor`) is not FIX-2070's. It is
 gone from package source but for harness-manager's upgrade note, so it is FIX-2246's: mark the
 note, add the names to `RETIRED`.
