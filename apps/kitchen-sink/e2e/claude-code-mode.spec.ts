@@ -121,7 +121,7 @@ test.describe("Claude Code mode (V7)", () => {
 });
 
 test.describe("the plan panel (V8)", () => {
-  test("keeps the conversation's plan across turns, labelled with the turn that last changed it", async ({ page, consoleErrors: _consoleErrors }) => {
+  test("keeps the conversation's plan across turns, labelled with the turn that last changed it", async ({ page, consoleErrors }) => {
     await newSession(page);
     const panel = page.getByTestId("plan-panel");
     const stages = () => panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")));
@@ -149,6 +149,14 @@ test.describe("the plan panel (V8)", () => {
     await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 2");
     await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
     expect(await stages()).toEqual(["done", "active"]);
+
+    // A turn that fails before Claude Code names its conversation leaves the plan as it was.
+    await send(page, "[fail-early] go on");
+    await expect(notice(page)).toHaveAttribute("data-kind", "error");
+    await expect(panel.getByTestId("plan-turn")).toHaveText("Last changed in turn 2");
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
+    // The failed turn's request reports to the console; that is the turn's error, shown above.
+    consoleErrors.length = 0;
 
     // A new conversation starts with no plan.
     await send(page, "[new] start over");

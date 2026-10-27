@@ -332,13 +332,23 @@ type TurnPlanProps = Omit<PanelProps, "turn"> & {
 /**
  * Finds the latest turn's plan and shows it. The turn's run leaves a pointer
  * to its conversation's plan; a running turn that has not written it yet reads
- * the bound conversation's. A turn with neither (a session from before plans
- * were kept by conversation) shows the rows stored under the turn itself.
+ * the bound conversation's. A turn with no pointer shows the rows stored under
+ * the turn itself (a session from before plans were kept by conversation),
+ * and when it has none either (a turn stopped or failed before the harness
+ * named its conversation), the bound conversation's plan, which it left as it was.
  */
 function TurnPlan(props: TurnPlanProps) {
   const { session, turn, ended, bound, markerRef } = props;
+  const conversationOf = (namespace: string) =>
+    markerRef === undefined ? null : <ConversationPlan key={namespace} {...props} markerRef={markerRef} namespace={namespace} />;
   const legacy = (markers: readonly PlanMarkerItem[]) => (
-    <PlanRows {...props} rowsPrefix={planRowsPrefix(turn.requestId)} markers={markers} conversation={null} />
+    <PlanRows
+      {...props}
+      rowsPrefix={planRowsPrefix(turn.requestId)}
+      markers={markers}
+      conversation={null}
+      whenEmpty={bound === null ? null : conversationOf(harnessConversationNamespace(bound))}
+    />
   );
   // A flow that declares the rows but no markers has no marker, and no pointer, to read.
   if (markerRef === undefined) return legacy([]);
@@ -352,7 +362,7 @@ function TurnPlan(props: TurnPlanProps) {
         const namespace =
           target.kind === "conversation" ? target.namespace : !ended && bound !== null ? harnessConversationNamespace(bound) : null;
         if (namespace === null) return legacy(runMarkers);
-        return <ConversationPlan key={namespace} {...props} markerRef={markerRef} namespace={namespace} />;
+        return conversationOf(namespace);
       }}
     />
   );
@@ -407,10 +417,13 @@ function PlanRows({
   rowsPrefix,
   markers,
   conversation,
+  whenEmpty = null,
 }: TurnPlanProps & {
   rowsPrefix: string;
   markers: readonly PlanMarkerItem[];
   conversation: { turns: ReadonlyMap<string, number>; predates: boolean } | null;
+  /** Shown instead once the read finds no rows and there are no markers. */
+  whenEmpty?: ReactNode;
 }) {
   // The goal's control: show only what the latest turn wrote, as a plan kept per turn would.
   const perTurn = pageGoalControl(useSearchParams()) === "plan-per-turn";
@@ -431,6 +444,7 @@ function PlanRows({
       requestId: item.clientData?.requestId ?? null,
     }))
     .filter((row) => !perTurn || conversation === null || row.requestId === turn.requestId);
+  if (whenEmpty !== null && !rows.isLoading && rowItems.length === 0 && markers.length === 0) return whenEmpty;
   return (
     <PanelState
       state={planPanelState({ declared: true, label, turn: turn.number, ended, rows: rowItems, markers, conversation })}
