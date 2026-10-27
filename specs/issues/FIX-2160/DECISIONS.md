@@ -114,6 +114,10 @@ It comes down to what the next attempt resumes: the work's own history, or a mes
   (`sessionRow`), and refuses with the door's own reasons if the row has no coding session
   (`cannot-continue`). The door's talk calls it, so there is one talk path.
 - **No lookup tool**: the user pastes the id (rule 21's first version).
+- **`task_running` is decided before any queueing.** It is a send-time refusal, so a call to a
+  running coder task is refused, never queued behind it as a busy session (FIX-2239's queue).
+- **The goal's legs:** FIX-2160 owns legs 6, 7 and 8 of `workers-message-each-other`; FIX-2240 and
+  FIX-2239, stacked after it, number theirs from 9.
 
 ## Considered and dropped
 
@@ -153,6 +157,9 @@ itself and returns only readonly state; D3's open check covers the session's fol
 below.
 
 ## Notes from review
+
+- **FSD Architect (#4000), folded inline:** the goal-leg numbering and `task_running` before a call's
+  queue, both in *Decided, not asked*. No fork.
 
 - **Analysis, recorded:** D3's reason is the checkout, not history alone (folded into the card). The
   request host's header lines on session ids and records change with the verb (BP-034). A caller can
