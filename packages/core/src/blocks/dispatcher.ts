@@ -99,7 +99,8 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
-import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "../types/wait-gate";
+import { canHoldWait, MAX_WAIT_DEPTH } from "../types/wait-gate";
+import { waitOnRequest } from "./wait-on-request";
 import {
   DispatchRefusedError,
   dispatchThroughSeam,
@@ -501,25 +502,14 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
     }
     return send();
   });
-  const planned = await once(`fsd.dispatch.wait:${key}`, async () => ({
-    gateId: `dispatch:${handle.requestId}`,
-    deadline: Date.now() + waits.deadlines.defaultMs
-  }));
-  const outcome = await parkOnWait(ctx, {
-    gateId: planned.gateId,
-    binding: { requestId: handle.requestId },
-    deadline: planned.deadline,
+  const requestId = handle.requestId;
+  const outcome = await waitOnRequest(ctx, {
+    requestId,
+    gateId: `dispatch:${requestId}`,
+    planKey: `fsd.dispatch.wait:${key}`,
     message: `Waiting on the request "${name}" dispatched`
   });
-  const requestId = handle.requestId;
-  if (outcome.answered) return { status: "completed", output: outcome.answer, requestId };
-  if ("deadline" in outcome) return { status: "running", requestId };
-  if ("stopped" in outcome) {
-    // A person stopped this request: it ends, and the work it started runs on.
-    await ctx.session?.stopRequest?.(ctx.request.identity.id);
-    return { status: "running", requestId };
-  }
-  return { status: "failed", error: outcome.error.message, requestId };
+  return { ...outcome, requestId };
 }
 
 function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {
