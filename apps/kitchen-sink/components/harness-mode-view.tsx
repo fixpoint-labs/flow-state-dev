@@ -29,8 +29,15 @@ export function HarnessModeView({
 }) {
   useSuppressHistoryKeys();
   const stream = useCallback(
-    (sessionId: string) => (
-      <HarnessSessionView key={sessionId} label={label} flowKind={flowKind} sessionId={sessionId} models={models} />
+    (sessionId: string, refreshSessions: () => void) => (
+      <HarnessSessionView
+        key={sessionId}
+        label={label}
+        flowKind={flowKind}
+        sessionId={sessionId}
+        models={models}
+        onTurnToggled={refreshSessions}
+      />
     ),
     [label, flowKind, models],
   );

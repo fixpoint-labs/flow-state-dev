@@ -44,8 +44,11 @@ export interface HarnessFrameProps {
   readonly note?: string;
   /** The models New session offers. With none, New session is off and the reason shows. */
   readonly models: ModelChoices;
-  /** The mode's session view for the picked session. Filled by the mode's own issue. */
-  readonly stream?: (sessionId: string) => ReactNode;
+  /**
+   * The mode's session view for the picked session. `refreshSessions` reads the
+   * rail again, for a session whose listing changed (it was titled).
+   */
+  readonly stream?: (sessionId: string, refreshSessions: () => void) => ReactNode;
   /** Where sessions are listed and created. Defaults to this app's server, as its user; stable. */
   readonly client?: HarnessClient;
 }
@@ -114,6 +117,8 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
       setError(`Session ${wanted} can't be reopened: ${listError}`);
     }
   }, [rows, listError]);
+
+  const refreshSessions = useCallback(() => setReads((n) => n + 1), []);
 
   const handleNewSession = useCallback(async () => {
     if (picked === null) return;
@@ -205,7 +210,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
             Pick a session, or start one with New session.
           </p>
         ) : stream !== undefined ? (
-          stream(selected)
+          stream(selected, refreshSessions)
         ) : (
           <p className="m-auto px-4 text-center text-sm text-muted-foreground">This mode's session view is not built yet.</p>
         )}

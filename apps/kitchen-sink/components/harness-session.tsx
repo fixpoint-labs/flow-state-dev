@@ -59,18 +59,30 @@ export interface HarnessSessionViewProps {
   readonly sessionId: string;
   /** The mode's models, for the name of the session's. */
   readonly models: ModelChoices;
+  /** Called when a turn starts or ends, so the rail can pick up the session's title. */
+  readonly onTurnToggled?: () => void;
 }
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId, models }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models, onTurnToggled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} />
+      <SessionBody label={label} sessionId={sessionId} models={models} onTurnToggled={onTurnToggled} />
     </FlowProvider>
   );
 }
 
-function SessionBody({ label, sessionId, models }: { label: string; sessionId: string; models: ModelChoices }) {
+function SessionBody({
+  label,
+  sessionId,
+  models,
+  onTurnToggled,
+}: {
+  label: string;
+  sessionId: string;
+  models: ModelChoices;
+  onTurnToggled?: () => void;
+}) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useState("");
 
@@ -80,8 +92,9 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
   const { refresh } = session;
   useEffect(() => {
     if (wasStreaming.current && !session.isStreaming) void refresh();
+    if (wasStreaming.current !== session.isStreaming) onTurnToggled?.();
     wasStreaming.current = session.isStreaming;
-  }, [session.isStreaming, refresh]);
+  }, [session.isStreaming, refresh, onTurnToggled]);
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
@@ -127,6 +140,7 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
                     items={session.items}
                     isStreaming={session.isStreaming}
                     isFinishing={session.isFinishing}
+                    showWorkedFor
                     statusMessage={session.statusMessage}
                   />
                 </>

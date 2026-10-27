@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Shimmer } from "./shimmer";
 
 /** "42s", "1m 24s", "1h 3m": the short form a terminal agent prints, not a sentence. */
-function formatElapsed(ms: number): string {
+export function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -27,6 +27,22 @@ export function RunTimer({ since }: { since: number }) {
   const elapsed = Math.max(0, now - since);
   if (elapsed < 1000) return null;
   return <span data-testid="run-timer" className="tabular-nums">({formatElapsed(elapsed)})</span>;
+}
+
+/**
+ * What a finished request leaves where the indicator was: "Worked for 3m 24s •
+ * 4:28 PM", the time it took and the clock time it ended. Renders nothing for a
+ * request that took under a second.
+ */
+export function WorkedFor({ startedAt, endedAt }: { startedAt: number; endedAt: number }) {
+  const elapsed = Math.max(0, endedAt - startedAt);
+  if (elapsed < 1000) return null;
+  const endedAtLabel = new Date(endedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return (
+    <div data-testid="worked-for" className="px-1 py-2 text-muted-foreground text-sm tabular-nums">
+      Worked for {formatElapsed(elapsed)} • {endedAtLabel}
+    </div>
+  );
 }
 
 /**

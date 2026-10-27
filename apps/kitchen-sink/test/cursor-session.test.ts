@@ -27,7 +27,7 @@ import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { CURSOR_DEFAULT_MODEL, CURSOR_SESSION, cursorBlockOptions, cursorSessionFlow } from "@/lib/cursor-mode";
-import { harnessFeeds } from "@/lib/harness-session-flow";
+import { harnessFeeds, titleOf } from "@/lib/harness-session-flow";
 import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
 import { SCRIPTED_WHOLE_LIST, scriptedCursor, scriptedCursorPauses } from "@/lib/scripted-cursor";
@@ -220,6 +220,24 @@ describe("which agent a turn continues (V5)", () => {
     expect(a!.startsWith(realpathSync(worktreeRoot(repo)) + sep)).toBe(true);
     expect(git(a!, "branch", "--show-current").trim()).toBe(sessionBranch({ flowKind: CURSOR_SESSION, sessionId: "s-place" }));
     expect(sessionBranch({ flowKind: CURSOR_SESSION, sessionId: "s-place" })).toMatch(/^kitchen-sink\/cursor-session\//);
+  });
+});
+
+describe("a session's title", () => {
+  it("is its first prompt, so the rail lists a person's words rather than an id, and later turns keep it", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-title", "Fix the flaky retry test\nit fails on CI only");
+    expect((await stores.session.get("s-title"))?.title).toBe("Fix the flaky retry test");
+    await turn(stores, recorder, "s-title", "now something else entirely");
+    expect((await stores.session.get("s-title"))?.title).toBe("Fix the flaky retry test");
+  });
+
+  it("is one line, collapsed and cut to a length a rail can hold", () => {
+    expect(titleOf("\n  a   b\tc  \nsecond")).toBe("a b c");
+    const cut = titleOf("x".repeat(200));
+    expect(cut).toHaveLength(60);
+    expect(cut.endsWith("…")).toBe(true);
   });
 });
 

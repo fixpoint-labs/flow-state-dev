@@ -18,7 +18,7 @@ import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
-import { RunTimer, StreamingIndicator } from "./streaming-indicator";
+import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
 import { collectTaskOwnedItemIds } from "./task-plan-state";
 import { ToolGroup } from "./tool";
 
@@ -65,6 +65,10 @@ type RequestGroupRendererProps = {
    *  from `useSession.isFinishing`. Defaults to `false` for callers
    *  that do not yet thread the signal. */
   isFinishing?: boolean;
+  /** When true, a request that has stopped streaming ends in a
+   *  "Worked for 3m 24s • 4:28 PM" line. Off by default: a chat reply reads
+   *  fine without it, a long agent run does not. */
+  showWorkedFor?: boolean;
 };
 
 /**
@@ -74,7 +78,7 @@ type RequestGroupRendererProps = {
  * in below. As the content grows past the viewport, the min-height
  * becomes irrelevant and scrolling works normally.
  */
-export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false }: RequestGroupRendererProps) {
+export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
   // Read over every item, not one request's: a task plan and its tasks' work
   // can sit in different requests.
@@ -101,9 +105,15 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
         isStreaming={isStreaming}
         statusMessage={statusMessage}
         isFinishing={isFinishing}
+        showWorkedFor={showWorkedFor}
       />
     );
   });
+}
+
+/** When an item last changed: its completion if it has one, else when it began. */
+function settledAt(item: OutputItem): number {
+  return (item as { completedAt?: number }).completedAt ?? item.ts;
 }
 
 /**
@@ -126,6 +136,7 @@ function RequestGroup({
   isStreaming,
   statusMessage,
   isFinishing,
+  showWorkedFor,
 }: {
   group: RequestGroup;
   /** Items that render under their task in `<TaskPlan />` (`collectTaskOwnedItemIds`). */
@@ -135,6 +146,8 @@ function RequestGroup({
   statusMessage?: string;
   /** See `RequestGroupRendererProps.isFinishing`. */
   isFinishing?: boolean;
+  /** See `RequestGroupRendererProps.showWorkedFor`. */
+  showWorkedFor?: boolean;
 }) {
   // Items inside a task-board window render under the task in
   // <TaskPlan /> — hide them from the chat-thread stream so we don't
@@ -153,6 +166,8 @@ function RequestGroup({
   // The request began at its first item. Re-emitted keyed items can pull
   // that earlier than the request really started, which only lengthens the count.
   const since = group.items[0]?.ts;
+  const live = isLast && isStreaming;
+  const endedAt = useMemo(() => Math.max(0, ...group.items.map(settledAt)), [group.items]);
 
   return (
     <div
@@ -162,14 +177,11 @@ function RequestGroup({
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
-      {isLast && isStreaming && !stepInFlight && (
-        <StreamingIndicator message={statusMessage} isFinishing={isFinishing} since={since} />
-      )}
-      {stepInFlight && since !== undefined && (
-        <div className="px-1 text-muted-foreground text-sm">
-          <RunTimer since={since} />
-        </div>
-      )}
+      {/* While a step runs, its own line says what it is doing, so the indicator
+          drops its words (not itself): the line keeps one stable label and the
+          clock instead of going to a bare timer and coming back. */}
+      {live && <StreamingIndicator message={stepInFlight ? undefined : statusMessage} isFinishing={isFinishing} since={since} />}
+      {!live && showWorkedFor && since !== undefined && <WorkedFor startedAt={since} endedAt={endedAt} />}
     </div>
   );
 }
