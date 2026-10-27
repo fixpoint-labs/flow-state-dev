@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 434" role="img" aria-label="D3, who picks local or cloud. Chosen: the host, through the runtime option, set per worker once FIX-2257 routes by harness. Instead of: the filer or a model, per run. Decides it: where code runs, whose credentials push it and who pays. The price: one cloud run needs a host or worker set for it. Locks in the runtime option and harness cursor-cloud. Flips if people ask for cloud on single tasks."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .bad    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .good   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="434"/>
+  <g id="call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Who picks whether Cursor runs locally or in the cloud?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">The host</text>
+    <rect class="lost" x="568" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="582" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="582" y="112">Per run</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="154">WHO DECIDES COST</text>
+    <text class="t-lbl" x="32" y="167">AND PLACE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="216" y="162">+</text>
+    <text class="t-b" x="234" y="161">The host or worker owner</text>
+    <text class="t-s" x="234" y="179">configuration, like cwd</text>
+    <text class="mark minus" x="572" y="162">−</text>
+    <text class="t-b" x="590" y="161">Whoever files the run</text>
+    <text class="t-s" x="590" y="179">or a model filling a tool call</text>
+    <line class="row" x1="16" y1="196" x2="924" y2="196"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="216">WHAT IT COSTS</text>
+    <text class="mark minus" x="216" y="224">−</text>
+    <text class="t-b" x="234" y="223">One cloud run needs a cloud host</text>
+    <text class="t-s" x="234" y="241">or a worker set for it</text>
+    <text class="mark plus" x="572" y="224">+</text>
+    <text class="t-b" x="590" y="223">Any run can go either way</text>
+    <text class="t-s" x="590" y="241">no second worker</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="278">WHAT IT ADDS</text>
+    <text class="mark plus" x="216" y="286">+</text>
+    <text class="t-b" x="234" y="285">One option on the block</text>
+    <text class="t-s" x="234" y="303">a value or a resolver</text>
+    <text class="mark minus" x="572" y="286">−</text>
+    <text class="t-b" x="590" y="285">A field a caller can set</text>
+    <text class="t-s" x="590" y="303">and checks on every run</text>
+    <line class="row" x1="16" y1="320" x2="924" y2="320"/>
+  </g>
+  <g id="foot">
+    <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">runtime on cursorAgent, and harness: cursor-cloud</text>
+    <text class="t-s" x="32" y="395">&quot;local&quot; by default; Kitchen Sink sets it at session start</text>
+    <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">People ask for cloud on single tasks</text>
+    <text class="t-s" x="494" y="395">then a task setting the host checks against what it allows</text>
+  </g>
+</svg>

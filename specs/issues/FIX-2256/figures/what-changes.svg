@@ -1,0 +1,68 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="Two runs of the same coding turn. A local run works in the host&#x27;s checkout with Cursor&#x27;s runtime on the host and returns a handle with branches null. A cloud run works in Cursor&#x27;s VM against a repository the host resolved, pushes a branch and opens a pull request on GitHub, and returns a handle naming both, which a screen shows as links. Left of the line is where the run works; right of it is what comes back."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-ext { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .lane  { fill:var(--surface-2); }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .divide{ stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="divider">
+    <line class="divide" x1="584" y1="20" x2="584" y2="286"/>
+    <text class="t-acc" x="430" y="30">WHERE THE RUN WORKS</text>
+    <text class="t-acc" x="596" y="30">WHAT COMES BACK</text>
+  </g>
+
+  <g id="local">
+    <rect class="lane" x="16" y="44" width="908" height="112" rx="6"/>
+    <text class="t-lbl" x="30" y="64">LOCAL · TODAY, UNCHANGED</text>
+    <rect class="n-box" x="30" y="76" width="250" height="62" rx="5"/>
+    <text class="t-b" x="44" y="100">Cursor's runtime on the host</text>
+    <text class="t-s" x="44" y="120">works in the run's checkout · env fence</text>
+    <rect class="n-box" x="604" y="76" width="140" height="62" rx="5"/>
+    <text class="t-b" x="618" y="100">Handle</text>
+    <text class="t-s" x="618" y="120">branches: null</text>
+    <rect class="n-box" x="764" y="76" width="146" height="62" rx="5"/>
+    <text class="t-b" x="778" y="100">A screen shows</text>
+    <text class="t-s" x="778" y="120">the turn, no links</text>
+    <path class="arrow" d="M280,107 L600,107"/><path class="head" d="M604,107 L596,103 L596,111 z"/>
+    <path class="arrow" d="M744,107 L760,107"/><path class="head" d="M764,107 L756,103 L756,111 z"/>
+  </g>
+
+  <g id="cloud">
+    <rect class="lane" x="16" y="172" width="908" height="114" rx="6"/>
+    <text class="t-lbl" x="30" y="192">CLOUD · NEW</text>
+    <rect class="n-new" x="30" y="204" width="250" height="62" rx="5"/>
+    <text class="t-b" x="44" y="228">Cursor's VM</text>
+    <text class="t-s" x="44" y="248">repository from a resolver</text>
+    <rect class="n-ext" x="306" y="204" width="260" height="62" rx="5"/>
+    <text class="t-b" x="320" y="228">GitHub</text>
+    <text class="t-s" x="320" y="248">a pushed cursor/… branch · a PR if asked</text>
+    <rect class="n-new" x="604" y="204" width="140" height="62" rx="5"/>
+    <text class="t-b" x="618" y="228">Handle</text>
+    <text class="t-s" x="618" y="248">branches: named</text>
+    <rect class="n-ok" x="764" y="204" width="146" height="62" rx="5"/>
+    <text class="t-b" x="778" y="228">A screen shows</text>
+    <text class="t-s" x="778" y="248">branch and PR links</text>
+    <path class="arrow" d="M280,235 L302,235"/><path class="head" d="M306,235 L298,231 L298,239 z"/>
+    <path class="arrow" d="M566,235 L600,235"/><path class="head" d="M604,235 L596,231 L596,239 z"/>
+    <path class="arrow" d="M744,235 L760,235"/><path class="head" d="M764,235 L756,231 L756,239 z"/>
+  </g>
+</svg>
