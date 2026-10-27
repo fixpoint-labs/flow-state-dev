@@ -174,21 +174,18 @@ export function storedEmitters(ctx: BlockContext) {
   return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
 }
 
-/** What the take came to: the row to land, or why nothing runs. */
-export type MessageTake = { readonly took: true; readonly row: WorkerMessageRow } | { readonly took: false };
-
 /**
  * Take message `id` for the running request, in the recipient's session
  * (FIX-2123's take, on a message): one guarded write of `takenBy` while the
  * row is `unconfirmed`, for the session the row is addressed to. A taker that
  * hasn't ended keeps it; one that ended without delivering is taken over.
  */
-export async function takeMessage(ctx: BlockContext, id: string): Promise<MessageTake> {
+export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageRow | undefined> {
   const ref = await messageLogOf(ctx).getOptional(id);
   const row = ref?.state;
-  if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return { took: false };
+  if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return undefined;
   const rule = await decideTake(ctx, row.takenBy);
-  if (rule.take === "busy") return { took: false };
+  if (rule.take === "busy") return undefined;
   const own = ctx.request.identity.id;
   const seen = row.takenBy;
   const taken = await withOutcome(
@@ -198,7 +195,7 @@ export async function takeMessage(ctx: BlockContext, id: string): Promise<Messag
       return { state: { ...current, takenBy: own }, result: { ...current, takenBy: own } };
     }
   );
-  return taken === undefined ? { took: false } : { took: true, row: taken };
+  return taken;
 }
 
 /**
@@ -294,9 +291,8 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
     const refusal = await recheck(ctx, ref.state);
     // A recipient gone for good ends even a taken message once it is past
     // the age: nothing can deliver it, and it would be sent again forever.
-    if (refusal !== undefined && pastAge && (await close(ref, entry.id, "refused", refusal, true))) continue;
     if (refusal !== undefined) {
-      if (await close(ref, entry.id, "refused", refusal)) continue;
+      if (await close(ref, entry.id, "refused", refusal, pastAge)) continue;
     } else {
       let outcome: DispatchOutcome | undefined;
       try {
