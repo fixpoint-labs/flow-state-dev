@@ -28,7 +28,9 @@ function registering(log: string[], endings: RequestEnding[]) {
     inputSchema: z.any(),
     execute: (_input, ctx) => {
       const registered = onRequestEnded(ctx, (ending) => {
-        endings.push(ending);
+        // What the request spent is request-spend.test.ts's; these read how it ended.
+        const { spend: _spend, ...ended } = ending;
+        endings.push(ended as RequestEnding);
         log.push(`end:${ending.status}`);
       });
       log.push(`registered:${registered}`);

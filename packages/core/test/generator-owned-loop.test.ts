@@ -888,7 +888,7 @@ describe("generator owned step loop — non-streaming", () => {
     expect(step2).toContainEqual(rawAssistant1);
   });
 
-  it("aggregates per-step usage into one onGeneratorModelResult report", async () => {
+  it("reports each step to the spend ledger as it ends, and the aggregate once for the trace row", async () => {
     const echo = handler({
       name: "echo",
       inputSchema: z.object({}),
@@ -922,8 +922,18 @@ describe("generator owned step loop — non-streaming", () => {
     });
 
     await expect(runForTest(block, {}, ctx)).resolves.toBe("done");
-    expect(onGeneratorModelResult).toHaveBeenCalledTimes(1);
-    expect(onGeneratorModelResult.mock.calls[0]![0].usage).toEqual({
+    // Each step counts in the request's spend when it ends, so a run that
+    // later suspends or fails keeps what it finished (FIX-2145).
+    const reports = onGeneratorModelResult.mock.calls.map(([payload]) => payload);
+    expect(reports.filter((p) => p.countsIn === "ledger").map((p) => p.usage)).toEqual([
+      { promptTokens: 10, completionTokens: 5, totalTokens: 15, cacheReadInputTokens: 4 },
+      { promptTokens: 20, completionTokens: 10, totalTokens: 30 },
+    ]);
+    // The aggregate is the trace row's, marked so the ledger doesn't count it again.
+    const traced = reports.filter((p) => p.countsIn !== "ledger");
+    expect(traced).toHaveLength(1);
+    expect(traced[0]!.countsIn).toBe("trace");
+    expect(traced[0]!.usage).toEqual({
       promptTokens: 30,
       completionTokens: 15,
       totalTokens: 45,
@@ -1240,9 +1250,17 @@ describe("generator owned step loop — streaming", () => {
     expect(toolOutputs).toHaveLength(1);
     expect(toolOutputs[0]!.item!.status).toBe("completed");
 
-    // Aggregate usage reported once.
-    expect(onGeneratorModelResult).toHaveBeenCalledTimes(1);
-    expect(onGeneratorModelResult.mock.calls[0]![0].usage).toEqual({
+    // Each step reaches the spend ledger as it ends; the aggregate is
+    // reported once, for the trace row only (FIX-2145).
+    const reports = onGeneratorModelResult.mock.calls.map(([payload]) => payload);
+    expect(reports.filter((p) => p.countsIn === "ledger").map((p) => p.usage)).toEqual([
+      { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
+      { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
+    ]);
+    const traced = reports.filter((p) => p.countsIn !== "ledger");
+    expect(traced).toHaveLength(1);
+    expect(traced[0]!.countsIn).toBe("trace");
+    expect(traced[0]!.usage).toEqual({
       promptTokens: 13,
       completionTokens: 6,
       totalTokens: 19,

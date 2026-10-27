@@ -1,4 +1,5 @@
 import { attachRequestEndRegistry, createRequestEndRegistry } from "../execution/request-end-hooks";
+import { createRequestSpendLedger } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -97,10 +98,12 @@ import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resol
 import {
   DISPATCH_SEAM,
   REQUEST_RESUME_SEAM,
+  REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
   waitForUserOn,
   type RequestResume,
+  type RequestSpendSeam,
   type WaitForUser
 } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
@@ -2641,30 +2644,11 @@ export async function createExecutionContext<
     return requestRef.current.items ?? [];
   };
 
+  // The request's model count reads its spend ledger (FIX-2145), never trace
+  // items: a lean trace (observability off, the production default) carries
+  // no usage, and a trace row keeps only its block's last call.
   const computeTokenUsage = () => {
-    const byModel: Record<string, { prompt: number; completion: number; total: number; cacheReadTokens: number; cacheCreationTokens: number }> = {};
-    for (const item of readLiveItems()) {
-      if (item.type !== "block_trace") {
-        continue;
-      }
-      const modelUsage = item.modelUsage;
-      if (modelUsage === undefined) {
-        continue;
-      }
-      const existing = byModel[modelUsage.model] ?? {
-        prompt: 0,
-        completion: 0,
-        total: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0
-      };
-      existing.prompt += Number(modelUsage.promptTokens ?? 0);
-      existing.completion += Number(modelUsage.completionTokens ?? 0);
-      existing.total += Number(modelUsage.totalTokens ?? 0);
-      existing.cacheReadTokens += Number(modelUsage.cacheReadTokens ?? 0);
-      existing.cacheCreationTokens += Number(modelUsage.cacheCreationTokens ?? 0);
-      byModel[modelUsage.model] = existing;
-    }
+    const { byModel } = requestSpendLedger.total();
 
     const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
     const maxBudget = resolveActionCore(
@@ -3016,7 +3000,11 @@ export async function createExecutionContext<
   // Per-request request-end registry (FIX-2077), attached beside the pool on
   // every scope so a hook added from any block reaches the one list the
   // request executor runs after its last drain.
-  const requestEndRegistry = createRequestEndRegistry();
+  // Per-request spend ledger (FIX-2145): every model result and every settled
+  // harness run, counted once. The request-end registry hands each ending
+  // what the ledger counted since the last one.
+  const requestSpendLedger = createRequestSpendLedger();
+  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
   // A crash's continuation names no resolution: the log's latest is how the
@@ -3161,6 +3149,9 @@ export async function createExecutionContext<
   };
 
   const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
+    // The base handler every per-block capture chains up to (FIX-2145): the
+    // one place a model result reaches the request's spend ledger.
+    onGeneratorModelResult: (payload) => requestSpendLedger.addModelResult(payload),
     onBlockStart: logger
       ? (blockName, blockKind, input, transient) => {
           // Transient blocks (e.g. task-board's poll loop) fire hundreds
@@ -4027,6 +4018,7 @@ export async function createExecutionContext<
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         attachRequestEndRegistry(childContext, requestEndRegistry);
+        (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
@@ -4394,6 +4386,7 @@ export async function createExecutionContext<
   // identity is preserved across the entire request scope.
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
+  (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers

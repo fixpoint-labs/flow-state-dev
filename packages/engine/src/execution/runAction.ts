@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
+import { SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type RequestEnding, type TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -2253,6 +2253,12 @@ async function runActionAttempt<
       requestId,
       actionName: options.actionName
     }, ctx, { internalSeams, logger });
+
+    // The session config's request-end hook (FIX-2145), added to this
+    // request's registry as a block's `onRequestEnded` would add it. Last
+    // before the main try, so every path that installs it ends through it.
+    const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
+    if (sessionEndHook !== undefined) onRequestEnded(ctx, sessionEndHook);
   } catch (startupError) {
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
@@ -3140,7 +3146,7 @@ async function runActionAttempt<
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
     // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
     const handedOn = await backgroundFailuresOf(ctx, async () => wasIntentionalAbort || abortController.signal.aborted);
-    const ending: RequestEnding = wasIntentionalAbort
+    const ending: Omit<RequestEnding, "spend"> = wasIntentionalAbort
       ? { status: "aborted" }
       : signalAborted
         ? { status: "interrupted", ...handedOn }

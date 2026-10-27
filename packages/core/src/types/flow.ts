@@ -17,6 +17,7 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { WebhookConfig } from "./webhooks";
 import type { InternalEntry, TaskEntry } from "./dispatch";
+import { SESSION_REQUEST_END_HOOK, type SessionRequestEndHook } from "./request-end";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
@@ -358,6 +359,13 @@ export type SessionConfig = {
    * other session state.
    */
   serverOwned?: readonly string[];
+  /**
+   * Framework-facing, not a flow-author field: a request-end hook the package
+   * that built this session config adds to every request of the flow (see
+   * `SESSION_REQUEST_END_HOOK` in `./request-end`). Workforce's
+   * `installation.session()` fills it.
+   */
+  readonly [SESSION_REQUEST_END_HOOK]?: SessionRequestEndHook;
 };
 
 export type RequestConfig = {

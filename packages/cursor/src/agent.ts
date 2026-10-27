@@ -40,6 +40,7 @@ import {
   replacePlanList,
   type PlanListCollection,
 } from "@flow-state-dev/core";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
   DeclaredResourceEntry,
   HarnessCallbackContext,
@@ -101,6 +102,9 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
   const selection = typeof choice === "string" ? { id: choice } : choice;
   return selection.id === "" ? undefined : selection;
 }
+
+/** The name Cursor's spend is kept under. */
+const CURSOR_HARNESS = "cursor";
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
@@ -422,6 +426,10 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       let agent: CursorAgentLike | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
+      // What the run has spent so far, kept as it streams so a run that is
+      // stopped or fails still reports the turns it finished (FIX-2145).
+      // `undefined` until a run was sent: nothing was spent before.
+      let spent: { usage: CursorRunUsage | null } | undefined;
 
       try {
         // Resolved once, before the agent is opened, beside its directory and conversation.
@@ -441,8 +449,10 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan);
+        spent = { usage: null };
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent);
         const settled = await settleRun(run, mirrored, ctx.signal);
+        spent.usage = settled.usage;
         // A call still `running` when the stream closed has no result coming,
         // and an `error` or `cancelled` wait is an OUTCOME this block returns
         // rather than a throw — so the `catch` below never sees it. Left open,
@@ -469,6 +479,17 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         );
         throw failure;
       } finally {
+        // What the run spent, into the request, however it ended (FIX-2145):
+        // tokens only. Cursor's cost is an estimate and its billing unknown.
+        if (spent !== undefined) {
+          reportHarnessSpend(ctx, {
+            harness: CURSOR_HARNESS,
+            inputTokens: spent.usage?.inputTokens ?? null,
+            outputTokens: spent.usage?.outputTokens ?? null,
+            costUsd: null,
+            billing: null,
+          });
+        }
         closeQuietly(agent);
       }
     },
@@ -614,6 +635,8 @@ function mergeCreateOptions(
 
 /**
  * Drain `run.stream()`, racing each `next()` against the block's own signal.
+ * The usage summed so far is also kept on `spent` as each turn reports it, so
+ * the caller can report it when the run is stopped mid-way.
  *
  * The SDK is still told about cancel via {@link cancelQuietly} when the race
  * loses or the stream throws — that is what stops the local runtime — even
@@ -632,6 +655,7 @@ async function mirrorRun(
   emitState: ReturnType<typeof createEmitState>,
   blockName: string,
   writePlan: PlanWriter | null,
+  spent: { usage: CursorRunUsage | null },
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -653,6 +677,7 @@ async function mirrorRun(
       for (const event of translateCursorMessage(next.value)) {
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);
+          spent.usage = usage;
         } else if (event.kind === "model") {
           model = event.model;
         } else if (event.kind === "plan_list") {

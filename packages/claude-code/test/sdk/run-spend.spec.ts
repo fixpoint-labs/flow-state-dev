@@ -1,0 +1,92 @@
+/**
+ * A Claude Code run reports what it spent into the running request when it
+ * ends, however it ends (FIX-2145): the tokens and cost Claude Code reported,
+ * and whether the run was on an API key or a subscription, as Claude Code's
+ * own `accountInfo()` says.
+ *
+ * Why it matters: per-worker usage counts a harness's tokens only through this
+ * report. A run that fails, or is stopped, spent tokens too, and a dollar
+ * figure is shown only for a run billed to an API key.
+ */
+import { describe, expect, it } from "vitest";
+import { createTestContext } from "@flow-state-dev/testing";
+import { REQUEST_SPEND_SEAM, type HarnessRunSpend } from "@flow-state-dev/core/types";
+import { claudeCodeAgent } from "../../src/sdk/agent";
+import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+
+/** A scripted query that also answers `accountInfo()`, as the SDK's handle does. */
+function scripted(messages: SdkMessageLike[], account: Record<string, unknown>, opts: { throwAfter?: boolean } = {}): ResolveClaudeAgent {
+  return () => ({
+    query: () => {
+      const iterate = async function* () {
+        for (const m of messages) yield m;
+        if (opts.throwAfter === true) throw new Error("the CLI exited with code 1");
+      };
+      return Object.assign(iterate(), { accountInfo: async () => account });
+    },
+  }) as never;
+}
+
+/** Run the block in a context that carries a spend ledger, and collect what it reports. */
+async function runReporting(block: ReturnType<typeof claudeCodeAgent>) {
+  const reported: HarnessRunSpend[] = [];
+  const runtime = await createTestContext({ declaredResources: block.declaredResources });
+  (runtime.ctx as unknown as Record<symbol, unknown>)[REQUEST_SPEND_SEAM] = { reportHarnessRun: (run: HarnessRunSpend) => reported.push(run) };
+  const outcome = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).then(
+    () => "returned",
+    () => "threw",
+  );
+  return { reported, outcome };
+}
+
+const RESULT: SdkMessageLike = {
+  type: "result",
+  subtype: "success",
+  result: "done",
+  session_id: "sess_1",
+  usage: { input_tokens: 1000, output_tokens: 200 },
+  total_cost_usd: 0.42,
+};
+
+describe("claudeCodeAgent reports its run's spend", () => {
+  it("reports the run's tokens, its reported cost, and api-key billing when Claude Code runs on a key", async () => {
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([RESULT], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
+
+    const { reported, outcome } = await runReporting(block);
+
+    expect(outcome).toBe("returned");
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
+  });
+
+  it("reports subscription billing for a signed-in plan, keeping the cost Claude Code sent for the writer to judge", async () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scripted([RESULT], { apiKeySource: "none", email: "me@example.test", subscriptionType: "max" }),
+      detached: true,
+    });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "subscription" }]);
+  });
+
+  it("reports a run that failed after its result arrived", async () => {
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([RESULT], { apiKeySource: "ANTHROPIC_API_KEY" }, { throwAfter: true }), detached: true });
+
+    const { reported, outcome } = await runReporting(block);
+
+    expect(outcome).toBe("threw");
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
+  });
+
+  it("reports a run that ended before Claude Code sent usage as one run with nothing reported", async () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scripted([{ type: "system", subtype: "init", session_id: "sess_1" }], {}, { throwAfter: true }),
+      detached: true,
+    });
+
+    const { reported, outcome } = await runReporting(block);
+
+    expect(outcome).toBe("threw");
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: null, outputTokens: null, costUsd: null, billing: null }]);
+  });
+});

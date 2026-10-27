@@ -20,9 +20,11 @@
  * session, and a refused turn leaves the row and the session for a fix.
  */
 import type { InitialSkill } from "@flow-state-dev/core";
+import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/types";
 import type {
   FlowInstance,
   ResourceCollectionRef,
+  SessionRequestEndHook,
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult
@@ -74,6 +76,7 @@ import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-w
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
+import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from "./worker-usage";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -234,7 +237,8 @@ export interface WorkerInstallation extends WorkerGrants {
   /**
    * The two worker collections, the user's own workers and the standard ones
    * projected from the files, and the workstream entries the create check
-   * reads a workstream session's link from. A worker flow spreads them into
+   * reads a workstream session's link from, and the `worker-usage` records
+   * every request's spend is added to. A worker flow spreads them into
    * its `resources`, and so does every block that calls {@link resolveWorker}
    * or writes a worker.
    */
@@ -243,6 +247,7 @@ export interface WorkerInstallation extends WorkerGrants {
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
     readonly [WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof WORKSTREAMS_RESOURCE];
     readonly [PRIVATE_WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof PRIVATE_WORKSTREAMS_RESOURCE];
+    readonly [WORKER_USAGE_RESOURCE]: typeof workerUsageCollection;
   };
   /**
    * The session-state fields a worker flow declares, readonly: spread them
@@ -265,7 +270,9 @@ export interface WorkerInstallation extends WorkerGrants {
    * `extraShape` as its `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
-   * create that seeds one, by name, rather than dropping it.
+   * create that seeds one, by name, rather than dropping it. It also carries,
+   * under a framework-only symbol, the request-end hook that adds every
+   * request's spend to the worker's usage record (`worker-usage`).
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
@@ -273,6 +280,7 @@ export interface WorkerInstallation extends WorkerGrants {
     stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
+    [SESSION_REQUEST_END_HOOK]: SessionRequestEndHook;
   };
   /**
    * The worker this turn runs as, loaded now: the session's worker read from
@@ -448,7 +456,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(),
     [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW),
-    ...WORKSTREAM_RESOURCES
+    ...WORKSTREAM_RESOURCES,
+    [WORKER_USAGE_RESOURCE]: workerUsageCollection
   } as const;
 
   const sessionStateShape = {
@@ -898,7 +907,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
         createCheck,
-        serverOwned: SESSION_BOARD_SERVER_OWNED
+        serverOwned: SESSION_BOARD_SERVER_OWNED,
+        [SESSION_REQUEST_END_HOOK]: workerSpendHook
       };
     },
     resolveWorker,

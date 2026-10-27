@@ -23,6 +23,7 @@ type EvaluatorModelResultPayload = {
   model: string;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   identity?: ModelIdentity;
+  countsIn?: "ledger" | "trace";
 };
 
 /**
@@ -46,9 +47,11 @@ export function stashEvaluatorModelResult(
 
 /**
  * Run an evaluator with its model result captured onto `scopedCtx`, on
- * success and failure. The payload is not forwarded to the enclosing hook:
- * inside a generator's tool call that hook is the generator's own capture,
- * and the evaluator's model must not overwrite the generator's on its row.
+ * success and failure. The payload is forwarded to the enclosing hook marked
+ * `countsIn: "ledger"`: inside a generator's tool call that hook is the
+ * generator's own capture, and the evaluator's model must not overwrite the
+ * generator's on its row, but the call still counts in the request's spend
+ * ledger, which every capture forwards to (FIX-2145).
  */
 export async function runEvaluatorCapturingModelResult<T>(
   scopedCtx: BlockContext,
@@ -61,14 +64,19 @@ export async function runEvaluatorCapturingModelResult<T>(
     _runtimeHooks: {
       ...scopedCtx._runtimeHooks,
       onGeneratorModelResult: (payload: EvaluatorModelResultPayload) => {
-        if (payload.identity !== undefined) identity = payload.identity;
-        if (payload.usage !== undefined) {
-          usage = {
-            model: payload.model,
-            promptTokens: payload.usage.promptTokens,
-            completionTokens: payload.usage.completionTokens,
-            totalTokens: payload.usage.totalTokens,
-          };
+        if (payload.countsIn !== "ledger") {
+          if (payload.identity !== undefined) identity = payload.identity;
+          if (payload.usage !== undefined) {
+            usage = {
+              model: payload.model,
+              promptTokens: payload.usage.promptTokens,
+              completionTokens: payload.usage.completionTokens,
+              totalTokens: payload.usage.totalTokens,
+            };
+          }
+        }
+        if (payload.countsIn !== "trace") {
+          scopedCtx._runtimeHooks?.onGeneratorModelResult?.({ ...payload, countsIn: "ledger" });
         }
       },
     },

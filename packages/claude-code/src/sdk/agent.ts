@@ -15,7 +15,7 @@
  * `detached: true` turns the conversation-state half off — see the option.
  */
 import { formatRunDuration, handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { reportHarnessSpend, type BlockContext, type HarnessBilling } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
   HarnessResolver,
@@ -1035,6 +1035,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // The account the run is signed in as, asked of the running query once,
       // at its first usage event, so its windows are bound to it.
       let runAccount: Promise<string | null | undefined> | undefined;
+      // How the run is paid for, asked of the running query as it starts and
+      // read, without waiting, when the run reports its spend (FIX-2145).
+      // `undefined` until the query has started: a run that never started
+      // spent nothing and reports nothing.
+      let runBilling: { value: HarnessBilling | null } | undefined;
 
       // The vendor loop, hoisted so the abort branch can wait on it (bounded)
       // after the race below has been lost to the signal.
@@ -1103,6 +1108,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               prompt: promptText,
               options: queryOptions,
             });
+            // One `accountInfo()` answers both how the run is billed and, for
+            // usage windows, whose account it is. A failed lookup is asked
+            // again on the next window, never read as a different account.
+            let accountLookup: Promise<AccountInfo | undefined> | undefined = accountInfoOf(running);
+            const billing: { value: HarnessBilling | null } = { value: null };
+            runBilling = billing;
+            void accountLookup.then((info) => {
+              billing.value = billingFrom(info);
+            });
             for await (const message of running) {
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
@@ -1162,12 +1176,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 const window = usageWindowOf(message.rate_limit_info);
                 if (window !== null) {
                   const observedAt = Date.now();
-                  runAccount ??= accountOf(running);
+                  runAccount ??= (accountLookup ??= accountInfoOf(running)).then(emailFrom);
                   inFlightRef.current = runAccount
                     .then((accountId) => {
                       // Whose window this is isn't known: drop it rather than guess, and ask again on the next event.
                       if (accountId === undefined) {
                         runAccount = undefined;
+                        accountLookup = undefined;
                         return;
                       }
                       return onUsage({ harness: CLAUDE_CODE_HARNESS, window, observedAt, runStartedAt: dispatchedAt, accountId }, ctx);
@@ -1395,6 +1410,21 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         return handle;
       } finally {
+        // What the run spent, into the request, however it ended (FIX-2145):
+        // whatever Claude Code had reported by now. Its result message is the
+        // only place it reports usage, so a run stopped before it reports one
+        // run with nothing counted.
+        if (runBilling !== undefined) {
+          // Set inside the stream's callbacks, which narrowing can't see.
+          const spent = usage as SdkAgentHandle["usage"];
+          reportHarnessSpend(ctx, {
+            harness: CLAUDE_CODE_HARNESS,
+            inputTokens: spent?.inputTokens ?? null,
+            outputTokens: spent?.outputTokens ?? null,
+            costUsd,
+            billing: runBilling.value,
+          });
+        }
         // The last recording window, and anything still in flight. A clean run
         // can still end with a plan create unanswered (`error_max_turns` ends
         // the stream mid-exchange), so this is not a failure-path concern.
@@ -1424,33 +1454,59 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
  * the resolver answers later is closed then, so a connection it was still
  * opening isn't left open.
  */
-/** How long a run waits for its own query to name its account. */
-const ACCOUNT_TIMEOUT_MS = 5_000;
+/** What a running query's `accountInfo()` answers, as far as a run reads it. */
+type AccountInfo = Record<string, unknown>;
 
 /**
- * The email of the account a running query is signed in as, `null` when it
- * names none (an OAuth token), or `undefined` when it can't be asked or
- * doesn't answer in time, so a failed lookup never reads as an account change.
- * Asks the query the run already holds, so no second process starts.
+ * Ask a running query which account it runs as. `undefined` when it can't be
+ * asked, fails, or doesn't answer in time. Asks the query the run already
+ * holds, so no second process starts and no credential file is read.
  */
-async function accountOf(running: unknown): Promise<string | null | undefined> {
-  const ask = (running as { accountInfo?: () => Promise<{ email?: unknown }> }).accountInfo;
+async function accountInfoOf(running: unknown): Promise<AccountInfo | undefined> {
+  const ask = (running as { accountInfo?: () => Promise<AccountInfo> }).accountInfo;
   if (typeof ask !== "function") return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const info = await Promise.race([
+    return await Promise.race([
       ask.call(running),
       new Promise<undefined>((resolve) => {
         timer = setTimeout(() => resolve(undefined), ACCOUNT_TIMEOUT_MS);
       }),
     ]);
-    if (info === undefined) return undefined;
-    return typeof info.email === "string" && info.email !== "" ? info.email : null;
   } catch {
     return undefined;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** How long a run waits for its own query to name its account. */
+const ACCOUNT_TIMEOUT_MS = 5_000;
+
+/**
+ * How a run is paid for, from its account (FIX-2145): `api-key` when it names
+ * an API key source, `subscription` when it names a token source or a
+ * signed-in plan, `null` when it names neither or wasn't read.
+ */
+function billingFrom(info: AccountInfo | undefined): HarnessBilling | null {
+  if (info === undefined) return null;
+  const named = (value: unknown) => typeof value === "string" && value !== "" && value !== "none";
+  if (named(info.apiKeySource)) return "api-key";
+  // "Claude API" is the no-plan label, not a sign-in (as `probeClaudeAccount` reads it).
+  if (named(info.tokenSource) || named(info.email) || (named(info.subscriptionType) && info.subscriptionType !== "Claude API")) {
+    return "subscription";
+  }
+  return null;
+}
+
+/**
+ * The email of the account a run is signed in as, `null` when it names none
+ * (an OAuth token), or `undefined` when it wasn't read, so a failed lookup
+ * never reads as an account change.
+ */
+function emailFrom(info: AccountInfo | undefined): string | null | undefined {
+  if (info === undefined) return undefined;
+  return typeof info.email === "string" && info.email !== "" ? info.email : null;
 }
 
 async function resolveMcpTools(

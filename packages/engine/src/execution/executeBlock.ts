@@ -85,11 +85,14 @@ async function executeByKind(
         };
         providerMetadata?: Record<string, Record<string, unknown>>;
         identity?: ModelIdentity;
+        countsIn?: "ledger" | "trace";
       }) => {
-        if (payload.identity !== undefined) {
+        // A ledger-only report (a step, or an evaluator called as a tool) is
+        // not this block's row: forward it, and leave the row alone.
+        if (payload.countsIn !== "ledger" && payload.identity !== undefined) {
           modelIdentity = payload.identity;
         }
-        if (payload.usage !== undefined) {
+        if (payload.countsIn !== "ledger" && payload.usage !== undefined) {
           const anthropic = payload.providerMetadata?.anthropic ?? {};
           // Prefer adapter-normalised cache fields; fall back to raw
           // Anthropic provider metadata for older call paths.

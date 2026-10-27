@@ -112,6 +112,8 @@ import {
   type WorkstreamBlocks,
   backfillBoardWakes,
   upgradeWorkerEntryNames,
+  WORKER_USAGE_ACTION,
+  workerUsageAction,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -1178,6 +1180,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // because Shift Manager reads this flow first, so the Usage view and a
       // worker call one address.
       [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
+      // How many tokens each of the caller's workers used, beside it (FIX-2145).
+      [WORKER_USAGE_ACTION]: workerUsageAction(installation),
     },
   } as never)();
 

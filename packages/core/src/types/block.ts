@@ -13,8 +13,8 @@ import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
-import type { RequestEndSeam } from "./request-end";
-import { REQUEST_END_SEAM } from "./request-end";
+import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
+import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
@@ -584,6 +584,13 @@ export interface BlockContext<
   [REQUEST_END_SEAM]?: RequestEndSeam;
 
   /**
+   * @internal The running request's spend ledger (FIX-2145), under a symbol
+   * key. Read only by `reportHarnessSpend`, which a harness calls when a run
+   * ends. See `types/request-end.ts`.
+   */
+  [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
+
+  /**
    * @internal How the running request resumed (FIX-2129), under a symbol key.
    * Read only by `requestResumeOf`. See `types/request-resume.ts`.
    */
@@ -607,6 +614,17 @@ export interface BlockContext<
       providerMetadata?: GeneratorModelResult["providerMetadata"];
       /** Resolved identity of the model that produced this result. */
       identity?: ModelIdentity;
+      /**
+       * Where this report counts (FIX-2145). Absent: both on the reporting
+       * block's trace row and in the request's spend ledger, as one model
+       * call. `"ledger"`: the ledger only. A finished step of a multi-step
+       * run, counted when the step ends so a run that later suspends or fails
+       * keeps it; or an evaluator called as a tool, which must not overwrite
+       * its caller's row. `"trace"`: the trace row only. A multi-step run's
+       * aggregate, whose steps the ledger already counted. A capture that
+       * records the row ignores `"ledger"` reports and forwards every report.
+       */
+      countsIn?: "ledger" | "trace";
     }) => void;
     /**
      * Unified block-lifecycle capture hook. Fires four phases per block:

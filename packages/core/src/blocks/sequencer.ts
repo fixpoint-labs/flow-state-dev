@@ -528,11 +528,13 @@ export async function executeBlock(
               };
               providerMetadata?: Record<string, Record<string, unknown>>;
               identity?: ModelIdentity;
+              countsIn?: "ledger" | "trace";
             }) => {
-              if (block.kind === "evaluator" && payload.identity !== undefined) {
+              // A ledger-only report is not this block's row: forward it only.
+              if (block.kind === "evaluator" && payload.countsIn !== "ledger" && payload.identity !== undefined) {
                 evaluatorModelIdentity = payload.identity;
               }
-              if (payload.usage) {
+              if (payload.usage && payload.countsIn !== "ledger") {
                 const anthropic = payload.providerMetadata?.anthropic ?? {};
                 // Prefer the adapter-normalised usage fields; fall back to
                 // provider metadata so older call paths keep working.
