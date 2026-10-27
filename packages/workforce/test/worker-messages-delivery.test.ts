@@ -43,6 +43,14 @@ const { mockGenerator } = await import("@flow-state-dev/testing");
 const { bootBoardHost } = await import("./conversation-board-harness");
 const { WORKER_MESSAGES_PATTERN } = await import("../src/messages/message-log");
 const { MESSAGE_RESEND_FROM } = await import("../src/messages/delivery");
+const { boardWorkers } = await import("./conversation-board-harness");
+const { defineFlow, handler, markDispatcher } = await import("@flow-state-dev/core");
+const { z } = await import("zod");
+const { defineSessionBoard, workerConfigSchema } = await import("../src");
+const { sendMessage } = await import("../src/messages/send-message");
+const { messageTurnStateSchema } = await import("../src/messages/hop");
+const { workerMessagesResources } = await import("../src/messages/message-log");
+type WorkerInstallation = import("../src/workers/installation").WorkerInstallation;
 type BoardHost = import("./conversation-board-harness").BoardHost;
 
 const ORG = "acme";
@@ -276,5 +284,68 @@ describe("a message that can't land after its send returned", () => {
     await h.settled();
     const lines = (await h.messages(otto)).map((m) => m.text);
     expect(lines.filter((line) => line.startsWith(`Your message ${row!.id} to lead wasn't delivered`))).toHaveLength(1);
+  }, 30_000);
+});
+
+/** A worker flow whose turn sends one message twice under one server-chosen id, as a send repeated after a crash would. */
+function repeatingSenderFlow(installation: WorkerInstallation, results: unknown[]) {
+  const board = defineSessionBoard({ installation, flowKind: "sender" });
+  const doorInput = z.object({ message: z.string() });
+  const turn = markDispatcher(
+    handler({
+      name: "repeat-sender-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      requestStateSchema: messageTurnStateSchema,
+      resources: { ...installation.resources, ...workerMessagesResources },
+      execute: async (input, ctx) => {
+        if (!input.message.startsWith("send")) return "";
+        for (let i = 0; i < 2; i += 1) {
+          results.push(await sendMessage(ctx as never, installation, "sender", { to: "lead", text: "Once?" }, "repeat-sender-turn", { id: "msg_fixedrepeat" }));
+        }
+        return "";
+      }
+    }),
+    { type: "internal", action: "onMessageReceived" }
+  );
+  return defineFlow({
+    kind: "sender",
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    internal: { actions: board.entries(turn, () => "judgment") }
+  } as never);
+}
+
+describe("a send repeated under one server-chosen id", () => {
+  it("is one message: the repeat writes no second row, pays no second place and owes nothing new", async () => {
+    const results: unknown[] = [];
+    const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "" } }] });
+    const h = bootBoardHost({
+      durable: true,
+      judgment,
+      standard: [...boardWorkers(), { id: "sendy", declared: { flow: "sender" }, body: "", skills: [] }],
+      flows: (installation) => ({ sender: { flow: repeatingSenderFlow(installation, results), roles: ["manager"] } })
+    });
+    open = h;
+    await h.state.getRouter();
+    const created = await h.create("alice", "sender", { state: { workerId: "sendy" } });
+    const sendy = created.body.session!.id as string;
+    await h.post("alice", sendy, "respond", { message: "send it" }, "sender");
+    await h.settled();
+    expect(results).toEqual([
+      { ok: true, id: "msg_fixedrepeat" },
+      { ok: true, id: "msg_fixedrepeat" }
+    ]);
+    const rows = await logRows(h);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "msg_fixedrepeat", hop: 1, status: "delivered" });
+    // One place in the exchange's budget, not two.
+    const runtime = await h.state.getRuntime();
+    const chains = Object.values(await runtime.stores.resourceState.getByPrefix("user", `alice:~org:${ORG}`, "workforce/message-chains/"));
+    expect(chains.map((chain) => (chain.state as { sent: string[] }).sent)).toEqual([["msg_fixedrepeat"]]);
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    expect(await receivedIn(h, lead.id, "msg_fixedrepeat")).toHaveLength(1);
   }, 30_000);
 });

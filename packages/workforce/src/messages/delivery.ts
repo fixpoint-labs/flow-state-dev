@@ -122,7 +122,7 @@ export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: 
  * delivery or a take that may still deliver. `told` records that the sender
  * was told already (the tool's answer said it).
  *
- * @param force Write it even over a take: a message owed past the host's debt age.
+ * @param force Write it even over a take: a taken message past the host's debt age whose recipient is gone.
  * @returns Whether it was written.
  */
 export async function endMessage(
@@ -212,8 +212,9 @@ export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageRow) => Pro
  *   so the id goes; a send still running keeps its pointer;
  * - `delivered`, or ended and told: the id goes;
  * - ended and not yet told: D1's line, then `toldAt`, then the id goes;
- * - owed past the host's debt age, counted from the send: `undeliverable`,
- *   D1's line, the id goes;
+ * - owed past the host's debt age, counted from the send, and never taken:
+ *   `undeliverable`, D1's line, the id goes. A taken one is never ended for
+ *   its age (its taker may hold it on a person), unless its recipient is gone;
  * - past its next send (orchestration's backoff): the recipient check again,
  *   then the same dispatch as the first, and `resent` recorded. A failed
  *   check or a final refusal ends it `refused`, told.
@@ -248,19 +249,30 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
       continue;
     }
     const now = Date.now();
-    if (now - ref.state.at > maxAge) {
-      if (await endMessage(ref, "undeliverable", `it couldn't be delivered within ${Math.round(maxAge / 60_000)} minutes`, { force: true })) {
+    const pastAge = now - ref.state.at > maxAge;
+    if (pastAge && ref.state.takenBy === undefined) {
+      if (await endMessage(ref, "undeliverable", `it couldn't be delivered within ${Math.round(maxAge / 60_000)} minutes`)) {
         await tellSender(ctx, ref);
         drop.push(entry.id);
       } else later(now + NOTICE_DUE_MS);
       continue;
     }
+    // Taken, and past the age: a taker may still hold it (a turn waiting on a
+    // person), so it is never ended for its age; it is sent again at the
+    // backoff's cap, which a copy takes over from a taker that ended.
     const due = nextResendAt(ref.state.resent, ref.state.at + NOTICE_DUE_MS);
     if (due > now) {
       later(due);
       continue;
     }
     const refusal = await recheck(ctx, ref.state);
+    // A recipient gone for good ends even a taken message once it is past
+    // the age: nothing can deliver it, and it would be sent again forever.
+    if (refusal !== undefined && pastAge && (await endMessage(ref, "refused", refusal, { force: true }))) {
+      await tellSender(ctx, ref);
+      drop.push(entry.id);
+      continue;
+    }
     if (refusal !== undefined) {
       if (await endMessage(ref, "refused", refusal)) {
         await tellSender(ctx, ref);
