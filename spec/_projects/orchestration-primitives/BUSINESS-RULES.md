@@ -25,6 +25,7 @@ answered ([FIX-2058 ER-7](https://github.com/fixpoint-labs/flow-state-dev/blob/m
 
 **No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's five
 task tools, or a second model-facing message tool beside `sendMessage` ([PD-3](DECISIONS.md)); add a park, or a third route
-that answers a person's stop beside the two PR-3 names; add a second once-only check beside the claim ticket; add a task store or
+that answers a person's stop beside the two PR-3 names; add a second once-only check beside the claim ticket (a delivery's take of a notice or a message
+is idempotency, not a claim, [FIX-2070 D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2070/DECISIONS.md#d2)); add a task store or
 status vocabulary outside TaskCollection ([PD-1](DECISIONS.md)); or let a skill pick how its work
 executes ([PD-2](DECISIONS.md)).
