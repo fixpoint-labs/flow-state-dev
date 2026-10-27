@@ -1491,10 +1491,9 @@ const ACCOUNT_TIMEOUT_MS = 5_000;
 /**
  * How a run is paid for, from its account (FIX-2145): `api-key` when it names
  * an API key source, `subscription` when it names a token source or a
- * signed-in plan, `null` when it names neither or wasn't read.
+ * signed-in plan, `null` when it names neither.
  */
-function billingFrom(info: AccountInfo | undefined): HarnessBilling | null {
-  if (info === undefined) return null;
+function billingFrom(info: AccountInfo): HarnessBilling | null {
   const named = (value: unknown) => typeof value === "string" && value !== "" && value !== "none";
   if (named(info.apiKeySource)) return "api-key";
   // "Claude API" is the no-plan label, not a sign-in (as `probeClaudeAccount` reads it).
