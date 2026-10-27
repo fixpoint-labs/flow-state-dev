@@ -126,12 +126,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
       {
         module: "packages/orchestration/src/tasks/collection/internal.ts",
         from: String.raw`  if \(hasOpenHold\(task\)\) return false;\n  if \(task\.status !== "pending"`,
-        to: '  if (openHolds(task).length > 1) return false;\n  if (task.status !== "pending"'
-      },
-      {
-        module: "packages/orchestration/src/tasks/collection/internal.ts",
-        from: String.raw`import \{ droppedMirror, hasOpenHold,`,
-        to: "import { openHolds } from \"./holds\";\nimport { droppedMirror, hasOpenHold,"
+        to: '  if (openRowHolds(task).length > 1) return false;\n  if (task.status !== "pending"'
       }
     ],
     legs: ["a", "b"]
