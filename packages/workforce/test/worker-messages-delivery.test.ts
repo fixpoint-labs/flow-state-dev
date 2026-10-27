@@ -269,6 +269,25 @@ describe("the take on the row", () => {
     // The taker's items landed with it; the copy's are the second: the one window left (D: "delivered" before the turn).
     expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(2);
   }, 30_000);
+  it("is marked delivered only once its items are stored: the request store is flushed while the row is still only taken", async () => {
+    const { h, otto } = await boot();
+    const store = (await h.state.getRuntime()).stores.request;
+    const flush = store.flushItems.bind(store);
+    const atFlush: Array<{ requestId: string; status?: string; takenBy?: string }> = [];
+    store.flushItems = async (requestId: string) => {
+      const [row] = await logRows(h);
+      atFlush.push({ requestId, status: row?.status, takenBy: row?.takenBy });
+      return flush(requestId);
+    };
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [row] = await logRows(h);
+    expect(row).toMatchObject({ status: "delivered" });
+    // The taker flushed its items while the row said only "taken by me", so a
+    // crash before the write leaves a row the next copy takes over.
+    expect(atFlush).toContainEqual({ requestId: row!.deliveredAs, status: "unconfirmed", takenBy: row!.deliveredAs });
+  }, 30_000);
+
   it("is sent again when its taker died after the take and before the items: the pass resends it and it lands once", async () => {
     fault.throwAfterTake = true;
     const { h, otto } = await boot();

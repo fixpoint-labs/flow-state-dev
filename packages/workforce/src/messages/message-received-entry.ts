@@ -26,7 +26,7 @@ import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageTurnStateSchema, startTurnAtHop } from "./hop";
-import { markDelivered, takeMessage } from "./delivery";
+import { markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { workerMessagesResources } from "./message-log";
@@ -177,14 +177,16 @@ export function messageReceivedEntry(options: {
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
-      ctx.emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
-      ctx.emit.component(
+      const emit = storedEmitters(ctx as never);
+      await emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
+      await emit.component(
         RECEIVED_MESSAGE_COMPONENT,
         { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: received.budget },
         { agentName: row.from, itemVisibility: { client: true, history: false } }
       );
-      // Landed: the sending session's pass stops sending it. A taker killed
-      // before this is taken over, and the message shows twice.
+      // Landed once both are stored: the sending session's pass stops sending
+      // it. A taker killed before this is taken over, and the message shows twice.
+      await emit.stored();
       await markDelivered(ctx as never, row.id);
       return { act: "heard", received };
     }

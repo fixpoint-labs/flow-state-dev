@@ -148,8 +148,25 @@ function undeliveredLine(row: Pick<WorkerMessageRow, "id" | "to" | "reason">): s
 
 /** Leave D1's line in the running session (the sender's), then record it on the row. */
 async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageRow>): Promise<void> {
-  ctx.emit.message(undeliveredLine(ref.state), { itemVisibility: { client: true, history: true } });
+  const emit = storedEmitters(ctx);
+  await emit.message(undeliveredLine(ref.state), { itemVisibility: { client: true, history: true } });
+  await emit.stored();
   await ref.patchState({ toldAt: Date.now() });
+}
+
+/**
+ * The emitters for an item a later write says landed (`delivered`, `toldAt`):
+ * each settles on its emission, and `stored()` waits for the request store,
+ * so the write never runs ahead of the item it records. A context that can't
+ * confirm either throws: the row stays as it was, and the next copy or pass
+ * finishes it.
+ */
+export function storedEmitters(ctx: BlockContext) {
+  const { _emitMessageAwaited: message, _emitComponentAwaited: component, _flushItems: flush } = ctx;
+  if (message === undefined || component === undefined || flush === undefined) {
+    throw new Error("worker messages: this context can't confirm an item was stored, so nothing is recorded as landed");
+  }
+  return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
 }
 
 /** What the take came to: the row to land, or why nothing runs. */
