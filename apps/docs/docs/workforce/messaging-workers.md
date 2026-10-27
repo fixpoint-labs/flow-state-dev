@@ -167,7 +167,7 @@ A refused send answers `{ ok: false, error }`, and nothing is sent. The error st
 | `not_a_worker` | The sending session runs no worker. |
 | `empty_message` | `text` is blank. |
 | `message_too_long` | `text` is over 8,000 characters. |
-| `not_yourself` | `to` is the sending worker, or the session the message is sent from. |
+| `not_yourself` | `to` is the sending worker, or the session the message is sent from. An answer from another of the worker's own conversations goes through. |
 | `no_worker` | No worker by that id on the user's roster. Another user's worker answers this too. For `{ task }` or `{ session }`, the worker that ran the session has been fired. |
 | `worker_unavailable` | The worker is on the roster but can't run, for example because its saved row can't be read, or it has moved to another flow since the session opened. The error says why. |
 | `task_sessions_only` | The worker hears messages only in its tasks' sessions. File it a task instead, or message a finished one with `{ task: id }`. |
