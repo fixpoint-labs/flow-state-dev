@@ -1,0 +1,278 @@
+/**
+ * A message addressed to a task or to one of the user's conversations
+ * (FIX-2160): `sendMessage({ to: { task } })` lands in the session that
+ * works the task, and `{ to: { session } }` in that conversation, each checked
+ * on its own record before anything is written.
+ *
+ * Why it matters: a worker asking about a task belongs in the task's own
+ * history, not the worker's default conversation, and a pasted session id is
+ * input a model hands over, so the server must refuse every session that is
+ * not one of the user's conversations before a row exists. A coding task that
+ * still runs is refused too: its only answer would resume the session its
+ * work is in.
+ *
+ * Read from the store and what reached each session, never from the tool's
+ * return alone.
+ */
+import { describe, expect, it } from "vitest";
+import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
+import type { WorkerManifest } from "../src";
+import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
+import { sendMessageInputSchema } from "../src/messages/message-tool";
+
+const ORG = "acme";
+
+const textOf = (input: unknown) => JSON.stringify(input).replaceAll("\\", "");
+
+/**
+ * The first turn whose input mentions `marker` makes the tool calls `calls()`
+ * returns then (so a test can name an id it learns after booting); later calls
+ * in that turn say "Sent.".
+ */
+function callsOnce(marker: string, calls: () => Array<Record<string, unknown>>): MockGeneratorScriptEntry[] {
+  let called = false;
+  const step = { toolCalls: [] as Array<{ toolCallId: string; toolName: string; args: unknown }> };
+  return [
+    { when: (input: unknown) => called && textOf(input).includes(marker), then: { text: "Sent." } },
+    {
+      when: (input: unknown) => {
+        if (called || !textOf(input).includes(marker)) return false;
+        called = true;
+        step.toolCalls = calls().map((args, i) => ({ toolCallId: `${marker}-${i}`, toolName: "sendMessage", args }));
+        return true;
+      },
+      then: step
+    }
+  ];
+}
+
+const fallback: MockGeneratorScriptEntry = { when: () => true, then: { text: "" } };
+
+function team(): WorkerManifest[] {
+  const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({ id, declared, body, skills: [] });
+  return [...boardWorkers(), worker("chief", { flow: "coordinator", delegates: ["otto"] }, "Hand the work to otto."), worker("asker", { description: "Asks." }, "You ask.")];
+}
+
+async function logRows(h: BoardHost, userId: string) {
+  const runtime = await h.state.getRuntime();
+  const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
+  return Object.values(entries).map((value) => value.state as Record<string, any>);
+}
+
+async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
+  return (await h.requestsOf(sessionId)).flatMap((request) => (request as unknown as { items?: any[] }).items ?? []);
+}
+
+async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+}
+
+async function toolOutputs(h: BoardHost, sessionId: string): Promise<string[]> {
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "tool_output").map((item) => JSON.stringify(item.output ?? item.error));
+}
+
+/** File `goal` to `assignee` from `filer`'s conversation with `userId`, and let the board settle. */
+async function fileTask(h: BoardHost, userId: string, filer: string, goal: string, assignee: string) {
+  const conversation = await h.conversation(userId, filer);
+  const filed = await h.act(userId, conversation, "createTask_tasks", { goal, assignee });
+  expect(filed.error, messageOf(filed.error)).toBeUndefined();
+  return conversation;
+}
+
+const until = async (check: () => Promise<boolean>, ms = 10_000) => {
+  for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("timed out");
+};
+
+describe("a message to a task", () => {
+  it("lands in the session that worked the task, after it finished, wakes that session's turn, and leaves the task as it was", async () => {
+    const ids: { task?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input) => textOf(input).includes("Message msg_") && textOf(input).includes("How did the report go?"), then: { text: "It went well." } },
+        { when: (input) => textOf(input).includes("Write the report"), then: { text: "Report written." } },
+        ...callsOnce("Please ask about the report", () => [{ to: { task: ids.task }, text: "How did the report go?" }]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      await fileTask(h, "alice", "chief", "Write the report", "otto");
+      await h.settled();
+      const [task] = await h.rows("alice");
+      expect(task!.status).toBe("completed");
+      ids.task = task!.id;
+      const taskSession = task!.run!.sessionId;
+
+      const asker = await h.client("alice").ensureWorkerSession({ worker: "asker" });
+      await h.post("alice", asker.id, "respond", { message: "Please ask about the report" }, "agent");
+      await h.settled();
+
+      const rows = await logRows(h, "alice");
+      expect(rows).toEqual([
+        expect.objectContaining({ from: "asker", to: "otto", toKind: "task", toTask: task!.id, toSession: taskSession, status: "delivered" })
+      ]);
+      expect(await receivedIn(h, taskSession)).toEqual([expect.objectContaining({ from: "asker", text: "How did the report go?" })]);
+      expect((await h.messages(taskSession)).at(-1)?.text, "the message woke the task session's turn").toBe("It went well.");
+      // Otto's own conversation was never opened: the message went to the task's history.
+      expect(await h.client("alice").findWorkerSession({ worker: "otto" })).toBeUndefined();
+      const [after] = await h.rows("alice");
+      expect({ status: after!.status, attempts: after!.attempts, output: after!.output }).toEqual({
+        status: task!.status,
+        attempts: task!.attempts,
+        output: task!.output
+      });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses an unknown id and another user's task alike, no_task_session, writing nothing", async () => {
+    const ids: { bobs?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callsOnce("Please ask the tasks", () => [
+          { to: { task: "task_nope" }, text: "Hi?" },
+          { to: { task: ids.bobs }, text: "Hi Bob's task?" }
+        ]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      await fileTask(h, "bob", "lead", "Bob's work", "eng.tasker");
+      await h.settled();
+      ids.bobs = (await h.rows("bob"))[0]!.id;
+
+      const asker = await h.client("alice").ensureWorkerSession({ worker: "asker" });
+      await h.post("alice", asker.id, "respond", { message: "Please ask the tasks" }, "agent");
+      await h.settled();
+
+      const outputs = await toolOutputs(h, asker.id);
+      expect(outputs).toHaveLength(2);
+      for (const output of outputs) expect(output).toMatch(/no_task_session/);
+      expect(await logRows(h, "alice")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a coding task still running, task_running, before the row; once it ends the same message is delivered", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const ids: { task?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [
+        // The later turn first: its input holds the earlier line too, in history.
+        ...callsOnce("Please ask once it ended", () => [{ to: { task: ids.task }, text: "Status?" }]),
+        ...callsOnce("Please ask while it runs", () => [{ to: { task: ids.task }, text: "Status?" }]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer, holds: new Map([["g", held]]) });
+    try {
+      await fileTask(h, "alice", "lead", "[hold:g] The long job", "eng.tasker");
+      // Running: claimed, and its run linked to the session it works in.
+      await until(async () => (await h.rows("alice"))[0]?.run?.sessionId !== undefined);
+      ids.task = (await h.rows("alice"))[0]!.id;
+
+      const asker = await h.client("alice").ensureWorkerSession({ worker: "asker" });
+      await h.post("alice", asker.id, "respond", { message: "Please ask while it runs" }, "agent");
+      await until(async () => (await toolOutputs(h, asker.id)).length === 1);
+      expect((await toolOutputs(h, asker.id))[0]).toMatch(/task_running/);
+      expect(await logRows(h, "alice")).toEqual([]);
+
+      release();
+      await h.settled();
+      const task = (await h.rows("alice"))[0]!;
+      expect(task.status).toBe("completed");
+      await h.post("alice", asker.id, "respond", { message: "Please ask once it ended" }, "agent");
+      await h.settled();
+      expect(await logRows(h, "alice")).toEqual([expect.objectContaining({ to: "eng.tasker", toKind: "task", toSession: task.run!.sessionId, status: "delivered" })]);
+      expect(await receivedIn(h, task.run!.sessionId)).toEqual([expect.objectContaining({ from: "asker", text: "Status?" })]);
+    } finally {
+      release();
+      await h.dispose();
+    }
+  });
+});
+
+describe("a message to a conversation by its id", () => {
+  it("lands in that conversation of the user's, as its own item", async () => {
+    const ids: { lead?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [...callsOnce("Please tell the lead's thread", () => [{ to: { session: ids.lead }, text: "Alice wants this here too." }]), fallback]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      ids.lead = await h.conversation("alice", "lead", "s_alice_lead_second");
+      const asker = await h.client("alice").ensureWorkerSession({ worker: "asker" });
+      await h.post("alice", asker.id, "respond", { message: "Please tell the lead's thread" }, "agent");
+      await h.settled();
+
+      expect(await logRows(h, "alice")).toEqual([
+        expect.objectContaining({ from: "asker", to: "lead", toKind: "session", toSession: ids.lead, status: "delivered" })
+      ]);
+      expect(await receivedIn(h, ids.lead)).toEqual([expect.objectContaining({ from: "asker", text: "Alice wants this here too." })]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a task's session, a missing one, another user's, a coder's and its own, by name, writing nothing", async () => {
+    const ids: { taskSession?: string; bobs?: string; tasker?: string; own?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callsOnce("Please try every session", () => [
+          { to: { session: ids.taskSession }, text: "1" },
+          { to: { session: "s_missing" }, text: "2" },
+          { to: { session: ids.bobs }, text: "3" },
+          { to: { session: ids.tasker }, text: "4" },
+          { to: { session: ids.own }, text: "5" }
+        ]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      await fileTask(h, "alice", "chief", "Write the report", "otto");
+      await fileTask(h, "alice", "lead", "Tasker work", "eng.tasker");
+      await h.settled();
+      const rows = await h.rows("alice");
+      ids.taskSession = rows.find((row) => row.assignee === "otto")!.run!.sessionId;
+      ids.tasker = rows.find((row) => row.assignee === "eng.tasker")!.run!.sessionId;
+      ids.bobs = await h.conversation("bob", "lead");
+      const asker = await h.client("alice").ensureWorkerSession({ worker: "asker" });
+      ids.own = asker.id;
+
+      await h.post("alice", asker.id, "respond", { message: "Please try every session" }, "agent");
+      await h.settled();
+
+      const outputs = await toolOutputs(h, asker.id);
+      expect(outputs).toHaveLength(5);
+      expect(outputs[0]).toMatch(/not_a_conversation/);
+      expect(outputs[1]).toMatch(/no_session/);
+      expect(outputs[2]).toMatch(/no_session/);
+      // A coder's task session carries a task's markers too: it is a task's, not a conversation.
+      expect(outputs[3]).toMatch(/not_a_conversation/);
+      expect(outputs[4]).toMatch(/not_yourself/);
+      expect(await logRows(h, "alice")).toEqual([]);
+      expect(await logRows(h, "bob")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("the tool's input", () => {
+  it("takes a worker's id, { task } or { session }, and nothing else in to", () => {
+    expect(sendMessageInputSchema.safeParse({ to: { task: "t1" }, text: "Hi." }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: { session: "s1" }, text: "Hi." }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: { task: "t1", session: "s1" }, text: "Hi." }).success).toBe(false);
+    expect(sendMessageInputSchema.safeParse({ to: { worker: "lead" }, text: "Hi." }).success).toBe(false);
+  });
+});
