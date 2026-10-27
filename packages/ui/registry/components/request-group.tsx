@@ -65,9 +65,7 @@ type RequestGroupRendererProps = {
    *  from `useSession.isFinishing`. Defaults to `false` for callers
    *  that do not yet thread the signal. */
   isFinishing?: boolean;
-  /** When true, a request that has stopped streaming ends in a
-   *  "Worked for 3m 24s • 4:28 PM" line. Off by default: a chat reply reads
-   *  fine without it, a long agent run does not. */
+  /** Off by default: a chat reply reads fine without it, a long agent run does not. */
   showWorkedFor?: boolean;
 };
 
@@ -109,11 +107,6 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
       />
     );
   });
-}
-
-/** When an item last changed: its completion if it has one, else when it began. */
-function settledAt(item: OutputItem): number {
-  return (item as { completedAt?: number }).completedAt ?? item.ts;
 }
 
 /**
@@ -167,7 +160,7 @@ function RequestGroup({
   // that earlier than the request really started, which only lengthens the count.
   const since = group.items[0]?.ts;
   const live = isLast && isStreaming;
-  const endedAt = useMemo(() => Math.max(0, ...group.items.map(settledAt)), [group.items]);
+  const endedAt = Math.max(0, ...group.items.map((item) => (item as { completedAt?: number }).completedAt ?? item.ts));
 
   return (
     <div
@@ -175,11 +168,8 @@ function RequestGroup({
       className="flex flex-col gap-2"
       style={isLast ? { minHeight: "70dvh" } : undefined}
     >
-      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
+      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={live} />
       <SourcesGroup items={group.items} />
-      {/* While a step runs, its own line says what it is doing, so the indicator
-          drops its words (not itself): the line keeps one stable label and the
-          clock instead of going to a bare timer and coming back. */}
       {live && <StreamingIndicator message={stepInFlight ? undefined : statusMessage} isFinishing={isFinishing} since={since} />}
       {!live && showWorkedFor && since !== undefined && <WorkedFor startedAt={since} endedAt={endedAt} />}
     </div>

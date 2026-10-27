@@ -1,10 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * While an agent's step is in flight, the group's own line says what it is
- * doing, so the streaming indicator under it does not repeat the status words:
- * it keeps its plain "Working..." label and the clock instead. The line never
- * collapses to a bare timer and comes back, and the status words return
- * whenever no step is in flight.
+ * A running step's own line already names it, so the indicator keeps
+ * "Working..." and the clock and leaves those words off.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

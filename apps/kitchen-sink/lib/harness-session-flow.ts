@@ -140,7 +140,6 @@ async function changeState(
   await ctx.session.atomicState((state) => change(state as HarnessSessionState));
 }
 
-/** How long a session's title may be before it is cut. */
 const TITLE_LENGTH = 60;
 
 /** A session's title from its first prompt: its first line, whitespace collapsed, cut with an ellipsis. */
@@ -248,22 +247,16 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       );
     },
   });
-  // The rail lists sessions by title, so a session is titled by its first
-  // prompt before the harness runs. Later turns leave the title alone.
-  const titleFromPrompt = handler({
-    name: "title-from-prompt",
-    inputSchema: z.object({ prompt: z.string().min(1) }),
-    execute: async (input, ctx): Promise<void> => {
-      if (ctx.session.metadata.title != null && ctx.session.metadata.title.trim() !== "") return;
-      await ctx.session.setMetadata({ title: titleOf(input.prompt) });
-    },
-  });
   const turn = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness in the session's worktree.",
     inputSchema: z.object({ prompt: z.string().min(1) }),
   })
-    .tap(titleFromPrompt)
+    // Before the harness runs, so the rail has a title.
+    .tap(async (input, ctx) => {
+      if (ctx.session.metadata.title?.trim()) return;
+      await ctx.session.setMetadata({ title: titleOf(input.prompt) });
+    })
     .step(agent.rescue([{ block: recordFailure }]))
     .tap(recordFailedOutcome);
 

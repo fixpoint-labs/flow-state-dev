@@ -44,10 +44,7 @@ export interface HarnessFrameProps {
   readonly note?: string;
   /** The models New session offers. With none, New session is off and the reason shows. */
   readonly models: ModelChoices;
-  /**
-   * The mode's session view for the picked session. `refreshSessions` reads the
-   * rail again, for a session whose listing changed (it was titled).
-   */
+  /** The mode's session view. The second argument re-reads the rail once a title lands. */
   readonly stream?: (sessionId: string, refreshSessions: () => void) => ReactNode;
   /** Where sessions are listed and created. Defaults to this app's server, as its user; stable. */
   readonly client?: HarnessClient;
@@ -129,13 +126,13 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
       // no later write can change it.
       const created = await client.flow(flowKind).createSession({ state: { model: picked } });
       open(created.id);
-      setReads((n) => n + 1);
+      refreshSessions();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setCreating(false);
     }
-  }, [client, flowKind, open, picked]);
+  }, [client, flowKind, open, picked, refreshSessions]);
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background sm:flex-row" data-testid="harness-frame">
@@ -194,7 +191,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
           <HarnessSessionList
             rows={rows}
             error={listError}
-            onRetry={() => setReads((n) => n + 1)}
+            onRetry={refreshSessions}
             flowKind={flowKind}
             selectedId={selected}
             onSelect={open}

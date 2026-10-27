@@ -202,11 +202,7 @@ function translateStatus(message: { status?: unknown; message?: unknown }): Tran
   return [{ kind: "status", message: `${words}${detail === undefined || detail === "" ? "" : `: ${detail}`}` }];
 }
 
-/**
- * What a lifecycle status reads as in the in-flight indicator, which is shown
- * as a label: "Cursor run running" read as a stutter. An unlisted status falls
- * back to its own name rather than being dropped.
- */
+/** "Cursor run running" stuttered. An unlisted status stays `Cursor run <status>`. */
 const STATUS_WORDS: Readonly<Record<string, string>> = {
   CREATING: "Starting Cursor",
   RUNNING: "Working",
