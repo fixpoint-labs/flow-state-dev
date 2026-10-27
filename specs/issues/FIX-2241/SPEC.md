@@ -125,7 +125,7 @@ the midway ask (a board's `onMidwayQuestion` delivery; without one the filer rea
 |---|---|---|
 | `DeclaredDelivery.onMidwayQuestion` | `onUndeliverable`, the same declaration's hook | **Extends** the declaration a Workforce board already fills; no second registry |
 | `sendQuestionToFiler` | `sendMessage`'s server function | **Composes**: one call with a server-set sender and an exemption flag; no second delivery path |
-| A message id per hold | The receiver's dedupe by id | **Reuses** it: the id is derived from the task and the hold, so any repeat lands once |
+| A message id per hold | The message row's take by id (FIX-2240) | **Reuses** it: the id is derived from the task and the hold, so any repeat lands once |
 
 | The debt | |
 |---|---|

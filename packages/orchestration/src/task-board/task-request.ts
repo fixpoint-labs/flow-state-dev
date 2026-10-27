@@ -720,9 +720,9 @@ export type MidwayAsk =
  * After the question is opened, a ledger that declares `onMidwayQuestion` (FIX-2241) is told the
  * row's open midway questions, read from the committed row, so its filer
  * hears them; a replay whose ask is declined tells them again, and the
- * declaration dedupes per hold. Only this turn's questions are told: a decline
- * for any other reason tells nothing. The telling runs inline, before this
- * returns.
+ * declaration's implementer dedupes per hold (Workforce by message id). Only
+ * this turn's questions are told: a decline for any other reason tells
+ * nothing. The telling runs inline, before this returns.
  *
  * Once per request for the same turn and questions (`ctx.runOnce`): a durable
  * turn that resumes from a stop replays the code before it, and that replay
@@ -760,9 +760,10 @@ export async function askMidway(
   // Tell the filer (FIX-2241), from the committed row: a replay whose ask is
   // declined (its lease already gone) still tells the questions this turn
   // opened. Any other decline (another turn's ticket, a row no longer
-  // running) tells nothing: the row's questions aren't this turn's.
+  // running) tells nothing: the row's questions aren't this turn's. Outside
+  // `runOnce` on purpose: a durable replay tells again, by the same hold ids.
   if (ledger.tellMidwayQuestions !== undefined) {
-    const row = ledger.getCommitted !== undefined ? await ledger.getCommitted(claim.taskId) : ledger.get(claim.taskId);
+    const row = await readCommittedTask(ledger, claim.taskId);
     if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
   }
   return asked;

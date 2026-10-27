@@ -18,10 +18,12 @@ this spec carries no decision card.
   the ask, `askMidway` reads the committed row's open midway holds and calls the hook with those (while one
   is open no other turn runs the task, so they are the ones this turn asked). Their ids are stored on the row, so a durable turn that crashed after
   the hold write and replays (its ask now declined, the lease gone) finds the same holds and sends
-  the same ids. A question answered before the replay is closed and needs no message, and a later
-  turn's open question picked up by the replay is one that turn tells anyway, so the id dedupes it.
+  the same ids. A question answered before the replay is closed and needs no message. A declined
+  ask tells only when the row records that this turn asked (`askedOnTicket`), so another turn's
+  questions are never told by this one.
   The message id is derived from the task and the hold (for example
-  `q:<taskId>:<holdId>`), and the receiver's dedupe drops any repeat. After the message row,
+  `q:<taskId>:<holdId>`), and the row's take keeps any repeat to one message: a server-only id on
+  the send's server function, with no new debt or reset when the row exists (FIX-2240's). After the message row,
   FIX-2240's delivery takes over. On a host without durable execution a crash before the row loses
   the message, as the epic's D2 leaves every send; the Inbox item stands.
 - **One message per hold**, so each names the one question id the filer answers.
