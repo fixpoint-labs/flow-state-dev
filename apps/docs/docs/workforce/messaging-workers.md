@@ -19,7 +19,7 @@ A worker can send and receive messages when its flow runs a conversation with yo
 - [coordinators](./coordinators.md) that route by `judgment` or `best-fit`;
 - workers on a [flow of your own](#on-your-own-worker-flow) built with `defineSessionBoard`.
 
-On the built-in and coordinator flows there's nothing to switch on: every worker gets a `sendMessage` tool on every turn. Your own flow needs [one line](#on-your-own-worker-flow).
+On the built-in and coordinator flows there's nothing to switch on: every worker gets a `messageWorker` tool on every turn. Your own flow needs [one line](#on-your-own-worker-flow).
 
 A worker can message any other worker on its user's roster: your own hires and the standard workers from your files. A worker on another user's roster can't be reached, and the refusal reads the same as for a worker that doesn't exist.
 
@@ -30,7 +30,7 @@ Some workers can't take part:
 
 ## Sending a message
 
-The model calls `sendMessage` with the recipient's worker id and the text:
+The model calls `messageWorker` with the recipient's worker id and the text:
 
 ```json
 { "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
@@ -64,17 +64,17 @@ When the sender is working in a project, a message to the [project coordinator](
 
 ## Answering
 
-To answer, the recipient calls `sendMessage` again, back to the sender, with the id of the message it's answering as `inReplyTo`:
+To answer, the recipient calls `messageWorker` again, back to the sender, with the id of the message it's answering as `replyTo`:
 
 ```json
-{ "to": "researcher", "text": "It's Bluebird.", "inReplyTo": "msg_3f1c0a9e2b7d4c6a8e10" }
+{ "to": "researcher", "text": "It's Bluebird.", "replyTo": "msg_3f1c0a9e2b7d4c6a8e10" }
 ```
 
-`inReplyTo` must name a message the `to` worker sent this worker. Anything else is refused.
+`replyTo` must name a message the `to` worker sent this worker. Anything else is refused.
 
 The answer goes back to the session the first message was sent from, as a `From chief-of-staff: …` line, and wakes the sender there. If the sender sent the message while working a task, a coordinator's routed task included, the answer lands in the sender's own conversation with you instead, and wakes it there.
 
-If the recipient's turn ends without messaging the sender, the turn's final text goes to the sender as the answer, exactly as if it had been sent with `sendMessage` and `inReplyTo`. Final text over 8,000 characters is cut to fit. A turn that did message the sender sends nothing more, and a turn that ends with no text sends nothing at all. Nothing waits on an answer.
+If the recipient's turn ends without messaging the sender, the turn's final text goes to the sender as the answer, exactly as if it had been sent with `messageWorker` and `replyTo`. Final text over 8,000 characters is cut to fit. A turn that did message the sender sends nothing more, and a turn that ends with no text sends nothing at all. Nothing waits on an answer.
 
 A turn woken by an answer never sends its final text back, so an exchange ends after one answer unless a worker sends another message.
 
@@ -152,7 +152,7 @@ A refused send answers `{ ok: false, error }`, and the message isn't delivered. 
 | `worker_unavailable` | The worker is on the roster but can't run, for example because its saved row can't be read. The error says why. |
 | `takes_tasks_only` | The worker only takes tasks. |
 | `no_turn` | The worker is a coordinator that routes by `round-robin` or `everyone`. |
-| `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker. |
+| `no_such_message` | `replyTo` names no message the `to` worker sent this worker. |
 | `hop_limit` | The chain reached `messages.hopLimit` with nobody in between. |
 | `per_turn_limit` | This turn already sent `messages.perTurn` messages. |
 | `empty_message` / `message_too_long` | `text` is blank, or over 8,000 characters. |
@@ -198,7 +198,7 @@ Message msg_3f1c0a9e2b7d4c6a8e10 from researcher:
 
 What's the codename for the spring launch?
 
-(The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. To answer it, call sendMessage with to "researcher" and inReplyTo "msg_3f1c0a9e2b7d4c6a8e10". To message any other worker, leave inReplyTo out. If it needs no answer, don't send one: not answering is an answer. This exchange can send 5 more messages.)
+(The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. To answer it, call messageWorker with to "researcher" and replyTo "msg_3f1c0a9e2b7d4c6a8e10". To message any other worker, leave replyTo out. If it needs no answer, don't send one.)
 ```
 
 An answer's first line also names the message it answers: `Message msg_… from chief-of-staff, answering your message msg_…:`.
@@ -234,7 +234,7 @@ Each row has:
 | `from`, `to` | The sending and receiving worker ids. |
 | `text` | What was said. |
 | `exchange` | The id of the first message in the exchange. A message and its answers share one. |
-| `inReplyTo` | The message this one answers, when it answers one. |
+| `replyTo` | The message this one answers, when it answers one. |
 | `fromSession`, `toSession` | The session it was sent from, and the session it's delivered to. |
 | `chain` | The id of the chain the message belongs to: everything descending from one user's line. Optional. |
 | `hop` | Its place in that chain, from 1. |
@@ -249,7 +249,7 @@ Each row has:
 
 The read never returns another user's messages.
 
-In a conversation, a sent message is a `tool_output` item for the tool named `SEND_MESSAGE_TOOL` (`"sendMessage"`), from `@flow-state-dev/workforce/browser`. Match on it to draw a sent message as a line of its own rather than a tool call. [Shift Manager](../shift-manager/overview.md) does both: its Messages screen lists the log, and a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;*.
+In a conversation, a sent message is a `tool_output` item for the tool named `MESSAGE_WORKER_TOOL` (`"messageWorker"`), from `@flow-state-dev/workforce/browser`. Match on it to draw a sent message as a line of its own rather than a tool call. [Shift Manager](../shift-manager/overview.md) does both: its Messages screen lists the log, and a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;*.
 
 ## Related pages
 
