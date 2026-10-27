@@ -2568,7 +2568,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // Held by the step's watch, which hands it each steer the poll takes.
     onSteerable: (steer, ctx) => {
       const watch = steerWatches.get(ctx.request.identity.id);
-      if (watch !== undefined) watch.steer = steer;
+      if (watch === undefined) return;
+      watch.steer = steer;
+      if (steer !== null) watch.kick();
     },
   });
 
@@ -2660,7 +2662,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
-    const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0 };
+    const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
     // The step ended while a poll was mid-read: `stopWatching` dropped this
     // watch, so the poll stops rather than read the row for good.
     const live = () => steerWatches.get(requestId) === watch;
@@ -2668,9 +2670,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.stopped = true;
       controller.abort(new Error("[harness-manager] stopped for a steer"));
     };
+    // Polled only while there is something to do: a stop to make, or a live steer to hand.
+    const wanted = () => options.stopsOnAbort === true || watch.steer !== null;
+    const schedule = () => {
+      if (live() && !controller.signal.aborted && watch.timer === undefined && !watch.polling) {
+        watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+      }
+    };
     const poll = async () => {
+      watch.timer = undefined;
+      watch.polling = true;
       try {
-        if (watch.steer === null && options.stopsOnAbort !== true) return;
+        if (!wanted()) return;
         const state = managerState(harnessCtxState(ctx));
         const row = await committedRow(ctx);
         if (!live()) return;
@@ -2689,14 +2700,29 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const steer = watch.steer;
         if (steer !== null) {
           watch.handed += 1;
-          const take = await takeSteersFor(ctx, `live:${requestId}:${watch.handed}`, (now, takenIn) =>
-            steersTakenIn(now, takenIn),
-          );
-          if (take === null || take.steers.length === 0) return;
-          showTakenSteers(ctx, take.taken);
-          handLive(ctx, steer, take.steers, () => {
-            if (options.stopsOnAbort === true && live() && !controller.signal.aborted) stop();
-          });
+          // Named by the step too: a request's later step must not read an earlier step's take as its own.
+          const takenIn = `live:${requestId}:${state.steerSteps ?? 0}:${watch.handed}`;
+          const nextStep = owedFor(requestId);
+          const taking = (async () => {
+            const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
+            if (take === null || take.steers.length === 0) return;
+            showTakenSteers(ctx, take.taken);
+            // The step ended, or its run withdrew the offer, while the take wrote
+            // the row: these lines are the next step's, never dropped (D2).
+            if (!live() || watch.steer !== steer) {
+              nextStep.refused.push(...take.steers);
+              return;
+            }
+            handLive(ctx, steer, take.steers, () => {
+              if (options.stopsOnAbort === true && live() && !controller.signal.aborted) stop();
+            });
+          })();
+          nextStep.taking.add(taking);
+          try {
+            await taking;
+          } finally {
+            nextStep.taking.delete(taking);
+          }
           return;
         }
         stop();
@@ -2704,11 +2730,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       } catch {
         // A read that fails stops nothing: the step's own end takes the steer.
       } finally {
-        if (live() && !controller.signal.aborted) watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+        watch.polling = false;
+        if (wanted()) schedule();
       }
     };
-    watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+    watch.kick = schedule;
     steerWatches.set(requestId, watch);
+    if (wanted()) schedule();
     return options.stopsOnAbort === true ? controller.signal : undefined;
   };
 
@@ -2722,7 +2750,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const owedFor = (requestId: string): OwedLines => {
     let owed = owedLines.get(requestId);
     if (owed === undefined) {
-      owed = { refused: [], pending: new Set() };
+      owed = { refused: [], pending: new Set(), taking: new Set() };
       owedLines.set(requestId, owed);
     }
     return owed;
@@ -2836,7 +2864,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // A later turn of the attempt claimed since is another run's (FIX-2133 D3).
       (state.ticket == null || (row.turn ?? 0) === state.ticket.turn);
     // What the run didn't take into its turn: counted here with the untaken
-    // steers, so the step's end, a stop and the settle all carry it.
+    // steers, so the step's end, a stop and the settle all carry it. A live
+    // take still writing the row lands first, or its lines would miss both.
+    await Promise.allSettled([...(owedLines.get(ctx.request.identity.id)?.taking ?? [])]);
     const carried = takeOwed(ctx.request.identity.id);
     if (!ours) {
       if (!stopped) return undefined;
@@ -3132,6 +3162,10 @@ interface SteerWatch {
   steer: HarnessSteer | null;
   /** How many takes this step handed live: each names its read. */
   handed: number;
+  /** Set while a poll runs, so a kick never starts a second one beside it. */
+  polling: boolean;
+  /** Schedule a poll now that the run offers a steer, unless one is due or running. */
+  kick: () => void;
 }
 
 /** A line handed to a run, still waiting on its answer. */
@@ -3145,6 +3179,8 @@ interface OwedLines {
   readonly refused: ShownSteer[];
   /** Lines handed over whose answer hasn't come. */
   readonly pending: Set<PendingLine>;
+  /** Live takes still writing the row: the next step waits for them before it counts. */
+  readonly taking: Set<Promise<void>>;
 }
 
 /** The lead a run's first prompt shows the task's steers under. */

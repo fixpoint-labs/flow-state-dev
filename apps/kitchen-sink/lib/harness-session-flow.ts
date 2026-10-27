@@ -345,7 +345,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         userMessage: (input: { prompt: string }) => input.prompt,
         concurrency: "queue",
       },
-      steer: { block: steerRunningTurn, concurrency: "allow" },
+      // A control beside the running turn: a page that reloads reattaches to the turn, not to it.
+      steer: { block: steerRunningTurn, concurrency: "allow", autoResume: false },
     },
     session: {
       stateSchema: harnessSessionStateSchema,

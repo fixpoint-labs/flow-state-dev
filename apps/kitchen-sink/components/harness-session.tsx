@@ -16,7 +16,7 @@
  * harness: the label is data from the mode list.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createClient } from "@flow-state-dev/client";
+import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -116,15 +116,33 @@ function SessionBody({
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
   const { items, isStreaming, latestRequest } = session;
-  const turn = useMemo(
-    () => latestTurn({ items, streaming: isStreaming, request: latestRequest }),
-    [items, isStreaming, latestRequest],
-  );
-  const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
-
   // `steer` is sent beside the running turn, not through the session hook,
   // which would leave the running turn's stream to follow the new request.
   const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  // The session's newest request can be a `steer` sent beside the turn, so the
+  // turn's status is read off the turn's own request.
+  const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
+  const [listedTurn, setListedTurn] = useState<SessionRequestSummary | null>(null);
+  useEffect(() => {
+    if (turnId === null || latestRequest === null || latestRequest.id === turnId) return;
+    let current = true;
+    client.sessions.requests(sessionId, { limit: 20 }).then(
+      (requests) => {
+        if (current) setListedTurn(requests.find((request) => request.id === turnId) ?? null);
+      },
+      // Unread, the turn reads as running until the next read, as before a summary arrives.
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, sessionId, turnId, latestRequest]);
+  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
+  const turn = useMemo(
+    () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
+    [items, isStreaming, turnRequest],
+  );
+  const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
   const streaming = useRef(session.isStreaming);
   streaming.current = session.isStreaming;
   // Each line waits for the one before it to have its answer, so lines reach the run in the order they were typed.
@@ -187,7 +205,7 @@ function SessionBody({
                     isStreaming={session.isStreaming}
                     isFinishing={session.isFinishing}
                     showWorkedFor
-                    latestCompletedAtMs={latestRequest?.completedAtMs ?? latestRequest?.failedAtMs}
+                    latestCompletedAtMs={turnRequest?.completedAtMs ?? turnRequest?.failedAtMs}
                     statusMessage={session.statusMessage}
                   />
                 </>

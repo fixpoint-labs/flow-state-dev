@@ -50,7 +50,15 @@ afterAll(() => {
  * finish at once, work 1.5 s and finish without ever confirming a session, or
  * work just past one steer poll and finish, or fail at once.
  */
-type Step = "until-stopped" | "finish-later" | "finished" | "no-session-later" | "finish-past-a-poll" | "throws" | "steerable";
+type Step =
+  | "until-stopped"
+  | "finish-later"
+  | "finished"
+  | "no-session-later"
+  | "finish-past-a-poll"
+  | "throws"
+  | "steerable"
+  | "ends-while-taking";
 
 /**
  * How a `steerable` step's run answers each line handed to it live, in order
@@ -64,6 +72,11 @@ interface Live {
   /** How many lines the step works until it has been handed. */
   lines: number;
   handed: string[];
+  /**
+   * For `ends-while-taking`: resolves once a live take has written the row
+   * and is still on its way back, the moment that step withdraws and ends.
+   */
+  takeWritten?: Promise<void>;
 }
 
 interface SeenStep {
@@ -144,6 +157,16 @@ function stubHarness(
           await Promise.race([stopped, new Promise((resolve) => setTimeout(resolve, 300))]);
           feeds.onSteerable?.(null, ctx as never);
           if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        }
+        if (step === "ends-while-taking") {
+          // Offers a live steer, then ends the moment a take of it has written
+          // the row, before that take is back to hand the line over.
+          feeds.onSteerable?.((text) => {
+            live.handed.push(text);
+            return Promise.resolve("delivered");
+          }, ctx as never);
+          await live.takeWritten;
+          feeds.onSteerable?.(null, ctx as never);
         }
         if (step === "finish-later") await new Promise((resolve) => setTimeout(resolve, 400));
         if (step === "finish-past-a-poll") await new Promise((resolve) => setTimeout(resolve, STEER_POLL_MS + 150));
@@ -581,6 +604,71 @@ describe("a steer reaches a run that takes it live (FIX-2254)", () => {
       expect(h.seen[1]!.prompt.split("Add a changelog line.")).toHaveLength(2);
       expect(done).toMatchObject({ attempts: 1 });
       expect(done.steers).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("carries a line whose live take was still writing when the step ended to the next step", async () => {
+    let written = () => {};
+    const takeWritten = new Promise<void>((resolve) => (written = resolve));
+    const h = host({ script: ["ends-while-taking", "finished"], stopsOnAbort: false, live: { answers: [], lines: 1, takeWritten } });
+    try {
+      // A live take's write lands, then holds a moment before it returns:
+      // the step ends inside that moment.
+      const stores = (await h.runtime()).stores;
+      const set = stores.resourceState.set.bind(stores.resourceState);
+      let held = false;
+      stores.resourceState.set = async (...args: any[]) => {
+        const result = await set(...args);
+        const steers = (args[3] as { steers?: Array<{ takenIn?: string }> } | undefined)?.steers ?? [];
+        if (!held && steers.some((steer) => steer.takenIn?.startsWith("live:"))) {
+          held = true;
+          written();
+          // Longer than the verdict takes, so the settle's own check can't pick the line up either.
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+        return result;
+      };
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Keep the old flag as an alias." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      // Never handed to the ended turn: the next step took it in its prompt.
+      expect(h.live.handed).toHaveLength(0);
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("Keep the old flag as an alias.");
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("hands a later step's line live alone, never again with a line an earlier step took", async () => {
+    // The first step refuses A, so the second carries it in its prompt. B,
+    // sent live to the second step, is handed on its own.
+    const h = host({ script: ["steerable", "steerable"], stopsOnAbort: false, live: { answers: ["refused", "delivered"], lines: 2 } });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      const second = h.stepStarted();
+      await h.act("steer", { message: "A: rename the flag." });
+      await second;
+      expect(h.seen[1]!.prompt).toContain("A: rename the flag.");
+      await h.act("steer", { message: "B: update the docs." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 20_000 + STEER_POLL_MS);
+
+      expect(h.live.handed).toHaveLength(2);
+      expect(h.live.handed[1]).toContain("B: update the docs.");
+      expect(h.live.handed[1]).not.toContain("A: rename the flag.");
+      expect(done).toMatchObject({ attempts: 1 });
     } finally {
       await h.dispose();
     }
