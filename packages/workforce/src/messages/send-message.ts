@@ -239,7 +239,7 @@ export async function sendMessage(
     id,
     from: sender,
     to: recipient.id,
-    ...(typeof to === "string" ? {} : "task" in to ? { toKind: "task" as const, toTask: to.task } : { toKind: "session" as const }),
+    ...(typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const }),
     text: input.text,
     exchange: exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),

@@ -47,8 +47,8 @@ export const workerMessageRowSchema = z.object({
    * How the sender addressed it (FIX-2160): by a task (`task`) or a conversation
    * (`session`). Absent when by the worker's name, as on every row from before.
    */
-  toKind: z.enum(["task", "session"]).optional(),
-  /** The task it was addressed to, when `toKind` is `task`. */
+  addressedBy: z.enum(["task", "session"]).optional(),
+  /** The task it was addressed to, when `addressedBy` is `task`. */
   toTask: z.string().min(1).optional(),
   text: z.string(),
   /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
