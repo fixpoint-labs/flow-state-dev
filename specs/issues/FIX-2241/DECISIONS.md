@@ -73,6 +73,9 @@ whose hold ids are minted before its write; `DeclaredDelivery` filled by `conver
 - **Order.** The exempt send edits FIX-2238's send path, which FIX-2160, FIX-2240 and FIX-2239 stack
   on. This lands after FIX-2238, stacked on its PR while that is open, and rebases on whichever of
   the others merged first; it touches only the send's budget check.
+- **Renames.** `DeclaredDelivery.questionAsked` and the server-written text that teaches
+  `updateTask({ id, question, message })` are in FIX-2183's scope (#3985 hands it the meanings of
+  *hold* and `updateTask`'s `question`), so its codemod changes the name and the text together.
 - `answerQuestion` checks the caller reaches the row, not that it is the filing session; nothing
   here relies on that.
 
