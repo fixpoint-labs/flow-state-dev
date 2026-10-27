@@ -651,7 +651,7 @@ A Workforce worker has `askQuestion` on every task turn. For a worker flow of yo
 
 `getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A hold stays listed until it's answered. The same list carries a stop the task's run waits on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
 
-The user answers from their Inbox. A screen of your own answers with the board's `updateTask` action, naming the question:
+The user answers from their [Inbox](#building-an-inbox). A screen of your own answers with the board's `updateTask` action, naming the question:
 
 ```ts
 updateTask_tasks({ id, question: holdId, message: "The March export, exports/2026-03.csv" })
@@ -708,6 +708,25 @@ These are public actions. Anyone who can call your flow can call them, so add th
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
 
 `getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, what it came back with, meaning its `output` or its `error`, and the `holds` it waits on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+
+### Building an Inbox
+
+Everything a task waits on a user for (a [question](#a-task-held-on-questions), a confirm, or a [stop in its run](#a-task-waiting-on-a-user) for an approval, a review or an input) shows in the user's Inbox. [Shift Manager](../shift-manager/overview.md) has one. For a screen of your own, `@flow-state-dev/orchestration/inbox` builds the list and answers it, and it's safe to import in a browser:
+
+```ts
+import { createInboxClient, inboxItems } from "@flow-state-dev/orchestration/inbox";
+
+const items = inboxItems({
+  rows,        // task rows: a board's listTasks, or a browser's read of the board
+  suspensions, // asks a reader found in sessions
+  flowOf,      // the flow that owns a session
+});
+await createInboxClient(client).answer(items[0], { approved: true });
+```
+
+`inboxItems` returns one item per task that waits on the user, however many questions it holds, with its `holds` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its holds is.
+
+The answer is typed by what the hold asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
 
 ## Assignees that dispatch {#assignees-that-dispatch}
 
@@ -802,7 +821,7 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `holds`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from an inbox, through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `holds`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 

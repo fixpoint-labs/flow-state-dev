@@ -81,7 +81,7 @@ If the saved work doesn't match the run's record, the harness doesn't run. The t
 
 Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
-A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts.
+A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason.
 
 ## Running a board kept per organization
 
@@ -147,8 +147,8 @@ partition, incarnationId }`. The manager never trusts it by itself: the row at t
 partition must be this task, on this attempt, still running, before anything runs, and every
 later write is checked against it again. Each run's checkout, branch and run record are kept
 apart by board and partition (`runBoardSegment`), so two conversations that file the same task
-id never share a tree. Pass `boardCollectionId` and `boardCollection` too and that board's rows
-run exactly as before.
+id never share a tree. Pass `boardCollectionId` and `boardCollection` too and the manager also
+runs that board's rows.
 
 The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. For a
 user's line into such a run, declare [`harnessSessionDoor`](#talking-to-a-run) on the flow.
@@ -157,8 +157,8 @@ On such a board, a task that names no `issue` or `phase` runs as the manager's p
 task id in their place, and a task naming only one of the two is refused. A task naming both is
 feature work in that phase, and its run is keyed by its task id, not by the issue: the board
 mints its own task ids, so its id needn't be the one `{ issue, phase }` derives, and two tasks
-naming one issue still get a tree each. A fixed board still runs feature rows only, and still
-refuses a row whose id isn't the one its payload derives.
+naming one issue still get a tree each. A fixed board runs feature rows only, and refuses a
+row whose id isn't the one its payload derives.
 
 A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
 the run's `branch` (`null` for a run with only kept files), how many `commits` it made, and
@@ -167,7 +167,7 @@ the run's `branch` (`null` for a run with only kept files), how many `commits` i
 On a board read from the claim:
 
 - **A refused run fails the task for good** (`errored`, never retried), so the conversation
-  hears why. On a fixed board it is cancelled, as before.
+  hears why. On a fixed board it is cancelled.
 - **A judge, when you give one, reads the run** after the phase's own check passes, for a task
   with a goal. It is your block, typically an evaluator, handed `{ goal, answer, commits: {
   count, subjects } }` and answering `{ verdict: "done" | "not-done" | "ask", confidence,
@@ -253,7 +253,7 @@ The answer goes through the board's `updateTask` action, naming the question, as
 await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
 ```
 
-A line the user types in the run's session answers the task's oldest open question the same way (see [Talking to a run](#talking-to-a-run)). Once its last question is answered, the task takes one more turn **on the same attempt**: no retry is spent. That turn's run **continues the same coding session** rather than starting over told what was answered. Its prompt is the phase's `buildPrompt` again, with `run.answers` holding the task's answered questions, oldest first, each with its answer. A run may ask again, and the next answer works the same way. Each run writes its question to a path of its own (`.fsdev/ask/<attempt>-<run>.md`), so a run never reads a question an earlier one already asked.
+A line the user types in the run's session answers the task's oldest open question the same way (see [Talking to a run](#talking-to-a-run)). Once its last question is answered, the task takes one more turn **on the same attempt**: no retry is spent. That turn's run **continues the same coding session**. Its prompt is the phase's `buildPrompt` again, with `run.answers` holding the task's answered questions, oldest first, each with its answer. A run may ask again, and the next answer works the same way. Each run writes its question to a path of its own (`.fsdev/ask/<attempt>-<run>.md`), so a run never reads a question an earlier one already asked.
 
 A cancel while the task waits closes the question and starts nothing: what the run committed stays on its branch, and its kept files stay saved. A question has no deadline unless the host sets one on the board; at a deadline it closes with a "no answer came" message, and the next run goes on in the same session with it.
 
