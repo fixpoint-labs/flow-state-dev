@@ -124,7 +124,7 @@ describe("a worker messages another worker", () => {
       expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
 
       // Its own item: the sender, the id and the text, drawn by the client only.
-      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?" }]);
+      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5 }]);
       const items = await itemsOf(h, lead!.id);
       expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
       // The line the model reads, in history only.
@@ -271,7 +271,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id }]);
+      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4 }]);
       expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
