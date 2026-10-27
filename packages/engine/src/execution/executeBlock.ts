@@ -1,7 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockContext, BlockDefinition, BlockOutputHint, ModelIdentity } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, BlockOutputHint, GeneratorModelResultPayload, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { SuspensionError, runRescue } from "@flow-state-dev/core";
@@ -74,19 +74,7 @@ async function executeByKind(
     let modelIdentity: ModelIdentity | undefined;
     const runtimeHooks = {
       ...ctx._runtimeHooks,
-      onGeneratorModelResult: (payload: {
-        model: string;
-        usage?: {
-          promptTokens: number;
-          completionTokens: number;
-          totalTokens: number;
-          cacheReadInputTokens?: number;
-          cacheCreationInputTokens?: number;
-        };
-        providerMetadata?: Record<string, Record<string, unknown>>;
-        identity?: ModelIdentity;
-        countsIn?: "ledger" | "trace";
-      }) => {
+      onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
         // A ledger-only report (a step, or an evaluator called as a tool) is
         // not this block's row: forward it, and leave the row alone.
         if (payload.countsIn !== "ledger" && payload.identity !== undefined) {

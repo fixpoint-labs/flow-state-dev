@@ -7,7 +7,7 @@
  * captures the payload and stashes it on the evaluator's scoped ctx, where
  * the `output` phase of `_withExecutionScope` reads it onto the row.
  */
-import type { BlockContext } from "../../types/block";
+import type { BlockContext, GeneratorModelResultPayload } from "../../types/block";
 import type { ModelIdentity } from "../../types/model";
 
 /** Usage as the trace row records it. */
@@ -16,14 +16,6 @@ export type EvaluatorModelUsageMeta = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-};
-
-/** The payload an evaluator reports through `onGeneratorModelResult`. */
-type EvaluatorModelResultPayload = {
-  model: string;
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
-  identity?: ModelIdentity;
-  countsIn?: "ledger" | "trace";
 };
 
 /**
@@ -63,7 +55,7 @@ export async function runEvaluatorCapturingModelResult<T>(
     ...scopedCtx,
     _runtimeHooks: {
       ...scopedCtx._runtimeHooks,
-      onGeneratorModelResult: (payload: EvaluatorModelResultPayload) => {
+      onGeneratorModelResult: (payload: GeneratorModelResultPayload) => {
         if (payload.countsIn !== "ledger") {
           if (payload.identity !== undefined) identity = payload.identity;
           if (payload.usage !== undefined) {
