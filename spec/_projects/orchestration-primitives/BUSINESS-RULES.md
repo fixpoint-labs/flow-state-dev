@@ -8,6 +8,7 @@ Each rule has one owner: the epic that implements and proves it. The others inhe
 |---|---|---|---|
 | **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-2056, by FIX-2083 | FIX-2083's acceptance check; FIX-2087's closure run |
 | **PR-2** | When a post between workers expects an answer, then it is a task filed with `createTask` and waited on through `getTask({ id, wait })`, claimed once and ended to its filer once, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-2056, by FIX-2081 | FIX-2081's acceptance check; FIX-2087's tool sweep |
+| **PR-3** | When work stops for a person, then it is one Inbox item, answered once: a `waitForUser` suspension (an approval, a review, input) when code reads the answer on its next line, otherwise a hold on its task row (a question or a confirm), with no deadline unless the host or the call sets one | FIX-2058, by FIX-2129 and FIX-2133 | FIX-2134's closure walk and its `PERSON_STOPS_REMOVED` sweep ([#3951](https://github.com/fixpoint-labs/flow-state-dev/pull/3951)) |
 
 Both rules moved from FIX-1870, canceled Oct 21, to FIX-2056 at its approval
 ([#3588](https://github.com/fixpoint-labs/flow-state-dev/pull/3588)). FIX-1870's children already
@@ -17,8 +18,13 @@ the post row kind, and FIX-2081 ships the four task tools PR-2 names plus the wo
 
 PR-2 is [PD-3](DECISIONS.md), which amends FIX-1816's D3.
 
+PR-3 came with FIX-2058, wrapped Oct 27. It removed `answerTask`, the question and review parks
+and the harness manager's own question inbox; the Inbox answers a suspension through the engine's
+answer route and a row hold through the board's `updateTask` action, and the server sets who
+answered ([FIX-2058 ER-7](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2058/DECISIONS.md#who-owns-what)).
+
 **No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's five
-task tools (`answerTask` stays until FIX-2058 retires it), or a model-facing tool for tells
-([PD-3](DECISIONS.md)); add a second once-only check beside the claim ticket; add a task store or
+task tools, or a model-facing tool for tells ([PD-3](DECISIONS.md)); add a park, or a third route
+that answers a person's stop beside the two PR-3 names; add a second once-only check beside the claim ticket; add a task store or
 status vocabulary outside TaskCollection ([PD-1](DECISIONS.md)); or let a skill pick how its work
 executes ([PD-2](DECISIONS.md)).

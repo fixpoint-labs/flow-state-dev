@@ -24,15 +24,15 @@ is today.
 | FIX-2056 · one task primitive | The honest board, reply-to-sender, FIX-1047's claim in task tools, FIX-1870's D2, the coordination model ([#3534](https://github.com/fixpoint-labs/flow-state-dev/pull/3534)) | One task with plan and delegation boards; one completion rule at the claim gate; five task tools, `createTask` and `getTask({ id, wait })` replacing `dispatchTask`; posts as routed tasks; every ending to its filer once |
 | FIX-2058 · one Inbox | FIX-2056's claim gate and steer, durable execution by default (FIX-2063) | One Inbox item per stop for a person; the answer by steer; `answerTask` and the parks retired ([*decided once*](DECISIONS.md)) |
 | FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
-| FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing; FIX-2056's read for retired rows removed no earlier than here |
+| FIX-2092 · phased workflows | FIX-2056's delegation board and `onTaskSettled`, FIX-2058's holds for an approval between phases | Phases as a view over task rows; a template that files a phased task graph. A design to prove by POC before its spec |
+| FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
 
-FIX-2058 and FIX-2070 run side by side now that FIX-2056 has wrapped; neither waits on the other.
+FIX-2058 wrapped Oct 27, so FIX-2070 and FIX-2092 are free to start, and FIX-2071 waits on FIX-2070 alone.
 
-**Before FIX-2058 builds on the dispatcher wait and the holds** (a recommendation from FIX-2056's
-[wrap analysis](https://linear.app/fixpoint-labs/issue/FIX-2056/epic-one-task-primitive-boards-settling-task-tools-and-authority#comment-5093310b),
-not a decision): fix FIX-2182, a dispatcher's `wait` that restates the board's `mode`, and
-FIX-2183, "hold" meaning four things. Neither changes the approach; both are cheaper before a
-second epic names them.
+FIX-2056's wrap recommended fixing FIX-2182 (a dispatcher's `wait` restates the board's `mode`)
+and FIX-2183 ("hold" names four things) before FIX-2058 built on them. Neither was done, and
+FIX-2058 shipped without them; both are still Backlog, and FIX-2058's wrap analysis lists FIX-2183
+as still open.
 
 ## What FIX-2056 left open
 
@@ -53,6 +53,26 @@ right approach, with changes.
 Lessons are draft [#3849](https://github.com/fixpoint-labs/flow-state-dev/pull/3849) and the docs
 polish draft [#3848](https://github.com/fixpoint-labs/flow-state-dev/pull/3848).
 
+## What FIX-2058 left open
+
+The closure, FIX-2134, passed on `main` at 83c444b on its third run
+([#3951](https://github.com/fixpoint-labs/flow-state-dev/pull/3951), merged Oct 27): six kinds of
+stop, each one Inbox item answered once, with a real model and a real Claude Code session. Its five
+findings (FIX-2219, FIX-2220, FIX-2221, FIX-2222, FIX-2224) are Done. Wrap verdict: right approach.
+
+| Carried forward | What it is |
+|---|---|
+| FIX-2230 | A raw `ctx.suspend({ reason: "human_*" })` is a second route to a person's stop that skips the deadline and the cancel |
+| FIX-2228 | A judge's unsure `not-done` or `ask` completes the task |
+| FIX-2225, FIX-2226 | Model-free goals and controls are not in CI; no shared verdict reader for closures |
+| FIX-2216 | Shift Manager shows a task waiting on a person under RUNNING |
+| FIX-2169, FIX-2165 | With no default deadline, crash recovery and liveness are the bound on a forgotten stop |
+| FIX-2227, FIX-2229, FIX-2231 | Doc drift and superseded Human-in-the-Loop backlog |
+
+FIX-2215, a review's *request changes* carrying the reviewer's words, went to Workforce: Shift
+Manager. Lessons are [#3953](https://github.com/fixpoint-labs/flow-state-dev/pull/3953) and the
+docs polish [#3954](https://github.com/fixpoint-labs/flow-state-dev/pull/3954).
+
 ## Milestones
 
 The Linear project keeps three milestones; v3 (True Plan Mode shipped) and v5 (docs and pattern
@@ -65,7 +85,8 @@ catalog shipped) were deleted on Oct 12 when their issues moved out.
 | v4 · Skills declare patterns | Skills naming a pattern in `SKILL.md` frontmatter (FIX-450) | Shipped May 20, then reversed by FIX-918 in July ([PD-2](DECISIONS.md)). The milestone's name and description still describe the reversed design |
 
 FIX-2056's closure ran the coordinator and hand-off goals on one `main` commit and passed on
-Oct 24. The project's next regression gate is FIX-2058's closure sweep.
+Oct 24; FIX-2058's closure walked every stop for a person and passed on Oct 27. The project's
+next regression gate is FIX-2070's closure.
 
 ## Deliberately not next
 
@@ -80,4 +101,4 @@ Oct 24. The project's next regression gate is FIX-2058's closure sweep.
   both out and FIX-2056's five task tools add neither; neither has an epic.
 - **Spend caps on delegated work (FIX-933).** Filed under FIX-930, never started.
 - **Anything after the renames.** No epic is filed after FIX-2071. The project's remaining life
-  is FIX-2058 and FIX-2070 side by side, then FIX-2071.
+  is FIX-2070 and FIX-2092, then FIX-2071.
