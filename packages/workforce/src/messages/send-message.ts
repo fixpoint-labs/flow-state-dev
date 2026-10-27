@@ -119,7 +119,13 @@ export async function recheckRecipient(
       row.addressedBy === "task" && row.toTask !== undefined
         ? await checkTaskTarget(ctx, installation, row.toTask)
         : await checkTargetSession(ctx, installation, row.toSession, { session: true });
-    return checked.ok ? undefined : checked.error;
+    if (!checked.ok) return checked.error;
+    // The resend goes to the session on the row: a task now worked in another
+    // session (reassigned) checked that one, not where this message would land.
+    if (checked.target.sessionId !== row.toSession) {
+      return `task_moved: task "${row.toTask}" is worked in another session now, so this message can't reach it. Send it again if it still matters.`;
+    }
+    return undefined;
   }
   const recipient = await installation.rosterWorker(ctx as never, row.to);
   return recipientRefusal(installation, row.from, row.to, recipient, row.inReplyTo !== undefined);
