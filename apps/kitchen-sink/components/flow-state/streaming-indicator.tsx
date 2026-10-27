@@ -1,6 +1,33 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Shimmer } from "./shimmer";
+
+/** "42s", "1m 24s", "1h 3m": the short form a terminal agent prints, not a sentence. */
+function formatElapsed(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * How long a request has been running, counted up each second from `since`
+ * (epoch ms; the request's first item). Reads "(1m 24s)". Renders nothing
+ * until a full second has passed. The clock is the browser's, so a skewed
+ * server timestamp is clamped to zero rather than shown negative.
+ */
+export function RunTimer({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.max(0, now - since);
+  if (elapsed < 1000) return null;
+  return <span data-testid="run-timer" className="tabular-nums">({formatElapsed(elapsed)})</span>;
+}
 
 /**
  * Single-line in-flight status indicator. Renders the latest value from the
@@ -12,6 +39,8 @@ import { Shimmer } from "./shimmer";
  * renders a muted "Tidying up..." label instead so the user is not misled
  * into thinking the assistant is still producing their answer.
  *
+ * Pass `since` to show how long the request has been running beside the label.
+ *
  * The leading affordance is a pulsing dot — never the brain icon, which
  * is reserved for the reasoning chrome and would visually duplicate it
  * during reasoning-on chats.
@@ -19,9 +48,12 @@ import { Shimmer } from "./shimmer";
 export function StreamingIndicator({
   message,
   isFinishing = false,
+  since,
 }: {
   message?: string;
   isFinishing?: boolean;
+  /** Epoch ms the request began; shows an elapsed timer when set. */
+  since?: number;
 }) {
   const label = isFinishing
     ? "Tidying up..."
@@ -40,6 +72,7 @@ export function StreamingIndicator({
     >
       <span className="inline-block size-2 rounded-full bg-current animate-pulse" />
       {isFinishing ? <span>{label}</span> : <Shimmer duration={1}>{label}</Shimmer>}
+      {since !== undefined && <RunTimer since={since} />}
     </div>
   );
 }

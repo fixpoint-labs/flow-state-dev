@@ -18,7 +18,7 @@ import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
-import { StreamingIndicator } from "./streaming-indicator";
+import { RunTimer, StreamingIndicator } from "./streaming-indicator";
 import { collectTaskOwnedItemIds } from "./task-plan-state";
 import { ToolGroup } from "./tool";
 
@@ -150,6 +150,10 @@ function RequestGroup({
     [isLast, isStreaming, filteredItems, renderers],
   );
 
+  // The request began at its first item. Re-emitted keyed items can pull
+  // that earlier than the request really started, which only lengthens the count.
+  const since = group.items[0]?.ts;
+
   return (
     <div
       data-request-id={group.requestId}
@@ -158,7 +162,14 @@ function RequestGroup({
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
-      {isLast && isStreaming && !stepInFlight && <StreamingIndicator message={statusMessage} isFinishing={isFinishing} />}
+      {isLast && isStreaming && !stepInFlight && (
+        <StreamingIndicator message={statusMessage} isFinishing={isFinishing} since={since} />
+      )}
+      {stepInFlight && since !== undefined && (
+        <div className="px-1 text-muted-foreground text-sm">
+          <RunTimer since={since} />
+        </div>
+      )}
     </div>
   );
 }
