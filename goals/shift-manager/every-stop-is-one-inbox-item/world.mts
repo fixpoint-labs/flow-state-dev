@@ -57,8 +57,6 @@ export interface Serving {
   files: LabFiles;
   harness: "claude-code" | "stub";
   fact: string;
-  /** A control's module patches, as environment. */
-  patchEnv?: Record<string, string>;
   userDeadlineMs?: number;
   sweepMs?: number;
 }
@@ -83,7 +81,6 @@ export function serveLab(serving: Serving, label: string): Promise<ServedShiftMa
       FSDEV_TRACE_OBSERVABILITY: "0",
       ...(serving.userDeadlineMs === undefined ? {} : { GOAL_USER_DEADLINE_MS: String(serving.userDeadlineMs) }),
       ...(serving.sweepMs === undefined ? {} : { GOAL_SWEEP_MS: String(serving.sweepMs) }),
-      ...(serving.patchEnv ?? {}),
     },
     timeoutMs: 240_000,
   });
@@ -146,7 +143,14 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
     return snapshot.inbox.value as InboxItem<unknown>[];
   };
   const inboxClient = createInboxClient(client);
-  const refusal = (error: unknown) => (error instanceof Error ? error.message : String(error));
+  const call = async (go: () => Promise<unknown>): Promise<string> => {
+    try {
+      await go();
+      return "ok";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  };
   return {
     origin,
     conversation,
@@ -164,22 +168,8 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
     row,
     inbox,
     itemOf: async (taskId) => (await inbox()).find((item) => item.task?.taskId === taskId),
-    answer: async (item, answer, holdId) => {
-      try {
-        await inboxClient.answer(item, answer as never, holdId);
-        return "ok";
-      } catch (error) {
-        return refusal(error);
-      }
-    },
-    answerHold: async (hold, answer) => {
-      try {
-        await inboxClient.answerHold(hold, answer as never);
-        return "ok";
-      } catch (error) {
-        return refusal(error);
-      }
-    },
+    answer: (item, answer, holdId) => call(() => inboxClient.answer(item, answer as never, holdId)),
+    answerHold: (hold, answer) => call(() => inboxClient.answerHold(hold, answer as never)),
     reconciled: async (closed) => {
       const all = await rows();
       const sessions = new Set<string>(all.flatMap((r) => (typeof r.run?.sessionId === "string" ? [r.run.sessionId as string] : [])));

@@ -264,7 +264,8 @@ export async function legB(c: Context, filed: Filed, tag = "b", only: readonly S
     if ((await c.alice.itemOf(id)) !== undefined) c.fail(`${tag}:answered-once`, `the ${stop} task's item is still listed after its answer`);
     // A row hold takes the same words again as a success (FIX-2133), so the second answer differs.
     const again = await c.alice.answerHold(item.holds[0]!, SUSPENDS[stop] ? answerFor(c, stop) : { text: "A different answer." });
-    if (again === "ok") c.fail(`${tag}:answered-once`, `a second answer to the ${stop} stop was taken`);
+    // Only the stop's own refusal counts: 409 for a suspension, question_answered for a row hold.
+    if (!(SUSPENDS[stop] ? /\b409\b/ : /question_answered/).test(again)) c.fail(`${tag}:answered-once`, `a second answer to the ${stop} stop wasn't refused as resolved: ${again.slice(0, 160)}`);
     else c.note(`${tag}: a second answer to the ${stop} stop: ${again.slice(0, 160)}`);
   }
   const drift = await c.alice.reconciled(filed.closed);
@@ -342,7 +343,6 @@ export async function legD(c: Context): Promise<void> {
     return;
   }
 
-  // A steer into the review-waiting task: kept, no request beside the waiting one.
   const session = rows.review!.run?.sessionId as string;
   const before = await requestsIn(c, session);
   const steer = `Mention the ${c.words.topic} launch date.`;
@@ -360,7 +360,6 @@ export async function legD(c: Context): Promise<void> {
     c.fail("d:no-request-beside", `after the answer the task ended ${done?.status} on attempt ${done?.attempts} with ${turns.length} turn(s): ${show(turns.map((t) => [t.attempt, t.turn, String(t.message).slice(0, 120)]))}; one more turn takes the steer`);
   }
 
-  // A steer naming no question, and a line to the worker outside the task: neither answers.
   const question = rowHolds(rows.midway)[0]!;
   const plain = await c.alice.update({ id: byId.id, message: "Make it cheerful." });
   c.note(`d: a steer naming no question answered ${show(plain.output)}`);
@@ -373,7 +372,6 @@ export async function legD(c: Context): Promise<void> {
     c.fail("d:plain-answers-nothing", `a steer naming no question, or a line outside the task, answered it: holds ${show(still?.holds)}, steers ${show(still?.steers)}`);
   }
 
-  // A steer carrying the question's id answers it.
   const answered = await c.alice.update({ id: byId.id, message: "Cheerful, for first-time customers in spring.", question: question.id });
   if (answered.output?.ok === false || answered.status !== "completed") c.fail("d:answer-by-id", `the steer naming the question was refused: ${show(answered.output ?? answered.error)}`);
   const byIdDone = await c.alice.until(() => c.alice.row(byId.id!), (r) => TERMINAL.has(r?.status), 180_000);

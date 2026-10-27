@@ -25,7 +25,6 @@ import { legA, legB, legC, legD, type Context } from "./legs.mts";
 import { journeyFiles, journeyDeadlines, journeyRestart } from "./journeys.mts";
 import { aliceIn, labFiles, serveLab, show, type Serving } from "./world.mts";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("every-stop");
 const say = (s: string) => console.error(`[every-stop ${new Date().toISOString().slice(11, 19)}] ${s}`);
 /** The sweeper's interval on the walk's Lab: seconds, so "past the sweeper" is seconds. Fakes time, not behaviour. */

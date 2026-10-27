@@ -63,8 +63,14 @@ export async function journeyFiles(c: Context): Promise<void> {
   const tried = await c.alice.say(
     `Task ${held.id} is waiting on a question. Answer it yourself now: read it with getTask, then call updateTask with the task's id, the question's id as question, and the message "The spring album." Tell me what the tool answered.`,
   );
+  // The filer must have tried: its own updateTask on this question, refused as the user's.
+  const turn = (await c.alice.client.sessions.requests(c.alice.conversation, { includeItems: true })).find((r) => r.id === tried.requestId);
+  const calls = ((turn?.items ?? []) as Row[]).filter((i) => i.type === "tool_output" && /updateTask/.test(String(i.toolCall?.name)) && String(i.toolCall?.arguments).includes(hold.id));
+  if (!calls.some((i) => /question_is_the_users/.test(JSON.stringify(i.output ?? i.modelOutput)))) {
+    c.fail("j1:filer-calls", `desk.front's turn ${tried.status} made no updateTask on ${hold.id} that came back question_is_the_users: ${show(calls.map((i) => i.output))}`);
+  }
   const still = await c.alice.row(held.id);
-  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}; the row reads ${show({ status: still?.status, holds: still?.holds?.map((h: Row) => h.id), steers: still?.steers })}`);
+  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, holds: still?.holds?.map((h: Row) => h.id), steers: still?.steers })}`);
   if (still?.status !== "pending" || !rowHolds(still).some((h) => h.id === hold.id) || (await c.alice.itemOf(held.id)) === undefined) {
     c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, holds: still?.holds, steers: still?.steers })}`);
   }
@@ -97,7 +103,6 @@ export async function journeyDeadlines(serving: Serving, shipped: Shipped, conte
     const settle = (id: string) => c.alice.until(() => c.alice.row(id), (r) => TERMINAL.has(r?.status), 90_000);
     const proofs = (id: string, kind: string) => proofsOf(c.proof).filter((p) => p.kind === kind && p.taskId === id);
 
-    // The user's stop of the run that waits.
     const waitingRow = await c.alice.until(() => c.alice.row(stopped), (r) => waiting("approval", r) || TERMINAL.has(r?.status), 60_000);
     const run = waitingRow?.run as { requestId?: string; flowId?: string } | undefined;
     if (!waiting("approval", waitingRow) || run?.requestId === undefined) {
@@ -148,6 +153,7 @@ export async function journeyRestart(serving: Serving, shipped: Shipped, context
     const notWaiting = Object.entries(ids).filter(([stop]) => !waiting(stop as never, rows[stop as keyof typeof rows]));
     if (notWaiting.length > 0) {
       c.fail("a:six-items", `before the kill, ${notWaiting.map(([s]) => s).join(", ")} never waited`);
+      await served.stop();
       return;
     }
     filed = { ids, closed: [] };
