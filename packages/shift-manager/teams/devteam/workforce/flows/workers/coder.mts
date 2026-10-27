@@ -40,17 +40,24 @@
  * step missed is owed one more turn (`STEER_TURN_ENTRY`), which runs the task
  * again on its attempt.
  *
+ * **A worker's message** lands in one of its tasks' sessions only, sent to the
+ * task (FIX-2160). Once the task has finished, the message is talk too: the
+ * same talk turn resumes the task's coding session with it, and the reply is
+ * an item there. A message to an open task is refused before it is sent, so
+ * it never reaches the work.
+ *
  * Every coder worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and the phases read that worker's own settings
  * through the installation, never `ctx.flow.config`.
  */
 
-import { defineFlow, router } from "@flow-state-dev/core";
+import { defineFlow, router, sequencer } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   harnessManager,
   harnessSessionDoor,
+  harnessTalkTurn,
   type HarnessFeeds,
   type HarnessJudge,
   type PhaseSpec,
@@ -64,6 +71,7 @@ import {
   filingConversationBoard,
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
+  messageReceivedSchema,
   projectWorkspaceCapability,
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
@@ -71,6 +79,7 @@ import {
   WORKER_TASK_ENTRY,
   workerMessagesResources,
   workerTaskEntry,
+  type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
@@ -190,13 +199,14 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
 
   // The board this session's run is on: the one of the session its task was
   // filed from, read from the session's own fields.
+  const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
+    const filed = await filingConversationBoard(ctx);
+    return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
+  };
   const message = harnessSessionDoor({
     name: "coder",
     harness: options.harness,
-    board: async (ctx) => {
-      const filed = await filingConversationBoard(ctx);
-      return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
-    },
+    board,
     // A steer to a task running nothing (waiting on its filed work) starts the turn it is owed.
     onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
   });
@@ -228,9 +238,19 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
         // A message lands in one of its tasks' sessions only: it has no
         // conversation to answer from, so one sent to it by name is refused
-        // before anything is written (FIX-2238). No turn yet: the message
-        // lands as its items.
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
+        // before anything is written (FIX-2238). One sent to a finished task
+        // is answered by the talk turn, from the task's coding session
+        // (FIX-2160); the coding agent has no sendMessage, so its reply stays
+        // an item in that session.
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+          installation,
+          flowKind: CODER_FLOW,
+          hears: "task-sessions",
+          turn: sequencer({ name: `${CODER_FLOW}-message-turn`, inputSchema: messageReceivedSchema }).step(
+            (received: MessageReceived) => ({ message: `Message from ${received.from}, another worker: ${received.text}` }),
+            harnessTalkTurn({ name: `${CODER_FLOW}-message`, harness: options.harness, board })
+          ),
+        }),
       },
     },
     // The one door: any session's tasks, handed over under its board's id.
