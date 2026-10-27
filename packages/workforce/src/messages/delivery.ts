@@ -142,7 +142,7 @@ export async function endMessage(
 }
 
 /** D1's line: what the sending session's next turn reads of a message that couldn't land. */
-export function undeliveredLine(row: Pick<WorkerMessageRow, "id" | "to" | "reason">): string {
+function undeliveredLine(row: Pick<WorkerMessageRow, "id" | "to" | "reason">): string {
   return `Your message ${row.id} to ${row.to} wasn't delivered: ${row.reason ?? "no reason was given"}.`;
 }
 
