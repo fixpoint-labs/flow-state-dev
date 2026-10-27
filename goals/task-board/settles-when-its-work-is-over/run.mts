@@ -191,7 +191,6 @@ function buildHost(filename: string) {
           fromFlow: "doer",
           toSession: sessionId,
           toFlow: "doer",
-          answerTo: { sessionId, flow: "doer" },
           hop: 1,
           status: "delivered",
           at: Date.now()

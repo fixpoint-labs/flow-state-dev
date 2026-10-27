@@ -18,4 +18,4 @@ export {
 } from "./message-log";
 export { DEFAULT_MESSAGE_HOP_LIMIT, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
-export { sendMessage, takesWorkerMessages, type SendOutcome, type SendMessageInput } from "./send-message";
+export { sendMessage, type SendOutcome, type SendMessageInput } from "./send-message";

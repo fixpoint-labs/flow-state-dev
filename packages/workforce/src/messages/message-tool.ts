@@ -5,7 +5,7 @@
  *
  * Its input is strict (`to`, `text`, `inReplyTo`), so a call can't name a
  * sender, a hop count or a session, and there is no `wait`: an answer arrives
- * later as a line from the recipient and wakes this worker. Its description
+ * later as a message of the recipient's own and wakes this worker. Its description
  * lists who the worker can message, read before each model call: the roster's
  * workers that have a conversation, by id and description.
  */
@@ -45,16 +45,15 @@ export const sendMessageOutputSchema = z.union([
 const BASE_DESCRIPTION =
   "Send a short message to another worker on your team: a question, an FYI, a heads-up. It lands in that worker's " +
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed, and you don't wait for an " +
-  "answer. If it answers, the answer arrives later as a line from that worker and wakes you. To answer a message " +
+  "answer. If it answers, it sends you a message of its own, which wakes you. To answer a message " +
   "you were sent, pass its id as inReplyTo. A message can't be waited on: to wait on a colleague's result before " +
   "you answer, file a task for them with createTask, then call getTask({ id, wait: true }) where getTask takes wait.";
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {
   const roster = await installation.roster(ctx as never);
-  const refusals = await Promise.all(roster.map((worker) => recipientRefusal(ctx, installation, self, worker.id, worker)));
   const listed = roster
-    .filter((_, i) => refusals[i] === undefined)
+    .filter((worker) => recipientRefusal(installation, self, worker.id, worker) === undefined)
     .slice(0, MAX_LISTED)
     .map((worker) => {
       const description = (worker.description ?? "").replace(/\s+/g, " ").trim();

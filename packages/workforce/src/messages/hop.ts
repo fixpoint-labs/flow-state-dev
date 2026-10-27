@@ -132,6 +132,24 @@ export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): Hop
   return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null, lines: sessionUserLinesOf(ctx.session.state) };
 }
 
+/**
+ * The mark for a task filed held (FIX-2238): released, it starts a fresh
+ * chain at 0, its first send minting one, since no exchange waits on it. The
+ * filer's user lines are kept, so a user's line since still clears it.
+ */
+export function freshHopMark(ctx: Pick<BlockContext, "session">): HopMark {
+  return { hop: 0, chain: null, lines: sessionUserLinesOf(ctx.session.state) };
+}
+
+/**
+ * Whether a filing holds its task from the start: filed `held`, or waiting on
+ * questions. Released, such a task starts a fresh chain ({@link freshHopMark});
+ * a midway hold carries its budget on.
+ */
+export function heldFromFiling(init: { readonly held?: boolean; readonly status?: string; readonly questions?: readonly unknown[] }): boolean {
+  return init.held === true || init.status === "held" || (init.questions?.length ?? 0) > 0;
+}
+
 const hopMarkSchema = z.object({
   hop: z.number().int().nonnegative(),
   chain: z.string().min(1).nullable(),

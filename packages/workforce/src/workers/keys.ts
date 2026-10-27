@@ -145,6 +145,15 @@ export const ROSTER_FLOW = "workforce-roster";
  */
 export const FILING_FLOW_STATE_KEY = "filingFlow";
 
+/**
+ * Session-state field naming the worker that filed the work a task's or a
+ * delegate's session runs: the filing session's worker, set by the hand-over
+ * beside {@link FILING_SESSION_STATE_KEY}, so a message from here to that
+ * worker lands in the session that filed it (FIX-2238). Readonly, and set
+ * only by the hand-over.
+ */
+export const FILING_WORKER_STATE_KEY = "filingWorkerId";
+
 /** The prefix every derived worker-session id starts with. */
 export const DERIVED_WORKER_SESSION_PREFIX = "wks_";
 

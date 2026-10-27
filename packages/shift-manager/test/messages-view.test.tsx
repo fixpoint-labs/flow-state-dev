@@ -25,7 +25,6 @@ const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "fr
   fromFlow: "agent",
   toSession: `s_${over.to}`,
   toFlow: "agent",
-  answerTo: { sessionId: `s_${over.from}`, flow: "agent" },
   hop: 1,
   status: "delivered",
   ...over,
