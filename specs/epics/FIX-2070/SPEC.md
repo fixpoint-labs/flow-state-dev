@@ -60,7 +60,7 @@ tries), and a filer hears no question.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2242), real model, in Shift Manager, on one `main` commit after every other child merges |
-| **Signal** | Leg a: writer's request reads coder's answer as the call's result; past a short deadline it resumes without it, and waiting again returns the kept result. Leg b: the message runs as `receive` in the task's session, with its history; an open task's turn finishes first, and the task's status, output and attempts don't change. Leg c: the server stops after the log row is written and before the dispatch; after the restart the recipient sees the message once. Leg d: the fourth message from one request and the seventh from one typed message are refused. Leg e: the midway question arrives at the filer's `receive` in the session that filed the task; its steer releases the hold. A sweep: the removed names have no references in package source |
+| **Signal** | Leg a: writer's request reads coder's answer as the call's result; past a short deadline it resumes without it, and waiting again returns the kept result. Leg b: the message runs as `onMessageReceived` in the task's session, with its history; an open task's turn finishes first, and the task's status, output and attempts don't change. Leg c: the server stops after the log row is written and before the dispatch; after the restart the recipient sees the message once. Leg d: the fourth message from one request and the seventh from one typed message are refused. Leg e: the midway question arrives at the filer's `onMessageReceived` in the session that filed the task; its steer releases the hold. A sweep: the removed names have no references in package source |
 | **Anti-game** | Assert on what the recipient's session and the message log show, read through public actions; never on a child's own helper |
 | **Control that must fail** | Today's `main`: legs a, b, c and e, and the sweep. Every other check names its control, and each is run red at least once |
 
@@ -78,7 +78,7 @@ FIX-2239, FIX-2240 and FIX-2241.
 
 ## What's in the box
 
-![In the box: one entry, receive, with a server-set sender, call flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine's wake pays; one budget per typed message; a task's midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host's wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay and two refusals. Not built, below a fence: a session lookup tool, a message running beside a person's stop, and a proposal entry](figures/end-state.svg)
+![In the box: one entry, onMessageReceived, with a server-set sender, call flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine's wake pays; one budget per typed message; a task's midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host's wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay and two refusals. Not built, below a fence: a session lookup tool, a message running beside a person's stop, and a proposal entry](figures/end-state.svg)
 
 Inside the box is what every worker flow gets from the session factory; below the fence is the Not
 doing list.
@@ -93,11 +93,11 @@ The reviewed snapshot; live state is in Linear. FIX-2056 (Done) blocks every chi
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
-| [FIX-2238](https://linear.app/fixpoint-labs/issue/FIX-2238) · `receive` and `sendMessage` | The entry, input `{ id, from, text, call, inReplyTo?, budget }`, server-set; the tool, send only; no relay; every worker and every coordinator receives, and the hire checks `receive`; the landing rules; a received message as its own item; one budget per typed message, 6 and 3 per request, fresh for a released held task, paid when sent, carried on today's hop chain; the routed-task leak closed; the old names removed | — |
+| [FIX-2238](https://linear.app/fixpoint-labs/issue/FIX-2238) · `onMessageReceived` and `sendMessage` | The entry, input `{ id, from, text, call, inReplyTo?, budget }`, server-set; the tool, send only; no relay; every worker and every coordinator receives, and the hire checks `onMessageReceived`; the landing rules; a received message as its own item; one budget per typed message, 6 and 3 per request, fresh for a released held task, paid when sent, carried on today's hop chain; the routed-task leak closed; the old names removed | — |
 | [FIX-2160](https://linear.app/fixpoint-labs/issue/FIX-2160) · a task or a conversation | `to: { task }` for any task of the user's, open or finished, as conversation in its session; `to: { session }` for one of the user's own conversations, checked by the server. Re-scoped from its first proposal, whose conflict rule 21 now settles | FIX-2238 |
 | [FIX-2239](https://linear.app/fixpoint-labs/issue/FIX-2239) · a call | `wait: true` and `deadline?` on the engine's wait gate; the late result kept under the call id; a send or a call queues behind a busy or waiting session | FIX-2238 |
 | [FIX-2240](https://linear.app/fixpoint-labs/issue/FIX-2240) · lands once | Delivery retried until it lands, as a debt on the session's existing wake paid by the board's `dispatch` pass; only a row still `unconfirmed` is resent; seen once by id | FIX-2238 |
-| [FIX-2241](https://linear.app/fixpoint-labs/issue/FIX-2241) · a question reaches its filer | A task's midway question as a message from its session to the filer's `receive`; the filer may answer by steer, unless the task is routed | FIX-2238 |
+| [FIX-2241](https://linear.app/fixpoint-labs/issue/FIX-2241) · a question reaches its filer | A task's midway question as a message from its session to the filer's `onMessageReceived`; the filer may answer by steer, unless the task is routed | FIX-2238 |
 | [FIX-2242](https://linear.app/fixpoint-labs/issue/FIX-2242) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
 Five and a closure. The budget rides with FIX-2238: it ships the `budget` field and rewrites the
@@ -113,10 +113,10 @@ flowchart LR
   W["FIX-2082 · the engine's wait gate · consumed"] -.-> C
   K["FIX-2078 · the engine's wakes · consumed"] -.-> D
   H["FIX-2133 · holds on the row · consumed"] -.-> E
-  A["FIX-2238 · receive and sendMessage"] -->|"the entry, the tool, the landing rules"| B["FIX-2160 · a task or a conversation"]
+  A["FIX-2238 · onMessageReceived and sendMessage"] -->|"the entry, the tool, the landing rules"| B["FIX-2160 · a task or a conversation"]
   A -->|"the send path"| C["FIX-2239 · a call"]
   A -->|"the send path, the message row"| D["FIX-2240 · lands once"]
-  A -->|"receive in the filing session"| E["FIX-2241 · a question reaches its filer"]
+  A -->|"onMessageReceived in the filing session"| E["FIX-2241 · a question reaches its filer"]
   A --> P["FIX-2242 · closure · required"]
   B --> P
   C --> P
@@ -146,9 +146,9 @@ after this epic wraps.
 
 | Already here | What the set does with it |
 |---|---|
-| FIX-1989: `messageWorker`, `onWorkerMessage`, the message log, the per-session dedupe of message ids, and the hop count by chain (`workforce/src/messages/`) | **Builds on and replaces the names.** The log, the dedupe and the chain stay; the entry and the tool are rebuilt as `receive` and `sendMessage` (FIX-2238) |
+| FIX-1989: `messageWorker`, `onWorkerMessage`, the message log, the per-session dedupe of message ids, and the hop count by chain (`workforce/src/messages/`) | **Builds on and replaces the names.** The log, the dedupe and the chain stay; the entry and the tool are rebuilt as `onMessageReceived` and `sendMessage` (FIX-2238) |
 | The relay: a woken turn's final text is sent back as the answer (`worker-message-entry.ts`, `workforceRelayTo`), pending a product decision | **Removed.** The concept decides it: nothing is relayed (rule 10, story M-03) |
-| `takes_tasks_only` and `no_turn` refusals (`send-message.ts`) | **Removed.** Every worker has `receive` (W-01), and every coordinator runs its own request for a message (R-06) |
+| `takes_tasks_only` and `no_turn` refusals (`send-message.ts`) | **Removed.** Every worker has `onMessageReceived` (W-01), and every coordinator runs its own request for a message (R-06) |
 | An answer to a message from a task's session goes to the sender's conversation, because "a task's session ends with its turn" (`send-message.ts`, `answerTo`) | **Replaced.** A task's session outlives its task (rule 21), so the answer lands where the original was sent (M-04) |
 | FIX-2082: `dispatcher({ wait: true })` parks a request on one wait gate bound to the request it started, with the host's deadline, and outputs how it ended | **Builds on.** A call is that wait; no new wait mechanism ([D1](DECISIONS.md#d1)) |
 | FIX-2078: wakes, a due time the engine keeps and fires as an internal entry until a pass clears it | **Builds on.** An undelivered message is a wake its sending session owes ([D2](DECISIONS.md#d2)) |
@@ -182,7 +182,7 @@ an answer in the request that asked.
 path survives beside `sendMessage`.
 
 1. **[D1](DECISIONS.md#d1) · A call is a message, not a task.** It waits on the engine's wait gate
-   for the recipient's `receive` result, with no row, attempt or retry. This reads the project's
+   for the recipient's `onMessageReceived` result, with no row, attempt or retry. This reads the project's
    PR-2 ("when it expects an answer, it is a task") as covering tracked work, and needs your
    confirmation: the concept already has calls (rule 10, M-02), PR-2's wording predates it. The
    amended PR-2 and PD-3 wording is on the project spec (#3102), approved with this spec. If
