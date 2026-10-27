@@ -198,13 +198,23 @@ function confirmedTodoList(message: Record<string, unknown>): PlanListItem[] | n
 function translateStatus(message: { status?: unknown; message?: unknown }): TranslatedEvent[] {
   const status = readString(message.status) ?? "unknown";
   const detail = readString(message.message);
-  return [
-    {
-      kind: "status",
-      message: `Cursor run ${status.toLowerCase()}${detail === undefined || detail === "" ? "" : `: ${detail}`}.`,
-    },
-  ];
+  const words = STATUS_WORDS[status] ?? `Cursor run ${status.toLowerCase()}`;
+  return [{ kind: "status", message: `${words}${detail === undefined || detail === "" ? "" : `: ${detail}`}` }];
 }
+
+/**
+ * What a lifecycle status reads as in the in-flight indicator, which is shown
+ * as a label: "Cursor run running" read as a stutter. An unlisted status falls
+ * back to its own name rather than being dropped.
+ */
+const STATUS_WORDS: Readonly<Record<string, string>> = {
+  CREATING: "Starting Cursor",
+  RUNNING: "Working",
+  FINISHED: "Finished",
+  ERROR: "Run hit an error",
+  CANCELLED: "Run stopped",
+  EXPIRED: "Run expired",
+};
 
 /** Cursor's token report, with every field a number. `reasoningTokens` is optional on the wire. */
 export function normalizeUsage(usage: unknown): CursorRunUsage {
