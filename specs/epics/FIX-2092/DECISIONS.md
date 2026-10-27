@@ -83,8 +83,8 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | Phases run on `deps` and the board's dispatch passes. No new runtime, drain mode, board option, engine change, or dependency on a whole phase | FIX-2233 | Every child's spec review; the closure's leg a |
-| ER-2 | A filed step's status is read from its own row and stored nowhere else. Only a phase a run does itself, with no filed steps, reports a status | FIX-2232 | FIX-2232's tests; the closure's leg a |
-| ER-3 | `workflowView` is the one read of a task's workflow. A screen renders it and derives nothing of its own | FIX-2232 · FIX-2235, FIX-2236 use | FIX-2235's review; the closure |
+| ER-2 | A filed step's status is read from its own row and stored nowhere else. Only a phase a run does itself, with no filed steps, reports a status. Where they meet, the declaration gives the phases' order and labels and the rows give status: a phase with filed steps takes its status from them and any reported one is refused; the current phase is the first one not ended | FIX-2232 | FIX-2232's tests; the closure's leg a |
+| ER-3 | `workflowView` is the one read of a task's workflow: one `listTasks({ filedByTask })` pass, no read per step. A screen renders it and derives nothing of its own; a task list shows its summary (current phase, N of M), not the whole graph per row | FIX-2232 · FIX-2235, FIX-2236 use | FIX-2235's review; the closure |
 | ER-4 | A stop for a person in a workflow is one Inbox item: a confirm on the feature task (PR-3). No row a person answers to release a phase, no new hold kind | FIX-2233 · FIX-2234 uses | The closure's leg c |
 | ER-5 | A step's id is `<feature task id>:<step key>`, its round in the key. A replayed `start` or `addStep` files nothing twice | FIX-2233 | The closure's leg d |
 | ER-6 | A task's declared phases are written only by the run holding its claim, through `reportProgress`'s fenced write. No second write path | FIX-2232 · FIX-2233, FIX-2236 use | FIX-2233's and FIX-2236's spec review |
@@ -111,6 +111,7 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
   FSD Architect on #3970.
 - **Follow-ups are not declared in a definition.** A follow-up must name a finished task, only one
   can be open per root, and the tools mint its id. The worker files them at runtime (the POC's finding).
+- **`addStep` doesn't reuse `applyReplan`'s id handling.** `applyReplan` gives a colliding id a `-replan-N` suffix, which is right for a replanner adding fresh work and wrong here: a replayed `addStep` must find its step, not file a second (ER-5). One helper mints `<feature task id>:<step key>`. Raised by Cursor's review on #3970.
 - **Rounds live in the step key.** The worker judges the latest round; a re-review is `review-a-r2`.
 - **A loop-back re-wires the first layer that hasn't started,** not "the next phase": the
   reviews after implement have already run (the POC's finding).

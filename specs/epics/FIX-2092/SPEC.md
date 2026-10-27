@@ -101,7 +101,8 @@ The reviewed snapshot; live state is in Linear.
 Five and a closure. FIX-2236 is the one I'd cut: without it only filed steps have phases, which is
 the view-over-rows shape. It stays because it is the only producer that runs its phases itself,
 so it is what proves the declaration is a contract and not a template detail. If the owner picks
-the view-over-rows shape ([Open](DECISIONS.md#open)), it drops.
+the view-over-rows shape ([Open](DECISIONS.md#open)), the set is four and a closure: FIX-2236
+drops, FIX-2232 ships `phase` and the read with no declaration, ER-6 goes, and the closure's leg e goes with it.
 
 ## How the issues flow into each other
 
