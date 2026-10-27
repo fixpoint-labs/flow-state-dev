@@ -74,6 +74,8 @@ export function HarnessSessionView({ label, flowKind, sessionId, models }: Harne
 function SessionBody({ label, sessionId, models }: { label: string; sessionId: string; models: ModelChoices }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useSessionDraft(sessionId);
+  const messageRef = useRef(message);
+  messageRef.current = message;
 
   // Session state is read from the snapshot, which a turn's end alone does
   // not refresh: re-read it when a turn stops streaming.
@@ -99,7 +101,7 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
       if (prompt.length === 0) return;
       try {
         await session.sendAction("turn", { prompt }, { userMessage: prompt });
-        setMessage("");
+        if (messageRef.current.trim() === prompt) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }

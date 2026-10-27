@@ -52,8 +52,10 @@ export function useSessionDraft(sessionId: string | undefined): [string, (text: 
 
   const setDraft = useCallback(
     (text: string) => {
+      writeDraft(sessionId, text);
       setState((prev) => {
-        writeDraft(sessionId, text);
+        // A slow send from another session must not replace this session's draft.
+        if (prev.sessionId !== sessionId) return prev;
         return { sessionId: prev.sessionId, draft: text };
       });
     },

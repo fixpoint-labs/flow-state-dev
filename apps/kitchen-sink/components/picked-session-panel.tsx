@@ -217,6 +217,10 @@ function Composer({
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const acceptedTextRef = useRef<string | null>(null);
+
   const items = useRef(session.items);
   items.current = session.items;
   const errorFor = (requestId: string) =>
@@ -253,7 +257,9 @@ function Composer({
         const status = await requestStatus(pending).catch(() => "in_progress");
         if (cancelled) return;
         if (status === "completed" || status === "suspended") {
-          setDraft("");
+          const accepted = acceptedTextRef.current;
+          if (accepted !== null && draftRef.current.trim() === accepted) setDraft("");
+          acceptedTextRef.current = null;
           setPending(null);
           return;
         }
@@ -278,6 +284,7 @@ function Composer({
     if (text.length === 0 || busy) return;
     setFailure(null);
     try {
+      acceptedTextRef.current = text;
       const response = await send(text);
       // Storage clears when the door accepts the send so a reload mid-request
       // does not restore text the server already took.

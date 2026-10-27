@@ -196,6 +196,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useSessionDraft(flow.activeSessionId);
+  const messageRef = useRef(message);
+  messageRef.current = message;
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
@@ -342,7 +344,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
           thinkingStyle,
           features,
         }, { userMessage: text });
-        setMessage("");
+        if (messageRef.current.trim() === text) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
