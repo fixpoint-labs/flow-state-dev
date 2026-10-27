@@ -171,7 +171,7 @@ Update policy:
     - Second tenant / account — keys scoped to the full tuple, derived from the authenticated identity (BP-031).
     - Cost / observability — any new model/tool call is counted in usage/cost and threads `ctx.signal`, matching the call beside it.
     - React derived state — flags derived from the *complete* input set; change-signals fire only on a *real* change (BP-010).
-    - An event read back as a state — a rule about whether something happened (this turn asked, the task was cancelled, these records were written lean) reads a mark written where it happens, never a state other causes also produce (open holds, a row's status, the reader's own env or config).
+    - An event read off a state — a rule asking "did X happen?" reads a mark written where X happens, never a state other causes also produce (tenet 5).
   - When a flag toggles behavior (`enabled: false`, a new mode), add the test for the off / new state in the same PR.
 - Why: The happy path is the part you thought about; the bugs hide in the paths the change implicitly touched but didn't add code for.
 

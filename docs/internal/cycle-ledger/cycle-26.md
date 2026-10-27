@@ -158,12 +158,14 @@ written by someone else.
 
 | File | Now | Proposed |
 |---|---|---|
-| `docs/contributing/best-practices.md` · BP-035 Rule | seven path bullets, ending *"React derived state — …"* | an eighth: *"An event read back as a state — a rule about whether something happened (this turn asked, the task was cancelled, these records were written lean) reads a mark written where it happens, never a state other causes also produce (open holds, a row's status, the reader's own env or config)."* |
-| `CLAUDE.md` · Best practices, BP-035 line | *"…cost-observability / React-derived-state paths…"* | *"…cost-observability / React-derived-state / event-read-as-state paths…"* |
+| `docs/contributing/best-practices.md` · BP-035 Rule | seven path bullets, ending *"React derived state — …"* | an eighth: *"An event read off a state — a rule asking 'did X happen?' reads a mark written where X happens, never a state other causes also produce (tenet 5)."* The examples stay in (a) above. |
+| `CLAUDE.md` · Best practices, BP-035 line | *"…cost-observability / React-derived-state paths…"* | *"…cost-observability / React-derived-state / event-read-off-state paths…"* |
 
 It sharpens an existing universal BP rather than adding one. On #3747 the spec author would have had to
 say what writes the mark the one-wait rule reads, which is the question #3890 took three passes to
-answer. It is a draft for the owner's review (Step 6), in its own commit.
+answer. It applies tenet 5 (fix at the owning layer: the writer records the event) at the point an
+author walks the second paths. It is proposed for the owner's review on this PR (Step 6), in its own
+commit, so the ledger stands if it is dropped.
 
 ## Candidates considered and dropped
 
