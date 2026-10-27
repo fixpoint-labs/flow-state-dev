@@ -67,6 +67,9 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type InventoryActionRequest,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
@@ -280,8 +283,10 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
       resources: {
         ...installation.resources,
         ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
+        ...workerMessagesResources,
       },
       actions: { ...hearingDoor },
+      internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
   const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });

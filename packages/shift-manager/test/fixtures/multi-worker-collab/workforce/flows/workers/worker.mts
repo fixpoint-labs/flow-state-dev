@@ -55,6 +55,9 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type WorkerInstallation,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
@@ -202,8 +205,9 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     // the host refuses a worker whose file names no `answersFor`.
     configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1).optional() }),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...hearingDoor },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: WORKER_FLOW }) } },
     task: { actions: { [WORK_ENTRY]: workerTaskEntry({ name: "worker-task", turn }) } },
   } as never);
 }
