@@ -42,7 +42,7 @@ from the first message to the last. Then a flag is simpler and the refusal path 
 |---|---|
 | **Instead of** | Retrying the live steer until the run takes it, or telling the sender the line was not delivered |
 | **Because** | The sender was told the steer was accepted (FIX-2086 D2's reason), so it must reach the work. Cursor's `revert_to_followup` means *the turn does not have it; send it as a follow-up yourself*. Retrying live into a turn that is ending can't succeed. Today's path already delivers it: the manager stops the step (with `stopsOnAbort`) or adds one at the step's end, and Kitchen Sink sends it as the next turn |
-| **Locks in** | One take per line. The manager takes the line before handing it to the run, so a line is taken once whichever way it reaches the work; taking first also stops a later poll handing over a line still pending. The row has no untake, so a refused line is kept in the request's own state as owed: the step's own end, a stop (with `stopsOnAbort`) and the check before the settle all count it with the untaken lines and render it into the next step. A poll that took a line and then finds its step ended before it handed the line over counts it refused; a line already handed over waits for its answer. Kitchen Sink's `steer` answers `{ taken: false }` and the page sends the line as a `turn`; the line shows once in the conversation |
+| **Locks in** | One take per line. The manager takes the line before handing it to the run, so a line is taken once whichever way it reaches the work; taking first also stops a later poll handing over a line still pending. The row has no untake, so a refused line is kept as owed: the step's own end, a stop (with `stopsOnAbort`) and the check before the settle all count it with the untaken lines and render it into the next step. **Binding:** after a take, every exit hands the line to the run or counts it refused, never drops it; a poll that finds its step ended before it handed the line over counts it refused, and a line already handed over waits for its answer. Where the owed record lives (the request's own state, or a mark on the row's steer) is the implementer's call against the code; the invariant is not. Kitchen Sink's `steer` answers `{ taken: false }` and the page sends the line as a `turn`; the line shows once in the conversation |
 
 ![D2: a line the run refuses. Today's path, once, with the same words, chosen, beside retrying live or telling the sender. Decides it: the sender was told it was accepted; the fallback delivers it, a retry into an ending turn can't. The price: the step or turn a live steer was meant to save. A tie: no attempt is used either way. Locks in: one take per line, a refused line kept as owed. Flips if runs refuse lines they would take a moment later](figures/d2-refused-line.svg)
 
@@ -114,6 +114,7 @@ Claude Code joins here (a smaller change than Codex's), and Codex stays a follow
 | A generic engine hook: deliver input to a running request, across processes | The manager already polls the row in the step's own process. No engine change is needed |
 | Make `turn` steer when a turn is running | `queue` holds the second turn before its block runs; `allow` runs two harnesses in one worktree |
 | A mode check in the session flow (`if mode === "cursor"`) | The issue forbids it; the hook makes it unnecessary |
+| Fix the owed record's home in the spec: the request's state, or `delivery: live-refused` on the row's steer | Both meet D2. A mark on the row survives a crash between the answer and the next step and keeps one place to read, but adds a persisted field every steer reader must tolerate (BP-030) and a second fenced write after the answer. The request's state adds neither, but is a second place to read. The difference is in the code, not the direction, so D2 binds the invariant and leaves the home open |
 
 ## Settled
 
@@ -140,6 +141,10 @@ second control. Recorded for the implementer below.
 - "Consider the SDK's own `supports?(\"steer\")` probe, used today for `wait`." — analysis
 - "The `HarnessFeeds` docs say four feeds (manager.ts:487, 533). The Kitchen Sink `HarnessFeeds` is a separate interface and needs the field too." — analysis
 
+- "Extending poll to runs without `stopsOnAbort` adds ~1 Hz committed reads for the whole steerable window. Implementers should treat event-driven wake after row take (and idle backoff when no untaken steers) as part of the design, not an optional optimization." — Cursor bot, round 2
+- "In-process offer map keyed by session id duplicates state the session flow already owns (`serverOwned` binding/turns). Simpler v1? Register `HarnessSteer` in session-scoped state (or WeakMap on session identity) unless you truly need a global registry. Also: fifth feed is a good moment to export one host feed type from core and drop copy-paste." — Cursor bot, round 2
+- "For a smaller first implementation PR, consider an optional phase order (core + manager + cursor + h/w goal legs, then KS steer action + composer + k/r). Cursor first can still close the issue in two slices under one approved spec." — Cursor bot, round 2
+
 These are inputs, not instructions.
 
 ## How it got here
@@ -153,3 +158,6 @@ These are inputs, not instructions.
 - **Codex, round 1** — a steer still pending when the run ends waits for Cursor's own answer
   instead of a grace timer, because a timeout can't tell a refusal from a delivery and would send
   the line twice.
+- **Cursor bot, round 2** — D2's "hand on or count refused, never drop" became binding, and where
+  the owed record lives (request state or a mark on the row's steer) was left to the implementer;
+  the goal check's signal was split per leg.

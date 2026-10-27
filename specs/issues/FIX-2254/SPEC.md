@@ -51,7 +51,7 @@ offer away, and the line must then land in a second turn, failing leg k.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/cursor-harness/takes-a-steer-mid-turn/` · `CURSOR_API_KEY=… pnpm tsx goals/cursor-harness/takes-a-steer-mid-turn/run.mts` (legs k, h, w; real Cursor, `@cursor/sdk` 1.0.40) · leg r is `pnpm --filter kitchen-sink test harness-parity` (`apps/kitchen-sink/test/harness-parity.test.ts`), in CI · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | k (Kitchen Sink's `/cursor` session flow, driven as the page drives it: `turn`, then `steer` mid-turn): one `turn` request; one Cursor run id and no cancel; `steer` answers `{ taken: true }` and the turn record says taken; the token file exists; the last step file exists. h (a harness manager over Cursor, `updateTask({ message })` mid-step): one Cursor run id; `steerSteps` unset; the steer taken once; attempt 1. w: a turn that starts a background subagent and waits on it is steered during the wait: the steer is taken live, the token file exists, and the background result still reaches the turn. r: per mode, *live* is read from whether the run offered a steer, and must be true for Cursor and false for the other two; a line sent mid-turn reaches the run exactly once, including a Cursor line the scripted SDK refuses; the session flow and the manager import no harness package |
+| **Signal** | One entry per leg, each read from the run, never the model's prose:<br>• **k** (Kitchen Sink's `/cursor` session flow, driven as the page drives it: `turn`, then `steer` mid-turn): one `turn` request · one Cursor run id and no cancel · `steer` answers `{ taken: true }` and the turn record says taken · the token file exists · the last step file exists<br>• **h** (a harness manager over Cursor, `updateTask({ message })` mid-step): one Cursor run id · `steerSteps` unset · the steer taken once · attempt 1<br>• **w** (a turn that starts a background subagent and waits on it, steered during the wait): the steer is taken live · the token file exists · the background result still reaches the turn<br>• **r** (per mode): *live* is read from whether the run offered a steer, true for Cursor and false for the other two · a line sent mid-turn reaches the run exactly once, a Cursor line the scripted SDK refuses included · the session flow and the manager import no harness package |
 | **Input** | A task that writes six step files with a pause between them; the steer asks for a file holding a fresh random token. Held out: any step count, any arrival point after the run starts |
 | **Anti-game** | Files read from the worktree, rows through `getTask`, run ids from the run's own items, never the model's prose. Leg r drives the real adapters behind scripted SDKs, never a fake block |
 | **Control that must fail** | `GOAL_CONTROL=no-live-steer` (the Cursor block never offers a steer) must FAIL leg k on *one `turn` request*, leg h on *`steerSteps` unset* and leg w on *taken live*. In leg r, `drop-refused` (a refused line is not carried on) must FAIL Cursor on *exactly once*, and `drop-fallback` (a non-live mode's line is not queued) must FAIL Claude Code and Codex on it |
@@ -72,7 +72,7 @@ A run that can take a line offers it through one hook; everything else keeps tod
   harnessManager({
     harness: (feeds) => cursorAgent({
       cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession,
-+     onSteerable: feeds.onSteerable,   // a harness that can't steer has no such option
++     onSteerable: feeds.onSteerable,
     }),
   });
 ```
@@ -101,7 +101,7 @@ flowchart LR
   W["a line · updateTask message · or typed on the page"] --> O{"did the run offer a steer?"}
   O -->|"yes"| T["take it · then hand it to the run"]
   T -->|"delivered"| D["the turn has it · nothing stops"]
-  T -->|"refused"| K["kept on the request as owed"]
+  T -->|"refused"| K["kept as owed"]
   K --> F["today's path · same words · once"]
   O -->|"no"| F
   F --> M["manager · stop if stopsOnAbort · else next step"]
@@ -110,7 +110,7 @@ flowchart LR
 
 The offer is per run: a harness calls the hook when its run can take a line and again with
 `null` when it no longer can. A taken line the run refused is no longer untaken on the row, so
-the manager keeps it on the request as owed, and every path that today carries an untaken line
+the manager keeps it as owed, and every path that today carries an untaken line
 (the step's own end, a stop, the check before the settle) carries it too.
 
 ## What stays as it is
@@ -144,7 +144,7 @@ the manager keeps it on the request as owed, and every path that today carries a
 | The debt | |
 |---|---|
 | **Removes** | Nothing. Stop-and-resume stays as the fallback |
-| **Adds** | A second way a steer reaches a coding run, permanent by design: Cursor answers *send it as a follow-up*, so the fallback is needed even where live works · a refused line kept in the request's own state beside the row's taken mark, since the row has no untake · a per-second row read while a steerable step runs without `stopsOnAbort` · Kitchen Sink's in-process map of running turns that offered a steer, which a second server process doesn't see (that process's line falls back) |
+| **Adds** | A second way a steer reaches a coding run, permanent by design: Cursor answers *send it as a follow-up*, so the fallback is needed even where live works · a refused line kept as owed beside the row's taken mark, since the row has no untake · a per-second row read while a steerable step runs without `stopsOnAbort` · Kitchen Sink's in-process map of running turns that offered a steer, which a second server process doesn't see (that process's line falls back) |
 | **Leaves** | Claude Code and Codex live steering (FIX-XXX ×2) · steering a cloud Cursor run live · FIX-1179, a detached run that can't resume |
 
 **Net: up, a little.** One hook and one action arrive, nothing goes; the second path is the
