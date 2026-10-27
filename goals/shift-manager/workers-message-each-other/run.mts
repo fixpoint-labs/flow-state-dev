@@ -272,7 +272,7 @@ await runGoal(async () => {
       }
     }
     for (const t of world.turns) {
-      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${String(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
+      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${typeof c.args.to === "string" ? c.args.to : JSON.stringify(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
     }
     sent = new Map([...(await sentIds(world.alice)).entries()].map(([id, c]) => [id, { sessionId: c.sessionId, args: c.args }]));
   } finally {

@@ -59,6 +59,8 @@ export interface Targets {
   moved: SessionSummary;
   /** Leg 6's Researcher task, once filed, and the session its run named. */
   researcherTask?: { id: string; sessionId: string };
+  /** Researcher's ongoing session for the coordinator's conversation: a delegate's session. */
+  delegateSession?: string;
 }
 
 /** Hire the courier and the two helpers, open their conversations, then fire one and move the other. */
@@ -235,6 +237,10 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
     r.failures.push(`6:own-task — the task session's calls to its own task weren't all refused not_yourself: ${show(own.map((c) => c.output))}`);
   }
   r.notes.push(`refusals ${show({ pending: pendingOut, unknown: unknownOut, bob: bobOut })}`);
+  // A task run in Researcher's ongoing session for this conversation opens its delegate session, which leg 7 addresses.
+  const ongoing = await file(alice, cos, { goal: "Reply OK, and you're done.", assignee: RESEARCHER, session: "ongoing" });
+  targets.delegateSession = await sessionOfTask(alice, cos, ongoing);
+  await quiet(alice, 240_000);
   const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
   if (removed.status !== "completed") r.notes.push(`removeDelegate researcher: ${removed.status}`);
   return r;
@@ -268,9 +274,8 @@ export async function leg7(world: World, targets: Targets): Promise<LegResult> {
     { what: "the sending conversation", session: targets.courier.id, reason: "not_yourself" },
   ];
   if (targets.researcherTask !== undefined) refused.push({ what: "a task's session", session: targets.researcherTask.sessionId, reason: "not_a_conversation" });
-  const delegate = (await alice.routes.sessions()).find((s: Record<string, any>) => typeof s.state?.filingSessionId === "string" && s.state?.taskId == null);
-  if (delegate !== undefined) refused.push({ what: "a delegate session", session: String(delegate.id), reason: "not_a_conversation" });
-  else r.notes.push("no delegate session was open in this run to try");
+  if (targets.delegateSession !== undefined) refused.push({ what: "a delegate session", session: targets.delegateSession, reason: "not_a_conversation" });
+  else r.failures.push("7:refusals — leg 6 opened no delegate session to try");
   const before = (await logOf(alice)).filter((m) => refused.some((x) => x.session === m.toSession)).length;
   const calls = await deliver(world, targets, "7", refused.map((x) => ({ to: { session: x.session }, text: `hello ${x.what}` })));
   for (const x of refused) {
