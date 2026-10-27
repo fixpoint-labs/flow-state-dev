@@ -52,17 +52,20 @@ describe("the streaming indicator beside a live group", () => {
     const trace = { ...messageItem({ role: "assistant" }), type: "block_trace" } as unknown as StreamItem;
     renderStream([bash("Read core harness contract", "in_progress"), trace], "Read core harness contract");
     expect(screen.getAllByText(/Read core harness contract/)).toHaveLength(1);
+    expect(screen.getByTestId("streaming-indicator")).toBeTruthy();
   });
 
   it("keeps the step's words out while an earlier call is still running behind a later one that finished", () => {
     renderStream([bash("Read the slow file", "in_progress"), bash("Read the fast file", "completed")], "Read the slow file");
     expect(screen.getAllByText(/Read the slow file/)).toHaveLength(1);
+    expect(screen.getByTestId("streaming-indicator")).toBeTruthy();
   });
 
   it("shows the status words when the running step is one the group does not render", () => {
     const hidden = { ...bash("Read core harness contract", "in_progress"), itemVisibility: { history: false } } as StreamItem;
     renderStream([hidden], "Read core harness contract");
     expect(screen.getAllByText(/Read core harness contract/)).toHaveLength(1);
+    expect(screen.getByTestId("streaming-indicator")).toBeTruthy();
   });
 });
 
@@ -135,6 +138,13 @@ describe("the worked-for line after a request", () => {
     const line = screen.getByTestId("worked-for").textContent ?? "";
     expect(line).toContain("Worked for 3m 24s");
     expect(line).toContain(new Date(end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  });
+
+  it("takes the end from the request record when it has one, over the items", () => {
+    const itemsEnd = START + 5_000;
+    const recordEnd = START + (2 * 60 + 10) * 1000;
+    render(<RequestGroupRenderer items={done([settled(itemsEnd)])} isStreaming={false} showWorkedFor latestCompletedAtMs={recordEnd} />);
+    expect(screen.getByTestId("worked-for").textContent).toContain("Worked for 2m 10s");
   });
 
   it("is off unless asked for, so a chat reply is unchanged", () => {

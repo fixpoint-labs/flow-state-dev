@@ -69,6 +69,12 @@ type RequestGroupRendererProps = {
    *  "Worked for 3m 24s • 4:28 PM" line. Off by default: a chat reply reads
    *  fine without it, a long agent run does not. */
   showWorkedFor?: boolean;
+  /** When the latest request ended (epoch ms), from its request record. The
+   *  "Worked for" line of the last group uses it when set; without it, and for
+   *  earlier groups, the end is read off the items, which record when each
+   *  began (and when it completed, for those that say), so it can fall short
+   *  of the true end after a long final message. */
+  latestCompletedAtMs?: number;
 };
 
 /**
@@ -78,7 +84,7 @@ type RequestGroupRendererProps = {
  * in below. As the content grows past the viewport, the min-height
  * becomes irrelevant and scrolling works normally.
  */
-export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false }: RequestGroupRendererProps) {
+export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false, latestCompletedAtMs }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
   // Read over every item, not one request's: a task plan and its tasks' work
   // can sit in different requests.
@@ -106,6 +112,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
         statusMessage={statusMessage}
         isFinishing={isFinishing}
         showWorkedFor={showWorkedFor}
+        completedAtMs={isLast ? latestCompletedAtMs : undefined}
       />
     );
   });
@@ -137,6 +144,7 @@ function RequestGroup({
   statusMessage,
   isFinishing,
   showWorkedFor,
+  completedAtMs,
 }: {
   group: RequestGroup;
   /** Items that render under their task in `<TaskPlan />` (`collectTaskOwnedItemIds`). */
@@ -148,6 +156,8 @@ function RequestGroup({
   isFinishing?: boolean;
   /** See `RequestGroupRendererProps.showWorkedFor`. */
   showWorkedFor?: boolean;
+  /** The request record's end, for the last group only. */
+  completedAtMs?: number;
 }) {
   // Items inside a task-board window render under the task in
   // <TaskPlan /> — hide them from the chat-thread stream so we don't
@@ -167,7 +177,11 @@ function RequestGroup({
   // that earlier than the request really started, which only lengthens the count.
   const since = group.items[0]?.ts;
   const live = isLast && isStreaming;
-  const endedAt = useMemo(() => Math.max(0, ...group.items.map(settledAt)), [group.items]);
+  // Only a settled group draws the line, so a live one skips the walk over its items.
+  const endedAt = useMemo(
+    () => (showWorkedFor && !live ? (completedAtMs ?? group.items.reduce((latest, item) => Math.max(latest, settledAt(item)), 0)) : 0),
+    [showWorkedFor, live, completedAtMs, group.items],
+  );
 
   return (
     <div

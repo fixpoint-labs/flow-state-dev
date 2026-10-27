@@ -249,13 +249,20 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     },
   });
   // The rail lists sessions by title, so a session is titled by its first
-  // prompt before the harness runs. Later turns leave the title alone.
+  // prompt before the harness runs. Later turns leave the title alone. A title
+  // is cosmetic: failing to write one never fails the turn.
   const titleFromPrompt = handler({
     name: "title-from-prompt",
     inputSchema: z.object({ prompt: z.string().min(1) }),
     execute: async (input, ctx): Promise<void> => {
       if (ctx.session.metadata.title != null && ctx.session.metadata.title.trim() !== "") return;
-      await ctx.session.setMetadata({ title: titleOf(input.prompt) });
+      const title = titleOf(input.prompt);
+      if (title === "") return;
+      try {
+        await ctx.session.setMetadata({ title });
+      } catch {
+        // Retried on the next turn, which finds the session still untitled.
+      }
     },
   });
   const turn = sequencer({

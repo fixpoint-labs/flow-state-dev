@@ -36,7 +36,7 @@ export function HarnessModeView({
         flowKind={flowKind}
         sessionId={sessionId}
         models={models}
-        onTurnToggled={refreshSessions}
+        onTitled={refreshSessions}
       />
     ),
     [label, flowKind, models],

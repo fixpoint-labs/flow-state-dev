@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Shimmer } from "./shimmer";
 
 /** "42s", "1m 24s", "1h 3m": the short form a terminal agent prints, not a sentence. */
-export function formatElapsed(ms: number): string {
+function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -32,7 +32,8 @@ export function RunTimer({ since }: { since: number }) {
 /**
  * What a finished request leaves where the indicator was: "Worked for 3m 24s •
  * 4:28 PM", the time it took and the clock time it ended. Renders nothing for a
- * request that took under a second.
+ * request that took under a second. `endedAt` is only as good as the caller's
+ * source for it (see `RequestGroupRendererProps.latestCompletedAtMs`).
  */
 export function WorkedFor({ startedAt, endedAt }: { startedAt: number; endedAt: number }) {
   const elapsed = Math.max(0, endedAt - startedAt);
