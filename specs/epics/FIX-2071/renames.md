@@ -69,6 +69,6 @@ note, add the names to `RETIRED`.
 ## Decided by FIX-2183
 
 The four meanings of *hold* on the task surface, FIX-2092's held phase steps, *waiting* (a task
-waiting on a person, FIX-2214's status, and FIX-2070's `receive` flag), and `updateTask`'s `question` field
+waiting on a person and FIX-2214's status; FIX-2070's `receive` field is `call`, so it is not one), and `updateTask`'s `question` field
 ([the project spec](https://github.com/fixpoint-labs/flow-state-dev/pull/3102), *Decided since the
 last refresh*). FIX-2183's spec adds its rows to this table before it builds.
