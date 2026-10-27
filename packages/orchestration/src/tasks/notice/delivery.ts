@@ -69,8 +69,9 @@ export interface DeclaredDelivery {
    * `noticeEntry`. The same declaration, a different moment. Called again
    * when a replayed turn asks again, so it must be idempotent per hold (a
    * Workforce board sends one message per hold, its id derived from the
-   * hold). Called only for a row whose filer is known. A throw is logged,
-   * never fails the question.
+   * hold). Called only for a row whose filer is known. Runs inline in the
+   * asking turn, after its lease is dropped, so a slow telling only delays
+   * that turn's end. A throw is logged, never fails the question.
    */
   readonly onMidwayQuestion?: (ctx: BlockContext, row: Task, holds: readonly RowHold[]) => Promise<void>;
   /**
@@ -205,7 +206,12 @@ export function createDelivery(
 
   async function tellMidwayQuestions(row: Task): Promise<void> {
     const holds = openRowHolds(row).filter((hold) => hold.midway === true);
-    if (holds.length === 0 || filerOf(row) === undefined) return;
+    if (holds.length === 0) return;
+    if (filerOf(row) === undefined) {
+      // A screen's or a schedule's filing, or a filer no longer known: the Inbox has it.
+      console.debug("[orchestration] a midway question has no filer to tell: it is in the Inbox only", { boardId: board.collectionId, taskId: row.id });
+      return;
+    }
     try {
       await declared.onMidwayQuestion!(ctx, row, holds);
     } catch (error) {
