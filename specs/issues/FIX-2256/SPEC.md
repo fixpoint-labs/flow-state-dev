@@ -115,7 +115,7 @@ for the run's cost.
 | Cursor's refusal of `agent.cloud` and `send.cloud` (`agent.ts`, `assertNoOwnedKeys`) | **Removes** it. `cloud.repos` stays refused: the repository resolver owns it |
 | The `cwd` / `resume` / `onSession` resolvers (LAB-152, BP-031) | **Builds on.** `repository` is one more resolver on the same rule |
 | The workspace package's remote checks (`withoutCredential`, `remotes.ts`) | **Reused** to refuse a remote with a credential before it reaches Cursor |
-| harness-manager's output `branch` and run record `branch`: the branch the manager names | **Leaves alone.** A cloud run's branch is the handle's, until FIX-2257 decides how the two meet |
+| harness-manager's output `branch` and run record `branch`: the branch the manager names | **Leaves alone** in v1. FIX-2257 must leave one source of truth for which branch holds the work: the manager reads `handle.branches`, or the two fields are named for what each means (the branch asked for, the branch pushed) |
 | [FIX-1917](../FIX-1917/SPEC.md#the-goal-and-how-well-know-its-met): "Cursor's cloud agents" named bigger and not that issue's | **Delivered** here, at block level |
 | [FIX-2086](../FIX-2086/DECISIONS.md#decided-not-asked): a steer stops the harness step and resumes by session id | **Kept** for FIX-2257: a cloud steer will take it, since Cursor refuses a live one |
 | FIX-2254's `onSteerable` hook (spec in review) | **Kept.** A cloud run never offers a steer. FIX-2254 builds first; this rebases on it |
@@ -129,7 +129,7 @@ for the run's cost.
 |---|---|
 | **Removes** | The cloud refusal in the Cursor block and its two docs rows |
 | **Adds** | A second runtime path in `cursorAgent` · `branches` on core's handle · a `cursor/cloud` source. All permanent by design |
-| **Leaves** | Workforce workers can't run in the cloud yet (FIX-2257) · Cursor's own follow-ups (CI fixes, wake-ups) may push to the PR after the turn ends, and that spend isn't on the result (FIX-2257) · Kitchen Sink on Vercel cuts a cloud turn at the function's 300 s limit, and the run goes on in Cursor (Kitchen Sink is a reference app; no issue) · no Cursor usage-left reader (FIX-2139 epic) |
+| **Leaves** | Workforce workers can't run in the cloud yet, and a run's branch is answered by the handle and by the manager's own `branch` until FIX-2257 leaves one source of truth (FIX-2257) · Cursor's own follow-ups (CI fixes, wake-ups) may push to the PR after the turn ends, and that spend isn't on the result (FIX-2257) · Kitchen Sink on Vercel cuts a cloud turn at the function's 300 s limit, and the run goes on in Cursor (Kitchen Sink is a reference app; no issue) · no Cursor usage-left reader (FIX-2139 epic) |
 
 **Net: up**, by one runtime path and one core field. Nothing is a second way to do a job we have.
 
