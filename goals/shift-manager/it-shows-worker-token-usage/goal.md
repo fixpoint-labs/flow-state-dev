@@ -46,3 +46,10 @@ The coder (and the Error Reporter's drafts) otherwise run on `claudeCodeHarness`
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-27 | claude/project-thread-w0un9y (tree of a8ca817) | n/a | PASS | 55 s. a: researcher 8 in, 8 out, 2 runs, no cost. b: `claude-code` 1 000 + 200, `subscription`, cost `null`; view "cost not reported". c: 1 000 + 200, `api-key`, $0.42; view "$0.42, reported by Claude Code", "1,200 tokens". d: the production Lab stood `NODE_ENV=production traces=off`; a, b and c doubled exactly (16 + 16; 2 000 + 400; 2 000 + 400 and $0.84). e: Alice 1 200, Bob 600. f: completed after 2 attempts, 1 250 + 250 over 2 runs. h: the task errored after 2 attempts; the Error Reporter's draft run 900 + 100 under the operator. g: 7 days 0 rows, 30 days 4 + 4, after one restart and after two; the view agrees. i: `codex` 700 + 300, `api-key`, cost `null`; view "cost not reported". |
+| 2026-10-27 | same, `GOAL_CONTROL=from-traces` | n/a | FAIL (expected) | **d:same-numbers**: the researcher's production turns added nothing (8 + 8 stayed 8 + 8). |
+| 2026-10-27 | same, `GOAL_CONTROL=harness-only` | n/a | FAIL (expected) | **a:16-tokens**: the researcher has no row; g's 30 days is empty too. |
+| 2026-10-27 | same, `GOAL_CONTROL=last-attempt-only` | n/a | FAIL (expected) | **f:1500**: 1 000 + 200 over 1 run; a reads 4 + 4. |
+| 2026-10-27 | same, `GOAL_CONTROL=cost-always` | n/a | FAIL (expected) | **b:no-cost**: $0.42 on a subscription run, in the query and the view. **i:no-cost**: Codex shows a $0.0019 estimate. |
+| 2026-10-27 | same, `GOAL_CONTROL=no-user-filter` | n/a | FAIL (expected) | **e:only-alices**: Alice and Bob each read 4 216 tokens, everyone's. |
+| 2026-10-27 | same, `GOAL_CONTROL=ignore-period` | n/a | FAIL (expected) | **g:not-in-7-days**: 7 days reads the 8-day-old 4 + 4, in the query and the view. |
