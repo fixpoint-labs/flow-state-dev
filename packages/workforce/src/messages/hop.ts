@@ -54,8 +54,6 @@ export const TURN_CHAIN_STATE = "workforceTurnChain";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
-/** The request-state field the workers this turn has messaged are kept in. */
-export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
@@ -68,8 +66,7 @@ export const messageHopStateShape = {
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
   [TURN_CHAIN_STATE]: z.string().nullable().optional(),
-  [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
-  [TURN_MESSAGED_STATE]: z.array(z.string()).optional()
+  [TURN_SENT_STATE]: z.number().int().nonnegative().optional()
 });
 
 /** A session's current hop count: 0 for one that keeps none. */
@@ -134,11 +131,12 @@ export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): Hop
 
 /**
  * The mark for a task filed held (FIX-2238): released, it starts a fresh
- * chain at 0, its first send minting one, since no exchange waits on it. The
- * filer's user lines are kept, so a user's line since still clears it.
+ * chain at 0, since no exchange waits on it. The chain is minted here, once,
+ * so every request the task runs counts in the same budget. The filer's user
+ * lines are kept, so a user's line since still clears it.
  */
 export function freshHopMark(ctx: Pick<BlockContext, "session">): HopMark {
-  return { hop: 0, chain: null, lines: sessionUserLinesOf(ctx.session.state) };
+  return { hop: 0, chain: newChainId(), lines: sessionUserLinesOf(ctx.session.state) };
 }
 
 /**
@@ -191,7 +189,6 @@ export async function startTurnAtHop(
     ...also,
     [TURN_HOP_STATE]: hop,
     [TURN_CHAIN_STATE]: chain,
-    [TURN_SENT_STATE]: 0,
-    [TURN_MESSAGED_STATE]: []
+    [TURN_SENT_STATE]: 0
   } as never);
 }

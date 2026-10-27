@@ -39,7 +39,7 @@ export function taskIdIndexKey(ledgerId: string): string {
   return `${ledgerId}__ids`;
 }
 
-const markerSchema = z.object({ partition: z.string() });
+const markerSchema = z.object({ partition: z.string().min(1) });
 
 /** Declare the id index of the partitioned ledger `ledgerId`, at its scope. */
 export function defineTaskIdIndex(ledgerId: string, scope: ResourceScope): DefinedResourceCollection {
@@ -100,8 +100,8 @@ export async function findTaskPartitions(
   const markers = await resolveTaskIdIndex(ctx, ledgerId).list(markerPrefix(taskId));
   const partitions = new Set<string>();
   for (const marker of markers) {
-    const partition = (marker.state as { partition?: unknown }).partition;
-    if (typeof partition === "string" && partition.length > 0) partitions.add(partition);
+    const parsed = markerSchema.safeParse(marker.state);
+    if (parsed.success) partitions.add(parsed.data.partition);
   }
   return [...partitions];
 }

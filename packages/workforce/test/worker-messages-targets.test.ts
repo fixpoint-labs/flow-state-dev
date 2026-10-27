@@ -131,6 +131,40 @@ describe("a message to a task", () => {
     }
   });
 
+  it("lands though a failed add left the same id's marker in another conversation", async () => {
+    const ids: { task?: string } = {};
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input) => textOf(input).includes("Write the notes"), then: { text: "Notes written." } },
+        ...callsOnce("Please ask about the notes", () => [{ to: { task: ids.task }, text: "How are the notes?" }]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), standard: team(), agentAnswer });
+    try {
+      await fileTask(h, "alice", "chief", "Write the notes", "otto");
+      await h.settled();
+      const [task] = await h.rows("alice");
+      ids.task = task!.id;
+      // A marker is written before its row: plant the one an add that then failed would leave.
+      const runtime = await h.state.getRuntime();
+      const cell = `alice:~org:${ORG}`;
+      const markers = await runtime.stores.resourceState.getByPrefix("user", cell, "tasks__ids");
+      const [key] = Object.keys(markers).filter((k) => decodeURIComponent(k.split("/")[1] ?? "") === task!.id);
+      expect(key, "the task's own marker").toBeDefined();
+      const ghost = "conv_failed_add";
+      const planted = await runtime.stores.resourceState.set("user", cell, `${key!.slice(0, key!.lastIndexOf("/") + 1)}${ghost}`, { partition: ghost } as never, "absent");
+      expect(planted.ok).toBe(true);
+
+      const curious = await h.client("alice").ensureWorkerSession({ worker: "curious" });
+      await h.post("alice", curious.id, "respond", { message: "Please ask about the notes" }, "agent");
+      await h.settled();
+      expect(await logRows(h, "alice")).toEqual([expect.objectContaining({ addressedBy: "task", toSession: task!.run!.sessionId, status: "delivered" })]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("refuses an unknown id and another user's task alike, no_task_session, writing nothing", async () => {
     const ids: { bobs?: string } = {};
     const agentAnswer = mockGenerator({

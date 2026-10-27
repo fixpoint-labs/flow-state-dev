@@ -180,7 +180,7 @@ recipient's one request is a task.
 task (`to: { task: id }`) or one of its user's own conversations (`to: { session: id }`). It
 **sends**, returning nothing, or **calls** (`wait: true`), waiting for the result until its
 deadline, the host's default unless `deadline` is passed. A late result is kept under its **call
-id** for a caller that waits again or repeats the call.
+id** for a caller that waits again with `sendMessage({ callId })`.
 
 A message is a dispatcher block calling the recipient's `onMessageReceived`. Delivery is retried until it
 lands; the receiver dedupes by id, so it sees each message once, and a repeated call gets the kept

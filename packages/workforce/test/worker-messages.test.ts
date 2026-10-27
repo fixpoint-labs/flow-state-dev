@@ -732,6 +732,11 @@ describe("the hop count through a delegation", () => {
       const first = rows.find((row) => row.from === "otto")!;
       const fromTask = rows.find((row) => row.from === "helper-b")!;
       expect(fromTask.chain, "a fresh chain, not the filing's").not.toBe(first.chain);
+      // Minted once, at the filing: every request the task runs reloads this
+      // mark, so a retry or a continuation counts in the same budget.
+      const mark = held!.metadata?.[FILED_HOP] as { hop: number; chain: string | null };
+      expect(mark.hop).toBe(0);
+      expect(fromTask.chain, "the chain the filing recorded").toBe(mark.chain);
     } finally {
       await h.dispose();
     }

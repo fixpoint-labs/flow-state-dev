@@ -45,7 +45,7 @@ import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
+import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf } from "./message-received-entry";
@@ -230,9 +230,9 @@ export async function sendMessage(
       `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
         "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
     );
+  /** The place a send takes in a chain that already holds `sent`. */
+  const placeAfter = (sent: number) => Math.max(floor, sent + 1);
   const known = turnChainOf(ctx);
-  const counted = known === undefined ? 0 : ((await chains.getOptional(known))?.state.sent.length ?? 0);
-  if (Math.max(floor, counted + 1) > limits.hopLimit) return budgetRefusal(Math.max(floor, counted + 1));
   const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
   const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
     const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
@@ -247,7 +247,7 @@ export async function sendMessage(
   const id = options.id ?? newMessageId();
   const chainRow = await chains.getOrCreate(chain, { sent: [] });
   await chainRow.updateState((row) =>
-    Math.max(floor, row.sent.length + 1) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
+    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
   );
   const place = chainRow.state.sent.indexOf(id);
   if (place < 0) {
@@ -255,13 +255,9 @@ export async function sendMessage(
       const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
       return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
     });
-    return budgetRefusal(Math.max(floor, chainRow.state.sent.length + 1));
+    return budgetRefusal(placeAfter(chainRow.state.sent.length));
   }
-  const hop = Math.max(floor, place + 1);
-  await atomicRequest((current) => {
-    const messaged = Array.isArray(current[TURN_MESSAGED_STATE]) ? (current[TURN_MESSAGED_STATE] as string[]) : [];
-    return { [TURN_MESSAGED_STATE]: [...messaged, recipient.id] };
-  });
+  const hop = placeAfter(place);
 
   // ---- owed, the row, then one dispatch ------------------------------------
   const resends = carriesPass(installation, flowKind);

@@ -108,10 +108,16 @@ export async function checkTaskTarget(
   taskId: string
 ): Promise<TargetCheck> {
   const notFound = refuse(`no_task_session: no task "${taskId}" of yours has a session to message. A task that hasn't started has none.`);
-  const partitions = await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId);
-  if (partitions.length !== 1) return notFound;
-  const ledger = await conversationLedgerAt(ctx, partitions[0]!);
-  const sessionId = ledger?.get(taskId)?.run?.sessionId;
-  if (ledger === undefined || sessionId == null) return notFound;
+  // Only partitions that hold the row count: a marker is written before its
+  // row, so a failed add leaves one behind.
+  const held: TaskCollectionRef[] = [];
+  for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
+    const ledger = await conversationLedgerAt(ctx, partition);
+    if (ledger?.get(taskId) !== undefined) held.push(ledger);
+  }
+  if (held.length !== 1) return notFound;
+  const ledger = held[0]!;
+  const sessionId = ledger.get(taskId)?.run?.sessionId;
+  if (sessionId == null) return notFound;
   return checkTargetSession(ctx, installation, sessionId, { task: taskId, ledger });
 }
