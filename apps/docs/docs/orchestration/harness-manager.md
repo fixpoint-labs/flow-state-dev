@@ -6,7 +6,7 @@ sidebar_label: Harness manager
 
 A [harness](/docs/tools/coding-agents) is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing what it did. `@flow-state-dev/harness-manager` is a task-board worker that turns a row on a board into a supervised run of one.
 
-Supervised means it does what dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question**, and its task waits in the user's Inbox until they answer; the answer continues the same conversation. And **which harness runs is yours to choose**. The manager imports none of them.
+A supervised run gets **its own checkout**, not whatever directory your server happens to sit in. **A verdict is read before the row settles**, so a run that produced nothing never closes as done. The run can **ask a question**: its task waits in the user's Inbox until they answer, and the answer continues the same conversation. And **you choose the harness**. The manager imports no harness itself.
 
 ```bash
 pnpm add @flow-state-dev/harness-manager
@@ -30,37 +30,7 @@ open the run row  →  build the prompt, take the checkout  →  run the harness
 
 **Read the verdict.** The handle carries two separate facts. `status` is whether the run terminated normally, and the manager's succeed-or-fail verdict is read from that alone. `outcome` is the run's own report of how it stopped, in a neutral vocabulary: `finished`, `stopped-at-limit`, `failed`, or `null` for no terminal result at all. Both are the framework's spelling rather than a vendor's, so two different harnesses settle identically.
 
-**Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. Asked a question, the task is held on it. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
-
-## Running tasks from more than one board
-
-A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
-
-Give the manager `ledgers` instead. It's a function that finds a board by the id and partition the task's claim names, and returns `undefined` for any board the worker shouldn't read:
-
-```ts
-import { harnessManager } from "@flow-state-dev/harness-manager";
-import { conversationLedgers } from "@flow-state-dev/workforce";
-
-const answering = harnessManager({
-  ledgers: conversationLedgers,
-  tenant: undefined,
-  phase: answerPhase(),
-  workspace,
-  runTimeoutMs: 30 * 60_000,
-  harness,
-});
-```
-
-`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
-
-A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
-
-A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks holds the task on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
-
-You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the user, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
-
-To let a user type into a run's session, build the door with `harnessSessionDoor` and tell it which board the calling session's run is on. One door serves every manager on the flow. See [Talking to a run](#talking-to-a-run).
+**Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. A run that asked a question holds its task on the question instead. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
 
 ## Choosing the harness
 
@@ -108,16 +78,16 @@ spells its sandbox its own way. None of it reaches the manager.
 A phase is the part that knows what the work *is*: its name, how to build the prompt, and how to tell the job is finished.
 
 ```ts
-const implementPhase = {
+const implementPhase = () => ({
   phase: "implement",
   buildPrompt: (run) =>
     `${run.task.goal}\n\nWork in ${run.workspacePath}, on branch ${run.branch}.`,
   isDone: (run) =>
     run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
-};
+});
 ```
 
-`buildPrompt` runs on every attempt, rebuilt from current state rather than computed once when the row was filed. `isDone` answers whether the job is actually finished. It is consulted only *after* a successful verdict, never as another route to completion, so a row completes only when both hold.
+`buildPrompt` runs on every attempt, from current state. `isDone` answers whether the job is actually finished. It is consulted only *after* a successful verdict, so a row completes only when both hold.
 
 `run.task` is the row the manager claimed, as the board handed it over: its `goal`, and its `title`, `context`, `input`, `deps` and `priorWork` when the row has them. A field the row doesn't have is absent, not empty. `isDone` doesn't receive `run.task`.
 
@@ -151,9 +121,45 @@ Once the task's last question is answered, the task takes one more turn on **the
 
 A cancel while the task waits closes the question and starts nothing; what the run committed and the files it kept stay. A question waits until it is answered or the task is cancelled, unless the board's host sets a deadline: then, at the deadline, it closes with a "no answer came" message, and the next run goes on in the same session with it.
 
-The judge's *ask*, and saved work that doesn't match the run's record, ask the same way.
+A [judge's](#checking-the-work-with-a-judge) *ask*, and saved work that doesn't match the run's record, ask the same way.
 
 **A session the agent can't find is replaced.** The manager records only a session the harness *confirmed* it was in. If the agent can't find the session a run asked to continue, the next run starts a fresh one, with the brief, the question and the answer in its prompt.
+
+## Running tasks from more than one board
+
+A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
+
+Give the manager `ledgers` instead. It's a function that finds a board by the id and partition the task's claim names, and returns `undefined` for any board the worker shouldn't read:
+
+```ts
+import { harnessManager } from "@flow-state-dev/harness-manager";
+import { conversationLedgers } from "@flow-state-dev/workforce";
+
+const answering = harnessManager({
+  ledgers: conversationLedgers,
+  tenant: undefined,
+  phase: answerPhase(),
+  workspace,
+  runTimeoutMs: 30 * 60_000,
+  harness,
+});
+```
+
+`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
+
+A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
+
+A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks holds the task on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
+
+### Checking the work with a judge
+
+You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and answers done, not done or ask, with a `confidence`. You set a confidence `floor` beside it. It runs after the phase's own check passes, and only for a task that has a goal, on a board read from the claim. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the user, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
+
+```ts
+harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floor: 0.6 } /* , … */ });
+```
+
+`confidence` and `floor` run from 0 to 1. A judge adds a step after the completion check, so pass `judge: true` to `harnessDrainBudgetMs` when you size your shutdown.
 
 ## Talking to a run
 
@@ -376,7 +382,7 @@ Given a location it cannot resolve to a repository, it refuses.
 
 The manager runs a claimed row. Everything around that is the host's: putting rows on the board in the first place, waking it, reading status back, and whatever check tells a phase the job is done.
 
-Seeding a row means knowing what your issues are called; a completion check means knowing what "finished" looks like in your world. Neither is something a published package can guess.
+Seeding a row means knowing what your issues are called, and a completion check means knowing what "finished" looks like in your world.
 
 ## What you import
 

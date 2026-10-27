@@ -5,10 +5,10 @@ A row on a board becomes a supervised coding run.
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
 stops, reads what came back, and then closes the row or lets it run again.
 
-Two things make that supervision real:
+What makes it supervised:
 
 - **The checkout is the run's own.** Without one, a coding agent edits whatever directory the
-  server happens to sit in — which is the conductor's.
+  server happens to sit in, which is the conductor's.
 - **One place decides the verdict**, before the row is settled. A run that exhausts its turn
   budget or its spend does not fail: it finishes normally and reports the bad news *inside* its
   result. Anything that treats a normal finish as success records a run that produced nothing as
@@ -16,12 +16,12 @@ Two things make that supervision real:
 
 Research software. Unpublished, private to this workspace.
 
-## Where the code lives now
+## Where the code lives
 
 **The loop is a published package.** `@flow-state-dev/harness-manager` holds everything the worker
-needs to execute a claimed row: the manager sequencer and its blocks, the run record, the ask
-marker and the step that holds a task on its question, the checkout derivation and its lease, and the guards a host runs at its
-own door. This lab is its **first consumer**.
+needs to execute a claimed row: the manager sequencer and its blocks, the run record, the ask marker
+and the step that holds a task on its question, the checkout derivation and its lease, and the
+guards a host runs at its own door. This lab is its **first consumer**.
 
 What stays here is what is this repository's rather than every host's:
 
@@ -30,10 +30,10 @@ What stays here is what is this repository's rather than every host's:
 | `flow.ts` — the flow and its actions | Seeding a Linear issue, waking the board, reading status, answering a question through the board's `updateTask` |
 | `implement.ts` — the implement phase | Its done-condition is a `gh` probe for a pull request, which is this repository's definition of finished |
 | `config-env.ts` — `CONDUCTOR_REPO` and friends | *Reading* the environment. The rules those values are checked against are the package's |
-| `patterns.ts` | The remote-URL grammar the GitHub probe parses. The identity grammar moved with the checkout |
+| `patterns.ts` | The remote-URL grammar the GitHub probe parses. The identity grammar lives with the checkout, in the package |
 
-**Two lines pick the harness**, and they are the only place this repository names a coding agent —
-in `flow.ts`, where the manager is built:
+**Two lines pick the harness**, and they are the only place this repository names a coding agent.
+They're in `flow.ts`, where the manager is built:
 
 ```ts
 harness: ({ cwd, resume, onSession }) =>
@@ -65,7 +65,7 @@ Zero-model actions:
 | Action | What it does |
 |---|---|
 | `seed` | Files one issue-phase as a durable row and drains the board. Returns without waiting for the run. |
-| `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
+| `wake` | Drains again: claims whatever is ready, including a re-pended retry. |
 | `status` | Reads the board row beside the run's own record, and the questions its task is held on. |
 | `updateTask_<board>` | The board's own `updateTask`, as the Inbox sends it: answers one of those questions (`{ id, question, message }`), then drains so the answer's turn starts. Its name is `conductorFlow(...).updateTaskAction`. |
 | `message` | A line typed in a run's own session: steers the task while it is open, answers its oldest question while it is held on one, and is talk once it has finished. |
@@ -78,17 +78,17 @@ open.
 
 ### The three outcomes
 
-**Done** needs a successful run **and** the job actually finished — for `implement`, a pull request
+**Done** needs a successful run **and** the job actually finished: for `implement`, a pull request
 existing for the branch. Either one alone completes a row that should not be: a run can open the
 pull request and *then* exhaust its turn budget.
 
-**Waiting on a person** (the task held on its question) needs a run that did not fail **and** a question it wrote down. Both
-halves, for the same reason: a run that asked and then ran out of budget is not waiting on
-anybody, and holding the board for it would stall the job silently.
+**Waiting on a person** (the task held on its question) needs a run that did not fail **and** a
+question it wrote down. Both halves, for the same reason: a run that asked and then ran out of
+budget is not waiting on anybody, and holding the board for it would stall the job silently.
 
 **When both hold, the question wins.** A run can succeed, write a question, and satisfy the
 done-condition in the same attempt; it waits on a person rather than completing. The two are
-scoped differently — the question belongs to this attempt, while the done-condition reads the
+scoped differently: the question belongs to this attempt, while the done-condition reads the
 branch, which every attempt on the task shares. A pull request some earlier attempt left says
 nothing about whether *this* attempt's question has been answered, so completing on it would
 discard a question nobody had seen. The cost is one extra round trip when a run asked something
@@ -100,11 +100,11 @@ beginning, in the checkout the last one left behind, and is told why the last on
 
 ### Asking, and being answered
 
-A run that hits a real ambiguity has two bad options: guess, or stop with nothing useful to show.
-It gets a third one here. The prompt tells it to write the question — and only the question — to a
-file in its own checkout. The manager reads that file and holds the task on the question: the row
-stays on its attempt with no lease, and nothing settles it or starts another run until you answer.
-Nothing is held open while you think about it, and the run costs nothing.
+A run that hits a real ambiguity can ask instead of guessing. The prompt tells it to write the
+question, and only the question, to a file in its own checkout. The manager reads that file and
+holds the task on the question: the row stays on its attempt with no lease, and nothing settles it
+or starts another run until you answer. Nothing is held open while you think about it, and the run
+costs nothing.
 
 You answer through the board's `updateTask`, naming the question `status` lists:
 
@@ -148,14 +148,13 @@ pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
 `status` answers from any session. The board row and the run record are both
 scoped to the user, so a `status` call from a coordinator session that never saw
 the run still returns the harness session id, the checkout, the branch, the last
-outcome and the cost — which is the point of recording them at all.
+outcome and the cost.
 
 The session id on a run record is the session the harness CONFIRMED it was in.
 The harness writes it the moment it names one, every attempt's opening write
 clears it, and the next attempt hands it back to the harness to continue. So an
 attempt whose run never named a session leaves it empty, and the attempt after
-that starts fresh — which is how a session the agent has lost heals itself
-instead of being asked for forever.
+that starts fresh, so a session the agent has lost isn't asked for again on every attempt.
 
 **Retention is a known gap.** Nothing prunes run records, and at user scope they
 outlive every session. Fine while a conductor drives one issue at a time; a
@@ -176,64 +175,62 @@ user. The organization is the one the request was admitted under, so one person
 working in two organizations on one host gets two checkouts and two branches. A run
 whose record already names a branch without `<org>`, because it started before the
 organization was part of the path, keeps that branch and its checkout. Those ids belong to
-whoever issued them — `auth0|abc` and `alice@example.com` are ordinary values — so a
+whoever issued them (`auth0|abc` and `alice@example.com` are ordinary values), so a
 grammar there would reject a valid caller on every attempt and burn the row's retry
 budget on a mismatch no retry can fix. Encoding cannot reject anyone, and it cannot
 map two callers onto one directory.
 
-`<board-collection-id>`, `<issue>` and `<phase>` are identifiers *we* issue, so those
-are validated instead: letters and digits separated by single `-` or `_`. Two things
-the grammar buys, and both were bugs first. It forbids `--`, which is what makes `--`
-a frame no component can forge — otherwise issue `a--b` + phase `c` and issue `a` +
-phase `b--c` derive one directory and one branch. And it forbids dots, because this
-string is a git ref as well as a path: `git check-ref-format` rejects a name ending in
-`.` or `.lock`, so a dot-bearing phase would be accepted here and then fail at every
-checkout creation.
+`<board-collection-id>`, `<issue>` and `<phase>` are identifiers *we* issue, so those are validated
+instead: letters and digits separated by single `-` or `_`. The grammar forbids `--`, which makes
+`--` a frame no component can forge. Otherwise issue `a--b` + phase `c` and issue `a` + phase `b--c`
+derive one directory and one branch. And it forbids dots, because this string is a git ref as well
+as a path: `git check-ref-format` rejects a name ending in `.` or `.lock`, so a dot-bearing phase
+would be accepted here and then fail at every checkout creation.
 
 The rule behind both halves, stated once in `src/workspace.ts`: **a derived identity
 must be injective over its components, and safe for every consumer of the string.**
 
-Derived because the board outlives the session that filed a row — a task woken in a new
+Derived because the board outlives the session that filed a row: a task woken in a new
 coordinator session must resolve the same directory, or the retry silently starts from nothing.
 
 **Namespaced because one job's state is isolated per principal and per epic**, and the
 collections get that from the framework while the filesystem and git get it from nobody. Two
 users, or two epics, driving the same issue-phase on one host would otherwise share a directory
 *and a branch*: the second agent opens a tree holding the first's commits and uncommitted work,
-and a pull request on the shared branch can satisfy the second's completion check — one run
-reporting success on another's work. The run record carries the same discriminators for the same
+and a pull request on the shared branch can satisfy the second's completion check, so one run
+reports success on another's work. The run record carries the same discriminators for the same
 reason.
 
-Provisioning is idempotent and never resets, forces, or discards uncommitted work. Two things
-fail loudly rather than being papered over: a checkout whose branch was deleted underneath, and a
-checkout that is on a *different* branch than expected — a run told it is on one branch while its
-commits land on another is the kind of agreement where every layer is wrong together.
+Provisioning is idempotent and never resets, forces, or discards uncommitted work. It fails
+loudly on a checkout whose branch was deleted underneath, and on a checkout that is on a
+*different* branch than expected, where a run told it is on one branch would commit to another.
 
 ## What it does not do yet
 
 - **One phase per conductor, and a second phase needs its own `epic`.** Spec and review phases are
   not built. The phase surface is three values passed to the manager (a prompt builder, a
-  done-condition, a readable set), so a second phase needs no change to the manager — but a record
-  type or a registry deliberately does not exist yet.
+  done-condition, a readable set), so a second phase needs no change to the manager, but there is
+  no record type or registry for phases yet.
 
-  Until one does, **the board identity is `(tenant, epic)` and the phase is deliberately not part
-  of it.** So two conductors built for two phases of the *same* epic share one board and one task
-  collection: either one's `wake` claims the other's rows, the manager's phase guard refuses them,
-  and the refusal costs a valid task an attempt — `attempts` is incremented inside the claim write,
-  so it is spent before any guard can run. Give the second phase its own `epic` value. The seed
-  error says so, and a test pins both halves.
+  Until there is, **the board identity is `(tenant, epic)` and the phase is not part of it.** So two
+  conductors built for two phases of the *same* epic share one board and one task collection: either
+  one's `wake` claims the other's rows, the manager's phase guard refuses them, and the refusal
+  costs a valid task an attempt: `attempts` is incremented inside the claim write, so it is spent
+  before any guard can run. Give the second phase its own `epic` value. The seed error says so, and
+  a test pins both halves.
 
-  **And give it its own host.** A second conductor registers cleanly — the two carry distinct
-  flow ids — but the engine resolves a flow by kind alone, so the second instance is never the
+  **And give it its own host.** A second conductor registers cleanly (the two carry distinct
+  flow ids), but the engine resolves a flow by kind alone, so the second instance is never the
   one a request reaches. Dispatching by instance id is framework work; until it exists, one
   conductor per host.
 - **No "made progress but is not finished" outcome.** It would have to settle the row either done
-  (dishonest) or waiting on a person (which means something specific: a task held on a question). A run that stalled without asking anything is a failed attempt.
+  (which it isn't) or waiting on a person (which means something specific: a task held on a
+  question). A run that stalled without asking anything is a failed attempt.
 - **Resume is conductor's own, not the task's.** An answered run does continue the session that
-  asked, off the session id on the run record. The typed resume association on the *task* is
-  FIX-1179 / FIX-1246's and is a different thing — nothing here stands in for it.
+  asked, off the session id on the run record. A typed resume association on the *task* is a
+  different thing, and nothing here stands in for it.
 - **One issue at a time is a property of how you seed, not something the board enforces.** The
-  board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
+  board's `concurrency` is set to 1, which bounds how many rows one drain hands off, but a
   hand-off dispatch hands off and returns, releasing the slot long before the run finishes. Two
   seeded issues produce two live runs whatever that setting is; measured, and pinned by a test.
 - **No UI.**
@@ -243,13 +240,13 @@ commits land on another is the kind of agreement where every layer is wrong toge
 **One host, with workspace storage that outlives the process.** A retry inherits the last attempt's
 work because that work is on disk. On a queued multi-host deployment a recovery can land on a
 different worker, where the recorded checkout names nothing and the retry restarts with none of the
-work the retry budget is priced on. Making checkouts portable is not built and is deliberately out
-of scope.
+work the retry budget is priced on. The harness manager can save a run's work across machines
+with a held-work store on a workspace host; the conductor passes a fixed workspace and wires none.
 
 **Use the shutdown budget `conductorFlow` derives for you.** It returns `drainBudgetMs`; pass
 that as `dispatchDrainTimeoutMs` on `createFlowState`. Sizing it by hand goes wrong in both
 directions: the framework default is tuned to a serverless SIGTERM window, far shorter than a
-coding run, and the obvious correction — the run's own deadline — is *also* too small. A worker
+coding run, and the obvious correction, the run's own deadline, is *also* too small. A worker
 waits for the checkout lock, provisions, runs the agent, and then probes for the pull request, and
 the engine carves its cancellation reserve out of this budget rather than adding to it. Set it to
 the agent deadline and a valid run near that deadline is cancelled before it can produce a
@@ -261,7 +258,7 @@ silently.
 ## Two attempts alive at once
 
 A lapsed lease does not terminate the attempt that held it, and the board's own write fence covers
-task settlement only. Two things follow:
+task settlement only. So:
 
 - **A write to the run record is fenced against the live board claim.** An attempt writes only
   while the board's attempt counter still matches the one it was handed and the row is in a status
@@ -276,7 +273,7 @@ task settlement only. Two things follow:
 **A named limit.** The fence closes the ordinary reclaim case. It does not close ABA: a task
 deleted and recreated under the same issue-phase while a displaced worker is still alive resets the
 attempt counter. Closing that would need the task board to pass claim identity through to the
-worker, which it does not — `TaskWorkerInput` carries neither `createdAt` nor `incarnationId`.
+worker: `TaskWorkerInput` carries neither `createdAt` nor `incarnationId`.
 That is framework work and outside this lab.
 
 ## Tests
@@ -285,5 +282,5 @@ That is framework work and outside this lab.
 pnpm --filter @flow-state-dev/conductor test
 ```
 
-The end-to-end check — a real Linear issue, a real model, a real pull request — lives at
+The end-to-end check (a real Linear issue, a real model, a real pull request) lives at
 `goals/conductor/implement-phase-opens-a-pr/`.
