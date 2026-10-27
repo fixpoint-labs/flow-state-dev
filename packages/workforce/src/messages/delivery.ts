@@ -1,32 +1,7 @@
 /**
  * A worker message lands once (FIX-2240): the debt a send owes, the take on
- * the message's row, and the step of the sending session's board pass that
- * sends an owed message again. The shape of a task's ending (FIX-2078) and
- * the take of its notice (FIX-2123), on a message.
- *
- * - **The send** owes its session's pass a wake (`DISPATCH_ENTRY`, due in
- *   `NOTICE_DUE_MS`), puts the id on the session's owed list beside the
- *   sending request's id, writes the row, and dispatches once
- *   (`send-message.ts`). A session whose flow carries no pass (a server-sent
- *   message from a flow without the session kit) sends on that one dispatch
- *   only, and owes nothing.
- * - **The take** is the recipient's: `onMessageReceived` records `takenBy` on
- *   the row in one guarded write while it is `unconfirmed`, by orchestration's
- *   take rule; a copy finding a taker that hasn't ended runs nothing, and one
- *   finding a taker that ended without delivering takes over. The taker lands
- *   the items, then writes `delivered` and `deliveredAs`, then runs the turn.
- *   The row outlives every debt, so a copy at any distance finds it taken.
- * - **The debt** clears only once the row is `delivered`, refused (final), or
- *   owed past the host's debt age (`undeliverable`). An accepted dispatch
- *   clears nothing: an accepted request can still never run.
- * - **The pass's step** ({@link payMessageDebts}) reads each owed id's row:
- *   drops what has landed or ended and been told; ends what is past the age;
- *   re-checks the recipient and sends again what is past its next send, by
- *   orchestration's backoff; and returns when the next one falls due, which
- *   the pass settles its wake at.
- * - **A late failure** is told to the sending session as a line its next turn
- *   reads (D1), and no turn is woken. A refusal on the send's own dispatch is
- *   told by the tool's answer instead.
+ * its row, and the sending session's pass step that sends it again.
+ * The take and the backoff are orchestration's (`decideTake`, `nextResendAt`).
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { dispatchThroughSeam, type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
@@ -174,31 +149,29 @@ export function storedEmitters(ctx: BlockContext) {
   return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
 }
 
-/** What the take came to: the row to land, or why nothing runs. */
-export type MessageTake = { readonly took: true; readonly row: WorkerMessageRow } | { readonly took: false };
-
 /**
  * Take message `id` for the running request, in the recipient's session
  * (FIX-2123's take, on a message): one guarded write of `takenBy` while the
  * row is `unconfirmed`, for the session the row is addressed to. A taker that
  * hasn't ended keeps it; one that ended without delivering is taken over.
+ *
+ * @returns The row to land, or `undefined` when this request runs nothing.
  */
-export async function takeMessage(ctx: BlockContext, id: string): Promise<MessageTake> {
+export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageRow | undefined> {
   const ref = await messageLogOf(ctx).getOptional(id);
   const row = ref?.state;
-  if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return { took: false };
+  if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return undefined;
   const rule = await decideTake(ctx, row.takenBy);
-  if (rule.take === "busy") return { took: false };
+  if (rule.take === "busy") return undefined;
   const own = ctx.request.identity.id;
   const seen = row.takenBy;
-  const taken = await withOutcome(
+  return withOutcome(
     (mutator: (current: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
     (current: WorkerMessageRow) => {
       if (current.status !== "unconfirmed" || current.takenBy !== seen) return { state: current, result: undefined };
       return { state: { ...current, takenBy: own }, result: { ...current, takenBy: own } };
     }
   );
-  return taken === undefined ? { took: false } : { took: true, row: taken };
 }
 
 /**
@@ -220,30 +193,16 @@ export async function markDelivered(ctx: BlockContext, id: string): Promise<bool
 }
 
 /**
- * The recipient check a resend runs again: why the message can't go to its
- * recipient now, or `undefined` when it can. The send's own check, without
- * the budget, which the row paid once.
- */
-export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageRow) => Promise<string | undefined>;
-
-/**
- * The pass's message step: pay what the running session owes for the
- * messages it sent. For each owed id, read its row:
+ * Pay what the running session owes for the messages it sent.
  *
- * - no row, and the sending request has ended: the send died before the row,
- *   so the id goes; a send still running keeps its pointer;
- * - `delivered`, or ended and told: the id goes;
- * - ended and not yet told: D1's line, then `toldAt`, then the id goes;
- * - owed past the host's debt age, counted from the send, and never taken:
- *   `undeliverable`, D1's line, the id goes. A taken one is never ended for
- *   its age (its taker may hold it while it waits on the user), unless its recipient is gone;
- * - past its next send (orchestration's backoff): the recipient check again,
- *   then the same dispatch as the first, and `resent` recorded. A failed
- *   check or a final refusal ends it `refused`, told.
- *
+ * @param recheck Why the message can't go to its recipient now, or `undefined`
+ *   when it can. The send's check, without the budget the row paid once.
  * @returns When the next owed message falls due, or `undefined` when none is owed.
  */
-export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipient): Promise<number | undefined> {
+export async function payMessageDebts(
+  ctx: BlockContext,
+  recheck: (ctx: BlockContext, row: WorkerMessageRow) => Promise<string | undefined>
+): Promise<number | undefined> {
   const owed = owedOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
@@ -292,11 +251,9 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
       continue;
     }
     const refusal = await recheck(ctx, ref.state);
-    // A recipient gone for good ends even a taken message once it is past
-    // the age: nothing can deliver it, and it would be sent again forever.
-    if (refusal !== undefined && pastAge && (await close(ref, entry.id, "refused", refusal, true))) continue;
+    // Past the age, a recipient that is gone ends even a taken message, or it is sent again forever.
     if (refusal !== undefined) {
-      if (await close(ref, entry.id, "refused", refusal)) continue;
+      if (await close(ref, entry.id, "refused", refusal, pastAge)) continue;
     } else {
       let outcome: DispatchOutcome | undefined;
       try {

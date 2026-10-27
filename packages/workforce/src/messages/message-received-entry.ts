@@ -162,9 +162,8 @@ export function messageReceivedEntry(options: {
     execute: async (input, ctx): Promise<Heard> => {
       // Delivered here, and only here (the row says which session it is
       // for), and only by the request that took it.
-      const taken = await takeMessage(ctx as never, input.messageId);
-      if (!taken.took) return { act: "none" };
-      const row = taken.row;
+      const row = await takeMessage(ctx as never, input.messageId);
+      if (row === undefined) return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
       const { hopLimit } = messageLimitsOf(options.installation);
       const received: MessageReceived = {
