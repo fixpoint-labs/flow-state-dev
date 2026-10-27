@@ -361,6 +361,9 @@ the flow is wired up.
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
+- `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
+- `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`
+- `steerRunningTurn(client, { flowKind, sessionId, prompt, action? })` — Send the flow's steer action on its own, so a session hook's stream stays on the running turn, and read its `{ taken, live }` answer
 - `ClientHttpError` — Every failure. `status` is the server's answer, or `0` when the client refused before sending (a missing argument, a request with no session to continue)
 
 ### Resources

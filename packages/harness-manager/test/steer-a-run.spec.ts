@@ -50,7 +50,34 @@ afterAll(() => {
  * finish at once, work 1.5 s and finish without ever confirming a session, or
  * work just past one steer poll and finish, or fail at once.
  */
-type Step = "until-stopped" | "finish-later" | "finished" | "no-session-later" | "finish-past-a-poll" | "throws";
+type Step =
+  | "until-stopped"
+  | "finish-later"
+  | "finished"
+  | "no-session-later"
+  | "finish-past-a-poll"
+  | "throws"
+  | "steerable"
+  | "ends-while-taking";
+
+/**
+ * How a `steerable` step's run answers each line handed to it live, in order
+ * (FIX-2254): took it, refused it, or never answered before it was stopped.
+ */
+type LiveAnswer = "delivered" | "refused" | "never";
+
+/** A `steerable` step's live steer: what it was handed, and how it answers. */
+interface Live {
+  answers: LiveAnswer[];
+  /** How many lines the step works until it has been handed. */
+  lines: number;
+  handed: string[];
+  /**
+   * For `ends-while-taking`: resolves once a live take has written the row
+   * and is still on its way back, the moment that step withdraws and ends.
+   */
+  takeWritten?: Promise<void>;
+}
 
 interface SeenStep {
   prompt: string;
@@ -62,7 +89,13 @@ interface SeenStep {
   locked: boolean;
 }
 
-function stubHarness(script: Step[], seen: SeenStep[], started: () => void, whenStopped: Array<() => Promise<void>> = []) {
+function stubHarness(
+  script: Step[],
+  seen: SeenStep[],
+  started: () => void,
+  whenStopped: Array<() => Promise<void>> = [],
+  live: Live = { answers: [], lines: 1, handed: [] },
+) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
       name: "stub-harness",
@@ -106,6 +139,35 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void, when
           await whenStopped.shift()?.();
           throw new DOMException("Aborted", "AbortError");
         }
+        if (step === "steerable") {
+          // Offers a live steer and works until it has been handed its lines,
+          // then finishes, withdrawing the offer first, as a harness does.
+          const signal = (ctx as { signal: AbortSignal }).signal;
+          let reached = () => {};
+          const enough = new Promise<void>((resolve) => (reached = resolve));
+          feeds.onSteerable?.((text) => {
+            live.handed.push(text);
+            if (live.handed.length >= live.lines) reached();
+            const answer = live.answers.shift() ?? "delivered";
+            return answer === "never" ? new Promise(() => {}) : Promise.resolve(answer);
+          }, ctx as never);
+          const stopped = new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+          await Promise.race([enough, stopped, new Promise((resolve) => setTimeout(resolve, 8_000))]);
+          // A moment for a refusal's stop to land, as a turn that is still running would.
+          await Promise.race([stopped, new Promise((resolve) => setTimeout(resolve, 300))]);
+          feeds.onSteerable?.(null, ctx as never);
+          if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        }
+        if (step === "ends-while-taking") {
+          // Offers a live steer, then ends the moment a take of it has written
+          // the row, before that take is back to hand the line over.
+          feeds.onSteerable?.((text) => {
+            live.handed.push(text);
+            return Promise.resolve("delivered");
+          }, ctx as never);
+          await live.takeWritten;
+          feeds.onSteerable?.(null, ctx as never);
+        }
         if (step === "finish-later") await new Promise((resolve) => setTimeout(resolve, 400));
         if (step === "finish-past-a-poll") await new Promise((resolve) => setTimeout(resolve, STEER_POLL_MS + 150));
         if (step === "no-session-later") {
@@ -122,7 +184,7 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void, when
     }) as unknown as HarnessBlock;
 }
 
-function host(options: { script: Step[]; stopsOnAbort: boolean }) {
+function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live, "handed"> }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-steer-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -131,6 +193,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
   const seen: SeenStep[] = [];
+  const live: Live = { answers: [], lines: 1, ...options.live, handed: [] };
   const starts: Array<() => void> = [];
   const started = () => starts.shift()?.();
   const stepStarted = () => new Promise<void>((resolve) => starts.push(resolve));
@@ -153,7 +216,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     stopsOnAbort: options.stopsOnAbort,
-    harness: stubHarness(options.script, seen, started, whenStopped),
+    harness: stubHarness(options.script, seen, started, whenStopped, live),
   });
   const board = taskBoard({
     name: "steer-board",
@@ -289,7 +352,20 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
     const stored = await stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`);
     await stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, { ...stored.state, attempts: stored.state.attempts + 1 }, stored.version);
   };
-  return { act, row, until, runtime, steerPastTheCap, seen, stepStarted, duringVerdict, whenStopped, claimedAgain, dispose: () => state.dispose() };
+  return {
+    act,
+    row,
+    until,
+    runtime,
+    steerPastTheCap,
+    seen,
+    live,
+    stepStarted,
+    duringVerdict,
+    whenStopped,
+    claimedAgain,
+    dispose: () => state.dispose(),
+  };
 }
 
 describe("a steer reaches a coding run", () => {
@@ -475,6 +551,173 @@ describe("a steer reaches a coding run", () => {
 
       expect(h.seen).toHaveLength(1);
       expect(h.seen[0]!.prompt).toContain("Keep the old flag.");
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+});
+
+describe("a steer reaches a run that takes it live (FIX-2254)", () => {
+  it.each([false, true])(
+    "hands the steer into the running turn: one step, no stop, attempt 1, taken once (stopsOnAbort %s)",
+    async (stopsOnAbort) => {
+      const h = host({ script: ["steerable"], stopsOnAbort, live: { answers: ["delivered"], lines: 1 } });
+      try {
+        await h.act("seed");
+        const first = h.stepStarted();
+        await h.act("drain");
+        await first;
+
+        await h.act("steer", { message: "Use the v2 API instead." });
+        const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+        expect(h.live.handed).toHaveLength(1);
+        expect(h.live.handed[0]).toContain("Use the v2 API instead.");
+        // No second step: the turn in flight took the line.
+        expect(h.seen).toHaveLength(1);
+        expect(h.seen[0]!.prompt).not.toContain("Use the v2 API instead.");
+        expect(done).toMatchObject({ attempts: 1 });
+        expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1, takenIn: expect.stringMatching(/^live:/) })]);
+      } finally {
+        await h.dispose();
+      }
+    },
+    60_000,
+  );
+
+  it("sends a line the run refused to the next step, once, with the same words", async () => {
+    const h = host({ script: ["steerable", "finished"], stopsOnAbort: false, live: { answers: ["refused"], lines: 1 } });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Add a changelog line." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      expect(h.live.handed).toHaveLength(1);
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]).toMatchObject({ resume: "sess_1", request: h.seen[0]!.request });
+      expect(h.seen[1]!.prompt).toContain("Add a changelog line.");
+      expect(h.seen[1]!.prompt.split("Add a changelog line.")).toHaveLength(2);
+      expect(done).toMatchObject({ attempts: 1 });
+      expect(done.steers).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("carries a line whose live take was still writing when the step ended to the next step", async () => {
+    let written = () => {};
+    const takeWritten = new Promise<void>((resolve) => (written = resolve));
+    const h = host({ script: ["ends-while-taking", "finished"], stopsOnAbort: false, live: { answers: [], lines: 1, takeWritten } });
+    try {
+      // A live take's write lands, then holds a moment before it returns:
+      // the step ends inside that moment.
+      const stores = (await h.runtime()).stores;
+      const set = stores.resourceState.set.bind(stores.resourceState);
+      let held = false;
+      stores.resourceState.set = async (...args: any[]) => {
+        const result = await set(...args);
+        const steers = (args[3] as { steers?: Array<{ takenIn?: string }> } | undefined)?.steers ?? [];
+        if (!held && steers.some((steer) => steer.takenIn?.startsWith("live:"))) {
+          held = true;
+          written();
+          // Longer than the verdict takes, so the settle's own check can't pick the line up either.
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+        return result;
+      };
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Keep the old flag as an alias." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      // Never handed to the ended turn: the next step took it in its prompt.
+      expect(h.live.handed).toHaveLength(0);
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("Keep the old flag as an alias.");
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("hands a later step's line live alone, never again with a line an earlier step took", async () => {
+    // The first step refuses A, so the second carries it in its prompt. B,
+    // sent live to the second step, is handed on its own.
+    const h = host({ script: ["steerable", "steerable"], stopsOnAbort: false, live: { answers: ["refused", "delivered"], lines: 2 } });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      const second = h.stepStarted();
+      await h.act("steer", { message: "A: rename the flag." });
+      await second;
+      expect(h.seen[1]!.prompt).toContain("A: rename the flag.");
+      await h.act("steer", { message: "B: update the docs." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 20_000 + STEER_POLL_MS);
+
+      expect(h.live.handed).toHaveLength(2);
+      expect(h.live.handed[1]).toContain("B: update the docs.");
+      expect(h.live.handed[1]).not.toContain("A: rename the flag.");
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("stops the step for a refused line on a harness that stops on abort, and the next step carries it", async () => {
+    const h = host({ script: ["steerable", "finished"], stopsOnAbort: true, live: { answers: ["refused"], lines: 2 } });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Use the v2 API instead." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      // Handed live first: the stop follows the refusal, not the steer.
+      expect(h.live.handed).toHaveLength(1);
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("Use the v2 API instead.");
+      expect(h.seen[1]!.prompt).toContain("stopped");
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("carries a line still waiting on its answer when the step is stopped, noting the run may already hold it", async () => {
+    // The first line is never answered; the second is refused, which stops
+    // the step. Neither may be dropped.
+    const h = host({ script: ["steerable", "finished"], stopsOnAbort: true, live: { answers: ["never", "refused"], lines: 2 } });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "First: rename the flag." });
+      await h.until((t) => t.steers?.[0]?.takenBy === 1, "the first line to be taken", 10_000);
+      await h.act("steer", { message: "Second: update the docs." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 15_000 + STEER_POLL_MS);
+
+      expect(h.live.handed).toHaveLength(2);
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("First: rename the flag.");
+      expect(h.seen[1]!.prompt).toContain("Second: update the docs.");
+      // In the order they were sent, though the second was answered first: a later line can correct an earlier one.
+      expect(h.seen[1]!.prompt.indexOf("First: rename the flag.")).toBeLessThan(h.seen[1]!.prompt.indexOf("Second: update the docs."));
+      expect(h.seen[1]!.prompt).toContain("may already hold");
       expect(done).toMatchObject({ attempts: 1 });
     } finally {
       await h.dispose();

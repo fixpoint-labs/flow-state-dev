@@ -1502,6 +1502,10 @@ async function runActionAttempt<
       // another organization — would overwrite latestRequestId (an
       // auto-resume hijack) even though the run then fails.
       //
+      // An entry declared `autoResume: false` never stamps it either: it is a
+      // control sent beside a running request, which a reattaching client must
+      // still find.
+      //
       // A delivery into an EXISTING session does not stamp `latestRequestId` at
       // all. That field serves auto-resume discovery — a client attaching to a
       // session finds the newest request and attaches its stream — and a
@@ -1516,6 +1520,7 @@ async function runActionAttempt<
       // this request's to move. A session that arrived after admission found
       // none is judged here as admission would have judged it.
       if (
+        action.autoResume !== false &&
         stamp?.recipientLineageId === undefined &&
         session !== undefined &&
         (admittedSession === undefined || isSameSession(admittedSession, session)) &&

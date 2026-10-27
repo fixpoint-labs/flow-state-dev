@@ -28,6 +28,8 @@
  */
 import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 
+import { scriptedReceived } from "./scripted-received";
+
 /**
  * The script's pauses, in milliseconds: between steps, and the long one a
  * `[slow]` or `[slow-start]` turn takes, long enough to press stop. Unit tests
@@ -83,6 +85,7 @@ async function* scriptedTurn(
   const has = (directive: string) => prompt.includes(`[${directive}]`);
   const asked = options?.resume;
   const step = scriptedPauses.stepMs;
+  scriptedReceived.push(prompt);
 
   if (has("fail-early")) throw new Error("scripted failure before Claude Code named a conversation");
   if (has("slow-start")) await pause(scriptedPauses.slowMs, signal);

@@ -624,4 +624,7 @@ export type {
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";
 export type { HarnessEnvOptions } from "./helpers/harness-env";
+/** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
+export { harnessSteering } from "./helpers/harness-steering";
+export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "./helpers/harness-steering";
 export { formatRunDuration } from "./helpers/run-duration";

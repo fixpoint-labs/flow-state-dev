@@ -168,6 +168,8 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     cwd: (ctx) => stateOf(ctx as never).cwd ?? "",
     resume: (ctx) => stateOf(ctx as never).resume,
     onSession: () => undefined,
+    // A talk is one turn the person waits on: a line while it runs is its own talk.
+    onSteerable: () => undefined,
     // The person talking is the principal, so the window lands in their row.
     onUsage: async (report, ctx) => {
       await recordHarnessUsage(ctx, report);

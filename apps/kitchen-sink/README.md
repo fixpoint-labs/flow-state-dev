@@ -252,6 +252,8 @@ Its commands start with only the environment variables Kitchen Sink passes it, n
 
 **Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A run Cursor reports as errored shows as an error, and the next turn still continues the same agent. It never quietly starts a new agent; start a new session for that.
 
+**Sending a line while it works.** Type while a turn is running and the line joins that turn: Cursor takes it in and carries on, and the line shows under the turn as taken into the running turn. If Cursor turns it away, the line runs as the next turn instead, and says so. The flow's `steer` action is what does this, beside `turn`. The other harness modes queue the line as the next turn.
+
 **The plan panel** shows Cursor's to-do list for the session's latest turn, as Cursor last confirmed it, read-only. Each row is a mark and the item's title beside it; a long title wraps under the mark. An open circle is to do, a spinning ring is in progress, and a check is done, with the title struck through and muted. A row with no status reads as to do, and a status the panel doesn't recognise appears next to the title in Cursor's own word. Each mark's accessible label is its stage in words: "To do", "In progress", "Done". A turn where Cursor kept no list says "No plan recorded for this turn"; one where Cursor emptied its list says the turn's plan is empty. If the list couldn't be saved in full, the panel says the plan may be incomplete. When Cursor reorders its list, the rows follow their places, not the items. Nothing in the panel starts work.
 
 ## Flows

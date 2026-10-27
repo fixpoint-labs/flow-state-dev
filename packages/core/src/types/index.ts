@@ -479,6 +479,8 @@ export type {
   HarnessRunUsage,
   HarnessSessionHook,
   HarnessSource,
+  HarnessSteer,
+  HarnessSteerHook,
   HarnessUsageHook,
   HarnessUsageLevel,
   HarnessUsageReader,
