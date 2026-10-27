@@ -9,7 +9,7 @@
 | **builds a host that runs Cursor in the cloud** | Can't. Cursor runs only on the host, in a checkout the host made, and a `cloud` option is refused | Sets `runtime: "cloud"` and a `repository` resolver. The run goes to Cursor's VM against that repository. The host starts no Cursor runtime and makes no checkout |
 | **reads what a cloud run did** | n/a | The run's result names the branch Cursor pushed and, when the host asked for one, the pull request ([D1](DECISIONS.md#d1)) |
 | **opens Kitchen Sink's Cursor mode with a repository configured** | Local runs only | Picks *Local* or *Cloud* when the session starts. A cloud turn ends with links to its branch and pull request |
-| **sends a second turn to a cloud session** | n/a | It continues the same Cursor agent, as a local session does. There is no live steer on a cloud run: Cursor refuses it, so FIX-2254's steer is for local runs only |
+| **sends a second turn to a cloud session** | n/a | It continues the same Cursor agent, as a local session does, in the cloud: a conversation keeps the runtime it started on ([D3](DECISIONS.md#d3)). There is no live steer on a cloud run: Cursor refuses it, so FIX-2254's steer is for local runs only |
 | **wants a Workforce coding worker to run in the cloud** | n/a | Not yet. The harness manager learns cloud runs with the worker route, in FIX-2257 ([D2](DECISIONS.md#d2)) |
 | **runs Cursor locally, as today** | A checkout, the `env` fence, the local agent store | Unchanged. The result's new field is `null` |
 
@@ -44,7 +44,7 @@ The check reads the remote, never only the result's claim about it.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/cursor-harness/a-cloud-run-pushes-its-work/` · real Cursor (`composer-2.5`) · needs `CURSOR_API_KEY` on a Cursor plan that includes cloud agents, and a test repository with Cursor's GitHub App installed (`goal.md` names both) · run by the implementer at completion if those are at hand, otherwise handed to Jake with the command in `goal.md` · verdict in the implementation PR |
-| **Signal** | a: the result's `source` is `cursor/cloud` and `branches` has one entry for the test repository; `git ls-remote` finds that branch, and its head holds `notes/<token>.md` with the token. The real client, wrapped, records that `create` got a `cloud` bag and no `local` bag, and the run's temporary `HOME` holds no Cursor local agent store. a2: a second turn on the same agent ends with its change on a branch the result names (and records whether it is the same branch). b: with `autoCreatePR`, `pullRequestUrl` is an open pull request whose head is that branch. d: a deadline mid-run ends the turn with the abort error, and Cursor reports the run cancelled. l: a local run's result has `branches: null`, and `keeps-the-servers-environment-from-its-commands` still passes |
+| **Signal** | a: the result's `source` is `cursor/cloud` and `branches` has one entry for the test repository; `git ls-remote` finds that branch, and its head holds `notes/<token>.md` with the token. The real client, wrapped, records that `create` got a `cloud` bag and no `local` bag, and the run's temporary `HOME` holds no Cursor local agent store. a2: a second turn on the same agent ends with its change on a branch the result names (and records whether it is the same branch); the same resume with a resolver now answering `"local"` is refused before anything is created. b: with `autoCreatePR`, `pullRequestUrl` is an open pull request whose head is that branch. d: a deadline mid-run ends the turn with the abort error, and Cursor reports the run cancelled. l: a local run's result has `branches: null`, and `keeps-the-servers-environment-from-its-commands` still passes |
 | **Input** | A fresh random token per run, so no answer is known ahead. Any file path or prompt that makes a change passes the same way |
 | **Anti-game** | Read the remote with `git ls-remote` and the GitHub API, never the result's fields alone. Legs a, a2, b and d use the real SDK, never a scripted client |
 | **Control that must fail** | `GOAL_CONTROL=fake-branch` (the result's branch name is replaced with one the remote doesn't have) fails leg a on *`git ls-remote` finds that branch*. `GOAL_CONTROL=ignore-runtime` (the block runs local) fails leg a on *`create` got a `cloud` bag*. Today's `main` refuses to build the block with a cloud bag |
@@ -60,7 +60,7 @@ Read across the two rows: only where the run works changes; what comes back is t
 ```diff
   cursorAgent({
 -   cwd: (ctx) => checkoutFor(ctx),
-+   runtime: "cloud",                                   // or a resolver, per session
++   runtime: "cloud",                                   // or a resolver; fixed once a conversation starts
 +   repository: (ctx) => ({ url: projectRemote(ctx), startingRef: "main" }),  // never the prompt
 +   cloud: { autoCreatePR: true },                      // Cursor's cloud options, minus `repos`
     resume, onSession, model,
@@ -148,7 +148,7 @@ cloud refusal goes. If wrong: every harness carries a field only Cursor fills.
 2. **[D2](DECISIONS.md#d2) · v1 follows a cloud run to its end and returns its branch or PR; the
    harness manager learns cloud runs with the worker route (FIX-2257).** If wrong: Workforce
    workers wait one more issue for the cloud.
-3. **[D3](DECISIONS.md#d3) · Local or cloud is the host's call, never the filer's or a model's.**
+3. **[D3](DECISIONS.md#d3) · Local or cloud is the host's call, picked once per conversation, never the filer's or a model's.**
    If wrong: someone who wants one cloud run needs a host or worker set for it.
 
 **Open: none.** D2 is the one to weigh: it is where this issue stops.
