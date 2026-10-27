@@ -15,14 +15,18 @@ import { claudeCodeAgent } from "../../src/sdk/agent";
 import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
 
 /** A scripted query that also answers `accountInfo()`, as the SDK's handle does. */
-function scripted(messages: SdkMessageLike[], account: Record<string, unknown>, opts: { throwAfter?: boolean } = {}): ResolveClaudeAgent {
+function scripted(
+  messages: SdkMessageLike[],
+  account: Record<string, unknown> | (() => Promise<Record<string, unknown>>),
+  opts: { throwAfter?: boolean } = {},
+): ResolveClaudeAgent {
   return () => ({
     query: () => {
       const iterate = async function* () {
         for (const m of messages) yield m;
         if (opts.throwAfter === true) throw new Error("the CLI exited with code 1");
       };
-      return Object.assign(iterate(), { accountInfo: async () => account });
+      return Object.assign(iterate(), { accountInfo: typeof account === "function" ? account : async () => account });
     },
   }) as never;
 }
@@ -88,5 +92,55 @@ describe("claudeCodeAgent reports its run's spend", () => {
 
     expect(outcome).toBe("threw");
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: null, outputTokens: null, costUsd: null, billing: null }]);
+  });
+
+  it("counts the whole query's tokens, cached input and sub-agents included, from modelUsage", async () => {
+    // `usage` is the main agent loop only and leaves cache tokens out; a
+    // worker's total read from it would miss most of a cached run's input.
+    const result: SdkMessageLike = {
+      ...RESULT,
+      usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 },
+      modelUsage: {
+        "claude-opus-4-7": { inputTokens: 10, outputTokens: 200, cacheReadInputTokens: 5000, cacheCreationInputTokens: 300 },
+        "claude-haiku-4-5": { inputTokens: 40, outputTokens: 60, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+      },
+    };
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([result], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 5350, outputTokens: 260, costUsd: 0.42, billing: "api-key" }]);
+  });
+
+  it("counts cached input from usage when the result carries no modelUsage", async () => {
+    const result: SdkMessageLike = { ...RESULT, usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 } };
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([result], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 5310, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
+  });
+
+  it("takes the billing from a retried account lookup when the first one failed", async () => {
+    // The first lookup fails; the next usage window asks again and that answer is
+    // the only one that says how the run is billed. Without it the run's
+    // cost would be dropped as if its billing were unknown.
+    let asked = 0;
+    const account = async () => {
+      asked += 1;
+      if (asked === 1) throw new Error("not ready");
+      return { apiKeySource: "none", email: "me@example.test", subscriptionType: "max" };
+    };
+    const window: SdkMessageLike = {
+      type: "rate_limit_event",
+      session_id: "sess_1",
+      rate_limit_info: { status: "allowed", rateLimitType: "five_hour", resetsAt: 1_900_000_000 },
+    };
+    const block = claudeCodeAgent({ resolveClaudeAgent: scripted([window, window, RESULT], account), detached: true, onUsage: () => undefined });
+
+    const { reported } = await runReporting(block);
+
+    expect(asked).toBe(2);
+    expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "subscription" }]);
   });
 });

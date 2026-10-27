@@ -1022,6 +1022,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
        */
       let announcedSessionId: string | null = null;
       let usage: SdkAgentHandle["usage"] = null;
+      let spentTokens: SdkAgentHandle["usage"] = null;
       let costUsd: number | null = null;
       // The loop's currently-awaited item write, if any — tracked so the
       // abort branch can wait for OUR OWN write to settle (never the vendor
@@ -1110,13 +1111,16 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             });
             // One `accountInfo()` answers both how the run is billed and, for
             // usage windows, whose account it is. A failed lookup is asked
-            // again on the next window, never read as a different account.
-            let accountLookup: Promise<AccountInfo | undefined> | undefined = accountInfoOf(running);
+            // again on the next window, never read as a different account,
+            // and whichever lookup answers first says how the run is billed.
             const billing: { value: HarnessBilling | null } = { value: null };
             runBilling = billing;
-            void accountLookup.then((info) => {
-              billing.value = billingFrom(info);
-            });
+            const lookUpAccount = () =>
+              accountInfoOf(running).then((info) => {
+                if (info !== undefined && billing.value === null) billing.value = billingFrom(info);
+                return info;
+              });
+            let accountLookup: Promise<AccountInfo | undefined> | undefined = lookUpAccount();
             for await (const message of running) {
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
@@ -1176,7 +1180,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 const window = usageWindowOf(message.rate_limit_info);
                 if (window !== null) {
                   const observedAt = Date.now();
-                  runAccount ??= (accountLookup ??= accountInfoOf(running)).then(emailFrom);
+                  runAccount ??= (accountLookup ??= lookUpAccount()).then(emailFrom);
                   inFlightRef.current = runAccount
                     .then((accountId) => {
                       // Whose window this is isn't known: drop it rather than guess, and ask again on the next event.
@@ -1246,6 +1250,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   if (event.finalMessage !== null)
                     finalMessage = event.finalMessage;
                   if (event.usage !== null) usage = event.usage;
+                  if (event.spentTokens !== null) spentTokens = event.spentTokens;
                   if (event.costUsd !== null) costUsd = event.costUsd;
                 }
               }
@@ -1416,7 +1421,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // run with nothing counted.
         if (runBilling !== undefined) {
           // Set inside the stream's callbacks, which narrowing can't see.
-          const spent = usage as SdkAgentHandle["usage"];
+          const spent = spentTokens as SdkAgentHandle["usage"];
           reportHarnessSpend(ctx, {
             harness: CLAUDE_CODE_HARNESS,
             inputTokens: spent?.inputTokens ?? null,

@@ -333,6 +333,7 @@ describe("translateSdkMessage", () => {
         finalMessage: "all done",
         sessionId: "sess_42",
         usage: { inputTokens: 100, outputTokens: 20 },
+        spentTokens: { inputTokens: 100, outputTokens: 20 },
         costUsd: 0.05,
       },
     ]);
@@ -357,6 +358,7 @@ describe("translateSdkMessage", () => {
         finalMessage: "hit the turn limit; and another detail",
         sessionId: "sess_7",
         usage: null,
+        spentTokens: null,
         costUsd: null,
       },
     ]);
@@ -407,6 +409,7 @@ describe("translateSdkMessage", () => {
         finalMessage: "API Error: 401 invalid x-api-key",
         sessionId: "sess_e",
         usage: null,
+        spentTokens: null,
         costUsd: null,
       },
     ]);
