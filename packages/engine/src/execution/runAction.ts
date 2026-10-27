@@ -2440,8 +2440,11 @@ async function runActionAttempt<
           });
         }
 
+        // What it spent so far goes with it, so a resume's token budget
+        // counts this run too (FIX-2145).
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
-          items: itemsToPersist()
+          items: itemsToPersist(),
+          spentByModel: ctx.request.tokenUsage.byModel
         });
         ctx.requestRuntime.status = "suspended";
         await response.emitRequestStatus("suspended");

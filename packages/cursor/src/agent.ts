@@ -480,12 +480,14 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         throw failure;
       } finally {
         // What the run spent, into the request, however it ended (FIX-2145):
-        // tokens only. Cursor's cost is an estimate and its billing unknown.
+        // tokens only, cached prompt tokens counted as input. Cursor's cost is
+        // an estimate and its billing unknown.
         if (spent !== undefined) {
+          const usage = spent.usage;
           reportHarnessSpend(ctx, {
             harness: CURSOR_HARNESS,
-            inputTokens: spent.usage?.inputTokens ?? null,
-            outputTokens: spent.usage?.outputTokens ?? null,
+            inputTokens: usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens : null,
+            outputTokens: usage?.outputTokens ?? null,
             costUsd: null,
             billing: null,
           });

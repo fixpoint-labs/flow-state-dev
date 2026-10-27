@@ -238,4 +238,58 @@ describe("request spend ledger", () => {
       ["completed", 3]
     ]);
   });
+
+  it("keeps counting a resumed request's token budget from what it spent before it suspended", async () => {
+    // The ledger is built per run, and a resume does not call the model again
+    // for the steps before the gate: without the carried count, a request
+    // that spent 8 + 3 under a budget of 10 would read 3 and pass.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    const gate = handler({
+      name: "approve",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Go?" });
+        return { ok: true };
+      }
+    });
+    const model = stepModel([
+      () => ({ toolCalls: [{ toolCallId: "c1", toolName: "approve", args: {} }], finishReason: "tool-calls", usage: usage4x4 }),
+      () => ({ text: "done", finishReason: "stop", usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 } })
+    ]);
+    const flow = defineFlow({
+      kind: "spend-suspend-budget",
+      session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "seq", durable: true }).step(generator({ name: "agent", model, prompt: "p", tools: [gate] })),
+          tokenBudget: { maxTotalTokens: 10, onExceeded: "error" }
+        }
+      }
+    })({ id: "spend-suspend-budget" });
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+
+    const initial = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+    const [suspension] = (await provider.listSuspended({ status: "pending" })) as SuspensionRecord[];
+    await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now(), resumeData: {} });
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({
+      requestId: initial.requestId!,
+      stores,
+      flowRegistry: registry,
+      resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", data: {}, resumedBy: "reviewer" },
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    expect((await finished).error?.message).toBe("Token budget exceeded: consumed 11 > 10");
+    // Each ending is still handed only what its own run spent.
+    expect(endings.map((ending) => [ending.status, ending.spend.byModel["step-model"]?.total])).toEqual([
+      ["suspended", 8],
+      ["failed", 3]
+    ]);
+  });
 });

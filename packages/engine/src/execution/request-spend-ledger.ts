@@ -42,11 +42,16 @@ export interface RequestSpendLedger {
   takeSinceLastEnding(): RequestSpend;
 }
 
-/** Build one request's ledger. */
-export function createRequestSpendLedger(): RequestSpendLedger {
-  const byModel: Record<string, ModelUsageEntry> = Object.create(null);
+/**
+ * Build one request's ledger. `carried` is what the request spent before a
+ * suspension it resumes from: counted in {@link RequestSpendLedger.total}, and
+ * already handed on, so {@link RequestSpendLedger.takeSinceLastEnding} never
+ * hands it on again.
+ */
+export function createRequestSpendLedger(carried: Readonly<Record<string, ModelUsageEntry>> = {}): RequestSpendLedger {
+  const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   const harnessRuns: HarnessRunSpend[] = [];
-  let takenByModel: Record<string, ModelUsageEntry> = Object.create(null);
+  let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let takenRuns = 0;
 
   return {

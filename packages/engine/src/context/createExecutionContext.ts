@@ -3002,8 +3002,9 @@ export async function createExecutionContext<
   // request executor runs after its last drain.
   // Per-request spend ledger (FIX-2145): every model result and every settled
   // harness run, counted once. The request-end registry hands each ending
-  // what the ledger counted since the last one.
-  const requestSpendLedger = createRequestSpendLedger();
+  // what the ledger counted since the last one. A resumed request starts from
+  // what it spent before it suspended, so its token budget counts both runs.
+  const requestSpendLedger = createRequestSpendLedger(requestRecord.spentByModel);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.

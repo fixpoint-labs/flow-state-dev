@@ -90,4 +90,22 @@ describe("cursorAgent reports its run's spend", () => {
     expect(outcome).toBe("threw");
     expect(reported).toEqual([{ harness: "cursor", inputTokens: null, outputTokens: null, costUsd: null, billing: null }]);
   });
+
+  it("counts cached prompt tokens as input", async () => {
+    // Cursor counts cache reads and writes apart from input; a worker's total
+    // read without them would miss most of a cached run's prompt.
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: scripted(
+        async function* () {
+          yield TURN_USAGE;
+        },
+        async () => ({ status: "finished", usage: { inputTokens: 100, outputTokens: 200, cacheReadTokens: 10_000, cacheWriteTokens: 50 } }),
+      ),
+    });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported).toEqual([{ harness: "cursor", inputTokens: 10_150, outputTokens: 200, costUsd: null, billing: null }]);
+  });
 });

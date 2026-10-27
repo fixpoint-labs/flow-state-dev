@@ -129,7 +129,7 @@ Each key in `actions` is a public name. Clients call it with `sendAction("chat",
 
 ### Token budgets
 
-A request counts every model result its generators and evaluators report: each step of a tool loop as it finishes, an evaluator a generator calls as a tool, and a schema-repair call. The count is `ctx.request.tokenUsage` (`totalConsumed`, plus `byModel`).
+A request counts every model result its generators and evaluators report: each step of a tool loop as it finishes, an evaluator a generator calls as a tool, and a schema-repair call. The count is `ctx.request.tokenUsage` (`totalConsumed`, plus `byModel`). A request that suspends and resumes keeps one count: the calls made before it suspended still count after it resumes.
 
 `tokenBudget` checks that count once, after the action's block returns. It doesn't cut work short: a request can go past its budget mid-run.
 
