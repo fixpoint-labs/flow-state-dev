@@ -12,7 +12,7 @@
  * tool in the run completed was an attempt, not an error: it reads "Tried
  * openWorkstream", and the run doesn't read as failed for it.
  *
- * A `messageWorker` call is talk, not background: it is its own line, *To
+ * A `sendMessage` call is talk, not background: it is its own line, *To
  * <recipient>: <text>*, with a link to Messages, and a refused one says it
  * wasn't sent and why (FIX-1989).
  *
@@ -27,7 +27,7 @@ import type { ItemRenderSegment, RendererRegistry } from "@flow-state-dev/react"
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { COORDINATOR_ROUTE, MESSAGE_WORKER_TOOL } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_ROUTE, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
 import { navigate } from "../lib/routes";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
@@ -131,7 +131,7 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
 }
 
 function isMessageCall(item: ToolOutputItem): boolean {
-  return item.toolCall?.name === MESSAGE_WORKER_TOOL;
+  return item.toolCall?.name === SEND_MESSAGE_TOOL;
 }
 
 function MessageCallLine({ item }: { item: ToolOutputItem }) {

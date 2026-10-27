@@ -51,7 +51,7 @@ const sweepJson = (): Swept => JSON.parse(spawnSync(process.execPath, [join(HERE
 let swept: Swept | undefined;
 const allowedTools = () => new Set((swept ??= sweepJson()).allowed);
 /** The tools a Lab worker's turn is handed that aren't task tools: the delegate read and the worker-to-worker message. */
-const NOT_TASK_TOOLS = new Set(["listDelegates", "messageWorker"]);
+const NOT_TASK_TOOLS = new Set(["listDelegates", "sendMessage"]);
 
 // ---- D1: every assertion's kind ---------------------------------------------------------------
 

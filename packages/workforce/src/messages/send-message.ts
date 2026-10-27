@@ -1,6 +1,6 @@
 /**
  * Sending a worker message (FIX-1989): the one check every send passes, the
- * log row, and the delivery. The `messageWorker` tool calls it, and so will
+ * log row, and the delivery. The `sendMessage` tool calls it, and so will
  * any later caller (a coding run's tool, FIX-1990).
  *
  * The check, in order, before anything is written:
@@ -9,16 +9,16 @@
  * - the recipient is another worker on the user's roster now (one of theirs or
  *   a standard one: another user's worker is simply not there), whose row
  *   reads;
- * - it has a conversation: its flow declares the `onWorkerMessage` entry. A
+ * - it has a conversation: its flow declares the `onMessageReceived` entry. A
  *   worker that only takes tasks (the coder) is told to be filed a task;
  * - a coordinator whose routing never runs a turn of its own (round robin,
  *   everyone) refuses: nobody would read the line;
- * - an answer (`replyTo`) names a message the recipient sent this worker;
+ * - an answer (`inReplyTo`) names a message the recipient sent this worker;
  * - the hop count stays within the limit, counted across the whole exchange
  *   (`hop.ts`), and the turn within its sends.
  *
  * Then one row is written to the user's message log, and the message is
- * dispatched to the recipient's `onWorkerMessage`: into its own conversation
+ * dispatched to the recipient's `onMessageReceived`: into its own conversation
  * (the worker's derived address, opened by the dispatch when absent), or for
  * an answer, back where the row it answers says. A dispatch the host refuses
  * marks the row refused. A thrown one may have started, so it is sent again
@@ -43,7 +43,7 @@ import {
 } from "../workers/keys";
 import { parseWorkerRow } from "../workers/worker-row";
 import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
-import { WORKER_MESSAGE_ENTRY } from "./keys";
+import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import {
   MAX_MESSAGE_CHARS,
@@ -54,13 +54,13 @@ import {
   type WorkerMessageRow
 } from "./message-log";
 
-export { WORKER_MESSAGE_ENTRY };
+export { MESSAGE_RECEIVED_ENTRY };
 
 /** What a send asks for: the tool's input. */
-export interface SendWorkerMessage {
+export interface SendMessageInput {
   readonly to: string;
   readonly text: string;
-  readonly replyTo?: string;
+  readonly inReplyTo?: string;
 }
 
 /** What a send came to. */
@@ -68,10 +68,10 @@ export type SendOutcome =
   | { readonly ok: true; readonly id: string; readonly unconfirmed?: string }
   | { readonly ok: false; readonly error: string };
 
-/** Whether a worker flow takes messages: it declares the `onWorkerMessage` internal entry. */
+/** Whether a worker flow takes messages: it declares the `onMessageReceived` internal entry. */
 export function takesWorkerMessages(flow: unknown): boolean {
   const actions = (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions;
-  return actions !== undefined && Object.hasOwn(actions, WORKER_MESSAGE_ENTRY);
+  return actions !== undefined && Object.hasOwn(actions, MESSAGE_RECEIVED_ENTRY);
 }
 
 /** A coordinator worker's routing, as its row or file declares it, or `undefined` when it names none. */
@@ -147,11 +147,11 @@ async function conversationAddress(
  * @param flowKind The flow the running session runs on.
  * @param from The sending block's name, for the dispatch's provenance.
  */
-export async function sendWorkerMessage(
+export async function sendMessage(
   ctx: BlockContext,
   installation: WorkerInstallation,
   flowKind: string,
-  input: SendWorkerMessage,
+  input: SendMessageInput,
   from: string
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
@@ -172,10 +172,10 @@ export async function sendWorkerMessage(
   const log = messageLogOf(ctx);
   let destination: MessageAddress;
   let exchange: string | undefined;
-  if (input.replyTo !== undefined) {
-    const answered = (await log.getOptional(input.replyTo))?.state;
+  if (input.inReplyTo !== undefined) {
+    const answered = (await log.getOptional(input.inReplyTo))?.state;
     if (answered === undefined || answered.to !== sender || answered.from !== input.to) {
-      return refuse(`no_such_message: replyTo "${input.replyTo}" names no message "${input.to}" sent you. Leave replyTo out to start a new one.`);
+      return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${input.to}" sent you. Leave inReplyTo out to start a new one.`);
     }
     destination = answered.answerTo;
     exchange = answered.exchange;
@@ -238,7 +238,7 @@ export async function sendWorkerMessage(
     to: input.to,
     text: input.text,
     exchange: exchange ?? id,
-    ...(input.replyTo === undefined ? {} : { replyTo: input.replyTo }),
+    ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),
     fromSession: sessionId,
     fromFlow: flowKind,
     toSession: destination.sessionId,
@@ -254,7 +254,7 @@ export async function sendWorkerMessage(
   const dispatch = () =>
     dispatchThroughSeam(ctx, {
       type: "internal",
-      action: WORKER_MESSAGE_ENTRY,
+      action: MESSAGE_RECEIVED_ENTRY,
       flowKind: destination.flow,
       session: destination.state === undefined ? { id: destination.sessionId } : { id: destination.sessionId, state: destination.state },
       payload: { messageId: id },

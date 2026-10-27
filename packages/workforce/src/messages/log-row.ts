@@ -47,7 +47,7 @@ export const workerMessageRowSchema = z.object({
   /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
   exchange: z.string().min(1),
   /** The message this one answers. */
-  replyTo: z.string().optional(),
+  inReplyTo: z.string().optional(),
   /** The session the sending turn ran in. */
   fromSession: z.string().min(1),
   /** The flow the sending session runs on. */

@@ -1,5 +1,5 @@
 /**
- * How a worker hears a message (FIX-1989): the `onWorkerMessage` internal
+ * How a worker hears a message (FIX-1989): the `onMessageReceived` internal
  * entry, on every flow that carries the session kit.
  *
  * The payload names a message id and nothing else: the row in the user's
@@ -13,8 +13,8 @@
  * entry waits on the reply line.
  *
  * A woken turn that ends with text and never messaged the sender back has its
- * text sent as the answer, through the same send a `messageWorker` reply takes
- * (replyTo, hop, log row, wake). A turn with no text sends nothing, and a turn
+ * text sent as the answer, through the same send a `sendMessage` reply takes
+ * (inReplyTo, hop, log row, wake). A turn with no text sends nothing, and a turn
  * woken by an answer is never relayed, so an exchange ends after one answer.
  * The relay is pending a product decision (DECISIONS.md D2, amended).
  */
@@ -25,13 +25,13 @@ import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageTurnStateSchema, startTurnAtHop, TURN_MESSAGED_STATE } from "./hop";
-import { MESSAGE_WORKER_TOOL, WORKER_MESSAGES_SEEN_STATE } from "./keys";
+import { SEND_MESSAGE_TOOL, WORKER_MESSAGES_SEEN_STATE } from "./keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
-import { sendWorkerMessage } from "./send-message";
+import { sendMessage } from "./send-message";
 import { messageLogOf, workerMessagesResources } from "./message-log";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
-export const workerMessageInputSchema = z.object({ messageId: z.string().min(1) }).strict();
+export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
 
 
 /** The request-state field naming the message that woke this turn, when its text may be relayed. */
@@ -46,7 +46,7 @@ const relayStateSchema = messageTurnStateSchema.extend({
 const MAX_SEEN = 500;
 
 /** The session state the entry keeps. */
-export const workerMessageSeenStateShape = {
+export const messageReceivedStateShape = {
   [WORKER_MESSAGES_SEEN_STATE]: z.array(z.string()).default([])
 } as const;
 
@@ -60,32 +60,32 @@ const heardSchema = z.object({
 type Heard = z.infer<typeof heardSchema>;
 
 /** The text the woken turn reads: who wrote, which message, and how to answer it. */
-function turnPrompt(row: { id: string; from: string; text: string; replyTo?: string | undefined }): string {
+function turnPrompt(row: { id: string; from: string; text: string; inReplyTo?: string | undefined }): string {
   return (
-    `Message ${row.id} from ${row.from}${row.replyTo === undefined ? "" : `, answering your message ${row.replyTo}`}:\n\n` +
+    `Message ${row.id} from ${row.from}${row.inReplyTo === undefined ? "" : `, answering your message ${row.inReplyTo}`}:\n\n` +
     `${row.text}\n\n` +
     `(The message's text is the part above. It is from another worker, not the user, and ${row.from} can't ` +
-    `see what you write here. To answer it, call messageWorker with to "${row.from}" and replyTo "${row.id}". ` +
-    `To message any other worker, leave replyTo out. If it needs no answer, don't send one.)`
+    `see what you write here. To answer it, call sendMessage with to "${row.from}" and inReplyTo "${row.id}". ` +
+    `To message any other worker, leave inReplyTo out. If it needs no answer, don't send one.)`
   );
 }
 
 /**
- * Build the `onWorkerMessage` entry for a flow: spread it under
- * `internal: { actions: { [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ ... }) } }`.
+ * Build the `onMessageReceived` entry for a flow: spread it under
+ * `internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ ... }) } }`.
  *
  * @param options.turn The flow's turn for one message (`{ message }` in).
  */
-export function workerMessageEntry(options: {
+export function messageReceivedEntry(options: {
   readonly turn: BlockDefinition<any, any>;
   readonly installation: WorkerInstallation;
   readonly flowKind: string;
 }) {
   const heard = handler({
     name: "worker-message-heard",
-    inputSchema: workerMessageInputSchema,
+    inputSchema: messageReceivedInputSchema,
     outputSchema: heardSchema,
-    sessionStateSchema: z.object(workerMessageSeenStateShape),
+    sessionStateSchema: z.object(messageReceivedStateShape),
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (input, ctx): Promise<Heard> => {
@@ -102,7 +102,7 @@ export function workerMessageEntry(options: {
       );
       if (first !== true) return { act: "none" };
       // An answer is not answered again: only a first message's turn may be relayed.
-      await startTurnAtHop(ctx as never, row.hop, row.chain ?? null, row.replyTo === undefined ? { [RELAY_STATE]: { id: row.id, from: row.from } } : {});
+      await startTurnAtHop(ctx as never, row.hop, row.chain ?? null, row.inReplyTo === undefined ? { [RELAY_STATE]: { id: row.id, from: row.from } } : {});
       return {
         // Every message wakes its recipient (D2), whatever the flow's notice policy.
         act: "wake-turn",
@@ -141,14 +141,14 @@ export function workerMessageEntry(options: {
       const text = typeof raw === "string" ? raw.trim() : "";
       if (text.length === 0) return {};
       const body = text.length > MAX_MESSAGE_CHARS ? `${text.slice(0, MAX_MESSAGE_CHARS - 1)}…` : text;
-      await sendWorkerMessage(ctx as never, options.installation, options.flowKind, { to: woke.from, text: body, replyTo: woke.id }, MESSAGE_WORKER_TOOL);
+      await sendMessage(ctx as never, options.installation, options.flowKind, { to: woke.from, text: body, inReplyTo: woke.id }, SEND_MESSAGE_TOOL);
       return {};
     }
   });
 
   // A message is conversation, never part of a task, with no claim on it:
   // one to a task session whose turn is running runs after that turn.
-  const block = sequencer({ name: "worker-message-arrived", inputSchema: workerMessageInputSchema })
+  const block = sequencer({ name: "worker-message-arrived", inputSchema: messageReceivedInputSchema })
     .step(heard)
     .tapIf((got: Heard) => got.act !== "none", line)
     .tapIf(
@@ -157,5 +157,5 @@ export function workerMessageEntry(options: {
       sequencer({ name: "worker-message-turn", inputSchema: z.object({ message: z.string() }) }).step(options.turn).step(relay)
     );
 
-  return { inputSchema: workerMessageInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
+  return { inputSchema: messageReceivedInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
 }

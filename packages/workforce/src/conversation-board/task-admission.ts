@@ -4,7 +4,7 @@
  * and the turn a late steer is owed. While the task waits, each is admitted
  * for it through orchestration's `taskRequestAdmission`, and the task is
  * checked at its end (rule 6), as at the end of `work`. A worker's message
- * (`onWorkerMessage`) is never one of them: it is conversation in the
+ * (`onMessageReceived`) is never one of them: it is conversation in the
  * session, never part of the task; while the task's turn runs, it is
  * answered after that turn.
  *

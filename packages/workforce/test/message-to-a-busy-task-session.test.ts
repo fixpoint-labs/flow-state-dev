@@ -26,7 +26,7 @@ import { defineSessionBoard, filingConversationBoard, workerConfigSchema, worker
 import { boardAboveOf } from "../src/conversation-board/board-above";
 import { conversationLedgerAt } from "../src/conversation-board/ledger";
 import { messageLogOf } from "../src/messages/message-log";
-import { WORKER_MESSAGE_ENTRY } from "../src/messages/keys";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
@@ -102,7 +102,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
     } as never);
     await dispatchThroughSeam(ctx, {
       type: "internal",
-      action: WORKER_MESSAGE_ENTRY,
+      action: MESSAGE_RECEIVED_ENTRY,
       flowKind: "doer",
       session: { id: sessionId },
       payload: { messageId: id },
@@ -146,7 +146,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
         return "the work's answer";
       }
     }),
-    { type: "internal", action: WORKER_MESSAGE_ENTRY }
+    { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
   );
 
   return defineFlow({

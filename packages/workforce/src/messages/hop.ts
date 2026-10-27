@@ -8,7 +8,7 @@
  * it starts from something that sets it:
  *
  * - a user's turn writes 0, at the user-turn mark (`markUserTurn`);
- * - a turn a message wakes is at that message's count (`onWorkerMessage`);
+ * - a turn a message wakes is at that message's count (`onMessageReceived`);
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;
  * - a task's turn is at its filing turn's count, which the filing records on

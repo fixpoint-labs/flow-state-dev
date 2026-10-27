@@ -24,7 +24,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-wake",
     legs: ["1"],
     assertion: "1:answer-holds-codename",
-    module: `${MESSAGES}/worker-message-entry.ts`,
+    module: `${MESSAGES}/message-received-entry.ts`,
     from: String.raw`act: "wake-turn",`,
     to: 'act: "line",',
     does: "a message lands as a line in the recipient's conversation and never wakes its turn",

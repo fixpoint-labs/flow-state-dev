@@ -1,6 +1,6 @@
 /**
  * Any worker with a conversation can message any other on its user's roster
- * (FIX-1989): `messageWorker` lands a line in the recipient's own
+ * (FIX-1989): `sendMessage` lands a line in the recipient's own
  * conversation, opening it at the worker's derived address when needed, and
  * wakes its turn; an answer names the message it answers and goes back to the
  * session that asked. No task row, no delegate, no task-chain count.
@@ -14,7 +14,7 @@ import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/te
 import type { WorkerManifest } from "../src";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
-import { messageWorkerInputSchema } from "../src/messages/message-tool";
+import { sendMessageInputSchema } from "../src/messages/message-tool";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { FILED_HOP } from "../src/conversation-board/board-entries";
 
@@ -45,7 +45,7 @@ function callOnce(marker: string, toolName: string, args: unknown, after = "Sent
  */
 function answerOnce(from: string, marker: string, text: string, after = "Answered."): MockGeneratorScriptEntry[] {
   let answered = false;
-  const step = { toolCalls: [{ toolCallId: `answer-${marker}`, toolName: "messageWorker", args: {} as Record<string, unknown> }] };
+  const step = { toolCalls: [{ toolCallId: `answer-${marker}`, toolName: "sendMessage", args: {} as Record<string, unknown> }] };
   return [
     { when: (input: unknown) => answered && textOf(input).includes(marker), then: { text: after } },
     {
@@ -54,7 +54,7 @@ function answerOnce(from: string, marker: string, text: string, after = "Answere
         const message = new RegExp(`Message (msg_\\w+) from ${from.replace(".", "\\.")}`).exec(text_);
         if (answered || message === null || !text_.includes(marker)) return false;
         answered = true;
-        step.toolCalls[0]!.args = { to: from, text, replyTo: message[1] };
+        step.toolCalls[0]!.args = { to: from, text, inReplyTo: message[1] };
         return true;
       },
       then: step
@@ -100,7 +100,7 @@ describe("a worker messages another worker", () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -133,7 +133,7 @@ describe("what a worker knows of who it can message", () => {
       agentAnswer: mockGenerator({ script: [fallback] }),
       observeTools: (block, _names, options) => {
         if (block !== "agent-answer") return;
-        const tool = ((options as { tools?: Array<{ name: string; description?: string }> }).tools ?? []).find((t) => t.name === "messageWorker");
+        const tool = ((options as { tools?: Array<{ name: string; description?: string }> }).tools ?? []).find((t) => t.name === "sendMessage");
         if (tool !== undefined) descriptions.push(tool.description ?? "");
       }
     });
@@ -159,7 +159,7 @@ describe("what a worker knows of who it can message", () => {
 describe("the log, read by an app", () => {
   it("is read through the user's roster session, and holds only that user's messages", async () => {
     const h = boot({
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -187,12 +187,12 @@ describe("the log, read by an app", () => {
 describe("an answer", () => {
   it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the sender", async () => {
     const h = boot({
-      // The lead answers in plain text, with no messageWorker call.
+      // The lead answers in plain text, with no sendMessage call.
       judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "It is Bluebird." } }, fallback] }),
       agentAnswer: mockGenerator({
         script: [
           { when: (input) => textOf(input).includes("From lead: It is Bluebird."), then: { text: "The codename is Bluebird." } },
-          ...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }),
+          ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
           fallback
         ]
       })
@@ -204,7 +204,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       expect(rows.find((row) => row.from === "lead")).toMatchObject({
-        to: "otto", text: "It is Bluebird.", replyTo: question.id, toSession: otto, status: "delivered", hop: 2
+        to: "otto", text: "It is Bluebird.", inReplyTo: question.id, toSession: otto, status: "delivered", hop: 2
       });
       expect((await h.messages(otto)).at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
       // otto's text, in a turn woken by an answer, is not sent back: the exchange ends.
@@ -225,8 +225,8 @@ describe("an answer", () => {
       }),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("ask the first", "messageWorker", { to: "lead", text: "first question" }),
-          ...callOnce("ask the second", "messageWorker", { to: "lead", text: "second question" }),
+          ...callOnce("ask the first", "sendMessage", { to: "lead", text: "first question" }),
+          ...callOnce("ask the second", "sendMessage", { to: "lead", text: "second question" }),
           fallback
         ]
       })
@@ -248,7 +248,7 @@ describe("an answer", () => {
     const agentAnswer = mockGenerator({
       script: [
         { when: (input) => textOf(input).includes("It is Bluebird."), then: { text: "The codename is Bluebird." } },
-        ...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }),
+        ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
         fallback
       ]
     });
@@ -268,7 +268,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(answer).toMatchObject({ to: "otto", replyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
+      expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
     }
@@ -292,7 +292,7 @@ describe("a message sent from a task's turn", () => {
       script: [
         { when: (input) => textOf(input).includes("From helper-a") || textOf(input).includes("from helper-a"), then: { text: "Helper A says teal." } },
         ...answerOnce("otto", "favourite colour", "Teal."),
-        ...callOnce("Ask helper-a for its favourite colour", "messageWorker", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
+        ...callOnce("Ask helper-a for its favourite colour", "sendMessage", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
         fallback
       ]
     });
@@ -332,7 +332,7 @@ describe("a message sent from a task's turn", () => {
 function ringScript(after = ""): MockGeneratorScriptEntry[] {
   const next: Record<string, string> = { otto: "helper-a", "helper-a": "helper-b", "helper-b": "otto" };
   const handled = new Set<string>();
-  const step = { toolCalls: [{ toolCallId: "pass", toolName: "messageWorker", args: {} as Record<string, unknown> }] };
+  const step = { toolCalls: [{ toolCallId: "pass", toolName: "sendMessage", args: {} as Record<string, unknown> }] };
   return [
     {
       when: (input: unknown) => {
@@ -394,7 +394,7 @@ describe("the hop limit", () => {
 function fanOutScript(): MockGeneratorScriptEntry[] {
   const toAll = ["helper-a", "helper-b", "lead", "pm", "chief"].map((to, i) => ({
     toolCallId: `all-${i}`,
-    toolName: "messageWorker",
+    toolName: "sendMessage",
     args: { to, text: "Heads up: the release moved." }
   }));
   let called = false;
@@ -424,7 +424,7 @@ describe("the hop limit across a branching exchange", () => {
       await h.settled();
 
       const rows = await logRows(h, "alice");
-      expect(rows.some((row) => row.replyTo !== undefined), "the exchange branched: some message is an answer").toBe(true);
+      expect(rows.some((row) => row.inReplyTo !== undefined), "the exchange branched: some message is an answer").toBe(true);
       expect(rows.filter((row) => row.status !== "refused")).toHaveLength(6);
       expect(rows.map((row) => row.hop).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
     } finally {
@@ -482,9 +482,9 @@ describe("the per-turn limit", () => {
  */
 function relayThroughTask(setting: Record<string, unknown>): MockGeneratorScriptEntry[] {
   return [
-    ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+    ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
     ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b", ...setting }, ""),
-    ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+    ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
     fallback
   ];
 }
@@ -503,9 +503,9 @@ describe("the hop count through a delegation", () => {
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
           ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+          ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -588,7 +588,7 @@ describe("the hop count through a delegation", () => {
   it("counts a message from a routed task in the chain of the user's line it hands on, at 1", async () => {
     const h = boot({
       standard: teamWorkers(),
-      agentAnswer: mockGenerator({ script: [...callOnce("Ask helper-a about the colour", "messageWorker", { to: "helper-a", text: "What colour?" }, ""), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("Ask helper-a about the colour", "sendMessage", { to: "helper-a", text: "What colour?" }, ""), fallback] })
     });
     try {
       // front routes every line to otto, its one delegate, in otto's ongoing session for the conversation.
@@ -658,7 +658,7 @@ describe("the hop count through a delegation", () => {
       agentAnswer: mockGenerator({
         script: [
           quietAfterPing,
-          ...callOnce("Please ping helper-a", "messageWorker", { to: "helper-a", text: "Just a ping." }, ""),
+          ...callOnce("Please ping helper-a", "sendMessage", { to: "helper-a", text: "Just a ping." }, ""),
           ...relayThroughTask({ ...setting, held: true })
         ]
       })
@@ -728,7 +728,7 @@ describe("the hop count through a delegation", () => {
           fallback
         ]
       }),
-      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, ""), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "sendMessage", { to: "chief", text: "Who takes this?" }, ""), fallback] })
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
@@ -750,9 +750,9 @@ describe("the hop count through a delegation", () => {
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
           ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+          ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -786,7 +786,7 @@ describe("who can be messaged", () => {
       { to: "eng.tasker", text: "Hi coder." },
       { to: "rota", text: "Hi rota." },
       { to: "otto", text: "Hi me." }
-    ].map((args, i) => ({ toolCallId: `who-${i}`, toolName: "messageWorker", args }));
+    ].map((args, i) => ({ toolCallId: `who-${i}`, toolName: "sendMessage", args }));
     let called = false;
     const h = boot({
       standard: teamWorkers(),
@@ -844,9 +844,9 @@ describe("who can be messaged", () => {
   });
 
   it("takes no sender, no wait and no other key: the tool's input is strict", () => {
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true }).success).toBe(false);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true }).success).toBe(false);
   });
 });
 
@@ -864,7 +864,7 @@ describe("a busy recipient", () => {
     });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] }),
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] }),
       afterModelCall: async (block) => {
         if (block === "coordinator-judgment" && holding) {
           holding = false;
@@ -895,12 +895,12 @@ describe("a busy recipient", () => {
 });
 
 describe("delivery", () => {
-  /** Deliver `messageId` to `sessionId`'s onWorkerMessage again, as a second copy of the dispatch would. */
+  /** Deliver `messageId` to `sessionId`'s onMessageReceived again, as a second copy of the dispatch would. */
   async function deliverAgain(h: BoardHost, flow: string, sessionId: string, messageId: string) {
     const runtime = await h.state.getRuntime();
     const run = await runAction({
       flow: h.instances[flow]!,
-      actionName: "onWorkerMessage",
+      actionName: "onMessageReceived",
       input: { messageId },
       userId: "alice",
       orgId: ORG,
@@ -917,7 +917,7 @@ describe("delivery", () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -941,10 +941,10 @@ describe("delivery", () => {
 
   it("marks the row refused, and the tool says why, when the host refuses the dispatch", async () => {
     const h = boot({
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
-      const lost = await h.loseDispatches("onWorkerMessage");
+      const lost = await h.loseDispatches("onMessageReceived");
       const otto = await agentSession(h, "alice", "otto");
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();

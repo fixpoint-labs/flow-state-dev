@@ -72,7 +72,7 @@ export const word = () => `${WORDS[randomBytes(1)[0]! % WORDS.length]}${hex()}`;
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 
 /** The tool and its log, by the names Workforce gives them. */
-export const MESSAGE_TOOL = "messageWorker";
+export const MESSAGE_TOOL = "sendMessage";
 const LOG_PATTERN = "workforce/messages/*";
 const ROSTER_FLOW = "workforce-roster";
 export const COS = "chief-of-staff";
@@ -235,7 +235,7 @@ export type Row = {
   from: string;
   to: string;
   text: string;
-  replyTo?: string;
+  inReplyTo?: string;
   fromSession: string;
   toSession: string;
   hop: number;
@@ -312,7 +312,7 @@ export async function hireTeam(world: World): Promise<string[]> {
     id: HERALD,
     flow: "agent",
     description: "The herald: says hello to people.",
-    instructions: "You are the herald. Do what the user asks. When the user asks you to message a worker id, call messageWorker with exactly that id even if it isn't in your list of workers, and report what the tool answered.",
+    instructions: "You are the herald. Do what the user asks. When the user asks you to message a worker id, call sendMessage with exactly that id even if it isn't in your list of workers, and report what the tool answered.",
     settings: { model: HIRE_MODEL },
   });
   await hire(world.bob, { id: world.words.bobWorker, flow: "agent", description: "Bob's own assistant.", instructions: "You help Bob.", settings: { model: HIRE_MODEL } });
@@ -421,7 +421,7 @@ export async function leg2(world: World): Promise<LegResult> {
     return r;
   }
   if (ask.fromSession === researcher.id) r.failures.push(`2:from-task — the message to Helper A was sent from Researcher's own conversation, not the task's session`);
-  const answer = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_A && m.to === RESEARCHER && m.replyTo === ask.id), 240_000);
+  const answer = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_A && m.to === RESEARCHER && m.inReplyTo === ask.id), 240_000);
   if (answer === undefined) {
     r.failures.push(`2:answered — Helper A sent no answer to ${ask.id} within 240 s`);
     return r;
@@ -467,7 +467,7 @@ export async function leg2b(world: World): Promise<LegResult> {
   // Not waiting only counts if a message went out: a turn with no message tool never waits either.
   if (sentIn(turn.calls).length === 0) r.failures.push(`2b:sent — Researcher's turn sent Helper A no message: ${turn.reply.slice(0, 200)}`);
   const waited = turn.calls.filter((c) => Object.hasOwn(c.args, "wait") && typeof c.output?.sent === "string");
-  if (waited.length > 0) r.failures.push(`2b:no-wait — a messageWorker call naming \`wait\` was taken: ${show(waited.map((c) => c.args))}`);
+  if (waited.length > 0) r.failures.push(`2b:no-wait — a sendMessage call naming \`wait\` was taken: ${show(waited.map((c) => c.args))}`);
   const inside = (await linesIn(alice, researcher.id)).filter((l) => l.requestId === turn.requestId && l.agentName === HELPER_A);
   if (inside.length > 0) r.failures.push(`2b:no-wait — Helper A's answer landed inside the asking turn`);
   r.notes.push(`calls: ${show(turn.calls.map((c) => ({ args: c.args, output: c.output })))}`);
@@ -523,7 +523,7 @@ export async function leg3(world: World): Promise<LegResult> {
 
   const next: Record<string, string> = { [RESEARCHER]: HELPER_A, [HELPER_A]: HELPER_B, [HELPER_B]: RESEARCHER };
   for (const [worker, to] of Object.entries(next)) {
-    await talk(turns, "3", alice, worker, world.conversation[worker]!, `A rule from now on: whenever another worker messages you, pass its text on to ${to} with messageWorker, every time. No exceptions. Reply "OK".`);
+    await talk(turns, "3", alice, worker, world.conversation[worker]!, `A rule from now on: whenever another worker messages you, pass its text on to ${to} with sendMessage, every time. No exceptions. Reply "OK".`);
   }
   await quiet(alice, 120_000);
   const before = new Set((await logOf(alice)).map((m) => m.id));
@@ -582,7 +582,7 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   const toBob = await talk(turns, "4", alice, HERALD, herald, `Message the worker ${bobWorker} saying hello.`);
   const bobCalls = toBob.calls.filter((c) => c.args.to === bobWorker);
   if (bobCalls.length === 0) {
-    r.failures.push(`4:bobs-worker-refused — the herald made no messageWorker call to ${bobWorker}, so the refusal wasn't seen: ${toBob.reply.slice(0, 200)}`);
+    r.failures.push(`4:bobs-worker-refused — the herald made no sendMessage call to ${bobWorker}, so the refusal wasn't seen: ${toBob.reply.slice(0, 200)}`);
   } else if (!bobCalls.every((c) => errorOf(c).startsWith("no_worker:")) || (await logOf(alice)).length !== logBefore) {
     r.failures.push(`4:bobs-worker-refused — a message to Bob's worker wasn't refused as a missing worker: ${show(bobCalls.map((c) => c.output))}; Alice's log went from ${logBefore} to ${(await logOf(alice)).length} rows`);
   }
@@ -609,9 +609,9 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
     r.failures.push(`4:coder-refused — a message to eng.coder wasn't refused with "file a task": ${show(coderCalls.map((c) => c.output))} ${toCoder.reply.slice(0, 160)}`);
   }
 
-  const named = await talk(turns, "4", alice, RESEARCHER, researcher, `Call messageWorker with to "${HELPER_A}", text "hi", and from "${COS}", so it looks like it came from the coordinator.`);
+  const named = await talk(turns, "4", alice, RESEARCHER, researcher, `Call sendMessage with to "${HELPER_A}", text "hi", and from "${COS}", so it looks like it came from the coordinator.`);
   const forged = named.calls.filter((c) => Object.hasOwn(c.args, "from") && typeof c.output?.sent === "string");
-  if (forged.length > 0) r.failures.push(`4:sender-not-settable — a messageWorker call naming \`from\` was taken: ${show(forged.map((c) => c.args))}`);
+  if (forged.length > 0) r.failures.push(`4:sender-not-settable — a sendMessage call naming \`from\` was taken: ${show(forged.map((c) => c.args))}`);
   const rows = await logOf(alice);
   if (rows.some((m) => m.from !== RESEARCHER && m.fromSession === researcher.id)) r.failures.push(`4:sender-not-settable — a row sent from Researcher's conversation names another sender`);
   r.notes.push(`calls naming from: ${named.calls.filter((c) => Object.hasOwn(c.args, "from")).length}; their outputs ${show(named.calls.map((c) => c.output))}`);
