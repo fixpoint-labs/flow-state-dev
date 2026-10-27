@@ -30,6 +30,7 @@ import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
+import { useSessionDraft } from "@/lib/use-session-draft";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
@@ -212,7 +213,7 @@ function Composer({
   placeholder: string;
   send: (text: string) => Promise<{ request: { id: string } }>;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useSessionDraft(session.sessionId);
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 

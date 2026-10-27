@@ -29,7 +29,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 type Item = Record<string, unknown>;
 
@@ -254,6 +257,16 @@ describe("a send settles on its own request", () => {
 });
 
 describe("switching picks", () => {
+  it("restores an unsent draft after the panel remounts, as on reload", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
+    const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
+    await type("Message this worker", "saved before reload");
+
+    view.unmount();
+    panel("agent", session({ sessionId: "sess-a", sendAction }));
+    expect((screen.getByLabelText("Message this worker") as HTMLTextAreaElement).value).toBe("saved before reload");
+  });
+
   it("starts the next session's composer empty, with nothing pending and no failure", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
