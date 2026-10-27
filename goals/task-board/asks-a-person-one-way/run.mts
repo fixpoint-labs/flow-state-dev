@@ -38,7 +38,7 @@
  *      naming `askQuestion`, while a block's own input still suspends; a
  *      step calling `askQuestion` and `waitForUser` together opens one wait
  *   h  a `complete-or-blocked` plan board whose only open row is held on a
- *      question reports `blocked` on its first idle pass, and the row stays
+ *      question reports `waiting-on-a-user` on its first idle pass, and the row stays
  *
  * Controls (scratch patches applied as the code under test loads):
  *   composer-sends-turn  the session line goes to the worker as a turn: fails d
@@ -132,7 +132,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; mustFai
       }
     ],
     legs: ["h"],
-    mustFail: ["h:reports-blocked"]
+    mustFail: ["h:reports-waiting"]
   }
 };
 
@@ -757,7 +757,7 @@ async function legGDeadline(run: Run): Promise<void> {
   run.notes.push(`g: at the host's ${DUE_MS} ms person-stop deadline the model's input came back answered: false, deadline: true`);
 }
 
-/** h: a complete-or-blocked plan board whose only open row is held on a question reports blocked on its first idle pass. */
+/** h: a complete-or-blocked plan board whose only open row is held on a question reports waiting-on-a-user on its first idle pass. */
 async function legH(run: Run): Promise<void> {
   const session = await run.h.http.client.flow("plan").createSession({});
   const started = Date.now();
@@ -769,8 +769,8 @@ async function legH(run: Run): Promise<void> {
   const meta = (request?.items ?? []).filter((i) => i.component === "task-board-meta").at(-1)?.data as { status?: string; terminationReason?: string } | undefined;
   const rows = (request?.result?.output ?? []) as Array<{ id: string; status: string; attempts: number; lease: number | null; open: string[] }>;
   const h1 = rows.find((r) => r.id === "h1");
-  if ((ended as { status: string }).status !== "completed" || meta?.status !== "completed" || meta.terminationReason !== "blocked-by-failures" || tookMs > 10_000) {
-    run.failures.push(`h:reports-blocked — wanted the drain to stop blocked on its first idle pass; it ended ${(ended as { status: string }).status} after ${tookMs} ms, its meta ${show(meta)}, error ${show(request?.result?.error)}`);
+  if ((ended as { status: string }).status !== "completed" || meta?.status !== "completed" || meta.terminationReason !== "waiting-on-a-user" || tookMs > 10_000) {
+    run.failures.push(`h:reports-waiting — wanted the drain to stop waiting-on-a-user on its first idle pass; it ended ${(ended as { status: string }).status} after ${tookMs} ms, its meta ${show(meta)}, error ${show(request?.result?.error)}`);
   }
   if (h1?.status !== "in_progress" || h1.attempts !== 1 || h1.lease !== null || h1.open.join() !== REGION) {
     run.failures.push(`h:row-stays — wanted the row running on attempt 1, no lease, held on "${REGION}"; it is ${show(h1)}`);
