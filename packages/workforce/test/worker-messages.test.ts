@@ -949,6 +949,62 @@ describe("a busy recipient", () => {
       await h.dispose();
     }
   });
+
+  // A queued message's budget is what its chain has left when it is heard,
+  // not when it was sent: the sender's next send has spent one more.
+  it("tells a message heard after a busy turn what its chain has left by then", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = true;
+    let asked = false;
+    const h = boot({
+      judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("long question"), then: { text: "Long answer." } }, fallback] }),
+      agentAnswer: mockGenerator({
+        script: [
+          { when: (input) => asked && textOf(input).includes("Please ask the lead twice"), then: { text: "Sent." } },
+          {
+            when: (input) => {
+              if (asked || !textOf(input).includes("Please ask the lead twice")) return false;
+              asked = true;
+              return true;
+            },
+            then: {
+              toolCalls: [
+                { toolCallId: "call-first", toolName: "sendMessage", args: { to: "lead", text: "First." } },
+                { toolCallId: "call-second", toolName: "sendMessage", args: { to: "lead", text: "Second." } }
+              ]
+            }
+          },
+          fallback
+        ]
+      }),
+      afterModelCall: async (block) => {
+        if (block === "coordinator-judgment" && holding) {
+          holding = false;
+          await held;
+        }
+      }
+    });
+    try {
+      const lead = await h.client("alice").ensureWorkerSession({ worker: "lead" });
+      await h.post("alice", lead.id, "respond", { message: "A long question" }, "coordinator");
+      for (let i = 0; i < 200 && holding; i += 1) await new Promise((r) => setTimeout(r, 10));
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead twice" }, "agent");
+      for (let i = 0; i < 300 && (await logRows(h, "alice")).length < 2; i += 1) await new Promise((r) => setTimeout(r, 10));
+      expect((await logRows(h, "alice")).map((row) => row.hop).sort()).toEqual([1, 2]);
+      release();
+      await h.settled();
+      const heard = await receivedIn(h, lead.id);
+      expect(heard.map((item) => [item.text, item.budget])).toEqual([
+        ["First.", 4],
+        ["Second.", 4]
+      ]);
+    } finally {
+      release();
+      await h.dispose();
+    }
+  });
 });
 
 describe("delivery", () => {
