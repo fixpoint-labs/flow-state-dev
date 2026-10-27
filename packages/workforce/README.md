@@ -2232,6 +2232,9 @@ those rows stay in the user's shared state even on a flow with `isolateUserState
 flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Types:
 `BoardWakeBackfillStores`, `BoardWakeBackfillOptions`.
 
+`sendMessage` to `{ task: id }` doesn't reach a task an earlier version filed: it answers
+`no_task_session`. Message the worker by id instead.
+
 ## Worker messages
 
 A worker can send any other worker on its user's roster a short message: a question, an FYI, a
@@ -2245,13 +2248,16 @@ description, leaving out the sender and any worker that hears only in its tasks'
 ```
 
 - **Sending.** The input is `{ to, text, inReplyTo? }` and nothing else; `text` holds up to 8,000
-  characters. A sent message answers `{ sent: "msg_…" }`, plus `unconfirmed` (a reason) when its
+  characters. `to` is a worker's id, `{ task: id }` or `{ session: id }` (see
+  [Addressing a task or a conversation](#addressing-a-task-or-a-conversation)). A sent message answers `{ sent: "msg_…" }`, plus `unconfirmed` (a reason) when its
   delivery couldn't be confirmed and may still arrive. A refused one answers
   `{ ok: false, error }`, nothing sent, the error starting with a code: `not_a_worker` (the session
   runs no worker), `empty_message`, `message_too_long`, `not_yourself`, `no_worker` (also for
   another user's worker), `worker_unavailable` (the roster row has a problem), `task_sessions_only`
   (file it a task instead), `no_such_message` (`inReplyTo` names no message the `to` worker sent
-  you), `budget`, `per_request_limit` or `not_delivered` (the host refused the dispatch).
+  you, or is passed with `{ task }` or `{ session }`), `budget`, `per_request_limit` or
+  `not_delivered` (the host refused the dispatch). A task or session target adds its own codes,
+  below.
 - **Receiving.** A message arrives on the recipient flow's internal `onMessageReceived` entry
   (`MESSAGE_RECEIVED_ENTRY`). The session it lands in gets two items: a `From <sender>: <text>`
   line under the sender's name that the model reads in history and the client never receives, and
@@ -2285,9 +2291,38 @@ description, leaving out the sender and any worker that hears only in its tasks'
   through the user's roster session or any session on a flow that declares
   `workerMessagesResources`: `id`, `from`, `to`, `text`, `exchange`, `inReplyTo`, `fromSession`,
   `fromFlow`, `toSession`, `toFlow`, `chain` (optional), `hop` (from 1), `status` (`delivered`,
-  `refused` or `unconfirmed`), `reason` and `at`. Another user's rows are never returned.
+  `refused` or `unconfirmed`), `reason` and `at`, plus `addressedBy` (`"task"` or `"session"`,
+  absent for a worker's id) and `toTask` (the task, when `addressedBy` is `"task"`). Another user's
+  rows are never returned.
 
 A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
+
+### Addressing a task or a conversation
+
+`to: { task: id }` lands in the session working that task, or that worked it, after its current
+turn ends; the task's status, output and attempts don't change. `to: { session: id }` lands in one
+of the user's own conversations, such as a second conversation with a worker or a project
+coordinator's conversation for one project. Either wakes the worker running that session. A
+refused send leaves no log row and spends no budget:
+
+- `no_task_session`: no task of the user's with that id has a session. An unknown id, a task that
+  hasn't started, and another user's task all answer this.
+- `no_session`: the session is missing, or another user's, organization's or tenant's.
+- `not_a_conversation`: the session works a task or is a delegate's session (message the task with
+  `{ task }`), or runs a worker that hears only in task sessions.
+- `no_worker`: the worker in that session is off the roster. `worker_unavailable`: it has moved to
+  another flow, or its roster row has a problem.
+- `not_yourself`: the session the message is sent from.
+- `task_running`: for a worker that hears only in task sessions (the coder), `{ task }` is refused
+  while the task or a follow-up in its session is still open; a message never reaches work in
+  progress. Once they have all finished, the message wakes the worker there. A coding flow answers
+  it from the coding session by passing `harnessTalkTurn` from `@flow-state-dev/harness-manager` as
+  its message `turn`.
+
+`checkTaskTarget(ctx, installation, taskId)` and `checkTargetSession(ctx, installation, sessionId,
+of)` are the checks on their own, answering a `TargetCheck` (`{ ok: true, target: { sessionId,
+worker } }` or `{ ok: false, error }`); `MessageTarget` is the type of `to`. A session target
+needs a host whose `requestHost` carries `sessions` (the engine's does).
 
 Every worker flow must carry an `onMessageReceived` built by `messageReceivedEntry`:
 `hireWorkforce` refuses one that doesn't, naming the flow, and refuses a hand-built entry under
@@ -2412,7 +2447,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { hopLimit?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
-| `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from)`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, unconfirmed? }` or `{ ok: false, error }`); its input type is `SendMessageInput`. |
+| `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from)`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, unconfirmed? }` or `{ ok: false, error }`); its input type is `SendMessageInput`. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
 | `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
 | `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, call, inReplyTo?, budget }` (`call` is always `false`; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |
 | `promptedMessageTurn(turn)` / `receivedMessagePrompt(received)` | Wrap a block that takes `{ message }` so it can serve as `messageReceivedEntry`'s `turn`, and the text it hands that block: who wrote, which message, how to answer with `sendMessage` and `inReplyTo`, and the budget left. |

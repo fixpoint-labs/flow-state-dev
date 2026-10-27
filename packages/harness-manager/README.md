@@ -328,6 +328,54 @@ The last three read as they do on Workforce's door (`LINE_STEER_REFUSALS`).
 
 The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs.
 
+### Answering a worker's message
+
+`harnessTalkTurn({ name?, board, harness, uses?, talkTimeoutMs? })` is the door's talk half as a
+block of its own, with the same `board`, `harness`, `uses` and `talkTimeoutMs` as the door. It takes
+`{ message }` and answers `{ reply: string | null, taskId }` (`reply` is the harness's final text):
+one harness run resumes the coding session of the session's finished task with the message, outside
+any attempt, and the task, its output and its attempts don't change. It refuses, failing the request
+with `SessionDoorRefused`, with `not-started` (no task ran in this session), `task-running` (the
+task or a follow-up is still open) or `cannot-continue` (the harness confirmed no coding session).
+
+A Workforce coding flow passes it as the `turn` of its `messageReceivedEntry`, so a worker's
+`sendMessage` to one of its finished tasks (`to: { task: id }`) is answered from the coding session.
+The turn's input is a `MessageReceived`, so map it to `{ message }` first:
+
+```ts
+import { defineFlow, sequencer } from "@flow-state-dev/core";
+import { harnessTalkTurn } from "@flow-state-dev/harness-manager";
+import {
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  messageReceivedSchema,
+  type MessageReceived,
+} from "@flow-state-dev/workforce";
+
+const messageTurn = sequencer({ name: "coder-message-turn", inputSchema: messageReceivedSchema }).step(
+  (received: MessageReceived) => ({ message: `Message from ${received.from}, another worker: ${received.text}` }),
+  harnessTalkTurn({ name: "coder-message", harness, board }),
+);
+
+defineFlow({
+  kind: "coder",
+  // … actions, task entry and resources as above
+  internal: {
+    actions: {
+      [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+        installation,
+        flowKind: "coder",
+        hears: "task-sessions",
+        turn: messageTurn,
+      }),
+    },
+  },
+});
+```
+
+The reply is an item in the task's session. Nothing is sent back to the worker that wrote, unless
+the coding flow gives its turn a `sendMessage` of its own.
+
 ### Stopping a step for a steer
 
 By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
@@ -383,7 +431,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

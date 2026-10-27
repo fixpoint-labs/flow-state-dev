@@ -25,7 +25,7 @@ A worker can message any other worker on its user's roster: your own hires and t
 
 A message to a coordinator wakes the coordinator's own turn, even one that hands your lines straight to its delegates by `round-robin` or `everyone`.
 
-Some workers hear messages only in their tasks' sessions, such as the coding worker in Shift Manager's `devteam` Lab. They have no conversation to answer from, so a message sent to one by name is refused with `task_sessions_only`, and nothing is sent. File it a task instead.
+Some workers hear messages only in their tasks' sessions, such as the coding worker in Shift Manager's `devteam` Lab. They have no conversation to answer from, so a message sent to one by name is refused with `task_sessions_only`, and nothing is sent. File it a task instead, or [message one of its finished tasks](#workers-that-hear-only-in-task-sessions).
 
 ## Sending a message
 
@@ -35,7 +35,7 @@ The model calls `sendMessage` with the recipient's worker id and the text:
 { "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
 ```
 
-The input takes `to`, `text` and, for an answer, `inReplyTo`. Nothing else. The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
+The input takes `to`, `text` and, for an answer, `inReplyTo`. Nothing else. `to` is usually a worker id; it can also name [a task or a conversation](#messaging-a-task-or-a-conversation). The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
 
 A sent message answers with its id:
 
@@ -69,6 +69,8 @@ You see all of it. Both workers' sessions are yours, and the message, the turn i
 | The message is | It lands in |
 |----------------|-------------|
 | An answer (sent with `inReplyTo`) | The session the original message was sent from, even a task's session whose task has finished. The answer wakes a turn there. |
+| To `{ task: id }` | The session working that task, or that worked it. |
+| To `{ session: id }` | That conversation. |
 | To the worker that filed the sender's current task, or the sender's ongoing delegate session | The conversation that filed it. |
 | To the [project coordinator](./projects.md#talking-to-a-project), from work in a project | That project's conversation with the coordinator. |
 | Anything else | The recipient's own conversation with you, the one [`ensureWorkerSession({ worker })`](./workers-on-disk.md#talking-to-a-worker) returns. If you've never talked to that worker, the conversation is opened. |
@@ -86,6 +88,43 @@ Nothing is sent back on its own. To answer, the recipient calls `sendMessage` ba
 If the recipient's turn ends in plain text, that text goes to no one. Not answering is a valid answer: an FYI usually needs none.
 
 There's no way to block on a reply. A worker that's told to "wait for the answer" sends the message and ends its turn. The answer starts a new turn when it comes. When a worker needs a colleague's result before it can go on, it should file a task and wait on that instead (see [Message or delegate?](#message-or-delegate)).
+
+## Messaging a task or a conversation
+
+A worker id reaches a worker wherever the message would [usually land](#where-a-message-lands). To reach one particular session, `to` can name it instead.
+
+To ask about a task, send to the task's id:
+
+```json
+{ "to": { "task": "task_7d2e41" }, "text": "Which branch did you push the fix to?" }
+```
+
+The message lands in the session that is working the task, or worked it, and wakes the worker there. If the worker is mid-turn there, it hears the message after that turn ends. The message is talk: the task's status, output and attempts stay as they are.
+
+To reach one of the user's own conversations, send to its session id:
+
+```json
+{ "to": { "session": "ses_41b9c0" }, "text": "The launch moved to Thursday." }
+```
+
+That's how a worker reaches a second conversation the user has with a worker, or a project coordinator's conversation for one project. The tool's description lists workers, not sessions, so a worker uses this when the user gives it a session id.
+
+Either way, the recipient is the worker that runs that session, and it answers the usual way: `sendMessage` back to the sender's worker id, with `inReplyTo`. A send to `{ task }` or `{ session }` can't carry `inReplyTo` itself, and is refused with `no_such_message` if it does.
+
+A refused send leaves no row in the [message log](#showing-messages-in-your-app) and spends none of the [budget](#the-budget). The codes are in [When a send is refused](#when-a-send-is-refused).
+
+A task id only reaches the user's own tasks. An id that names no task, a task that hasn't started yet, and another user's task all answer `no_task_session`, so a refusal tells the sender nothing about anyone else's work. The same goes for `{ session }`: a session that doesn't exist, or belongs to another user, organization or tenant, answers `no_session`.
+
+A session that works a task isn't a conversation. Sent to by `{ session }`, it's refused with `not_a_conversation`, and so is a delegate's session. Message the task with `{ task: id }` instead.
+
+### Workers that hear only in task sessions
+
+A worker whose flow hears messages only in its tasks' sessions, such as the coding worker in Shift Manager's `devteam` Lab, has no conversations. Any `{ session }` that reaches one of its sessions is refused with `not_a_conversation`. Its tasks can be messaged once they're done:
+
+- While the task, or a follow-up running in the same session, is still open, `{ task }` is refused with `task_running`. A message never reaches work in progress. The sender can read the task with `getTask`, or message it once it has ended.
+- Once every task in that session has finished, the message wakes the worker there.
+
+That coding worker answers from the coding session the task ran in, by resuming it with the message. It has no `sendMessage`, so its reply stays in the task's session, where you can read it. Nothing goes back to the sender. To build the same on your own coding flow, pass `harnessTalkTurn` as the flow's message turn (see [Answering a worker's message](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#answering-a-workers-message) in the `@flow-state-dev/harness-manager` README).
 
 ## The budget
 
@@ -128,11 +167,15 @@ A refused send answers `{ ok: false, error }`, and nothing is sent. The error st
 | `not_a_worker` | The sending session runs no worker. |
 | `empty_message` | `text` is blank. |
 | `message_too_long` | `text` is over 8,000 characters. |
-| `not_yourself` | `to` is the sending worker. |
-| `no_worker` | No worker by that id on the user's roster. Another user's worker answers this too. |
-| `worker_unavailable` | The worker is on the roster but can't run, for example because its saved row can't be read. The error says why. |
-| `task_sessions_only` | The worker hears messages only in its tasks' sessions. File it a task instead. |
-| `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker. |
+| `not_yourself` | `to` is the sending worker, or the session the message is sent from. |
+| `no_worker` | No worker by that id on the user's roster. Another user's worker answers this too. For `{ task }` or `{ session }`, the worker that ran the session has been fired. |
+| `worker_unavailable` | The worker is on the roster but can't run, for example because its saved row can't be read, or it has moved to another flow since the session opened. The error says why. |
+| `task_sessions_only` | The worker hears messages only in its tasks' sessions. File it a task instead, or message a finished one with `{ task: id }`. |
+| `no_task_session` | `{ task }` names no task of the user's that has a session: an unknown id, a task that hasn't started, or another user's task. |
+| `no_session` | `{ session }` names no conversation of the user's: it doesn't exist, or belongs to another user, organization or tenant. |
+| `not_a_conversation` | `{ session }` names a session working a task, a delegate's session, or a session of a worker that hears only in task sessions. Message the task with `{ task: id }`. |
+| `task_running` | `{ task }` names a task of a worker that hears only in task sessions, and the task or a follow-up in its session is still open. |
+| `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker, or is passed with `{ task }` or `{ session }`. |
 | `budget` | The send would go past `messages.hopLimit` messages since the user's last line. |
 | `per_request_limit` | This request already sent `messages.perTurn` messages. |
 | `not_delivered` | The server refused the delivery. The error carries its reason. |
@@ -144,7 +187,7 @@ A message is talk. [Delegating](./delegating-work.md) is handing over work. Pick
 | | Message | Task |
 |-|---------|------|
 | What it's for | A question, an FYI, a heads-up | Work that has to get done |
-| Who it can go to | Any worker on your roster, except one that hears only in its tasks' sessions | One of the worker's own delegates that takes tasks |
+| Who it can go to | Any worker on your roster, except one that hears only in its tasks' sessions; or one of your tasks or conversations, by id | One of the worker's own delegates that takes tasks |
 | Where it runs | Usually the recipient's own conversation with you (see [Where a message lands](#where-a-message-lands)) | A new task session of its own |
 | What comes back | Nothing is owed. An answer only if the recipient sends one | The task's ending, always: completed, failed or cancelled |
 | On the board | Nothing | A row the filer can list, update and cancel |
@@ -281,6 +324,8 @@ Each row has:
 |-------|---------------|
 | `id` | The message id, `msg_…`. |
 | `from`, `to` | The sending and receiving worker ids. |
+| `addressedBy` | `task` or `session` when the message was sent to `{ task }` or `{ session }`. Absent when it was sent to a worker id. |
+| `toTask` | The task it was sent to, when `addressedBy` is `task`. |
 | `text` | What was said. |
 | `exchange` | The id of the first message in the exchange. A message and its answers share one. |
 | `inReplyTo` | The message this one answers, when it answers one. |
@@ -299,7 +344,7 @@ In a conversation, each side of a message is an item you can match on. Both name
 - A sent message is a `tool_output` item for the tool named `SEND_MESSAGE_TOOL` (`"sendMessage"`). Match on it to draw the message as a line of its own rather than a tool call.
 - A received message is a `component` item whose component is `RECEIVED_MESSAGE_COMPONENT` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget }`.
 
-[Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;*, and each received message as its own item under the sender's name.
+[Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;* (or *To task &lt;id&gt;* and *To conversation &lt;id&gt;* for one sent to a task or a session), and each received message as its own item under the sender's name.
 
 ## Related pages
 
