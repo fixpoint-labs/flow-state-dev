@@ -320,7 +320,8 @@ block waits for every `steer` call still in flight to answer before it returns. 
 run stopped by its deadline doesn't wait.
 
 Only local runs whose SDK offers steering get a `steer`. Otherwise `onSteerable`
-is never called. The [harness manager](../orchestration/harness-manager.md#steering-a-run)
+is never called. To steer from a session, hand it `harnessSteering().onSteerable`
+from `@flow-state-dev/core` ([Steering a running turn](./coding-agents.md#steering-a-running-turn)). The [harness manager](../orchestration/harness-manager.md#steering-a-run)
 uses this hook to hand a task's new messages to the running step.
 
 ## How a run ends

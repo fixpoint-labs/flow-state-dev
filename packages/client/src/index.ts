@@ -37,6 +37,13 @@ export {
 } from "./client";
 
 export { sessionQueryFor } from "./session-client/session-query";
+export {
+  sendHarnessLine,
+  steerRunningTurn,
+  type HarnessLineOutcome,
+  type HarnessLineSender,
+  type SteerRunningTurnOptions
+} from "./harness-line";
 
 export {
   createSSEClientFromResponse,

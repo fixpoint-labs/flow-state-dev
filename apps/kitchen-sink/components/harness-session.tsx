@@ -16,7 +16,7 @@
  * harness: the label is data from the mode list.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -153,15 +153,7 @@ function SessionBody({
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
       const sender: LineSender = {
-        steer: async (text) => {
-          const sent = await client.flow(flowKind).send("steer", { prompt: text }, { sessionId });
-          await sent.wait({ pollMs: 150 });
-          const requests = await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
-          const output = requests.find((request) => request.id === sent.id)?.result?.output as
-            | { taken?: unknown; live?: unknown }
-            | undefined;
-          return { taken: output?.taken === true, live: output?.live === true };
-        },
+        steer: (text) => steerRunningTurn(client, { flowKind, sessionId, prompt: text }),
         turn: async (text) => {
           await session.sendAction("turn", { prompt: text }, { userMessage: text });
         },

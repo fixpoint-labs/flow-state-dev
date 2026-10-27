@@ -32,7 +32,7 @@
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. Kitchen Sink writes no item of its own.
  */
-import { defineFlow, handler, harnessFailureKind, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, harnessFailureKind, harnessSteering, sequencer, type HarnessSteering } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessCallbackContext,
@@ -40,7 +40,6 @@ import type {
   HarnessResolver,
   HarnessBlock,
   HarnessSessionHook,
-  HarnessSteer,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -79,11 +78,6 @@ export interface HarnessFeeds {
   readonly onSteerable: HarnessSteerHook;
 }
 
-/**
- * The steers running turns offer, by session, in this server process. A
- * second process doesn't see them, so a line sent there falls back to a turn.
- */
-export type SteerOffers = Map<string, { readonly steer: HarnessSteer; readonly requestId: string }>;
 
 /** Options for {@link harnessSessionFlow}. */
 export interface HarnessSessionFlowOptions {
@@ -134,12 +128,6 @@ const BLANK_TURN: TurnRecord = {
   steered: null,
 };
 
-/** The key a session's offer is kept under: the framework's session identity, never anything the caller sent (BP-031). */
-function offerKeyOf(ctx: HarnessCallbackContext): string {
-  const identity = ctx.session.identity;
-  return `${identity.tenantId ?? ""}/${identity.id}`;
-}
-
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
 function withTurn(state: HarnessSessionState, requestId: string, change: (turn: TurnRecord) => TurnRecord): HarnessSessionState {
   const turns = { ...(state.turns ?? {}) };
@@ -189,19 +177,12 @@ export const MODEL_REQUIRED = "A new session must name the model it runs (`state
  *
  * @param kind The flow kind.
  * @param defaultModel What {@link HarnessSessionFlowOptions.defaultModel} says.
- * @param offers Where `onSteerable` keeps a running turn's steer, for the flow's `steer` action.
+ * @param steering The flow's steering, which holds a running turn's offer for its `steer` action.
  */
-export function harnessFeeds(kind: string, defaultModel?: string, offers: SteerOffers = new Map()): HarnessFeeds {
+export function harnessFeeds(kind: string, defaultModel?: string, steering: HarnessSteering = harnessSteering()): HarnessFeeds {
   return {
-    onSteerable: (steer, ctx) => {
-      const key = offerKeyOf(ctx);
-      // Never holds one, so goal legs **k** and **w** can be seen to fail.
-      if (steer === null || goalControl() === "no-live-steer") {
-        if (offers.get(key)?.requestId === requestOf(ctx)) offers.delete(key);
-        return;
-      }
-      offers.set(key, { steer, requestId: requestOf(ctx) });
-    },
+    // Never holds an offer under the control, so goal legs **k** and **w** can be seen to fail.
+    onSteerable: (steer, ctx) => steering.onSteerable(goalControl() === "no-live-steer" ? null : steer, ctx),
     model: (ctx) => {
       // Hands the harness the mode's default whatever was picked, so the goal's
       // "the harness ran the picked model" leg can be seen to fail.
@@ -254,23 +235,15 @@ export function harnessFeeds(kind: string, defaultModel?: string, offers: SteerO
  * says whether the running turn offered to take one at all.
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
-  const offers: SteerOffers = new Map();
-  const agent = options.agent(harnessFeeds(options.kind, options.defaultModel, offers));
-  // Allowed beside a running turn, which `turn` is not: it runs no harness,
-  // it hands the running one a line. Recorded on the turn that took it.
-  const steerRunningTurn = handler({
-    name: "steer-running-turn",
-    inputSchema: z.object({ prompt: z.string().min(1) }),
-    outputSchema: z.object({ taken: z.boolean(), live: z.boolean() }),
-    execute: async (input, ctx) => {
-      const offer = offers.get(offerKeyOf(ctx));
-      if (offer === undefined) return { taken: false, live: false };
-      if ((await offer.steer(input.prompt)) !== "delivered") return { taken: false, live: true };
-      await changeState(ctx, (state) =>
-        withTurn(state, offer.requestId, (record) => ({ ...record, steered: [...(record.steered ?? []), input.prompt] })),
-      );
-      return { taken: true, live: true };
-    },
+  const steering = harnessSteering();
+  const agent = options.agent(harnessFeeds(options.kind, options.defaultModel, steering));
+  // Core's steer action, allowed beside a running turn: it runs no harness, it
+  // hands the running one a line. Recorded on the turn that took it.
+  const steer = steering.action({
+    onTaken: (ctx, turnRequestId, text) =>
+      changeState(ctx, (state) =>
+        withTurn(state, turnRequestId, (record) => ({ ...record, steered: [...(record.steered ?? []), text] })),
+      ),
   });
   // A failure is recorded on the turn, classified by the harness, so the page
   // can tell a refused conversation from any other error and from a stop. The
@@ -345,8 +318,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         userMessage: (input: { prompt: string }) => input.prompt,
         concurrency: "queue",
       },
-      // A control beside the running turn: a page that reloads reattaches to the turn, not to it.
-      steer: { block: steerRunningTurn, concurrency: "allow", autoResume: false },
+      steer,
     },
     session: {
       stateSchema: harnessSessionStateSchema,
