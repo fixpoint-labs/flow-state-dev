@@ -56,7 +56,7 @@ FIX-2249, puts them in `RETIRED`; one still in package source then is FIX-2246's
 
 | Retired | Becomes | Files |
 |---|---|---|
-| `onWorkerMessage` | `receive` | 9 / 2 / 0 |
+| `onWorkerMessage` | `onMessageReceived`, named `on` plus the event like `onTaskSettled` (derived: `messageReceivedEntry`, `MESSAGE_RECEIVED_ENTRY`) | 9 / 2 / 0 |
 | `messageWorker` | `sendMessage` | 12 / 5 / 6 |
 | `workforceRelayTo` | Nothing: no relay | 1 / 2 / 0 |
 | `replyTo` | `inReplyTo` | 10 / 3 / 2 |
@@ -69,6 +69,6 @@ note, add the names to `RETIRED`.
 ## Decided by FIX-2183
 
 The four meanings of *hold* on the task surface, FIX-2092's held phase steps, *waiting* (a task
-waiting on a person and FIX-2214's status; FIX-2070's `receive` field is `call`, so it is not one), and `updateTask`'s `question` field
+waiting on a person and FIX-2214's status; FIX-2070's `onMessageReceived` field is `call`, so it is not one), and `updateTask`'s `question` field
 ([the project spec](https://github.com/fixpoint-labs/flow-state-dev/pull/3102), *Decided since the
 last refresh*). FIX-2183's spec adds its rows to this table before it builds.

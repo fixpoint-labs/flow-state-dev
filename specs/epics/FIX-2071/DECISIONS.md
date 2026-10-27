@@ -80,7 +80,7 @@ moves to `respond` too.
 | | |
 |---|---|
 | **Instead of** | Renaming `onWorkerMessage`, `messageWorker`, `replyTo` and `workforceRelayTo` here |
-| **Because** | FIX-2070 replaces each with a new contract (`receive`, `sendMessage`, `inReplyTo`, no relay). Renaming them first means renaming code FIX-2070 then deletes |
+| **Because** | FIX-2070 replaces each with a new contract (`onMessageReceived`, `sendMessage`, `inReplyTo`, no relay). Renaming them first means renaming code FIX-2070 then deletes |
 | **Locks in** | FIX-2070 removes them with the `takes_tasks_only` and `no_turn` refusals. Every other row of the table is this epic's, the message door included. FIX-2249's sweep refuses all of them, so a leftover is caught and FIX-2246 removes it |
 
 ## Who owns what
@@ -109,7 +109,7 @@ moves to `respond` too.
 - **Rows that matched the code on paper only** (the Architect's and a second-look review, 2026-10-27): the engine's request `retryOf` is kept, and only Workforce's unwritten `RETRY_OF` goes; `reopen` is not renamed, since the follow-up already has its name, and only the retired task shape is swept; `runTaskBoard` is already `dispatch`, and what is left is the `upgradeWorkerEntryNames` reader; `postId`'s head name waits on FIX-2246's read of a known collision with `taskId`; the notice flag becomes `waitedOn`, `listTasks`' word, not a new `waited`.
 - **Readers of old spellings are named rows,** so "no second spelling read" can be checked: `upgradeWorkerEntryNames`, `legacyPostRowId`, the `ask` readers and the `ask:` gate prefix.
 - **FIX-2151's strings are in `RETIRED` in its own PR,** because `SuspensionReason`'s open arm turns a missed call site into a silent custom reason.
-- **FIX-2183 also owns *waiting*,** so a task waiting on a person and a question hold don't rename one word two ways. FIX-2070's `receive` names its input field `call`, so it does not use the word (#3983, as merged).
+- **FIX-2183 also owns *waiting*,** so a task waiting on a person and a question hold don't rename one word two ways. FIX-2070's `onMessageReceived` names its input field `call`, so it does not use the word (#3983, as merged).
 - **Merge order** for the three children on the board files: FIX-2243, FIX-2245, FIX-2246.
 
 ## Open
