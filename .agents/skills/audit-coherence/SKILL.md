@@ -2,7 +2,7 @@
 name: audit-coherence
 context: fork
 agent: general-purpose
-description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from improve-codebase-architecture (deepening) and second-look (per-feature retrospective). Also the home for a whole-repo debt/consistency audit (formerly tech-debt-audit). Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
+description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from improve-codebase-architecture (deepening) and second-look (per-feature retrospective). Also the home for a whole-repo debt/consistency audit. Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
 argument-hint: "<optional scope, e.g. a package, a subsystem, or 'streaming'>"
 ---
 
@@ -52,8 +52,8 @@ Hunt all three. They differ in where the fix lands.
    it, then the code change. (This is the feedback path that makes the philosophy
    improve — route it to `distill-lessons`.)
 
-`/tech-debt-audit` is this skill. Do not write a `TECH_DEBT_AUDIT.md` at the
-repo root; the report below is the deliverable.
+Do not write a `TECH_DEBT_AUDIT.md` at the repo root; the report below is the
+deliverable.
 
 ## Workflow
 

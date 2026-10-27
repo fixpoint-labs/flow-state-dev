@@ -195,7 +195,7 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | --- | --- |
 | `issue-spec` | Research and write implementation specs for Linear issues |
 | `issue-implement` | Implement a Linear issue from its spec document |
-| `adhoc-quick-fix` | Log a Linear issue and ship it — fix it now, or the work is already done. `/adhoc-commit-as-new-issue` is the second entry |
+| `adhoc-quick-fix` | Log a Linear issue and ship it — fix it now, or the work is already done |
 | `diagnose` | Hard-bug loop (reproduce → hypothesise → fix). Calls `debug-flow` for flow traces |
 | `debug-flow` | `fsdev run` toolkit (`diagnose` calls it): NDJSON traces, `fsdev block`, failure-pattern table |
 | `statechart` | Mermaid statechart from a TLA+ model of Task status, holds, notice records, or the assemble phase. Scratch dir; no runtime change |
@@ -203,7 +203,7 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `linear-triage` | Review and prioritize Linear issues |
 | `plan-day` | Identify unblocked tasks and generate a daily work plan |
 | `distill-lessons` | Measure the loop (cycle-ledger) and encode the recurring class — architecture / lint / test before a soft rule. Skill evals in `eval.md` |
-| `audit-coherence` | Sweep the codebase or a change for incoherence; the coherence lens of `review`. `/tech-debt-audit` redirects here |
+| `audit-coherence` | Sweep the codebase or a change for incoherence; the coherence lens of `review`. Whole-repo debt audits land here too |
 | `review` | The one definition of review (flaws in the work): coherence, restraint, reuse, correctness, completeness, optional depth, as parallel lenses |
 | `reuse-review` | Each Adds item of a spec, epic or change against existing pieces: reuse X, extend X, or genuinely new |
 | `analysis` | Whether this is the right work (seven objectives), on a drafted spec before the gate and at epic wrap |

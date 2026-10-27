@@ -7,8 +7,7 @@ argument-hint: "<description of the issue, or of the work already done>"
 # Adhoc
 
 One pipeline: Linear issue → (optional fix) → branch → commit → PR. Two entries,
-picked from the ask. They used to be two skills (`adhoc-quick-fix` and
-`adhoc-commit-as-new-issue`); `/adhoc-commit-as-new-issue` still resolves here.
+picked from the ask.
 
 ## Which entry
 
