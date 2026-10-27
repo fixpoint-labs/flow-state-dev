@@ -102,6 +102,13 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 ## Decided while drafting, recorded so no child reopens them
 
 - **`phase` is a field, not a label.** A step has exactly one phase; a label list allows none or several.
+- <a name="one-meaning-of-phase"></a>**"Phase" means one thing: a stage of a task's workflow.** A row's
+  `phase` is the stage of its filer's workflow it belongs to; a task's declared phases are the
+  stages of its own work. Harness-manager's `PhaseSpec.phase` is the first kind: the stage of the
+  feature a coding run serves (`"implement"`). A row it works gets `Task.phase` written from it,
+  so a row has one phase value, and the topic keeps the segment only as the run record's key.
+  The run's in-run stages are the second kind, declared on its own row. No rename. Raised by the
+  FSD Architect on #3970.
 - **Follow-ups are not declared in a definition.** A follow-up must name a finished task, only one
   can be open per root, and the tools mint its id. The worker files them at runtime (the POC's finding).
 - **Rounds live in the step key.** The worker judges the latest round; a re-review is `review-a-r2`.

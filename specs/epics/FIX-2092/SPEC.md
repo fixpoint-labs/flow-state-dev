@@ -95,7 +95,7 @@ The reviewed snapshot; live state is in Linear.
 | [FIX-2233](https://linear.app/fixpoint-labs/issue/FIX-2233) · `defineWorkflow` | The template: validated definition, `start` with stable ids and fan-in deps, held phases after a judging phase, `addStep` in rounds, release, the approval confirm | FIX-2232 |
 | [FIX-2234](https://linear.app/fixpoint-labs/issue/FIX-2234) · a worker runs it | A workforce worker given a workflow starts it on a task, hears each ending, releases, loops back or asks, with the existing task tools | FIX-2233 |
 | [FIX-2235](https://linear.app/fixpoint-labs/issue/FIX-2235) · the view in Shift Manager | The workflow view on a task, "step N of M" in the task list, the approval linked to the Inbox | FIX-2232 |
-| [FIX-2236](https://linear.app/fixpoint-labs/issue/FIX-2236) · a coding run's phases | Harness-manager declares its stages as phases and reports the current one | FIX-2232 |
+| [FIX-2236](https://linear.app/fixpoint-labs/issue/FIX-2236) · a coding run's phases | A row harness-manager works carries its `PhaseSpec.phase` as `Task.phase`, one value, written from it. The run then declares its own stages (checkout, coding session, review wait, verdict) as its task's phases and reports the current one ([phase means one thing](DECISIONS.md#one-meaning-of-phase)) | FIX-2232 |
 | [FIX-2237](https://linear.app/fixpoint-labs/issue/FIX-2237) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
 Five and a closure. FIX-2236 is the one I'd cut: without it only filed steps have phases, which is
@@ -141,10 +141,11 @@ wiring waits on the template.
 | FIX-2081's `filedByTask` and its filter | **Builds on.** A phase's steps are the rows the task filed with that phase |
 | FIX-2081's `reportProgress`, claim-fenced | **Extended** to take the declared phases ([ER-6](DECISIONS.md#who-owns-what)) |
 | POC #3616's `metadata.phase` and session-state record | **Not built.** A field replaces the first; [D1](DECISIONS.md#d1) drops the second |
+| Harness-manager's `PhaseSpec.phase`: the phase a coding run serves (`"implement"` in the devteam lab), the phase segment of its run record's topic and of the rows it files | **Same meaning, one value on the row.** `Task.phase` is written from it; the topic keeps the segment as the run record's key, not as a second phase field. FIX-2236 owns the mapping ([one meaning of phase](DECISIONS.md#one-meaning-of-phase)) |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `Task.phase` (FIX-2232) | A `phase:` label | A label list allows none or several; a step has exactly one phase |
+| `Task.phase` (FIX-2232) | A `phase:` label · harness-manager's `PhaseSpec.phase` and topic segment | A label list allows none or several; a step has exactly one phase. `PhaseSpec.phase` names a run, not a row: harness-manager writes it to `Task.phase`, so a row has one phase value |
 | A task's declared phases (FIX-2232) | `statusNote` | One line with no order. The declaration rides the same fenced write |
 | `workflowView` (FIX-2232) | Each screen deriving its own | A second copy of "step N of M" drifts; one read, screens render it ([ER-3](DECISIONS.md#who-owns-what)) |
 | `defineWorkflow` (FIX-2233) | A sequencer; one board per phase | The epic's own *why not*: a fixed structure, and loop-backs become awkward. A factory that files tasks |
