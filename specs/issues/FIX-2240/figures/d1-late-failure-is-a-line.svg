@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="D1, what the sender learns when a message can&#x27;t land after its send returned. Chosen: a line in the sending session, and the message resent until the host&#x27;s debt age. Instead of: showing it only in the Messages view. It comes down to the first row: the worker sent the message, and only its own session&#x27;s history reaches its model. The price is the second row: the worker reads the line only on its next turn. The third row is a tie: either way no turn is woken and no budget is spent. Locks in the line, the refused and undeliverable statuses, and a recipient check before each resend. Flips if workers never act on the line.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .own    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use    { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .gone-r { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .fence  { stroke:var(--ink-3); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); } .minus { fill:var(--gone); } .tie { fill:var(--ink-3); }
+    .c-code { fill:var(--code); } .c-mute { fill:var(--ink-3); } .c-lost { fill:var(--ink-2); } .c-acc { fill:var(--accent); } .c-gone { fill:var(--gone); }
+  </style>
+    <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What does the sender learn when a message can&#x27;t land after its send returned?</text>
+  <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+  <text class="t-h c-code" x="228" y="112">A line in the sending session</text>
+  <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="592" y="112">The Messages view only</text>
+  <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+  <rect class="bar" x="16" y="134" width="4" height="62"/>
+  <text class="t-lbl" x="32" y="156">WHO LEARNS</text>
+  <text class="t-lbl" x="32" y="169">IT FAILED</text>
+  <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+  <text class="mark plus" x="228" y="163">+</text>
+  <text class="t-b" x="248" y="162">The worker that sent it</text>
+  <text class="t-s" x="248" y="180">in its session&#x27;s history, for its model</text>
+  <text class="mark minus" x="592" y="163">−</text>
+  <text class="t-b" x="612" y="162">Only a person who looks</text>
+  <text class="t-s" x="612" y="180">the worker goes on as if it landed</text>
+  <line class="row" x1="16" y1="196" x2="924" y2="196"/>
+  <text class="t-lbl" x="32" y="220">WHEN IT</text>
+  <text class="t-lbl" x="32" y="233">IS READ</text>
+  <text class="mark minus" x="228" y="223">−</text>
+  <text class="t-b" x="248" y="222">On the worker&#x27;s next turn</text>
+  <text class="t-s" x="248" y="240">nothing runs for it on its own</text>
+  <text class="mark tie" x="592" y="223">=</text>
+  <text class="t-b" x="612" y="222">Whenever a person opens it</text>
+  <text class="t-s" x="612" y="240">the worker never reads it</text>
+  <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  <text class="t-lbl" x="32" y="278">COST</text>
+  <text class="mark tie" x="228" y="281">=</text>
+  <text class="t-b" x="248" y="280">No turn woken, no budget spent</text>
+  <text class="t-s" x="248" y="298">a line, as a task&#x27;s undeliverable notice is</text>
+  <text class="mark tie" x="592" y="281">=</text>
+  <text class="t-b" x="612" y="280">The same</text>
+  <text class="t-s" x="612" y="298">nothing runs either</text>
+  <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+  <text class="t-b" x="32" y="369">The line; refused and undeliverable</text>
+  <text class="t-s" x="32" y="387">resent up to maxDebtAgeMs, re-checked each time</text>
+  <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+  <text class="t-b" x="494" y="369">Workers never act on the line</text>
+  <text class="t-s" x="494" y="387">then a late failure wakes the sender&#x27;s turn</text>
+</svg>

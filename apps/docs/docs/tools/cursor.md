@@ -31,7 +31,7 @@ a canonical item.
 The SDK is an optional peer dependency, pinned to an exact version:
 
 ```bash
-pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.31
+pnpm add @flow-state-dev/cursor @cursor/sdk@1.0.40
 ```
 
 Cursor ships its local runtime as a platform-specific native binary and its

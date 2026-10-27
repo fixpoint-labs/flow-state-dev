@@ -118,9 +118,10 @@ export class CursorAgentRunError extends Error implements ClassifiedHarnessError
  * Whether `err`, thrown by the SDK's `Agent.resume`, is Cursor saying it does
  * not know the agent.
  *
- * Measured against `@cursor/sdk` 1.0.31: resuming an id the local store does
- * not hold throws the SDK's `AgentNotFoundError` ("Agent ID not found") with
- * the stable code `agent_not_found`. The code is what is matched: it survives
+ * Measured against `@cursor/sdk` 1.0.31, and still the code in 1.0.40:
+ * resuming an id the local store does not hold throws the SDK's
+ * `AgentNotFoundError` ("Agent ID not found") with the stable code
+ * `agent_not_found`. The code is what is matched: it survives
  * the trip out of the runtime's child process, where the class does not. The
  * block asks this only of an error from `resume` itself, so a run that resumed
  * the agent and then failed is never read as a refusal.
