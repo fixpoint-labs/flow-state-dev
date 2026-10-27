@@ -34,6 +34,7 @@ async function harness() {
   }) as ResourceCollectionRef<JsonObject>;
   const ctx = {
     emit: { component: () => undefined },
+    resources: { [`${LEDGER}__ids`]: createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`) },
     session: { identity: { type: "session", id: "s_parent", userId: USER_ID } },
     request: { identity: { type: "request", id: "r_parent" } },
   } as unknown as BlockContext;

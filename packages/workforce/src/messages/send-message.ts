@@ -5,6 +5,9 @@
  * The check, in order, before anything is written:
  *
  * - the session runs a worker, and the text fits;
+ * - a target by task or session (FIX-2160, `./message-target`) resolves to a
+ *   session of the user's, checked on its own record: refused by name when it
+ *   doesn't, and otherwise delivered there;
  * - the recipient is another worker on the user's roster now (one of theirs or
  *   a standard one: another user's worker is simply not there), whose row
  *   reads;
@@ -43,6 +46,7 @@ import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf }
 import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf } from "./message-received-entry";
+import { checkTargetSession, checkTaskTarget, type MessageTarget } from "./message-target";
 import {
   MAX_MESSAGE_CHARS,
   messageChainsOf,
@@ -54,7 +58,8 @@ import {
 
 /** What a send asks for: the tool's input. */
 export interface SendMessageInput {
-  readonly to: string;
+  /** A worker's id, a task (`{ task }`), or one of the user's conversations (`{ session }`). */
+  readonly to: MessageTarget;
   readonly text: string;
   readonly inReplyTo?: string;
 }
@@ -80,7 +85,8 @@ export function recipientRefusal(
   recipient: RosterWorker | undefined,
   answering = false
 ): string | undefined {
-  if (to === sender) return "not_yourself: you can't message yourself.";
+  // An answer to yourself comes from another of your conversations, and goes back there.
+  if (to === sender && !answering) return "not_yourself: you can't message yourself.";
   if (recipient === undefined) return `no_worker: no worker "${to}" on your roster.`;
   if (recipient.problem !== undefined) return `worker_unavailable: worker "${to}" can't be messaged: ${recipient.problem}.`;
   // An answer lands in the session its original came from, which is one of
@@ -154,25 +160,39 @@ export async function sendMessage(
     return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${input.text.length}. Nothing was sent.`);
   }
 
-  // ---- the recipient: on the roster, and hearing by name -------------------
-  const recipient = await installation.rosterWorker(ctx as never, input.to);
-  const refused = recipientRefusal(installation, sender, input.to, recipient, input.inReplyTo !== undefined);
-  if (refused !== undefined || recipient === undefined) return refuse(refused ?? `no_worker: no worker "${input.to}" on your roster.`);
-
-  // ---- where it lands ------------------------------------------------------
+  // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
+  const to = input.to;
+  let recipient: RosterWorker;
   let destination: MessageAddress;
   let exchange: string | undefined;
-  if (input.inReplyTo !== undefined) {
-    const answered = (await log.getOptional(input.inReplyTo))?.state;
-    if (answered === undefined || answered.to !== sender || answered.from !== input.to) {
-      return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${input.to}" sent you. Leave inReplyTo out to start a new one.`);
+  if (typeof to !== "string") {
+    // A task's session or a conversation, checked on its record (FIX-2160).
+    if (input.inReplyTo !== undefined) {
+      return refuse("no_such_message: an answer goes to the worker that sent the message, by its id. Leave inReplyTo out, or send to that worker.");
     }
-    // In the session that sent the original, even after its task ended.
-    destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
-    exchange = answered.exchange;
+    const checked = "task" in to ? await checkTaskTarget(ctx, installation, to.task) : await checkTargetSession(ctx, installation, to.session, { session: true });
+    if (!checked.ok) return refuse(checked.error);
+    recipient = checked.target.worker;
+    destination = { sessionId: checked.target.sessionId, flow: recipient.flow };
   } else {
-    destination = filingSessionFor(state, input.to) ?? (await conversationAddress(ctx, installation, input.to, recipient.flow, state));
+    // ---- by name: on the roster, and hearing by name ------------------------
+    const named = await installation.rosterWorker(ctx as never, to);
+    const refused = recipientRefusal(installation, sender, to, named, input.inReplyTo !== undefined);
+    if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
+    recipient = named;
+    if (input.inReplyTo !== undefined) {
+      const answered = (await log.getOptional(input.inReplyTo))?.state;
+      if (answered === undefined || answered.to !== sender || answered.from !== to) {
+        return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${to}" sent you. Leave inReplyTo out to start a new one.`);
+      }
+      if (answered.fromSession === ctx.session.identity.id) return refuse("not_yourself: that message came from this session.");
+      // In the session that sent the original, even after its task ended.
+      destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
+      exchange = answered.exchange;
+    } else {
+      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, recipient.flow, state));
+    }
   }
 
   // ---- the budget ----------------------------------------------------------
@@ -222,7 +242,8 @@ export async function sendMessage(
   const row: WorkerMessageRow = {
     id,
     from: sender,
-    to: input.to,
+    to: recipient.id,
+    ...(typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const }),
     text: input.text,
     exchange: exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),
@@ -262,7 +283,7 @@ export async function sendMessage(
   }
   if (!outcome.ok) {
     await ref.patchState({ status: "refused", reason: `${outcome.refused}: ${outcome.detail}` });
-    return refuse(`not_delivered: the message to "${input.to}" was refused (${outcome.refused}: ${outcome.detail}).`);
+    return refuse(`not_delivered: the message to "${recipient.id}" was refused (${outcome.refused}: ${outcome.detail}).`);
   }
   await ref.patchState({ status: "delivered", toSession: outcome.sessionId });
   return { ok: true, id };

@@ -93,6 +93,7 @@ import {
   onTaskChangeFor,
   resolveTaskCapDefaults,
   startLeaseRenewal,
+  taskLedgerResources,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -1549,7 +1550,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     // `ctx.cap.<name>` board cap so the two never collide in `flattenCapabilities`.
     const resourceCapability = defineCapability({
       name: `${boardName}__taskCollection`,
-      resources: { [resourceKey]: definedCollection },
+      resources: taskLedgerResources(definedCollection),
     });
     const collectionFactory = (ctx: BlockContext) =>
       resolveResourceTaskCollection<TInput, TOutput>(ctx, {

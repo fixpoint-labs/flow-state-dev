@@ -135,9 +135,18 @@ function isMessageCall(item: ToolOutputItem): boolean {
   return item.toolCall?.name === SEND_MESSAGE_TOOL;
 }
 
+/** Who a message call names: a worker's id, a task, or a conversation (FIX-2160). */
+function messageTargetLabel(to: unknown): string {
+  if (typeof to === "string") return to;
+  const target = (typeof to === "object" && to !== null ? to : {}) as { task?: unknown; session?: unknown };
+  if (typeof target.task === "string") return `task ${target.task}`;
+  if (typeof target.session === "string") return `conversation ${target.session}`;
+  return "another worker";
+}
+
 function MessageCallLine({ item }: { item: ToolOutputItem }) {
   const args = argsOf(item) as { to?: unknown; text?: unknown } | undefined;
-  const to = typeof args?.to === "string" ? args.to : "another worker";
+  const to = messageTargetLabel(args?.to);
   const text = typeof args?.text === "string" ? args.text : "";
   const state = stateOf(item);
   const output = item.output as { ok?: unknown; error?: unknown; unconfirmed?: unknown } | undefined;

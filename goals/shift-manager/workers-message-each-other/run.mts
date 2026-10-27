@@ -5,7 +5,7 @@
  * Controls: GOAL_CONTROL=<name> (controls.mts names each)
  *           (each runs the legs it needs, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=1,1b,2,2b,3b,3,4,5 (default: all, in that order)
+ * Legs:     GOAL_LEGS=1,1b,2,2b,3b,3,4,6,7,8,5 (default: all, in that order)
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -39,9 +39,10 @@ import {
   type Person,
   type World,
 } from "./legs.mts";
+import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
-const ORDER = ["1", "1b", "2", "2b", "3b", "3", "4", "5"] as const;
+const ORDER = ["1", "1b", "2", "2b", "3b", "3", "4", "6", "7", "8", "5"] as const;
 const say = (s: string) => console.error(`[messages ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -191,7 +192,8 @@ await runGoal(async () => {
       label: `devteam-${label}`,
       config: join(profile, "fsdev.config.mts"),
       pages,
-      env: { DEVTEAM_STORE: store, ...env },
+      // The coder's scripted run paces its steps, so leg 8 can message a task while it runs.
+      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", ...env },
       root: join(checkout.root, "packages", "shift-manager"),
       tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
       timeoutMs: 180_000,
@@ -257,8 +259,20 @@ await runGoal(async () => {
       }
     };
     await runLeg("4", () => leg4(world, filedGoals, hireCheck));
+    // Legs 6 to 8 (FIX-2160) share the courier and the sessions they address.
+    if (legs.has("6") || legs.has("7") || legs.has("8")) {
+      const setup = await setupTargets(world);
+      const targets: Targets | undefined = setup.targets;
+      if (targets === undefined) {
+        for (const l of ["6", "7", "8"]) if (legs.has(l)) results[l] = { failures: setup.failures, notes: [] };
+      } else {
+        await runLeg("6", () => leg6(world, targets));
+        await runLeg("7", () => leg7(world, targets));
+        await runLeg("8", () => leg8(world, targets));
+      }
+    }
     for (const t of world.turns) {
-      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${String(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
+      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${typeof c.args.to === "string" ? c.args.to : JSON.stringify(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
     }
     sent = new Map([...(await sentIds(world.alice)).entries()].map(([id, c]) => [id, { sessionId: c.sessionId, args: c.args }]));
   } finally {

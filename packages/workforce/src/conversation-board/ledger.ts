@@ -40,6 +40,7 @@ import {
   type TaskCollectionRef,
   type TaskPartitionContext,
   type TaskSettingsSupport,
+  taskLedgerResources,
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
@@ -133,8 +134,8 @@ export const conversationLedger = Object.assign(
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
 
-/** The flow resources that install the ledger. */
-export const conversationLedgerResources = { [CONVERSATION_LEDGER_ID]: conversationLedger } as const;
+/** The flow resources that install the ledger, with the id index a `{ task }` message finds its row by (FIX-2160). */
+export const conversationLedgerResources = taskLedgerResources(conversationLedger);
 
 /**
  * The ledger at `partition`, as the running user's scope holds it, or

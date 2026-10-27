@@ -29,3 +29,5 @@ export {
 export { DEFAULT_MESSAGE_HOP_LIMIT, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
 export { sendMessage, type SendOutcome, type SendMessageInput } from "./send-message";
+// A message to a task or a conversation, checked before anything is written (FIX-2160).
+export { checkTargetSession, checkTaskTarget, type CheckedTarget, type MessageTarget, type TargetCheck } from "./message-target";

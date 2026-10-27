@@ -173,3 +173,9 @@ below.
   request host's header lines on session ids and records change with the verb (BP-034). A caller can
   pick a task id, so the same id can sit in two partitions; the lookup must keep both, never
   overwrite one with the other.
+- **Cross-spec review of the FIX-2070 children, recorded at implementation:**
+  - The door and the message check share one session-rows reader, `rowsInSession`. It lives in orchestration, because workforce doesn't depend on harness-manager.
+  - The target checks are exported as `checkTaskTarget` and `checkTargetSession`, so FIX-2240's resend reruns them on a stored row.
+  - `harnessTalkTurn` returns `{ reply, taskId }`, for FIX-2239's call to return the reply.
+  - The row's target field is `addressedBy` (`task` | `session`), because the retired-terms guard refuses "kind" on Workforce's ground.
+- **The goal's other-organization signals are not run in DevTeam.** The lab verifies every bearer into one organization. The engine's `request-sessions.test.ts` covers that refusal.
