@@ -1,4 +1,4 @@
-import { attachRequestEndRegistry, createRequestEndRegistry } from "../execution/request-end-hooks";
+import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -1630,6 +1630,10 @@ export async function createExecutionContext<
     recordWavePreload("org", orgFlowLevelConfigs, "flow-eager", wave1PerRecord);
   }
 
+  // How many writes now running record how the request ended (FIX-2145):
+  // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
+  let writesOutlivingAbort = 0;
+
   const requestRef: { current: RequestRecord } = {
     current: requestRecord
   };
@@ -2117,7 +2121,9 @@ export async function createExecutionContext<
             container,
             mutator,
             intent,
-            signal: options.sideChainSignal,
+            // A write that records how the request ended, an explicit abort
+            // included, doesn't stop on it (FIX-2145).
+            signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
               stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
             reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
@@ -4388,6 +4394,14 @@ export async function createExecutionContext<
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
   (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
+  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = async (write) => {
+    writesOutlivingAbort += 1;
+    try {
+      return await write();
+    } finally {
+      writesOutlivingAbort -= 1;
+    }
+  };
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers

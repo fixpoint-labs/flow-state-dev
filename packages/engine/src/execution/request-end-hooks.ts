@@ -130,6 +130,17 @@ async function runHooks(
   return failure;
 }
 
+/**
+ * Where a request's context keeps the function that runs a request-end hook
+ * with its resource writes not stopped by an explicit abort (FIX-2145). Only
+ * the session config's hook runs through it: it records what the request
+ * spent, which an abort doesn't undo. Engine-internal.
+ */
+export const WRITES_OUTLIVE_ABORT: unique symbol = Symbol("@flow-state-dev/engine/writes-outlive-abort");
+
+/** Run `write` with its resource writes not stopped by an explicit abort. */
+export type WritesOutliveAbort = <T>(write: () => Promise<T>) => Promise<T>;
+
 /** The registry attached to `ctx`, when the context carries one. */
 export function requestEndRegistryOf(ctx: object): RequestEndRegistry | undefined {
   return (ctx as { [REQUEST_END_REGISTRY]?: RequestEndRegistry })[REQUEST_END_REGISTRY];

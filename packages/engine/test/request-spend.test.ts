@@ -292,4 +292,62 @@ describe("request spend ledger", () => {
       ["failed", 3]
     ]);
   });
+
+  it("keeps counting a request's token budget across a continuation after the client went away", async () => {
+    // A disconnect leaves the request `interrupted`, and a continuation
+    // replays the steps it finished rather than calling the model again: the
+    // count it carries is the only record of what they spent.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const usages = [usage4x4, { promptTokens: 2, completionTokens: 1, totalTokens: 3 }];
+    let calls = 0;
+    const modelResolver = Object.assign(
+      () => ({
+        modelId: "openai/gpt-6-luna",
+        async generate() {
+          return { text: "ok", usage: usages[Math.min(calls++, usages.length - 1)] };
+        }
+      }),
+      { resolveId: (id: string) => id }
+    );
+    let waited = false;
+    const waitOnce = handler({
+      name: "wait-once",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        if (waited) return value;
+        waited = true;
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        return value;
+      }
+    });
+    const ask = (name: string) => generator({ name, model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+    const flow = defineFlow({
+      kind: "spend-interrupt-budget",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(waitOnce).step(ask("second")),
+          tokenBudget: { maxTotalTokens: 10, onExceeded: "error" }
+        }
+      }
+    })({ id: "spend-interrupt-budget" });
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider, modelResolver };
+    const disconnect = new AbortController();
+
+    const running = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-interrupt", signal: disconnect.signal, stores, runtimeConfig });
+    while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
+    disconnect.abort();
+    await running;
+    expect((await stores.request.get("r-interrupt"))?.status).toBe("interrupted");
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId: "r-interrupt", stores, flowRegistry: registry, runtimeConfig });
+
+    const outcome = await finished;
+    // The first answer was replayed, not asked again.
+    expect(calls).toBe(2);
+    expect(outcome.error?.message).toBe("Token budget exceeded: consumed 11 > 10");
+  });
 });

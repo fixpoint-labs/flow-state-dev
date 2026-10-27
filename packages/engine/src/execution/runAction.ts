@@ -84,7 +84,7 @@ import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
-import { requestEndRegistryOf } from "./request-end-hooks";
+import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -2257,8 +2257,13 @@ async function runActionAttempt<
     // The session config's request-end hook (FIX-2145), added to this
     // request's registry as a block's `onRequestEnded` would add it. Last
     // before the main try, so every path that installs it ends through it.
+    // Its writes record what the request spent, so an explicit abort
+    // doesn't stop them; every other hook's writes still stop on one.
     const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
-    if (sessionEndHook !== undefined) onRequestEnded(ctx, sessionEndHook);
+    if (sessionEndHook !== undefined) {
+      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
+      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
+    }
   } catch (startupError) {
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
@@ -3062,10 +3067,13 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        // A continuation resumes from here: what was spent so far goes with
+        // it, as on a suspension (FIX-2145).
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
-          heartbeatsUntilFinalized: false
+          heartbeatsUntilFinalized: false,
+          spentByModel: ctx.request.tokenUsage.byModel
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;

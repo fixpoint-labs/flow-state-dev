@@ -12,13 +12,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { reportHarnessSpend, type FlowInstance, type HarnessRunSpend } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { abortRequest, createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { WORKER_USAGE_ACTION, workerUsageAction, type WorkerUsageRow } from "../src/workers/worker-usage";
 
-const input = z.object({ message: z.string(), harness: z.any().optional() });
+const input = z.object({ message: z.string(), harness: z.any().optional(), waitForAbort: z.boolean().optional() });
 const DAY = 24 * 60 * 60 * 1000;
 
 afterEach(() => {
@@ -38,6 +38,7 @@ const modelResolver = Object.assign(
 
 /** A host over `stores`, with `workers` as its standard workers. */
 function host(workers: readonly string[] = ["coder", "em"], stores = inMemoryStores()) {
+  const started = Promise.withResolvers<void>();
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
     standardWorkers: workers.map((id) => ({ id, declared: { flow: "work" }, body: "Work." })),
@@ -55,8 +56,12 @@ function host(workers: readonly string[] = ["coder", "em"], stores = inMemorySto
   const harness = handler({
     name: "work-harness",
     inputSchema: input,
-    execute: (value, ctx) => {
+    execute: async (value, ctx) => {
       if (value.harness !== undefined) reportHarnessSpend(ctx, value.harness as HarnessRunSpend);
+      if (value.waitForAbort === true) {
+        started.resolve();
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+      }
       return value;
     }
   });
@@ -77,7 +82,7 @@ function host(workers: readonly string[] = ["coder", "em"], stores = inMemorySto
   });
   flows = { work };
   const copy = work() as unknown as FlowInstance;
-  return { copy, state: createFlowState({ flows: { work: copy }, stores: { default: { primary: stores } }, runtimeConfig: { modelResolver } as never }) };
+  return { copy, started: started.promise, state: createFlowState({ flows: { work: copy }, stores: { default: { primary: stores } }, runtimeConfig: { modelResolver } as never }) };
 }
 
 async function harnessOf(h: ReturnType<typeof host>) {
@@ -115,9 +120,29 @@ async function harnessOf(h: ReturnType<typeof host>) {
   /** One turn in one of the user's conversations with `worker`. */
   const turn = (userId: string, worker: string, harness?: HarnessRunSpend, conversation = "") =>
     act(userId, worker, "respond", { message: "go", ...(harness === undefined ? {} : { harness }) }, conversation);
+  /** A turn the user stops after its harness reported `harness`. */
+  const stoppedTurn = async (userId: string, worker: string, harness: HarnessRunSpend) => {
+    const requestId = `stopped-${userId}-${worker}`;
+    const running = runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow: h.copy,
+      actionName: "respond",
+      input: { message: "go", harness, waitForAbort: true },
+      userId,
+      requestId,
+      sessionId: await open(userId, worker, ""),
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig, modelResolver }
+    });
+    await h.started;
+    await runtime.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["in_progress"], Date.now());
+    abortRequest(requestId);
+    await running;
+    expect((await runtime.stores.request.get(requestId))?.status).toBe("aborted");
+  };
   const usage = async (userId: string, days?: number) =>
     ((await act(userId, "em", WORKER_USAGE_ACTION, days === undefined ? {} : { days })) as { workers: WorkerUsageRow[] }).workers;
-  return { turn, usage };
+  return { turn, stoppedTurn, usage };
 }
 
 const CLAUDE_KEY: HarnessRunSpend = { harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" };
@@ -158,6 +183,22 @@ describe("per-worker token usage", () => {
 
       expect((await usage("alice")).find((row) => row.worker === "coder")?.tokens).toEqual({ input: 1004, output: 204 });
       expect((await usage("bob")).find((row) => row.worker === "coder")?.tokens).toEqual({ input: 4, output: 4 });
+    } finally {
+      await h.state.dispose();
+    }
+  });
+
+  it("counts a turn the user stopped after its harness ran", async () => {
+    // A stop cancels the request's own writes; recording what it spent is
+    // how it ended, and must still land.
+    const h = host();
+    try {
+      const { stoppedTurn, usage } = await harnessOf(h);
+      await stoppedTurn("alice", "coder", CLAUDE_KEY);
+
+      expect((await usage("alice")).find((row) => row.worker === "coder")?.bySource).toEqual([
+        { source: "claude-code", kind: "harness", billing: "api-key", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, runs: 1, unreported: 0 }
+      ]);
     } finally {
       await h.state.dispose();
     }
