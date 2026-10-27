@@ -1,11 +1,4 @@
 // @vitest-environment happy-dom
-/**
- * Kitchen Sink has two themes and one button between them. Light is the
- * design system's warm Draft stock, so the root must carry
- * `data-theme="evening"` (the selector its values sit under) and never the
- * `dark` class; dark must carry `.dark`, which both the design system's night
- * values and Tailwind's `dark:` variant key on.
- */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 

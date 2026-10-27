@@ -16,13 +16,7 @@
 @source "../node_modules/streamdown/dist/*.js";
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Two surfaces are the design system's, not the registry's: `sidebar`, the
- * navigation rail, and `inspector`, the right-hand panel, each a step darker
- * than the page. They fall back to registry tokens here, in the base layer,
- * so the design-system import's values win and, without it, both read as the
- * registry's neutral defaults.
- */
+/* Not registry tokens. Base layer, so the design-system import's values win. */
 @theme inline {
   --color-sidebar: var(--sidebar);
   --color-inspector: var(--inspector);

@@ -11,7 +11,6 @@ import { ThemeProvider } from "next-themes";
 /** next-themes' theme name → the value written to the root's class and `data-theme`. */
 const THEME_VALUES = { light: "evening", dark: "dark" } as const;
 
-/** The root theme provider every Kitchen Sink page sits in. */
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
