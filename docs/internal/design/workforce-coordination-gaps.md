@@ -73,6 +73,10 @@ the `asked` flag, an ordinary English word, counts package source only.
 Phase 5 makes the code renames, `chief-of-staff` becoming `shift-coordinator`; nothing outside the
 repo uses them, so the old worker id just stops working.
 
+The *Message entry; tool* and *Relay; reply* rows are removed by FIX-2070 as it builds their
+replacements (its ER-7); FIX-2071's closure, FIX-2249, adds them to the identifier sweep. Every other
+row is FIX-2071's, each with its owner in `specs/epics/FIX-2071/renames.md`.
+
 The `fsd.ask.*` keys, the `asked` flag and the hand-off route names were kept as durable spellings so
 a request resumed across an upgrade replays what it recorded (`.changeset/wait-vocabulary.md`,
 `.changeset/dispatch-vocabulary.md`, `orchestration/src/task-board/index.ts:934`, `:945`,

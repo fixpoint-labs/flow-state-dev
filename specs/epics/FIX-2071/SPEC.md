@@ -49,7 +49,7 @@ flowchart LR
 | **Anti-game** | `RETIRED` only grows, and an exception strips a token on a marked line, never a file |
 | **Control that must fail** | The sweep's `--control` plants a retired identifier in package source; leg b on the commit before FIX-2244 merges |
 
-**Lead measure:** rows of the gaps file's table that a CI sweep refuses, with no replay reader
+**Lead measure:** rows of the gaps file's retired-terms table (22, the denominator) that a CI sweep refuses, with no replay reader
 left for them. **Today, 2 of 22 in part:** seat and mailbox prose (`check-retired-terms`, less its
 `goal-names` exception), and ask and hand-off (`RETIRED`, with marked replay readers still in place).
 
@@ -82,8 +82,8 @@ Every child waits on FIX-2070 (owner, 2026-10-27). Live state is in Linear.
 |---|---|---|
 | [FIX-2243](https://linear.app/fixpoint-labs/issue/FIX-2243) · task names | `addTask` → `createTask` on the collection and board, the last old task-tool names | FIX-2070, FIX-2183 |
 | [FIX-2244](https://linear.app/fixpoint-labs/issue/FIX-2244) · Shift Coordinator | `chief-of-staff` → `shift-coordinator`, `chiefOfStaff*`, the `cos` route | FIX-2070 |
-| [FIX-2245](https://linear.app/fixpoint-labs/issue/FIX-2245) · claim order and runner | `TaskDispatcher` → `ClaimOrder`, `FlowDispatcher` → `FlowRunner` | FIX-2070; FIX-2072 for `fifoDispatcher` (soft) |
-| [FIX-2246](https://linear.app/fixpoint-labs/issue/FIX-2246) · board words | Post, reopen, run the board, retry, kit, the last `run` actions on worker flows, and the durable spellings kept for replay. One issue because each slice is small (the replay spellings are one source file and two marked route names); its codemod runs them as separate phases, one commit each, so a slice that stalls drops out of the PR without holding the rest | FIX-2070 |
+| [FIX-2245](https://linear.app/fixpoint-labs/issue/FIX-2245) · claim order and runner | `TaskDispatcher` → `ClaimOrder`, `FlowDispatcher` → `FlowRunner` | FIX-2070; FIX-2243 (merge order); FIX-2072 for `fifoDispatcher` (soft) |
+| [FIX-2246](https://linear.app/fixpoint-labs/issue/FIX-2246) · board words | Post, reopen, run the board, retry, kit, the last `run` actions on worker flows, and the durable spellings and old-name readers kept for replay. One issue because each slice is small (the replay spellings are one source file and two marked route names); its codemod runs them as separate phases, one commit each, so a slice that stalls drops out of the PR without holding the rest | FIX-2070; FIX-2245 (merge order) |
 | [FIX-2248](https://linear.app/fixpoint-labs/issue/FIX-2248) · goal names | Seat and mailbox out of goal names; the `goal-names` exception deleted | FIX-2070 |
 | [FIX-2183](https://linear.app/fixpoint-labs/issue/FIX-2183) · hold | One word per state for the four meanings of *hold*, and `updateTask`'s `question` field. **Spec route:** its names are a decision | FIX-2070, for the build only |
 | [FIX-2151](https://linear.app/fixpoint-labs/issue/FIX-2151) · user reasons | `human_approval`, `human_input` → `user_approval`, `user_input` | FIX-2070 |
@@ -105,6 +105,8 @@ flowchart LR
   M -.-> U["FIX-2151 · user reasons"]
   K["FIX-2072 · prune fifoDispatcher · consumed"] -.-> C
   H -->|"its names, before the collection's are renamed"| A
+  A -->|"merge order · the same board files"| C
+  C -->|"merge order · the same board files"| D
   A --> P["FIX-2249 · closure · required"]
   B --> P
   C --> P
@@ -117,7 +119,9 @@ flowchart LR
 An edge is what one issue hands the next. FIX-2070 blocks every build: the message names and
 the coordinator's routing are its work in flight, and a rename under it is a merge conflict on
 every PR it has open. FIX-2183's spec can be written now. It goes before FIX-2243, so the task
-collection's names change once.
+collection's names change once. FIX-2243, FIX-2245 and FIX-2246 all rewrite `orchestration/src/task-board`
+and `workforce/src/conversation-board`, so they merge in that order; FIX-2244, FIX-2248 and
+FIX-2151 touch other files and run beside them.
 
 ## What stays as it is
 

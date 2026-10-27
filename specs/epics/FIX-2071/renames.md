@@ -22,7 +22,7 @@ count, is the check.
 
 | Retired | Becomes | Kept on purpose | Owner | Files |
 |---|---|---|---|---|
-| `TaskCollection.addTask`, a board capability's `addTask` | `createTask`, the filer tool's name | The engine's side-chain pool `addTask` (`core/src/execution/request-side-chain-pool.ts`): a promise pool, not a task. The codemod is type-aware so it leaves it | FIX-2243 | 130 / 24 / 20 |
+| `TaskCollection.addTask`, a board capability's `addTask` | `createTask`, the filer tool's name. One name for one act: the tool's input is the method's `TaskInit` as a model sees it, so the two keep one contract and the tool calls the method | The engine's side-chain pool `addTask` (`core/src/execution/request-side-chain-pool.ts`): a promise pool, not a task. The codemod is type-aware so it leaves it | FIX-2243 | 130 / 24 / 20 |
 | `readTask` | `getTask` | — | FIX-2243 | 2 / 3 / 5 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | — | FIX-2243 | 1 / 6 / 5 |
 | `dispatchTask`, `assignTask`, `failTask`, `blockTask`, `completeTask`, `answerTask*`; `parkOnQuestion`, `parkedOnQuestion`, `awaitReview`, `unparkAndDrain`, `onReview`, harness-manager's `answerQuestion()` (removed by FIX-2056 and FIX-2058) | Nothing new: the line goes | A migration note or a refusal test, marked `retired-name-refusal`. A live helper that answers a question hold (`task-tools-capability.ts`) is not the harness's, and goes in the sweep's keep list with that reason | FIX-2243 | 8 / 4 / 18 at most |
@@ -30,20 +30,23 @@ count, is the check.
 | `chiefOfStaff*`, `ChiefOfStaff*` | `shiftCoordinator*`, `ShiftCoordinator*` | — | FIX-2244 | 17 / 2 / 5 |
 | Shift Manager's `cos` route and test ids | `shift-coordinator` | — | FIX-2244 | — |
 | `TaskDispatcher` | `ClaimOrder` | — | FIX-2245 | 16 / 4 / 0 |
-| `priorityDispatcher`, `topologicalDispatcher`, `runOwnerDispatcher`; `tasks/dispatchers/` | `priorityClaimOrder`, `topologicalClaimOrder`, `runOwnerClaimOrder`; `tasks/claim-orders/` | `fifoDispatcher` is FIX-2072's: removed there, or renamed `fifoClaimOrder` here if it stays | FIX-2245 | — |
+| `priorityDispatcher`, `topologicalDispatcher`, `runOwnerDispatcher`; `tasks/dispatchers/` | `priorityClaimOrder`, `topologicalClaimOrder`, `runOwnerClaimOrder`; `tasks/claim-orders/`, moved with `git mv` in the same PR so history follows | `fifoDispatcher` is FIX-2072's: removed there, or renamed `fifoClaimOrder` here if it stays | FIX-2245 | — |
 | `FlowDispatcher`, `InProcessDispatcher` | `FlowRunner`, `InProcessRunner` | The dispatcher block (`core/src/blocks/dispatcher.ts`), dispatching a task, and `dispatch` | FIX-2245 | 22 / 4 / 0 |
 | `onDelegatedPost`, `isPostRow`, `onPostSettled`, `postCancelled` | `onRoutedTask`, `isRoutedTask`, `onRoutedTaskSettled`, `routedTaskCancelled` | — | FIX-2246 | 3 / 2 / 4 |
-| `postId`, `RoundPost` | `taskId`, `RoundTask` | — | FIX-2246 | 21 / 4 / 10 |
-| `reopen*` | `followUp*` | — | FIX-2246 | 34 / 29 / 41, case-insensitive |
-| `runTaskBoard`, `RUN_BOARD_ENTRY` | `dispatch`, `DISPATCH_ENTRY` | — | FIX-2246 | 10 / 3 / 4 |
-| `retryOf`, `RETRY_OF` | `attemptOf`, `ATTEMPT_OF` | — | FIX-2246 | 9 / 4 / 1 |
+| `RoundPost` | `RoundTask` | — | FIX-2246 | 3 / 2 / 0 |
+| `postId` | **Not decided here: a known collision.** `taskId` is already live beside it (`coordinator-flow.ts`'s `routedTaskId(postId, …)`). FIX-2246 reads whether the two ids are one, and adds the head name as an amendment row before it builds | — | FIX-2246 | 21 / 4 / 10 |
+| `legacyPostRowId` (`workforce/src/coordinator/coordinator-flow.ts`), a reader of the old post row id | Nothing: deleted, stores are reset ([D1](DECISIONS.md#d1)) | — | FIX-2246 | 1 / 0 / 0 |
+| A task *reopen*: the `reopened` retired shape (`tasks/schema/retired-shapes.ts`) and any task reopen still taught in docs | Nothing new: the follow-up already has its name (`followUpOf`). The shape stays on its `retired-name-refusal` lines; the docs say follow-up. `RETIRED` matches these exact identifiers, never a `reopen` prefix | Every other reopen: the Inbox check's `reopened` (a closed hold seen again), a stream or connection reopen, a reopened workstream, and prose | FIX-2246 | listed by FIX-2246 |
+| `runTaskBoard` left in `engine/src/stores/testing/wake-store-conformance.ts` (the rename to `dispatch` and `DISPATCH_ENTRY` is done) | `dispatch` | — | FIX-2246 | 1 / 0 / 0 |
+| `upgradeWorkerEntryNames` and its types (`workforce/src/workers/upgrade-entry-names.ts`), the reader that rewrites stored old entry names (`runTaskBoard`, the `run` and `message` doors) at host start, and its call in kitchen-sink's `stored-work-upgrade.ts` | Nothing: removed, since no stored old name is left to rewrite ([D1](DECISIONS.md#d1)) | — | FIX-2246 | 2 / 1 / 1 |
+| Workforce's `RETRY_OF` (`conversation-board/board-entries.ts`; nothing writes it since FIX-2077) | Nothing: deleted | The engine's request `retryOf`: a request the `/retry` route re-ran, kept in request metadata (`engine/src/execution/request-recovery.ts`, `past-turns.ts`, `routes/recovery-routes.ts`). Not a task attempt | FIX-2246 | 2 / 0 / 0 |
 | `delegationBoard`, `settleSplitTask`, `cancelSplitPieces` left over | Nothing new: the line goes | — | FIX-2246 | 1 / 2 / 1 |
-| `fsd.ask.*` run-once keys; a notice's `asked` flag; a wait gate's stored reason `"ask"` | `fsd.wait.*`; `waited`; `"wait"`, with no second spelling read | — | FIX-2246 | 0 / 0 / 1; 1 source file |
-| `<board>-hand-off-<assignee>`, `<board>-hand-off-fallback` | `<board>-dispatch-<assignee>`, `<board>-dispatch-fallback` | — | FIX-2246 | 1 / 0 / 1 |
+| `fsd.ask.*` run-once keys; a notice's `asked` flag; the wait-gate id prefix `ask:` (`orchestration/src/tasks/helpers/wait-on-task.ts`, `engine/src/context/wait-resume-operation.ts`); the two readers `.changeset/wait-vocabulary.md` names (a gate stored with reason `"ask"` read as a wait, a row's `ask` read as `wait`) | `fsd.wait.*`; `waitedOn`, the word `listTasks` already uses; `wait:`; the readers deleted, with no second spelling read | — | FIX-2246 | 2 source files, plus the readers |
+| `<board>-hand-off-<assignee>`, `<board>-hand-off-fallback`; a reader of the `"handed-off"` termination reason `.changeset/dispatch-vocabulary.md` names, if one is left | `<board>-dispatch-<assignee>`, `<board>-dispatch-fallback`; the reader deleted | — | FIX-2246 | 1 / 0 / 1 |
 | Kit (filing kit, session kit) and a `kit` variable | Factory | — | FIX-2246 | 8 / 4 / 9 |
 | A `run` action left on a Workforce worker flow | `respond`, the door the worker contract requires | A flow outside Workforce keeps its own action names ([D3](DECISIONS.md#d3)) | FIX-2246 | — |
 | Seat, mailbox in goal names | Worker, coordinator | Verdict logs and dated run records | FIX-2248 | 17 goal names |
-| `"human_approval"`, `"human_input"` | `"user_approval"`, `"user_input"` | — | FIX-2151 | ~138 |
+| `"human_approval"`, `"human_input"` | `"user_approval"`, `"user_input"`. `SuspensionReason`'s open `string & {}` arm means a missed call site still compiles and silently becomes a custom reason (no Inbox item), so FIX-2151 adds both exact strings to `RETIRED` in its own PR | — | FIX-2151 | ~138 |
 
 ## Owned by FIX-2070, swept here
 
@@ -65,6 +68,7 @@ note, add the names to `RETIRED`.
 
 ## Decided by FIX-2183
 
-The four meanings of *hold* on the task surface, and `updateTask`'s `question` field
+The four meanings of *hold* on the task surface, FIX-2092's held phase steps, *waiting* (a task
+waiting on a person, FIX-2214's status, and FIX-2070's `receive` flag), and `updateTask`'s `question` field
 ([the project spec](https://github.com/fixpoint-labs/flow-state-dev/pull/3102), *Decided since the
 last refresh*). FIX-2183's spec adds its rows to this table before it builds.
