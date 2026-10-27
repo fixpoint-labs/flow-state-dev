@@ -97,7 +97,6 @@ export async function journeyDeadlines(serving: Serving, shipped: Shipped, conte
     const settle = (id: string) => c.alice.until(() => c.alice.row(id), (r) => TERMINAL.has(r?.status), 90_000);
     const proofs = (id: string, kind: string) => proofsOf(c.proof).filter((p) => p.kind === kind && p.taskId === id);
 
-    // The user's stop of the run that waits.
     const waitingRow = await c.alice.until(() => c.alice.row(stopped), (r) => waiting("approval", r) || TERMINAL.has(r?.status), 60_000);
     const run = waitingRow?.run as { requestId?: string; flowId?: string } | undefined;
     if (!waiting("approval", waitingRow) || run?.requestId === undefined) {

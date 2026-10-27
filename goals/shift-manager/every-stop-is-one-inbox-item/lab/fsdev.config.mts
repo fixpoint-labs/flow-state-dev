@@ -116,7 +116,6 @@ function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["insta
       // A later turn on the same attempt (a steer's) does the work without stopping again.
       if (kind === undefined || ((await rowOf(ctx))?.turn ?? 1) > 1) return `done ${taskId ?? "no task"}`;
       const deadline = /\[deadline:(\d+)\]/.exec(input.message)?.[1];
-      prove({ kind: "stopped", taskId, stop: kind, requestId: ctx.request.identity.id });
       const answer = await ctx.waitForUser({ kind, prompt: STOPS[kind], ...(deadline === undefined ? {} : { deadline: Number(deadline) }) } as never);
       const row = await rowOf(ctx);
       prove({ kind: "resumed", taskId, stop: kind, requestId: ctx.request.identity.id, attempt: row?.attempts, outcome: answer });
@@ -198,7 +197,6 @@ function recorded(feeds: any): HarnessBlock {
     outputSchema: z.unknown(),
     execute: async (handle) => {
       if (cwd !== "" && existsSync(join(cwd, "NOTE.txt"))) unlinkSync(join(cwd, "NOTE.txt"));
-      prove({ kind: "harness-ended", cwd });
       return handle;
     },
   });
