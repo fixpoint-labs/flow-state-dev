@@ -98,6 +98,7 @@ import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
+import { createRequestSessions } from "./request-sessions";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
 
@@ -793,6 +794,15 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       now: nowMs
     });
   }
+
+  // The eighth verb (FIX-2160 D2): the principal's own sessions, read before a
+  // write to one. The principal comes from here, never the block.
+  (host as { sessions?: RequestHost["sessions"] }).sessions = createRequestSessions({
+    sessions: stores.session,
+    identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
+    flow,
+    ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {})
+  });
 
   // The seventh verb (FIX-2082): a wait parks durably (the resume) and its
   // deadline is a wake, so it is present only beside both. The user and the

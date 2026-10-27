@@ -21,7 +21,8 @@ import { z } from "zod";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conversation-board-harness";
+import { bootBoardHost, boardWorkers, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 const doorInput = z.object({ message: z.string() });
 
@@ -47,7 +48,8 @@ function boardedFlow(installation: WorkerInstallation, flow: string, door: "othe
     kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, flow) },
     actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work } }
   } as never);

@@ -128,4 +128,17 @@ describe("a message the worker sent, in its own conversation", () => {
     expect(screen.getByTestId("message-call-reason").textContent).toContain("takes_tasks_only");
   });
 
+  it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
+    render(
+      <ToolLineGroup
+        items={[
+          call("t1", { to: { task: "task_42" }, text: "Done yet?" }, { sent: "msg_a" }),
+          call("t2", { to: { session: "s_other" }, text: "FYI" }, { ok: false, error: "no_session: no conversation" })
+        ]}
+      />
+    );
+    const [toTask, toSession] = screen.getAllByTestId("message-call");
+    expect(toTask!.textContent).toContain("To task task_42: Done yet?");
+    expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");
+  });
 });

@@ -205,6 +205,7 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  taskLedgerResources,
   freezeLedgerAssignee,
   hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
@@ -213,6 +214,8 @@ export {
 } from "./collection/define-task-collection";
 // A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
 export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";
+// Which partitions of a partitioned ledger hold a task id (FIX-2160).
+export { findTaskPartitions, taskIdIndexKey } from "./collection/id-index";
 // A ledger's ending recorder (`defineTaskCollection({ recordEnding })`): what
 // each ending write hands it, inside that same write.
 export type { TaskEnding, TaskEndingRecorder } from "./collection/ending";
@@ -256,6 +259,8 @@ export {
 
 // Filed work still holding a task (FIX-2077, rule 6).
 export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
+// The rows that run in one session: its tasks and their follow-ups (FIX-2160).
+export { rowsInSession } from "./helpers/session-rows";
 // A task waiting on a user (FIX-2129): its cancel, and the resume that cancel owes its run.
 export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 

@@ -36,6 +36,9 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type WorkerInstallation,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
@@ -164,7 +167,7 @@ export function defineAskerFlow(
   return defineFlow({
     kind: ASKER_FLOW,
     session: installation.session(),
-    resources: { ...resources, ...inventory, ...installation.resources },
+    resources: { ...resources, ...inventory, ...installation.resources, ...workerMessagesResources },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
@@ -176,6 +179,7 @@ export function defineAskerFlow(
         description: "A user's line into this worker's session.",
       },
     },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
     task: {
       actions: {
         [WORKER_TASK_ENTRY]: { ...workerTaskEntry({ name: "asker-task", turn: onPost }), durable: true },

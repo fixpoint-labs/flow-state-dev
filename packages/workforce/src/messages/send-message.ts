@@ -5,6 +5,9 @@
  * The check, in order, before anything is written:
  *
  * - the session runs a worker, and the text fits;
+ * - a target by task or session (FIX-2160, `./message-target`) resolves to a
+ *   session of the user's, checked on its own record: refused by name when it
+ *   doesn't, and otherwise delivered there;
  * - the recipient is another worker on the user's roster now (one of theirs or
  *   a standard one: another user's worker is simply not there), whose row
  *   reads;
@@ -46,6 +49,7 @@ import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, tur
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf } from "./message-received-entry";
+import { checkTargetSession, checkTaskTarget, type MessageTarget } from "./message-target";
 import {
   MAX_MESSAGE_CHARS,
   messageChainsOf,
@@ -57,7 +61,8 @@ import {
 
 /** What a send asks for: the tool's input. */
 export interface SendMessageInput {
-  readonly to: string;
+  /** A worker's id, a task (`{ task }`), or one of the user's conversations (`{ session }`). */
+  readonly to: MessageTarget;
   readonly text: string;
   readonly inReplyTo?: string;
 }
@@ -92,11 +97,23 @@ export function recipientRefusal(
 }
 
 /**
- * The recipient check a resend runs again (FIX-2240): the send's, on the
- * row's sender and recipient as the roster reads now, so a worker fired since
- * the send is refused. Not the budget: the row paid it once.
+ * The recipient check a resend runs again (FIX-2240): the send's, as it reads
+ * now, so a worker fired since the send is refused. A message to a task or a
+ * conversation (FIX-2160) re-runs that target's check on its record; one by
+ * name, the roster's. Not the budget: the row paid it once.
  */
-export async function recheckRecipient(ctx: BlockContext, installation: WorkerInstallation, row: Pick<WorkerMessageRow, "from" | "to">): Promise<string | undefined> {
+export async function recheckRecipient(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  row: Pick<WorkerMessageRow, "from" | "to" | "addressedBy" | "toTask" | "toSession">
+): Promise<string | undefined> {
+  if (row.addressedBy === "task" || row.addressedBy === "session") {
+    const checked =
+      row.addressedBy === "task" && row.toTask !== undefined
+        ? await checkTaskTarget(ctx, installation, row.toTask)
+        : await checkTargetSession(ctx, installation, row.toSession, { session: true });
+    return checked.ok ? undefined : checked.error;
+  }
   return recipientRefusal(installation, row.from, row.to, await installation.rosterWorker(ctx as never, row.to));
 }
 
@@ -164,27 +181,39 @@ export async function sendMessage(
     return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${input.text.length}. Nothing was sent.`);
   }
 
+  // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
   if (options.id !== undefined && (await log.getOptional(options.id)) !== undefined) return { ok: true, id: options.id };
-
-  // ---- the recipient: on the roster, and hearing by name -------------------
-  const recipient = await installation.rosterWorker(ctx as never, input.to);
-  const refused = recipientRefusal(installation, sender, input.to, recipient);
-  if (refused !== undefined || recipient === undefined) return refuse(refused ?? `no_worker: no worker "${input.to}" on your roster.`);
-
-  // ---- where it lands ------------------------------------------------------
+  const to = input.to;
+  let recipient: RosterWorker;
   let destination: MessageAddress;
   let exchange: string | undefined;
-  if (input.inReplyTo !== undefined) {
-    const answered = (await log.getOptional(input.inReplyTo))?.state;
-    if (answered === undefined || answered.to !== sender || answered.from !== input.to) {
-      return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${input.to}" sent you. Leave inReplyTo out to start a new one.`);
+  if (typeof to !== "string") {
+    // A task's session or a conversation, checked on its record (FIX-2160).
+    if (input.inReplyTo !== undefined) {
+      return refuse("no_such_message: an answer goes to the worker that sent the message, by its id. Leave inReplyTo out, or send to that worker.");
     }
-    // In the session that sent the original, even after its task ended.
-    destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
-    exchange = answered.exchange;
+    const checked = "task" in to ? await checkTaskTarget(ctx, installation, to.task) : await checkTargetSession(ctx, installation, to.session, { session: true });
+    if (!checked.ok) return refuse(checked.error);
+    recipient = checked.target.worker;
+    destination = { sessionId: checked.target.sessionId, flow: recipient.flow };
   } else {
-    destination = filingSessionFor(state, input.to) ?? (await conversationAddress(ctx, installation, input.to, recipient.flow, state));
+    // ---- by name: on the roster, and hearing by name ------------------------
+    const named = await installation.rosterWorker(ctx as never, to);
+    const refused = recipientRefusal(installation, sender, to, named);
+    if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
+    recipient = named;
+    if (input.inReplyTo !== undefined) {
+      const answered = (await log.getOptional(input.inReplyTo))?.state;
+      if (answered === undefined || answered.to !== sender || answered.from !== to) {
+        return refuse(`no_such_message: inReplyTo "${input.inReplyTo}" names no message "${to}" sent you. Leave inReplyTo out to start a new one.`);
+      }
+      // In the session that sent the original, even after its task ended.
+      destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
+      exchange = answered.exchange;
+    } else {
+      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, recipient.flow, state));
+    }
   }
 
   // ---- the budget ----------------------------------------------------------
@@ -231,7 +260,7 @@ export async function sendMessage(
   const hop = Math.max(floor, place + 1);
   await atomicRequest((current) => {
     const messaged = Array.isArray(current[TURN_MESSAGED_STATE]) ? (current[TURN_MESSAGED_STATE] as string[]) : [];
-    return { [TURN_MESSAGED_STATE]: [...messaged, input.to] };
+    return { [TURN_MESSAGED_STATE]: [...messaged, recipient.id] };
   });
 
   // ---- owed, the row, then one dispatch ------------------------------------
@@ -240,7 +269,8 @@ export async function sendMessage(
   const row: WorkerMessageRow = {
     id,
     from: sender,
-    to: input.to,
+    to: recipient.id,
+    ...(typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const }),
     text: input.text,
     exchange: exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),
@@ -267,7 +297,7 @@ export async function sendMessage(
     const reason = `${outcome.refused}: ${outcome.detail}`;
     if (isFinalRefusal(outcome.refused) && (await endMessage(ref, "refused", reason, { told: true }))) {
       if (resends) await dropOwed(ctx, [id]);
-      return refuse(`not_delivered: the message to "${input.to}" was refused (${reason}).`);
+      return refuse(`not_delivered: the message to "${recipient.id}" was refused (${reason}).`);
     }
     await ref.patchState({ reason });
   }

@@ -28,7 +28,8 @@ import { conversationLedgerAt } from "../src/conversation-board/ledger";
 import { messageLogOf } from "../src/messages/message-log";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { bootBoardHost, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 const WORKERS = [
@@ -70,7 +71,8 @@ function slowHelperFlow(installation: WorkerInstallation, behaviour: Behaviour) 
     kind: "slowhelper",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "slowhelper") },
     actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "slow-helper-task", turn }) } }
   } as never);

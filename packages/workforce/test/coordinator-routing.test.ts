@@ -584,8 +584,12 @@ describe("judgment (V7)", () => {
     expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
-    // Never in its prompt: the turn's system text names no delegate.
-    const prompt = JSON.stringify(judgment.calls[0]!.input);
+    // Never in its prompt: the turn's system text names no delegate. The
+    // tool list is left out: sendMessage's names every roster worker it
+    // could message, delegate or not.
+    const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
+    const prompt = JSON.stringify(messages.filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>"))));
+    expect(prompt).toContain("Route the work.");
     expect(prompt).not.toContain("eng.coder");
   });
 

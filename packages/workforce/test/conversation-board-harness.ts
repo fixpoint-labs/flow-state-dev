@@ -541,3 +541,13 @@ export function messageOf(error: unknown): string {
   if (error !== null && typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);
   return String(error);
 }
+
+/**
+ * A fixture worker flow's `onMessageReceived`, which every worker flow on an
+ * installation must carry: spread into `internal.actions`, with
+ * `workerMessagesResources` in the flow's resources. No turn: a message lands
+ * as its items and nothing runs.
+ */
+export function hearsMessages(installation: WorkerInstallation, flowKind: string, hears?: "task-sessions") {
+  return { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind, ...(hears === undefined ? {} : { hears }) }) };
+}
