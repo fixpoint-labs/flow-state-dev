@@ -5,13 +5,18 @@
  * the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
  * notice for the latest turn, and the plan panel beside it.
  *
+ * A line typed while a turn runs goes to that turn when its harness takes it,
+ * else it runs after the turn (`lib/harness-line.ts`); lines go in the order
+ * they were typed.
+ *
  * Every item shown is the harness's own, through the app's ordinary
  * renderers. The notice and the bound conversation are read from session
  * state (`lib/harness-turn.ts`), and the panel from the plan record. Nothing
  * here writes an item, a plan row or the binding, and nothing names a
  * harness: the label is data from the mode list.
  */
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createClient } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -39,6 +44,7 @@ import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { PlanRowLine } from "@/components/plan-row";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { sendLine, type LineOutcome, type LineSender } from "@/lib/harness-line";
 import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import {
@@ -68,18 +74,20 @@ export interface HarnessSessionViewProps {
 export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
+      <SessionBody label={label} flowKind={flowKind} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
 }
 
 function SessionBody({
   label,
+  flowKind,
   sessionId,
   models,
   onTitled,
 }: {
   label: string;
+  flowKind: string;
   sessionId: string;
   models: ModelChoices;
   onTitled?: () => void;
@@ -114,19 +122,44 @@ function SessionBody({
   );
   const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
 
+  // `steer` is sent beside the running turn, not through the session hook,
+  // which would leave the running turn's stream to follow the new request.
+  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  const streaming = useRef(session.isStreaming);
+  streaming.current = session.isStreaming;
+  // Each line waits for the one before it to have its answer, so lines reach the run in the order they were typed.
+  const lines = useRef<Promise<unknown>>(Promise.resolve());
+  const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
+      const sender: LineSender = {
+        steer: async (text) => {
+          const sent = await client.flow(flowKind).send("steer", { prompt: text }, { sessionId });
+          await sent.wait({ pollMs: 150 });
+          const requests = await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 });
+          const output = requests.find((request) => request.id === sent.id)?.result?.output as
+            | { taken?: unknown; live?: unknown }
+            | undefined;
+          return { taken: output?.taken === true, live: output?.live === true };
+        },
+        turn: async (text) => {
+          await session.sendAction("turn", { prompt: text }, { userMessage: text });
+        },
+      };
+      const sent = lines.current.then(() => sendLine(prompt, streaming.current, sender));
+      lines.current = sent.catch(() => undefined);
       try {
-        await session.sendAction("turn", { prompt }, { userMessage: prompt });
+        setLastLine(await sent);
         if (messageRef.current.trim() === prompt) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [session, setMessage],
+    [client, flowKind, session, sessionId, setMessage],
   );
+  const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="harness-session">
@@ -164,6 +197,7 @@ function SessionBody({
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
+          <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
             <PromptInput onSubmit={handleSubmit}>
@@ -202,6 +236,33 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
         {text}
       </span>
     </p>
+  );
+}
+
+/** The lines the latest turn took while it ran, and where the last line sent went. */
+function LineNotes({
+  steered,
+  last,
+  running,
+  label,
+}: {
+  steered: readonly string[];
+  last: LineOutcome | null;
+  running: boolean;
+  label: string;
+}) {
+  if (steered.length === 0 && !(running && last === "after-this-turn")) return null;
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
+      {steered.map((line, i) => (
+        <p key={i} className="break-words" data-testid="line-taken">
+          You, taken into the running turn: {line}
+        </p>
+      ))}
+      {running && last === "after-this-turn" && (
+        <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
+      )}
+    </div>
   );
 }
 
