@@ -103,6 +103,16 @@ None.
   rather than quietly showing a stale list." And: FIX-2254's live steer runs inside the turn, so
   it keeps the one-writer assumption; check FIX-2257 (harness manager's cloud half) against it.
 
+- **Cursor review on `b39f040`** (comment, non-blocking): (1) say why the inspector can't
+  resolve the conversation from session turn records alone (Shift Manager has no turn ledger on
+  its client path, and a quiet run confirms nothing to record), so the dropped reader merge isn't
+  rebuilt; (2) the label may need only the rows' `requestId`, so the marker's may be dropped
+  from the schema and `expose`; (3) one shared core helper for "conversation prefix, else the
+  per-turn prefix", so Kitchen Sink and Shift Manager don't fork the legacy read; (4) list the
+  new fields per collection (row `requestId`; run marker `conversation`) where the diff sits;
+  (5) the panel lists without a limit and the route's default is 50, which a long conversation
+  can pass.
+
 ## How it got here
 
 - Same day, an independent review against `main`, folded: Shift Manager can't reach the
