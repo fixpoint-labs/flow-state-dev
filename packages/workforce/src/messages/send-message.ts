@@ -39,7 +39,7 @@ import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
+import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { messageHearingOf } from "./message-received-entry";
@@ -211,10 +211,6 @@ export async function sendMessage(
     return budgetRefusal(placeAfter(chainRow.state.sent.length));
   }
   const hop = placeAfter(place);
-  await atomicRequest((current) => {
-    const messaged = Array.isArray(current[TURN_MESSAGED_STATE]) ? (current[TURN_MESSAGED_STATE] as string[]) : [];
-    return { [TURN_MESSAGED_STATE]: [...messaged, input.to] };
-  });
 
   // ---- the row, then the delivery ------------------------------------------
   const row: WorkerMessageRow = {

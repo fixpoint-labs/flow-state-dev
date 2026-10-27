@@ -54,7 +54,7 @@ export const TURN_CHAIN_STATE = "workforceTurnChain";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
-/** The request-state field the workers this turn has messaged are kept in. */
+/** Cleared when a turn starts. A stored list still parses. */
 export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 
 /** The session state a flow that takes messages declares. */
