@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 294" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: seven rules by five issues and the closure FIX-2237, each rule with one owner. FIX-2232 owns a step&#x27;s status read from its own row, the one workflow read that screens render, and one write path for a task&#x27;s declared phases. FIX-2233 owns no new runtime, ordering by deps only; a person&#x27;s stop as a confirm on the feature task; and stable step ids with rounds in the key. FIX-2234 owns no new model-facing tool. FIX-2235, the screen, and FIX-2236, the coding run, own none and use the read. Other cells use the rule or are blank.">
+     aria-label="Who owns what: seven rules by five issues and the closure FIX-2237, each rule with one owner. FIX-2232 owns a step&#x27;s status read from its own row, the one workflow read that screens render, and one write path for a task&#x27;s declared phases. FIX-2233 owns no new runtime, ordering by deps only; a person&#x27;s stop as an approval on the feature task; and stable step ids with rounds in the key. FIX-2234 owns no new model-facing tool. FIX-2235, the screen, and FIX-2236, the coding run, own none and use the read. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -47,7 +47,7 @@
     <rect class="use" x="836" y="122" width="66" height="26" rx="3"/><text class="t-use" x="842" y="139">uses</text>
   </g>
   <g id="er4">
-    <text class="t-row" x="16" y="172">ER-4 a person&#x27;s stop is a confirm</text>
+    <text class="t-row" x="16" y="172">ER-4 a person&#x27;s stop is an approval</text>
     <rect class="own" x="446" y="154" width="66" height="26" rx="3"/><text class="t-own" x="452" y="171">OWNS</text>
     <rect class="use" x="546" y="154" width="66" height="26" rx="3"/><text class="t-use" x="552" y="171">uses</text>
     <rect class="use" x="836" y="154" width="66" height="26" rx="3"/><text class="t-use" x="842" y="171">uses</text>

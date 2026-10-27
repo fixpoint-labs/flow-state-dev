@@ -15,7 +15,7 @@ flowchart TD
   O -.->|"the other option"| X0b["a declaration only, no template"]
   E --> D1["D1 · no session-state record"]
   D1 -.->|"rejected"| X1["the POC's record of steps in session state"]
-  E --> D2["D2 · held after a judging phase, approval as a confirm on the feature task"]
+  E --> D2["D2 · held after a judging phase, approval as a waitForUser approval on the feature task"]
   D2 -.->|"rejected"| X2["gate rows · a review that fails its task"]
 ```
 
@@ -58,24 +58,24 @@ can't find them.
 It comes down to a crash mid-filing: the record loses the step, the rows can't.
 
 <a name="d2"></a>
-## D2 · The phase after a judging phase is filed held, and an approval is a confirm on the feature task
+## D2 · The phase after a judging phase is filed held, and an approval is a `waitForUser` approval on the feature task
 
 | | |
 |---|---|
 | **Instead of** | Gate rows (the POC's: one more held row per gate, a no-op run on release, and an answered gate is a row a person answers) · a review that fails its task on "changes" |
-| **Because** | A review that asks for changes still completes, and completing satisfies a dependency, so a dispatch pass can start the next phase before the worker reads the review (the POC's 2-control). Filing that phase's steps held means only the worker starts them, and they stay unstarted, so a loop-back can still re-wire them. An approval is the worker's own confirm on the feature task, asked from the turn the ending woke: one Inbox item, on the row the person follows (PR-3). Failing a review mixes "found problems" with "crashed" and spends an attempt |
-| **Locks in** | The template marks a phase as judging; its successor is filed held. The worker releases with `updateTask({ status: "pending" })`. A gate costs no row and no run. "Step N of M" counts steps only |
+| **Because** | A review that asks for changes still completes, and completing satisfies a dependency, so a dispatch pass can start the next phase before the worker reads the review (the POC's 2-control). Filing that phase's steps held means only the worker starts them, and they stay unstarted, so a loop-back can still re-wire them. An approval is the worker's `waitForUser({ kind: "approval" })`, from the turn the ending woke on the feature task. Its suspension hold mirrors onto the feature row, so it is one Inbox item on the row the person follows (PR-3), and the worker reads the yes and releases. It is not a confirm: FIX-2058's rule makes a yes the code reads next an approval, a confirm is asked only at filing, and a midway confirm's default No would cancel the whole feature task. Failing a review mixes "found problems" with "crashed" and spends an attempt |
+| **Locks in** | The template marks a phase as judging; its successor is filed held. Every held step is a delegate's row: a step for yourself can't be held. The worker releases with `updateTask({ status: "pending" })`. A gate costs no row and no run. The approval needs a host with durable execution, as `waitForUser` does. "Step N of M" counts steps only |
 
-**Would change my mind:** the kill line. If the woken turn can't ask a confirm on the feature task,
+**Would change my mind:** the kill line. If the woken turn can't suspend an approval on the feature task,
 this card reopens before any gate row or hold kind is added.
 
-![D2: how the next phase waits for a judgment. Held steps the worker releases, and an approval as a confirm on the feature task, chosen, beside gate rows and beside failing a review. Decides it: the approval, one Inbox item on the feature task against a row a person answers. Price: the worker must release every judged phase. Flips if the woken turn can't ask a confirm on the feature task](figures/d2-held-after-judging.svg)
+![D2: how the next phase waits for a judgment. Held steps the worker releases, and an approval as a waitForUser approval on the feature task, chosen, beside gate rows and beside failing a review. Decides it: the approval, one Inbox item on the feature task against a row a person answers. Price: the worker must release every judged phase. Flips if the woken turn can't suspend an approval on the feature task](figures/d2-held-after-judging.svg)
 
 It comes down to the approval: a gate row is a row a person answers, with a no-op run behind it.
 
 ## Who owns what
 
-![Who owns what: seven rules by five issues and the closure FIX-2237, each rule with one owner. FIX-2232 owns a step's status from its row, one read, and one write path for a task's phases. FIX-2233 owns no new runtime, a person's stop as a confirm, and stable step ids. FIX-2234 owns no new model-facing tool. Other cells use the rule or are blank](figures/ownership.svg)
+![Who owns what: seven rules by five issues and the closure FIX-2237, each rule with one owner. FIX-2232 owns a step's status from its row, one read, and one write path for a task's phases. FIX-2233 owns no new runtime, a person's stop as an approval, and stable step ids. FIX-2234 owns no new model-facing tool. Other cells use the rule or are blank](figures/ownership.svg)
 
 Every rule has one owner. Read a row to see where it is decided and where it is only used; a
 *uses* cell is a place a child must not re-decide.
@@ -83,12 +83,12 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | Phases run on `deps` and the board's dispatch passes. No new runtime, drain mode, board option, engine change, or dependency on a whole phase | FIX-2233 | Every child's spec review; the closure's leg a |
-| ER-2 | A filed step's status is read from its own row and stored nowhere else. Only a phase a run does itself, with no filed steps, reports a status. Where they meet, the declaration gives the phases' order and labels and the rows give status: a phase with filed steps takes its status from them and any reported one is refused; the current phase is the first one not ended | FIX-2232 | FIX-2232's tests; the closure's leg a |
+| ER-2 | No phase status is stored anywhere; `workflowView` derives it. A filed step's status is read from its own row. The declaration gives the phases' order and labels and nothing else, and a run that does a phase itself, with no filed steps, reports only which declared phase it is in: the ones before it are done, the ones after it are waiting, and all are done when its task ends. A phase with filed steps can't be reported current; it takes its state from its rows. The current phase is the first one not ended. What a run is doing inside a phase is its `statusNote` | FIX-2232 | FIX-2232's tests; the closure's leg a |
 | ER-3 | `workflowView` is the one read of a task's workflow: one `listTasks({ filedByTask })` pass, no read per step. A screen renders it and derives nothing of its own; a task list shows its summary (current phase, N of M), not the whole graph per row | FIX-2232 · FIX-2235, FIX-2236 use | FIX-2235's review; the closure |
-| ER-4 | A stop for a person in a workflow is one Inbox item: a confirm on the feature task (PR-3). No row a person answers to release a phase, no new hold kind | FIX-2233 · FIX-2234 uses | The closure's leg c |
-| ER-5 | A step's id is `<feature task id>:<step key>`, its round in the key. A replayed `start` or `addStep` files nothing twice | FIX-2233 | The closure's leg d |
-| ER-6 | A task's declared phases are written only by the run holding its claim, through `reportProgress`'s fenced write. No second write path | FIX-2232 · FIX-2233, FIX-2236 use | FIX-2233's and FIX-2236's spec review |
-| ER-7 | No new model-facing tool. A worker releases, loops back and asks with the five task tools, `askQuestion` and `reportProgress` | FIX-2234 | FIX-2234's spec review |
+| ER-4 | A stop for a person in a workflow is one Inbox item: a `waitForUser` approval on the feature task, mirrored onto its row (PR-3). No confirm asked midway, no row a person answers to release a phase, no new hold kind | FIX-2233 · FIX-2234 uses | The closure's leg c |
+| ER-5 | A step's id is `<feature task id>:<step key>`, its round in the key. A replayed `start` or `addStep` files nothing twice. Steps are filed from code (`TaskInit.id`), never through the `createTask` tool, which mints its own ids | FIX-2233 | The closure's leg d |
+| ER-6 | A task's declared phases are written only by the run holding its claim, through `TaskCollection.reportProgress`'s fenced write (`tasks/collection/state-backed.ts`). Neither the model tool's schema nor a harness-manager path is a second one | FIX-2232 · FIX-2233, FIX-2236 use | FIX-2233's and FIX-2236's spec review |
+| ER-7 | No new model-facing tool. A worker releases, loops back and asks with the five task tools, `askQuestion`, `waitForUser` and `reportProgress`; `start` and `addStep` run from code in the woken turn | FIX-2234 | FIX-2234's spec review |
 
 ## Coordination seams
 
@@ -96,7 +96,7 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 |---|---|---|
 | The declaration and its write | FIX-2232, and FIX-2233 and FIX-2236 | 2232 owns the shape and the write (ER-6); the others call it |
 | `workflowView` | FIX-2232 and FIX-2235 | 2232 owns every derived value; the screen adds none (ER-3) |
-| Release and the approval | FIX-2233 and FIX-2234 | 2233 files held and words the confirm; 2234's worker decides when to release |
+| Release and the approval | FIX-2233 and FIX-2234 | 2233 files held and words the approval; 2234's worker asks it and decides when to release |
 | The feature task's ending | FIX-2233 and FIX-2234 | Rule 6 settles it after its last step; neither ends it by hand |
 
 ## Decided while drafting, recorded so no child reopens them
@@ -115,6 +115,11 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 - **Rounds live in the step key.** The worker judges the latest round; a re-review is `review-a-r2`.
 - **A loop-back re-wires the first layer that hasn't started,** not "the next phase": the
   reviews after implement have already run (the POC's finding).
+- **Every step is a delegate's task, on the feature task's board.** A worker's plan steps for itself
+  (FIX-2076) can't be held and aren't filed rows. Its own work between phases happens in its turns.
+  Raised by the FSD Architect on #3970.
+- **`defineWorkflow` is a plain function** over the collection's existing writes: no state, no
+  registry, no block kind.
 - **Roles are out.** Delegates carry no job roles today. A step names its worker or none.
 - **Phase helpers are out.** Skipping or re-running a phase is task tool calls until a pattern repeats.
 - **Concurrent `start` is not covered.** One turn holds the feature task's claim; a second `start`
@@ -149,4 +154,7 @@ My own alternatives pass, not the `adhd` skill's; a reviewer who wants the skill
 - **Oct 21** · Epic filed as a hypothesis; POC #3616 passes with the worker gate; the owner asks
   for the workflow to show on the task.
 - **Oct 27** · FIX-2058 closes and the project spec frees the epic. Drafted on the declaration
-  shape, with the shape put to the owner; five children and a closure filed.
+  shape, with the shape put to the owner; five children and a closure filed. The FSD Architect's
+  read against `main` moved D2's approval from a midway confirm to `waitForUser`, made every step a
+  delegate's row, and stored no phase status (ER-2). It also recommends the view-over-rows shape;
+  that stays the owner's call.

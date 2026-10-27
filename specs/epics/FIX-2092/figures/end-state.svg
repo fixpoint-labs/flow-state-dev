@@ -35,13 +35,13 @@
     <text class="t-s" x="312" y="96">start &#183; stable ids, fan-in deps</text>
     <text class="t-s" x="312" y="112">after a judging phase &#183; filed held</text>
     <text class="t-s" x="312" y="128">addStep in rounds &#183; release</text>
-    <text class="t-s" x="312" y="144">approval &#183; a confirm on the task</text>
+    <text class="t-s" x="312" y="144">approval &#183; waitForUser on the task</text>
     <rect class="held" x="32" y="172" width="528" height="52" rx="4"/>
     <text class="t-b" x="44" y="194">workflowView &#183; one read</text>
     <text class="t-s" x="44" y="212">phases, steps, step N of M, current, next, approvals &#183; status from each row</text>
     <rect class="held" x="32" y="236" width="528" height="52" rx="4"/>
     <text class="t-b" x="44" y="258">a worker runs it &#183; Shift Manager shows it &#183; a coding run too</text>
-    <text class="t-s" x="44" y="276">the five task tools, askQuestion, reportProgress &#183; no new tool</text>
+    <text class="t-s" x="44" y="276">the task tools, askQuestion, waitForUser, reportProgress &#183; no new tool</text>
   </g>
 
   <g id="composed-in">
