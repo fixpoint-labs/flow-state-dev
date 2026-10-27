@@ -972,6 +972,12 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   filerOf?(row: Task): string | undefined;
   /**
+   * Tell the filer of `row` its open midway questions (FIX-2241), through the
+   * ledger's declared `onMidwayQuestion`. Present only on a ledger that declares
+   * one; `askMidway` calls it each time a turn asks, a replayed turn included.
+   */
+  tellMidwayQuestions?(row: Task): Promise<void>;
+  /**
    * Take the row's wait slot for a request about to wait on it (FIX-2082):
    * one conditional write, so of two requests that read the slot free, one
    * takes it and the other is refused. A lapsed slot, or a live one this same
