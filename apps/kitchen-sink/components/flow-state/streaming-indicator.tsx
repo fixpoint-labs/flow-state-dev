@@ -18,7 +18,7 @@ function formatElapsed(ms: number): string {
  * until a full second has passed. The clock is the browser's, so a skewed
  * server timestamp is clamped to zero rather than shown negative.
  */
-export function RunTimer({ since }: { since: number }) {
+function RunTimer({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -27,6 +27,23 @@ export function RunTimer({ since }: { since: number }) {
   const elapsed = Math.max(0, now - since);
   if (elapsed < 1000) return null;
   return <span data-testid="run-timer" className="tabular-nums">({formatElapsed(elapsed)})</span>;
+}
+
+/**
+ * What a finished request leaves where the indicator was: "Worked for 3m 24s •
+ * 4:28 PM", the time it took and the clock time it ended. Renders nothing for a
+ * request that took under a second. `endedAt` is only as good as the caller's
+ * source for it (see `RequestGroupRendererProps.latestCompletedAtMs`).
+ */
+export function WorkedFor({ startedAt, endedAt }: { startedAt: number; endedAt: number }) {
+  const elapsed = Math.max(0, endedAt - startedAt);
+  if (elapsed < 1000) return null;
+  const endedAtLabel = new Date(endedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return (
+    <div data-testid="worked-for" className="px-1 py-2 text-muted-foreground text-sm tabular-nums">
+      Worked for {formatElapsed(elapsed)} • {endedAtLabel}
+    </div>
+  );
 }
 
 /**

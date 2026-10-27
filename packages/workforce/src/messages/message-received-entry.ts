@@ -106,10 +106,10 @@ export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | u
  * takes `{ messageId }`. The hire's check, beside `respond`'s.
  *
  * @param name The worker flow's name, for the sentence.
- * @param internal The flow's internal actions.
+ * @param flow The worker flow's definition.
  */
-export function messageReceivedProblem(name: string, internal: Readonly<Record<string, unknown>> | undefined): string | undefined {
-  const entry = internal?.[MESSAGE_RECEIVED_ENTRY] as { inputSchema?: { safeParse?: (v: unknown) => { success: boolean } } } | undefined;
+export function messageReceivedProblem(name: string, flow: unknown): string | undefined {
+  const entry = internalActionsOf(flow)?.[MESSAGE_RECEIVED_ENTRY] as { inputSchema?: { safeParse?: (v: unknown) => { success: boolean } } } | undefined;
   const fix =
     `Build it with \`messageReceivedEntry\`: \`internal: { actions: { ${MESSAGE_RECEIVED_ENTRY}: messageReceivedEntry({ installation, flowKind }) } }\`, ` +
     "or spread the session kit's `board.entries(turn)`.";

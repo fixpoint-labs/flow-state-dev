@@ -224,16 +224,25 @@ const births = new Map<string, number>();
 const conversationKey = ({ sessionId }: { sessionId: string }): string =>
   `${sessionId}#${births.get(sessionId) ?? 0}`;
 
+/** Each telling of a midway question to its filer (FIX-2241): the row, its filer, the questions. */
+const told: Array<{ taskId: string; filer: string | undefined; holds: string[]; prompts: string[] }> = [];
+
 const partitionedLedger = defineTaskCollection({
   id: PARTITION_LEDGER,
   scope: "user",
   partitionBy: conversationKey,
+  // The board's default delivery, plus a declared telling of midway questions.
+  delivery: {
+    onMidwayQuestion: async (_ctx, row, holds) => {
+      told.push({ taskId: row.id, filer: row.filer?.sessionId, holds: holds.map((h) => h.id), prompts: holds.map((h) => h.ask.prompt) });
+    },
+  },
 });
 
 /** Each run of the agent-flow entry, with where and as whom it ran. */
 const agentRuns: Array<{ taskId: string; attempt: number; userId: string; sessionId: string }> = [];
 /** Per-task script for the agent's worker: what each attempt does. */
-const scripts = new Map<string, (attempt: number) => "complete" | "die" | "park" | "slow">();
+const scripts = new Map<string, (attempt: number) => "complete" | "die" | "park" | "park-twice" | "slow">();
 /** Releases the runs a script left for dead, so the test's teardown finds no request still open. */
 let releaseDead: () => void = () => undefined;
 /** Where a `park` script parks its row: the partition the test filed it in. */
@@ -355,6 +364,20 @@ function agentWorker() {
         const asked = await askMidway(ctx, tasks, [{ prompt: "needs a person" }]);
         if (!asked.ok) throw new Error(`the question was refused: ${asked.reason}`);
       }
+      if (step === "park-twice") {
+        // A replayed turn: the same question again, after the first took the lease.
+        const tasks = await getOrCreateTaskCollection({
+          ctx,
+          backing: "resource",
+          collectionId: PARTITION_LEDGER,
+          collection: resolveResourceCollection(ctx, PARTITION_LEDGER)!,
+          partition: parkIn.get(input.taskId),
+        });
+        const first = await askMidway(ctx, tasks, [{ prompt: "which region?" }]);
+        if (!first.ok) throw new Error(`the question was refused: ${first.reason}`);
+        const again = await askMidway(ctx, tasks, [{ prompt: "which region?" }]);
+        if (again.ok) throw new Error("a second ask from the same turn was recorded");
+      }
       return { handled: input.taskId };
     },
   });
@@ -384,6 +407,7 @@ function partitionAgent() {
 
 async function bootPartitioned(sameFlow = false, isolated = false) {
   agentRuns.length = 0;
+  told.length = 0;
   scripts.clear();
   parkIn.clear();
   births.clear();
@@ -614,6 +638,40 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       // The request's end leaves a held row held: nothing settles it.
       await sleep(100);
       expect(await held()).toBe(true);
+    } finally {
+      await h.state.dispose();
+    }
+  });
+
+  it("FIX-2241 · a midway question is told to the ledger's declared filer hook, from the committed row", async () => {
+    const h = await bootPartitioned();
+    try {
+      scripts.set("ask", () => "park");
+      parkIn.set("ask", "conv_a#0");
+      await h.act(ALICE, "conv_a", "file", { id: "ask" });
+      await h.drained(ALICE, "conv_a");
+      await until(() => told.length > 0, "the telling");
+      const row = await h.row(ALICE, "conv_a#0", "ask");
+      const holds = openRowHolds(row!);
+      expect(told).toEqual([{ taskId: "ask", filer: "conv_a", holds: holds.map((hold) => hold.id), prompts: ["needs a person"] }]);
+    } finally {
+      await h.state.dispose();
+    }
+  });
+
+  it("FIX-2241 · a replayed ask that is declined tells the same question again, by the same hold id", async () => {
+    const h = await bootPartitioned();
+    try {
+      scripts.set("replay", () => "park-twice");
+      parkIn.set("replay", "conv_a#0");
+      await h.act(ALICE, "conv_a", "file", { id: "replay" });
+      await h.drained(ALICE, "conv_a");
+      await until(() => told.length >= 2, "both tellings");
+      const row = await h.row(ALICE, "conv_a#0", "replay");
+      const [hold] = openRowHolds(row!);
+      // One question on the row; both tellings name it, so a per-hold id dedupes them.
+      expect(openRowHolds(row!)).toHaveLength(1);
+      expect(told.map((t) => t.holds)).toEqual([[hold!.id], [hold!.id]]);
     } finally {
       await h.state.dispose();
     }

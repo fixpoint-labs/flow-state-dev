@@ -574,10 +574,11 @@ export async function leg2b(world: World): Promise<LegResult> {
     alice,
     RESEARCHER,
     researcher,
-    `Message ${HELPER_A} asking what its favourite number is, and wait for its answer before you reply to me. Use the tool's wait option if it has one.`,
+    `Send ${HELPER_A} a message with sendMessage (not a task) asking what its favourite number is, and wait for its answer before you reply to me. Use sendMessage's wait option if it has one.`,
   );
   if (turn.status !== "completed") r.failures.push(`2b:turn-ends — the turn ${turn.status}: ${turn.reply.slice(0, 200)}`);
   // Not waiting only counts if a message went out: a turn with no message tool never waits either.
+  // A task it files and waits on is a different tool's wait, so the leg names sendMessage.
   if (sentIn(turn.calls).length === 0) r.failures.push(`2b:sent — Researcher's turn sent Helper A no message: ${turn.reply.slice(0, 200)}`);
   const waited = turn.calls.filter((c) => Object.hasOwn(c.args, "wait") && typeof c.output?.sent === "string");
   if (waited.length > 0) r.failures.push(`2b:no-wait — a sendMessage call naming \`wait\` was taken: ${show(waited.map((c) => c.args))}`);
