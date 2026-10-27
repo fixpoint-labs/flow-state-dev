@@ -46,7 +46,7 @@ const facts = [
   {
     id: "F1",
     says: "the runtime's update-todos call reaches the SDK as a call of type `updateTodos` whose args are {content, status} pairs only: the SDK keeps no item id and no merge flag",
-    re: /case"updateTodosToolCall":\{[\s\S]{0,80}?type:"updateTodos",args:\{todos:[A-Za-z_$]+\.todos\.map\(\(([A-Za-z_$]+)=>\(\{content:\1\.content,status:[A-Za-z_$]+\(\1\.status\)\}\)\)\)\}/,
+    re: /case"updateTodosToolCall":\{[\s\S]{0,80}?type:"updateTodos",args:\{todos:t\.todos\.map\(\(e=>\(\{content:e\.content,status:[A-Za-z_$]+\(e\.status\)\}\)\)\)\}/,
   },
   {
     id: "F1b",
@@ -66,7 +66,7 @@ const facts = [
   {
     id: "F2",
     says: "a to-do status is one of pending, inProgress, completed, cancelled",
-    re: /[A-Za-z_$]+\.enum\(\["pending","inProgress","completed","cancelled"\]\)/,
+    re: /\.enum\(\["pending","inProgress","completed","cancelled"\]\)/,
   },
   {
     id: "F3",
@@ -89,7 +89,7 @@ if (control) {
   facts.push({
     id: "C1",
     says: "(planted) to-do items carry an id",
-    re: /type:"updateTodos",args:\{todos:[A-Za-z_$]+\.todos\.map\(\(([A-Za-z_$]+)=>\(\{id:\1\.id/,
+    re: /type:"updateTodos",args:\{todos:t\.todos\.map\(\(e=>\(\{id:e\.id/,
   });
 }
 

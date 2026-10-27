@@ -48,8 +48,4 @@ re-read the wire.
 
 ## Re-run (2026-10-27, `@cursor/sdk` 1.0.40)
 
-Five patterns stopped matching on the bump from 1.0.31. Re-reading the wire showed every fact
-still holds: the minifier renamed variables, and from 1.0.32 protobuf descriptors are a compact
-`"Name|n field type"` string instead of field objects. The patterns now accept any identifier
-and both descriptor spellings. All seven pass on 1.0.31, 1.0.32, 1.0.37, 1.0.38 and 1.0.40, and
-the control still fails.
+All seven pass on 1.0.31, 1.0.32, 1.0.37, 1.0.38 and 1.0.40; the control still fails.
