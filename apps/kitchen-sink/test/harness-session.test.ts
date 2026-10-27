@@ -255,7 +255,12 @@ describe("where a session works (V6)", () => {
     expect(new Set(branches).size).toBe(hostile.length);
     for (const branch of branches) execFileSync("git", ["check-ref-format", `refs/heads/${branch}`]);
     for (const [i, cwd] of cwds.entries()) expect(git(cwd, "branch", "--show-current").trim()).toBe(branches[i]);
-  });
+    // One worktree and branch per hostile id, created serially: thirteen times
+    // the work of its neighbours here, which take a second each for one turn.
+    // Measured at ~14s, so the default 5s budget fails this on any machine
+    // that is not the fastest. The breadth is the point of the case — an id
+    // dropped to fit a budget is a spelling nobody checks again.
+  }, 60_000);
 
   it("a run's edit lands in its worktree; the main checkout is unchanged (BR-12)", async () => {
     const stores = createInMemoryStores();
@@ -311,21 +316,10 @@ describe("where a session works (V6)", () => {
     expect(git(cwd, "status", "--porcelain").trim()).toBe("?? half-done.txt");
   });
 
-  it("the run's sandbox writes only its worktree, never its .git pointer (BR-13)", async () => {
-    const stores = createInMemoryStores();
-    const recorder = recorded();
-    await turn(stores, recorder, "s-fence", "hello");
-    const run = recorder.runs[0]!;
-    const sandbox = run.sandbox as { enabled?: boolean; failIfUnavailable?: boolean; filesystem?: { allowWrite?: string[]; denyWrite?: string[] } };
-    expect(sandbox.enabled).toBe(true);
-    expect(sandbox.failIfUnavailable).toBe(true);
-    expect(sandbox.filesystem?.allowWrite).toContain(run.cwd);
-    expect(sandbox.filesystem?.allowWrite).not.toContain(repo);
-    expect(sandbox.filesystem?.denyWrite).toContain(join(run.cwd!, ".git"));
-  });
-
-  it("runs with no sandbox only when KITCHEN_SINK_HARNESS_UNSANDBOXED=1 asks for it", async () => {
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+  it("asks for no sandbox: Kitchen Sink confines no run", async () => {
+    // Kitchen Sink is a showcase meant for a machine that allows any edits, so
+    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
+    // nothing confines the run — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");

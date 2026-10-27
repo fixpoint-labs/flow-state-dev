@@ -40,7 +40,7 @@ export interface HarnessFrameProps {
   readonly label: string;
   /** The mode's session flow kind. The rail lists only its sessions. */
   readonly flowKind: string;
-  /** The available mode's note (a run without its sandbox), under the mode's name. */
+  /** The available mode's note, shown under the mode's name. No mode sets one today. */
   readonly note?: string;
   /** The models New session offers. With none, New session is off and the reason shows. */
   readonly models: ModelChoices;
@@ -135,7 +135,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background sm:flex-row" data-testid="harness-frame">
       <aside
-        className="flex max-h-[40dvh] shrink-0 flex-col border-b sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r sm:bg-muted/30"
+        className="flex max-h-[40dvh] shrink-0 flex-col border-b sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r sm:bg-sidebar"
         data-testid="rail"
         aria-label={`${label} sessions`}
       >

@@ -701,6 +701,16 @@ export interface OpenLabOptions {
    * doesn't close as completed".
    */
   withoutJudge?: boolean;
+  /**
+   * More worker flows beside the Lab's own, built on its installation: a
+   * goal's worker that stops for the user in code, on the same Lab and Inbox
+   * as the coder. A flow name the Lab already builds is refused.
+   */
+  workerFlows?: (installation: WorkerInstallation) => NonNullable<HireOptions["workerFlows"]>;
+  /** The host's deadline on a stop for the user that sets none (`createFlowState`'s). Absent: none. */
+  userDeadlineMs?: number;
+  /** How often the durability sweeper runs (`durabilityRetention.sweepIntervalMs`). Absent: the engine's. */
+  sweepIntervalMs?: number;
 }
 
 /** What a Lab's Error Reporter is opened with (`openLab({ errorReporter })`). */
@@ -1098,6 +1108,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }) as never,
   };
 
+  if (options.workerFlows !== undefined) {
+    for (const [name, entry] of Object.entries(options.workerFlows(installation))) {
+      if (name in builtFlows) throw new Error(`openLab: \`workerFlows\` names "${name}", a flow the Lab builds`);
+      builtFlows[name] = entry;
+    }
+  }
+
   // The Error Reporter: its worker flow beside the others, and its intake on a
   // flow of its own, which a board on any flow reaches by name.
   const reporter =
@@ -1203,6 +1220,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // in-memory stores a Lab may be opened with too. Over persisting stores it
     // is the default anyway (FIX-2063 D2's opt-in).
     durable: true,
+    ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
+    ...(options.sweepIntervalMs === undefined ? {} : { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } }),
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),

@@ -34,15 +34,17 @@ interface EmitProvenance {
  */
 export interface EmitState {
   /** Item id + accumulated text of the in-progress streamed message, if any.
+   *  `itemIndex` is the index it was added with, which its close keeps.
    *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
-  message: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
+  message: { id: string; itemIndex: number; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Item id + accumulated text of the in-progress streamed reasoning, if any.
+   *  `itemIndex` is the index it was added with, which its close keeps.
    *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
-  reasoning: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
+  reasoning: { id: string; itemIndex: number; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Open tool_output items keyed by SDK tool-use callId. */
   readonly openTools: Map<
     string,
-    { id: string; name: string; arguments: string; ownedBy?: string }
+    { id: string; itemIndex: number; name: string; arguments: string; ownedBy?: string }
   >;
   /**
    * Open sub-agent containers keyed by sub-agent callId. Carries the container
@@ -53,7 +55,7 @@ export interface EmitState {
    */
   readonly openSubagents: Map<
     string,
-    { itemId: string; instanceId: string; name: string; label: string; startedAt: number }
+    { itemId: string; itemIndex: number; instanceId: string; name: string; label: string; startedAt: number }
   >;
   /** Distinct SDK tool names observed, in first-seen order. */
   readonly toolsObserved: string[];
@@ -66,10 +68,10 @@ export function createEmitState(): EmitState {
   return {
     message: null,
     reasoning: null,
-    openTools: new Map<string, { id: string; name: string; arguments: string; ownedBy?: string }>(),
+    openTools: new Map<string, { id: string; itemIndex: number; name: string; arguments: string; ownedBy?: string }>(),
     openSubagents: new Map<
       string,
-      { itemId: string; instanceId: string; name: string; label: string; startedAt: number }
+      { itemId: string; itemIndex: number; instanceId: string; name: string; label: string; startedAt: number }
     >(),
     toolsObserved: [],
     finalMessage: null,
@@ -109,10 +111,15 @@ function mintId(kind: string): string {
  * sub-agent's id ({@link resolveOwnedBy}), or the owner the open stored so the
  * close keeps it.
  */
-function itemFields(ctx: BlockContext, provenance: EmitProvenance, ownedBy?: string) {
+function itemFields(
+  ctx: BlockContext,
+  provenance: EmitProvenance,
+  ownedBy?: string,
+  keptIndex?: number,
+) {
   return {
     requestId: ctx.request.identity.id,
-    itemIndex: ctx.response.getItemCount(),
+    itemIndex: keptIndex ?? ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
     ...itemScope(ctx),
@@ -120,7 +127,15 @@ function itemFields(ctx: BlockContext, provenance: EmitProvenance, ownedBy?: str
   };
 }
 
-/** Per-item base for a newly opened item: a fresh id plus {@link itemFields}. */
+/**
+ * Per-item base for a newly opened item: a fresh id plus {@link itemFields}.
+ *
+ * An item this opens must carry its `itemIndex` forward to whatever closes it
+ * — the open state records below all keep one. `getItemCount()` counts items
+ * by id, and closing an item the stream already has does not grow it, so a
+ * close that re-read the count would take the index the NEXT item is about to
+ * get, and two items would share one.
+ */
 function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string, ownedBy?: string) {
   return { id: mintId(kind), ...itemFields(ctx, provenance, ownedBy) };
 }
@@ -224,7 +239,7 @@ async function emitMessageDelta(
       contentIndex: 0,
       content: { type: "output_text", text: "" },
     });
-    state.message = { id: base.id, contentIndex: 0, text: "", ownedBy };
+    state.message = { id: base.id, itemIndex: base.itemIndex, contentIndex: 0, text: "", ownedBy };
   }
   state.message.text += text;
   await ctx.response.emit({
@@ -258,7 +273,7 @@ async function closeStreamingMessage(
   blockName: string,
 ): Promise<void> {
   if (state.message === null) return;
-  const { id, contentIndex, text, ownedBy } = state.message;
+  const { id, itemIndex, contentIndex, text, ownedBy } = state.message;
   await ctx.response.emit({
     type: "content.done",
     itemId: id,
@@ -272,7 +287,7 @@ async function closeStreamingMessage(
       type: "message",
       role: "assistant",
       status: "completed",
-      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy, itemIndex),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       content: [{ type: "output_text", text }],
     },
@@ -347,7 +362,7 @@ async function emitReasoningDelta(
       contentIndex: 0,
       content: { type: "reasoning_text", text: "" },
     });
-    state.reasoning = { id: base.id, contentIndex: 0, text: "", ownedBy };
+    state.reasoning = { id: base.id, itemIndex: base.itemIndex, contentIndex: 0, text: "", ownedBy };
   }
   state.reasoning.text += text;
   await ctx.response.emit({
@@ -365,7 +380,7 @@ async function closeStreamingReasoning(
   blockName: string,
 ): Promise<void> {
   if (state.reasoning === null) return;
-  const { id, contentIndex, text, ownedBy } = state.reasoning;
+  const { id, itemIndex, contentIndex, text, ownedBy } = state.reasoning;
   await ctx.response.emit({
     type: "content.done",
     itemId: id,
@@ -378,7 +393,7 @@ async function closeStreamingReasoning(
       id,
       type: "reasoning",
       status: "completed",
-      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy, itemIndex),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       summary: [{ type: "reasoning_text", text }],
     },
@@ -453,6 +468,7 @@ async function emitToolCall(
   await ctx.response.emit({ type: "item.added", item });
   state.openTools.set(event.callId, {
     id: base.id,
+    itemIndex: base.itemIndex,
     name: event.name,
     arguments: event.arguments,
     ...(ownedBy !== undefined ? { ownedBy } : {}),
@@ -482,7 +498,8 @@ async function emitToolResult(
     id,
     type: "tool_output" as const,
     status: event.isError ? ("failed" as const) : ("completed" as const),
-    ...itemFields(ctx, provenance, ownedBy),
+    // The orphan is a NEW item and takes a fresh index; the settled one keeps its own.
+    ...itemFields(ctx, provenance, ownedBy, open?.itemIndex),
     blockName: toolName,
     output: event.output,
     toolCall: {
@@ -531,7 +548,7 @@ async function emitSubagentOpen(
     startedAt,
   };
   await ctx.response.emit({ type: "item.added", item });
-  state.openSubagents.set(event.callId, { itemId: base.id, instanceId, name: event.name, label, startedAt });
+  state.openSubagents.set(event.callId, { itemId: base.id, itemIndex: base.itemIndex, instanceId, name: event.name, label, startedAt });
 }
 
 /** Close the container item for a sub-agent when it returns. */
@@ -549,7 +566,7 @@ async function emitSubagentClose(
       id: open.itemId,
       type: "container",
       status: event.isError ? "failed" : "completed",
-      ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }),
+      ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }, undefined, open.itemIndex),
       blockName: open.name,
       label: open.label,
       startedAt: open.startedAt,
@@ -598,7 +615,7 @@ export async function finalizeOpenItems(
         id: open.id,
         type: "tool_output",
         status: "incomplete",
-        ...itemFields(ctx, deriveProvenance(ctx, blockName), open.ownedBy),
+        ...itemFields(ctx, deriveProvenance(ctx, blockName), open.ownedBy, open.itemIndex),
         blockName: open.name,
         output: null,
         toolCall: {
@@ -620,7 +637,7 @@ export async function finalizeOpenItems(
         id: open.itemId,
         type: "container",
         status: "incomplete",
-        ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }),
+        ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }, undefined, open.itemIndex),
         blockName: open.name,
         label: open.label,
         startedAt: open.startedAt,

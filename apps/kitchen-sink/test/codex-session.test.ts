@@ -261,7 +261,7 @@ describe("the plan panel (V3, BR-13)", () => {
 });
 
 describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
-  it("a real run gets the allowlisted environment, workspace-write with no approvals, the session's model, and /tmp off the writable list", () => {
+  it("a real run gets the allowlisted environment, no approvals, no sandbox and the session's model", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
     vi.stubEnv("CODEX_HOME", "/codex-home");
@@ -276,12 +276,10 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(client.env!.HOME).toBe(process.env.HOME);
     expect(client.env!.CODEX_HOME).toBe("/codex-home");
     expect(client.env!.CODEX_API_KEY).toBe("sk-key");
-    expect(client.config).toEqual({
-      service_tier: "default",
-      sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true },
-    });
+    expect(client.config).toEqual({ service_tier: "default" });
+    // No approvals and no sandbox: Kitchen Sink confines no run.
     // The model is the session's, through the block's own option, never a fixed thread setting.
-    expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "workspace-write" });
+    expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "danger-full-access" });
     expect(options.model).toBeTypeOf("function");
   });
 
@@ -341,13 +339,6 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(next.exec.rawConfigOverrides).toEqual(vercelOverrides);
   });
 
-  it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
-    const options = codexBlockOptions(harnessFeeds(CODEX_SESSION));
-    expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "danger-full-access" });
-    expect(codexClientOptions().config).toEqual({ service_tier: "default" });
-  });
-
   it("test mode runs the scripted Codex", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     expect(codexBlockOptions(harnessFeeds(CODEX_SESSION)).resolveCodexClient).toBeDefined();
@@ -366,6 +357,10 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     });
     expect(recorder.opens[0]).toMatchObject({ resumed: null });
     expect(recorder.opens[0]!.options.workingDirectory).not.toBe(repo);
-    expect(recorder.opens[0]!.options.sandboxMode).toBe("workspace-write");
+    // The caller's `danger-full-access` is ignored because the block's own
+    // thread options replace it wholesale — it happens to be the same value
+    // Kitchen Sink sets, so this asserts the caller's `resume` and `cwd` were
+    // dropped rather than that the mode is sandboxed.
+    expect(recorder.opens[0]!.options.sandboxMode).toBe("danger-full-access");
   });
 });

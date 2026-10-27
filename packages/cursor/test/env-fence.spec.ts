@@ -50,12 +50,27 @@ const inProcessFake = async (): Promise<ResolvedCursorClient> => {
   return { create: (o) => Agent.create(o), resume: (id, o) => Agent.resume(id, o) };
 };
 
-/** What the scripted run's shell command printed, and the variables its process held. */
+/**
+ * Variables the OS puts into a child it starts, whatever environment the
+ * parent handed it. macOS adds `__CF_USER_TEXT_ENCODING` to every process that
+ * links CoreFoundation, which Node does — so on a Mac the fenced child holds
+ * it even though nothing passed it. Dropped here rather than asserted around,
+ * so the exact-equality below keeps saying what it means (the fence passes
+ * exactly `env` and nothing of the SERVER's) on both this repo's CI (Linux)
+ * and a developer's Mac.
+ */
+const OS_INJECTED = new Set(["__CF_USER_TEXT_ENCODING"]);
+
+/**
+ * What the scripted run's shell command printed, and the variables its process
+ * held — minus {@link OS_INJECTED}, which no caller put there.
+ */
 function shellReport(items: unknown[]): { stdout: string; envKeys: string[] } {
   const text = JSON.stringify(items);
   const match = /"stdout":"([^"]*)","envKeys":(\[[^\]]*\])/.exec(text.replace(/\\"/g, '"'));
   if (match === null) throw new Error(`no shell report in the run's items: ${text.slice(0, 500)}`);
-  return { stdout: match[1]!, envKeys: JSON.parse(match[2]!) as string[] };
+  const envKeys = (JSON.parse(match[2]!) as string[]).filter((name) => !OS_INJECTED.has(name));
+  return { stdout: match[1]!, envKeys };
 }
 
 afterEach(() => {

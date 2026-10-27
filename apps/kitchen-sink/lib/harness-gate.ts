@@ -12,7 +12,7 @@
  * Each harness mode gets the first reason that applies, in this order:
  * 1. the host: on Vercel, or no repository (`readHarnessWorkspace`);
  * 2. "not built yet": the mode has no flow kind in `lib/modes.ts`;
- * 3. the mode's own check (sign-in, key, sandbox), from `MODE_CHECKS`. A
+ * 3. the mode's own check (sign-in, key, SDK version), from `MODE_CHECKS`. A
  *    check that throws makes its mode unavailable with the error's message,
  *    and the other modes are unaffected.
  *
@@ -30,7 +30,12 @@ import { goalControl } from "./goal-control";
 import { readHarnessWorkspace, type HarnessWorkspace } from "./harness-workspace";
 import { MODES, isHarnessMode, type HarnessModeId, type KitchenSinkMode, type ModeId } from "./modes";
 
-/** Whether one mode can run here. An available mode's `note`, when set, is shown where an unavailable mode's reason is. */
+/**
+ * Whether one mode can run here. An available mode's `note`, when set, is shown
+ * where an unavailable mode's reason is. No mode sets one today — it carried
+ * the "runs without its sandbox" warning before Kitchen Sink stopped
+ * confining runs; the slot is kept for the next thing a mode needs to say.
+ */
 export type ModeAvailability =
   | { readonly available: true; readonly note?: string }
   | { readonly available: false; readonly reason: string };
@@ -45,7 +50,7 @@ export interface ModeCheckHost {
 }
 
 /**
- * A harness mode's own check: sign-in, key, sandbox. Runs only when the host
+ * A harness mode's own check: sign-in, key, SDK version. Runs only when the host
  * has passed and the mode is built, once per server start. Its reason is shown
  * as written.
  */

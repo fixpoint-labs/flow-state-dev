@@ -5,9 +5,10 @@
  * sign-in and the runtime's process are checked over the environment the run
  * is handed, not the server's.
  *
+ * Nothing is asked about a sandbox: Kitchen Sink confines no run.
+ *
  * Red state produced before this was trusted: report a host with no key and no
- * stored login as available, and the sign-in case fails. Report a host whose
- * sandbox can't start as available, and the sandbox case fails.
+ * stored login as available, and the sign-in case fails.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +24,6 @@ const able: CursorHostChecks = {
   makeRoot: () => undefined,
   childStarts: () => null,
   signIn: async () => ({ status: "key" }),
-  sandbox: () => ({ supported: true }),
 };
 
 afterEach(() => {
@@ -80,37 +80,15 @@ describe("Cursor mode's check (V7)", () => {
     expect(await check({ signIn: async () => ({ status: "login" }) })).toEqual({ available: true });
   });
 
-  it("is unavailable when Cursor's sandbox can't start here, in Cursor's words, and names the opt-out", async () => {
-    const said = "Local SDK sandboxing was requested, but sandboxing is not supported in this environment.";
-    const result = await check({ sandbox: () => ({ supported: false, reason: said }) });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining(said) });
-    expect(result).toMatchObject({ reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
-  });
-
-  it("asks about the sandbox for the repository the sessions work on", async () => {
-    const asked: string[] = [];
-    await check({ sandbox: (cwd) => (asked.push(cwd), { supported: true }) });
-    expect(asked).toEqual(["/repo"]);
-  });
-
-  it("with KITCHEN_SINK_HARNESS_UNSANDBOXED=1, doesn't ask about the sandbox and says the run is unsandboxed", async () => {
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
-    const sandbox = vi.fn(() => ({ supported: false as const, reason: "no sandbox here" }));
-    const result = await check({ sandbox });
-    expect(sandbox).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
-  });
-
-  it("checks the sign-in, the sandbox, and starts the process over the run's environment, not the server's", async () => {
+  it("checks the sign-in and starts the process over the run's environment, not the server's", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CURSOR_API_KEY", "key");
     const seen: Record<string, string>[] = [];
     await check({
       childStarts: (env) => (seen.push(env), null),
       signIn: async (env) => (seen.push(env), { status: "key" }),
-      sandbox: (_cwd, env) => (seen.push(env), { supported: true }),
     });
-    expect(seen).toHaveLength(3);
+    expect(seen).toHaveLength(2);
     for (const env of seen) {
       expect(env.CURSOR_API_KEY).toBe("key");
       expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();

@@ -3,29 +3,27 @@
  * mode's own check of whether this host can run it.
  *
  * Server only. The block runs as background work (`detached`) with its work
- * recorded (`recordWork`), so its plan lands in the shared plan record. It
- * asks for no approval: the sandbox is the fence. Writes stay in the
- * session's worktree, never the repository's `.git` (so the run edits files
- * but cannot commit), and the run starts with an allowlisted environment.
- * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` (`lib/harness-sandbox.ts`) removes the
- * fence and leaves no other: the run still asks for no approval, so it writes,
- * commits and runs commands wherever the server's OS user can.
- * That filters what the run is handed; it is not a boundary. A command the run
- * starts as the same OS user can still read the server's own environment (on
- * Linux, from `/proc`). Run the server as a separate OS user or in a container
- * when that matters.
+ * recorded (`recordWork`), so its plan lands in the shared plan record.
+ *
+ * **Kitchen Sink confines no run.** It asks for no approval and runs with no
+ * sandbox, so it writes, commits and runs commands wherever the server's OS
+ * user can — this checkout included, not just the session's worktree. Kitchen
+ * Sink is a showcase meant to run on a machine where that is fine. Run the
+ * server as a separate OS user, or in a container, when it is not.
+ *
+ * The run still starts with an allowlisted environment. That filters what it
+ * is handed and nothing more: a command it starts as the same OS user can
+ * still read the server's own environment (on Linux, from `/proc`).
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the Agent SDK is replaced by the scripted
  * Claude Code (`lib/scripted-claude-code.ts`) and the check passes, unless
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
  * does so its controls apply to a real run.
  */
-import { accessSync, constants, existsSync, mkdirSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   claudeCodeAgent,
-  containmentSandbox,
   listClaudeModels,
   probeClaudeAccount,
   type ClaudeAccountProbe,
@@ -34,7 +32,6 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
-import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
@@ -112,23 +109,6 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     // sandbox on the next turn.
     settingSources: [],
     env: claudeCodeEnv(),
-    // Unsandboxed on request only: with no sandbox and `bypassPermissions`,
-    // nothing confines the run (`lib/harness-sandbox.ts`).
-    ...(harnessUnsandboxed()
-      ? {}
-      : {
-          sandbox: async (ctx: Parameters<HarnessFeeds["worktree"]>[0]) => {
-            const worktree = await feeds.worktree(ctx);
-            const fence = containmentSandbox(worktree);
-            return {
-              ...fence,
-              // The worktree's `.git` points git at the repository. A run that could
-              // rewrite it could point the person's next git command at hooks of its own.
-              filesystem: { ...fence.filesystem, denyWrite: [join(worktree, ".git")] },
-              failIfUnavailable: true,
-            };
-          },
-        }),
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
     name: "claude-code",
     // Claude Code's handle is core's plus its own fields, and a block's hooks
@@ -195,45 +175,15 @@ export async function claudeCodeModelChoices(
 export interface ClaudeCodeHostChecks {
   /** Whether the server runs as root, where Claude Code refuses to skip its prompts. */
   readonly isRoot: () => boolean;
-  /** Why Claude Code's sandbox can't start here, or `null` when it can. */
-  readonly sandboxMissing: (env: Record<string, string>) => string | null;
   /** Claude Code's answer about its sign-in, over the run's own environment. */
   readonly probe: (env: Record<string, string>) => Promise<ClaudeAccountProbe>;
   /** Make the worktree root, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => void;
 }
 
-/** Whether `name` is an executable on `path`. */
-function onPath(name: string, path: string | undefined): boolean {
-  return (path ?? "").split(delimiter).some((dir) => {
-    if (dir === "") return false;
-    try {
-      accessSync(join(dir, name), constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
-
-/** The sandbox Claude Code starts: `sandbox-exec` on macOS, bubblewrap with socat on Linux. */
-function sandboxMissing(env: Record<string, string>): string | null {
-  if (process.platform === "darwin") {
-    return existsSync("/usr/bin/sandbox-exec") ? null : "Claude Code's sandbox is not available: sandbox-exec was not found.";
-  }
-  if (process.platform === "linux") {
-    const missing = ["bwrap", "socat"].filter((name) => !onPath(name, env.PATH));
-    return missing.length === 0
-      ? null
-      : `Claude Code's sandbox is not available: install ${missing.join(" and ")} (bubblewrap) so it can confine the run.`;
-  }
-  return `Claude Code's sandbox is not available on ${process.platform}.`;
-}
-
 /** The host's own answers. */
 export const HOST_CHECKS: ClaudeCodeHostChecks = {
   isRoot: () => process.getuid?.() === 0 || process.geteuid?.() === 0,
-  sandboxMissing,
   probe: (env) => probeClaudeAccount({ env }),
   makeRoot: (repository) => {
     mkdirSync(worktreeRoot(repository), { recursive: true });
@@ -242,11 +192,10 @@ export const HOST_CHECKS: ClaudeCodeHostChecks = {
 
 /**
  * Claude Code mode's own check, for the gate's mode-check slot: the server
- * isn't root, the sandbox can start, the worktree root can be made, and
- * Claude Code finds its SDK and a sign-in over the environment the run gets.
- * The first that fails is the reason. Under `KITCHEN_SINK_HARNESS_UNSANDBOXED=1`
- * the sandbox isn't checked, and the available mode's note says the run is
- * unsandboxed.
+ * isn't root, the worktree root can be made, and Claude Code finds its SDK and
+ * a sign-in over the environment the run gets. The first that fails is the
+ * reason. Nothing is asked about a sandbox: Kitchen Sink runs Claude Code
+ * without one (see the header).
  */
 export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -255,11 +204,6 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
       return { available: false, reason: "The server runs as root. Claude Code runs without approval prompts only as an ordinary user." };
     }
     const env = claudeCodeEnv();
-    const unsandboxed = harnessUnsandboxed();
-    const sandbox = unsandboxed ? null : checks.sandboxMissing(env);
-    if (sandbox !== null) {
-      return { available: false, reason: `${sandbox} ${unsandboxedHint("Claude Code")}` };
-    }
     try {
       checks.makeRoot(repository);
     } catch (error) {
@@ -282,6 +226,6 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
             : `Claude Code is not signed in on this host (${account.reason}). Sign in with \`claude\`, then restart.`,
       };
     }
-    return unsandboxed ? { available: true, note: unsandboxedNote("Claude Code") } : { available: true };
+    return { available: true };
   };
 }

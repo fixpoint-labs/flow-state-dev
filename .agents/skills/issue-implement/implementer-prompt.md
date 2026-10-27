@@ -212,9 +212,9 @@ loop produce hours of speculative code changes.
    - `fsdev block <path> -i '<json>'` for single-block isolation
    - `fsdev run <flowKind> <action> -i '<json>' --flow-dir <path>` with
      NDJSON capture to stdout for flow-level repros
-   - For flow execution trace reading specifically, hand off to
-     `debug-flow` for the NDJSON event-type reference and the
-     failure-pattern lookup table.
+   - For flow execution trace reading specifically, use the
+     `debug-flow` toolkit for the NDJSON event-type reference and the
+     failure-pattern lookup table, then continue these phases.
    Do NOT proceed without a loop you believe in.
 2. **Reproduce.** Run the loop. Watch the failure mode appear. Confirm
    it matches what the issue describes — not a nearby-but-different

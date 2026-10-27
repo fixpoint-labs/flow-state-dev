@@ -75,6 +75,17 @@ exploration under parallel cognitive frames with explicit trap detection, run `/
 Two strict phases. Mixing them kills idea quality, because the critic strangles the
 generator.
 
+**Write the rubric before fan-out.** Before Phase 1, write 3–6 concrete, gradeable
+criteria for what a *surviving* idea has to do on *this* problem. Candidates never
+see it. It is the picker's tool in Phase 2. A rubric written after you have seen
+the ideas is a rationalization.
+
+> **Attribution (this section).** Rubric-before-fan-out, a judge from another
+> model family, and "pick a base then graft, don't average" are adapted from the
+> MIT-licensed **pstack** `arena` skill by Lauren Tan —
+> <https://github.com/cursor/plugins/tree/main/pstack/skills/arena>. They sit on
+> top of the ADHD diverge/focus loop; they do not replace the frames.
+
 ### Phase 1 — Diverge (no critic)
 
 1. **Pick 5 frames** from the tables below. For code-shaped problems take 4 tagged `code`,
@@ -140,6 +151,21 @@ selection decides which ideas survive, so it belongs on the same tier as the gen
    > Name the first concrete step a coder would take. Then generate 3 to 5 sub-ideas that
    > branch off (variations, combinations with other domains, things this unlocks).
    > Output JSON only.
+
+4. **Cross-judge, then pick a base and graft.** After the three deepenings return,
+   dispatch **one** readonly judge on a **different model family** from this
+   parent (Claude vs Grok vs GPT — pin `model`). It sees the rubric and the three
+   deepened branches by sanitized label, scores each criterion, and recommends a
+   base. You also score them yourself against the same rubric. Agreement confirms
+   the pick; disagreement means one of you is biased or the rubric was ambiguous —
+   read both rationales before deciding.
+
+   Pick the **base** a future maintainer can extend without breaking invariants.
+   Walk each loser once for what is worth porting — usually **one or two things,
+   not most of it**. Fold those grafts in by hand so the result stays one mental
+   model. Do not average the three sketches into a fourth. If they converge on one
+   shape, that is strong agreement: ship it, no graft. If they wildly diverge, the
+   rubric was under-specified — reframe and re-run rather than blending.
 
 ## Frames
 
@@ -267,7 +293,9 @@ Render in this order. Do not collapse it into a wall of prose — the structure 
    non-obvious-but-viable pick with ★. List traps separately with their one-line reasons.
 4. **Focus.** The 3 deepened branches — sketch, load-bearing risk, first concrete step,
    child ideas.
-5. **Provocation.** One wildcard question that opens a direction to push into if nothing
+5. **Pick.** The base, the judge's verdict, each graft and its source, what was
+   rejected and why. One shape, not an average.
+6. **Provocation.** One wildcard question that opens a direction to push into if nothing
    landed.
 
 ## Anti-patterns
@@ -281,6 +309,8 @@ Render in this order. Do not collapse it into a wall of prose — the structure 
 - **Refusing to commit.** "Here are 20 ideas, you decide" is a cop-out and, in this repo,
   a violation of the engineer/product-owner contract. Generate wide, converge with a
   real opinion and a recommendation.
+- **Averaging the shortlist.** Three deepened branches blended into one "best of"
+  is a fourth shape nobody generated. Pick a base; graft at most one or two parts.
 - **Mistaking added surface for a better idea.** A branch that proposes more machinery is
   not thereby more imaginative. The frames that subtract (`subtract-then-add`, `user-space
   only`, `remove the load-bearing assumption`, `$0 budget`) exist so removal competes on

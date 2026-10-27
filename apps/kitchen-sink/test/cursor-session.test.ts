@@ -262,7 +262,7 @@ describe("Cursor's to-do list in the plan record (V5, BR-8 to BR-11, BR-15a, BR-
 });
 
 describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
-  it("a real run gets the allowlisted environment, the session's model in agent mode, its sandbox on, and the plan recorded", () => {
+  it("a real run gets the allowlisted environment, the session's model in agent mode, no sandbox, and the plan recorded", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CURSOR_API_KEY", "key");
     const options = cursorBlockOptions(harnessFeeds(CURSOR_SESSION));
@@ -273,15 +273,9 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.env!.HOME).toBe(process.env.HOME);
     expect(options.env!.CURSOR_API_KEY).toBe("key");
     expect(options.recordPlan).toBe(true);
-    expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: true } } });
+    // Cursor's sandbox is off: Kitchen Sink confines no run.
+    expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: false } } });
     expect(options.model).toBeTypeOf("function");
-  });
-
-  it("KITCHEN_SINK_HARNESS_UNSANDBOXED=1 turns Cursor's sandbox off, and nothing else does", () => {
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "true");
-    expect(cursorBlockOptions(harnessFeeds(CURSOR_SESSION)).agent?.local).toEqual({ sandboxOptions: { enabled: true } });
-    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
-    expect(cursorBlockOptions(harnessFeeds(CURSOR_SESSION)).agent?.local).toEqual({ sandboxOptions: { enabled: false } });
   });
 
   it("test mode runs the scripted Cursor in this process, with no env", () => {

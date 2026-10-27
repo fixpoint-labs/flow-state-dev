@@ -8,17 +8,18 @@
  * panel says "Codex reports no plan": the pinned Codex gives its model no
  * to-do tool in the headless mode the package drives.
  *
- * Codex runs without approval prompts inside its own sandbox
- * (`workspace-write`), with `/tmp` and `$TMPDIR` taken off its writable list,
- * so its writes land in the session's worktree and nowhere else: not the
- * worktree's `.git` pointer and not the repository's git data, which Codex's
- * sandbox keeps read-only. The run edits files and cannot commit. Its process
- * starts with an allowlisted environment (`client.env`); left unset, the SDK
- * would hand it the server's whole environment. That filters what the run is
- * handed; it is not a security boundary. A command the run starts as the
- * server's OS user can still read the server's environment (on Linux, from
- * `/proc`). Run the server as a separate OS user or in a container when that
- * matters.
+ * **Kitchen Sink confines no run.** Codex runs without approval prompts and
+ * with its sandbox off (`danger-full-access`), so it writes, commits and runs
+ * commands wherever the server's OS user can — this checkout included, not
+ * just the session's worktree. Kitchen Sink is a showcase meant to run on a
+ * machine where that is fine. Run the server as a separate OS user, or in a
+ * container, when it is not.
+ *
+ * Its process still starts with an allowlisted environment (`client.env`);
+ * left unset, the SDK would hand it the server's whole environment. That
+ * filters what the run is handed and nothing more: a command the run starts as
+ * the server's OS user can still read the server's environment (on Linux, from
+ * `/proc`).
  *
  * Codex mode takes nothing from your own Codex settings (`config.toml`) that
  * changes what a run is: not its model, not its service tier, not its MCP
@@ -53,7 +54,6 @@ import {
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
-import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -133,22 +133,13 @@ export function codexIsScripted(env: Record<string, string | undefined> = proces
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
-/**
- * Whether Codex mode runs Codex in its sandbox, and requires one on the host:
- * yes unless `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` (`lib/harness-sandbox.ts`).
- * The block's sandbox options and the host check's sandbox probe both read
- * this, and nothing else decides it.
- */
-export function codexSandboxed(): boolean {
-  return !harnessUnsandboxed();
-}
-
 /** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
 export function codexThreadOptions(): CodexThreadOptions {
   return {
-    // No approval prompts: nobody is there to answer one. The sandbox is the fence.
+    // No approval prompts: nobody is there to answer one, and nothing fences
+    // the run either — Kitchen Sink confines no run (see the header).
     approvalPolicy: "never",
-    sandboxMode: codexSandboxed() ? "workspace-write" : "danger-full-access",
+    sandboxMode: "danger-full-access",
   };
 }
 
@@ -177,12 +168,7 @@ export function codexClientOptions(
 ): CodexClientOptions {
   return {
     env: codexEnv(env),
-    config: {
-      service_tier: "default",
-      ...(codexSandboxed()
-        ? { sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } }
-        : {}),
-    },
+    config: { service_tier: "default" },
     // The inventory can contain plugin/runtime servers absent from config.toml.
     // Even a disabled entry needs a transport; quote names so dots remain literal.
     ...(mcpServers.length > 0 ? {
@@ -283,8 +269,6 @@ export interface CodexHostChecks {
   readonly makeRoot: (repository: string) => string;
   /** Whether Codex's own `codex login status` succeeds over `env`. No run. */
   readonly loggedIn: (env: Record<string, string>) => Promise<boolean>;
-  /** Why Codex's sandbox can't run a command in `dir` over `env`, or `null` when it can. No run. */
-  readonly sandboxFails: (dir: string, env: Record<string, string>) => Promise<string | null>;
 }
 
 /** Run the Codex program with `args` over `env`, the way the SDK would start it. */
@@ -352,20 +336,15 @@ export const HOST_CHECKS: CodexHostChecks = {
     return root;
   },
   loggedIn: async (env) => (await runCodex(["login", "status"], env)).status === 0,
-  sandboxFails: async (dir, env) => {
-    // Codex's own sandbox command, under its built-in workspace profile: the
-    // sandbox a `workspace-write` run gets, around a command that does nothing.
-    const ran = await runCodex(["sandbox", "--permission-profile", ":workspace", "--cd", dir, "--", "true"], env, dir);
-    return ran.status === 0 ? null : failureOf(ran);
-  },
 };
 
 /**
  * Codex mode's own check, for the gate's mode-check slot: the pinned Codex SDK
  * is installed (the Codex package's own version refusal is the reason
- * otherwise), the worktree root can be made, Codex is signed in over the run's
- * environment, and Codex's sandbox can run a command there. The first that
- * fails is the reason.
+ * otherwise), the worktree root can be made, and Codex is signed in over the
+ * run's environment. The first that fails is the reason. Nothing is asked
+ * about a sandbox: Kitchen Sink runs Codex with its sandbox off (see the
+ * header).
  *
  * The block itself is built only once the mode is available, so another SDK
  * version is a reason here and never a crash at server start.
@@ -397,14 +376,6 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
       return {
         available: false,
         reason: "Codex is not signed in on this host (`codex login status` fails and there is no CODEX_API_KEY in the run's environment). Sign in with `codex login`, then restart.",
-      };
-    }
-    if (!codexSandboxed()) return { available: true, note: unsandboxedNote("Codex") };
-    const sandbox = await checks.sandboxFails(root, env);
-    if (sandbox !== null) {
-      return {
-        available: false,
-        reason: `Codex's sandbox can't run on this host: ${sandbox} ${unsandboxedHint("Codex")}`,
       };
     }
     return { available: true };
