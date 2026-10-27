@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="PD-3, how a post between workers travels and what makes sure it is answered once. Chosen: split by reply, a task when an answer is expected and a plain message when not. Instead of: a ledger-backed message, which FIX-1872 removed on Oct 13, and a task for every post. It comes down to the first row, a post that expects an answer: the split and a task for every post both claim it once and tell the caller it ended done or failed, with the claim ticket as the only check, while a ledger-backed message is answered once by the coordinator ledger, a second check beside the claim ticket. The second row is a tell that expects no reply: the split sends a plain message with no row, deadline or check, a ledger-backed message sends the same message, and a task for every post makes a row nobody answers. The third row is the price: what FIX-1816 D3 protected, each delegate's own line and the rounds, must ride on tasks under the split and under a task for every post, and is kept as built under the ledger. Locks in: two kinds of post, a task or a plain message; FIX-1816 D3 is amended and FIX-1872 removed the ledger. Flips if: a post's per-delegate lines or rounds cannot run as tasks."
+<svg viewBox="0 0 940 420" role="img" aria-label="PD-3, how a post between workers travels and what makes sure it is answered once. Chosen: split by tracking, a task when the post is tracked work and a message on sendMessage when not, whether a call that waits for a reply or a tell. Instead of: a ledger-backed message, which FIX-1872 removed on Oct 13, and a task for every post. It comes down to the first row, a post that is tracked work, with attempts, a retry and an ending owed to its filer: the split and a task for every post both claim it once and tell the caller it ended done or failed, with the claim ticket as the only check, while a ledger-backed message is answered once by the coordinator ledger, a second check beside the claim ticket. The second row is a call or a tell, owed no tracked ending: the split sends a message on sendMessage, a call waiting on the wait gate, with no row or check, a ledger-backed message sends the same message, and a task for every post makes a row nobody answers. The third row is the price: what FIX-1816 D3 protected, each delegate's own line and the rounds, must ride on tasks under the split and under a task for every post, and is kept as built under the ledger. Locks in: two kinds of post, a task or a message; FIX-1816 D3 is amended and FIX-1872 removed the ledger. Flips if: a post's per-delegate lines or rounds cannot run as tasks."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-lbl" x="32" y="156">A POST THAT</text>
-    <text class="t-lbl" x="32" y="169">EXPECTS AN ANSWER</text>
+    <text class="t-lbl" x="32" y="169">IS TRACKED WORK</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Claimed once, ending told</text>
@@ -69,11 +69,11 @@
   </g>
 
   <g id="row-tell">
-    <text class="t-lbl" x="32" y="216">A TELL THAT</text>
-    <text class="t-lbl" x="32" y="229">EXPECTS NO REPLY</text>
+    <text class="t-lbl" x="32" y="216">A CALL OR TELL,</text>
+    <text class="t-lbl" x="32" y="229">OWED NO ENDING</text>
     <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">A plain message</text>
-    <text class="t-s" x="248" y="241">no row, deadline or check</text>
+    <text class="t-b" x="248" y="223">A message: sendMessage</text>
+    <text class="t-s" x="248" y="241">a call waits; no row or check</text>
     <text class="mark tie" x="468" y="224">=</text>
     <text class="t-b" x="488" y="223">A message</text>
     <text class="t-s" x="488" y="241">the same as the split</text>
@@ -101,7 +101,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Two kinds of post: a task, or a plain message</text>
+    <text class="t-b" x="32" y="371">Tracked work is a task; the rest is a message</text>
     <text class="t-s" x="32" y="389">FIX-1816 D3 amended; FIX-1872 removed the ledger</text>
   </g>
 

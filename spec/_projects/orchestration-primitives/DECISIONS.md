@@ -66,7 +66,7 @@ One model-facing message tool, `sendMessage`, replaces `messageWorker`; no epic 
 
 ![PD-3's trade-off](figures/pd3-asks-are-tasks.svg)
 
-It comes down to a post that expects an answer: a ledger-backed message needs a second once-only check to get one, which is why FIX-1872 removed the ledger on Oct 13.
+It comes down to a post that is tracked work: a ledger-backed message needs a second once-only check to get one, which is why FIX-1872 removed the ledger on Oct 13.
 
 ## Decided once
 
