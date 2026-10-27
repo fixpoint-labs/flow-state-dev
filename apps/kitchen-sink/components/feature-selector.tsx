@@ -39,7 +39,6 @@ interface FeatureOption {
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
 }
 
 const FEATURE_OPTIONS: FeatureOption[] = [
@@ -48,28 +47,24 @@ const FEATURE_OPTIONS: FeatureOption[] = [
     label: "Search",
     description: "Search the web for information",
     icon: Search,
-    color: "text-foreground",
   },
   {
     key: "fetch",
     label: "Fetch",
     description: "Fetch and read the full content of web pages",
     icon: Globe,
-    color: "text-foreground",
   },
   {
     key: "crawl",
     label: "Crawl",
     description: "Crawl websites following links up to a specified depth",
     icon: Network,
-    color: "text-foreground",
   },
   {
     key: "biasCheck",
     label: "Bias Check",
     description: "Detect sycophancy and cognitive biases in responses",
     icon: ShieldCheck,
-    color: "text-foreground",
   },
 ];
 
@@ -141,7 +136,7 @@ export function FeatureSelector({
               <Icon
                 className={cn(
                   "mt-0.5 size-4 shrink-0 transition-colors",
-                  isActive ? option.color : "text-muted-foreground/40",
+                  isActive ? "text-foreground" : "text-muted-foreground/40",
                 )}
               />
               <div className="flex flex-col gap-0.5">

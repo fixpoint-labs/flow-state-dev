@@ -6,7 +6,7 @@
  * neutral defaults in a base layer, and the Tailwind names pointed at them.
  * The Flow State look is the design-system package's one import, whose
  * unlayered values win over those defaults: Kitchen Sink's light theme is its
- * evening (the warm Draft stock, `data-theme="evening"`) and its dark theme is
+ * evening (the warm Draft stock, the `evening` class) and its dark theme is
  * night (`.dark`), set by `components/theme-provider.tsx`. Remove that one
  * line and Kitchen Sink draws the neutral defaults.
  */
