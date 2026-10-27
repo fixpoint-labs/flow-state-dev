@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="Open fork, the owner&#x27;s call: where phases live. Recommended: a declaration on the task that the template fills. Beside it: a view over filed rows only, and a declaration with no template. It comes down to the first row, who can show phases: with the declaration any run that holds a task can, a worker filing steps, a flow or a coding run; with a view over rows only a worker whose steps are filed rows can; with no template any run can. The second row: a filed step&#x27;s status comes from its own row under the first two, and from a record each worker keeps in step under the third. The third row is the price: the declaration adds one more field on a task than the view over rows, and the third option adds every worker&#x27;s own bookkeeping. Locks in: a declared list of phases on every task row, written by the run holding it. Flips if no runner but a worker filing steps ever wants phases; then the coding run&#x27;s issue drops."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recom  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">OPEN · THE OWNER&#x27;S CALL, ON THE THREAD&#x27;S CARD</text>
+    <text class="t-q" x="32" y="52">Is &quot;phases&quot; a declaration on the task, or only a pattern of filed tasks?</text>
+  </g>
+
+  <g id="options">
+    <rect class="recom" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="226" y="112">Declared on the task</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">OTHER OPTION</text>
+    <text class="t-h c-lost" x="466" y="112">View over filed rows</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">OTHER OPTION</text>
+    <text class="t-h c-lost" x="706" y="112">Declared, no template</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO CAN</text>
+    <text class="t-lbl" x="32" y="169">SHOW PHASES</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Any run that holds a task</text>
+    <text class="t-s" x="244" y="179">a worker, a flow, a coding run</text>
+    <text class="mark minus" x="466" y="162">−</text>
+    <text class="t-b" x="484" y="161">Only a filing worker</text>
+    <text class="t-s" x="484" y="179">a coding run&#x27;s stages stay hidden</text>
+    <text class="mark plus" x="706" y="162">+</text>
+    <text class="t-b" x="724" y="161">Any run</text>
+    <text class="t-s" x="724" y="179">the same</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">A FILED STEP&#x27;S</text>
+    <text class="t-lbl" x="32" y="231">STATUS</text>
+    <text class="mark plus" x="226" y="224">+</text>
+    <text class="t-b" x="244" y="223">From its own row</text>
+    <text class="t-s" x="244" y="241">never stored twice</text>
+    <text class="mark plus" x="466" y="224">+</text>
+    <text class="t-b" x="484" y="223">From its own row</text>
+    <text class="t-s" x="484" y="241">the same</text>
+    <text class="mark minus" x="706" y="224">−</text>
+    <text class="t-b" x="724" y="223">From a worker&#x27;s record</text>
+    <text class="t-s" x="724" y="241">kept in step by hand</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHAT IT ADDS</text>
+    <text class="mark minus" x="226" y="282">−</text>
+    <text class="t-b" x="244" y="281">One field more on a task</text>
+    <text class="t-s" x="244" y="299">the declared phases</text>
+    <text class="mark plus" x="466" y="282">+</text>
+    <text class="t-b" x="484" y="281">phase on a step only</text>
+    <text class="t-s" x="484" y="299">the smallest shape</text>
+    <text class="mark minus" x="706" y="282">−</text>
+    <text class="t-b" x="724" y="281">Every worker&#x27;s bookkeeping</text>
+    <text class="t-s" x="724" y="299">no template to share it</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">Declared phases on every task row</text>
+    <text class="t-s" x="32" y="387">written by the run holding it, reportProgress</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Only filing workers ever want phases</text>
+    <text class="t-s" x="494" y="387">then FIX-2236 drops, the declaration with it</text>
+  </g>
+</svg>
