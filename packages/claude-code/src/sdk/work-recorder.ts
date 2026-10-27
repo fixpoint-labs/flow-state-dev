@@ -27,7 +27,7 @@
  */
 import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
-import { normalizeResourcePath } from "@flow-state-dev/core/types";
+import { harnessConversationNamespace, normalizeResourcePath } from "@flow-state-dev/core/types";
 import type {
   ObservedFileOpKind,
   ObservedGapKind,
@@ -68,6 +68,12 @@ export interface WorkRecorderOptions {
    * restart at 1 per recorder, would overwrite each other outright.
    */
   runId: string;
+  /**
+   * The request this run belongs to, stamped on every plan row it writes so a
+   * reader can say which turn last changed the plan. Optional: a direct caller
+   * that omits it writes rows with no request, as before.
+   */
+  requestId?: string;
   files: UpsertableCollection;
   plan: UpsertableCollection;
   /**
@@ -119,6 +125,16 @@ export interface WorkRecorderOptions {
 export interface WorkRecorder {
   /** Buffer one translated event. Ignores events it does not consume. Never throws. */
   observe(event: TranslatedEvent): void;
+  /**
+   * The conversation the harness confirmed this run is in. From here on, plan
+   * rows (and the plan's marker) are keyed under that conversation's namespace
+   * rather than the run's, so a later run of the same conversation updates the
+   * same plan; and the run's own marker gets a pointer to it, so a reader that
+   * knows only the run finds the plan. File and gap rows stay the run's.
+   * Before it is called, plan rows go under the run, as they always did.
+   * Never throws.
+   */
+  bindConversation(conversationId: string): void;
   /** Write everything buffered. Never throws. */
   flush(): Promise<void>;
   /** Cancel the pending interval and flush one last time. Never throws. */
@@ -179,6 +195,7 @@ interface PendingPlanEntry {
   previousStatus?: string;
   lastOutcome: ObservedOutcome;
   lastTouchedAt: number;
+  requestId?: string;
 }
 
 /**
@@ -233,6 +250,7 @@ export function normalizeWorkingDirectory(
 export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const {
     runId,
+    requestId,
     files,
     plan,
     planList,
@@ -254,6 +272,13 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const pendingFiles = new Map<string, PendingFileEntry>();
   const pendingPlan = new Map<string, PendingPlanEntry>();
   const pendingGaps = new Map<string, Record<string, unknown>>();
+  /**
+   * Where plan rows and the plan's marker are keyed: the bound conversation's
+   * namespace, or the run's until one is bound.
+   */
+  let planNamespace = runId;
+  /** The pointer from this run to its conversation, waiting for the next flush. */
+  let pendingPointer: string | null = null;
   /** Ordinal for the next gap row. Zero-padded so key order is time order. */
   let gapOrdinal = 0;
   /**
@@ -415,8 +440,9 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     segment: string,
     rawPath?: string,
   ): string | null => {
+    const namespace = subject === "plan" ? planNamespace : runId;
     try {
-      return normalizeResourcePath(`${runId}/${segment}`);
+      return normalizeResourcePath(`${namespace}/${segment}`);
     } catch (err) {
       gap(subject, `a ${label} could not be keyed: ${(err as Error).message}`, rawPath);
       return null;
@@ -496,6 +522,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       ...pendingPlan.get(key),
       lastOutcome: settled,
       lastTouchedAt: now(),
+      ...(requestId !== undefined ? { requestId } : {}),
     };
     if (event.title !== undefined) merged.title = event.title;
     if (event.status !== undefined && event.outcome === "applied") {
@@ -556,15 +583,27 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   };
 
   /**
-   * Mark this run's plan `incomplete` in the list marker. Its own
-   * failure becomes a plan gap: the gap row is still the durable record.
+   * Mark the plan `incomplete` in its list marker: the conversation's, once
+   * one is bound. Its own failure becomes a plan gap: the gap row is still the
+   * durable record.
    */
   const markPlanIncomplete = async (reason: string): Promise<void> => {
     if (planList === undefined) return;
+    const namespace = planNamespace;
     try {
-      await planList.upsert(runId, { status: "incomplete", reason });
+      await planList.upsert(namespace, { status: "incomplete", reason });
     } catch (err) {
-      gap("plan", `the plan list marker for "${runId}" could not be written: ${(err as Error).message}`);
+      gap("plan", `the plan list marker for "${namespace}" could not be written: ${(err as Error).message}`);
+    }
+  };
+
+  /** Write the run's pointer to its conversation. A failure is a plan gap. */
+  const writePointer = async (conversation: string): Promise<void> => {
+    if (planList === undefined) return;
+    try {
+      await planList.upsert(runId, { conversation });
+    } catch (err) {
+      gap("plan", `the pointer from run "${runId}" to its plan could not be written: ${(err as Error).message}`);
     }
   };
 
@@ -577,13 +616,16 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     const planBatch = new Map<string, Record<string, unknown>>(
       [...pendingPlan].map(([key, entry]) => [key, { ...entry }]),
     );
+    const pointer = pendingPointer;
     pendingFiles.clear();
     pendingPlan.clear();
-    if (fileBatch.size === 0 && planBatch.size === 0 && pendingGaps.size === 0) return;
+    pendingPointer = null;
+    if (fileBatch.size === 0 && planBatch.size === 0 && pendingGaps.size === 0 && pointer === null) return;
 
     writing = writing.then(async () => {
       await drain(files, fileBatch, "file", "file operation");
       await drain(plan, planBatch, "plan", "plan item");
+      if (pointer !== null) await writePointer(pointer);
       // Gaps LAST, so a gap raised by the two drains above is in this batch
       // rather than waiting for the next window — and, at the final flush,
       // rather than never being written at all.
@@ -606,6 +648,19 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
           event.kind === "plan_item_observed" ? "plan" : "file",
           `an observed ${event.kind} could not be buffered: ${(err as Error).message}`,
         );
+      }
+    },
+    bindConversation(conversationId: string): void {
+      try {
+        const namespace = harnessConversationNamespace(conversationId);
+        if (namespace === planNamespace) return;
+        // Rows buffered under the old namespace keep their keys: they were
+        // observed before the harness confirmed where the run is.
+        planNamespace = namespace;
+        pendingPointer = namespace;
+        armTimer();
+      } catch (err) {
+        gap("plan", `the run's conversation could not be bound: ${(err as Error).message}`);
       }
     },
     flush,

@@ -14,10 +14,15 @@
  *   c      turn 2 names the token without being told it, under turn 1's id.
  *   s      a stopped turn says so, and the next turn names the token under the same id.
  *   r      a reload lands back in the same session, which shows the same id, and its next turn names the token.
+ *   p2     in a second session: turn 1 plans four steps and does the first; turn 2 does the second. The panel
+ *          keeps all four rows with turn 1's titles, two done, labelled "Last changed in turn 2" (p2:kept); a
+ *          turn 3 that leaves the list alone leaves the rows and label as they were (p2:quiet-turn); and the
+ *          rows equal the last list Cursor confirmed in any turn of the session (p2:matches).
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/cursor-continues-its-agent/run.mts
  * Controls: GOAL_CONTROL=no-resume (must FAIL at c, s and r, and nothing else)
  *           GOAL_CONTROL=no-record (must FAIL at p, and nothing else)
+ *           GOAL_CONTROL=plan-per-turn (must FAIL at p2, and nothing else: the panel shows only what the latest turn wrote)
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -36,6 +41,7 @@ const TURN_MS = 240_000;
 const EXPECTED: Record<string, string[]> = {
   "no-resume": ["c", "s", "r"],
   "no-record": ["p"],
+  "plan-per-turn": ["p2"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -130,21 +136,20 @@ interface Todo {
 /**
  * The session's latest turn's last confirmed to-do list, from its own items:
  * the last settled `updateTodos` step whose result succeeded. `null` when the
- * turn has no such step. Read through the app's own API, from the page, as the
- * app reads it.
+ * turn has no such step. With `anyTurn`, the last confirmed in any of the
+ * session's turns. Read through the app's own API, from the page, as the app
+ * reads it.
  */
-async function lastConfirmedList(page: Page, sessionId: string): Promise<{ list: Todo[] | null; calls: number }> {
+async function lastConfirmedList(page: Page, sessionId: string, anyTurn = false): Promise<{ list: Todo[] | null; calls: number }> {
   const requests = (await page.evaluate(async (id) => {
     const res = await fetch(`/api/flows/sessions/${encodeURIComponent(id)}/requests?include_items=true`);
     return ((await res.json()) as { requests: unknown[] }).requests;
   }, sessionId)) as Array<{ actionName: string; startedAtMs?: number; items?: Array<Record<string, unknown>> }>;
-  const latest = requests
-    .filter((r) => r.actionName === "turn")
-    .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0))
-    .at(-1);
+  const turns = requests.filter((r) => r.actionName === "turn").sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+  const read = anyTurn ? turns : turns.slice(-1);
   let list: Todo[] | null = null;
   let calls = 0;
-  for (const item of latest?.items ?? []) {
+  for (const item of read.flatMap((t) => t.items ?? [])) {
     const call = item.toolCall as { name?: string } | undefined;
     if (item.type !== "tool_output" || call?.name !== "updateTodos") continue;
     calls += 1;
@@ -154,6 +159,62 @@ async function lastConfirmedList(page: Page, sessionId: string): Promise<{ list:
     }
   }
   return { list, calls };
+}
+
+/** The plan panel's rows, as drawn, and the label above them. */
+async function panelPlan(page: Page): Promise<{ label: string | null; rows: { title: string; status: string }[] }> {
+  const panel = page.getByTestId("plan-panel");
+  const label = await panel.getByTestId("plan-turn").textContent({ timeout: 2_000 }).catch(() => null);
+  const rows = await panel.getByTestId("plan-row").evaluateAll((lis) =>
+    lis.map((li) => ({
+      title: li.querySelector('[data-testid="plan-row-title"]')?.textContent?.trim() ?? "",
+      status: li.getAttribute("data-status") ?? "no status",
+    })),
+  );
+  return { label, rows };
+}
+
+/**
+ * Leg p2 (FIX-2259): four steps planned in turn 1, the second done in turn 2,
+ * and a turn 3 that leaves the list alone. The step names are picked per run.
+ */
+async function planAcrossTurns(page: Page, fail: (message: string) => void, evidence: string[]): Promise<void> {
+  const words = Array.from({ length: 4 }, (_, i) => `step-${i + 1}-${randomBytes(3).toString("hex")}`);
+  await page.goto(`${ORIGIN}/cursor${CONTROL === "plan-per-turn" ? "?goalControl=plan-per-turn" : ""}`);
+  await page.getByTestId("new-session").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="stream"]')?.getAttribute("data-session-id"));
+  const sessionId = (await page.getByTestId("stream").getAttribute("data-session-id"))!;
+
+  await turn(
+    page,
+    `Use your to-do list to plan exactly four items, with these contents in this order: ${words.join(", ")}. ` +
+      `Then mark the first one completed and do nothing else. Don't run any commands or edit any files. Reply "planned".`,
+  );
+  await turn(page, "Mark the second item in your to-do list completed and do nothing else. Keep the other items as they are. Reply \"ok\".");
+  await page.waitForTimeout(2_000);
+  const afterTwo = await panelPlan(page);
+  const titles = afterTwo.rows.map((r) => r.title);
+  if (JSON.stringify(titles) !== JSON.stringify(words)) {
+    fail(`p2:kept after turn 2 the panel's rows are ${JSON.stringify(titles)} (want turn 1's ${JSON.stringify(words)})`);
+  }
+  if (JSON.stringify(afterTwo.rows.slice(0, 2).map((r) => r.status)) !== JSON.stringify(["completed", "completed"])) {
+    fail(`p2:kept after turn 2 the first two rows read ${JSON.stringify(afterTwo.rows)} (want completed, completed)`);
+  }
+  if (afterTwo.label !== "Last changed in turn 2") fail(`p2:kept after turn 2 the label reads ${JSON.stringify(afterTwo.label)}`);
+
+  await turn(page, "What is 2 + 2? Answer with the number only, and don't touch your to-do list.");
+  await page.waitForTimeout(2_000);
+  const afterThree = await panelPlan(page);
+  if (JSON.stringify(afterThree) !== JSON.stringify(afterTwo)) {
+    fail(`p2:quiet-turn turn 3 changed the panel from ${JSON.stringify(afterTwo)} to ${JSON.stringify(afterThree)}`);
+  }
+
+  const { list } = await lastConfirmedList(page, sessionId, true);
+  const want = (list ?? []).map((t) => ({ title: t.content ?? "", status: t.status ?? "no status" }));
+  if (list === null || JSON.stringify(afterThree.rows) !== JSON.stringify(want)) {
+    fail(`p2:matches the panel shows ${JSON.stringify(afterThree.rows)}; Cursor last confirmed ${JSON.stringify(want)}`);
+  }
+  evidence.push(`p2 panel ${JSON.stringify(afterThree)}`);
 }
 
 await runGoal(async (failures) => {
@@ -255,6 +316,9 @@ await runGoal(async (failures) => {
       if ((await boundId(page)) !== id1) fail("r", `after a reload the agent moved to ${await boundId(page)}`);
     }
     evidence.push(`ids ${id1} → ${id2} → ${await boundId(page)}`);
+
+    // ---- p2: a second session, whose plan must outlast the turn that made it
+    await planAcrossTurns(page, (message) => fail("p2", message), evidence);
   } finally {
     await browser.close();
     server.stop();

@@ -89,11 +89,21 @@ in `@flow-state-dev/core`:
 import { OBSERVED_PLAN, observedPlanCollection, observedPlanItemStateSchema } from "@flow-state-dev/core";
 ```
 
-Each entry is one to-do item, keyed under the request and the run that wrote it,
-with its wording (`title`), the status the harness last confirmed (`status`), the
-one before (`previousStatus`), and how the last attempt to change it settled
-(`lastOutcome`). Every field can be `null`. A status is the harness's own word for
-it, so read it as text rather than matching a fixed list.
+Each entry is one to-do item: its wording (`title`), the status the harness last
+confirmed (`status`), the one before (`previousStatus`), how the last attempt to
+change it settled (`lastOutcome`), and the request that last wrote it
+(`requestId`), which tells you which turn changed it. Every field can be `null`.
+A status is the harness's own word for it, so read it as text rather than
+matching a fixed list.
+
+A plan belongs to the harness conversation, not to one run. Its entries are
+keyed `conversation/<id>/<item>`, where the id is the one the harness gave the
+conversation: Claude Code's session id, Cursor's agent id. Every turn of that
+conversation updates the same plan, so a turn that doesn't touch its to-do list
+leaves the plan as it was, and a new conversation starts with none.
+`harnessConversationNamespace(conversationId)` returns that namespace
+(`conversation/<escaped id>`), and `planConversationPrefix(conversationId)` the
+key prefix its entries are under.
 
 Entries stream to an open page as they change, so a plan you show beside a
 session stays in step while the run works.
@@ -108,26 +118,71 @@ so rather than show an empty list.
 A Codex block is one: Codex doesn't keep a to-do list in the version
 `@flow-state-dev/codex` supports, so its manifest doesn't list `observed-plan`.
 
-Beside the entries, each run has a list marker in `observed-plan-list`, keyed by
-the run. It says whether the run's plan is `complete`, still `writing`, or
-`incomplete`, how many places it holds, and why it's incomplete. Read it before
-the entries:
+### List markers and pointers
+
+Beside the entries, `observed-plan-list` holds two kinds of marker:
+
+- **The conversation's list marker**, keyed by its namespace
+  (`conversation/<id>`). It says whether the plan is `complete`, still
+  `writing`, or `incomplete`, how many places it holds, and why it's incomplete.
+- **A run's pointer**, keyed by the run's own namespace
+  (`<requestId>/<run>`, which `harnessRunNamespace(ctx)` returns). Its
+  `conversation` field names the conversation namespace the run wrote its plan
+  to. A pointer has no status or count, so don't read it as a list marker.
+
+Read the list marker before the entries:
 
 - `complete` with no places means the agent reported an empty list.
 - `incomplete`, or `writing` once the run has ended, means a write failed
   partway. Show what's there as possibly incomplete, with the reason, not as the
   plan.
 - With a count, show only the places below it.
-- No marker and no entries means the run reported no plan.
+- No marker and no entries means the conversation has no plan.
 
-To record a plan from a harness of your own, declare `observedPlanCollection` and
-`observedPlanListCollection` on the block. If your agent reports its whole list
-each time, with no ids, hand it to `replacePlanList(plan, marker, runNamespace,
-items)`: it keys entries by place, keeps an entry's earlier status when its
-wording is unchanged, removes entries past the end, and writes the marker. It
-never throws; a list it can't store in full leaves the marker `incomplete` and
-the run carries on. Call it from one writer per run. If your agent reports items
-by id, upsert entries under `<requestId>/<run>/<item id>` and mark the run
+### Reading a request's plan
+
+When you know the request but not the conversation, start from its pointer.
+List the request's markers with `planRowsPrefix(requestId, OBSERVED_PLAN_LIST)`
+as the `topicPrefix`, and hand them to `readPlanTarget`:
+
+```ts
+import { OBSERVED_PLAN_LIST, planRowsPrefix, readPlanTarget } from "@flow-state-dev/core";
+
+// `items` is the page a resource read returned for
+// observed-plan-list?topicPrefix=<planRowsPrefix(requestId, OBSERVED_PLAN_LIST)>
+const target = readPlanTarget(
+  requestId,
+  items.map((item) => ({ topic: item.topic, conversation: item.clientData?.conversation ?? null })),
+);
+```
+
+`target` is one of two shapes:
+
+- `{ kind: "conversation", namespace, rowsPrefix }`: a run of the request left a
+  pointer. Read the entries under `rowsPrefix`, and the plan's list marker from
+  `observed-plan-list`, keeping the one whose topic equals `namespace`. If a
+  retried block left more than one pointer, the last run's wins.
+- `{ kind: "run", rowsPrefix }`: no run left a pointer. The request's plan is
+  stored per run, under `<requestId>/<run>/<item>`, as in any record with no
+  pointer. Read the entries under `rowsPrefix`. None of the markers you just
+  listed is a pointer, so use them as the list markers as they are.
+
+### Recording a plan from your own harness
+
+Declare `observedPlanCollection` and `observedPlanListCollection` on the block,
+and key the plan under `harnessConversationNamespace(id)` with the id your agent
+gives the conversation. Once the id is known, write the run's pointer:
+upsert `{ conversation: namespace }` under `harnessRunNamespace(ctx)` in the
+marker collection, so a reader that knows only the request finds the plan.
+
+If your agent reports its whole list each time, with no ids, hand it to
+`replacePlanList(plan, marker, namespace, items, { requestId })`: it keys
+entries by place, stamps `requestId` on each one, keeps an entry's earlier
+status when its wording is unchanged, removes entries past the end, and writes
+the conversation's list marker. It never throws; a list it can't store in full
+leaves the marker `incomplete` and the run carries on. Call it from one writer
+per namespace at a time. If your agent reports items by id, upsert entries under
+`<namespace>/<item id>` with `requestId` set, and mark the conversation
 `incomplete` when a write fails.
 
 ## Subscription usage

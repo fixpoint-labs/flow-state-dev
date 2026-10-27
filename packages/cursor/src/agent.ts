@@ -33,6 +33,7 @@ import {
   OBSERVED_PLAN_LIST,
   formatRunDuration,
   handler,
+  harnessConversationNamespace,
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPlanCollection,
@@ -177,10 +178,13 @@ export interface CursorAgentOptions {
    *
    * On, the block declares both collections and, each time Cursor confirms an
    * update to its list, writes the whole list it confirmed through core's
-   * `replacePlanList`: a row per place, Cursor's own status words, under a
-   * namespace per invocation. The update Cursor sent is never written; it can
-   * name only part of the list. A list that cannot be stored in full marks the
-   * run's marker incomplete and the run carries on.
+   * `replacePlanList`: a row per place, Cursor's own status words, under the
+   * agent's conversation namespace (`harnessConversationNamespace(agentId)`),
+   * so a later run of the same agent keeps the list until Cursor changes it.
+   * Each run also leaves a pointer to that namespace under its own. The update
+   * Cursor sent is never written; it can name only part of the list. A list
+   * that cannot be stored in full marks the conversation's marker incomplete
+   * and the run carries on.
    *
    * Off, the block declares no session state and writes nothing, which is what
    * lets a task board dispatch it with no further option.
@@ -417,7 +421,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
 
       const emitState = createEmitState();
-      const writePlan = recordPlan ? openPlanWriter(ctx) : null;
+      let writePlan: PlanWriter | null = null;
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
       let sessionId: string | null = null;
@@ -435,6 +439,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
           resolveCursorClient,
         });
         sessionId = agent.agentId;
+        // Opened once the agent is known: the plan is the agent's conversation's.
+        if (recordPlan) writePlan = await openPlanWriter(ctx, agent.agentId);
         // An already-fired deadline must not start a run it will immediately
         // have to cancel — the resolvers, the client, create/resume and
         // `onSession` all await before this, and a signal that is already
@@ -554,12 +560,15 @@ async function resumeAgent(
  * The plan writer for this invocation, or `null` when the flow has not
  * registered the plan record's collections.
  *
- * The rows and the marker go under core's per-invocation namespace, so two
- * invocations in one request, or two attempts of one, never share a list.
- * Missing collections are a wiring gap a status note names; the run goes on
- * unrecorded rather than failing over bookkeeping.
+ * The rows and their marker go under the agent's conversation namespace, so
+ * every turn of one agent updates one plan, and a new agent starts with none.
+ * The run's own marker gets a pointer to it, written here, before any turn's
+ * list: a turn that never touches its to-do list still leads a reader to the
+ * plan. Missing collections are a wiring gap a status note names; a write that
+ * fails is a status note too. The run goes on unrecorded rather than failing
+ * over bookkeeping.
  */
-function openPlanWriter(ctx: AgentCallbackContext): PlanWriter | null {
+async function openPlanWriter(ctx: AgentCallbackContext, agentId: string): Promise<PlanWriter | null> {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const plan = resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
   const marker = resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
@@ -571,9 +580,18 @@ function openPlanWriter(ctx: AgentCallbackContext): PlanWriter | null {
     );
     return null;
   }
-  const namespace = harnessRunNamespace(ctx);
+  const namespace = harnessConversationNamespace(agentId);
+  const requestId = ctx.request.identity.id;
+  try {
+    await marker.upsert(harnessRunNamespace(ctx), { conversation: namespace });
+  } catch (err) {
+    ctx.emit.status(
+      `Cursor's plan pointer was not recorded: ${err instanceof Error ? err.message : String(err)}`,
+      { transient: false },
+    );
+  }
   return async (items) => {
-    const written = await replacePlanList(plan, marker, namespace, items);
+    const written = await replacePlanList(plan, marker, namespace, items, { requestId });
     if (written.status === "incomplete") {
       ctx.emit.status(`Cursor's plan was not recorded in full: ${written.reason}`, { transient: false });
     }

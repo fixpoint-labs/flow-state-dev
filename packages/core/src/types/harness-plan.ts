@@ -22,8 +22,14 @@
  *   half-written plan from the plan.
  * - {@link replacePlanList} — writes a whole-list plan as rows keyed by place,
  *   and maintains the marker around the write.
- * - {@link harnessRunNamespace} — the per-invocation namespace a harness keys
- *   its rows and marker under.
+ * - {@link harnessRunNamespace} — the per-invocation namespace a run's own
+ *   records go under, and where it leaves a pointer to its conversation.
+ * - {@link harnessConversationNamespace} / {@link planConversationPrefix} — the
+ *   namespace one harness conversation's plan lives under, which every turn of
+ *   that conversation writes, so a plan lasts as long as the conversation.
+ * - {@link readPlanTarget} — where a reader finds a run's plan: its
+ *   conversation's, or, for a run recorded before plans were kept per
+ *   conversation, the run's own rows.
  *
  * It sits beside `./harness` (the run contract) rather than inside it: the
  * handle is what a run reports back, this is what a run records while it
@@ -74,6 +80,8 @@ export const observedPlanItemStateSchema = z.object({
   lastOutcome: observedOutcomeSchema.nullable().default(null),
   /** Epoch millis of the last attempt. */
   lastTouchedAt: z.number().nullable().default(null),
+  /** The request that last wrote this row, so a reader can say which turn changed it. */
+  requestId: z.string().nullable().default(null),
 });
 
 /**
@@ -94,7 +102,7 @@ export const observedPlanCollection = defineResourceCollection({
   stateSchema: observedPlanItemStateSchema,
   client: {
     state: { read: true },
-    expose: ["title", "status", "previousStatus", "lastOutcome", "lastTouchedAt"],
+    expose: ["title", "status", "previousStatus", "lastOutcome", "lastTouchedAt", "requestId"],
     live: true,
   },
 });
@@ -112,9 +120,15 @@ export const observedPlanCollection = defineResourceCollection({
 export type ObservedPlanListStatus = "writing" | "complete" | "incomplete";
 
 /**
- * One marker per run namespace, keyed by the namespace itself. Every field is
+ * One marker per namespace, keyed by the namespace itself. Every field is
  * nullable: a harness that writes rows by id (Claude Code) writes only
  * `incomplete` markers, with no count.
+ *
+ * A marker plays one of two parts. Under a conversation namespace it says where
+ * that conversation's plan write stands (`status`, `count`, `reason`). Under a
+ * run namespace it carries `conversation`, the pointer from one run to the
+ * conversation it worked in, which is how a reader that knows only the run
+ * finds the plan.
  */
 export const observedPlanListStateSchema = z.object({
   /** Where the run's plan write stands. See {@link ObservedPlanListStatus}. */
@@ -123,6 +137,8 @@ export const observedPlanListStateSchema = z.object({
   count: z.number().int().nonnegative().nullable().default(null),
   /** Why the plan is incomplete. */
   reason: z.string().nullable().default(null),
+  /** On a run's marker: the conversation namespace the run wrote its plan to. */
+  conversation: z.string().nullable().default(null),
 });
 
 /** The per-run plan list markers. Same storage notes as {@link observedPlanCollection}. */
@@ -133,7 +149,7 @@ export const observedPlanListCollection = defineResourceCollection({
   stateSchema: observedPlanListStateSchema,
   client: {
     state: { read: true },
-    expose: ["status", "count", "reason"],
+    expose: ["status", "count", "reason", "conversation"],
     live: true,
   },
 });
@@ -239,7 +255,10 @@ function stringOrNull(value: unknown): string | null {
  * returns rather than throws: a plan that cannot be stored in full never fails
  * the run.
  *
- * **One writer per run namespace, per invocation.** The previous count is read
+ * `options.requestId` is stamped on every row it writes, so a reader can say
+ * which turn last changed the plan.
+ *
+ * **One writer per namespace at a time.** The previous count is read
  * from the marker and each place's previous row by its own key; the prefix is
  * never listed. A row past the end left behind by a failed write doesn't show,
  * because a reader shows only places below the marker's count.
@@ -258,9 +277,10 @@ export async function replacePlanList(
   marker: PlanListMarkerCollection,
   namespace: string,
   items: readonly PlanListItem[],
-  options: { now?: () => number } = {},
+  options: { now?: () => number; requestId?: string } = {},
 ): Promise<ReplacePlanListResult> {
   const now = options.now ?? Date.now;
+  const requestId = options.requestId ?? null;
   const count = items.length;
   try {
     const before = await marker.getOptional(namespace);
@@ -279,6 +299,7 @@ export async function replacePlanList(
         status: item.status,
         lastOutcome: "applied",
         lastTouchedAt: now(),
+        requestId,
       };
       if (prior === undefined || stringOrNull(prior.title) !== item.title) {
         // A new or reworded item: its history belongs to a different item.
@@ -367,4 +388,70 @@ export function harnessRunNamespace(ctx: BlockContext): string {
   // recorder) clobbering the earlier attempt's outright.
   const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
   return `${planKeySegment(ctx.request.identity.id)}/${step}#${attempt}`;
+}
+
+/** The leading key segment of every conversation namespace. */
+const CONVERSATION_SEGMENT = "conversation";
+
+/**
+ * The key namespace for ONE harness conversation's plan:
+ * `conversation/<conversation id>`. Every turn of the conversation writes its
+ * plan here, so a later turn updates the plan an earlier one recorded instead
+ * of starting a new one, and a new conversation starts with none.
+ *
+ * The id is the one the harness confirmed (Claude Code's session id, Cursor's
+ * agent id): the conversation's identity, where {@link harnessRunNamespace} is
+ * one invocation's. The plan record is session-scoped and a session binds one
+ * harness, so the vendor's id alone keeps two conversations apart.
+ *
+ * It can't be read as a run namespace: a run namespace's second segment always
+ * ends in `#<attempt>`, and a conversation id is the harness's own, escaped
+ * with {@link planKeySegment} into one segment.
+ */
+export function harnessConversationNamespace(conversationId: string): string {
+  return `${CONVERSATION_SEGMENT}/${planKeySegment(conversationId)}`;
+}
+
+/**
+ * The storage-key prefix one conversation's plan rows are kept under. Pass it
+ * as a collection read's `topicPrefix`. The conversation's list marker is the
+ * one entry whose topic is {@link harnessConversationNamespace} itself.
+ */
+export function planConversationPrefix(conversationId: string): string {
+  return `${OBSERVED_PLAN}/${harnessConversationNamespace(conversationId)}/`;
+}
+
+/** A plan list marker as a collection read lists it, topic under its collection. */
+export interface PlanMarkerRead {
+  readonly topic: string;
+  readonly conversation?: string | null;
+}
+
+/**
+ * Where to read one request's plan, from that request's run markers (the
+ * markers listed under {@link planRowsPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
+ *
+ * - `conversation` — a run of the request left a pointer: the plan is the
+ *   conversation's, its rows under `rowsPrefix` and its marker keyed
+ *   `namespace`.
+ * - `run` — no run left one: the request was recorded before plans were kept
+ *   per conversation (BP-030), or it never confirmed a conversation. Its own
+ *   rows are under `rowsPrefix` and its markers are the ones passed in, as
+ *   before.
+ *
+ * With several pointers (a retried block), the last run's wins, by key order.
+ * The one reader rule both apps share, so the fallback never forks.
+ */
+export function readPlanTarget(
+  requestId: string,
+  markers: readonly PlanMarkerRead[],
+): { readonly kind: "conversation"; readonly namespace: string; readonly rowsPrefix: string } | { readonly kind: "run"; readonly rowsPrefix: string } {
+  const pointer = markers
+    .filter((m) => typeof m.conversation === "string" && m.conversation.length > 0)
+    .sort((a, b) => a.topic.localeCompare(b.topic, "en", { numeric: true }))
+    .at(-1)?.conversation;
+  if (typeof pointer === "string") {
+    return { kind: "conversation", namespace: pointer, rowsPrefix: `${OBSERVED_PLAN}/${pointer}/` };
+  }
+  return { kind: "run", rowsPrefix: planRowsPrefix(requestId) };
 }

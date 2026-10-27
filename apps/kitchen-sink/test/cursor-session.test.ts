@@ -21,7 +21,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, readPlanTarget } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
@@ -113,13 +113,20 @@ async function noticeOf(stores: Stores, sessionId: string, requestId: string, st
   return turnNotice(state.turns?.[requestId] ?? null, status, state.binding?.confirmed ?? null);
 }
 
-/** The session's plan record, as the panel lists it: rows and markers by topic under the collection. */
+/**
+ * The plan a turn's panel reads, as it finds it: the turn's run pointer, then
+ * the conversation's rows and its list marker, by topic under the collection.
+ */
 async function planOf(stores: Stores, sessionId: string, requestId: string) {
-  const under = async (collection: string) =>
-    Object.entries(await stores.resourceState.getByPrefix("session", sessionId, `${collection}/${requestId}/`))
+  const under = async (collection: string, prefix: string) =>
+    Object.entries(await stores.resourceState.getByPrefix("session", sessionId, `${collection}/${prefix}`))
       .map(([key, entry]) => ({ topic: key.slice(collection.length + 1), state: entry.state as Record<string, unknown> }))
       .sort((a, b) => a.topic.localeCompare(b.topic, "en", { numeric: true }));
-  return { rows: await under(OBSERVED_PLAN), markers: await under(OBSERVED_PLAN_LIST) };
+  const pointers = await under(OBSERVED_PLAN_LIST, `${requestId}/`);
+  const target = readPlanTarget(requestId, pointers.map((p) => ({ topic: p.topic, conversation: p.state.conversation as string | null })));
+  if (target.kind !== "conversation") throw new Error(`turn ${requestId} left no pointer to its conversation's plan`);
+  const markers = (await under(OBSERVED_PLAN_LIST, target.namespace)).filter((m) => m.topic === target.namespace);
+  return { rows: await under(OBSERVED_PLAN, `${target.namespace}/`), markers, namespace: target.namespace };
 }
 
 describe("which agent a turn continues (V5)", () => {
@@ -240,7 +247,7 @@ describe("Cursor's to-do list in the plan record (V5, BR-8 to BR-11, BR-15a, BR-
     const recorder = recorded();
     const rejected = await turn(stores, recorder, "s-plan-fail", "[plan-fail] make a plan");
     expect(rejected.status).toBe("completed");
-    expect(await planOf(stores, "s-plan-fail", rejected.requestId)).toEqual({ rows: [], markers: [] });
+    expect(await planOf(stores, "s-plan-fail", rejected.requestId)).toMatchObject({ rows: [], markers: [] });
   });
 
   it("a list Cursor empties is recorded as complete and empty, not as no plan (BR-15a)", async () => {
@@ -252,12 +259,17 @@ describe("Cursor's to-do list in the plan record (V5, BR-8 to BR-11, BR-15a, BR-
     expect(markers.map((m) => m.state)).toEqual([expect.objectContaining({ status: "complete", count: 0 })]);
   });
 
-  it("a later turn with no update records nothing of its own (BR-16)", async () => {
+  it("a later turn with no update keeps the agent's plan as the first turn left it (FIX-2259)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();
-    await turn(stores, recorder, "s-plan-later", "[plan] make a plan");
+    const first = await turn(stores, recorder, "s-plan-later", "[plan] make a plan");
     const later = await turn(stores, recorder, "s-plan-later", "no plan this time");
-    expect(await planOf(stores, "s-plan-later", later.requestId)).toEqual({ rows: [], markers: [] });
+    const before = await planOf(stores, "s-plan-later", first.requestId);
+    const after = await planOf(stores, "s-plan-later", later.requestId);
+    expect(after.namespace).toBe(before.namespace);
+    expect(after.rows.map((row) => [row.state.title, row.state.status])).toEqual(SCRIPTED_WHOLE_LIST.map((t) => [t.content, t.status]));
+    // Unchanged: every row still names the turn that wrote it.
+    expect(new Set(after.rows.map((row) => row.state.requestId))).toEqual(new Set([first.requestId]));
   });
 });
 
