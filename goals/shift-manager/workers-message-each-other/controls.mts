@@ -17,6 +17,9 @@ export const CONTROL_NAMES = [
   "no-roster-check",
   "fresh-hop-on-task",
   "memory-log",
+  "task-to-conversation",
+  "no-kind-check",
+  "coder-resumes-open",
 ] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
@@ -32,6 +35,7 @@ export interface Control {
 const MESSAGES = "packages/workforce/src/messages";
 const ENTRY = `${MESSAGES}/message-received-entry.ts`;
 const SEND = `${MESSAGES}/send-message.ts`;
+const TARGET = `${MESSAGES}/message-target.ts`;
 /** The anchor every recipient-refusal patch adds after: the first check `recipientRefusal` makes. */
 const NOT_YOURSELF = String.raw`if \(to === sender\) return "not_yourself: you can't message yourself\.";`;
 
@@ -180,5 +184,38 @@ export const CONTROLS: Record<ControlName, Control> = {
       },
     ],
     does: "the message log is kept in the server's memory, not in the store",
+  },
+  "task-to-conversation": {
+    name: "task-to-conversation",
+    legs: ["6"],
+    assertion: "6:lands-in-task-session",
+    patches: [{ module: TARGET, from: String.raw`const sessionId = ledger\?\.get\(taskId\)\?\.run\?\.sessionId;`, to: "const sessionId = partitions[0];" }],
+    does: "a { task } message lands in the conversation that filed the task, not in the session working it",
+  },
+  "no-kind-check": {
+    name: "no-kind-check",
+    legs: ["6", "7"],
+    assertion: "7:refusals",
+    patches: [
+      {
+        module: TARGET,
+        from: String.raw`if \(!viaTask && \(state\[TASK_ID_STATE_KEY\] != null \|\| state\[FILING_SESSION_STATE_KEY\] != null\)\) \{`,
+        to: "if (false) {",
+      },
+    ],
+    does: "a { session } message isn't checked for a task's or a delegate's session",
+  },
+  "coder-resumes-open": {
+    name: "coder-resumes-open",
+    legs: ["8"],
+    assertion: "8:running-refused",
+    patches: [
+      {
+        module: TARGET,
+        from: String.raw`if \(rowsInSession\(of\.ledger, sessionId\)\.some\(\(row\) => !isTerminalStatus\(row\.status\)\)\) \{`,
+        to: "if (false) {",
+      },
+    ],
+    does: "a message to the coder's open task is sent, to reach the coding session the work is in",
   },
 };
