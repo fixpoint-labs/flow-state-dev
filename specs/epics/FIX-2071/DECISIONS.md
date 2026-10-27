@@ -101,6 +101,7 @@ moves to `respond` too.
 | FIX-2070 (messages, #3983) | It removes the names in its ER-7 and renames nothing else. Every child here waits on its closure, so no rename lands under its open PRs |
 | FIX-2072 (prune leftovers) | Removes `fifoDispatcher`, or keeps it; FIX-2245 renames it if kept |
 | FIX-2230 (one route to stop for a person) | Decides whether a raw `ctx.suspend` with a person's reason stays public. FIX-2151 renames the reasons either way; if FIX-2230 is in flight, FIX-2151 merges after it |
+| FIX-2092 (phased workflows, #3970) | Files the next phase's steps *held* and releases them with `updateTask({ status: "pending" })`, one of the meanings of *hold*. FIX-2183's spec lists it among its meanings, and whichever of the two lands second carries the other's usage in its codemod. FIX-2092 keeps its own "no new hold kind" rule until then |
 | FIX-2183 ↔ FIX-2243 | FIX-2183's hold names land in the table first, so the task collection's names change once |
 
 ## Decided in review, recorded so no child reopens them
