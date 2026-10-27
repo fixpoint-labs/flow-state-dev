@@ -14,7 +14,7 @@
 - **delivered**: the run session the task links to holds a user message item with the token. The moment the composer first reads *delivered*, the check reads the store, and the item must already be there. Read again once the next attempt links, the task's run link still names that session.
 - **stopped**: the attempt that was running has a request that reads `aborted` through the flow that owns its session.
 - **continued**: the harness's own record on disk has a next attempt on that row. Its prompt holds the token, and its resume id equals the coding session the previous attempt named.
-- **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
+- **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments`).
 - **only that**: the line reaches the task it was typed on, not the coder's other running task.
 - **em door**: on DevTeam's EM ask, Inbox's reply is a user item in the EM's own session, and the EM answers there with its scripted sentence. (Every worker flow has a door since FIX-1789, the EM's included; before it, this leg graded a disabled reply. Since the DevTeam conversion the EM's door is a model turn, which this Lab scripts so the goal stays model-free.)
 - **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, the seat says *Heard: <token>* there, and Inbox then draws the reply under the ask as the person's own, read back from that session.

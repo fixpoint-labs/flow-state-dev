@@ -690,11 +690,11 @@ const managerStateSchema = z.object({
   /**
    * What `decide` decided, for the step that settles it once a judge (if
    * any) has read the run: the output to return, and whether the task is held
-   * on the run's question (`parked`: nothing left to settle) or passed its
+   * on the run's question (`asked`: nothing left to settle) or passed its
    * check (to complete, or not, on the judge's verdict).
    */
   decided: z
-    .object({ settle: z.enum(["parked", "complete"]), output: managerOutputSchema })
+    .object({ settle: z.enum(["asked", "complete"]), output: managerOutputSchema })
     .nullable()
     .default(null),
   /**
@@ -2255,7 +2255,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
        * the commits it made. `judged` is the settle step's to set.
        */
       const keep = async (
-        settle: "parked" | "complete",
+        settle: "asked" | "complete",
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
       ): Promise<HarnessJudgeInput | null> => {
@@ -2320,7 +2320,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Returning normally is the point: the request ends with the task held
         // on the question, which nothing but its answer or a cancel ends.
         await holdOnQuestion(ctx, question);
-        return keep("parked", await commitsOf());
+        return keep("asked", await commitsOf());
       }
 
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
@@ -2607,7 +2607,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
       const decision = state.decided!;
-      if (decision.settle === "parked") return decision.output;
+      if (decision.settle === "asked") return decision.output;
       const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {

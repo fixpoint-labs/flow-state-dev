@@ -128,7 +128,6 @@ import {
   isClaimable,
   listTasks,
   routeFailure,
-  assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
   lapseWaitWrite,
@@ -559,8 +558,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     targetStatus: TaskStatus,
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -590,13 +588,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           guards,
           options.collectionId,
           now(),
-          requireFrom,
           kind ?? undefined
         );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
-        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against

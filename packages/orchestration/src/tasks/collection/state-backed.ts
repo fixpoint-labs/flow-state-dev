@@ -61,7 +61,6 @@ import {
   retryBudgetExhaustedError,
   routeFailure,
   sumGrantedRetries,
-  assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
   lapseWaitWrite,
@@ -304,10 +303,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     targetStatus: TaskStatus,
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
-    return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
+    return transitionDerived(id, () => ({ targetStatus, kind, patch }), guards);
   }
 
   /**
@@ -321,8 +319,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     targetStatus: TaskStatus;
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
-    /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: TaskStatus;
   }
 
   /**
@@ -372,14 +368,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         // failure spend another task's retry allowance, or mark the board
         // "retry-budget-exhausted" when nothing was ever refused. Both are
         // invisible to a test that only checks the task's status.
-        const { targetStatus, kind, patch, requireFrom } = derive(task, tasks);
+        const { targetStatus, kind, patch } = derive(task, tasks);
         const reason = transitionDeclineReason(
           task as Task,
           targetStatus,
           guards,
           collectionId,
           now(),
-          requireFrom,
           kind ?? undefined
         );
         if (reason !== undefined) {
@@ -391,7 +386,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             },
           };
         }
-        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that

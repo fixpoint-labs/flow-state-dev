@@ -243,6 +243,9 @@ export const PERSON_STOPS_REMOVED = [
   { name: "refuseWhenParked", owner: "FIX-2131" },
   { name: "excusedParked", owner: "FIX-2131" },
   { name: "PERSON_REASONS", owner: "FIX-2131" },
+  // FIX-2220: a verb's one-edge guard, left with no callers once the park verbs went.
+  { name: "requireFrom", owner: "FIX-2220" },
+  { name: "assertTransitionFrom", owner: "FIX-2220" },
 ];
 
 /**

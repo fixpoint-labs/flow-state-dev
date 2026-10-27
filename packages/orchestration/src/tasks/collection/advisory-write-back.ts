@@ -414,7 +414,6 @@ function attribute(
       options,
       ref.collectionId,
       before.at,
-      undefined,
       target.kind
     );
     if (reason !== undefined) {
@@ -461,7 +460,6 @@ function attribute(
         options,
         ref.collectionId,
         before.at,
-        undefined,
         target.kind
       );
       if (reason !== undefined) {
