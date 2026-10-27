@@ -99,6 +99,8 @@ Claude Code joins here (a smaller change than Codex's), and Codex stays a follow
   line until the first has its answer.
 - **Parity row.** Per mode: whether it takes a line live, and that a line sent mid-turn reaches
   the run exactly once. Scripted SDKs gain a pause and a scripted `steer` answer.
+- **One style of run callback in core.** FIX-2145 (#3886) also adds per-run harness callbacks to
+  `types/harness.ts`; whichever lands second takes the other's shape (harness → host, `(value, ctx)`).
 - **No POC and no checker.** The SDK facts are read from the packages' typings (Cursor 1.0.31 and 1.0.40
   `run.d.ts`, Codex SDK 0.164.0, Agent SDK 0.3.312 `sdk.d.ts`); nothing rests on a count.
 
