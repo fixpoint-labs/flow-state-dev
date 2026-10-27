@@ -148,3 +148,12 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
 - **FSD Architect coherence check, recorded:** FIX-2071's renames table and FIX-2249's sweep treat
   `callId` as a sixth field; FIX-2240's spec must keep the acting request's id on the row; FIX-2241's
   spec (#3994) should match ER-4 on a question hold holding admission. Routed to the epic's thread.
+- **Cursor (on 0fa9269's parent), recorded for the implementer, verbatim in substance:** the goal's
+  signal lines read like a test script (exact ms, sweep-tick windows, forced `deadline: 5000`);
+  keep the timing preconditions in `run.mts` and the PR checklist where they can, outcomes in the
+  goal. The own-session resume's cost is merge-gate evidence: show the ungated request end is
+  unchanged (test or benchmark), not a nice-to-have.
+- **Cursor, dropped:** splitting the person-stop hold out, or holding by admission only with
+  FIX-2240's resend (already weighed in *Considered and dropped*: the resend runs on a timer and a
+  call would have nothing to wait on; epic ER-4 gives the hold to this issue). ER-4's own wording is
+  untouched by this PR. Folded inline: the concept's "or repeats the call" is gone, so it matches D1.
