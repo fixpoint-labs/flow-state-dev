@@ -142,7 +142,7 @@ collection's names change once.
 | **Removes** | 22 rows of retired names, the `goal-names` exception, and the durable second spellings |
 | **Adds** | One table, one codemod per child, and rows in an existing sweep |
 
-**Net: down.** No new mechanism; the one sweep we have gets the whole list.
+**Net: down.** No new mechanism: one identifier list in the sweep we have, beside the prose guard we have, instead of three partial lists.
 
 ## Sign off
 
