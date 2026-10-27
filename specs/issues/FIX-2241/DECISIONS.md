@@ -13,7 +13,7 @@ this spec carries no decision card.
 
 - **The convergence point is `askMidway`.** Every midway ask, `askQuestion` and `harness-manager`'s
   coding-run ask alike, goes through it and then through the collection's one `ask` write; after
-  the ask it calls the ledger's declared `questionAsked(ctx, row, holds)`. A test pins both callers. Orchestration names no message (Layer 1 boundary).
+  the ask it calls the ledger's declared `onMidwayQuestion(ctx, row, holds)`. A test pins both callers. Orchestration names no message (Layer 1 boundary).
 - **Once, a replay included.** The message is built from the row, not from the ask's return: after
   the ask, `askMidway` reads the committed row's open midway holds and calls the hook with those (while one
   is open no other turn runs the task, so they are the ones this turn asked). Their ids are stored on the row, so a durable turn that crashed after
@@ -31,8 +31,11 @@ this spec carries no decision card.
   the hook send nothing. Plan steps are never held (`plan.ts`), so no plan row asks. A filer
   session that is gone refuses the send; the refusal is logged and the Inbox item stands.
 - **A filer waiting on the task hears it at once.** A wait is a suspension on the engine's wait
-  gate, and a suspended request gives its place back (epic ER-4: only a person's suspension holds
-  admission), so the filer's `onMessageReceived` runs beside its parked wait. Its steer lets the
+  gate, and a suspended request gives its place back. Epic ER-4 holds a message's admission only
+  while the recipient session waits on a person: a person's suspension, or, in a task's session,
+  its row's open hold (FIX-2239's `hasOpenHold`). A wait gate is neither, so the filer's
+  `onMessageReceived` runs beside its parked wait. A filer that is itself a task's session whose
+  own row holds an open question hears it once that question is answered. Its steer lets the
   task go on, and the wait then resumes with the result. No change to a wait's outcomes.
 - **Sender, server-set.** `from` is the row's assignee and the sending session is the task's,
   both read from the row, never from input (BP-031). `call` is false: the task never waits on the
@@ -76,10 +79,10 @@ whose hold ids are minted before its write; `DeclaredDelivery` filled by `conver
 - **Order.** The exempt send edits FIX-2238's send path, which FIX-2160, FIX-2240 and FIX-2239 stack
   on. This lands after FIX-2238, stacked on its PR while that is open, and rebases on whichever of
   the others merged first; it touches only the send's budget check.
-- **Renames.** `DeclaredDelivery.questionAsked` and the server-written text that teaches
+- **Renames.** `DeclaredDelivery.onMidwayQuestion` and the server-written text that teaches
   `updateTask({ id, question, message })` are in FIX-2183's scope (#3985 hands it the meanings of
   *hold* and `updateTask`'s `question`), so its codemod changes the name and the text together.
-- `DeclaredDelivery`'s doc says `questionAsked` is not the notice pipeline (no marker, no
+- `DeclaredDelivery`'s doc says `onMidwayQuestion` is not the notice pipeline (no marker, no
   `noticeEntry`): same declaration, a different moment. Whether the hook takes the holds or reads
   them from the row is the implementer's call.
 - `answerQuestion` checks the caller reaches the row, not that it is the filing session; nothing
@@ -94,3 +97,6 @@ whose hold ids are minted before its write; `DeclaredDelivery` filled by `conver
   back, so a waiting filer hears at once); "once" rebuilt on the row's stored holds, since a
   replay's ask is declined; who is told with `resultTo: "conversation"` and a gone session; plan
   steps never ask; the goal's Lab gains a workstream and a model-filed coding task.
+- 2026-10-27, after merge, amended with the implementation: the hook is named `onMidwayQuestion`
+  (the vocabulary sweep refuses `questionAsked`), and the waiting-filer line states ER-4's
+  admission as FIX-2239 builds it (an open hold in a task's session holds it too).
