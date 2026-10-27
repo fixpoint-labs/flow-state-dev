@@ -11,7 +11,7 @@
  * here writes an item, a plan row or the binding, and nothing names a
  * harness: the label is data from the mode list.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -50,6 +50,7 @@ import {
   type PlanRowItem,
   type TurnNotice,
 } from "@/lib/harness-turn";
+import { useSessionDraft } from "@/lib/use-session-draft";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -72,7 +73,9 @@ export function HarnessSessionView({ label, flowKind, sessionId, models }: Harne
 
 function SessionBody({ label, sessionId, models }: { label: string; sessionId: string; models: ModelChoices }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useSessionDraft(sessionId);
+  const messageRef = useRef(message);
+  messageRef.current = message;
 
   // Session state is read from the snapshot, which a turn's end alone does
   // not refresh: re-read it when a turn stops streaming.
@@ -96,10 +99,14 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
-      setMessage("");
-      await session.sendAction("turn", { prompt }, { userMessage: prompt });
+      try {
+        await session.sendAction("turn", { prompt }, { userMessage: prompt });
+        if (messageRef.current.trim() === prompt) setMessage("");
+      } catch {
+        // Keep the persisted draft so a failed send can be retried.
+      }
     },
-    [session],
+    [session, setMessage],
   );
 
   return (

@@ -25,11 +25,15 @@
  *     (the first worker's draft is still there).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
+import { SESSION_DRAFT_STORAGE_PREFIX } from "../lib/use-session-draft";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 type Item = Record<string, unknown>;
 
@@ -221,6 +225,44 @@ describe("a coordinator's panel", () => {
 });
 
 describe("a send settles on its own request", () => {
+  it("keeps revised storage if the user edits while the door is accepting the send", async () => {
+    let resolveSend!: (value: { status: string; request: { id: string } }) => void;
+    const sendAction = vi.fn(
+      () =>
+        new Promise<{ status: string; request: { id: string } }>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    const area = screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement;
+    await type("Post to this coordinator", "original");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.change(area, { target: { value: "revised while posting" } });
+
+    await act(async () => {
+      resolveSend({ status: "in_progress", request: { id: "req-1" } });
+      await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+    });
+
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised while posting");
+    expect(area.value).toBe("revised while posting");
+  });
+
+  it("drops the stored draft once the door accepts the send, even while the request runs", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
+    const view = panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    await type("Post to this coordinator", "already accepted");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
+    expect((screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement).value).toBe("already accepted");
+
+    view.unmount();
+    panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    expect((screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("keeps the text while another request ends, and shows the failure when its own does", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
     const view = panel("coordinator", session({ sendAction, isStreaming: true }));
@@ -254,6 +296,16 @@ describe("a send settles on its own request", () => {
 });
 
 describe("switching picks", () => {
+  it("restores an unsent draft after the panel remounts, as on reload", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
+    const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
+    await type("Message this worker", "saved before reload");
+
+    view.unmount();
+    panel("agent", session({ sessionId: "sess-a", sendAction }));
+    expect((screen.getByLabelText("Message this worker") as HTMLTextAreaElement).value).toBe("saved before reload");
+  });
+
   it("starts the next session's composer empty, with nothing pending and no failure", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
