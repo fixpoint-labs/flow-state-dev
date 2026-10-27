@@ -42,15 +42,17 @@ from the first message to the last. Then a flag is simpler and the refusal path 
 |---|---|
 | **Instead of** | Retrying the live steer until the run takes it, or telling the sender the line was not delivered |
 | **Because** | The sender was told the steer was accepted (FIX-2086 D2's reason), so it must reach the work. Cursor's `revert_to_followup` means *the turn does not have it; send it as a follow-up yourself*. Retrying live into a turn that is ending can't succeed. Today's path already delivers it: the manager stops the step (with `stopsOnAbort`) or adds one at the step's end, and Kitchen Sink sends it as the next turn |
-| **Locks in** | One take per line. The manager takes the line before handing it to the run, so a line is taken once whichever way it reaches the work; taking first also stops a later poll handing over a line still pending. The row has no untake, so a refused line is kept in the request's own state as owed: the step's own end, a stop (with `stopsOnAbort`) and the check before the settle all count it with the untaken lines and render it into the next step. A poll that took a line and then finds its step ended counts the line refused. Kitchen Sink's `steer` answers `{ taken: false }` and the page sends the line as a `turn`; the line shows once in the conversation |
+| **Locks in** | One take per line. The manager takes the line before handing it to the run, so a line is taken once whichever way it reaches the work; taking first also stops a later poll handing over a line still pending. The row has no untake, so a refused line is kept in the request's own state as owed: the step's own end, a stop (with `stopsOnAbort`) and the check before the settle all count it with the untaken lines and render it into the next step. A poll that took a line and then finds its step ended before it handed the line over counts it refused; a line already handed over waits for its answer. Kitchen Sink's `steer` answers `{ taken: false }` and the page sends the line as a `turn`; the line shows once in the conversation |
 
 ![D2: a line the run refuses. Today's path, once, with the same words, chosen, beside retrying live or telling the sender. Decides it: the sender was told it was accepted; the fallback delivers it, a retry into an ending turn can't. The price: the step or turn a live steer was meant to save. A tie: no attempt is used either way. Locks in: one take per line, a refused line kept as owed. Flips if runs refuse lines they would take a moment later](figures/d2-refused-line.svg)
 
 It comes down to a line the sender was told was accepted: a retry into an ending turn loses it.
 
-**The residual:** a steer still pending when the run ends counts as refused. If Cursor folded
-it into the ending turn anyway, the next step sees it twice. The Cursor block waits a short,
-fixed time for a pending steer to settle before it returns, which narrows that window.
+**A pending steer is never guessed at.** Cursor's `steer` stays pending through the server's
+intermediate ack and settles on the terminal outcome that follows, so the Cursor block waits for
+that answer before it returns, with no timer. Only `refused` sends the line on. The one cut is a
+run stopped from outside (its deadline, or a cancel): its turn is cut anyway, so the line goes to
+the next step with a note that the conversation may already hold it.
 
 **What would change my mind:** Cursor refusing lines it would take a moment later, a pending
 steer the SDK resolves late. Then a short retry before the fallback pays for itself.
@@ -148,3 +150,6 @@ These are inputs, not instructions.
 - **Analysis** — a refused line is kept on the request as owed, because the row has no untake;
   the goal check gains a waiting-turn leg (Jake chose that a turn waits for its background
   work), and the spec moves to the 1.0.40 pin and FIX-2256's cloud runs.
+- **Codex, round 1** — a steer still pending when the run ends waits for Cursor's own answer
+  instead of a grace timer, because a timeout can't tell a refusal from a delivery and would send
+  the line twice.
