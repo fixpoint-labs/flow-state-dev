@@ -30,7 +30,7 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at seven verbs**. The fifth, `resumeWait`, was added by
+ * The seam is **closed at eight verbs**. The fifth, `resumeWait`, was added by
  * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
  * here; FIX-2129 widened it to cancel a wait for a user, rather than add a
