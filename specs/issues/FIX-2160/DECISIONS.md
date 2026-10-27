@@ -158,6 +158,14 @@ below.
 
 ## Notes from review
 
+- **Cursor simplify review (#4000), approved; recorded for the implementer:** one `sessions.read`
+  result serves every check on a `{ task }` (org, markers, roster, flow), never two reads; keep the
+  read's return to what the refusals need, and a later lookup tool extends this verb rather than
+  adding a ninth; write the ledger's id index in the row's own add, as the schedule index derives its
+  key, rather than a new indexing pattern; an ordered table of the refusals, with a column for which
+  apply to a `{ task }`, belongs in the implementation's tests and the messaging page. Dropped:
+  probing each conversation's partition (no server read lists a user's conversations), and moving
+  the goal's signal list out of `SPEC.md` (the template keeps it there).
 - **FSD Architect (#4000), folded inline:** the goal-leg numbering and `task_running` before a call's
   queue, both in *Decided, not asked*. No fork.
 
