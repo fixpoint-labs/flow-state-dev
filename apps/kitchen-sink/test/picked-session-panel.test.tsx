@@ -28,6 +28,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
+import { SESSION_DRAFT_STORAGE_PREFIX } from "../lib/use-session-draft";
 
 afterEach(() => {
   cleanup();
@@ -224,6 +225,21 @@ describe("a coordinator's panel", () => {
 });
 
 describe("a send settles on its own request", () => {
+  it("drops the stored draft once the door accepts the send, even while the request runs", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
+    const view = panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    await type("Post to this coordinator", "already accepted");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
+    expect((screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement).value).toBe("already accepted");
+
+    view.unmount();
+    panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    expect((screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("keeps the text while another request ends, and shows the failure when its own does", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
     const view = panel("coordinator", session({ sendAction, isStreaming: true }));

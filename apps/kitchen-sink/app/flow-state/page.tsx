@@ -335,15 +335,19 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       if (!flow.activeSessionId || text.length === 0) return;
-      setMessage("");
-      await session.sendAction("run", {
-        message: text,
-        mode,
-        thinkingStyle,
-        features,
-      }, { userMessage: text });
+      try {
+        await session.sendAction("run", {
+          message: text,
+          mode,
+          thinkingStyle,
+          features,
+        }, { userMessage: text });
+        setMessage("");
+      } catch {
+        // Keep the persisted draft so a failed send can be retried.
+      }
     },
-    [flow.activeSessionId, mode, thinkingStyle, features, session]
+    [flow.activeSessionId, mode, thinkingStyle, features, session, setMessage]
   );
 
   const handleNewSession = useCallback(

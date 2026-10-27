@@ -3,8 +3,12 @@
 /**
  * Persists a session composer's in-progress text in `localStorage`, keyed by
  * session id, so a reload or accidental navigation does not lose what was typed.
+ *
+ * The lazy initializer reads storage on first mount (keyed composers remount per
+ * session). When the parent keeps the same hook instance and only `sessionId`
+ * changes (the assistant composer), state is reset during render on that change.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 export const SESSION_DRAFT_STORAGE_PREFIX = "kitchen-sink:composer-draft:";
 
@@ -28,21 +32,33 @@ function writeDraft(sessionId: string | undefined, text: string): void {
   }
 }
 
+/** Drops the stored draft only; in-memory text is unchanged until the composer clears it. */
+export function clearSessionDraftStorage(sessionId: string | undefined): void {
+  writeDraft(sessionId, "");
+}
+
 /** Composer text for one session, restored from storage when the session opens. */
 export function useSessionDraft(sessionId: string | undefined): [string, (text: string) => void] {
-  const [draft, setDraftState] = useState(() => readDraft(sessionId));
+  const [state, setState] = useState(() => ({ sessionId, draft: readDraft(sessionId) }));
 
-  useEffect(() => {
-    setDraftState(readDraft(sessionId));
-  }, [sessionId]);
+  if (state.sessionId !== sessionId) {
+    let draft = readDraft(sessionId);
+    if (sessionId !== undefined && state.sessionId === undefined && state.draft !== "") {
+      writeDraft(sessionId, state.draft);
+      draft = state.draft;
+    }
+    setState({ sessionId, draft });
+  }
 
   const setDraft = useCallback(
     (text: string) => {
-      setDraftState(text);
-      writeDraft(sessionId, text);
+      setState((prev) => {
+        writeDraft(sessionId, text);
+        return { sessionId: prev.sessionId, draft: text };
+      });
     },
     [sessionId],
   );
 
-  return [draft, setDraft];
+  return [state.draft, setDraft];
 }

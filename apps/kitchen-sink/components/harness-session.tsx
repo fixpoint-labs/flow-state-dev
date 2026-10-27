@@ -97,10 +97,14 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
-      setMessage("");
-      await session.sendAction("turn", { prompt }, { userMessage: prompt });
+      try {
+        await session.sendAction("turn", { prompt }, { userMessage: prompt });
+        setMessage("");
+      } catch {
+        // Keep the persisted draft so a failed send can be retried.
+      }
     },
-    [session],
+    [session, setMessage],
   );
 
   return (

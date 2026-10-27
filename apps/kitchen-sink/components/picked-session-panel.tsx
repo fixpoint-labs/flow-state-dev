@@ -30,7 +30,7 @@ import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { clearSessionDraftStorage, useSessionDraft } from "@/lib/use-session-draft";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
@@ -279,6 +279,9 @@ function Composer({
     setFailure(null);
     try {
       const response = await send(text);
+      // Storage clears when the door accepts the send so a reload mid-request
+      // does not restore text the server already took.
+      clearSessionDraftStorage(session.sessionId);
       setPending(response.request.id);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : String(cause));
