@@ -715,6 +715,8 @@ describe("a steer reaches a run that takes it live (FIX-2254)", () => {
       expect(h.seen).toHaveLength(2);
       expect(h.seen[1]!.prompt).toContain("First: rename the flag.");
       expect(h.seen[1]!.prompt).toContain("Second: update the docs.");
+      // In the order they were sent, though the second was answered first: a later line can correct an earlier one.
+      expect(h.seen[1]!.prompt.indexOf("First: rename the flag.")).toBeLessThan(h.seen[1]!.prompt.indexOf("Second: update the docs."));
       expect(h.seen[1]!.prompt).toContain("may already hold");
       expect(done).toMatchObject({ attempts: 1 });
     } finally {

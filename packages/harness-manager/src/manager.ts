@@ -2710,7 +2710,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             // The step ended, or its run withdrew the offer, while the take wrote
             // the row: these lines are the next step's, never dropped (D2).
             if (!live() || watch.steer !== steer) {
-              nextStep.refused.push(...take.steers);
+              nextStep.lines.set({ steers: take.steers }, "refused");
               return;
             }
             handLive(ctx, steer, take.steers, () => {
@@ -2750,7 +2750,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const owedFor = (requestId: string): OwedLines => {
     let owed = owedLines.get(requestId);
     if (owed === undefined) {
-      owed = { refused: [], pending: new Set(), taking: new Set() };
+      owed = { lines: new Map(), taking: new Set() };
       owedLines.set(requestId, owed);
     }
     return owed;
@@ -2765,31 +2765,33 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const handLive = (ctx: BlockContext, steer: HarnessSteer, steers: ShownSteer[], onRefused: () => void): void => {
     const owed = owedFor(ctx.request.identity.id);
     const handed: PendingLine = { steers };
-    owed.pending.add(handed);
+    owed.lines.set(handed, "pending");
+    const refused = () => {
+      // Settled after the next step already counted it: that step has it.
+      if (!owed.lines.has(handed)) return;
+      owed.lines.set(handed, "refused");
+      onRefused();
+    };
     void steer(renderSteers(steers, STEERED_WHILE_RUNNING)).then(
       (answer) => {
-        // Settled after the next step already counted it: that step has it.
-        if (!owed.pending.delete(handed)) return;
-        if (answer === "delivered") return;
-        owed.refused.push(...steers);
-        onRefused();
+        if (answer === "delivered") owed.lines.delete(handed);
+        else refused();
       },
-      () => {
-        if (!owed.pending.delete(handed)) return;
-        owed.refused.push(...steers);
-        onRefused();
-      },
+      refused,
     );
   };
 
-  /** Take what this request owes its run's next step, clearing it. */
+  /** Take what this request owes its run's next step, in the order its lines were taken, clearing it. */
   const takeOwed = (requestId: string): { steers: ShownSteer[]; maybeHeld: boolean } => {
     const owed = owedLines.get(requestId);
     owedLines.delete(requestId);
     if (owed === undefined) return { steers: [], maybeHeld: false };
-    const pending = [...owed.pending].flatMap((line) => line.steers);
-    owed.pending.clear();
-    return { steers: [...owed.refused, ...pending], maybeHeld: pending.length > 0 };
+    const lines = [...owed.lines];
+    owed.lines.clear();
+    return {
+      steers: lines.flatMap(([line]) => line.steers),
+      maybeHeld: lines.some(([, state]) => state === "pending"),
+    };
   };
 
   // A watch that stopped its step stays until the rescue reads it; any other
@@ -3168,17 +3170,18 @@ interface SteerWatch {
   kick: () => void;
 }
 
-/** A line handed to a run, still waiting on its answer. */
+/** Lines taken together for a run, owed to its next step until the run takes them. */
 interface PendingLine {
   readonly steers: ShownSteer[];
 }
 
 /** What a request owes its run's next step (FIX-2254 D2). */
 interface OwedLines {
-  /** Lines the run refused. */
-  readonly refused: ShownSteer[];
-  /** Lines handed over whose answer hasn't come. */
-  readonly pending: Set<PendingLine>;
+  /**
+   * Lines owed, in the order they were taken: refused, or handed over with
+   * no answer yet. A line the run took leaves.
+   */
+  readonly lines: Map<PendingLine, "pending" | "refused">;
   /** Live takes still writing the row: the next step waits for them before it counts. */
   readonly taking: Set<Promise<void>>;
 }

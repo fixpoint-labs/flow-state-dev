@@ -39,6 +39,13 @@ describe("harnessSteering", () => {
     expect((await steering.steer(ctxOf("s1", "r", "acme"), "x")).live).toBe(false);
   });
 
+  it("keeps tenants apart even when their ids contain the separator a joined key would use", async () => {
+    const steering = harnessSteering();
+    steering.onSteerable(async () => "delivered", ctxOf("s1", "turn-1", "acme/dev"));
+    expect((await steering.steer(ctxOf("dev/s1", "r", "acme"), "x")).live).toBe(false);
+    expect((await steering.steer(ctxOf("s1", "r", "acme/dev"), "x")).live).toBe(true);
+  });
+
   it("keeps a later turn's offer when an earlier turn withdraws its own", async () => {
     const steering = harnessSteering();
     steering.onSteerable(async () => "delivered", ctxOf("s1", "turn-1"));

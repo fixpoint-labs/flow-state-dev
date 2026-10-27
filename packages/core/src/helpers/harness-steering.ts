@@ -53,10 +53,14 @@ export interface HarnessSteering {
   action(options?: HarnessSteerActionOptions): ActionCore;
 }
 
-/** The key a session's offer is kept under: the framework's session identity, never anything the caller sent. */
+/**
+ * The key a session's offer is kept under: the framework's session identity,
+ * never anything the caller sent. Encoded as a tuple, so no tenant and session
+ * pair can spell another's.
+ */
 function offerKeyOf(ctx: HarnessCallbackContext): string {
   const identity = ctx.session.identity;
-  return `${identity.tenantId ?? ""}/${identity.id}`;
+  return JSON.stringify([identity.tenantId ?? null, identity.id]);
 }
 
 /**
