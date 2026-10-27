@@ -18,7 +18,7 @@ function formatElapsed(ms: number): string {
  * until a full second has passed. The clock is the browser's, so a skewed
  * server timestamp is clamped to zero rather than shown negative.
  */
-export function RunTimer({ since }: { since: number }) {
+function RunTimer({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);

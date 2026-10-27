@@ -150,9 +150,7 @@ const startedAt = Date.now(); // when the request was sent
 
 The timer reads `42s` under a minute, `1m 24s` from there, and `1h 3m` (no seconds) past an hour. Nothing shows for the first second. The timer shows in the "Tidying up..." state too. The count uses the browser clock, so a `since` in the future shows nothing rather than a negative time.
 
-`RunTimer` is exported from the same file if you want the text without the indicator. `<RunTimer since={startedAt} />` renders just `(1m 24s)`.
-
-`RequestGroupRenderer` renders a request's items in the chat and sets `since` from the first item of the latest request, so you set `since` yourself only when you render the indicator directly. While a tool call or thought is in progress, the indicator shows "Working..." and the clock instead of the status words, so the line never collapses to a bare timer. The timer disappears when the request stops streaming. Pass `showWorkedFor` to `RequestGroupRenderer` and a finished request ends in a line like "Worked for 3m 24s • 4:28 PM" (`WorkedFor`, exported from the same file).
+`RequestGroupRenderer` renders a request's items in the chat and sets `since` from the first item of the latest request, so you set `since` yourself only when you render the indicator directly. While a tool call or thought is in progress, the indicator shows "Working..." and the clock instead of the status words, so the line never collapses to a bare timer. The timer disappears when the request stops streaming. Pass `showWorkedFor` to `RequestGroupRenderer` and a finished request ends in a line like "Worked for 3m 24s • 4:28 PM" (`WorkedFor`, exported from the same file). The end time comes from the items unless you also pass `latestCompletedAtMs`, the request record's end, which is exact.
 
 ## Status
 
