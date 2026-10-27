@@ -71,6 +71,7 @@ FIX-2239, FIX-2240 and FIX-2241.
 
 - **A session lookup tool.** A `{ session }` id is pasted by the user in the first version (rule 21).
 - **A message running in a session that waits on a person.** It queues, as rule 10 says ([D3](DECISIONS.md#d3)).
+- **Delivery once on a host without wakes,** such as a serverless host without durable execution: there a message is delivered on its first dispatch only ([D2](DECISIONS.md#d2)).
 - **Default worker instructions** (FIX-2073) and **a separate entry for proposing work** (punted in the concept).
 - **The renames beyond this epic's own names** (FIX-2071). This epic removes `onWorkerMessage`,
   `messageWorker`, `replyTo` and `workforceRelayTo`, because it replaces what they name ([ER-7](DECISIONS.md#who-owns-what)).
@@ -125,7 +126,9 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next; a dashed input is consumed, not owned. FIX-2238 goes
-first; the other four build in parallel on it, and the closure waits on all of them. FIX-2071 starts
+first; the other four are specified in parallel on it. Three share the send path, so their
+implementation PRs land stacked in order, FIX-2160, FIX-2240, FIX-2239
+([the send-path seam](DECISIONS.md#coordination-seams)); FIX-2241 lands on its own. The closure waits on all of them. FIX-2071 starts
 after this epic wraps.
 
 ## What stays as it is
@@ -193,6 +196,6 @@ path survives beside `sendMessage`.
 here from FIX-2058 (2026-10-23); `{ session }` in rule 21 (#3797); retired APIs removed outright, no
 alias (FIX-2056 (e)).
 
-**Open:** none.
+**Open:** D1's reading of PR-2, confirmed by merging this spec ([Open](DECISIONS.md#open)).
 
 Epic · 5 issues and a closure · Orchestration Primitives · Goal 4, keep the foundation honest
