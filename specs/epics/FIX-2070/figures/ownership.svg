@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 296" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: seven rules by five issues and the closure FIX-2242, each rule with one owner. FIX-2238 owns one entry and one tool with no relay, where a message lands, and removing the old names. FIX-2160 owns the server resolving every target. FIX-2239 owns a call waiting on the wait gate. FIX-2240 owns a message landing once and one budget per typed message. FIX-2241 owns no rule and uses the entry, the landing rules and the budget. The closure uses every rule.">
+     aria-label="Who owns what: seven rules by five issues and the closure FIX-2242, each rule with one owner. FIX-2238 owns one entry and one tool with no relay, where a message lands, one budget per typed message, and removing the old names. FIX-2160 owns the server resolving every target. FIX-2239 owns a call waiting on the wait gate. FIX-2240 owns a message landing once. FIX-2241 owns no rule and uses the entry, the landing rules and the budget. The closure uses every rule.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -84,8 +84,8 @@
   <rect class="use" x="796" y="186" width="76" height="26" rx="3"/>
   <text class="t-use" x="802" y="203">uses</text>
   <text class="t-row" x="16" y="236">ER-6 one budget per typed message</text>
-  <rect class="own" x="616" y="218" width="76" height="26" rx="3"/>
-  <text class="t-own" x="622" y="235">OWNS</text>
+  <rect class="own" x="346" y="218" width="76" height="26" rx="3"/>
+  <text class="t-own" x="352" y="235">OWNS</text>
   <rect class="use" x="526" y="218" width="76" height="26" rx="3"/>
   <text class="t-use" x="532" y="235">uses</text>
   <rect class="use" x="706" y="218" width="76" height="26" rx="3"/>

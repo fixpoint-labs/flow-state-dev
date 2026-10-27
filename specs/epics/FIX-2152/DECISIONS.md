@@ -91,6 +91,7 @@ checked on `main`, needs no model change.*
 
 **What would change my mind:** a lab that needs a message to land in one of the other sessions.
 That is session-to-session messaging, which rule 21 forbids today ([Answered](#answered-by-fsd-architect)).
+Later: rule 21 carries `{ session }` since #3797, and FIX-2070 places it as FIX-2160 ([FIX-2070](../FIX-2070/SPEC.md)).
 
 ![D3: an ordinary session of the worker, chosen, beside a hired copy per session and a workstream per session; decided by a person opening one the way the app does](figures/d3-more-conversations.svg)
 
@@ -193,3 +194,4 @@ Checked against `main` at d5ecdb72, on [agent-mailbox#46](https://github.com/fix
    on a message, so one session of a worker can message another. No script in this epic needs it,
    and rule 21 says a message never addresses a raw session, so it is filed for the owner to place
    ([FIX-2160](https://linear.app/fixpoint-labs/issue/FIX-2160)), not a child here under [D1](#d1).
+   Later: rule 21 carries `{ session }` since #3797, and [FIX-2070](../FIX-2070/SPEC.md) places FIX-2160.

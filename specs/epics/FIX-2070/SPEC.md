@@ -78,7 +78,7 @@ FIX-2239, FIX-2240 and FIX-2241.
 
 ## What's in the box
 
-![In the box: one entry, receive, with a server-set sender, waiting flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine's wake pays; one budget per typed message; a task's midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host's wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay and two refusals. Not built, below a fence: a session lookup tool, a message running beside a person's stop, and a proposal entry](figures/end-state.svg)
+![In the box: one entry, receive, with a server-set sender, call flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine's wake pays; one budget per typed message; a task's midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host's wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay and two refusals. Not built, below a fence: a session lookup tool, a message running beside a person's stop, and a proposal entry](figures/end-state.svg)
 
 Inside the box is what every worker flow gets from the session factory; below the fence is the Not
 doing list.
@@ -93,15 +93,15 @@ The reviewed snapshot; live state is in Linear. FIX-2056 (Done) blocks every chi
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
-| [FIX-2238](https://linear.app/fixpoint-labs/issue/FIX-2238) · `receive` and `sendMessage` | The entry, input `{ id, from, text, waiting, inReplyTo?, budget }`, server-set; the tool, send only; no relay; every worker and every coordinator receives, and the hire checks `receive`; the landing rules; a received message as its own item; the old names removed | — |
+| [FIX-2238](https://linear.app/fixpoint-labs/issue/FIX-2238) · `receive` and `sendMessage` | The entry, input `{ id, from, text, call, inReplyTo?, budget }`, server-set; the tool, send only; no relay; every worker and every coordinator receives, and the hire checks `receive`; the landing rules; a received message as its own item; one budget per typed message, 6 and 3 per request, fresh for a released held task, paid when sent, carried on today's hop chain; the routed-task leak closed; the old names removed | — |
 | [FIX-2160](https://linear.app/fixpoint-labs/issue/FIX-2160) · a task or a conversation | `to: { task }` for any task of the user's, open or finished, as conversation in its session; `to: { session }` for one of the user's own conversations, checked by the server. Re-scoped from its first proposal, whose conflict rule 21 now settles | FIX-2238 |
 | [FIX-2239](https://linear.app/fixpoint-labs/issue/FIX-2239) · a call | `wait: true` and `deadline?` on the engine's wait gate; the late result kept under the call id; a send or a call queues behind a busy or waiting session | FIX-2238 |
-| [FIX-2240](https://linear.app/fixpoint-labs/issue/FIX-2240) · lands once, within budget | Delivery retried until it lands, as a wake the engine fires; seen once by id. One budget per typed message, 6 and 3 per request, fresh for a released held task, paid when sent; the routed-task leak closed | FIX-2238 |
+| [FIX-2240](https://linear.app/fixpoint-labs/issue/FIX-2240) · lands once | Delivery retried until it lands, as a debt on the session's existing wake paid by the board's `dispatch` pass; only a row still `unconfirmed` is resent; seen once by id | FIX-2238 |
 | [FIX-2241](https://linear.app/fixpoint-labs/issue/FIX-2241) · a question reaches its filer | A task's midway question as a message from its session to the filer's `receive`; the filer may answer by steer, unless the task is routed | FIX-2238 |
 | [FIX-2242](https://linear.app/fixpoint-labs/issue/FIX-2242) · closure · **required** | The QA plan, on one `main` commit | every other child |
 
-Five and a closure. Delivery and the budget share one child: each is a small change to the send
-path FIX-2238 rewrites, and both are tested by the same restart and ring legs. FIX-2241 is the
+Five and a closure. The budget rides with FIX-2238: it ships the `budget` field and rewrites the
+hop chain the budget carries forward. Delivery stays its own child, so its wake work rides alone. FIX-2241 is the
 smallest; it stays apart because FIX-2058's owner call put it here as its own deliverable, and its
 check (a hold released by a filer's steer) is FIX-2058's ground, not the message path's.
 
@@ -115,7 +115,7 @@ flowchart LR
   H["FIX-2133 · holds on the row · consumed"] -.-> E
   A["FIX-2238 · receive and sendMessage"] -->|"the entry, the tool, the landing rules"| B["FIX-2160 · a task or a conversation"]
   A -->|"the send path"| C["FIX-2239 · a call"]
-  A -->|"the send path, the message row"| D["FIX-2240 · lands once, within budget"]
+  A -->|"the send path, the message row"| D["FIX-2240 · lands once"]
   A -->|"receive in the filing session"| E["FIX-2241 · a question reaches its filer"]
   A --> P["FIX-2242 · closure · required"]
   B --> P
@@ -154,19 +154,19 @@ after this epic wraps.
 | FIX-2078: wakes, a due time the engine keeps and fires as an internal entry until a pass clears it | **Builds on.** An undelivered message is a wake its sending session owes ([D2](DECISIONS.md#d2)) |
 | FIX-2058 D2: a send or a call to a session waiting on a person queues; whether it may run is this epic's call | **Kept** ([D3](DECISIONS.md#d3)) |
 | FIX-2160: a proposal to address another session, which conflicted with rule 21 as it then read | **Re-scoped** as the addressing child; rule 21 now carries `{ session }` (#3797) |
-| A post's delegate session born at hop 0, outside the budget (`hop.ts`, gaps row) | **Closed** by FIX-2240 |
+| A post's delegate session born at hop 0, outside the budget (`hop.ts`, gaps row) | **Closed** by FIX-2238 |
 
 | Adds | Existing piece considered | How composed |
 |---|---|---|
 | `wait` and `deadline` on `sendMessage` (FIX-2239) | `getTask({ id, wait })` on a filed task | Different job: an answer in words for this request, with no row, attempt or retry. Tracked work stays a task ([D1](DECISIONS.md#d1)) |
-| A resend of an undelivered message (FIX-2240) | The engine's wakes; the board's debt pass | Reuses the wake. No retry loop of its own, no outbox table: the log row is the record ([D2](DECISIONS.md#d2)) |
+| A resend of an undelivered message (FIX-2240) | The session's existing wake; the board's `dispatch` pass (`conversation-board/delivery.ts`) | Reuses the wake. No retry loop of its own, no outbox table: the log row is the record ([D2](DECISIONS.md#d2)) |
 | `to: { task }` and `to: { session }` (FIX-2160) | The worker's derived address (`deriveWorkerSessionId`) and a session's readonly kind markers (`taskId`, `filingSessionId`) | Extends: the server resolves each target to a session and checks it with the markers that exist |
 | The question message to the filer (FIX-2241) | The row's hold (FIX-2133) and `sendMessage` | Composes: the hold stays the record; the message is a send from the task's session |
 
 | The debt | |
 |---|---|
 | **Removes** | `onWorkerMessage`, `messageWorker`, `replyTo`, `workforceRelayTo`, `takes_tasks_only`, `no_turn`, the two-try delivery, the hop-0 leak |
-| **Adds** | `wait` and `deadline` on the one message tool; `{ task }` and `{ session }` targets; one wake kind for an undelivered message; the question message |
+| **Adds** | `wait` and `deadline` on the one message tool; `{ task }` and `{ session }` targets; a message debt on the existing wake, with no new wake kind; the question message |
 
 **Net: down for authors, flat for the framework.** An author meets one entry and one tool where
 there were two names, a relay and two refusals. The framework trades the relay and the refusals for
@@ -184,7 +184,8 @@ path survives beside `sendMessage`.
 1. **[D1](DECISIONS.md#d1) · A call is a message, not a task.** It waits on the engine's wait gate
    for the recipient's `receive` result, with no row, attempt or retry. This reads the project's
    PR-2 ("when it expects an answer, it is a task") as covering tracked work, and needs your
-   confirmation: the concept already has calls (rule 10, M-02), PR-2's wording predates it. If
+   confirmation: the concept already has calls (rule 10, M-02), PR-2's wording predates it. The
+   amended PR-2 and PD-3 wording is on the project spec (#3102), approved with this spec. If
    wrong: workers use calls for work that needed a retry, and nobody sees it fail.
 2. **[D2](DECISIONS.md#d2) · Delivery is a debt the engine's wake pays.** Engineering, decided. If
    wrong: a host without wakes loses messages after two tries, as it does today.

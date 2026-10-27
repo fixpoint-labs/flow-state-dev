@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 346" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="In the box: one entry, receive, with a server-set sender, waiting flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine&#x27;s wake pays; one budget per typed message; a task&#x27;s midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host&#x27;s wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay, two refusals and the two-try delivery. Not built, below a fence: a session lookup tool, a message running beside a person&#x27;s stop, and an entry for proposing work.">
+     aria-label="In the box: one entry, receive, with a server-set sender, call flag and budget; one tool, sendMessage, that sends or calls, to a worker, a task or a conversation; delivery once, as a debt the engine&#x27;s wake pays; one budget per typed message; a task&#x27;s midway question to its filer. Composed in by the app: the two limits through hireWorkforce, the host&#x27;s wait deadline, and the Messages view. Replaced in one line: onWorkerMessage, messageWorker, replyTo, the relay, two refusals and the two-try delivery. Not built, below a fence: a session lookup tool, a message running beside a person&#x27;s stop, and an entry for proposing work.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -41,7 +41,7 @@
   <rect class="box" x="16" y="34" width="600" height="250" rx="8"/>
   <text class="t-tag c-code" x="32" y="54">IN THE BOX</text>
   <text class="t-b" x="32" y="80">receive</text>
-  <text class="t-s" x="290" y="80">one entry; the server sets from, waiting, budget</text>
+  <text class="t-s" x="290" y="80">one entry; the server sets from, call, budget</text>
   <text class="t-b" x="32" y="109">sendMessage · send</text>
   <text class="t-s" x="290" y="109">returns nothing; nothing relayed for you</text>
   <text class="t-b" x="32" y="138">sendMessage · call</text>
