@@ -37,7 +37,7 @@ const ENTRY = `${MESSAGES}/message-received-entry.ts`;
 const SEND = `${MESSAGES}/send-message.ts`;
 const TARGET = `${MESSAGES}/message-target.ts`;
 /** The anchor every recipient-refusal patch adds after: the first check `recipientRefusal` makes. */
-const NOT_YOURSELF = String.raw`if \(to === sender\) return "not_yourself: you can't message yourself\.";`;
+const NOT_YOURSELF = String.raw`if \(to === sender && !answering\) return "not_yourself: you can't message yourself\.";`;
 
 export const CONTROLS: Record<ControlName, Control> = {
   "relay-back": {
@@ -99,7 +99,7 @@ export const CONTROLS: Record<ControlName, Control> = {
         module: SEND,
         from: NOT_YOURSELF,
         to:
-          'if (to === sender) return "not_yourself: you can\'t message yourself."; ' +
+          'if (to === sender && !answering) return "not_yourself: you can\'t message yourself."; ' +
           'if (recipient?.flow === "coordinator" && to !== "chief-of-staff") return `no_turn: "${to}" hands every line to its delegates and runs no turn of its own.`;',
       },
     ],
@@ -119,11 +119,11 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [
       {
         module: SEND,
-        from: String.raw`const recipient = await installation\.rosterWorker\(ctx(?: as never)?, input\.to\);`,
+        from: String.raw`const named = await installation\.rosterWorker\(ctx(?: as never)?, to\);`,
         to:
           "const __paid = turnChainOf(ctx); " +
           'if (__paid !== undefined) await (await messageChainsOf(ctx).getOrCreate(__paid, { sent: [] })).updateState((row) => ({ ...row, sent: [...row.sent, `paid-${Date.now()}`] })); ' +
-          "const recipient = await installation.rosterWorker(ctx, input.to);",
+          "const named = await installation.rosterWorker(ctx, to);",
       },
     ],
     does: "a send takes its place in the chain before the recipient is checked, so a refused send spends one",
@@ -149,8 +149,8 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [
       {
         module: SEND,
-        from: String.raw`const recipient = await installation\.rosterWorker\(ctx(?: as never)?, input\.to\);`,
-        to: 'const recipient = (await installation.rosterWorker(ctx, input.to)) ?? { id: input.to, flow: "agent", standard: false, description: null, delegates: [] };',
+        from: String.raw`const named = await installation\.rosterWorker\(ctx(?: as never)?, to\);`,
+        to: 'const named = (await installation.rosterWorker(ctx, to)) ?? { id: to, flow: "agent", standard: false, description: null, delegates: [] };',
       },
     ],
     does: "a worker that isn't on the sender's user's roster is taken as one of theirs on `agent`",

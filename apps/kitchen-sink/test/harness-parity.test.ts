@@ -21,12 +21,18 @@
  *   - drop `finalizeOpenItems` from a harness's failure path: the nothing-left-
  *     open case fails for it.
  *
+ * The last block holds a line sent while a turn runs (FIX-2254): it reaches
+ * the run exactly once in every mode, into the running turn where the run
+ * offered to take it (Cursor), else as the next turn. Run with
+ * `GOAL_CONTROL=drop-refused` it must fail for Cursor's refused line, and
+ * with `GOAL_CONTROL=drop-fallback` for Claude Code and Codex.
+ *
  * The SDKs are replaced by each mode's scripted harness (`lib/scripted-*.ts`),
  * so this runs with no model, no process and no network. Everything past that
  * seam — translation, emission, the handle — is the real adapter.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,6 +43,8 @@ import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
 import { cursorSessionFlow } from "@/lib/cursor-mode";
 import { resetModeAvailabilityForTests } from "@/lib/harness-gate";
+import { sendLine, type LineSender } from "@/lib/harness-line";
+import { scriptedReceived } from "@/lib/scripted-received";
 import { scriptedClaudeCode, scriptedPauses } from "@/lib/scripted-claude-code";
 import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
 import { scriptedCursor, scriptedCursorPauses } from "@/lib/scripted-cursor";
@@ -78,6 +86,12 @@ const HARNESSES = [
     flow: () => cursorSessionFlow({ resolveCursorClient: scriptedCursor() }),
   },
 ] as const;
+
+/**
+ * A goal control for the line row, read before the per-test stubs clear
+ * `GOAL_CONTROL`. Handed to {@link sendLine} as the page hands it its own.
+ */
+const LINE_CONTROL = process.env.GOAL_CONTROL || undefined;
 
 let scratch: string;
 let repo: string;
@@ -169,5 +183,87 @@ describe.each(HARNESSES)("$mode, against the item contract every harness owes", 
     const items = await itemsOfOneTurn(harness);
     const open = items.filter((i) => i.status === "in_progress");
     expect(open, `${harness.mode} left items open`).toEqual([]);
+  });
+});
+
+describe.each(HARNESSES)("$mode, a line sent while a turn runs (FIX-2254)", (harness) => {
+  /** How long a `[slow]` turn holds here: long enough to send a line into it. */
+  const HOLD_MS = 1_500;
+
+  beforeEach(() => {
+    scriptedReceived.length = 0;
+    for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = HOLD_MS;
+  });
+  afterEach(() => {
+    for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = 0;
+  });
+
+  /** Start a held turn, then send `line` into it the way the page does. */
+  async function lineMidTurn(directives: string) {
+    const stores = createInMemoryStores();
+    const flow = harness.flow();
+    const sessionId = `s-line-${harness.mode}-${Math.random().toString(36).slice(2)}`;
+    const run = (action: string, input: unknown) =>
+      testFlow({ flow, action, userId: "u", sessionId, input, stores });
+    const prompt = `${harness.prompt} [slow]${directives}`;
+    const first = run("turn", { prompt });
+    // The run has its prompt, and a run that can steer has offered its steer.
+    for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
+      if (waited > 5_000) throw new Error(`${harness.mode}: the turn never reached the run`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const line = `Also rename the flag (${harness.mode}).`;
+    let steered: { taken: boolean; live: boolean } | undefined;
+    const turns: Promise<unknown>[] = [];
+    const sender: LineSender = {
+      steer: async (text) => {
+        const result = await run("steer", { prompt: text });
+        expect(result.error, `${harness.mode} steer`).toBeUndefined();
+        steered = result.output as { taken: boolean; live: boolean };
+        return steered;
+      },
+      turn: async (text) => {
+        turns.push(run("turn", { prompt: text }));
+      },
+    };
+    const outcome = await sendLine(line, true, sender, LINE_CONTROL);
+    const results = (await Promise.all([first, ...turns])) as Array<{ status: string }>;
+    expect(results.map((r) => r.status), harness.mode).toEqual(results.map(() => "completed"));
+    const stored = (await stores.session.get(sessionId)) as { state?: { turns?: Record<string, { steered?: string[] | null }> } } | undefined;
+    const recorded = Object.values(stored?.state?.turns ?? {}).flatMap((turn) => turn.steered ?? []);
+    return { line, outcome, steered: steered!, recorded, reached: scriptedReceived.filter((text) => text.includes(line)) };
+  }
+
+  it("reaches the run exactly once: live where the run offered a steer, else as the next turn", async () => {
+    const { line, outcome, steered, recorded, reached } = await lineMidTurn("");
+
+    expect(reached, `${harness.mode} lines the run was handed`).toHaveLength(1);
+    // Read from the run, not the mode: a run that can steer offered one.
+    expect(steered.live, `${harness.mode} live`).toBe(harness.mode === "cursor");
+    expect(outcome).toBe(steered.live ? "taken" : "after-this-turn");
+    // The running turn's record says what it took, which is what the page shows.
+    expect(recorded).toEqual(steered.live ? [line] : []);
+  }, 30_000);
+
+  it.runIf(harness.mode === "cursor")("reaches the run exactly once when the running turn refuses it", async () => {
+    const { outcome, steered, reached } = await lineMidTurn("[steer-refuse]");
+
+    expect(reached, "lines the run was handed").toHaveLength(1);
+    expect(steered).toEqual({ taken: false, live: true });
+    expect(outcome).toBe("after-this-turn");
+  }, 30_000);
+});
+
+describe("the session flow, for every mode", () => {
+  it("names no harness: whether a line joins the running turn is the run's answer", () => {
+    // The parity row above is only a claim about every harness while the flow
+    // that serves them can't branch on one.
+    for (const file of ["lib/harness-session-flow.ts", "lib/harness-line.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+      expect(source, file).not.toMatch(/from "@flow-state-dev\/(claude-code|codex|cursor)/);
+      expect(source, file).not.toMatch(/mode === /);
+    }
   });
 });
