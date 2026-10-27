@@ -54,6 +54,7 @@ import {
   earliestTurnOf,
   latestTurn,
   planPanelState,
+  planSource,
   turnNotice,
   turnNumbers,
   type HarnessSessionState,
@@ -329,42 +330,30 @@ type TurnPlanProps = Omit<PanelProps, "turn"> & {
   markerRef: string | undefined;
 };
 
-/**
- * Finds the latest turn's plan and shows it. The turn's run leaves a pointer
- * to its conversation's plan; a running turn that has not written it yet reads
- * the bound conversation's. A turn with no pointer shows the rows stored under
- * the turn itself (a session from before plans were kept by conversation),
- * and when it has none either (a turn stopped or failed before the harness
- * named its conversation), the bound conversation's plan, which it left as it was.
- */
+/** Finds the latest turn's plan (`planSource`) and shows it. */
 function TurnPlan(props: TurnPlanProps) {
   const { session, turn, ended, bound, markerRef } = props;
-  const conversationOf = (namespace: string) =>
-    markerRef === undefined ? null : <ConversationPlan key={namespace} {...props} markerRef={markerRef} namespace={namespace} />;
-  const legacy = (markers: readonly PlanMarkerItem[]) => (
-    <PlanRows
-      {...props}
-      rowsPrefix={planRowsPrefix(turn.requestId)}
-      markers={markers}
-      conversation={null}
-      whenEmpty={bound === null ? null : conversationOf(harnessConversationNamespace(bound))}
-    />
-  );
+  const boundNamespace = bound === null ? null : harnessConversationNamespace(bound);
+  const show = (runMarkers: readonly PlanMarkerItem[]) => {
+    const target = readPlanTarget(turn.requestId, runMarkers);
+    const source = planSource(target.kind === "conversation" ? target.namespace : null, ended, boundNamespace);
+    const conversationOf = (namespace: string) =>
+      markerRef === undefined ? null : <ConversationPlan key={namespace} {...props} markerRef={markerRef} namespace={namespace} />;
+    if (source.kind === "conversation") return conversationOf(source.namespace);
+    return (
+      <PlanRows
+        {...props}
+        rowsPrefix={planRowsPrefix(turn.requestId)}
+        markers={runMarkers}
+        conversation={null}
+        whenEmpty={source.whenEmpty === null ? null : conversationOf(source.whenEmpty)}
+      />
+    );
+  };
   // A flow that declares the rows but no markers has no marker, and no pointer, to read.
-  if (markerRef === undefined) return legacy([]);
+  if (markerRef === undefined) return show([]);
   return (
-    <MarkersUnder
-      session={session}
-      markerRef={markerRef}
-      prefix={planRowsPrefix(turn.requestId, OBSERVED_PLAN_LIST)}
-      render={(runMarkers) => {
-        const target = readPlanTarget(turn.requestId, runMarkers);
-        const namespace =
-          target.kind === "conversation" ? target.namespace : !ended && bound !== null ? harnessConversationNamespace(bound) : null;
-        if (namespace === null) return legacy(runMarkers);
-        return conversationOf(namespace);
-      }}
-    />
+    <MarkersUnder session={session} markerRef={markerRef} prefix={planRowsPrefix(turn.requestId, OBSERVED_PLAN_LIST)} render={show} />
   );
 }
 

@@ -335,6 +335,31 @@ export function planPanelState(input: PlanPanelInput): PlanPanelState {
   return { kind: "rows", scope, turn, rows, incomplete };
 }
 
+/** Where the panel reads the latest turn's plan from. */
+export type PlanSource =
+  /** A conversation's plan, by its namespace. */
+  | { readonly kind: "conversation"; readonly namespace: string }
+  /** The rows stored under the turn itself; when it has none, the conversation `whenEmpty` names, if any. */
+  | { readonly kind: "turn"; readonly whenEmpty: string | null };
+
+/**
+ * Where the panel reads the latest turn's plan from. The turn's pointer wins.
+ * Without one, a running turn reads the bound conversation's plan (its
+ * pointer is not written yet). An ended turn reads its own per-turn rows (a
+ * session from before plans were kept by conversation), and when it has none
+ * (a turn stopped or failed before the harness named its conversation), the
+ * bound conversation's plan, which that turn left as it was.
+ *
+ * @param pointer The conversation namespace the turn's run points at, or `null`.
+ * @param ended Whether the turn's request has ended.
+ * @param bound The bound conversation's namespace, or `null`.
+ */
+export function planSource(pointer: string | null, ended: boolean, bound: string | null): PlanSource {
+  if (pointer !== null) return { kind: "conversation", namespace: pointer };
+  if (!ended && bound !== null) return { kind: "conversation", namespace: bound };
+  return { kind: "turn", whenEmpty: bound };
+}
+
 /**
  * Each turn's number, from 1, by its request id: the requests the items
  * belong to, in the order they started, as `latestTurn` numbers them.

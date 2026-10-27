@@ -17,6 +17,7 @@ import {
   latestTurn,
   planPanelState,
   planRowStage,
+  planSource,
   PREDATES_REASON,
   turnNotice,
   turnNumbers,
@@ -157,6 +158,24 @@ describe("planPanelState — a conversation's plan", () => {
     const emptied = { topic: "conversation/sess_1", status: "complete", count: 0, reason: null };
     expect(conv([], false, [emptied])).toEqual({ kind: "empty", scope: "conversation", turn: null });
     expect(conv([at("1", "a", "pending", "req_gone")])).toMatchObject({ kind: "rows", turn: null });
+  });
+});
+
+// Which plan the panel reads decides whether a person sees the plan at all:
+// a turn that never reached the harness must not hide the conversation's plan,
+// and a session recorded per turn must still show its own rows.
+describe("planSource", () => {
+  it("follows the turn's pointer, whatever the binding says", () => {
+    expect(planSource("conversation/a", true, "conversation/b")).toEqual({ kind: "conversation", namespace: "conversation/a" });
+  });
+
+  it("reads the bound conversation while a turn runs and before its pointer is written", () => {
+    expect(planSource(null, false, "conversation/b")).toEqual({ kind: "conversation", namespace: "conversation/b" });
+  });
+
+  it("an ended turn with no pointer reads its own rows, then the bound conversation when it has none", () => {
+    expect(planSource(null, true, "conversation/b")).toEqual({ kind: "turn", whenEmpty: "conversation/b" });
+    expect(planSource(null, false, null)).toEqual({ kind: "turn", whenEmpty: null });
   });
 });
 
