@@ -180,7 +180,7 @@ export function messageReceivedEntry(options: {
       ctx.emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
       ctx.emit.component(
         RECEIVED_MESSAGE_COMPONENT,
-        { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }) },
+        { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: received.budget },
         { agentName: row.from, itemVisibility: { client: true, history: false } }
       );
       // Landed: the sending session's pass stops sending it. A taker killed
