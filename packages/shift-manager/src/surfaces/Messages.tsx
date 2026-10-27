@@ -27,7 +27,8 @@ function Side({ worker, sessionId, testId }: { worker: string; sessionId: string
 
 function statusNote(row: WorkerMessageRow): string | null {
   if (row.status === "refused") return "not delivered";
-  if (row.status === "unconfirmed") return "delivery unconfirmed";
+  if (row.status === "undeliverable") return "couldn't be delivered";
+  if (row.status === "unconfirmed") return "on its way";
   return null;
 }
 
