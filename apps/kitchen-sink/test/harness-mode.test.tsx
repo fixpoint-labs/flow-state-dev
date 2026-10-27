@@ -73,9 +73,9 @@ describe("V5 · the picker at /", () => {
   });
 });
 
-describe("the picker, for a mode that runs without its sandbox", () => {
+describe("the picker, for an available mode that carries a note", () => {
   it("says so on the mode's card, so an unconfined run is never a surprise", async () => {
-    const note = "Runs without Cursor's sandbox (KITCHEN_SINK_HARNESS_UNSANDBOXED=1): its writes are not confined to the session's worktree.";
+    const note = "Cursor is running against a preview build on this host.";
     // The answer the gate memoizes for this server start, as the Cursor check gives it under the opt-out.
     (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
       "flow-state": { available: true },
@@ -92,7 +92,7 @@ describe("the picker, for a mode that runs without its sandbox", () => {
   });
 
   it("says so on the mode's own page too, so a bookmark or direct link never skips the warning", async () => {
-    const note = "Runs without Cursor's sandbox (KITCHEN_SINK_HARNESS_UNSANDBOXED=1): its writes are not confined to the session's worktree.";
+    const note = "Cursor is running against a preview build on this host.";
     (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
       "flow-state": { available: true },
       "claude-code": { available: true },
