@@ -1,0 +1,65 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What is in the box for FIX-2071. Inside: the rename table, one committed codemod per child, every renamed identifier added to one identifier sweep that CI runs, and docs and READMEs in the new words. Composed in by consumers: their own flows action names, and a rewrite at upgrade from the changesets. Below the fence, not built here: the four message names FIX-2070 removes, words that collide but are not retired, whether a raw ctx.suspend stays public (FIX-2230), and history: specs, changesets, changelogs and verdict logs."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+  <rect class="chosen" x="16" y="16" width="580" height="190" rx="6"/>
+  <text class="t-tag c-code" x="32" y="36">IN THE BOX · WHAT THIS EPIC BUILDS</text>
+  <text class="t-h" x="32" y="56">One name per thing, and a sweep that keeps it</text>
+  <text class="t-s" x="32" y="76">renames.md · one row per retired name, its new name, its owner</text>
+  <text class="t-s" x="32" y="93">One committed codemod per child, re-run on fresh main to resolve conflicts</text>
+  <text class="t-s" x="32" y="110">Every renamed identifier in one-word-per-thing RETIRED, run by CI</text>
+  <text class="t-s" x="32" y="127">READMEs and docs pages in the new words, in the same PR</text>
+  <text class="t-s" x="32" y="144">chief-of-staff → shift-coordinator; the old id stops working</text>
+  <text class="t-s" x="32" y="161">The durable spellings kept for replay, gone with no second read</text>
+  <rect class="ask" x="612" y="16" width="312" height="190" rx="6"/>
+  <text class="t-tag c-mute" x="628" y="36">COMPOSED IN · BY CONSUMERS</text>
+  <text class="t-h" x="628" y="56">What a consumer does</text>
+  <text class="t-s" x="628" y="76">Rewrites at upgrade from the changesets</text>
+  <text class="t-s" x="628" y="93">Keeps its own flows’ action names</text>
+  <text class="t-s" x="628" y="110">Declares shift-coordinator for a</text>
+  <text class="t-s" x="628" y="127">Shift Coordinator</text>
+  <line class="row" x1="16" y1="226" x2="924" y2="226" stroke-dasharray="6 4"/>
+  <text class="t-lbl" x="32" y="246">THE FENCE · NOT BUILT HERE</text>
+  <rect class="lost" x="16" y="258" width="446" height="126" rx="6"/>
+  <text class="t-tag c-mute" x="32" y="278">OWNED ELSEWHERE</text>
+  <text class="t-h" x="32" y="298">Other epics and issues</text>
+  <text class="t-s" x="32" y="318">onWorkerMessage, messageWorker, replyTo, workforceRelayTo: FIX-2070</text>
+  <text class="t-s" x="32" y="335">Whether a raw ctx.suspend stays public: FIX-2230</text>
+  <text class="t-s" x="32" y="352">fifoDispatcher kept or removed: FIX-2072</text>
+  <rect class="lost" x="478" y="258" width="446" height="126" rx="6"/>
+  <text class="t-tag c-mute" x="494" y="278">LEFT AS IT IS</text>
+  <text class="t-h" x="494" y="298">Not renamed</text>
+  <text class="t-s" x="494" y="318">Words that collide but aren’t retired (coordinator, delegates, stream)</text>
+  <text class="t-s" x="494" y="335">History: specs, changesets, changelogs, verdict logs</text>
+  <text class="t-s" x="494" y="352">The dispatcher block, and dispatching a task</text>
+</svg>
