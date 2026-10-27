@@ -28,7 +28,7 @@ and its sender is told.**
 | **The real need** | The epic's "a message lands once, a crash included" ([epic SPEC](../../epics/FIX-2070/SPEC.md), leg c) and its rule ER-5: "the send owes a debt on its session's wake until the message is delivered or refused, the board's `dispatch` pass resends a row still `unconfirmed`, and `onMessageReceived` acts on its id once. The evidence for 'once' lasts as long as the debt" ([epic DECISIONS](../../epics/FIX-2070/DECISIONS.md#who-owns-what)). The concept: "Delivery is retried until it lands; the receiver dedupes by id, so it sees each message once … A refusal is final, returned to the sender" |
 | **Smaller, and rejected** | "Resend on the wake after a crash between the row and the dispatch." It meets leg c and leaves two losses: a delivery the host accepted and never ran counts as delivered, and a late copy is heard twice once the session's 500-id window has moved on. The concept's "sees each message once" fails both times |
 | **Bigger, and not this issue's** | A call's late result (FIX-2239 reads the id this issue keeps) · `{ task }` and `{ session }` targets (FIX-2160; a resend re-checks them) · the midway question (FIX-2241; it sends through this path) · delivery on a host with no wakes (epic Not doing) |
-| **Not done if** | A row written before a crash is never delivered after the restart · a delivery the host accepted, that never ran, clears the debt · a copy reaches the recipient's history or turn twice, at any distance · a resend comes from anything but the sending session's board pass (a boot sweep, a timer, a retry inside the send) · a taken row is dispatched again · a final refusal is resent, or a retryable one is final · a resend refused leaves the sender untold, or its next turn can't read why · a message resent to a worker fired since the send lands · a debt past the host's age limit stays `unconfirmed`, or its sender is never told · a crash after the take shows the message twice · the tool still answers `unconfirmed` · the session's bounded window is still what "once" reads |
+| **Not done if** | A row written before a crash is never delivered after the restart · a delivery the host accepted, that never ran, clears the debt · a copy reaches the recipient's history or turn twice, at any distance · a resend comes from anything but the sending session's board pass (a boot sweep, a timer, a retry inside the send) · a taken row is dispatched again · a final refusal is resent, or a retryable one is final · a resend refused leaves the sender untold (a crash after the row ends included), or its next turn can't read why · a message resent to a worker fired since the send lands · a debt past the host's age limit stays `unconfirmed`, or its sender is never told · a crash after the take shows the message twice · the tool still answers `unconfirmed` · the session's bounded window is still what "once" reads |
 
 ```mermaid
 flowchart LR
@@ -98,6 +98,8 @@ What a reader of the log sees, the one surface that changes shape (`messages/log
 +  deliveredAt: z.number().optional(),
 +  /** How often the sending session's pass has sent it again, and when last. */
 +  resent: z.object({ n: z.number().int().min(1), at: z.number() }).optional(),
++  /** When the sender was told of a refusal or `undeliverable` (D1's line). */
++  toldAt: z.number().optional(),
 ```
 
 And what the model reads back from the tool:
@@ -106,6 +108,10 @@ And what the model reads back from the tool:
 -{ "sent": "msg_3f1c0a9e2b7d4c6a8e10", "unconfirmed": "the delivery couldn't be confirmed (…); it may still arrive." }
 +{ "sent": "msg_3f1c0a9e2b7d4c6a8e10" }
 ```
+
+**Also delivered, in `orchestration`:** the take rule (`own | busy | takeover`) and the resend
+backoff (`(resent, due) → at`), each lifted out of the notice code into one exported pure
+function that the notice and the message both call.
 
 **Docs:** update `apps/docs/docs/workforce/messaging-workers.md` (a *Delivery* section: a message
 lands once, resent until it does; the four statuses; the line a late refusal leaves; the host
@@ -168,14 +174,14 @@ sequenceDiagram
 |---|---|---|
 | The send owes the sending session's wake first | The board's `owePass` and the task ending's `beforeEnding` | **Reuses** the same wake (`DISPATCH_ENTRY`, `NOTICE_DUE_MS`), owed the same way |
 | An owed list in the sending session's state | Listing the log and filtering by `fromSession`; an outbox collection | Listing loads every message the user ever sent (BP-033); an outbox is a second record (epic D2). A list of ids, server-written, points at the rows |
-| The pass's message step (`payMessageDebts`) | `payBoardDebts` (rows on a task ledger) | **Composes beside it**, as the plan ledger's step does: a message is not a task row. Its timing is the notice's backoff (`NOTICE_DUE_MS · 2^n`, capped at 5 min), shared, not copied |
-| The take: `takenBy`, then `deliveredAs` once the item has landed, guarded, on the row | FIX-2123's notice take; FIX-1989's session window | **Extends** the notice take (its rule and `hasEnded`, not a copy of its code) and **replaces** the window. The row lives as long as the log, so the evidence outlives every debt; the guarded write is `ResourceRef.updateState`'s |
+| The pass's message step (`payMessageDebts`) | `payBoardDebts` (rows on a task ledger) | **Composes beside it**, as the plan ledger's step does: a message is not a task row. Its timing is the notice's backoff (`NOTICE_DUE_MS · 2^n`, capped at 5 min), lifted into one pure piece in `orchestration` that both call |
+| The take: `takenBy`, then `deliveredAs` once the item has landed, guarded, on the row | FIX-2123's notice take; FIX-1989's session window | **Extends** the notice take: its rule is lifted into one pure piece in `orchestration` that both takes call, and **replaces** the window. The row lives as long as the log, so the evidence outlives every debt; the guarded write is `ResourceRef.updateState`'s |
 | `undeliverable` | `refused`; the task notice's "settled undeliverable" | **Reuses the vocabulary** of a task's notice. `refused` stays what a recipient's host said; past the age nobody said anything |
 
 | The debt | |
 |---|---|
 | **Removes** | The two dispatch tries, the tool's `unconfirmed` answer, the session's seen window (`WORKER_MESSAGES_SEEN_STATE`, `MAX_SEEN`) and its state shape, and `delivered` meaning "the host accepted it" |
-| **Adds** | An owed list in a sending session's state; one status; five row fields; a message step in the board's pass. Permanent by design: a debt needs a pointer the pass can read without a scan |
+| **Adds** | An owed list in a sending session's state; one status; six row fields; a message step in the board's pass. Permanent by design: a debt needs a pointer the pass can read without a scan |
 | **Leaves** | A recipient busy or waiting on a person gets a copy at each backoff step (about 7 in the first 5 minutes, then 12 an hour), each queued under `defer` and run as a no-op; every message costs one pass of the sending session's board 2 s later. A taker that dies after its item lands and before it marks the row is taken over, so that message shows twice: the one window left, as a task's notice has it. A turn interrupted after the message landed is the engine's interrupted request, never resent ([Decided, not asked](DECISIONS.md#decided-not-asked)). No issue: each is how a task's notice behaves today |
 
 **Net: down.** One delivery shape where there were two (the task ending's and a loop of its own),

@@ -76,16 +76,20 @@ It comes down to who has to learn it: the worker sent the message, and only its 
   so the pass (`board.entries`); the send refuses to start on a flow without it, as a
   configuration error, not a model refusal.
 - **The pass's message step** (`payMessageDebts`, in the pass's first half beside the plan
-  ledger's, outside its "this session files" branch): for each owed id, read its row. No row, or
-  a row delivered, refused or `undeliverable`:
+  ledger's, outside its "this session files" branch): for each owed id, read its row. No row, a
+  row delivered, or one refused or `undeliverable` whose line is recorded (`toldAt`):
   drop the id. Past the host's `maxDebtAgeMs`, counted from the row's `at`: write
   `undeliverable`, leave D1's line, drop the id. Past its next send: re-run the send's recipient
   check (the roster, and FIX-2160's target checks; not the budget, paid once with the row), then
   the same dispatch as the first, and record `resent`. The step returns the earliest next send,
   kept in the pass's request state (as `passPlanDue` is) and folded into the settle.
-- **The resend's timing is the task notice's:** next send at `NOTICE_DUE_MS · 2^n` after the last,
-  capped at 5 minutes (`task-notice.ts`'s `nextSendAt`), exported once and used by both, not
-  copied.
+- **Two pure pieces lifted into `orchestration`, one each, and named deliverables.** The take
+  rule (`own | busy | takeover(replacing)` from the taker, the running request and `hasEnded`),
+  today inside `takeFor` (`task-settled-entry.ts`), and the backoff (`(resent, due) → at`:
+  `NOTICE_DUE_MS · 2^n` after the last send, capped at 5 minutes), today inside `nextSendAt`
+  (`task-notice.ts`). The notice take and the message take both call the first; the notice
+  pass and the message step both call the second. Neither is restated in `workforce`, and
+  FIX-2239 and FIX-2241 reuse them.
 - **Final refusals and retryable ones.** Final: `no-entry`, `session-not-found`,
   `session-not-addressable`, `create-refused`, `external-dispatcher` (the recipient can never
   take it), and a failed recipient check. Retryable: a throw, `dispatch-rejected` (busy under a
@@ -93,7 +97,10 @@ It comes down to who has to learn it: the worker sent the message, and only its 
   flow missing for a moment): the debt stays, until the age limit.
 - **Writes that end a row are guarded too.** `refused` and `undeliverable` are written only while
   the row is `unconfirmed` and no live request has taken it, so a late refusal never overwrites a
-  delivery. D1's line is left only by the write that won.
+  delivery. The terminal write also marks the row owed its line (`toldAt` absent), and the id
+  stays on the owed list until the line is written and `toldAt` recorded: a pass that finds a
+  `refused` or `undeliverable` row with no `toldAt` leaves the line, then records it, then drops
+  the id. A crash between the two leaves the line twice at most, never not at all.
 - **A resend is the same dispatch.** It queues behind a busy or waiting session (epic ER-4) and
   never carries `waits`: a call parked on its first dispatch is FIX-2239's, which finds a late
   result through `deliveredAs`.
@@ -160,3 +167,11 @@ Recorded for the implementer, not folded:
   written on the row, which outlives every debt; D1 tells the sender of a late failure with a line.
 - **Analysis fold** — the take became FIX-2123's take with take-over, `delivered` after the item;
   the row keeps the delivery address whole.
+
+## Review rounds
+
+Round 1 (2026-10-27), folded: Codex, a crash after a row's terminal write and before D1's line
+left the sender untold, so the row is owed its line (`toldAt`) and the id stays owed until it is
+written. FSD Architect, the take rule and the backoff are lifted into one pure piece each in
+`orchestration` and named as deliverables, so `workforce` holds no second copy. Not folded:
+the merge order (FIX-2238's spec #3986 and the epic #3983 have already merged).
