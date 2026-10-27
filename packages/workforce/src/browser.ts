@@ -69,7 +69,7 @@ export {
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
 /** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
-export { MESSAGE_WORKER_TOOL, WORKER_MESSAGE_ENTRY } from "./messages/keys";
+export { SEND_MESSAGE_TOOL, MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
 export { LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN } from "./schedules/keys";
 export { listedScheduleSchema, type ListedSchedule } from "./schedules/listed-schedule";
 export {

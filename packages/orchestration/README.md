@@ -103,6 +103,25 @@ A request loads a partition's rows on that partition's first read, never the who
 ledger. The rows sit in the user's own storage, which every flow of theirs reads, even on a flow
 that isolates its user state (`isolateUserState`).
 
+A partitioned ledger keeps an id index beside its rows, so a task can be found by id
+alone. Install the ledger with `taskLedgerResources(ledger)`, which returns the ledger
+under its id and, for a partitioned one, the index beside it; adding a task through a flow
+that installs the ledger without the index throws, naming `taskLedgerResources`. An
+unpartitioned ledger gets only itself back. `findTaskPartitions(ctx, ledgerId, taskId)`
+returns the running user's partitions holding that id: none, one, or several when the
+same id was picked in more than one. It returns partitions only; read the row through
+`getOrCreateTaskCollection({ partition })`.
+
+```ts
+import { findTaskPartitions, taskLedgerResources } from "@flow-state-dev/orchestration/tasks";
+
+// In the flow definition, for the `work` ledger above:
+const resources = { ...taskLedgerResources(work) };
+
+// In a block, with its `ctx`:
+const partitions = await findTaskPartitions(ctx, "work", taskId); // what partitionBy returned for each
+```
+
 **Recording how a task ended.** `recordEnding` is handed every write that records an
 ending (a completion, a failure with or without attempts left, a park, a cancel, and
 a claim settling a row whose worker died too often), inside that same write, and the
@@ -139,6 +158,11 @@ may not be the board's. The next claim clears it; a settled task keeps it. It is
 client-visible, unlike `claimedBy`, and no write surface a caller reaches can set it.
 If you implement `TaskCollectionRef` yourself, implement `linkRun` too: a board that
 dispatches calls it on every attempt.
+
+`rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger
+order: each row whose run link names it, with every row of its follow-up chain. Follow-ups
+run in the root's session one at a time, so the list includes one that hasn't started yet.
+Empty when nothing ran there.
 
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
@@ -1129,6 +1153,9 @@ request takes mid-run shows in the task's session as a line from its sender
 (`showTakenSteers`); a line typed in the session is there already.
 
 ### Upgrading from stores written by an older version
+
+A task an older version added to a partitioned ledger isn't in the ledger's id index, so
+`findTaskPartitions` doesn't find it. Everything else about the row is unaffected.
 
 Rows written before steers existed read in their new shape, with nothing to run. A row stored with
 `reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing

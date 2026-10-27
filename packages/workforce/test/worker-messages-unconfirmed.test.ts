@@ -4,7 +4,7 @@
  * once, which the entry's dedupe makes safe; if that throws too, the row
  * stays unconfirmed and the tool says so.
  *
- * The seam is made to throw for `onWorkerMessage` only, in this file alone.
+ * The seam is made to throw for `onMessageReceived` only, in this file alone.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,7 +15,7 @@ vi.mock("@flow-state-dev/core/types", async (original) => {
   return {
     ...actual,
     dispatchThroughSeam: (ctx: never, spec: { action: string }) => {
-      if (spec.action === "onWorkerMessage" && throwing.count < throwing.times) {
+      if (spec.action === "onMessageReceived" && throwing.count < throwing.times) {
         throwing.count += 1;
         return Promise.reject(new Error("the connection dropped"));
       }
@@ -46,7 +46,7 @@ async function run(times: number) {
             called = true;
             return true;
           },
-          then: { toolCalls: [{ toolCallId: "ask", toolName: "messageWorker", args: { to: "lead", text: "What is the codename?" } }] }
+          then: { toolCalls: [{ toolCallId: "ask", toolName: "sendMessage", args: { to: "lead", text: "What is the codename?" } }] }
         },
         { when: () => true, then: { text: "OK." } }
       ]

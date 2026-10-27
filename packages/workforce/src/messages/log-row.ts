@@ -21,7 +21,7 @@ export const WORKER_MESSAGES_RESOURCE = "workforceMessages";
 /** The longest text a message may carry. A longer one is refused, not cut (BP-042). */
 export const MAX_MESSAGE_CHARS = 8_000;
 
-/** Where a message is delivered, or where an answer to it goes: a session on a worker flow, and the state it starts with when it isn't there yet. */
+/** Where a message is delivered: a session on a worker flow, and the state it starts with when it isn't there yet. */
 export const messageAddressSchema = z
   .object({
     sessionId: z.string().min(1),
@@ -43,20 +43,25 @@ export const workerMessageRowSchema = z.object({
   from: z.string().min(1),
   /** The recipient worker's id. */
   to: z.string().min(1),
+  /**
+   * How the sender addressed it (FIX-2160): by a task (`task`) or a conversation
+   * (`session`). Absent when by the worker's name, as on every row from before.
+   */
+  addressedBy: z.enum(["task", "session"]).optional(),
+  /** The task it was addressed to, when `addressedBy` is `task`. */
+  toTask: z.string().min(1).optional(),
   text: z.string(),
   /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
   exchange: z.string().min(1),
   /** The message this one answers. */
-  replyTo: z.string().optional(),
-  /** The session the sending turn ran in. */
+  inReplyTo: z.string().optional(),
+  /** The session the sending turn ran in: where an answer to this message lands. */
   fromSession: z.string().min(1),
   /** The flow the sending session runs on. */
   fromFlow: z.string().min(1),
   /** Where this message was delivered. */
   toSession: z.string().min(1),
   toFlow: z.string().min(1),
-  /** Where an answer to this message goes: the sending session, or the sender's own conversation when that session was a task's. */
-  answerTo: messageAddressSchema,
   /** How many worker messages this one is from the last user's turn, counted across the whole exchange. */
   hop: z.number().int().min(1),
   /** The chain the hop is counted in: the user's turn the exchange descends from. Absent on rows from before rows carried one. */

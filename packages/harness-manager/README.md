@@ -26,7 +26,7 @@ const manager = harnessManager({
   workspace: { root, sourceRepo, baseRef },
   runTimeoutMs: 30 * 60_000,
 
-  // The slot. Called once; the manager hands down four feeds.
+  // The slot. Called once; the manager hands down its feeds.
   harness: ({ cwd, resume, onSession, onUsage }) =>
     claudeCodeAgent({ cwd, resume, onSession, onUsage, detached: true, recordWork: true }),
 });
@@ -183,13 +183,14 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with four feeds (`HarnessFeeds`):
+The manager calls your factory once, with five feeds (`HarnessFeeds`):
 
 | Feed | What it does |
 |---|---|
 | `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
+| `onSteerable` | Called by a harness whose run can take a line mid-turn, with the run's `steer` while it can and `null` after, so a steer reaches the step [as it runs](#a-run-that-takes-a-steer-live). Optional; a harness that can't steer ignores it. |
 | `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
@@ -206,11 +207,11 @@ harness: ({ cwd, resume, onSession }) =>
 ```ts
 import { cursorAgent } from "@flow-state-dev/cursor";
 
-harness: ({ cwd, resume, onSession }) =>
-  cursorAgent({ cwd, resume, onSession, agent: { model: { id: "composer-2.5" } } }),
+harness: ({ cwd, resume, onSession, onSteerable }) =>
+  cursorAgent({ cwd, resume, onSession, onSteerable, agent: { model: { id: "composer-2.5" } } }),
 ```
 
-Any block that takes the four feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
+Any block that takes the feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
 Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
@@ -328,6 +329,54 @@ The last three read as they do on Workforce's door (`LINE_STEER_REFUSALS`).
 
 The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs.
 
+### Answering a worker's message
+
+`harnessTalkTurn({ name?, board, harness, uses?, talkTimeoutMs? })` is the door's talk half as a
+block of its own, with the same `board`, `harness`, `uses` and `talkTimeoutMs` as the door. It takes
+`{ message }` and answers `{ reply: string | null, taskId }` (`reply` is the harness's final text):
+one harness run resumes the coding session of the session's finished task with the message, outside
+any attempt, and the task, its output and its attempts don't change. It refuses, failing the request
+with `SessionDoorRefused`, with `not-started` (no task ran in this session), `task-running` (the
+task or a follow-up is still open) or `cannot-continue` (the harness confirmed no coding session).
+
+A Workforce coding flow passes it as the `turn` of its `messageReceivedEntry`, so a worker's
+`sendMessage` to one of its finished tasks (`to: { task: id }`) is answered from the coding session.
+The turn's input is a `MessageReceived`, so map it to `{ message }` first:
+
+```ts
+import { defineFlow, sequencer } from "@flow-state-dev/core";
+import { harnessTalkTurn } from "@flow-state-dev/harness-manager";
+import {
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  messageReceivedSchema,
+  type MessageReceived,
+} from "@flow-state-dev/workforce";
+
+const messageTurn = sequencer({ name: "coder-message-turn", inputSchema: messageReceivedSchema }).step(
+  (received: MessageReceived) => ({ message: `Message from ${received.from}, another worker: ${received.text}` }),
+  harnessTalkTurn({ name: "coder-message", harness, board }),
+);
+
+defineFlow({
+  kind: "coder",
+  // … actions, task entry and resources as above
+  internal: {
+    actions: {
+      [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+        installation,
+        flowKind: "coder",
+        hears: "task-sessions",
+        turn: messageTurn,
+      }),
+    },
+  },
+});
+```
+
+The reply is an item in the task's session. Nothing is sent back to the worker that wrote, unless
+the coding flow gives its turn a `sendMessage` of its own.
+
 ### Stopping a step for a steer
 
 By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
@@ -335,6 +384,12 @@ By default a running step finishes first, and the next step takes the steer. Bui
 A step never runs for a task its attempt no longer holds: if the task is cancelled, finishes, or is claimed again while a step runs, the request takes no further step.
 
 A message taken mid-run shows in the run's session as a line from its sender.
+
+### A run that takes a steer live
+
+A harness whose run can take a line mid-turn (Cursor, passed the `onSteerable` feed) offers the manager a way in while a step runs. The manager then reads the task's row every `STEER_POLL_MS` while the step runs, and hands each new message to the running turn as it arrives. The step carries on, with no stop, no new step and no new attempt. A message taken this way shows in the run's session as a line from its sender.
+
+A line the run refuses is not lost. The next step the request runs takes it, as if it had arrived after the step: by default when the step ends, or at once under `stopsOnAbort: true`, which stops the step for it. A line still waiting on the run's answer when the step ends is taken by the next step too, with a note to the agent that it may already have acted on it. Lines owed this way are held in the server's memory for the request, so a server that dies mid-step loses them.
 
 ### Upgrading from `messageDoor`
 
@@ -383,7 +438,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
@@ -418,7 +473,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's plan and percents.
 - **No retention policy.** Run records grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
-- **A steer waits for the step to end** unless the manager is built with `stopsOnAbort: true`.
+- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the manager is built with `stopsOnAbort: true`. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Git worktrees specifically**, as above.
 

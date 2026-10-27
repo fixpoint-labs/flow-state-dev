@@ -14,12 +14,17 @@
  *
  * A refusal fails the request, so a composer never reads it as delivered;
  * the line stays in the session with the refusal after it.
+ *
+ * The talk half is {@link harnessTalkTurn}, one block the door runs for a
+ * finished task and a coder runs for a message about one (FIX-2160): there is
+ * one talk path. A message never steers, so the turn refuses an open task.
  */
 import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
   LINE_STEER_REFUSALS,
+  rowsInSession,
   steerFromLine,
   type LineSteerRefusal,
   type Task,
@@ -40,17 +45,25 @@ export const sessionDoorOutputSchema = z.union([
   z.object({ reply: z.string().nullable(), taskId: z.string() }),
 ]);
 
-/** Why the door refused, in stable terms. */
+/** What a talk turn takes: the text the coding session is resumed with. */
+export const harnessTalkInputSchema = z.object({ message: z.string() });
+
+/** What a talk turn answers: the coding session's reply, and the task it was about. */
+export const harnessTalkOutputSchema = z.object({ reply: z.string().nullable(), taskId: z.string() });
+
 /**
  * Why the door refused a line. The steer refusals (`steer-limit`, `finished`,
  * `not-supported`) read as they do on every door that takes a line.
+ * `task-running` is a talk turn's alone: a message about a task still open,
+ * which never steers it.
  */
-export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | LineSteerRefusal;
+export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | "task-running" | LineSteerRefusal;
 
 /** What a person reads for each refusal. */
 const REFUSAL_TEXT: Record<SessionDoorRefusalReason, string> = {
   "not-started": "This task hasn't started here, so there's no session to write into.",
   "cannot-continue": "This run's harness confirmed no coding session, so it can't take a message once finished.",
+  "task-running": "This task is still running, so a message can't reach its coding session until it finishes.",
   ...LINE_STEER_REFUSALS,
 };
 
@@ -70,9 +83,9 @@ export interface SessionDoorBoard {
   readonly runOf: (row: Task) => { issue: string; phase: string } | undefined;
 }
 
-/** How a host builds the door. */
-export interface HarnessSessionDoorOptions {
-  /** Names the door's blocks. Default `"harness-manager"`. */
+/** How a host builds a talk turn: the door's options but the steer's. */
+export interface HarnessTalkTurnOptions {
+  /** Names the turn's blocks. Default `"harness-manager"`. */
   readonly name?: string;
   /**
    * The board the calling session's run is on, resolved per request from
@@ -81,19 +94,23 @@ export interface HarnessSessionDoorOptions {
   readonly board: (ctx: BlockContext) => Promise<SessionDoorBoard | undefined>;
   /** The harness, as the managers behind the door are given it: talk resumes the coding session with it. */
   readonly harness: HarnessSlot;
-  /**
-   * Called after a steer that left the task waiting on it (it was running
-   * nothing): start the turn the steer is owed. A Workforce host passes
-   * `startOwedSteerTurn`.
-   */
-  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
-  /** Capabilities the door's blocks hold, for the board ledgers `board` resolves. */
+  /** Capabilities the turn's blocks hold, for the board ledgers `board` resolves. */
   readonly uses?: readonly DefinedCapability[];
   /**
    * How long one talk run may take, in ms, which also sizes the hold on the
    * checkout it runs in. Default 10 minutes.
    */
   readonly talkTimeoutMs?: number;
+}
+
+/** How a host builds the door. */
+export interface HarnessSessionDoorOptions extends HarnessTalkTurnOptions {
+  /**
+   * Called after a steer that left the task waiting on it (it was running
+   * nothing): start the turn the steer is owed. A Workforce host passes
+   * `startOwedSteerTurn`.
+   */
+  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
 }
 
 /** The newest of `rows`, by filing time, then attempts. */
@@ -111,11 +128,10 @@ function newest(rows: readonly Task[]): Task {
  * the latest that ran here, whose coding session talk resumes.
  */
 function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
-  const rows = tasks.list() as Task[];
+  const rows = rowsInSession(tasks, sessionId);
   const linked = rows.filter((task) => task.run?.sessionId === sessionId);
   if (linked.length === 0) return undefined;
-  const roots = new Set(linked.map((task) => task.followUpOf ?? task.id));
-  const open = rows.filter((task) => roots.has(task.followUpOf ?? task.id) && !isTerminalStatus(task.status));
+  const open = rows.filter((task) => !isTerminalStatus(task.status));
   const here = open.filter((task) => task.run?.sessionId === sessionId);
   return newest(here.length > 0 ? here : open.length > 0 ? open : linked);
 }
@@ -123,14 +139,11 @@ function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefin
 /** The default bound on one talk run. */
 const DEFAULT_TALK_TIMEOUT_MS = 10 * 60_000;
 
-/** What the decide step hands on: a steer done, or the talk to run. */
-const decidedSchema = z.union([
-  z.object({ steered: z.string() }),
-  z.object({ talk: z.object({ prompt: z.string(), cwd: z.string(), resume: z.string(), taskId: z.string() }) }),
-]);
+/** What the talk's first step hands on: the prompt the harness resumes the coding session with. */
+const talkPromptSchema = z.object({ prompt: z.string() });
 
-/** The door's per-request values: where the talk runs and what it resumes. */
-const doorStateSchema = z.object({
+/** The talk's per-request values: where it runs and what it resumes. */
+const talkStateSchema = z.object({
   cwd: z.string().nullable().default(null),
   resume: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
@@ -140,58 +153,61 @@ const doorStateSchema = z.object({
 });
 
 /**
- * A coding run's door: declare it as the coding flow's action,
- * `actions: { message: harnessSessionDoor({ board, harness }) }`.
+ * The talk half of a coding run's door, as a block of its own (FIX-2160): one
+ * harness run resumes the coding session of this session's finished task with
+ * the message, outside any attempt, and its final text is the reply. The task,
+ * its output and its attempts don't change. The door runs it for a person's
+ * line; a coder's `onMessageReceived` runs it as its turn for a message.
  *
- * @returns The action entry.
+ * Refuses, failing the request, when the session has no task
+ * (`not-started`), when its task is still open (`task-running`: a message
+ * never steers), and when the run confirmed no coding session
+ * (`cannot-continue`).
+ *
+ * @returns A block taking `{ message }` and answering `{ reply, taskId }`.
  */
-export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
+export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   const name = options.name ?? "harness-manager";
   const capability = defineCapability({
-    name: `harness-manager-session-door:${name}`,
+    name: `harness-manager-talk:${name}`,
     // The usage record a talk's harness writes its windows into, as a run's does.
     resources: { [RUNS]: runRecordCollection, [HARNESS_USAGE]: harnessUsageCollection },
   }) as unknown as DefinedCapability;
   const uses = [capability, ...(options.uses ?? [])];
   const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
+  const stateOf = (ctx: { sequencer?: { state?: unknown } }) => (ctx.sequencer?.state ?? {}) as z.infer<typeof talkStateSchema>;
   const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
     const state = stateOf(ctx);
     if (state.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
   };
 
-  // The talk's harness, fed from this door's own state: the checkout the
+  // The talk's harness, fed from this turn's own state: the checkout the
   // finished run worked in and the session it confirmed. Outside any
   // attempt, so it records no session of its own.
-  const stateOf = (ctx: { sequencer?: { state?: unknown } }) => (ctx.sequencer?.state ?? {}) as z.infer<typeof doorStateSchema>;
   const talkHarness: HarnessBlock = options.harness({
     cwd: (ctx) => stateOf(ctx as never).cwd ?? "",
     resume: (ctx) => stateOf(ctx as never).resume,
     onSession: () => undefined,
+    // A talk is one turn the person waits on: a line while it runs is its own talk.
+    onSteerable: () => undefined,
     // The person talking is the principal, so the window lands in their row.
     onUsage: async (report, ctx) => {
       await recordHarnessUsage(ctx, report);
     },
   });
 
-  const decide = handler({
-    name: `${name}-session-door`,
-    inputSchema: sessionDoorInputSchema,
-    outputSchema: decidedSchema,
-    sequencerStateSchema: doorStateSchema,
+  const find = handler({
+    name: `${name}-talk`,
+    inputSchema: harnessTalkInputSchema,
+    outputSchema: talkPromptSchema,
+    sequencerStateSchema: talkStateSchema,
     uses,
     execute: async (input, ctx: BlockContext) => {
       const board = await options.board(ctx);
       const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
-      if (!isTerminalStatus(row.status)) {
-        const refused = await steerFromLine(board.tasks, row.id, input.message, ctx as never);
-        if (refused !== undefined) throw new SessionDoorRefused(refused);
-        const after = board.tasks.get(row.id);
-        // A line that answered the task's last open question owes it its turn too (FIX-2133).
-        if (after?.waitingOn === "steer" || after?.turnOwed === true) await options.onSteered?.(ctx, after);
-        return { steered: row.id };
-      }
+      if (!isTerminalStatus(row.status)) throw new SessionDoorRefused("task-running");
       const identity = board.runOf(row);
       const record =
         identity === undefined
@@ -208,39 +224,33 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
         lockPath: lease.lockPath,
         leaseToken: lease.token,
       });
-      return { talk: { prompt: input.message, cwd: record.workspacePath, resume: record.sessionId, taskId: row.id } };
+      return { prompt: input.message };
     },
   });
 
   const reply = handler({
-    name: `${name}-session-door-reply`,
+    name: `${name}-talk-reply`,
     inputSchema: z.unknown(),
-    outputSchema: sessionDoorOutputSchema,
-    sequencerStateSchema: doorStateSchema,
+    outputSchema: harnessTalkOutputSchema,
+    sequencerStateSchema: talkStateSchema,
     execute: async (value, ctx) => {
       releaseTalkLease(ctx as never);
-      const handle = value as { finalMessage?: string | null; steered?: string };
-      if (typeof handle.steered === "string") return { steered: handle.steered };
+      const handle = value as { finalMessage?: string | null };
       return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx as never).taskId ?? "" };
     },
   });
 
-  const block = sequencer({ name: `${name}-session-door`, inputSchema: sessionDoorInputSchema, stateSchema: doorStateSchema })
-    .step(decide)
-    .stepIf(
-      (decided: z.infer<typeof decidedSchema>) => "talk" in decided,
-      (decided: z.infer<typeof decidedSchema>) => ({ prompt: (decided as { talk: { prompt: string } }).talk.prompt }),
-      talkHarness,
-      { abortSignal: () => AbortSignal.timeout(talkTimeoutMs) },
-    )
+  return sequencer({ name: `${name}-talk`, inputSchema: harnessTalkInputSchema, stateSchema: talkStateSchema })
+    .step(find)
+    .step(talkHarness, { abortSignal: () => AbortSignal.timeout(talkTimeoutMs) })
     .step(reply)
     .rescue([
       {
         block: handler({
-          name: `${name}-session-door-release`,
+          name: `${name}-talk-release`,
           inputSchema: z.unknown(),
           outputSchema: z.unknown(),
-          sequencerStateSchema: doorStateSchema,
+          sequencerStateSchema: talkStateSchema,
           execute: (error: unknown, ctx) => {
             releaseTalkLease(ctx as never);
             throw error;
@@ -248,6 +258,57 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
         }),
       },
     ]);
+}
+
+/** What the door's first step hands on: a steer done, or the line to talk with. */
+const decidedSchema = z.union([z.object({ steered: z.string() }), z.object({ talk: z.string() })]);
+
+/**
+ * A coding run's door: declare it as the coding flow's action,
+ * `actions: { message: harnessSessionDoor({ board, harness }) }`.
+ *
+ * @returns The action entry.
+ */
+export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
+  const name = options.name ?? "harness-manager";
+  const talk = harnessTalkTurn(options);
+
+  // An open task takes the line as a steer; a finished one hands it to the
+  // talk turn, which reads the row again and refuses what changed meanwhile.
+  const decide = handler({
+    name: `${name}-session-door`,
+    inputSchema: sessionDoorInputSchema,
+    outputSchema: decidedSchema,
+    uses: options.uses ?? [],
+    execute: async (input, ctx: BlockContext) => {
+      const board = await options.board(ctx);
+      const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
+      if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
+      if (isTerminalStatus(row.status)) return { talk: input.message };
+      const refused = await steerFromLine(board.tasks, row.id, input.message, ctx as never);
+      if (refused !== undefined) throw new SessionDoorRefused(refused);
+      const after = board.tasks.get(row.id);
+      // A line that answered the task's last open question owes it its turn too (FIX-2133).
+      if (after?.waitingOn === "steer" || after?.turnOwed === true) await options.onSteered?.(ctx, after);
+      return { steered: row.id };
+    },
+  });
+
+  const block = sequencer({ name: `${name}-session-door`, inputSchema: sessionDoorInputSchema })
+    .step(decide)
+    .stepIf(
+      (decided: z.infer<typeof decidedSchema>) => "talk" in decided,
+      (decided: z.infer<typeof decidedSchema>) => ({ message: (decided as { talk: string }).talk }),
+      talk,
+    )
+    .step(
+      handler({
+        name: `${name}-session-door-reply`,
+        inputSchema: z.unknown(),
+        outputSchema: sessionDoorOutputSchema,
+        execute: (value) => value as z.infer<typeof sessionDoorOutputSchema>,
+      }),
+    );
 
   return {
     block,

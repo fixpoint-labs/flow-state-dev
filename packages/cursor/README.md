@@ -75,6 +75,23 @@ returns no handle, so this is the only carrier that reaches your state in the ca
 resuming exists for. A resume Cursor refuses throws instead of opening an agent,
 so the id you already hold is left untouched.
 
+**`onSteerable` lets the running turn take a line.** Once the prompt is sent, the
+block calls it with a `steer` function, and with `null` when the turn is over.
+`steer(text)` hands the line to the turn in flight and resolves `"delivered"` when
+Cursor took it into that turn, or `"refused"` when it didn't (Cursor answered that
+the line should wait for the next turn, the call failed, or the turn had already
+ended). A refused line was not taken, so send it as the next turn. A run that ends
+on its own waits for any `steer` call still in flight to answer before it returns;
+one stopped by its deadline doesn't. Only local
+runs whose SDK offers steering get a `steer`; otherwise `onSteerable` is never called.
+
+```ts
+const agent = cursorAgent({
+  // …
+  onSteerable: (steer, ctx) => (steer ? holdSteer(ctx, steer) : dropSteer(ctx)),
+});
+```
+
 ## Option groups
 
 `agent` and `send` are the SDK's own option bags — `AgentOptions` for

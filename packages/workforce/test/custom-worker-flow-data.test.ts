@@ -13,6 +13,8 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { z } from "zod";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerInstallation } from "../src/workers/installation";
+import { hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 /** One row per worker, in the user's scope: keyed by the worker, so kept per worker. */
 const workerNotes = defineResourceCollection({
@@ -59,7 +61,8 @@ function host() {
     kind: "research",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "research") },
     actions: { respond: { inputSchema: input, block: door, userMessage: (i: { message: string }) => i.message } }
   });
   flows = { research };

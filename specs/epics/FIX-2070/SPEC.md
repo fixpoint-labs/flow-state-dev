@@ -127,8 +127,9 @@ flowchart LR
 
 An edge is what one issue hands the next; a dashed input is consumed, not owned. FIX-2238 goes
 first; the other four are specified in parallel on it. Three share the send path, so their
-implementation PRs land stacked in order, FIX-2160, FIX-2240, FIX-2239
-([the send-path seam](DECISIONS.md#coordination-seams)); FIX-2241 lands on its own. The closure waits on all of them. FIX-2071 starts
+implementation PRs land stacked in order on FIX-2238's, FIX-2160, FIX-2240, FIX-2239
+([the send-path seam](DECISIONS.md#coordination-seams)); FIX-2241's orchestration half lands on its own, and its
+Workforce send stacks last. The closure waits on all of them. FIX-2071 starts
 after this epic wraps.
 
 ## What stays as it is

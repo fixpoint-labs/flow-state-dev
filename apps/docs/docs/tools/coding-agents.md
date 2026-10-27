@@ -297,6 +297,41 @@ without an `env` (`client.env` for Codex) inherits the server's whole
 [Codex](./codex.md#environment-variables) pages show where it goes. The Cursor
 adapter has no `env` option, so `harnessEnv` doesn't apply to it.
 
+## Steering a running turn
+
+A person who types while a coding turn runs usually means it for that turn. A
+harness whose run can take a line mid-turn offers one through its
+`onSteerable` hook (Cursor does today; Claude Code and Codex don't yet), and
+two helpers turn that into the same behaviour in any app.
+
+On the server, `harnessSteering()` from `@flow-state-dev/core` keeps each
+session's offer. Hand its `onSteerable` to the harness and declare its action
+beside your turn action:
+
+```ts
+const steering = harnessSteering();
+const agent = cursorAgent({ cwd, resume, onSession, onSteerable: steering.onSteerable });
+
+defineFlow({
+  kind: "coder",
+  actions: {
+    turn: { block: turn, concurrency: "queue" },
+    steer: steering.action(),
+  },
+});
+```
+
+`steer` answers `{ taken, live }`. On the page, `sendHarnessLine` from
+`@flow-state-dev/client` sends a line typed while a turn runs to `steer` first,
+and sends it as the next turn when the running turn didn't take it, so a line is
+never dropped. `harnessLines` keeps a page's lines in the order they were typed, so a later line never steers past one queued behind the turn. `steerRunningTurn` sends `steer` on its own, so a session hook
+keeps following the running turn's stream. Offers live in the server process:
+a line that reaches another process finds none and runs as the next turn.
+
+Work on a task board steers through the board instead: the harness manager
+hands a task's new messages to its running step. See
+[Steering a run](/docs/orchestration/harness-manager#steering-a-run).
+
 ## Running one under supervision
 
 Driving a harness yourself means deciding where each run works, when it has

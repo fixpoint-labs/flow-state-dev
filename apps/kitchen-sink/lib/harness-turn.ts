@@ -25,6 +25,8 @@ export const turnRecordSchema = z.object({
   error: z.string().nullable().default(null),
   /** When the turn started, in epoch millis. Orders turns for trimming. */
   at: z.number().nullable().default(null),
+  /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
+  steered: z.array(z.string()).nullable().default(null),
 });
 
 /** One turn's record. */

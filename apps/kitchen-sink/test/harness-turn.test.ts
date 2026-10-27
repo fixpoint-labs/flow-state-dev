@@ -26,7 +26,7 @@ import {
   type TurnRecord,
 } from "@/lib/harness-turn";
 
-const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1 };
+const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null };
 
 describe("turnNotice", () => {
   it("says nothing while the turn runs", () => {

@@ -6,14 +6,19 @@
  * notice for the latest turn, and the plan panel beside it, which shows the
  * bound conversation's plan.
  *
+ * A line typed while a turn runs goes to that turn when its harness takes it,
+ * else it runs after the turn (`lib/harness-line.ts`); lines go in the order
+ * they were typed.
+ *
  * Every item shown is the harness's own, through the app's ordinary
  * renderers. The notice and the bound conversation are read from session
  * state (`lib/harness-turn.ts`), and the panel from the plan record. Nothing
  * here writes an item, a plan row or the binding, and nothing names a
  * harness: the label is data from the mode list.
  */
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { createClient, harnessLines, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -47,6 +52,7 @@ import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { PlanRowLine } from "@/components/plan-row";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { sendLine, type LineOutcome, type LineSender } from "@/lib/harness-line";
 import type { ModelChoices } from "@/lib/harness-models";
 import { pageGoalControl } from "@/lib/goal-control";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
@@ -80,18 +86,20 @@ export interface HarnessSessionViewProps {
 export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
+      <SessionBody label={label} flowKind={flowKind} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
 }
 
 function SessionBody({
   label,
+  flowKind,
   sessionId,
   models,
   onTitled,
 }: {
   label: string;
+  flowKind: string;
   sessionId: string;
   models: ModelChoices;
   onTitled?: () => void;
@@ -120,26 +128,65 @@ function SessionBody({
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
   const { items, isStreaming, latestRequest } = session;
+  // `steer` is sent beside the running turn, not through the session hook,
+  // which would leave the running turn's stream to follow the new request.
+  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  // The session's newest request can be a `steer` sent beside the turn, so the
+  // turn's status is read off the turn's own request.
+  const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
+  const [listedTurn, setListedTurn] = useState<SessionRequestSummary | null>(null);
+  useEffect(() => {
+    if (turnId === null || latestRequest === null || latestRequest.id === turnId) return;
+    let current = true;
+    client.sessions.requests(sessionId, { limit: 20 }).then(
+      (requests) => {
+        if (current) setListedTurn(requests.find((request) => request.id === turnId) ?? null);
+      },
+      // Unread, the turn reads as running until the next read, as before a summary arrives.
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, sessionId, turnId, latestRequest]);
+  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
   const turn = useMemo(
-    () => latestTurn({ items, streaming: isStreaming, request: latestRequest }),
-    [items, isStreaming, latestRequest],
+    () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
+    [items, isStreaming, turnRequest],
   );
   const turnsByRequest = useMemo(() => turnNumbers(items), [items]);
   const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
-
+  const streaming = useRef(session.isStreaming);
+  streaming.current = session.isStreaming;
+  // Lines reach the run in the order they were typed: each waits for the one
+  // before it, and none steers past a line queued behind the running turn.
+  const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
+  useEffect(() => lines.turnChanged(), [lines, turnId, isStreaming]);
+  const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
+      const sender: LineSender = {
+        steer: (text) => steerRunningTurn(client, { flowKind, sessionId, prompt: text }),
+        turn: async (text) => {
+          await session.sendAction("turn", { prompt: text }, { userMessage: text });
+        },
+      };
       try {
-        await session.sendAction("turn", { prompt }, { userMessage: prompt });
+        const outcome = await lines.send(prompt, streaming.current, sender);
+        setLastLine(outcome);
         if (messageRef.current.trim() === prompt) setMessage("");
+        // The steer request records a taken line in session state, and this
+        // view follows only the turn's stream: re-read it so the line shows now.
+        if (outcome === "taken") void refresh();
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [session, setMessage],
+    [client, flowKind, lines, refresh, session, sessionId, setMessage],
   );
+  const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="harness-session">
@@ -167,7 +214,7 @@ function SessionBody({
                     isStreaming={session.isStreaming}
                     isFinishing={session.isFinishing}
                     showWorkedFor
-                    latestCompletedAtMs={latestRequest?.completedAtMs ?? latestRequest?.failedAtMs}
+                    latestCompletedAtMs={turnRequest?.completedAtMs ?? turnRequest?.failedAtMs}
                     statusMessage={session.statusMessage}
                   />
                 </>
@@ -177,6 +224,7 @@ function SessionBody({
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
+          <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
             <PromptInput onSubmit={handleSubmit}>
@@ -223,6 +271,33 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
         {text}
       </span>
     </p>
+  );
+}
+
+/** The lines the latest turn took while it ran, and where the last line sent went. */
+function LineNotes({
+  steered,
+  last,
+  running,
+  label,
+}: {
+  steered: readonly string[];
+  last: LineOutcome | null;
+  running: boolean;
+  label: string;
+}) {
+  if (steered.length === 0 && !(running && last === "after-this-turn")) return null;
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
+      {steered.map((line, i) => (
+        <p key={i} className="break-words" data-testid="line-taken">
+          You, taken into the running turn: {line}
+        </p>
+      ))}
+      {running && last === "after-this-turn" && (
+        <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
+      )}
+    </div>
   );
 }
 

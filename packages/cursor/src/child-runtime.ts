@@ -25,7 +25,7 @@
  * run's commands with the environment the host chose not to hand them.
  *
  * The protocol: the parent sends `{ id, op }` requests (`open`, `send`, `wait`,
- * `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After
+ * `steer`, `cancel`) and the child answers `{ id, value }` or `{ id, error }`. After
  * `send`, the child streams `{ event: "message" }` for each run message, then
  * `{ event: "end" }` or `{ event: "stream-error" }`. The parent closing the
  * channel tells the child to close the agent and exit.
@@ -213,6 +213,7 @@ async function openInChild(
       const started = (await runtime.request("send", { prompt, options: sendOptions })) as {
         runId: string;
         supportsWait: boolean;
+        supportsSteer?: boolean;
       };
       return {
         id: started.runId,
@@ -222,6 +223,10 @@ async function openInChild(
           await runtime.request("cancel");
         },
         supports: (operation: string) => (operation === "wait" ? started.supportsWait : true),
+        // Only a run the child found able to steer has one, so the block never offers a steer it can't take.
+        ...(started.supportsSteer === true
+          ? { steer: (text: string) => runtime.request("steer", { text }) as Promise<string> }
+          : {}),
       };
     },
     close: () => runtime.close(),
