@@ -145,8 +145,7 @@ export function onRequestEnded(ctx: { readonly [REQUEST_END_SEAM]?: RequestEndSe
  * to call {@link onRequestEnded}.
  *
  * Framework-facing, like {@link REQUEST_END_SEAM}: a symbol key, set by the
- * package that builds the session config (Workforce's
- * `installation.session()`), never written by a flow author. When a request
+ * package that builds the session config, never written by a flow author. When a request
  * starts, the runtime calls the function with the request's context and adds
  * what it returns to the request's registry, exactly as `onRequestEnded(ctx,
  * hook)` would: same list, same order, same shutdown drain. Returning

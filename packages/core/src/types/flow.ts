@@ -362,8 +362,7 @@ export type SessionConfig = {
   /**
    * Framework-facing, not a flow-author field: a request-end hook the package
    * that built this session config adds to every request of the flow (see
-   * `SESSION_REQUEST_END_HOOK` in `./request-end`). Workforce's
-   * `installation.session()` fills it.
+   * `SESSION_REQUEST_END_HOOK` in `./request-end`).
    */
   readonly [SESSION_REQUEST_END_HOOK]?: SessionRequestEndHook;
 };
