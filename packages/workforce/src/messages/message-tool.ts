@@ -1,11 +1,11 @@
 /**
- * `messageWorker` (FIX-1989): the tool a worker's model sends a message with,
+ * `sendMessage` (FIX-1989): the tool a worker's model sends a message with,
  * as one capability a worker turn composes. Talk, not delegation: no task
  * row, no delegate, no result owed.
  *
- * Its input is strict (`to`, `text`, `replyTo`), so a call can't name a
+ * Its input is strict (`to`, `text`, `inReplyTo`), so a call can't name a
  * sender, a hop count or a session, and there is no `wait`: an answer arrives
- * later as a line from the recipient and wakes this worker. Its description
+ * later as a message of the recipient's own and wakes this worker. Its description
  * lists who the worker can message, read before each model call: the roster's
  * workers that have a conversation, by id and description.
  */
@@ -15,21 +15,21 @@ import { z } from "zod";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageTurnStateSchema } from "./hop";
-import { MESSAGE_WORKER_TOOL } from "./keys";
+import { SEND_MESSAGE_TOOL } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
-import { recipientRefusal, sendWorkerMessage } from "./send-message";
+import { recipientRefusal, sendMessage } from "./send-message";
 
 /** The most workers the description lists, and the longest description it quotes for one. */
 const MAX_LISTED = 25;
 const MAX_DESCRIPTION = 160;
 
 /** What the model passes. Strict: nothing else is taken. */
-export const messageWorkerInputSchema = z
+export const sendMessageInputSchema = z
   .object({
     to: z.string().min(1).describe("The id of the worker to message, as the list below names it."),
     // Something other than blank space: the send refuses a blank message too.
     text: z.string().max(MAX_MESSAGE_CHARS).regex(/\S/, "say something").describe("What to say."),
-    replyTo: z
+    inReplyTo: z
       .string()
       .min(1)
       .optional()
@@ -37,7 +37,7 @@ export const messageWorkerInputSchema = z
   })
   .strict();
 
-export const messageWorkerOutputSchema = z.union([
+const sendMessageOutputSchema = z.union([
   z.object({ sent: z.string(), unconfirmed: z.string().optional() }),
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
@@ -45,16 +45,15 @@ export const messageWorkerOutputSchema = z.union([
 const BASE_DESCRIPTION =
   "Send a short message to another worker on your team: a question, an FYI, a heads-up. It lands in that worker's " +
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed, and you don't wait for an " +
-  "answer. If it answers, the answer arrives later as a line from that worker and wakes you. To answer a message " +
-  "you were sent, pass its id as replyTo. A message can't be waited on: to wait on a colleague's result before " +
+  "answer. If it answers, it sends you a message of its own, which wakes you. To answer a message " +
+  "you were sent, pass its id as inReplyTo. A message can't be waited on: to wait on a colleague's result before " +
   "you answer, file a task for them with createTask, then call getTask({ id, wait: true }) where getTask takes wait.";
 
 /** Who the running worker can message, as the description's list: every roster worker the send would take. */
 async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {
   const roster = await installation.roster(ctx as never);
-  const refusals = await Promise.all(roster.map((worker) => recipientRefusal(ctx, installation, self, worker.id, worker)));
   const listed = roster
-    .filter((_, i) => refusals[i] === undefined)
+    .filter((worker) => recipientRefusal(installation, self, worker.id, worker) === undefined)
     .slice(0, MAX_LISTED)
     .map((worker) => {
       const description = (worker.description ?? "").replace(/\s+/g, " ").trim();
@@ -65,22 +64,22 @@ async function recipientsLine(ctx: BlockContext, installation: WorkerInstallatio
 }
 
 /**
- * The capability: `messageWorker` on every turn of a session that runs a
+ * The capability: `sendMessage` on every turn of a session that runs a
  * worker. `controlTools`, so a worker's `tools:` line doesn't fence it out.
  *
  * @param flowKind The flow the sessions run on: where an answer comes back.
  */
-export function defineMessageWorkerCapability(installation: WorkerInstallation, flowKind: string) {
+export function defineSendMessageCapability(installation: WorkerInstallation, flowKind: string) {
   const toolWith = (description: string) =>
     handler({
-      name: MESSAGE_WORKER_TOOL,
+      name: SEND_MESSAGE_TOOL,
       description,
-      inputSchema: messageWorkerInputSchema,
-      outputSchema: messageWorkerOutputSchema,
+      inputSchema: sendMessageInputSchema,
+      outputSchema: sendMessageOutputSchema,
       requestStateSchema: messageTurnStateSchema,
       resources: { ...installation.resources, ...workerMessagesResources },
       execute: async (input, ctx) => {
-        const sent = await sendWorkerMessage(ctx as never, installation, flowKind, input, MESSAGE_WORKER_TOOL);
+        const sent = await sendMessage(ctx as never, installation, flowKind, input, SEND_MESSAGE_TOOL);
         if (!sent.ok) return { ok: false as const, error: sent.error };
         return sent.unconfirmed === undefined ? { sent: sent.id } : { sent: sent.id, unconfirmed: sent.unconfirmed };
       }

@@ -268,7 +268,8 @@ describe("what a filing can't name (BR-8)", () => {
       const row = await host.row("alice", filing, filed.taskId!);
       // The markers on it are the board's own: the filing turn's hop count (FIX-2106), and the
       // project it was filed in, none here, whatever the caller named (FIX-2161).
-      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: null, lines: 0 }, [FILED_PROJECT]: null });
+      // `record` files held, so the mark is a fresh chain of its own (FIX-2238).
+      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: expect.any(String), lines: 0 }, [FILED_PROJECT]: null });
       // No start was owed, so nothing ran: the row has no assignee.
       await host.settled();
       expect(host.runs).toEqual([]);
@@ -280,7 +281,7 @@ describe("what a filing can't name (BR-8)", () => {
       expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({
         note: "kept",
         extra: 1,
-        [FILED_HOP]: { hop: 0, chain: null, lines: 0 },
+        [FILED_HOP]: row?.metadata?.[FILED_HOP],
         [FILED_PROJECT]: null
       });
     } finally {

@@ -461,7 +461,15 @@ map `resourcesFromDocs` returned, and declare `installation.documents` and the i
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createWorkerInstallation, resourcesFromDocs, workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
+import {
+  createWorkerInstallation,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  resourcesFromDocs,
+  workerConfigSchema,
+  workerFlow,
+  workerMessagesResources,
+} from "@flow-state-dev/workforce";
 import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
 import { inputSchema, loadWorker, runTurn } from "./blocks";
 import { boardResource } from "./resources";
@@ -473,10 +481,13 @@ const customAgentFlow = workerFlow((installation) =>
     kind: "custom-agent",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { board: boardResource, ...installation.resources, ...installation.documents },
+    resources: { board: boardResource, ...installation.resources, ...installation.documents, ...workerMessagesResources },
     resourceVisibility: installation.resourceVisibility,
     request: { onStarted: loadWorker(installation) }, // installation.resolveWorker(ctx, "custom-agent")
     actions: { respond: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
+    internal: {
+      actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "custom-agent" }) },
+    },
   }),
 );
 
@@ -540,16 +551,25 @@ the same value in the bag.
 Add your flow's own settings on top, at the same level:
 
 ```ts
-import { workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
+import {
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerConfigSchema,
+  workerFlow,
+  workerMessagesResources,
+} from "@flow-state-dev/workforce";
 
 const triage = workerFlow((installation) =>
   defineFlow({
     kind: "request-triage",
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: {
       respond: { inputSchema: z.object({ message: z.string() }), block: triageWork(installation), userMessage: (input) => input.message },
+    },
+    internal: {
+      actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "request-triage" }) },
     },
   }),
 );
@@ -579,6 +599,11 @@ flow declares the installation's session, and that any resource with `writtenBy`
 knowing its flow; a flow with none, with a second, or with its message action under another name
 refuses, the last naming the action to rename. A resource with a `writtenBy` field is declared with
 `sharedResource()`, which adds the field; one defined by hand is refused, even with the right shape.
+
+`hireWorkforce` also requires every worker flow to carry an internal `onMessageReceived` entry built
+by `messageReceivedEntry`, so any worker can be [messaged](#worker-messages); a flow without one, or
+with a hand-built entry under that name, is refused, naming the flow. `defineSessionBoard`'s `entries(turn)`
+includes it.
 
 Each declared role's entries must be there, in their section, carrying their factory's mark, and
 take the input their caller sends:
@@ -1138,10 +1163,13 @@ import { defineFlow } from "@flow-state-dev/core";
 import {
   createWorkerInstallation,
   hireWorkforce,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
   referencesFromDocs,
   resourcesFromDocs,
   workerConfigSchema,
   workerFlow,
+  workerMessagesResources,
 } from "@flow-state-dev/workforce";
 import { readReferencesDirectory, readResourcesDirectory } from "@flow-state-dev/workforce/loader";
 import { answerQuestion } from "./blocks";
@@ -1158,9 +1186,12 @@ const supportFlow = workerFlow((installation) =>
     kind: "support",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ticket: ticketResource, ...installation.resources, ...installation.documents },
+    resources: { ticket: ticketResource, ...installation.resources, ...installation.documents, ...workerMessagesResources },
     resourceVisibility: installation.resourceVisibility,
     actions: { answer: { inputSchema, block: answerQuestion(installation), userMessage: (input) => input.message } },
+    internal: {
+      actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "support" }) },
+    },
   }),
 );
 
@@ -1737,7 +1768,14 @@ process sees it on the next turn.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { createWorkerInstallation, hireWorkforce, workerConfigSchema } from "@flow-state-dev/workforce";
+import {
+  createWorkerInstallation,
+  hireWorkforce,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  workerConfigSchema,
+  workerMessagesResources,
+} from "@flow-state-dev/workforce";
 
 const installation = createWorkerInstallation({
   standardWorkers: roster,                  // readWorkforce(...)'s workers
@@ -1748,8 +1786,9 @@ const researchFlow = defineFlow({
   kind: "research",
   configSchema: workerConfigSchema(),
   session: installation.session(),          // a readonly `workerId`, and the create check
-  resources: { ...installation.resources }, // the user's workers, and the standard ones
+  resources: { ...installation.resources, ...workerMessagesResources }, // the user's workers, the standard ones, the message log
   actions: { respond: { inputSchema, block: door, userMessage: (i) => i.message } },
+  internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "research" }) } },
 });
 
 // inside the door's block, which also declares `installation.resources`:
@@ -1885,7 +1924,10 @@ does once its `work` entry is built with `workerTaskEntry`. The site's
 import {
   createWorkerInstallation,
   defineCoordinatorFlow,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
 } from "@flow-state-dev/workforce";
 
@@ -1893,9 +1935,10 @@ const researchFlow = defineFlow({
   kind: "research",
   configSchema: workerConfigSchema(),
   session: installation.session(),
-  resources: { ...installation.resources },
+  resources: { ...installation.resources, ...workerMessagesResources },
   actions: { respond: { inputSchema, block: door, userMessage: (i) => i.message } },
   task: { actions: { work: workerTaskEntry({ name: "research-task", turn: door }) } }, // takes tasks, routed ones included
+  internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "research" }) } },
 });
 
 const coordinatorFlow = defineCoordinatorFlow({
@@ -2191,52 +2234,89 @@ flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Type
 
 ## Worker messages
 
-A worker with a conversation can send any other worker on its user's roster a short message: a
-question, an FYI, a heads-up. Workers on the built-in `agent` flow and coordinators that route
-by `judgment` or `best-fit` get the `messageWorker` tool on every turn. On a flow built with
-`defineSessionBoard`, add the kit's `messages` to the model block's `uses`. The tool's
-description lists the workers this one can message now.
+A worker can send any other worker on its user's roster a short message: a question, an FYI, a
+heads-up. Workers on the built-in `agent` flow and the coordinator flow get the `sendMessage` tool
+on every turn. On a flow built with `defineSessionBoard`, add the kit's `messages` to the model
+block's `uses`. The tool's description lists the workers the send would take, by id and
+description, leaving out the sender and any worker that hears only in its tasks' sessions.
 
 ```json
 { "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
 ```
 
-- **Sending.** The input is `{ to, text, replyTo? }` and nothing else; `text` holds up to 8,000
+- **Sending.** The input is `{ to, text, inReplyTo? }` and nothing else; `text` holds up to 8,000
   characters. A sent message answers `{ sent: "msg_…" }`, plus `unconfirmed` (a reason) when its
   delivery couldn't be confirmed and may still arrive. A refused one answers
-  `{ ok: false, error }`, the error starting with a code: `no_worker` (also for another user's
-  worker), `not_yourself`, `worker_unavailable`, `takes_tasks_only` (a worker that only takes
-  tasks, such as a coding run: file a task instead), `no_turn` (a coordinator that routes by
-  `round-robin` or `everyone`), `no_such_message`, `hop_limit`, `per_turn_limit`,
-  `empty_message`, `message_too_long` or `not_delivered`.
-- **Receiving.** The message lands in the recipient's own conversation with the user, the session
-  `ensureWorkerSession({ worker })` returns (started when absent), as a `From <sender>: <text>`
-  line whose `agentName` is the sender. The recipient always takes a turn on it, after any turn it
-  is in the middle of.
-- **Answering.** The recipient answers with `messageWorker`, `to` the sender and `replyTo` the
-  message's id. The answer lands in the session the message was sent from and wakes the sender
-  there; a message sent from a task session is answered in the sender's own conversation instead.
-  A turn woken by a message (not an answer) that ends without messaging the sender has its final
-  text sent to the sender as the answer, as if with `replyTo` (cut to 8,000 characters). That
-  answer counts toward both limits; when one refuses it, nothing is sent or logged. A turn that
-  ends with no text sends nothing, and a turn woken by an answer never sends its text back.
-  Nothing waits on an answer.
-- **Limits.** Everything descending from one user's line is one chain: its messages, the turns
-  they wake and the tasks filed along the way, parallel branches included. A chain stops after
-  `hopLimit` (6) messages in total; a user's line starts a new chain. One turn sends at most
-  `perTurn` (3). Set both with `hireWorkforce(installation, { messages: { hopLimit, perTurn } })`;
-  each must be a whole number of at least 1, or `hireWorkforce` throws.
+  `{ ok: false, error }`, nothing sent, the error starting with a code: `not_a_worker` (the session
+  runs no worker), `empty_message`, `message_too_long`, `not_yourself`, `no_worker` (also for
+  another user's worker), `worker_unavailable` (the roster row has a problem), `task_sessions_only`
+  (file it a task instead), `no_such_message` (`inReplyTo` names no message the `to` worker sent
+  you), `budget`, `per_request_limit` or `not_delivered` (the host refused the dispatch).
+- **Receiving.** A message arrives on the recipient flow's internal `onMessageReceived` entry
+  (`MESSAGE_RECEIVED_ENTRY`). The session it lands in gets two items: a `From <sender>: <text>`
+  line under the sender's name that the model reads in history and the client never receives, and
+  a client-only component item `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`) with `data`
+  `{ id, from, text, inReplyTo?, budget }`, for an app to draw. Then the flow's turn, if it gave one, runs
+  with a `MessageReceived` (`{ id, from, text, call, inReplyTo?, budget }`; `call` is always
+  `false`). A copy delivered twice wakes the recipient once; a recipient mid-turn hears it after
+  that turn. Coordinators hear messages whatever their routing, in their own turn.
+- **Where it lands.** An answer lands in the session the original was sent from, even a task's
+  session whose task has finished. A message to the worker that filed the sender's current task
+  (or delegate session) lands in the conversation that filed it. A message to the project
+  coordinator from work in a project lands in that project's conversation. Anything else lands in
+  the recipient's own conversation with the user, the session `ensureWorkerSession({ worker })`
+  returns, opened when absent.
+- **Answering.** Nothing is sent back automatically. The recipient answers with `sendMessage`, `to`
+  the sender and `inReplyTo` the message's id. A turn that ends in plain text answers no one, and
+  not answering is a valid answer. Nothing waits on an answer.
+- **Hearing only in task sessions.** A worker flow whose entry is built with
+  `hears: "task-sessions"` hears messages only in its tasks' sessions. A message to one of its
+  workers by name is refused with `task_sessions_only`, and nothing is sent.
+- **Budget.** Each line the user types starts a budget of `hopLimit` (6) messages for everything
+  descending from it, across every worker, plus at most `perTurn` (3) sent from any one request. A
+  fresh budget also starts for a task filed held, when it is released, and for a request with
+  nothing behind it. A task a woken worker files, and a delegate's ongoing session, draw on the
+  filer's budget. Filing a task spends nothing; a refused send spends nothing. A woken turn's
+  `budget` (and the session kit's prompt) says how many more messages the exchange can send. Set
+  both with `hireWorkforce(installation, { messages: { hopLimit, perTurn } })`; each must be a
+  whole number of at least 1, or `hireWorkforce` throws.
 - **The log.** Every message is a row in the user's `workforce/messages/*` collection
   (`WORKER_MESSAGES_RESOURCE`, rows parsed by `workerMessageRowSchema`), readable from the browser
-  through the user's roster session or any session on a flow that carries the session board:
-  `id`, `from`, `to`, `text`, `exchange`, `replyTo`, `fromSession`, `toSession`, `chain` (the
-  chain's id; optional), `hop` (the message's place in the chain, from 1), `status`
-  (`delivered`, `refused` or `unconfirmed`), `reason` and `at`. Another user's rows are never
-  returned.
+  through the user's roster session or any session on a flow that declares
+  `workerMessagesResources`: `id`, `from`, `to`, `text`, `exchange`, `inReplyTo`, `fromSession`,
+  `fromFlow`, `toSession`, `toFlow`, `chain` (optional), `hop` (from 1), `status` (`delivered`,
+  `refused` or `unconfirmed`), `reason` and `at`. Another user's rows are never returned.
 
 A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
-On a flow of your own, add the kit's `messages` to the model block's `uses`, beside `tools`, to let
-its workers send; `entries(turn)` already lets them receive. See
+
+Every worker flow must carry an `onMessageReceived` built by `messageReceivedEntry`:
+`hireWorkforce` refuses one that doesn't, naming the flow, and refuses a hand-built entry under
+that name too. The session kit's `entries(turn)` includes it, with the turn wrapped by
+`promptedMessageTurn`. A flow without the kit mounts it itself and adds the log to its resources:
+
+```ts
+import {
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
+  promptedMessageTurn,
+  workerMessagesResources,
+} from "@flow-state-dev/workforce";
+
+defineFlow({
+  kind: "triage",
+  // ...
+  resources: { ...installation.resources, ...workerMessagesResources },
+  internal: {
+    actions: {
+      [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "triage", turn: promptedMessageTurn(answer) }),
+    },
+  },
+});
+```
+
+`turn` is optional (left out, a message lands as its two items and nothing runs).
+`promptedMessageTurn(turn)` adapts a block that takes `{ message }`, handing it
+`receivedMessagePrompt(received)`: who wrote, the text, how to answer, and the budget left. See
 [Messaging other workers](https://flow-state.dev/docs/workforce/messaging-workers).
 
 ## Error Reporter
@@ -2281,8 +2361,9 @@ It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSes
 coordinator's own turn's answer name, which its messages carry as `agentName`) and
 `sessionIdOfFiling` (the conversation a board row was filed in), `RULE_TOOLS`, `MAX_RULES`,
 `MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `SET_WORK_PROJECT_ACTION`,
-`WORK_PROJECT_STATE_KEY`, `MESSAGE_WORKER_TOOL` (the
-tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATTERN`,
+`WORK_PROJECT_STATE_KEY`, `SEND_MESSAGE_TOOL` (the
+tool a sent message is a call to), `MESSAGE_RECEIVED_ENTRY`, `RECEIVED_MESSAGE_COMPONENT` (the
+component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 `WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
@@ -2301,7 +2382,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
-| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and also delivers worker messages, `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
+| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly?, roles? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
@@ -2331,7 +2412,10 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { hopLimit?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
-| `MESSAGE_WORKER_TOOL` / `WORKER_MESSAGE_ENTRY` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `messageWorkerInputSchema` | [Worker messages](#worker-messages): the tool's name (`"messageWorker"`), the entry a message arrives on (`"onWorkerMessage"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), `takesWorkerMessages(flow)` (whether a flow declares the entry), and `sendWorkerMessage(ctx, installation, flowKind, { to, text, replyTo? }, from)`, the send the tool runs, answering a `SendOutcome`. |
+| `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from)`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, unconfirmed? }` or `{ ok: false, error }`); its input type is `SendMessageInput`. |
+| `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs. `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session kit's `entries(turn)` includes one. |
+| `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, call, inReplyTo?, budget }` (`call` is always `false`; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |
+| `promptedMessageTurn(turn)` / `receivedMessagePrompt(received)` | Wrap a block that takes `{ message }` so it can serve as `messageReceivedEntry`'s `turn`, and the text it hands that block: who wrote, which message, how to answer with `sendMessage` and `inReplyTo`, and the budget left. |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |
 | `workerFlowProblems(name, flow, roles?)` | Every way `flow`, registered as `name` with `roles`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no `respond` door (or a second door, or its door under another name), a declared role's entry missing, not its factory's or refusing its input, a role's piece on a flow that doesn't declare the role, a resource with `writtenBy` that `sharedResource()` didn't build. `roles` defaults to a built-in flow's own, and none for any other. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |

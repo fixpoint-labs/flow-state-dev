@@ -16,6 +16,7 @@ import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
+import { messageReceivedProblem } from "../messages/message-received-entry";
 import { defineScheduledWork, type ScheduledWorkOptions } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
@@ -39,7 +40,7 @@ export interface HireWorkforceOptions {
    */
   taskChainLimit?: number;
   /**
-   * The limits on worker messages (`messageWorker`): `hopLimit`, the most
+   * The limits on worker messages (`sendMessage`): `hopLimit`, the most
    * messages a chain of workers passes with no user's turn between them
    * (6 when omitted), and `perTurn`, the most one turn sends (3 when omitted).
    */
@@ -87,6 +88,15 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
         `sessions would run no checked worker. Declare \`session: installation.session()\` on each, and load the worker ` +
         `with \`installation.resolveWorker\` on every turn (the flow's \`request.onStarted\` runs on a resumed one too).`
     );
+  }
+  // Every worker on an installation can be messaged, so every worker flow
+  // hears one (FIX-2238): checked as the door is, before anything registers.
+  const deaf = Object.entries(installation.workerFlows())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([flowName, { flow }]) => messageReceivedProblem(flowName, flow))
+    .filter((problem): problem is string => problem !== undefined);
+  if (deaf.length > 0) {
+    throw new Error(`hireWorkforce refused ${deaf.length} worker flow(s); nothing was registered:\n` + deaf.map((problem) => `  - ${problem}`).join("\n"));
   }
   const problems = installation.standardWorkerProblems();
   if (problems.length > 0) {

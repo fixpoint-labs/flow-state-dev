@@ -62,11 +62,14 @@ import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
+  MESSAGE_RECEIVED_ENTRY,
+  messageReceivedEntry,
   projectWorkspaceCapability,
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
   steerTurnEntry,
   WORKER_TASK_ENTRY,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
@@ -208,7 +211,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that
     // reaches the reading blocks.
-    resources: { ...options.resources, ...installation.resources },
+    resources: { ...options.resources, ...installation.resources, ...workerMessagesResources },
     actions: {
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
@@ -223,6 +226,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         // The turn a steer the run's last step missed is owed (FIX-2086 D2):
         // the task once more, on its attempt, with every steer in its prompt.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
+        // A message lands in one of its tasks' sessions only: it has no
+        // conversation to answer from, so one sent to it by name is refused
+        // before anything is written (FIX-2238). No turn yet: the message
+        // lands as its items.
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
       },
     },
     // The one door: any session's tasks, handed over under its board's id.

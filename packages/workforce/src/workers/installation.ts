@@ -42,10 +42,11 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
-import { SESSION_BOARD_SERVER_OWNED } from "../conversation-board/session-board";
+import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_WORKER_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
@@ -221,6 +222,7 @@ export type WorkerSessionStateShape = {
   readonly [ROUTED_FROM_STATE_KEY]: z.ZodOptional<z.ZodString>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [FILING_WORKER_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
   readonly [TASK_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
@@ -261,8 +263,9 @@ export interface WorkerInstallation extends WorkerGrants {
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
-   * A worker flow's `session` declaration: {@link sessionStateShape} plus
-   * `extraShape` as its `stateSchema`, {@link createCheck}, and as
+   * A worker flow's `session` declaration: {@link sessionStateShape}, the
+   * state every worker's `onMessageReceived` keeps, and `extraShape` as its
+   * `stateSchema`, {@link createCheck}, and as
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it.
@@ -459,6 +462,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),
     [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),
     [TASK_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
@@ -598,6 +602,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     for (const key of [
       TASK_ID_STATE_KEY,
       FILING_FLOW_STATE_KEY,
+      FILING_WORKER_STATE_KEY,
       TASK_CHAIN_STATE_KEY,
       TASK_FLOW_STATE_KEY,
       FILING_WORKSTREAM_STATE_KEY,
@@ -896,7 +901,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     roster,
     session(extraShape) {
       return {
-        stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
+        stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
         createCheck,
         serverOwned: SESSION_BOARD_SERVER_OWNED
       };

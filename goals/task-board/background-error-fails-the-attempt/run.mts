@@ -71,7 +71,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
-import { WORKER_MESSAGE_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
+import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -243,14 +243,13 @@ function buildHost(filename: string) {
           fromFlow: "doer",
           toSession: sessionId,
           toFlow: "doer",
-          answerTo: { sessionId, flow: "doer" },
           hop: 1,
           status: "delivered",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
           type: "internal",
-          action: WORKER_MESSAGE_ENTRY,
+          action: MESSAGE_RECEIVED_ENTRY,
           flowKind: "doer",
           session: { id: sessionId },
           payload: { messageId: id },
@@ -259,7 +258,7 @@ function buildHost(filename: string) {
         return id;
       }
     }),
-    { type: "internal", action: WORKER_MESSAGE_ENTRY }
+    { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
   );
 
   type Base = { requestId: string; sessionId: string; taskId?: string; attempt?: number };

@@ -25,14 +25,13 @@ const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "fr
   fromFlow: "agent",
   toSession: `s_${over.to}`,
   toFlow: "agent",
-  answerTo: { sessionId: `s_${over.from}`, flow: "agent" },
   hop: 1,
   status: "delivered",
   ...over,
 });
 
 const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
-const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", replyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
+const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 const snapshot = { sessions: [{ id: "workforce-roster-own-u_1", flowKind: "workforce-roster", parentSessionId: null }], readAt: 1 } as unknown as LoadedSnapshot;
@@ -99,7 +98,7 @@ describe("the Messages view", () => {
 
 describe("a message the worker sent, in its own conversation", () => {
   const call = (id: string, args: unknown, output: unknown, status = "completed"): ToolOutputItem =>
-    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "messageWorker", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
+    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "sendMessage", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
   const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { name: "discover", arguments: "{}" } } as unknown as ToolOutputItem;
 
   it("is its own line, To <recipient>: <text>, never folded into the run's tool count", () => {
