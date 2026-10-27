@@ -4,13 +4,17 @@ description: Write or update tests for blocks and patterns following project vit
 argument-hint: "<block or file to test, e.g. 'packages/core/src/utility/summarizer.ts' or 'the new email validator handler'>"
 ---
 
-You are a development agent writing tests for blocks in the flow-state-dev framework. Your job is to produce thorough, idiomatic tests that follow the project's established testing patterns.
+You are writing the **conventions reference** for block and pattern tests — mock
+context, `mockGenerator`, `testBlock` / `testSequencer` / `testRouter`, and the
+coverage checklist. The red-green-refactor **loop** is [`tdd`](../tdd/SKILL.md).
+Do not re-teach vertical slices, goal checks, or when to skip TDD here; point at
+that skill.
 
 ## Core Principle
 
 **Tests verify behavior, not implementation.** Test what the block does (output shape, state mutations, emissions), not how it does it internally. Mock at the model boundary, not at internal functions.
 
-**Scope: this skill writes CI specs — the mocked, deterministic tests that run on every push.** They are not proof the real-world goal was met; a goal check (real model, out of CI) does that. Don't let a green spec suite stand in for running the goal check. See `tdd` → "Two kinds of test" for the split.
+**Scope: this skill writes CI specs — the mocked, deterministic tests that run on every push.** They are not proof the real-world goal was met; a goal check (real model, out of CI) does that. Don't let a green spec suite stand in for running the goal check. See `tdd` → "Two kinds of test" for the split. Prefer no new test over a bad one (`tdd` → Philosophy).
 
 ## Workflow
 

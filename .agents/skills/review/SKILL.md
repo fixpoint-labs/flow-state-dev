@@ -84,11 +84,27 @@ approving adds a way to do a job". A bug-route change has no spec, so everything
      instead; the lens selection and criteria are unchanged.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
-   sharpest framing. Never double-count.
-3. **Rank & categorize:** **must-fix** (bugs, spec gaps, coherence breaks) · **should-fix**
-   (bloat, drift) · **note** (depth follow-ups, observations).
-4. **Synthesize ONE report** — a verdict plus a single ranked table across all lenses,
-   not four separate reports.
+   sharpest framing. Never double-count. Note which lens(es) raised each merged finding.
+3. **Different-family judge (when more than one lens ran).** After the first-pass lenses
+   return, dispatch **one** readonly judge on a **different model family** from the
+   parent (Claude vs Grok vs GPT — pin `model` explicitly). It sees the merged finding
+   list by sanitized label, not by lens name or model, and scores each as
+   act-on / consider / noted / dismissed. Agreement with your ranking confirms it;
+   disagreement means you or the rubric is biased — read both before deciding.
+   Skip the extra judge on a single-lens run; it has nothing to cross-check.
+4. **Agreement map, then rank.** Findings **two or more lenses (or the judge and a
+   lens) raised independently** rank highest. A lone lens's finding is still read;
+   weight it lower. If one lens flags something and another explicitly contradicts
+   it, that disagreement is context for the verdict, not a vote.
+   Bucket each merged finding, then map onto the existing severity:
+   **act-on → must-fix** (bugs, spec gaps, coherence breaks) · **consider → should-fix**
+   (bloat, drift) · **noted → note** (depth follow-ups, observations) ·
+   **dismissed** — dropped, with a one-line reason (wrong, nit, missing context).
+   Dismissed findings do not appear in the ranked table; they appear in the
+   agreement map so a reader can see what was considered and why it died.
+5. **Synthesize ONE report** — a verdict, the agreement map (where lenses/judge
+   agreed and diverged, and what that pattern tells you), plus a single ranked
+   table across all lenses, not four separate reports.
 
 ## OMP native dispatch
 
@@ -225,6 +241,8 @@ asynchronous. Do not use oneshot `completion` for a source-reading reviewer.
 ### Validate the round
 
 The coordinator resolves conflicting claims against frozen evidence, not model vote.
+The different-family judge in **Run** step 3 is a cross-check on the merged list, not
+a vote that overrides evidence.
 Only after all first passes finish may it request targeted clarification or dispatch
 accepted fixes; changed bytes require a new bundle/revision and affected re-review.
 
@@ -281,15 +299,25 @@ Agent tool (general-purpose, model: sonnet):
 
 ## Report
 
-Verdict + a single ranked table (`finding · lens · severity · where · recommendation`),
-must-fix first. One "considered & clean" line per lens that found nothing. When run by
+Verdict + an **agreement map** (which findings 2+ lenses/judge shared, where they
+diverged, what was dismissed and why) + a single ranked table
+(`finding · lens · severity · where · recommendation · raised-by`), must-fix first.
+One "considered & clean" line per lens that found nothing. When run by
 `issue-implement`, must-fix and should-fix are resolved before it presents; notes flow
 to its summary.
+
+> **Attribution.** The agreement map, the four buckets, and the different-family
+> judge are adapted from the MIT-licensed **pstack** `interrogate` and `arena`
+> skills by Lauren Tan — <https://github.com/cursor/plugins/tree/main/pstack>.
+> They add a merge step; they do not replace the lenses or the
+> must-fix / should-fix / note scale.
 
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
   Restraint = `second-look`, Reuse = `reuse-review`, Depth = `improve-codebase-architecture`.
 - **Dedupe.** Overlapping lenses produce one merged finding, never repeats.
+- **Weight by agreement, don't average.** Two lenses naming the same defect outrank a
+  singleton. A contradiction is a reason to read both, not to split the difference.
 - **Don't pad.** A lens that finds nothing says so in one line; "appropriately scoped /
   coherent" is a valid, common verdict.

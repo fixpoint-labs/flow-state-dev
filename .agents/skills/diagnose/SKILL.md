@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Disciplined diagnosis loop for hard bugs and performance regressions in the @flow-state-dev repo. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression. For flow execution failures specifically, prefer `debug-flow`.
+description: Disciplined diagnosis loop for hard bugs and performance regressions in the @flow-state-dev repo. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression. Flow-execution traces are the `debug-flow` toolkit this skill calls — do not start there.
 ---
 
 # Diagnose
@@ -17,13 +17,10 @@ Before diagnosing, orient yourself:
 - `docs/contributing/best-practices.md` — universal standards + situational index (BP-001–BP-039); situational rule text lives in `docs/contributing/best-practices/<category>.md`
 - `AGENTS.md` — process protocol and code style rules
 
-**Related skills — pick the right one:**
-
-| Symptom | Use |
-|---------|-----|
-| Flow execution misbehaves (wrong items, failed block, schema mismatch in a `.step()` chain, generator/tool errors during a run) | **`debug-flow`** — it has the NDJSON trace reader, `fsdev block` isolation workflow, and the FSD failure-pattern lookup table. |
-| Anything else (typecheck regression, build break, store adapter bug, devtool UI bug, CLI bug, perf regression, flaky test, package boundary violation) | **This skill.** |
-| Mixed — flow is broken *and* the root cause is upstream (e.g. a core builder regression breaking many flows) | Start here for the discipline; use `debug-flow` inside Phase 1 to build the loop. |
+**`debug-flow` is a toolkit this skill calls, not a second loop.** It holds the
+NDJSON event-type reader, `fsdev block` isolation, and the failure-pattern table.
+You stay on this skill's phases. For a flow-execution symptom, use that toolkit
+inside Phase 1 to build the loop — do not abandon the rest of this discipline.
 
 ## Phase 1 — Build a feedback loop
 
@@ -55,7 +52,7 @@ Loops that work well in this repo, fastest-to-slowest signal:
    pnpm --filter @flow-state-dev/fsdev fsdev run <flowKind> <action> \
      -i '<json>' --flow-dir <path> > /tmp/run.ndjson 2> /tmp/run.log
    ```
-   For deep flow analysis, hand off to **`debug-flow`** — it has the NDJSON event-type reader and failure-pattern table.
+   For deep flow analysis, read **`debug-flow`** as the toolkit — NDJSON event types and the failure-pattern table — then continue these phases.
 5. **Persistent session replay.** `fsdev run -s <session-id>` reuses session state across invocations; `--seed-session` pre-populates session state. Use this to reproduce bugs that only appear after specific state.
 6. **DevTool / kitchen-sink browser run** for UI-layer bugs (React hooks, renderers, devtool itself). `fsdev dev` for the live devtool; the kitchen-sink app under `apps/` for SSR/streaming assertions. Watch the browser console *and* the server stderr.
 7. **Replay a captured trace.** Save a real NDJSON stream or HTTP request to disk; replay it through the code path in isolation (e.g. by feeding it to a unit test fixture).

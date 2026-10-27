@@ -2,7 +2,7 @@
 name: audit-coherence
 context: fork
 agent: general-purpose
-description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from improve-codebase-architecture (deepening) and second-look (per-feature retrospective). Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
+description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from improve-codebase-architecture (deepening) and second-look (per-feature retrospective). Also the home for a whole-repo debt/consistency audit. Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
 argument-hint: "<optional scope, e.g. a package, a subsystem, or 'streaming'>"
 ---
 
@@ -52,12 +52,19 @@ Hunt all three. They differ in where the fix lands.
    it, then the code change. (This is the feedback path that makes the philosophy
    improve — route it to `distill-lessons`.)
 
+Do not write a `TECH_DEBT_AUDIT.md` at the repo root; the report below is the
+deliverable.
+
 ## Workflow
 
 1. **Scope.** Three shapes:
    - **Codebase slice** (a package, subsystem, or theme like "streaming" / "state").
      No argument → propose a scope rather than boiling the ocean; a focused audit that
-     finds real conflicts beats a shallow whole-repo pass.
+     finds real conflicts beats a shallow whole-repo pass. A user who asked for a
+     **whole-repo debt audit** is the exception: orient first (README, architecture
+     docs, `git log --oneline -200`, the 20 largest files and the 20 most-touched
+     in six months). Write a 1–2 paragraph mental model of the architecture before
+     judging. A finding formed before that model is pattern-matching.
    - **A change** (a PR, branch, or working diff) — how `review` runs this skill as
      its **coherence lens**. Read the spec's `SPEC.md` and `DECISIONS.md` and the *shape* of the
      diff, and judge whether the solution coheres with the tenets it claims and the
@@ -110,6 +117,10 @@ End with a one-line **coherence read** of the scope: is it broadly coherent with
 few local conflicts, or is there systemic drift that warrants a dedicated cleanup
 sequence? Don't inflate — if the scope is coherent, say so. A finding you can't tie
 to a concrete conflict is noise; drop it.
+
+**Looks bad but is actually fine** — required. List the calls you considered
+flagging and chose not to, with the reason. If this section is empty, the audit
+is shallow: you have not distinguished debt from load-bearing shape.
 
 ## Guardrails
 

@@ -12,7 +12,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
-- **Bug** → implementer sub-agents follow **`diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup). For flow-execution bugs specifically, Phase 1 of diagnose hands off to **`debug-flow`** for the NDJSON trace reader.
+- **Bug** → implementer sub-agents follow **`diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup). For flow-execution bugs, Phase 1 of diagnose uses the **`debug-flow`** toolkit for the NDJSON trace reader.
 - **Feature / Enhancement** → implementer sub-agents follow **`tdd`** (red-green-refactor with vertical tracer-bullet slices). One test → minimal code → repeat. No horizontal slicing.
 
 Both disciplines are embedded into the implementer sub-agent prompt at dispatch time. The implementer doesn't choose — this skill picks based on the label and gives them the right shape.
@@ -111,7 +111,7 @@ If all clear, move to Step 3.
 #### 4.1: Pick the discipline (by Linear category label)
 
 - **An epic's closure issue** (title `Closure:`; see Core Principles) → discipline = **QA run**. Check this **first**: it overrides the Improvement label and the "default toward TDD" rule below. Skip Steps 4.2–5C and do this instead: run the approved QA plan on one pinned `main` commit (after a run that filed findings, only the failed checks, the checks whose subject changed since that run, and any check whose file had to be rebuilt; the rest carry forward), per [`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa). When another epic's merge made a check stale (a rename, a new surface), update the check and re-grade it in the same run instead of filing it. A run that fails files each finding through `issue-manager` as a child of the epic that blocks this issue, opens **no PR**, posts its report (pinned commit, each check's verdict and evidence, and where the check files are kept, e.g. a patch in the project files) as a comment on this issue so the next run knows what carries forward, and returns the row at `NEEDS_IMPLEMENTATION` with the findings listed. Only a clean run continues to Step 6: its PR carries the committed end-to-end checks and the QA report as the goal verdict.
-- **Bug** → discipline = **`diagnose`**. Implementer sub-agent must build a feedback loop and reproduce the bug *before* changing code. The discipline's six phases (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup) get embedded in the implementer prompt. For flow-execution bugs specifically, point the implementer at `debug-flow` for Phase 1 mechanics (NDJSON event types, failure-pattern table).
+- **Bug** → discipline = **`diagnose`**. Implementer sub-agent must build a feedback loop and reproduce the bug *before* changing code. The discipline's six phases (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup) get embedded in the implementer prompt. For flow-execution bugs, point the implementer at the `debug-flow` toolkit for Phase 1 mechanics (NDJSON event types, failure-pattern table).
 - **Feature / Enhancement / Improvement** → discipline = **`tdd`**. Implementer sub-agent follows red-green-refactor with vertical tracer-bullet slices: write one behavioural test for the first slice → minimal code to pass → repeat. No "write all the specs first" — that produces tests insensitive to real bugs.
 - **Mixed** (e.g. a "bug" issue that actually requires building new infrastructure to fix, or a "feature" issue that resurfaces a known bug) → flag to the user and pick one explicitly. Default toward TDD if uncertain; the bug regression test still gets written, just inside the TDD loop.
 
@@ -159,7 +159,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 2. **Build a feedback loop FIRST** (Phase 1 of diagnose). Don't touch code until you have a reproduction:
    - Default: vitest filter at the package level — fastest, sharpest
    - For block-level isolation: `fsdev block <path> -i '<json>'`
-   - For flow-level reproduction: `fsdev run` with NDJSON capture (hand off to `debug-flow` for trace reading)
+   - For flow-level reproduction: `fsdev run` with NDJSON capture (the `debug-flow` toolkit for trace reading)
    - For type-only regressions: `pnpm --filter <pkg> typecheck`
 3. Reproduce the bug through the loop. Confirm the failure mode matches what the user described.
 4. Hypothesise: 3–5 ranked falsifiable hypotheses before testing any.
