@@ -69,14 +69,17 @@ It comes down to who has to learn it: the worker sent the message, and only its 
   state a derived conversation is opened with), so a resend to a conversation that the first
   dispatch never opened opens it, instead of being refused `session-not-found`.
 - **The send's order:** owe the sending session's wake for the board's pass (`DISPATCH_ENTRY`,
-  due `NOTICE_DUE_MS`), put the id on the session's owed list, write the row, then dispatch once.
-  A crash before the row leaves an id with no row, which the pass drops; a crash after it leaves a
-  debt with a wake. **Convergence point:** `sendMessage`'s server function, which the tool and
+  due `NOTICE_DUE_MS`), put the id on the session's owed list with the sending request's id
+  beside it, write the row, then dispatch once. The pass runs on its own concurrency key, so it
+  can read the list while a send is between the list and the row: an id with no row is dropped
+  only once its sending request has ended (`hasEnded`, the same session), so a crash before the
+  row leaves an id the pass drops later, and a send still running keeps its pointer. A crash
+  after the row leaves a debt with a wake. **Convergence point:** `sendMessage`'s server function, which the tool and
   FIX-2241's server-sent question both call. A flow offering the tool carries the session kit and
   so the pass (`board.entries`); the send refuses to start on a flow without it, as a
   configuration error, not a model refusal.
 - **The pass's message step** (`payMessageDebts`, in the pass's first half beside the plan
-  ledger's, outside its "this session files" branch): for each owed id, read its row. No row, a
+  ledger's, outside its "this session files" branch): for each owed id, read its row. No row and a sending request that has ended, a
   row delivered, or one refused or `undeliverable` whose line is recorded (`toldAt`):
   drop the id. Past the host's `maxDebtAgeMs`, counted from the row's `at`: write
   `undeliverable`, leave D1's line, drop the id. Past its next send: re-run the send's recipient
@@ -147,8 +150,8 @@ delivery address's starting state (a resend to an unopened conversation was refu
 `session-not-found`); D1 states that the line in an ended task's session may go unread;
 `flow-not-found` is retryable. Blind goal review, folded: *not done if* names the resend's source,
 a taken row resent, the age limit and refusal kinds; every leg asserts the resend's sender stamp
-and that its fault fired; `6:seen-once` clears the session's dedupe state so a window can't pass
-it; `6:late-refusal` holds the resend until the fire; `6:crash-after-take` added.
+and that its fault fired; `9:seen-once` clears the session's dedupe state so a window can't pass
+it; `9:late-refusal` holds the resend until the fire; `9:crash-after-take` added.
 
 Recorded for the implementer, not folded:
 
@@ -173,7 +176,9 @@ Recorded for the implementer, not folded:
 Round 1 (2026-10-27), folded: Codex, a crash after a row's terminal write and before D1's line
 left the sender untold, so the row is owed its line (`toldAt`) and the id stays owed until it is
 written. FSD Architect, the take rule and the backoff are lifted into one pure piece each in
-`orchestration` and named as deliverables, so `workforce` holds no second copy. Cursor, folded: the epic's message-row seam now names where the delivery's state lives. Not folded:
+`orchestration` and named as deliverables, so `workforce` holds no second copy. Codex, on 032e6e9: a pass could drop an owed id while its send was still between the list and
+the row, so an id with no row is dropped only once its sending request has ended. The FSD
+Architect: the goal's leg is renumbered `9`, since FIX-2160 (#4000) owns legs 6 to 8. Cursor, folded: the epic's message-row seam now names where the delivery's state lives. Not folded:
 the merge order (FIX-2238's spec #3986 and the epic #3983 have already merged).
 
 ## Notes from review
