@@ -132,7 +132,7 @@ function stubHarness(
           const signal = (ctx as { signal: AbortSignal }).signal;
           let reached = () => {};
           const enough = new Promise<void>((resolve) => (reached = resolve));
-          feeds.onSteerable((text) => {
+          feeds.onSteerable?.((text) => {
             live.handed.push(text);
             if (live.handed.length >= live.lines) reached();
             const answer = live.answers.shift() ?? "delivered";
@@ -142,7 +142,7 @@ function stubHarness(
           await Promise.race([enough, stopped, new Promise((resolve) => setTimeout(resolve, 8_000))]);
           // A moment for a refusal's stop to land, as a turn that is still running would.
           await Promise.race([stopped, new Promise((resolve) => setTimeout(resolve, 300))]);
-          feeds.onSteerable(null, ctx as never);
+          feeds.onSteerable?.(null, ctx as never);
           if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         }
         if (step === "finish-later") await new Promise((resolve) => setTimeout(resolve, 400));

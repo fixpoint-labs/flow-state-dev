@@ -579,8 +579,11 @@ export interface HarnessFeeds {
    * instead of stopping the step; a line the run refuses takes the step's
    * end (or the stop, with `stopsOnAbort`). A harness that can't steer
    * ignores it.
+   *
+   * Optional only so a host that wraps the manager's feeds in a slot of its
+   * own keeps compiling; the manager always hands one.
    */
-  onSteerable: HarnessSteerHook;
+  onSteerable?: HarnessSteerHook;
 }
 
 /**
