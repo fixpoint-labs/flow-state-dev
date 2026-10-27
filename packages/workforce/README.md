@@ -1499,7 +1499,7 @@ The row schema is closed, so a key it does not declare is dropped on the way in 
 
 ## Worker usage
 
-Every worker flow built on `installation.session()`, with `installation.resources` in its `resources`, records what each request spent when the request ends: its model calls by model, and each coding-harness run reported through `reportHarnessSpend`, by harness and billing. Records are per person (user scope), per worker, per UTC day, in the `worker-usage` collection that `installation.resources` carries. Concurrent requests for the same worker are both counted; a failed write is logged and never fails the request. A flow that declares the session but not the collection fails a request that spent tokens in development, and logs a warning in production. It is usage, not a quota.
+Every worker flow built on `installation.session()`, with `installation.resources` in its `resources`, records what each request spent when the request ends: its model calls by model, and each coding-harness run reported through `reportHarnessSpend`, by harness and billing. Records are per user (user scope), per worker, per UTC day, in the `worker-usage` collection that `installation.resources` carries. Concurrent requests for the same worker are both counted; a failed write is logged and never fails the request. A flow that declares the session but not the collection fails a request that spent tokens in development, and logs a warning in production. It is usage, not a quota.
 
 Read it with the `workerUsage` query, which a host puts on one flow:
 

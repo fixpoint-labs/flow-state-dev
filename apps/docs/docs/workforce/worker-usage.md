@@ -2,12 +2,12 @@
 title: Worker usage
 sidebar_position: 10
 sidebar_label: Worker usage
-description: "How many tokens each worker used for a person, by model and coding harness, per UTC day. Recorded on every worker flow with nothing to add, and read back with one query."
+description: "How many tokens each worker used for a user, by model and coding harness, per UTC day. Recorded on every worker flow with nothing to add, and read back with one query."
 ---
 
 # Worker usage
 
-Every request a worker runs spends something: model calls from its generators, and runs of any [coding agent](../tools/coding-agents.md) it drives. Workforce records that spend per person, per worker, per UTC day, and the `workerUsage` query reads it back over a period.
+Every request a worker runs spends something: model calls from its generators, and runs of any [coding agent](../tools/coding-agents.md) it drives. Workforce records that spend per user, per worker, per UTC day, and the `workerUsage` query reads it back over a period.
 
 It is a record of usage, not a quota. Nothing here limits what a worker may spend. To limit the model tokens one request may spend, use an action's [`tokenBudget`](../configuration/flow.md#token-budgets) (harness runs aren't counted).
 
@@ -33,7 +33,7 @@ When a request on that flow ends, however it ends, what it spent is added to the
 - **Each model** the request called, with its input and output tokens.
 - **Each coding harness** it ran, split by how the run was paid for (`api-key`, `subscription`, or not known), with the tokens the harness reported.
 
-Records belong to the person who made the request. One person never reads another's.
+Records belong to the user who made the request. One user never reads another's.
 
 A worker whose flow declares `installation.session()` but leaves `installation.resources` out of `resources` has nowhere to write. In development, a request on it that spent tokens fails, naming the missing collection. In production, the request goes on and a warning is logged.
 
@@ -101,6 +101,6 @@ A harness run that ended before its agent sent any usage, such as one killed ear
 
 ### Workers that left the roster
 
-A worker the person no longer has on their roster keeps its records. Its row comes back with `gone: true`.
+A worker the user no longer has on their roster keeps its records. Its row comes back with `gone: true`.
 
 Shift Manager's [Usage view](../shift-manager/overview.md) reads this query to show *Usage by worker*.

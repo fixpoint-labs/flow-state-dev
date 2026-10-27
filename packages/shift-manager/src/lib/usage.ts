@@ -222,7 +222,7 @@ export function useWorkerUsage(
   return { rows, failure, reread };
 }
 
-/** A token count for a person: `840 tokens`, `12.5 K tokens`, `1.2 M tokens`. */
+/** A token count for a user: `840 tokens`, `12.5 K tokens`, `1.2 M tokens`. */
 export function tokensLabel(tokens: number): string {
   const short = (n: number) => n.toFixed(1).replace(/\.0$/, "");
   if (tokens >= 1_000_000) return `${short(tokens / 1_000_000)} M tokens`;

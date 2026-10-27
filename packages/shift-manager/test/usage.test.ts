@@ -73,7 +73,7 @@ describe("Usage by worker labels", () => {
     expect(costLabel({ source: "openai/gpt-6-luna", kind: "model", costUsd: null })).not.toMatch(/\$/);
   });
 
-  it("counts tokens in words a person reads at a glance", () => {
+  it("counts tokens in words a user reads at a glance", () => {
     expect(tokensLabel(16)).toBe("16 tokens");
     expect(tokensLabel(1_500)).toBe("1,500 tokens");
     expect(tokensLabel(12_500)).toBe("12.5 K tokens");

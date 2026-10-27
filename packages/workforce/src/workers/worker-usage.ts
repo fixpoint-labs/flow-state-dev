@@ -1,17 +1,17 @@
 /**
- * `worker-usage/**` — what each worker spent of a person's subscriptions and
+ * `worker-usage/**` — what each worker spent of a user's subscriptions and
  * keys, by UTC day, and the one query everything reads it through (FIX-2145).
  *
  * Every request a worker's session runs hands its spend to a request-end hook
  * {@link workerSpendHook} builds, which `installation.session()` puts on every
  * worker flow: its model calls by model, and each harness run a harness
  * reported through `reportHarnessSpend`. {@link recordWorkerSpend} adds it to
- * the person's record for that worker and day, and {@link workerUsageAction}
+ * the user's record for that worker and day, and {@link workerUsageAction}
  * reads a period of records back, one row per worker.
  *
  * ## One writer, one reader
  *
- * - **Per person.** The collection is `user`-scoped, so a reader sees only the
+ * - **Per user.** The collection is `user`-scoped, so a reader sees only the
  *   spend of requests they made. The query takes no user argument.
  * - **Writes add, atomically.** Two requests ending at once for one worker and
  *   day both land. A failed write is logged and never fails the request.
@@ -91,7 +91,7 @@ export type WorkerUsageState = z.infer<typeof workerUsageStateSchema>;
  */
 export const workerUsageCollection = defineResourceCollection({
   pattern: `${WORKER_USAGE_RESOURCE}/**`,
-  // A person's own requests, at the request's principal (D1).
+  // A user's own requests, at the request's principal (D1).
   scope: "user",
   // BP-027: a user-scoped collection defaults to shared across flows.
   flowIsolation: false,
@@ -131,7 +131,7 @@ function keyOf(day: string, worker: string): string {
   return `${day}/${encodeURIComponent(worker)}`;
 }
 
-/** Add one source's spend into a list of sources, matched on source, kind and billing. */
+/** Add one source's spend into a list of sources, matched on source, `kind` and billing. */
 function addSource(sources: WorkerSourceSpend[], add: WorkerSourceSpend): WorkerSourceSpend[] {
   const at = sources.findIndex((s) => s.source === add.source && s.kind === add.kind && s.billing === add.billing);
   if (at < 0) return [...sources, add];
@@ -200,7 +200,7 @@ function collectionOn(ctx: { readonly resources?: unknown }): UsageCollectionRef
   return ref !== undefined && typeof (ref as UsageCollectionRef).upsert === "function" ? (ref as UsageCollectionRef) : undefined;
 }
 
-/** A missing collection, named for the person who has to install it. */
+/** A missing collection, named for the developer who has to install it. */
 function missingCollection(): Error {
   return new Error(
     `[workforce] the "${WORKER_USAGE_RESOURCE}" collection is not registered on this flow; ` +

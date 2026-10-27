@@ -1,10 +1,10 @@
 /**
  * Per-worker token usage (FIX-2145): every request a worker's session runs
- * adds what it spent, model calls and harness runs alike, to the person's
+ * adds what it spent, model calls and harness runs alike, to the user's
  * `worker-usage/**` record for that worker and UTC day, and `workerUsage`
  * reads it back over a period.
  *
- * Why it matters: a person sees which worker used how much of their
+ * Why it matters: a user sees which worker used how much of their
  * subscriptions and keys. A total that misses model calls, shows someone
  * else's spend, shows a dollar figure nobody was billed, or ignores the
  * period would mislead them.
@@ -112,7 +112,7 @@ async function harnessOf(h: ReturnType<typeof host>) {
     expect(result.error).toBeUndefined();
     return result.output;
   };
-  /** One turn in one of the person's conversations with `worker`. */
+  /** One turn in one of the user's conversations with `worker`. */
   const turn = (userId: string, worker: string, harness?: HarnessRunSpend, conversation = "") =>
     act(userId, worker, "respond", { message: "go", ...(harness === undefined ? {} : { harness }) }, conversation);
   const usage = async (userId: string, days?: number) =>
@@ -149,7 +149,7 @@ describe("per-worker token usage", () => {
     }
   });
 
-  it("keeps each person's spend their own", async () => {
+  it("keeps each user's spend their own", async () => {
     const h = host();
     try {
       const { turn, usage } = await harnessOf(h);
