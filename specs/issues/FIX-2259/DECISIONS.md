@@ -87,6 +87,15 @@ None.
   row's status is the prior one. Prefer the harness's own `from`, as today.
 - The goal legs' existing **p** checks read "this turn"; update their wording with the panel's.
 
+## Notes from review
+
+- **Architect, coherence check on `92099bb`** (non-blocking): "Key the plan's conversation
+  namespace off that same confirmed agent id, not a second derivation, so local and cloud runs
+  of one conversation land in one plan. The spec doesn't say whether a cloud run reports
+  `updateTodos` the same way. If it doesn't, the panel should say the plan may be incomplete
+  rather than quietly showing a stale list." And: FIX-2254's live steer runs inside the turn, so
+  it keeps the one-writer assumption; check FIX-2257 (harness manager's cloud half) against it.
+
 ## How it got here
 
 - Same day, an independent review against `main`, folded: Shift Manager can't reach the
