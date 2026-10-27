@@ -15,7 +15,23 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false };
+const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false, throwAfterTake: false };
+
+// A recipient that dies between its take and its items: the first message
+// turn's start (a hop past the user's own) throws, once.
+vi.mock("../src/messages/hop", async (original) => {
+  const actual = await original<typeof import("../src/messages/hop")>();
+  return {
+    ...actual,
+    startTurnAtHop: (...args: Parameters<typeof actual.startTurnAtHop>) => {
+      if (fault.throwAfterTake && args[1] > 0) {
+        fault.throwAfterTake = false;
+        return Promise.reject(new Error("the process died after the take"));
+      }
+      return actual.startTurnAtHop(...args);
+    }
+  };
+});
 
 vi.mock("@flow-state-dev/core/types", async (original) => {
   const actual = await original<typeof import("@flow-state-dev/core/types")>();
@@ -62,6 +78,7 @@ afterEach(async () => {
   fault.throwFastPath = false;
   fault.loseFastPath = false;
   fault.refuseFastPath = false;
+  fault.throwAfterTake = false;
   await open?.dispose();
   open = undefined;
 });
@@ -251,6 +268,20 @@ describe("the take on the row", () => {
     expect(after).toMatchObject({ status: "delivered", takenBy: copy.requestId, deliveredAs: copy.requestId });
     // The taker's items landed with it; the copy's are the second: the one window left (D: "delivered" before the turn).
     expect(await receivedIn(h, lead.id, row!.id)).toHaveLength(2);
+  }, 30_000);
+  it("is sent again when its taker died after the take and before the items: the pass resends it and it lands once", async () => {
+    fault.throwAfterTake = true;
+    const { h, otto } = await boot();
+    await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+    await h.settled();
+    const [first] = await logRows(h);
+    // Taken, then nothing: the take alone isn't a delivery, so the sender still owes it.
+    expect(first).toMatchObject({ status: "unconfirmed", takenBy: expect.any(String) });
+    const row = await rowUntil(h, (r) => r.status === "delivered");
+    expect(row).toMatchObject({ status: "delivered", resent: { n: 1 } });
+    expect(row!.takenBy).not.toBe(first!.takenBy);
+    await h.settled();
+    expect(await receivedIn(h, row!.toSession, row!.id)).toHaveLength(1);
   }, 30_000);
 });
 
