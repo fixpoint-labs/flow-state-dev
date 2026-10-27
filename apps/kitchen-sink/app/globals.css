@@ -5,8 +5,10 @@
  * The token definitions are the registry's `tokens` item (`./tokens.css`):
  * neutral defaults in a base layer, and the Tailwind names pointed at them.
  * The Flow State look is the design-system package's one import, whose
- * unlayered values win over those defaults, day by default and night under
- * `.dark`. Remove that one line and Kitchen Sink draws the neutral defaults.
+ * unlayered values win over those defaults: Kitchen Sink's light theme is its
+ * evening (the warm Draft stock, `data-theme="evening"`) and its dark theme is
+ * night (`.dark`), set by `components/theme-provider.tsx`. Remove that one
+ * line and Kitchen Sink draws the neutral defaults.
  */
 @import "tailwindcss";
 @import "@flow-state-dev/design-system/shift-manager.css";

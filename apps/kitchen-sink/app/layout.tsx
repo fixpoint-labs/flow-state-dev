@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import { AppThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,9 +19,9 @@ export default function RootLayout({
         {process.env.KITCHEN_SINK_TEST_MODE === "1" && (
           <style>{`*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }`}</style>
         )}
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <AppThemeProvider>
           {children}
-        </ThemeProvider>
+        </AppThemeProvider>
       </body>
     </html>
   );

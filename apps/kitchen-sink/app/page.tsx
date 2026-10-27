@@ -11,6 +11,7 @@ import Link from "next/link";
 
 import { modeAvailability, type ModeAvailability } from "@/lib/harness-gate";
 import { MODES, type KitchenSinkMode } from "@/lib/modes";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,10 @@ export default async function PickerPage() {
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-3xl">
-        <h1 className="text-2xl font-semibold">Kitchen Sink</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold">Kitchen Sink</h1>
+          <ThemeToggle />
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">Pick a mode.</p>
         <ul className="mt-6 grid gap-3 sm:grid-cols-2" data-testid="mode-picker">
           {MODES.map((mode) => (
