@@ -37,7 +37,8 @@ this spec carries no decision card.
 - **Sender, server-set.** `from` is the row's assignee and the sending session is the task's,
   both read from the row, never from input (BP-031). `call` is false: the task never waits on the
   answer through the message.
-- **Budget.** The send skips the budget's checks and pays nothing (epic ER-6); the filer's
+- **Budget.** The send skips every budget check and pays nothing (epic ER-6): the chain's 6, the
+  per-request 3 and the hop reservation, so an ask with several holds is never refused; the filer's
   `onMessageReceived` is told the budget the task's chain has left, so its own sends count there.
 - **Routed tasks are told too** (concept rule 11: "also messaged to the filer"), with text that
   says the user answers it from the Inbox. The text is the server's, built from the row; a confirm
@@ -78,6 +79,9 @@ whose hold ids are minted before its write; `DeclaredDelivery` filled by `conver
 - **Renames.** `DeclaredDelivery.questionAsked` and the server-written text that teaches
   `updateTask({ id, question, message })` are in FIX-2183's scope (#3985 hands it the meanings of
   *hold* and `updateTask`'s `question`), so its codemod changes the name and the text together.
+- `DeclaredDelivery`'s doc says `questionAsked` is not the notice pipeline (no marker, no
+  `noticeEntry`): same declaration, a different moment. Whether the hook takes the holds or reads
+  them from the row is the implementer's call.
 - `answerQuestion` checks the caller reaches the row, not that it is the filing session; nothing
   here relies on that.
 

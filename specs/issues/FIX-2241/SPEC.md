@@ -69,7 +69,9 @@ flowchart LR
 ```
 
 `askMidway` is the one write every midway ask passes through; after it, the board's declared
-delivery tells the filer, and a Workforce board declares it as a message.
+delivery tells the filer, and a Workforce board declares it as a message. The hook is called with the
+open midway holds read from the committed row, also when a durable replay's ask comes back
+declined, so a crash after the hold write still tells the filer.
 
 Nothing a person types changes. The surface is the board's delivery declaration, which Workforce
 already fills for its endings:
