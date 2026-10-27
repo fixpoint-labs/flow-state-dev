@@ -42,6 +42,49 @@ export async function sendHarnessLine(prompt: string, running: boolean, sender: 
   return "after-this-turn";
 }
 
+/** One sender's lines, in the order they were typed. See {@link harnessLines}. */
+export interface HarnessLines<TOutcome extends string = HarnessLineOutcome> {
+  /**
+   * Send one line after every line sent before it has its answer.
+   *
+   * @param running Whether a turn is running now, as the page sees it.
+   */
+  send(prompt: string, running: boolean, sender: HarnessLineSender): Promise<TOutcome>;
+  /** Call when the running turn changes or ends: lines may steer the new one. */
+  turnChanged(): void;
+}
+
+/**
+ * Keep one sender's lines in the order they were typed.
+ *
+ * Each line waits for the one before it to have its answer. And once a line
+ * has gone to run after the running turn, the lines after it go the same way
+ * until the turn changes: steered into the running turn, a later line would
+ * reach the agent before the earlier one.
+ *
+ * @param sendOne How one line is sent. Default {@link sendHarnessLine}.
+ */
+export function harnessLines<TOutcome extends string = HarnessLineOutcome>(
+  sendOne: (prompt: string, running: boolean, sender: HarnessLineSender) => Promise<TOutcome> = sendHarnessLine as never,
+): HarnessLines<TOutcome> {
+  let chain: Promise<unknown> = Promise.resolve();
+  let behind = false;
+  return {
+    send(prompt, running, sender) {
+      const sent = chain.then(async () => {
+        const outcome = await sendOne(prompt, running && !behind, sender);
+        if (outcome === "after-this-turn") behind = true;
+        return outcome;
+      });
+      chain = sent.catch(() => undefined);
+      return sent;
+    },
+    turnChanged() {
+      behind = false;
+    },
+  };
+}
+
 /** Options for {@link steerRunningTurn}. */
 export interface SteerRunningTurnOptions {
   readonly flowKind: string;

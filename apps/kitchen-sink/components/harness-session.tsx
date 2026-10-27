@@ -16,7 +16,7 @@
  * harness: the label is data from the mode list.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createClient, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, harnessLines, steerRunningTurn, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -145,8 +145,10 @@ function SessionBody({
   const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
   const streaming = useRef(session.isStreaming);
   streaming.current = session.isStreaming;
-  // Each line waits for the one before it to have its answer, so lines reach the run in the order they were typed.
-  const lines = useRef<Promise<unknown>>(Promise.resolve());
+  // Lines reach the run in the order they were typed: each waits for the one
+  // before it, and none steers past a line queued behind the running turn.
+  const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
+  useEffect(() => lines.turnChanged(), [lines, turnId, isStreaming]);
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -158,16 +160,14 @@ function SessionBody({
           await session.sendAction("turn", { prompt: text }, { userMessage: text });
         },
       };
-      const sent = lines.current.then(() => sendLine(prompt, streaming.current, sender));
-      lines.current = sent.catch(() => undefined);
       try {
-        setLastLine(await sent);
+        setLastLine(await lines.send(prompt, streaming.current, sender));
         if (messageRef.current.trim() === prompt) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [client, flowKind, session, sessionId, setMessage],
+    [client, flowKind, lines, session, sessionId, setMessage],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 

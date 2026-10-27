@@ -269,7 +269,7 @@ defineFlow({
 `steer` answers `{ taken, live }`. On the page, `sendHarnessLine` from
 `@flow-state-dev/client` sends a line typed while a turn runs to `steer` first,
 and sends it as the next turn when the running turn didn't take it, so a line is
-never dropped. `steerRunningTurn` sends `steer` on its own, so a session hook
+never dropped. `harnessLines` keeps a page's lines in the order they were typed, so a later line never steers past one queued behind the turn. `steerRunningTurn` sends `steer` on its own, so a session hook
 keeps following the running turn's stream. Offers live in the server process:
 a line that reaches another process finds none and runs as the next turn.
 
