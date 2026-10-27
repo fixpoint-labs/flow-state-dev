@@ -253,7 +253,7 @@ function PlanPanel({ session, label, turn, ended }: PanelProps) {
 
   return (
     <aside
-      className="flex max-h-[40dvh] shrink-0 flex-col overflow-y-auto border-t p-4 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0"
+      className="flex max-h-[40dvh] shrink-0 flex-col overflow-y-auto border-t p-4 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0 lg:bg-inspector"
       aria-label="Plan"
       data-testid="plan-panel"
     >

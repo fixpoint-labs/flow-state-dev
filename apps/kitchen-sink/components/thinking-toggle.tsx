@@ -74,7 +74,7 @@ export function ThinkingToggle({
             className={cn(
               "size-3.5",
               value
-                ? "text-indigo-500 dark:text-indigo-400"
+                ? "text-foreground"
                 : "text-muted-foreground",
             )}
           />
@@ -106,7 +106,7 @@ export function ThinkingToggle({
                   className={cn(
                     "mt-0.5 size-4 shrink-0",
                     isActive
-                      ? "text-indigo-500 dark:text-indigo-400"
+                      ? "text-foreground"
                       : "text-muted-foreground",
                   )}
                 />

@@ -2,9 +2,9 @@
  * The registry's token defaults, and a reader for their `@theme` copy.
  *
  * The `tokens` item in `registry.json` is where the neutral defaults are
- * authored, in the shape an install writes. Storybook and kitchen-sink use
- * Tailwind's `@theme` form (`--color-*`). That form is one file,
- * `registry/token-defaults.css`, which both stylesheets import.
+ * authored, in the shape an install writes. Storybook uses Tailwind's
+ * `@theme` form (`--color-*`). That form is one file,
+ * `registry/token-defaults.css`, which its stylesheet imports.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -541,7 +541,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       )}
       <aside
         className={cn(
-          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-muted/30 sm:shadow-none",
+          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-sidebar sm:[--fsd-nav-bg:var(--sidebar)] sm:shadow-none",
           isRailDrawerOpen
             ? "fixed inset-y-0 left-0 z-50 flex w-[18rem] max-w-[85vw] bg-background shadow-2xl"
             : "hidden",
@@ -644,7 +644,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       )}
       <aside
         className={cn(
-          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:shadow-none",
+          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:bg-inspector lg:shadow-none",
           isTeamSheetOpen
             ? "fixed inset-y-0 right-0 z-50 flex w-[28rem] max-w-[90vw] bg-background shadow-2xl"
             : "hidden",
@@ -855,8 +855,8 @@ function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4">
-      <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-        <span className="text-amber-700 dark:text-amber-300">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-attention bg-attention px-3 py-2 text-sm">
+        <span className="text-attention-foreground">
           The previous request was interrupted before it finished.
         </span>
         <Button

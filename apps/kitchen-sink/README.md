@@ -364,7 +364,9 @@ apps/kitchen-sink/
   app/                       Next.js App Router
     page.tsx                 The picker: four modes, each with its availability
     flow-state/page.tsx      The Flow State shell: navigator rail, stream, standing panel
-    layout.tsx               Root layout with Inter font
+    layout.tsx               Root layout
+    globals.css              The Flow State brand: the design system's import over tokens.css
+    tokens.css               The registry's tokens item, unedited
     api/flows/               Flow API routes (SSE streaming)
   flows/
     chat-agent/              The assistant

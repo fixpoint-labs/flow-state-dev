@@ -47,7 +47,7 @@ function ModeCard({ mode, availability }: { mode: KitchenSinkMode; availability:
         <span
           className={
             availability.available
-              ? "rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-400"
+              ? "rounded bg-success/15 px-1.5 py-0.5 text-xs text-success"
               : "rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
           }
         >

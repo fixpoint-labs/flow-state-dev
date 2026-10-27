@@ -30,28 +30,28 @@ const MODE_OPTIONS: ModeOption[] = [
     label: "Ask",
     description: "Questions, answers, and reasoning. Memory-first.",
     icon: MessageCircleQuestion,
-    color: "text-blue-500 dark:text-blue-400",
+    color: "text-foreground",
   },
   {
     value: "build",
     label: "Build",
     description: "File-writing, app-building, agentic execution.",
     icon: Hammer,
-    color: "text-amber-500 dark:text-amber-400",
+    color: "text-foreground",
   },
   {
     value: "interview",
     label: "Interview",
     description: "Structured questioning to extract knowledge and context.",
     icon: Mic,
-    color: "text-emerald-500 dark:text-emerald-400",
+    color: "text-foreground",
   },
   {
     value: "debate",
     label: "Debate",
     description: "Adversarial challenge to stress-test your ideas.",
     icon: Swords,
-    color: "text-rose-500 dark:text-rose-400",
+    color: "text-foreground",
   },
 ];
 

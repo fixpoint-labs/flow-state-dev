@@ -135,7 +135,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background sm:flex-row" data-testid="harness-frame">
       <aside
-        className="flex max-h-[40dvh] shrink-0 flex-col border-b sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r sm:bg-muted/30"
+        className="flex max-h-[40dvh] shrink-0 flex-col border-b sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r sm:bg-sidebar"
         data-testid="rail"
         aria-label={`${label} sessions`}
       >
