@@ -370,8 +370,9 @@ function repeatingSenderFlow(installation: WorkerInstallation, results: unknown[
       resources: { ...installation.resources, ...workerMessagesResources },
       execute: async (input, ctx) => {
         if (!input.message.startsWith("send")) return "";
+        // From "sendMessage", as the tool's send is, so this file's send faults reach it.
         for (let i = 0; i < 2; i += 1) {
-          results.push(await sendMessage(ctx as never, installation, "sender", { to: "lead", text: "Once?" }, "repeat-sender-turn", { id: "msg_fixedrepeat" }));
+          results.push(await sendMessage(ctx as never, installation, "sender", { to: "lead", text: "Once?" }, "sendMessage", { id: "msg_fixedrepeat" }));
         }
         return "";
       }
@@ -417,5 +418,28 @@ describe("a send repeated under one server-chosen id", () => {
     expect(chains.map((chain) => (chain.state as { sent: string[] }).sent)).toEqual([["msg_fixedrepeat"]]);
     const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
     expect(await receivedIn(h, lead.id, "msg_fixedrepeat")).toHaveLength(1);
+  }, 30_000);
+
+  it("answers a repeat of a refused send with the refusal: a repeat never turns it into a success", async () => {
+    fault.refuseFastPath = true;
+    const results: unknown[] = [];
+    const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "" } }] });
+    const h = bootBoardHost({
+      durable: true,
+      judgment,
+      standard: [...boardWorkers(), { id: "sendy", declared: { flow: "sender" }, body: "", skills: [] }],
+      flows: (installation) => ({ sender: { flow: repeatingSenderFlow(installation, results), roles: ["manager"] } })
+    });
+    open = h;
+    await h.state.getRouter();
+    const created = await h.create("alice", "sender", { state: { workerId: "sendy" } });
+    await h.post("alice", created.body.session!.id as string, "respond", { message: "send it" }, "sender");
+    await h.settled();
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ ok: false, error: expect.stringMatching(/^not_delivered/) });
+    expect(results[1]).toMatchObject({ ok: false, error: expect.stringMatching(/^not_delivered.*refused.*session-not-found/) });
+    const rows = await logRows(h);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "msg_fixedrepeat", status: "refused" });
   }, 30_000);
 });

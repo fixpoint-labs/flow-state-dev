@@ -170,7 +170,8 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
  * @param from The sending block's name, for the dispatch's provenance.
  * @param options.id A server-chosen id, so a send repeated after a crash is
  *   one message: when its row is already written, the repeat owes nothing,
- *   pays nothing and leaves the row as it is. Never a model's input.
+ *   pays nothing, leaves the row as it is and answers as the row reads (a
+ *   refusal stays one). Never a model's input.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -191,7 +192,14 @@ export async function sendMessage(
 
   // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
-  if (options.id !== undefined && (await log.getOptional(options.id)) !== undefined) return { ok: true, id: options.id };
+  const written = options.id === undefined ? undefined : (await log.getOptional(options.id))?.state;
+  if (written !== undefined) {
+    // The repeat answers what the first send did: an ended row stays a refusal.
+    if (written.status === "refused" || written.status === "undeliverable") {
+      return refuse(`not_delivered: the message to "${written.to}" was ${written.status} (${written.reason ?? "no reason was given"}).`);
+    }
+    return { ok: true, id: written.id };
+  }
   const to = input.to;
   let recipient: RosterWorker;
   let destination: MessageAddress;
