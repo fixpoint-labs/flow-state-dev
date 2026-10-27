@@ -50,7 +50,7 @@ import { messageHopStateShape } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
-import { messageReceivedEntry, messageReceivedStateShape } from "../messages/message-received-entry";
+import { messageReceivedEntry, messageReceivedStateShape, promptedMessageTurn } from "../messages/message-received-entry";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
@@ -249,7 +249,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn), installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
           soleTaskDelegate(await delegates.taskDelegates(ctx))
         )

@@ -87,6 +87,16 @@ async function logRows(h: BoardHost, userId: string) {
   return Object.values(entries).map((value) => value.state as Record<string, any>);
 }
 
+/** Every item a session holds, oldest first, as stored. */
+async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
+  return (await h.requestsOf(sessionId)).flatMap((request) => (request as unknown as { items?: any[] }).items ?? []);
+}
+
+/** The received-message items a session holds: the client-only component a received message is drawn by. */
+async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+}
+
 /** Every tool output item a session holds, oldest first. */
 async function toolOutputs(h: BoardHost, sessionId: string): Promise<unknown[]> {
   return (await h.requestsOf(sessionId))
@@ -96,7 +106,7 @@ async function toolOutputs(h: BoardHost, sessionId: string): Promise<unknown[]> 
 }
 
 describe("a worker messages another worker", () => {
-  it("lands a line from the sender in the recipient's own conversation, opened at its derived address, and wakes its turn", async () => {
+  it("lands as its own item in the recipient's own conversation, opened at its derived address, with a history line its turn reads, and wakes its turn", async () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
     const h = boot({
       judgment,
@@ -109,14 +119,18 @@ describe("a worker messages another worker", () => {
 
       const lead = await h.client("alice").findWorkerSession({ worker: "lead" });
       expect(lead, "the lead's conversation was opened").toBeDefined();
-      const lines = await h.messages(lead!.id);
-      expect(lines).toContainEqual({ agentName: "otto", text: "From otto: What is the codename?" });
-      expect(lines.some((line) => line.text === "Thinking."), "the lead's turn ran").toBe(true);
-
       const rows = await logRows(h, "alice");
-      // The lead's "Thinking." is relayed back as its answer; the message itself is the first row.
-      expect(rows.map((row) => row.from).sort()).toEqual(["lead", "otto"]);
-      expect(rows.find((row) => row.from === "otto")).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
+
+      // Its own item: the sender, the id and the text, drawn by the client only.
+      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?" }]);
+      const items = await itemsOf(h, lead!.id);
+      expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
+      // The line the model reads, in history only.
+      const line = items.find((item) => item.type === "message" && item.agentName === "otto");
+      expect(line?.itemVisibility).toEqual({ client: false, history: true });
+      expect((await h.messages(lead!.id)).some((m) => m.text === "Thinking."), "the lead's turn ran").toBe(true);
       // A message is not a task.
       expect(await h.rows("alice")).toEqual([]);
     } finally {
@@ -185,30 +199,20 @@ describe("the log, read by an app", () => {
 });
 
 describe("an answer", () => {
-  it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the sender", async () => {
+  it("is never the woken turn's own text: a turn that ends in plain text sends nothing back", async () => {
     const h = boot({
       // The lead answers in plain text, with no sendMessage call.
       judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "It is Bluebird." } }, fallback] }),
-      agentAnswer: mockGenerator({
-        script: [
-          { when: (input) => textOf(input).includes("From lead: It is Bluebird."), then: { text: "The codename is Bluebird." } },
-          ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
-          fallback
-        ]
-      })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
-      const rows = await logRows(h, "alice");
-      const question = rows.find((row) => row.from === "otto")!;
-      expect(rows.find((row) => row.from === "lead")).toMatchObject({
-        to: "otto", text: "It is Bluebird.", inReplyTo: question.id, toSession: otto, status: "delivered", hop: 2
-      });
-      expect((await h.messages(otto)).at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
-      // otto's text, in a turn woken by an answer, is not sent back: the exchange ends.
-      expect(rows).toHaveLength(2);
+      const lead = await h.client("alice").findWorkerSession({ worker: "lead" });
+      expect((await h.messages(lead!.id)).some((m) => m.text === "It is Bluebird."), "the lead's turn ran").toBe(true);
+      expect((await logRows(h, "alice")).map((row) => row.from)).toEqual(["otto"]);
+      expect(await receivedIn(h, otto)).toEqual([]);
     } finally {
       await h.dispose();
     }
@@ -262,12 +266,12 @@ describe("an answer", () => {
       await h.settled();
 
       const lines = await h.messages(otto);
-      expect(lines).toContainEqual({ agentName: "lead", text: "From lead: It is Bluebird." });
       expect(lines.at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
 
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
+      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id }]);
       expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
@@ -329,31 +333,33 @@ describe("a message sent from a task's turn", () => {
  * it on to the next worker once; the user's line in otto's conversation
  * starts it.
  */
-function ringScript(after = ""): MockGeneratorScriptEntry[] {
+function ringScript(options: { answer?: boolean } = {}): MockGeneratorScriptEntry[] {
   const next: Record<string, string> = { otto: "helper-a", "helper-a": "helper-b", "helper-b": "otto" };
   const handled = new Set<string>();
-  const step = { toolCalls: [{ toolCallId: "pass", toolName: "sendMessage", args: {} as Record<string, unknown> }] };
+  const step = { toolCalls: [] as Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> };
   return [
     {
       when: (input: unknown) => {
         const text = textOf(input);
-        const all = [...text.matchAll(/Message (msg_\w+) from ([\w.-]+)/g)];
+        const all = [...text.matchAll(/Message (msg_\w+) from ([\w.-]+)(, answering)?/g)];
         const started = text.lastIndexOf("start the ring");
         const last = all.at(-1);
         // Whichever came last: the user's line, or a message.
         const key = last !== undefined && last.index! > started ? last[1]! : `user-${started}`;
         if (handled.has(key) || (last === undefined && started < 0)) return false;
         handled.add(key);
-        const me = last !== undefined && last.index! > started ? next[last[2]!]! : "otto";
-        step.toolCalls[0]!.toolCallId = `pass-${key}`;
-        step.toolCalls[0]!.args = { to: next[me]!, text: "Pass this on to the next one, always." };
+        const woken = last !== undefined && last.index! > started;
+        const me = woken ? next[last[2]!]! : "otto";
+        step.toolCalls = [{ toolCallId: `pass-${key}`, toolName: "sendMessage", args: { to: next[me]!, text: "Pass this on to the next one, always." } }];
+        // With `answer`, a worker woken by a first message also answers its sender, so the exchange branches.
+        if (options.answer === true && woken && last[3] === undefined) {
+          step.toolCalls.push({ toolCallId: `answer-${key}`, toolName: "sendMessage", args: { to: last[2]!, text: "Passed it on.", inReplyTo: last[1]! } });
+        }
         return true;
       },
       then: step
     },
-    // No text after passing it on, so no answer is relayed back down the ring,
-    // unless the test asks for some.
-    { when: () => true, then: { text: after } }
+    { when: () => true, then: { text: "" } }
   ];
 }
 
@@ -417,7 +423,7 @@ describe("the hop limit across a branching exchange", () => {
   // limit is the whole exchange's, so the exchange stops at 6 messages in all,
   // not at 6 down each branch.
   it("stops everything descending from one user's line at 6 messages in all", async () => {
-    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript("Passed it on.") }) });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript({ answer: true }) }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
