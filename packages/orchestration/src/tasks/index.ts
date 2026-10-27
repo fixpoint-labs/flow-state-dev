@@ -205,6 +205,7 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  taskLedgerResources,
   freezeLedgerAssignee,
   hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
@@ -213,6 +214,8 @@ export {
 } from "./collection/define-task-collection";
 // A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
 export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";
+// Which partitions of a partitioned ledger hold a task id (FIX-2160).
+export { findTaskPartitions, taskIdIndexKey } from "./collection/id-index";
 // A ledger's ending recorder (`defineTaskCollection({ recordEnding })`): what
 // each ending write hands it, inside that same write.
 export type { TaskEnding, TaskEndingRecorder } from "./collection/ending";

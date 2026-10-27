@@ -34,6 +34,8 @@ export type {
   ResumeWaitInput,
   ResumeWaitResult,
   RequestWaits,
+  RequestSessions,
+  SessionView,
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,
