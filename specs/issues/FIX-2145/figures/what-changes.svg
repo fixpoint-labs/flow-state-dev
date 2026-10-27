@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 468" role="img" aria-label="Before and after. Today a generator call's tokens reach the request's count only through its trace, which is empty in production, so the count reads 0; a harness run's tokens sit only on its run row, last attempt only and with no worker; nothing totals spend per worker. After: every generator call and each harness, when it settles a run, add to one request spend ledger in core and the engine; when the request ends, the session's hook from installation.session reads the session's worker and writes through recordWorkerSpend into worker-usage, per person, worker and UTC day; the workerUsage query reads it and the Usage view shows it by worker under the windows, tokens always and cost where billed."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-in { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .n-keep { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .lane { fill:var(--surface-2); }
+    .arr { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .head { fill:var(--ink-3); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="468"/>
+  <g id="before">
+    <rect class="lane" x="16" y="14" width="908" height="176" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <rect class="n-in" x="32" y="46" width="170" height="58" rx="5"/>
+    <text class="t-b" x="44" y="64">generator call</text>
+    <text class="t-s" x="44" y="80">reports its tokens</text>
+    <rect class="n-gone" x="240" y="46" width="200" height="58" rx="5"/>
+    <text class="t-b" x="252" y="64">trace modelUsage</text>
+    <text class="t-x" x="252" y="80">empty in production</text>
+    <rect class="n-gone" x="478" y="46" width="200" height="58" rx="5"/>
+    <text class="t-b" x="490" y="64">request tokenUsage</text>
+    <text class="t-x" x="490" y="80">reads 0 in production</text>
+    <rect class="n-in" x="32" y="118" width="170" height="58" rx="5"/>
+    <text class="t-b" x="44" y="136">harness run</text>
+    <text class="t-s" x="44" y="152">handle: tokens, cost</text>
+    <rect class="n-box" x="240" y="118" width="200" height="58" rx="5"/>
+    <text class="t-b" x="252" y="136">runs/** row</text>
+    <text class="t-s" x="252" y="152">last attempt only, no worker</text>
+    <rect class="n-gone" x="716" y="82" width="192" height="58" rx="5"/>
+    <text class="t-b" x="728" y="100">per worker</text>
+    <text class="t-x" x="728" y="116">nothing totals it</text>
+    <path class="arr" d="M202 75 L236 75"/>
+    <path class="head" d="M236 75 L229.0 78.5 L229.0 71.5 z"/>
+    <path class="arr" d="M440 75 L474 75"/>
+    <path class="head" d="M474 75 L467.0 78.5 L467.0 71.5 z"/>
+    <path class="arr" d="M202 147 L236 147"/>
+    <path class="head" d="M236 147 L229.0 150.5 L229.0 143.5 z"/>
+    <path class="arr" d="M678 75 L712 100"/>
+    <path class="head" d="M712 100 L704.3 98.7 L708.4 93.0 z"/>
+    <path class="arr" d="M440 147 L712 122"/>
+    <path class="head" d="M712 122 L705.3 126.1 L704.7 119.2 z"/>
+  </g>
+  <g id="after">
+    <rect class="lane" x="16" y="204" width="908" height="250" rx="6"/>
+    <text class="t-lbl" x="32" y="224">AFTER</text>
+    <rect class="n-in" x="32" y="236" width="170" height="58" rx="5"/>
+    <text class="t-b" x="44" y="254">generator call</text>
+    <text class="t-s" x="44" y="270">every call, added</text>
+    <rect class="n-in" x="32" y="308" width="170" height="72" rx="5"/>
+    <text class="t-b" x="44" y="326">harness settles a run</text>
+    <text class="t-s" x="44" y="342">each harness package</text>
+    <text class="t-s" x="44" y="355">call reportHarnessSpend</text>
+    <rect class="n-new" x="240" y="262" width="200" height="88" rx="5"/>
+    <text class="t-lbl" x="252" y="280">CORE · ENGINE</text>
+    <text class="t-b" x="252" y="296">request spend ledger</text>
+    <text class="t-s" x="252" y="312">tokenUsage reads it</text>
+    <text class="t-s" x="252" y="325">counts in production</text>
+    <rect class="n-new" x="478" y="262" width="200" height="88" rx="5"/>
+    <text class="t-lbl" x="490" y="280">WORKFORCE</text>
+    <text class="t-b" x="490" y="296">request-end registry</text>
+    <text class="t-s" x="490" y="312">installation.session()</text>
+    <text class="t-s" x="490" y="325">reads the session's workerId</text>
+    <rect class="n-new" x="716" y="236" width="192" height="72" rx="5"/>
+    <text class="t-b" x="728" y="254">worker-usage/**</text>
+    <text class="t-s" x="728" y="270">per person, worker, UTC day</text>
+    <text class="t-s" x="728" y="283">recordWorkerSpend writes</text>
+    <rect class="n-new" x="716" y="320" width="192" height="58" rx="5"/>
+    <text class="t-b" x="728" y="338">workerUsage query</text>
+    <text class="t-s" x="728" y="354">the one read</text>
+    <rect class="n-keep" x="478" y="384" width="430" height="56" rx="5"/>
+    <text class="t-b" x="490" y="402">Usage view · by worker, under the windows</text>
+    <text class="t-s" x="490" y="418">tokens always · cost where billed · usage, not quota</text>
+    <path class="arr" d="M202 265 L236 290"/>
+    <path class="head" d="M236 290 L228.3 288.7 L232.4 283.0 z"/>
+    <path class="arr" d="M202 344 L236 322"/>
+    <path class="head" d="M236 322 L232.0 328.7 L228.2 322.9 z"/>
+    <path class="arr" d="M440 306 L474 306"/>
+    <path class="head" d="M474 306 L467.0 309.5 L467.0 302.5 z"/>
+    <path class="arr" d="M678 290 L712 272"/>
+    <path class="head" d="M712 272 L707.5 278.4 L704.2 272.2 z"/>
+    <path class="arr" d="M812 308 L812 316"/>
+    <path class="head" d="M812 316 L808.5 309.0 L815.5 309.0 z"/>
+    <path class="arr" d="M812 378 L812 380"/>
+    <path class="head" d="M812 380 L808.5 373.0 L815.5 373.0 z"/>
+  </g>
+</svg>
