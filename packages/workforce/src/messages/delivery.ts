@@ -56,7 +56,12 @@ export const MESSAGE_RESEND_FROM = "worker-message-resend";
 /** The owed list in a session's state. */
 function owedOf(state: unknown): OwedMessage[] {
   const list = (state as Record<string, unknown> | undefined)?.[WORKER_MESSAGES_OWED_STATE];
-  return Array.isArray(list) ? (list as OwedMessage[]) : [];
+  if (!Array.isArray(list)) return [];
+  // An entry that doesn't parse is skipped, never run.
+  return list.flatMap((entry) => {
+    const parsed = owedMessageSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 /** Whether `flowKind`'s flow carries the board's pass, which sends an owed message again. */
@@ -248,6 +253,13 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
   const later = (at: number) => {
     next = next === undefined ? at : Math.min(next, at);
   };
+  // End the row, tell the sender, drop the id: false when another writer ended it first.
+  const close = async (ref: ResourceRef<WorkerMessageRow>, id: string, status: "refused" | "undeliverable", reason: string, force = false) => {
+    if (!(await endMessage(ref, status, reason, force ? { force: true } : undefined))) return false;
+    await tellSender(ctx, ref);
+    drop.push(id);
+    return true;
+  };
 
   for (const entry of owed) {
     const ref = await log.getOptional(entry.id);
@@ -268,10 +280,7 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
     const now = Date.now();
     const pastAge = now - ref.state.at > maxAge;
     if (pastAge && ref.state.takenBy === undefined) {
-      if (await endMessage(ref, "undeliverable", `it couldn't be delivered within ${Math.round(maxAge / 60_000)} minutes`)) {
-        await tellSender(ctx, ref);
-        drop.push(entry.id);
-      } else later(now + NOTICE_DUE_MS);
+      if (!(await close(ref, entry.id, "undeliverable", `it couldn't be delivered within ${Math.round(maxAge / 60_000)} minutes`))) later(now + NOTICE_DUE_MS);
       continue;
     }
     // Taken, and past the age: a taker may still hold it (a turn waiting on the
@@ -285,17 +294,9 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
     const refusal = await recheck(ctx, ref.state);
     // A recipient gone for good ends even a taken message once it is past
     // the age: nothing can deliver it, and it would be sent again forever.
-    if (refusal !== undefined && pastAge && (await endMessage(ref, "refused", refusal, { force: true }))) {
-      await tellSender(ctx, ref);
-      drop.push(entry.id);
-      continue;
-    }
+    if (refusal !== undefined && pastAge && (await close(ref, entry.id, "refused", refusal, true))) continue;
     if (refusal !== undefined) {
-      if (await endMessage(ref, "refused", refusal)) {
-        await tellSender(ctx, ref);
-        drop.push(entry.id);
-        continue;
-      }
+      if (await close(ref, entry.id, "refused", refusal)) continue;
     } else {
       let outcome: DispatchOutcome | undefined;
       try {
@@ -305,16 +306,13 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
       }
       if (outcome !== undefined && !outcome.ok) {
         const reason = `${outcome.refused}: ${outcome.detail}`;
-        if (isFinalRefusal(outcome.refused) && (await endMessage(ref, "refused", reason))) {
-          await tellSender(ctx, ref);
-          drop.push(entry.id);
-          continue;
-        }
+        if (isFinalRefusal(outcome.refused) && (await close(ref, entry.id, "refused", reason))) continue;
         await ref.patchState({ reason });
       }
     }
     const resent = { n: (ref.state.resent?.n ?? 0) + 1, at: Date.now() };
     await ref.patchState({ resent });
+    // With `resent` set, the backoff counts from `resent.at`; the second argument only anchors a first send.
     later(nextResendAt(resent, resent.at));
   }
 
