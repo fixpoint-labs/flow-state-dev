@@ -53,3 +53,4 @@ The coder (and the Error Reporter's drafts) otherwise run on `claudeCodeHarness`
 | 2026-10-27 | same, `GOAL_CONTROL=cost-always` | n/a | FAIL (expected) | **b:no-cost**: $0.42 on a subscription run, in the query and the view. **i:no-cost**: Codex shows a $0.0019 estimate. |
 | 2026-10-27 | same, `GOAL_CONTROL=no-user-filter` | n/a | FAIL (expected) | **e:only-alices**: Alice and Bob each read 4 216 tokens, everyone's. |
 | 2026-10-27 | same, `GOAL_CONTROL=ignore-period` | n/a | FAIL (expected) | **g:not-in-7-days**: 7 days reads the 8-day-old 4 + 4, in the query and the view. |
+| 2026-10-27 | claude/project-thread-w0un9y (532b30a) | n/a | PASS | 42 s, after the Codex review fixes (whole-query Claude Code usage, billing on a retried lookup, resumed budgets, Cursor cache tokens): every leg's numbers unchanged. |
