@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { latestTurn, planPanelState, turnNotice, UNKNOWN_CONVERSATION, type PlanPanelInput, type TurnRecord } from "@/lib/harness-turn";
+import { latestTurn, planPanelState, planRowStage, turnNotice, UNKNOWN_CONVERSATION, type PlanPanelInput, type TurnRecord } from "@/lib/harness-turn";
 
 const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1 };
 
@@ -106,5 +106,27 @@ describe("planPanelState", () => {
     const writing = { topic: "r/s#1", status: "writing", count: 2, reason: null };
     expect(planPanelState({ ...base, rows, markers: [writing], ended: false })).toMatchObject({ incomplete: null });
     expect(planPanelState({ ...base, rows, markers: [writing], ended: true })).toMatchObject({ incomplete: { reason: null } });
+  });
+});
+
+// A harness names a plan row's status in its own words, and says nothing at all
+// until it confirms a first move: Claude Code's create records no status, so a
+// row nobody has started yet holds null. The panel must read that as "to do",
+// not as a missing value.
+describe("planRowStage", () => {
+  it("reads a row with no status as not started, since a create records none", () => {
+    expect(planRowStage(null)).toEqual({ stage: "pending", label: "To do" });
+  });
+
+  it("reads the common words of the harnesses in any spelling", () => {
+    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planRowStage(word).stage).toBe("pending");
+    for (const word of ["in_progress", "in-progress", "In Progress", "running", "inProgress"]) {
+      expect(planRowStage(word)).toEqual({ stage: "active", label: "In progress" });
+    }
+    for (const word of ["completed", "complete", "done"]) expect(planRowStage(word)).toEqual({ stage: "done", label: "Done" });
+  });
+
+  it("keeps a word it does not know, as the harness said it", () => {
+    expect(planRowStage("deleted")).toEqual({ stage: "other", label: "deleted" });
   });
 });

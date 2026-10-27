@@ -102,11 +102,12 @@ test.describe("Cursor's to-do list in the plan panel (V6)", () => {
     await expect(notice(page)).toHaveAttribute("data-kind", "started");
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
     await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 1");
-    await expect(panel.getByTestId("plan-row")).toHaveText([
-      /Read the request\s*completed/,
-      /Answer it\s*inProgress/,
-      /Check the answer\s*pending/,
-      /Say what changed\s*pending/,
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it", "Check the answer", "Say what changed"]);
+    expect(await panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")))).toEqual([
+      "done",
+      "active",
+      "pending",
+      "pending",
     ]);
     await expect(panel).not.toContainText("reports no plan");
 

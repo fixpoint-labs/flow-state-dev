@@ -130,7 +130,9 @@ test.describe("the plan panel (V8)", () => {
     await expect(notice(page)).toHaveAttribute("data-kind", "started");
     await expect(panel.locator("[data-plan-state]")).toHaveAttribute("data-plan-state", "rows");
     await expect(panel.getByTestId("plan-turn")).toHaveText("Turn 1");
-    await expect(panel.getByTestId("plan-row")).toHaveText([/Read the request\s*in_progress/, /Answer it\s*no status/]);
+    // A row says how far along it is by its mark; one nobody has started holds no status and reads as to do.
+    await expect(panel.getByTestId("plan-row-title")).toHaveText(["Read the request", "Answer it"]);
+    expect(await panel.getByTestId("plan-row").evaluateAll((lis) => lis.map((li) => li.getAttribute("data-stage")))).toEqual(["active", "pending"]);
 
     await send(page, "no plan this time");
     await expect(notice(page)).toHaveAttribute("data-kind", "continued");

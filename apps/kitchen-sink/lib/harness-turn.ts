@@ -221,6 +221,38 @@ export interface PlanPanelInput {
   readonly markers: readonly PlanMarkerItem[];
 }
 
+/** How far along a plan row is, in the panel's three words plus whatever else a harness says. */
+export interface PlanRowStage {
+  readonly stage: "pending" | "active" | "done" | "other";
+  /** What the row reads as: a known stage's plain words, or the harness's own word. */
+  readonly label: string;
+}
+
+/**
+ * Reads a plan row's status. A harness's create records none (Claude Code's
+ * `TaskCreate` carries no status), so `null` is a row nobody has started.
+ * Spelling (snake, kebab, spaced, camel) is forgiven; a word this does not know is kept as said.
+ */
+export function planRowStage(status: string | null): PlanRowStage {
+  if (status === null || status.trim() === "") return { stage: "pending", label: "To do" };
+  // `inProgress` (Cursor) and `in_progress` (Claude Code) are one word.
+  switch (status.trim().replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[\s-]+/g, "_")) {
+    case "pending":
+    case "todo":
+    case "not_started":
+      return { stage: "pending", label: "To do" };
+    case "in_progress":
+    case "running":
+      return { stage: "active", label: "In progress" };
+    case "completed":
+    case "complete":
+    case "done":
+      return { stage: "done", label: "Done" };
+    default:
+      return { stage: "other", label: status };
+  }
+}
+
 /** Numeric-aware order: `step#10` after `step#2`, item `10` after `2`. */
 function byNumber(a: string, b: string): number {
   return a.localeCompare(b, "en", { numeric: true });

@@ -36,6 +36,7 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { PlanRowLine } from "@/components/plan-row";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import type { ModelChoices } from "@/lib/harness-models";
@@ -348,14 +349,9 @@ function PanelState({ state }: { state: ReturnType<typeof planPanelState> }) {
               This plan may be incomplete{state.incomplete.reason === null ? "." : `: ${state.incomplete.reason}`}
             </p>
           )}
-          <ol className="space-y-1 text-sm">
+          <ol className="space-y-2 text-sm">
             {state.rows.map((row) => (
-              <li key={row.key} className="flex items-baseline justify-between gap-2" data-testid="plan-row">
-                <span className="min-w-0 break-words">{row.title ?? row.key}</span>
-                <span className="shrink-0 text-xs text-muted-foreground" data-testid="plan-row-status">
-                  {row.status ?? "no status"}
-                </span>
-              </li>
+              <PlanRowLine key={row.key} rowKey={row.key} title={row.title} status={row.status} />
             ))}
           </ol>
         </div>

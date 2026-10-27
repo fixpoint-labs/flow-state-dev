@@ -205,8 +205,8 @@ await runGoal(async (failures) => {
     } else {
       const rows = await panel.getByTestId("plan-row").evaluateAll((lis) =>
         lis.map((li) => ({
-          title: li.firstElementChild?.textContent?.trim() ?? "",
-          status: li.querySelector('[data-testid="plan-row-status"]')?.textContent?.trim() ?? "",
+          title: li.querySelector('[data-testid="plan-row-title"]')?.textContent?.trim() ?? "",
+          status: li.getAttribute("data-status") ?? "no status",
         })),
       );
       const want = list.map((t) => ({ title: t.content ?? "", status: t.status ?? "no status" }));
