@@ -65,6 +65,7 @@ import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
+import { useSessionDraft } from "@/lib/use-session-draft";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -194,7 +195,9 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   }, [e2eSessionId, flow.activeSessionId, flow.sessions, selectSession, createSession]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useSessionDraft(flow.activeSessionId);
+  const messageRef = useRef(message);
+  messageRef.current = message;
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
@@ -334,15 +337,19 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       if (!flow.activeSessionId || text.length === 0) return;
-      setMessage("");
-      await session.sendAction("run", {
-        message: text,
-        mode,
-        thinkingStyle,
-        features,
-      }, { userMessage: text });
+      try {
+        await session.sendAction("run", {
+          message: text,
+          mode,
+          thinkingStyle,
+          features,
+        }, { userMessage: text });
+        if (messageRef.current.trim() === text) setMessage("");
+      } catch {
+        // Keep the persisted draft so a failed send can be retried.
+      }
     },
-    [flow.activeSessionId, mode, thinkingStyle, features, session]
+    [flow.activeSessionId, mode, thinkingStyle, features, session, setMessage]
   );
 
   const handleNewSession = useCallback(
