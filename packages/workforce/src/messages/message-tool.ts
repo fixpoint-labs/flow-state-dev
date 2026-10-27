@@ -37,7 +37,7 @@ export const sendMessageInputSchema = z
   })
   .strict();
 
-export const sendMessageOutputSchema = z.union([
+const sendMessageOutputSchema = z.union([
   z.object({ sent: z.string(), unconfirmed: z.string().optional() }),
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
