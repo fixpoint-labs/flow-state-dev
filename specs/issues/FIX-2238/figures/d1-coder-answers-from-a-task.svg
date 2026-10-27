@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D1, what the coder does with a message. Chosen: answer from a task&#x27;s coding session, and refuse a message by name at the send, before anything is written. Instead of: starting a fresh harness run for every message by name. It comes down to the first row: the coder&#x27;s only memory of the work is a task&#x27;s coding session, and a fresh run has no checkout. The price is the second row: a message by name is refused and the sender must message one of the coder&#x27;s tasks. The third row is a tie: either way the coder carries a receive and the hire&#x27;s rule has no exception. Locks in hears task-sessions and the refusal task_sessions_only. Flips if a lab needs the coder&#x27;s view with no task between the workers.">
+     aria-label="D1, what the coder does with a message. Chosen: answer from a task&#x27;s coding session, and refuse a message by name at the send, before anything is written. Instead of: starting a fresh harness run for every message by name. It comes down to the first row: the coder&#x27;s only memory of the work is a task&#x27;s coding session, and a fresh run has no checkout. The price is the second row: a message by name is refused and the sender must message one of the coder&#x27;s tasks. The third row is a tie: either way the coder carries onMessageReceived and the hire&#x27;s rule has no exception. Locks in hears task-sessions and the refusal task_sessions_only. Flips if a lab needs the coder&#x27;s view with no task between the workers.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -69,7 +69,7 @@
   <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   <text class="t-lbl" x="32" y="278">THE HIRE&#x27;S RULE</text>
   <text class="mark tie" x="228" y="281">=</text>
-  <text class="t-b" x="248" y="280">The coder carries receive</text>
+  <text class="t-b" x="248" y="280">The coder carries onMessageReceived</text>
   <text class="t-s" x="248" y="298">no exception to every worker receives</text>
   <text class="mark tie" x="592" y="281">=</text>
   <text class="t-b" x="612" y="280">The same</text>
@@ -77,7 +77,7 @@
   <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
   <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-  <text class="t-b" x="32" y="369">hears: task-sessions on receiveEntry</text>
+  <text class="t-b" x="32" y="369">hears: task-sessions on messageReceivedEntry</text>
   <text class="t-s" x="32" y="387">refused at the send, paying nothing</text>
   <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
   <text class="t-lbl" x="494" y="349">FLIPS IF</text>

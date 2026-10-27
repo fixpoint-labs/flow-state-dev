@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D1, what a call to another worker is. Chosen: a message that waits on the engine&#x27;s wait gate for the recipient&#x27;s receive result. Instead of: filing a task and waiting with getTask. It comes down to the first row: a question in words owes no tracked ending, attempt or retry, and a task gives it a row nobody tracks. The price is the second row: a model has two ways to wait on another worker, a call and getTask, told apart by their tool descriptions. The third row is a tie: both wait on a gate the engine already has, with the host&#x27;s deadline. Locks in ER-4. Flips if the closure run shows calls used for work that needed a retry.">
+     aria-label="D1, what a call to another worker is. Chosen: a message that waits on the engine&#x27;s wait gate for the recipient&#x27;s onMessageReceived result. Instead of: filing a task and waiting with getTask. It comes down to the first row: a question in words owes no tracked ending, attempt or retry, and a task gives it a row nobody tracks. The price is the second row: a model has two ways to wait on another worker, a call and getTask, told apart by their tool descriptions. The third row is a tie: both wait on a gate the engine already has, with the host&#x27;s deadline. Locks in ER-4. Flips if the closure run shows calls used for work that needed a retry.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -53,7 +53,7 @@
   <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
   <text class="mark plus" x="228" y="163">+</text>
   <text class="t-b" x="248" y="162">No row, attempt or retry</text>
-  <text class="t-s" x="248" y="180">the answer is the receive request&#x27;s output</text>
+  <text class="t-s" x="248" y="180">the answer is the onMessageReceived request&#x27;s output</text>
   <text class="mark minus" x="592" y="163">−</text>
   <text class="t-b" x="612" y="162">A row nobody tracks</text>
   <text class="t-s" x="612" y="180">an ending owed for a yes or no</text>

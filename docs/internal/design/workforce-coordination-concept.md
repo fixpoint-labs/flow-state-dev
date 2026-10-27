@@ -182,11 +182,11 @@ task (`to: { task: id }`) or one of its user's own conversations (`to: { session
 deadline, the host's default unless `deadline` is passed. A late result is kept under its **call
 id** for a caller that waits again or repeats the call.
 
-A message is a dispatcher block calling the recipient's `receive`. Delivery is retried until it
+A message is a dispatcher block calling the recipient's `onMessageReceived`. Delivery is retried until it
 lands; the receiver dedupes by id, so it sees each message once, and a repeated call gets the kept
 result. A refusal (rule 10) is final, returned to the sender.
 
-Each message starts a `receive` request carrying the text and, set by the server, the sender,
+Each message starts an `onMessageReceived` request carrying the text and, set by the server, the sender,
 whether it waits, and the budget. To answer a send, the recipient sends to its sender with
 `inReplyTo`; the reply lands in the session that sent the original, even if that session's task has
 ended.
@@ -198,7 +198,7 @@ It never changes the brief or stops the request working the task. To an open tas
 conversation in that session. It doesn't hold the task and isn't part of it: while the task's turn
 is running, it's answered after that turn. It holds no claim, doesn't delay the settle, and an
 error in it is its own, never the attempt's. To a finished task,
-`receive` handles it with the session's full history. The user typing in a task's session answers
+`onMessageReceived` handles it with the session's full history. The user typing in a task's session answers
 its question, if its request waits on one; otherwise it steers it while open, as `updateTask({
 message })` does. Once finished, `respond` takes it as talk there.
 
@@ -240,7 +240,7 @@ keeps its claim, and the resume carries on the same attempt.
 | Cancelled | Its task is cancelled; the item closes | Resumes at once with `cancelled` and runs to its end: it may clean up and send messages, its writes to the task are refused, anything it creates is cancelled with it, and nothing it returns is recorded |
 
 **The filer hears its task's questions.** A question asked midway reaches the task's filer as a
-message from the task's session, for its `receive` (delivered by FIX-2070; until then the filer reads
+message from the task's session, for its `onMessageReceived` (delivered by FIX-2070; until then the filer reads
 it with `getTask`). The filer may answer it by a steer (rule 11) or
 leave it to the user; the first answer closes the item. The task's row holds its open questions, and
 records which suspension holds it, so `getTask` and `listTasks` show what the task waits on.
@@ -312,7 +312,7 @@ a request.
 
 | Role | Entries | Example |
 | -- | -- | -- |
-| Every worker | `respond`: a user's message, in a conversation or a finished task's session. `receive`: another worker's | all |
+| Every worker | `respond`: a user's message, in a conversation or a finished task's session. `onMessageReceived`: another worker's | all |
 | Contributor (takes tasks) | `work`: a task | researcher, coder |
 | Manager (files tasks) | `dispatch`: a pass over the delegation board. `onTaskSettled`: a filed task's ending | writer, which is also a contributor |
 | Coordinator (a manager that routes a user's messages) | Manager entries, plus `routeOn` and `roundDeadline` with rounds, `changeWorkstreamDelegate` with projects | launch |
@@ -323,7 +323,7 @@ role's entries from a **factory**.
 
 | Entry | Input |
 | -- | -- |
-| `receive` | `{ id, from, text, waiting, inReplyTo?, budget }`, the server setting `from`, `waiting` and `budget` |
+| `onMessageReceived` | `{ id, from, text, waiting, inReplyTo?, budget }`, the server setting `from`, `waiting` and `budget` |
 | `work` | `{ taskId, attempt, boardId, partition?, payload }`, `payload` being the task's brief and input |
 
 `boardId` names the board the row is on; `partition?`, the user's slice of a ledger kept per
@@ -385,7 +385,7 @@ A behavior none of these rules explains is a bug in the model.
 
 1. Every request acts as one user, with a server-set sender.
 2. Only a request the claim gate admits for a task holds its claim: `work`, or `onTaskSettled`
-   working the session's task. A `receive` never does. The claim gate settles a dispatched task;
+   working the session's task. An `onMessageReceived` never does. The claim gate settles a dispatched task;
    the drain, an inline plan row.
 3. A request files tasks only for work its job needs: its task, the user's message it answers, or a
    sibling for work reported by the assignee of a task it filed. Anything else is a message to the

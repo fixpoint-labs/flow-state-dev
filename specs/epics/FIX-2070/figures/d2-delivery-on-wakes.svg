@@ -69,7 +69,7 @@
   <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   <text class="t-lbl" x="32" y="278">SEEN ONCE</text>
   <text class="mark tie" x="228" y="281">=</text>
-  <text class="t-b" x="248" y="280">receive dedupes by id</text>
+  <text class="t-b" x="248" y="280">onMessageReceived dedupes by id</text>
   <text class="t-s" x="248" y="298">already on main since FIX-1989</text>
   <text class="mark tie" x="592" y="281">=</text>
   <text class="t-b" x="612" y="280">The same dedupe</text>
