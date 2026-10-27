@@ -66,7 +66,7 @@ is filed. Today's `main` fails leg a outright: no task has phases to show.
 
 - **Roles** (`assignee: { role }`). A step names its worker, or is filed with none and the worker
   assigns it before release.
-- **`drain({ phase })`.** No caller needs it; the board's own passes run the phases.
+- **`drain({ phase })` and `listTasks({ phase })`.** No caller needs either: the board's own passes run the phases, and `workflowView` groups by phase in memory after one `filedByTask` read.
 - **Phase helpers** (skip, re-run). The worker uses the task tools; helpers wait for a repeated pattern.
 - **A dependency on a whole phase.** Fan-in edges only: one ordering mechanism.
 - **A workflow editor**, and cost or time per phase beyond what the task view shows today.
@@ -91,7 +91,7 @@ The reviewed snapshot; live state is in Linear.
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
-| [FIX-2232](https://linear.app/fixpoint-labs/issue/FIX-2232) · a task's phases | `phase` on a task, `listTasks({ phase })`, a task's declared phases written through `reportProgress`, and `workflowView`, the one read | — |
+| [FIX-2232](https://linear.app/fixpoint-labs/issue/FIX-2232) · a task's phases | `phase` on a task, a task's declared phases written through `reportProgress`, and `workflowView`, the one read | — |
 | [FIX-2233](https://linear.app/fixpoint-labs/issue/FIX-2233) · `defineWorkflow` | The template: validated definition, `start` with stable ids and fan-in deps, held phases after a judging phase, `addStep` in rounds, release, the approval confirm | FIX-2232 |
 | [FIX-2234](https://linear.app/fixpoint-labs/issue/FIX-2234) · a worker runs it | A workforce worker given a workflow starts it on a task, hears each ending, releases, loops back or asks, with the existing task tools | FIX-2233 |
 | [FIX-2235](https://linear.app/fixpoint-labs/issue/FIX-2235) · the view in Shift Manager | The workflow view on a task, "step N of M" in the task list, the approval linked to the Inbox | FIX-2232 |

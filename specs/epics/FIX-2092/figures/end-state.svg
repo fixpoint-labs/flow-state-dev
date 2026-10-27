@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 432" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, a feature followed as one workflow on its task: a phase on each step, set at filing and editable until it starts, with listTasks by phase; a task's declared phases in order, written by the run holding it through reportProgress; workflowView, one read giving phases, steps, step N of M, the current phase, what's next and approvals waiting, a filed step's status from its own row; defineWorkflow, with start filing stable ids and fan-in deps, the phase after a judging phase held, addStep in rounds and release; a workforce worker running it with the existing task tools; the workflow view in Shift Manager; a coding run's phases. Composed in by the app: the definition, the loop-back judgment, the approval's words. Replaced in one line: steps filed by hand, and a status note standing in for a phase. Not built, below a fence: roles, a drain by phase, phase helpers to skip or re-run, a dependency on a whole phase, a workflow editor, and the POC's session-state record.">
+     aria-label="What's in the box. In the box, a feature followed as one workflow on its task: a phase on each step, set at filing and editable until it starts; a task's declared phases in order, written by the run holding it through reportProgress; workflowView, one read giving phases, steps, step N of M, the current phase, what's next and approvals waiting, a filed step's status from its own row; defineWorkflow, with start filing stable ids and fan-in deps, the phase after a judging phase held, addStep in rounds and release; a workforce worker running it with the existing task tools; the workflow view in Shift Manager; a coding run's phases. Composed in by the app: the definition, the loop-back judgment, the approval's words. Replaced in one line: steps filed by hand, and a status note standing in for a phase. Not built, below a fence: roles, a drain or a list by phase, phase helpers to skip or re-run, a dependency on a whole phase, a workflow editor, and the POC's session-state record.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -27,7 +27,7 @@
     <rect class="held" x="32" y="56" width="256" height="104" rx="4"/>
     <text class="t-b" x="44" y="78">a task's phases</text>
     <text class="t-s" x="44" y="96">phase on a step &#183; until it starts</text>
-    <text class="t-s" x="44" y="112">listTasks({ phase })</text>
+    <text class="t-s" x="44" y="112">set at filing, read with its filer's rows</text>
     <text class="t-s" x="44" y="128">phases declared on the task, in order</text>
     <text class="t-s" x="44" y="144">by the run holding it &#183; reportProgress</text>
     <rect class="held" x="300" y="56" width="260" height="104" rx="4"/>
@@ -67,7 +67,7 @@
   <g id="not-built">
     <rect class="fence" x="16" y="320" width="908" height="96" rx="5"/>
     <text class="t-non" x="32" y="340">NOT BUILT HERE &#8212; NOT DOING</text>
-    <text class="t-s" x="32" y="362">roles, assignee: { role } &#183; drain({ phase }) &#183; helpers to skip or re-run a phase</text>
+    <text class="t-s" x="32" y="362">roles, assignee: { role } &#183; drain({ phase }), listTasks({ phase }) &#183; helpers to skip or re-run a phase</text>
     <text class="t-s" x="32" y="380">a dependency on a whole phase &#183; a workflow editor &#183; cost or time per phase</text>
     <text class="t-s" x="32" y="398">the POC's session-state record of steps &#183; D1</text>
   </g>
