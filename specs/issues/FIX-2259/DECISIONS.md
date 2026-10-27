@@ -33,9 +33,16 @@ the plan. What is left is engineering, so this spec carries no decision card.
 - **A Claude Code marker that went `incomplete` stays incomplete** until a later write of
   the same row succeeds and clears it, or the conversation ends: a lost row may still be
   missing from the plan, and the panel should keep saying so.
-- **Legacy rows still read (BP-030).** A session with no conversation-keyed plan, and rows
-  under the per-turn keys, shows the latest turn's rows as today. Shift Manager does the same
-  for a run whose rows were written per turn.
+- **Legacy rows still read (BP-030); a conversation that straddles the upgrade is not
+  migrated.** A session with no conversation-keyed plan, and rows under the per-turn keys,
+  shows the latest turn's rows as today. Shift Manager does the same for a run whose rows were
+  written per turn. A conversation begun before the change and continued after it starts its
+  conversation plan from the first write after the upgrade: for Claude Code that can be one
+  untitled row until the agent touches the rest, for Cursor its next full list. We accept that
+  once, rather than hydrate: hydrating means listing the session's per-turn rows and merging them
+  by harness rules, the reader merge this spec drops. The panel says the plan may be incomplete
+  for such a conversation (its earliest turn predates the conversation plan), so it never passes
+  the partial plan off as whole.
 - **Each run leaves a pointer to its conversation.** Under the run's own namespace
   (`harnessRunNamespace`), the writer stores a marker whose `conversation` field names the
   conversation namespace it wrote the plan to. Shift Manager already reads a run by its request

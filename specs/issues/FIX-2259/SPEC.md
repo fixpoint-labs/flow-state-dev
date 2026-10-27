@@ -134,7 +134,7 @@ conversation's, not the turn's. Update `packages/core/README.md` (the new namesp
 |---|---|
 | **Removes** | The panel's "latest run in the latest turn" selection for plans |
 | **Adds** | A second namespace in the plan record; a per-turn read kept only for rows stored before this change (BP-030) |
-| **Leaves** | Codex's plan (FIX-1916's follow-up). Shift Manager runs whose rows were written per turn keep showing that run's rows |
+| **Leaves** | Codex's plan (FIX-1916's follow-up). Shift Manager runs whose rows were written per turn keep showing that run's rows. A conversation that straddles the upgrade is not migrated: its plan starts at the first write after it, marked possibly incomplete |
 
 **Net: flat.** One namespace swapped for another on the plan, and a legacy read.
 
