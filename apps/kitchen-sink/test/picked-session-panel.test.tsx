@@ -25,7 +25,7 @@
  *     (the first worker's draft is still there).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
 import { SESSION_DRAFT_STORAGE_PREFIX } from "../lib/use-session-draft";
@@ -225,6 +225,29 @@ describe("a coordinator's panel", () => {
 });
 
 describe("a send settles on its own request", () => {
+  it("keeps revised storage if the user edits while the door is accepting the send", async () => {
+    let resolveSend!: (value: { status: string; request: { id: string } }) => void;
+    const sendAction = vi.fn(
+      () =>
+        new Promise<{ status: string; request: { id: string } }>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    panel("coordinator", session({ sessionId: "sess-a", sendAction }));
+    const area = screen.getByLabelText("Post to this coordinator") as HTMLTextAreaElement;
+    await type("Post to this coordinator", "original");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.change(area, { target: { value: "revised while posting" } });
+
+    await act(async () => {
+      resolveSend({ status: "in_progress", request: { id: "req-1" } });
+      await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+    });
+
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised while posting");
+    expect(area.value).toBe("revised while posting");
+  });
+
   it("drops the stored draft once the door accepts the send, even while the request runs", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
     const view = panel("coordinator", session({ sessionId: "sess-a", sendAction }));
