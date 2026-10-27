@@ -293,7 +293,11 @@ export async function leg8(world: World, targets: Targets): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice } = world;
   const cos = world.conversation[COS]!;
-  await alice.workforce.setWorkProject(COS, SANDBOX, { sessionId: cos.id } as never).catch((e: unknown) => r.notes.push(`setWorkProject: ${String(e)}`));
+  // `Shipped` types only the client verbs the older legs drive.
+  const workforce = alice.workforce as typeof alice.workforce & {
+    setWorkProject(worker: string, project: typeof SANDBOX, options: { sessionId: string }): Promise<unknown>;
+  };
+  await workforce.setWorkProject(COS, SANDBOX, { sessionId: cos.id }).catch((e: unknown) => r.notes.push(`setWorkProject: ${String(e)}`));
   const added = await act(alice, cos.flowKind, cos.id, "addDelegate", { worker: CODER }, 60_000);
   if (added.status !== "completed") r.notes.push(`addDelegate ${CODER}: ${added.status} ${added.error ?? ""}`);
 
