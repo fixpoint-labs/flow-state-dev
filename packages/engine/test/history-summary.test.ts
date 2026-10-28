@@ -259,6 +259,29 @@ describe("historySummary on the engine", () => {
     expect(row?.state).toMatchObject({ summary: "u2 u3 u1", gap: false, complete: true, pending: [] });
   });
 
+  it("folds the settled turns before they leave however many older turns are still waiting", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    await talk(stores, flow, calls, 1);
+    // Eight turns waiting on approvals, all older than the conversation's
+    // next turns.
+    const first = (await stores.request.get("req_001"))!;
+    for (let n = 1; n <= 8; n++) {
+      const id = `req_wait_${n}`;
+      await stores.request.set(id, { ...first, id, status: "suspended", startedAtMs: first.startedAtMs + n, items: [] }, "any");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    await talk(stores, flow, calls, 7, 2);
+
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    const state = row?.state as { summary: string; gap: boolean; pending: string[] };
+    expect(state.summary.split(" ")).toEqual(expect.arrayContaining(["u1", "u2", "u3", "u4"]));
+    expect(state.gap).toBe(false);
+    expect(state.pending).toHaveLength(8);
+  });
+
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];

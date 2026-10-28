@@ -192,7 +192,14 @@ export function historySummary(options: HistorySummaryOptions) {
         (state.attempts === 0 && window.startRequestId !== undefined);
 
       const due = after.length > window.turns - quarter;
-      const batch: HistoryTurn[] = due ? after.slice(0, quarter) : [];
+      // A quarter of settled turns per fold; the waiting turns among them move
+      // to pending without taking a place, or enough of them could hold every
+      // settled turn back until it left the window.
+      let batchEnd = 0;
+      for (let settled = 0; due && batchEnd < after.length && settled < quarter; batchEnd++) {
+        if (after[batchEnd]!.settled) settled++;
+      }
+      const batch: HistoryTurn[] = after.slice(0, batchEnd);
       if (batch.length === 0 && settledPending.length === 0) return null;
 
       const folded = [...settledPending, ...batch.filter((t) => t.settled)];
