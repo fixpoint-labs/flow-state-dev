@@ -594,6 +594,12 @@ await runGoal(async (failures, tell) => {
         return !/^\s*(\/\/|\*|\/\*)/.test(content);
       });
     };
+    // The review step's one call and its result's type are allowed; a second call is not.
+    const waitForUserPastReview = (hits: string[]): string[] => {
+      const calls = hits.filter((line) => /await ctx\.waitForUser\(/.test(line));
+      const rest = hits.filter((line) => !/await ctx\.waitForUser\(|BlockContext\["waitForUser"\]/.test(line));
+      return calls.length > 1 ? hits : rest;
+    };
     const ours = ["packages/harness-manager/src", "labs/conductor/src", "packages/shift-manager/teams", "packages/shift-manager/src"];
     const rows: Array<[string, string[]]> = [
       ["answerQuestion", grep(String.raw`\banswerQuestion\b`, ours)],
@@ -605,7 +611,8 @@ await runGoal(async (failures, tell) => {
       ["harness-manager's inbox module", [...grep(String.raw`from "\./inbox"`, ["packages/harness-manager/src"]), ...grep(String.raw`harness-manager/src/inbox`, [...SOURCE, "goals", ":(exclude)goals/shift-manager/a-coding-runs-question-is-answered-in-the-inbox/**"])]],
       ["awaitReview in harness-manager", grep(String.raw`\bawaitReview\b`, ["packages/harness-manager/src"])],
       ["HarnessRunParked", grep(String.raw`\bHarnessRunParked\b`, SOURCE)],
-      ["waitForUser in harness-manager", grep(String.raw`\bwaitForUser\b`, ["packages/harness-manager/src"])],
+      // The manager suspends for one reason, a review of a run's changes (FIX-2163): its one call is allowed.
+      ["waitForUser in harness-manager, past the review's one call", waitForUserPastReview(grep(String.raw`\bwaitForUser\b`, ["packages/harness-manager/src"]))],
     ];
     tell.over("sweep · the names swept", rows, { emptyIs: "never empty: the list above" });
     for (const [name, hits] of rows) if (hits.length > 0) fail("sweep", `${name}: ${hits.slice(0, 3).join(" | ")}${hits.length > 3 ? ` (+${hits.length - 3})` : ""}`);

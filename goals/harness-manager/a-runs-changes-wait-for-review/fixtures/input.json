@@ -1,0 +1,7 @@
+{
+  "goal": "Add a changelog line for the checkout fix.",
+  "file": "CHANGELOG.md",
+  "subjects": ["Add the checkout fix to the changelog", "Rename the flag back"],
+  "words": "Keep the old flag name.",
+  "judge": { "confidence": 0.86 }
+}

@@ -24,8 +24,9 @@
  *   FIX-2122) is in no round: it is heard as any task's the conversation
  *   filed, by the one decision above. A routed failure whose brief names
  *   the judgment turn's filing call ({@link filedByTurn}) is said after the
- *   routing's handling too, under the same decision (FIX-2115): the routing
- *   itself only ends that delegate's part.
+ *   routing's handling too, under the same decision (FIX-2115). A policy's
+ *   routed failure is said after it as one line, naming the delegate and the
+ *   error, and wakes no turn (FIX-1872 BR-9 as amended, FIX-2266).
  *
  * An ending frees its session (FIX-2080), so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
@@ -127,6 +128,16 @@ export interface TaskSettledOptions {
    * too, and then also lands as a line and wakes that turn (FIX-2115).
    */
   readonly onRouted?: BlockDefinition<any, any>;
+}
+
+/**
+ * A completed task's answer, as a line the user reads: its output when that
+ * is text (an agent worker's answer), or its `answer` (a coder's run, whose
+ * output also carries its branch and commits). `undefined` when blank or absent.
+ */
+export function answerTextOf(output: unknown): string | undefined {
+  const text = typeof output === "string" ? output : (output as { answer?: unknown } | null | undefined)?.answer;
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
 }
 
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
@@ -292,8 +303,8 @@ const runPass = handler({
 
 /** A conversation-result task's answer as it lands: the delegate's reply itself, or the ending in words. */
 function resultLine(notice: TaskNotice, row: { goal: string; title?: string; assignee?: string }): string {
-  if (notice.ending === "completed" && typeof notice.output === "string" && notice.output.trim() !== "") return notice.output;
-  return noticeText(notice, row);
+  const answer = notice.ending === "completed" ? answerTextOf(notice.output) : undefined;
+  return answer ?? noticeText(notice, row);
 }
 
 /**
@@ -311,9 +322,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    * wakes that turn under the conversation's policy, as any task the turn
    * filed does, so it can file the work again (FIX-2115). A cancel of one is
    * not: whoever cancelled it knows, as FIX-2083's cancel rule has it. A
-   * policy's round says nothing after its routing: its failure only ends that
-   * delegate's part. Anything else, and any ending with no routing layer,
-   * lands as a line now.
+   * policy's failure is said after its routing, as one line under the
+   * delegate's name with its error, and wakes no turn; its cancel says
+   * nothing (FIX-1872 BR-9 as amended, FIX-2266). Anything else, and any
+   * ending with no routing layer, lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
@@ -338,9 +350,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
         ...(brief !== undefined ? { brief } : {})
       };
-      if (notice.ending === "errored" && filedByTurn(brief)) {
-        const act = decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
-        return { act, routed, notice: notice as Settled["notice"], text: noticeText(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+      if (notice.ending === "errored" && brief !== undefined) {
+        const byTurn = filedByTurn(brief);
+        const act = byTurn && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+        // noticeText quotes the task. A policy's task is the user's message.
+        const text = byTurn ? noticeText(notice, row) : `${row.assignee ?? "The delegate"} couldn't answer: ${notice.error ?? "no error was recorded"}`;
+        return { act, routed, notice: notice as Settled["notice"], text, ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
       }
       // `none` still carries `notice`: the routing runs, and nothing is said after it.
       return { act: "none", routed, notice: notice as Settled["notice"] };

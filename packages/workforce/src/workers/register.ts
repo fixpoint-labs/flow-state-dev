@@ -17,6 +17,7 @@ import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import { messageReceivedProblem } from "../messages/message-received-entry";
+import { sendWithoutPassProblem } from "../messages/delivery";
 import { defineScheduledWork, type ScheduledWorkOptions } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
@@ -90,10 +91,11 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
     );
   }
   // Every worker on an installation can be messaged, so every worker flow
-  // hears one (FIX-2238): checked as the door is, before anything registers.
+  // hears one (FIX-2238), and one that offers the send carries the pass that
+  // sends it again (FIX-2271): checked as the door is, before anything registers.
   const deaf = Object.entries(installation.workerFlows())
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([flowName, { flow }]) => messageReceivedProblem(flowName, flow))
+    .flatMap(([flowName, { flow }]) => [messageReceivedProblem(flowName, flow), sendWithoutPassProblem(flowName, flow)])
     .filter((problem): problem is string => problem !== undefined);
   if (deaf.length > 0) {
     throw new Error(`hireWorkforce refused ${deaf.length} worker flow(s); nothing was registered:\n` + deaf.map((problem) => `  - ${problem}`).join("\n"));

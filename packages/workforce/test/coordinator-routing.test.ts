@@ -558,7 +558,10 @@ describe("delivery and answers (V4)", () => {
     const [row] = await host.routedRows("alice");
     expect(row).toMatchObject({ status: "errored", assignee: "temp" });
     expect(row.error).toMatch(/No worker "temp"/);
-    expect((await host.items(id)).messages.filter((m) => m.agentName !== undefined)).toEqual([]);
+    // Nothing answered Alice's post, so she is told, once (FIX-1872 BR-9 as amended).
+    expect((await host.items(id)).messages.filter((m) => m.agentName !== undefined)).toEqual([
+      expect.objectContaining({ agentName: "temp", text: expect.stringMatching(/^temp couldn't answer: .*No worker "temp"/) })
+    ]);
   });
 });
 

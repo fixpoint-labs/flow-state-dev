@@ -23,7 +23,9 @@ function runtimeState(): SequencerRuntimeState {
     scopeId: "seq_scope_test",
     lastChildPath: undefined,
     lastChildInputHint: undefined,
-    activeLoopGeneration: 0
+    activeLoopGeneration: 0,
+    loopJumps: 0,
+    openLoopPasses: new Map()
   };
 }
 

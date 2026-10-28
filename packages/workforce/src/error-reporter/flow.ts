@@ -16,9 +16,7 @@ import { defineSetWorkProjectBlock, setWorkProjectInputSchema } from "../project
 import { markUserTurnStep } from "../standing-rules/user-turn";
 import { turnConfigOf } from "../workers/verified-worker";
 import type { WorkerInstallation } from "../workers/installation";
-import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
 import { workerMessagesResources } from "../messages/message-log";
-import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
 import { PROJECT_STATE_KEY, SET_WORK_PROJECT_ACTION } from "../workers/keys";
 import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
@@ -40,6 +38,7 @@ import {
 } from "./reports";
 import type { ErrorReporter, FinalFailureEvent } from "./reporter";
 import { RESPOND_ACTION } from "../worker-door";
+import { declareBuiltInRoles } from "../worker-roles";
 
 export { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW };
 
@@ -710,7 +709,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
 
   const session = installation.session(turn.board?.sessionStateShape);
 
-  return defineFlow({
+  const flow = defineFlow({
     kind: flowKind,
     cardinality: "collection",
     configSchema: turn.settings,
@@ -735,11 +734,15 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       actions: {
         [COMMENT_ENTRY]: { inputSchema: z.object({}).passthrough(), block: comment },
         [LINE_ENTRY]: { inputSchema: z.object({ text: z.string() }), block: line },
-        // A worker's message wakes the reporter's turn, as it does any worker's (FIX-2238).
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn.run), installation, flowKind })
+        // The session board's entries, as any agent worker's: a worker's
+        // message wakes the reporter's turn (FIX-2238), and the board's pass
+        // sends again a message the reporter sent that hasn't landed (FIX-2271).
+        ...(turn.board?.entries(turn.run) ?? {})
       }
     }
   } as never);
+  // It runs its session board, so it declares the role the board's entries belong to.
+  return declareBuiltInRoles(flow, ["manager"]);
 }
 
 /** Options for {@link defineErrorReporterIntakeFlow}. */
