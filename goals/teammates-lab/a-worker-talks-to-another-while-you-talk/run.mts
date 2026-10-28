@@ -469,7 +469,12 @@ await runGoal(async (failures, tell_) => {
     if (cards === 0) fail("2", `no card "To ${researcher}" in lead's conversation`);
     const talk = page.getByRole("complementary", { name: "Talk" });
     if ((await talk.count()) === 0) await conversation(page).getByRole("button", { name: "Talk" }).click();
-    const talked = (await talk.getByRole("region", { name: `with ${researcher}` }).count()) > 0;
+    // A panel just opened reads the log first: wait for it rather than count at once.
+    const talked = await talk
+      .getByRole("region", { name: `with ${researcher}` })
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(() => true, () => false);
     if (!talked) fail("2", `the Talk panel lists nothing under "with ${researcher}"`);
     const rows = tell_.over("2 · message log rows", await log(), { emptyIs: "no message sent, which a control produces" });
     const asked = rows.filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
