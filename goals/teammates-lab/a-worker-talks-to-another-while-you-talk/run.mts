@@ -250,7 +250,8 @@ async function entriesOf(page: Page): Promise<Drawn[]> {
       els.map((el) => ({
         kind: (el as HTMLElement).dataset.entry ?? "",
         label: el.getAttribute("aria-label") ?? el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "",
-        text: el.textContent ?? "",
+        // As shown: block breaks between the label and a Markdown body, and the label in its uppercase style.
+        text: (el as HTMLElement).innerText,
         status: el.querySelector("[data-task-status]")?.textContent ?? undefined,
         inWindow: el.closest("[data-in-window]")?.getAttribute("data-in-window") ?? undefined,
       })),
@@ -566,7 +567,7 @@ await runGoal(async (failures, tell_) => {
         const resultAt = result.entries.map((e) => e.kind === "result" && e.label === `From ${coder}`).lastIndexOf(true);
         if (resultAt < 0) fail("5", `the result never landed in lead's conversation as a line from ${coder}`);
         else if (resultAt < userAt(result.entries, PICKED_LINE)) fail("5", `no result from ${coder} after your pick`);
-        else if (/task failed/.test(result.entries[resultAt]!.text)) fail("5", `${coder}'s last result is a failure: "${result.entries[resultAt]!.text}"`);
+        else if (/task failed/i.test(result.entries[resultAt]!.text)) fail("5", `${coder}'s last result is a failure: "${result.entries[resultAt]!.text}"`);
       }
 
       // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
