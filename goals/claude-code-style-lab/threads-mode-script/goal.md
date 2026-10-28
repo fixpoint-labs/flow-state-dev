@@ -65,6 +65,7 @@ failed.
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | PASS | Attempt 1 of 3. Three `desk.thread` tasks open at once, each in its own run session; "Statuspage vendor research: Atlassian Statuspage" asked which region, your answer typed in its thread closed the question on attempt 1 with your steer, it moved to *Ready for review*, and *Resolve* completed it under *Resolved*. The coding thread was tagged *Claude Code*, waited on your review with the judge's line, and *Resolve* completed it with `review: "accepted"`; the CHANGELOG line is on the run's branch in the clone under the data folder; repository and lab checkout untouched |
+| 2026-10-28 | 41423b4 | openai/gpt-5.4 | PASS | Attempt 1 of 3, after merging 4543a90 (task listing runs only while the board can move). Same signals as above: three threads side by side, the answered thread resolved, and the coding thread resolved with its line on the clone's branch |
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signal 2: the lead filed no thread (and signal 1: your line wasn't marked) |
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | FAIL (control `ongoing`) | Signal 2: three threads filed, one `in_progress` and two `pending` with no run, waiting in line behind the delegate's one session |
 | 2026-10-28 | 32b5f0b | openai/gpt-5.4 | FAIL (control `no-review`) | Signal 4: the answered thread completed without waiting on your review |
