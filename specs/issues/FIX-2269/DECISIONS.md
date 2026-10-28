@@ -99,6 +99,9 @@ None.
 - **A repeated send pays its budget once (review, Codex P2).** The send's per-request count now
   names the ids it holds (`workforceMessagesPaid`), and the chain row appends an id only once, so a
   call continued after dying between paying and its row isn't charged (or refused) a second time.
+- **The park is paid once its gate is logged (review, Codex P2).** `runAction` clears the owe after
+  the suspension item is flushed to the request's log, not right after the gate is written: a gate
+  the log doesn't name yet can't be resumed, and the owe is what continues the request then.
 - **The owe is read before the logged gate (review, Codex P2).** A later wait's owe outlives an
   earlier wait's gate, answered or pruned, so history, retention and `waits.ended` read it first.
 - **A stop and a continuation are fenced by the request's lease (review, Codex P2).** The stop lets

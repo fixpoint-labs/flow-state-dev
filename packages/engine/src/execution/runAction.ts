@@ -43,7 +43,7 @@ import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
-import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry, WakeKey } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
@@ -2308,6 +2308,8 @@ async function runActionAttempt<
           suspendError._blockInstanceId ?? ctx._blockIdentity?.blockInstanceId ?? "unknown";
         // The deadline of the wait this request parks on, if it parks on one.
         let parkedWaitDeadline: number | undefined;
+        // The park a wait owed before it started its work (FIX-2269), paid once its gate is logged.
+        let paidPark: WakeKey | undefined;
         // When the suspension stops waiting, if it has a deadline: written to
         // its record and its item alike, so a reader sees one clock.
         const expiresAt = suspendError.timeoutMs ? Date.now() + suspendError.timeoutMs : undefined;
@@ -2372,10 +2374,7 @@ async function runActionAttempt<
             }
           }
           await provider.suspend(record);
-          // The gate is what continues the request now: a park the wait owed
-          // before it started its work is paid (FIX-2269).
-          const owedKey = isWaitGate(record) ? parkOwedKey({ id: requestId, sessionId: options.sessionId, tenantId: options.tenantId }) : undefined;
-          if (owedKey !== undefined && options.stores.wakes !== undefined) await clearParkOwed(options.stores.wakes, owedKey);
+          if (isWaitGate(record)) paidPark = parkOwedKey({ id: requestId, sessionId: options.sessionId, tenantId: options.tenantId });
           // A sweeper on this provider brings its tick forward to the deadline.
           if (record.expiresAt !== undefined) noteSuspensionDeadline(provider, record.expiresAt);
         }
@@ -2413,6 +2412,10 @@ async function runActionAttempt<
         await response.emitItemDone(suspItem);
 
         await options.stores.request.flushItems(requestId);
+        // The logged gate is what continues the request now: the park its wait
+        // owed is paid. Not before the log: a gate the log doesn't name yet
+        // can't be resumed, and the owe is what continues it then (FIX-2269).
+        if (paidPark !== undefined && options.stores.wakes !== undefined) await clearParkOwed(options.stores.wakes, paidPark);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();

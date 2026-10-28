@@ -214,6 +214,31 @@ describe("a wait killed before it parks", () => {
     expect(script.started).toBe(1);
   });
 
+  it("keeps owing its park until its gate is logged: a death between the gate and the log is continued and parks", async () => {
+    const script: Script = { freeze: undefined, owe: true, started: 0 };
+    const flow = waitingFlow(script);
+    const h = setup(flow);
+    // The process dies as it logs the gate: its suspension record is written, its log never is.
+    const flush = h.stores.request.flushItems.bind(h.stores.request);
+    const dying = vi.spyOn(h.stores.request, "flushItems").mockImplementation(async (requestId: string) => {
+      if ((await h.provider.loadSuspension(requestId, GATE_ID)) !== null) return new Promise<never>(() => {});
+      return flush(requestId);
+    });
+    void start(h, flow);
+    const id = await theRequest(h);
+    await until(async () => (await h.provider.loadSuspension(id, GATE_ID)) !== null);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await h.stores.wakes!.get(parkOwedKey({ id, sessionId: SESSION })!)).not.toBeNull();
+
+    dying.mockRestore();
+    await markInterrupted(h, id);
+    expect(await owedParkDueNow(h, id)).toBe(true);
+    await h.sweep();
+    expect(h.continued).toHaveLength(1);
+    await until(async () => (await status(h, id)) === "suspended");
+    expect(script.started).toBe(1);
+  });
+
   it("is continued when it died after the owe and before the work started: the replay starts it, once", async () => {
     const script: Script = { freeze: "after-owe", owe: true, started: 0 };
     const flow = waitingFlow(script);
