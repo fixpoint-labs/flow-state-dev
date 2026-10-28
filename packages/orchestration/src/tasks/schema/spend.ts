@@ -13,7 +13,7 @@
 import { z } from "zod";
 
 /** One source of a request's spend: a model, or a harness billed one way. */
-export const taskSpendSourceSchema = z.object({
+const taskSpendSourceSchema = z.object({
   source: z.string(),
   kind: z.enum(["model", "harness"]),
   billing: z.enum(["api-key", "subscription"]).nullable().default(null),
@@ -25,7 +25,7 @@ export const taskSpendSourceSchema = z.object({
 });
 
 /** One request admitted for the task, and what it spent. */
-export const taskSpendRequestSchema = z.object({
+const taskSpendRequestSchema = z.object({
   /** The request, by id. A resume keeps its request's id, and its entry. */
   requestId: z.string(),
   /** What the request's endings handed on, summed per source. */

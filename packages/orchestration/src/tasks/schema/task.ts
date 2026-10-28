@@ -680,4 +680,3 @@ export type TaskWriteReceipt = NonNullable<
 >[number];
 
 export type { TaskStatus };
-export type { TaskSpend, TaskSpendRequest, TaskSpendSource } from "./spend";
