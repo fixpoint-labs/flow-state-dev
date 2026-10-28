@@ -1,7 +1,7 @@
 /**
  * Public surface of `@flow-state-dev/codex`: the Codex harness block, its
  * opt-in capability, the client seam and its version gate, the pure
- * translation layer, the cost derivation, the usage read, the start-time account probe, the model list, the handle and wire types, and the
+ * translation layer, the cost derivation, the usage read, the environment pass-list, the start-time account probe, the model list, the handle and wire types, and the
  * typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -11,6 +11,7 @@
  * Claude Code reads the same fields.
  */
 export { codexAgent, type CodexAgentOptions } from "./agent";
+export { CODEX_PASS } from "./env-pass";
 export { createCodexAgentCapability } from "./capability";
 export {
   assertTestedSdkVersion,

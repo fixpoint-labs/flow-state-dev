@@ -3,7 +3,7 @@
  * checkout, build and fresh store, driven the way that commit's app allows.
  * It must fail leg a at a1 or a2, leg b at b1 or b2, each naming what the
  * baseline lacks, and leg c at c2 on its merits: Alice hires a worker through
- * the chief of staff's screen, and Bob's Roster draws it.
+ * the Shift Coordinator's screen, and Bob's Roster draws it.
  *
  * Every attempt goes through the app as that person, with their own bearer;
  * a refusal or a missing surface is recorded as the failure it is.
@@ -70,17 +70,17 @@ export async function baselineLegs(o: BaselineOptions): Promise<void> {
     // ---- leg c: the org-locked hire every member reaches ----
     r.via("c2", "screen");
     const name = `baseline-${randomBytes(3).toString("hex")}`;
-    o.say(`baseline c2: Alice hires \`${name}\` through the chief of staff's screen`);
+    o.say(`baseline c2: Alice hires \`${name}\` through the Shift Coordinator's screen`);
     const alicePage = await personPage(o.browser, o.install.origin, { userId: A.userId, bearer: A.bearer }, true);
     try {
       await openShiftManager(alicePage.page, o.install.origin, "/");
-      const input = alicePage.page.getByTestId("cos-composer-input");
+      const input = alicePage.page.getByTestId("shift-coordinator-composer-input");
       await input.waitFor({ timeout: 30_000 });
       await input.fill(`Please hire a coder seat with the id "${name}". Just hire it.`);
-      await alicePage.page.getByTestId("cos-composer-send").click();
+      await alicePage.page.getByTestId("shift-coordinator-composer-send").click();
       await r.shot(alicePage.page, "baseline-c2-alice-asked");
     } catch (error) {
-      r.fail("c-setup", `Alice couldn't ask the chief of staff on the baseline: ${messageOf(error)}`);
+      r.fail("c-setup", `Alice couldn't ask the Shift Coordinator on the baseline: ${messageOf(error)}`);
     } finally {
       await alicePage.context.close().catch(() => undefined);
     }
@@ -91,7 +91,7 @@ export async function baselineLegs(o: BaselineOptions): Promise<void> {
       if (aliceSees) bobSees = (await o.install.screen("baseline-c2", B, false, "/roster", "bob-roster")).text.includes(name);
     }
     if (!aliceSees) r.fail("c-setup", `Alice's hire \`${name}\` never reached her own Roster, so c2 shows nothing on the baseline`);
-    else if (bobSees) r.fail("c2", `Bob reads Alice's worker: his Roster draws \`${name}\`, the hire Alice made through the chief of staff`);
+    else if (bobSees) r.fail("c2", `Bob reads Alice's worker: his Roster draws \`${name}\`, the hire Alice made through the Shift Coordinator`);
     else r.saw("c2", `Bob's Roster doesn't draw Alice's hire \`${name}\``);
   } finally {
     await o.install.stop();

@@ -1,5 +1,5 @@
 /**
- * The scratch patches (S3): `extra-flow` (leg c's boot 1), `no-cos` and
+ * The scratch patches (S3): `extra-flow` (leg c's boot 1), `no-shift-coordinator` and
  * `no-tool`. `deny-fire` is a click, not a patch.
  *
  * Each is applied to a scratch copy of the commit's DevTeam Lab, never to the
@@ -73,26 +73,26 @@ export function extraFlow(flow: string): Patch {
   };
 }
 
-/** The chief of staff's document removed. */
-export const noCos: Patch = {
-  name: "no-cos",
+/** The Shift Coordinator's document removed. */
+export const noShiftCoordinator: Patch = {
+  name: "no-shift-coordinator",
   apply(lab) {
     // The tree loader refuses a worker folder with no WORKER.md, so removing
-    // CoS's WORKER.md means removing its folder: the seat is simply not declared.
-    const folder = join(lab, "workforce", "org", "workers", "chief-of-staff");
-    if (!existsSync(join(folder, "WORKER.md"))) throw new Error("no-cos: the tree has no chief-of-staff WORKER.md to remove");
+    // Shift Coordinator's WORKER.md means removing its folder: the seat is simply not declared.
+    const folder = join(lab, "workforce", "org", "workers", "shift-coordinator");
+    if (!existsSync(join(folder, "WORKER.md"))) throw new Error("no-shift-coordinator: the tree has no shift-coordinator WORKER.md to remove");
     rmSync(folder, { recursive: true, force: true });
   },
 };
 
-/** `createProject` removed from the chief of staff's `tools:`. */
+/** `createProject` removed from the Shift Coordinator's `tools:`. */
 export const noTool: Patch = {
   name: "no-tool",
   apply(lab) {
-    const doc = join(lab, "workforce", "org", "workers", "chief-of-staff", "WORKER.md");
+    const doc = join(lab, "workforce", "org", "workers", "shift-coordinator", "WORKER.md");
     const text = readFileSync(doc, "utf8");
     const line = /^tools: \[(.*)\]$/m.exec(text);
-    if (line === null || !line[1]!.split(",").map((t) => t.trim()).includes("createProject")) throw new Error("no-tool: CoS's tools: line names no createProject");
+    if (line === null || !line[1]!.split(",").map((t) => t.trim()).includes("createProject")) throw new Error("no-tool: Shift Coordinator's tools: line names no createProject");
     const kept = line[1]!.split(",").map((t) => t.trim()).filter((t) => t !== "createProject");
     writeFileSync(doc, text.replace(line[0], `tools: [${kept.join(", ")}]`));
   },

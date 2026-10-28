@@ -85,13 +85,15 @@ function WorkerItem({
 
   const waiting = waitingOn(worker.id, talk);
   const status = worker.takesTasks
-    ? `${activity?.running ? "running" : "tasks"} · ${worker.harness}`
+    ? "takes tasks"
     : activity?.running
     ? "working"
     : waiting.length > 0
       ? `waiting on ${waiting.map(nameOf).join(", ")}`
       : activity
-        ? `idle · ${age(activity.lastActiveAt, now)}`
+        ? activity.lastActiveAt > 0
+          ? `idle · ${age(activity.lastActiveAt, now)}`
+          : "idle"
         : "";
   return (
     <button

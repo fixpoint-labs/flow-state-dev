@@ -38,7 +38,7 @@ function payoutFlow(kind: string, paid: string[]) {
     inputSchema: z.any(),
     outputSchema: z.unknown(),
     execute: async (_input, ctx) =>
-      ctx.suspend!({ reason: "human_approval", message: "Release the payout?" })
+      ctx.suspend!({ reason: "user_approval", message: "Release the payout?" })
   });
   const pay = handler({
     name: "pay",
@@ -71,7 +71,7 @@ function rootGateFlow(kind: string, paid: string[]) {
           inputSchema: z.any(),
           outputSchema: z.unknown(),
           execute: async (_input, ctx) => {
-            await ctx.suspend!({ reason: "human_approval", message: "Release the payout?" });
+            await ctx.suspend!({ reason: "user_approval", message: "Release the payout?" });
             paid.push(kind);
             return "paid";
           }

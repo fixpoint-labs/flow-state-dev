@@ -32,7 +32,7 @@ Some workers hear messages only in their tasks' sessions, such as the coding wor
 The model calls `sendMessage` with the recipient's worker id and the text:
 
 ```json
-{ "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
+{ "to": "shift-coordinator", "text": "What's the codename for the spring launch?" }
 ```
 
 The input takes `to`, `text` and, for an answer, `inReplyTo`. A [call](#calls) adds `wait`, `deadline` and `callId`. Nothing else is accepted. `to` is usually a worker id; it can also name [a task or a conversation](#messaging-a-task-or-a-conversation). The tool's description lists the workers the send would take, by id and description, so the model picks from real ids. The sending worker itself, and workers that hear only in task sessions, aren't listed.
@@ -92,7 +92,7 @@ A plain message doesn't wait for its answer. The sender's turn goes on, and the 
 A **call** is a message whose sender waits for the reply in the same turn. The model passes `wait: true` with the message:
 
 ```json
-{ "to": "chief-of-staff", "text": "What's the codename for the spring launch?", "wait": true, "deadline": 60000 }
+{ "to": "shift-coordinator", "text": "What's the codename for the spring launch?", "wait": true, "deadline": 60000 }
 ```
 
 The message is sent and logged like any other, and spends the same [budget](#the-budget). Then the tool waits, until the reply comes or `deadline` (in milliseconds) passes, whichever is first. A call that names no deadline waits for the host's default, five minutes unless the host [sets another](../advanced/durable-execution.md#wakes). A deadline outside the host's bounds, one second to 24 hours by default, is refused with `wait_deadline_out_of_range`. It's never clamped.
@@ -134,7 +134,7 @@ If the user stops the sender's request while it waits, the call ends with it. Th
 ### When a call fails
 
 ```json
-{ "status": "failed", "callId": "msg_3f1c0a9e2b7d4c6a8e10", "error": "not_delivered: the message to \"chief-of-staff\" was refused (…)." }
+{ "status": "failed", "callId": "msg_3f1c0a9e2b7d4c6a8e10", "error": "not_delivered: the message to \"shift-coordinator\" was refused (…)." }
 ```
 
 A call answers `failed` when its message was refused or couldn't be delivered (`error` starts `not_delivered:`), or when the recipient's turn failed.
@@ -240,7 +240,7 @@ Each resend checks the recipient again, the same way the send did. If the recipi
 **The sender hears when it can't land.** If the recipient's host refuses the first delivery for good, the tool answers [`not_delivered`](#when-a-send-is-refused) with the reason. If a message can't land after the tool has answered `{ sent }`, the sending session gets one line in its conversation:
 
 ```text
-Your message msg_3f1c0a9e2b7d4c6a8e10 to chief-of-staff wasn't delivered: <reason>.
+Your message msg_3f1c0a9e2b7d4c6a8e10 to shift-coordinator wasn't delivered: <reason>.
 ```
 
 Its next turn reads the line in its history. No turn is started for it.
@@ -353,7 +353,7 @@ What's the codename for the spring launch?
 (The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. To answer it, call sendMessage with to "researcher" and inReplyTo "msg_3f1c0a9e2b7d4c6a8e10". To message any other worker, leave inReplyTo out. If it needs no answer, don't send one: not answering is an answer. This exchange can send 5 more messages.)
 ```
 
-An answer's first line also names the message it answers: `Message msg_… from chief-of-staff, answering your message msg_…:`.
+An answer's first line also names the message it answers: `Message msg_… from shift-coordinator, answering your message msg_…:`.
 
 A [call](#calls) reads differently, since its reply is the turn's final text:
 

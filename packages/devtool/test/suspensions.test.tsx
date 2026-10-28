@@ -43,7 +43,7 @@ function pendingRecord(overrides: Partial<SuspensionRecord> = {}): SuspensionRec
     flowKind: "chat",
     actionName: "ask",
     userId: "user_1",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "Approve this draft?",
     status: "pending",
     blockInstanceId: "b1",
@@ -184,13 +184,13 @@ describe("SuspensionItemView", () => {
       },
       suspensionId: "sus_1",
       suspensionStatus: "pending",
-      reason: "human_approval",
+      reason: "user_approval",
       message: "Approve this draft?",
     } as unknown as SuspensionItem;
 
     render(<SuspensionItemView item={item} />);
     expect(screen.getByText("Approve this draft?")).toBeInTheDocument();
-    expect(screen.getByText("human_approval")).toBeInTheDocument();
+    expect(screen.getByText("user_approval")).toBeInTheDocument();
     expect(screen.getByText("pending")).toBeInTheDocument();
   });
 });

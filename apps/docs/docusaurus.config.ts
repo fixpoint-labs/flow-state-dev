@@ -117,7 +117,7 @@ const config: Config = {
       {
         redirects: [
           {
-            from: "/docs/workforce/chief-of-staff",
+            from: "/docs/workforce/chief-of-staff", // retired-name-refusal: an old docs link keeps landing on the page
             to: "/docs/workforce/shift-coordinator",
           },
           {

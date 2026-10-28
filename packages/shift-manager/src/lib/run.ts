@@ -17,6 +17,7 @@ import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
+  OBSERVED_PULL_REQUESTS,
   planKeySegment,
   planRowsPrefix,
   readPlanTarget,
@@ -202,21 +203,36 @@ export async function interruptRun(
 }
 
 /**
- * The storage prefixes a coding harness records its plan and file operations
- * under, when it records them. Found in the run session's manifest by these
- * patterns; a flow that declares neither records neither.
+ * The storage prefixes a coding harness records its plan, file operations and
+ * pull requests under, when it records them. Found in the run session's
+ * manifest by these patterns; a flow that declares none records none.
  */
-const RECORDED = { plan: `${OBSERVED_PLAN}/**`, markers: `${OBSERVED_PLAN_LIST}/**`, files: "observed-file-ops/**" } as const;
+const RECORDED = {
+  plan: `${OBSERVED_PLAN}/**`,
+  markers: `${OBSERVED_PLAN_LIST}/**`,
+  files: "observed-file-ops/**",
+  pullRequests: `${OBSERVED_PULL_REQUESTS}/**`,
+} as const;
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
 /** One path the run's file tools touched. */
 export type FileTouch = { path: string; kind: "created" | "edited" | null };
+/** One pull request the run opened, or found on its branch. */
+export type OpenedPullRequest = {
+  url: string;
+  repository: string | null;
+  number: number | null;
+  title: string | null;
+  state: string | null;
+  source: "tool" | "branch" | null;
+};
 
 /** What a run recorded, per section: its rows, `null` when the harness records none. */
 export type RecordedWork = {
   plan: { rows: PlanStep[]; truncated: boolean } | null;
   files: { rows: FileTouch[]; truncated: boolean } | null;
+  pullRequests: { rows: OpenedPullRequest[]; truncated: boolean } | null;
 };
 
 /** Rows per recorded-collection read. One page; past it the section says there is more. */
@@ -232,7 +248,10 @@ function recordedRef(manifest: ResourceManifest, pattern: string): string | unde
  * request did and nothing an earlier run in the same session did. The plan is
  * the harness conversation's: the run leaves a pointer to it under its own
  * request, and a run from before plans were kept by conversation has its plan
- * under the request, as files are.
+ * under the request, as files are. Pull requests are keyed by the pull
+ * request, not the request, since a session keeps one row per pull request
+ * across its turns: each row names the request that opened it, and only this
+ * run's are kept.
  */
 export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
   let manifest: ResourceManifest;
@@ -263,7 +282,12 @@ export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessi
     return read(RECORDED.plan, readPlanTarget(run.requestId, markers).rowsPrefix);
   };
   const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
-  const [plan, files] = await Promise.all([readPlan(), read(RECORDED.files)]);
+  const [plan, files, pullRequests] = await Promise.all([
+    readPlan(),
+    read(RECORDED.files),
+    read(RECORDED.pullRequests, `${OBSERVED_PULL_REQUESTS}/`),
+  ]);
+  const text = (data: unknown, key: string) => (typeof field(data, key) === "string" ? (field(data, key) as string) : null);
   /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
   const rest = (topic: string) => topic.split("/").slice(2).join("/");
   return {
@@ -287,6 +311,27 @@ export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessi
               const kind = field(item.clientData, "lastKind");
               return { path: rest(item.topic), kind: kind === "created" || kind === "edited" ? kind : null };
             }),
+          },
+    pullRequests:
+      pullRequests === null
+        ? null
+        : {
+            truncated: pullRequests.truncated,
+            rows: pullRequests.items
+              .filter((item) => field(item.clientData, "requestId") === run.requestId && text(item.clientData, "url") !== null)
+              .sort((a, b) => Number(field(a.clientData, "firstSeenAt") ?? 0) - Number(field(b.clientData, "firstSeenAt") ?? 0))
+              .map((item) => {
+                const source = field(item.clientData, "source");
+                const number = field(item.clientData, "number");
+                return {
+                  url: text(item.clientData, "url")!,
+                  repository: text(item.clientData, "repository"),
+                  number: typeof number === "number" ? number : null,
+                  title: text(item.clientData, "title"),
+                  state: text(item.clientData, "state"),
+                  source: source === "tool" || source === "branch" ? source : null,
+                };
+              }),
           },
   };
 }

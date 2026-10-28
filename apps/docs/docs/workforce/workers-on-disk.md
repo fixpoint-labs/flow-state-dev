@@ -44,7 +44,7 @@ A worker can also sit at the organization level, beside the teams:
 workforce/
   org/
     workers/
-      chief-of-staff/
+      shift-coordinator/
         WORKER.md
   teams/
     …
@@ -147,7 +147,7 @@ Team documents work differently by folder. Under `teams/<team>/resources/` they 
 
 A worker's id is its team folder and its own folder joined with a dot. `teams/engineering/workers/lead/` becomes `engineering.lead`.
 
-An org worker's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `chief-of-staff`. Since a team worker's id always has a dot, the two can't collide. `chief-of-staff` and `engineering.chief-of-staff` are two different workers.
+An org worker's id is its folder name alone, with no dot: `org/workers/shift-coordinator/` is `shift-coordinator`. Since a team worker's id always has a dot, the two can't collide. `shift-coordinator` and `engineering.shift-coordinator` are two different workers.
 
 The team qualifier means every team can have a `lead` without checking what the other teams called theirs. The id is how everything else names the worker: a session's `workerId`, a coordinator's `delegates:`, a task handed to it. Its sessions run on the flow it names, so `engineering.lead` on `agent` is talked to in a session of `agent` created with `state: { workerId: "engineering.lead" }`.
 
@@ -498,6 +498,32 @@ import { workerFlowProblems } from "@flow-state-dev/workforce";
 
 expect(workerFlowProblems("triage", triageFlow, ["contributor"])).toEqual([]);
 ```
+
+#### Settings a user can see
+
+A worker's settings stay on the server: its flow reads them, and a browser doesn't. When a
+screen needs one, such as which coding harness a worker runs on, name it where you register the
+flow:
+
+```ts
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { coder: { flow: coderFlow, showSettings: ["harness"] } },
+});
+```
+
+Each worker on that flow then carries its own value on its roster row, from its `WORKER.md` or
+from the user's copy of it:
+
+```ts
+const roster = await workforce.roster();
+roster.find((row) => row.id === "coder")?.settings; // { harness: "claude-code" }
+```
+
+Only the names you list show, so a setting you add later stays private until you list it too. A
+worker that doesn't set a listed key has nothing for it on its row. `hireWorkforce` refuses a name
+the flow doesn't declare in its `configSchema`. It also refuses the keys every worker carries or
+the hire reads itself, such as `instructions` and `description`.
 
 #### Where a worker's data lives
 

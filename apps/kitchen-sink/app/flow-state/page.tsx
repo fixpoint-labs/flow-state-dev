@@ -53,6 +53,7 @@ import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
+import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
@@ -928,6 +929,9 @@ function ChatPanel({
         {/* Outside the conversation, deliberately: a child session's output is not
             part of the transcript and nothing folds it in. */}
         <BackgroundWorkPanel session={session} flowKind="chat-agent" />
+        <div className="mx-auto max-w-3xl px-3 sm:px-4">
+          <PullRequestsPanel session={session} />
+        </div>
         <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">

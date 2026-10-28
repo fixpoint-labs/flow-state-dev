@@ -21,7 +21,7 @@
  *   fail on *a pick below the floor goes to the fallback*, and nothing else:
  *   a pick with no confidence is still a miss.
  * - `turn-after-route`: the coordinator's own turn also runs on a post best
- *   fit placed. Leg a must fail on *no chief-of-staff turn on the post*.
+ *   fit placed. Leg a must fail on *no shift-coordinator turn on the post*.
  *
  * Each patch's anchor is a line that reads the same in the TypeScript source
  * and in tsx's JavaScript output; the hook throws when it matches nothing,

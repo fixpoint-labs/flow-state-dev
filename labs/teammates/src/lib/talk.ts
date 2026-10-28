@@ -12,7 +12,7 @@ import type { ConversationEntry, TalkRow } from "../adapter";
  */
 export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[]): TalkRow[] {
   const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
-  return rows.filter((m) => m.to === worker && !read.has(m.id));
+  return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id));
 }
 
 /** The workers `worker` has messaged and not heard back from, oldest ask first. */

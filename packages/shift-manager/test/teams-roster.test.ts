@@ -57,14 +57,14 @@ describe("TEAMS", () => {
     const value = await teams({
       workers: [
         { id: "eng.lead", kind: "agent" },
-        { id: "chief-of-staff", kind: "agent" },
+        { id: "shift-coordinator", kind: "agent" },
         // A team named like the organization is a team like any other.
         { id: "acme.support", kind: "agent" },
       ],
     });
     expect(value.workers.map((worker) => [worker.id, worker.team, worker.name])).toEqual([
       ["eng.lead", "eng", "lead"],
-      ["chief-of-staff", "_general", "chief-of-staff"],
+      ["shift-coordinator", "_general", "shift-coordinator"],
       ["acme.support", "acme", "support"],
     ]);
   });
