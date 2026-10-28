@@ -7,6 +7,9 @@
  * - **lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
+ *   A history summary keeps what was said before the history window: its
+ *   capability goes in `uses` and its fold runs as `beforeAnswer`, so a turn
+ *   is summarized before it leaves the window the worker reads word for word.
  * - **coder** runs on the lab's coding flow (`src/flows/coder.ts`), which
  *   takes the tasks lead files and runs each through the harness coder's
  *   `WORKER.md` names, in the project of the conversation that filed it.
@@ -26,7 +29,7 @@ import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/s
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, utility } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import {
   AGENT_FLOW,
@@ -112,13 +115,26 @@ export async function openTeammates(options: TeammatesOptions) {
   );
 
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
+  const earlier = utility.historySummary({
+    summarize: utility.summarizer({
+      name: "earlier-turns",
+      model: options.model,
+      granularity: "detailed",
+      // Named, or a small model summarizes the newer turns alone and drops the summary so far.
+      objectives: [
+        "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
+        "Keep every name, date, code and number the user or another worker stated, word for word.",
+      ],
+    }),
+  });
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
   flows = {
     [AGENT_FLOW]: defineAgentWorkerFlow({
       installation,
       model: options.model,
-      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true })],
+      uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), earlier.capability],
+      beforeAnswer: earlier.fold,
       afterAnswer: mem.captureFromItems,
     }),
     [CODER_FLOW]: coderFlow({

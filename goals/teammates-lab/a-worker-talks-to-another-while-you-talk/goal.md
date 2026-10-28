@@ -1,15 +1,15 @@
 # teammates-lab › it a worker talks to another while you talk
 
-**Issue:** FIX-2154 (leg b of the FIX-2152 epic's goal)
-**Outcome:** In the Teammates lab, a list-of-workers app on the Grok Bot pattern, you talk to lead, lead messages researcher, and researcher's reply reaches lead while you are still talking to it; lead uses it. A coding job lead hands coder runs through Claude Code in the project you picked for lead, and only after you picked it.
-**Input:** held out. The launch date researcher knows is drawn at random each run and written into a copy of the workers' tree, so lead can only state it by hearing it from researcher. The README's typo is one of several (`fixtures/input.json`). The lines you send are in the fixture.
+**Issue:** FIX-2154 (leg b of the FIX-2152 epic's goal), step 4 with FIX-1613
+**Outcome:** In the Teammates lab, a list-of-workers app on the Grok Bot pattern, you talk to lead, lead messages researcher, and researcher's reply reaches lead while you are still talking to it; lead uses it. Long after both have left lead's history window, lead still knows them, and the screen shows where its word-for-word reading begins. A coding job lead hands coder runs through Claude Code in the project you picked for lead, and only after you picked it.
+**Input:** held out. The launch date researcher knows is drawn at random each run and written into a copy of the workers' tree, so lead can only state it by hearing it from researcher. Step 4's codename (a colour, an animal and a number) is drawn per run, and its 60 lines are shuffled. The README's typo is one of several (`fixtures/input.json`). The lines you send are in the fixture.
 **Signal:**
 - **1:** lead answers your first line in its conversation.
 - **2:** a card *To researcher* in lead's conversation, a line *From lead* in researcher's, the exchange under *with researcher* in lead's Talk panel, and a delivered row lead → researcher in the message log.
 - **3:** your second line goes in before researcher's reply has landed. The reply shows in lead's conversation under researcher's name, after lead's answer to you, carrying the date; the log holds it as a delivered reply; a line of lead's after it states the date.
-- **4:** not run. It needs the history window's mark (G1, FIX-1613); the step waits on it.
+- **4:** you tell lead a codename, then send 60 more lines, past the 50-turn history window, each answered before the next. Then you ask for the codename and the launch date. lead's answer holds all three words of the codename and the date, and lead sent researcher nothing new for it (no new card, no new log row). The conversation shows a divider labelled *Earlier turns summarized*, and both the codename line and researcher's reply are drawn above it.
 - **5:** lead has no project. You ask for the fix; the task card asks for a project. For 30 s with no pick, no run starts and the checkout is unchanged. You pick `relay` on the card; your pick is said to lead as your line and lead files the task again. That run ends *done in relay*, its steps show Claude Code, the result lands in lead's conversation from coder after your pick. On disk: the checkout's HEAD and working tree are untouched, and exactly one worktree of it, under the lab's runs folder, carries a commit that changes README.md alone, fixing its first line and nothing else.
-**Anti-game:** Graded on what the browser shows, the message log read through the public client, and git. Never on the lab's adapter or the server's own state. Lead can't state the launch date without the reply, because it is drawn per run. The disk check reads git, so a run that only says it fixed the typo fails. The step-3 order check reads entry order as drawn, so a reply drawn before lead's answer fails. Each graded list is floored with `tell.over`; an empty log or no worktree counts only where a control produces it, and says so.
+**Anti-game:** Graded on what the browser shows, the message log read through the public client, and git. Never on the lab's adapter or the server's own state. Lead can't state the launch date without the reply, because it is drawn per run. The disk check reads git, so a run that only says it fixed the typo fails. The step-3 order check reads entry order as drawn, so a reply drawn before lead's answer fails. Step 4 counts lead's messages to researcher around the question, so asking researcher again for the date fails, and it reads which side of the divider each fact sits on, so a fact still read word for word doesn't count. Each graded list is floored with `tell.over`; an empty log or no worktree counts only where a control produces it, and says so.
 **Model:** real — openai/gpt-5.4-mini (lead, researcher, writer); coder's run on Claude Code
 **Run:** `pnpm tsx goals/teammates-lab/a-worker-talks-to-another-while-you-talk/run.mts` (needs `AI_GATEWAY_API_KEY`, and Claude Code signed in or `ANTHROPIC_API_KEY`)
 **Controls:** each on the same command, failing the steps named and no other:
@@ -17,6 +17,10 @@
 - `GOAL_CONTROL=no-lead-send`: lead's `sendMessage` is dropped from its tools (a scratch patch to `message-tool.ts`). Steps 2 and 3 FAIL. Step 5 may fail too: with no way to message, lead files its research ask as a task for coder, and after the pick it filed nothing again (2 of 2 runs).
 - `GOAL_CONTROL=no-reply-tool`: researcher's `sendMessage` is dropped. Step 3 FAILS.
 - `GOAL_CONTROL=pick-not-kept`: the pick answers as kept but `setWorkProject` stores nothing (a scratch patch to `work-project.ts`), so the task filed again still has no project and the README never changes. Step 5 FAILS.
+- `GOAL_CONTROL=no-summary`: the history summary's capability and fold are dropped from the lab's host (a scratch patch to `host.mts`); memory stays. Step 4 FAILS: the divider can't say *summarized*.
+- `GOAL_CONTROL=no-memory`: the summary and memory are both dropped from the host. Step 4 FAILS: nothing holds what left the window.
+
+Step 4 is skipped under `no-model`, `no-lead-send`, `no-reply-tool` and `pick-not-kept`: its 60 lines test nothing about the step each control reddens.
 
 Steps 2 and 3 have no isolating red state for lead's side: without lead's message there is nothing to reply to, so `no-lead-send` reddens both. Under `no-model` the screen doesn't show your own lines either until a reload: a turn that fails shows nothing live.
 

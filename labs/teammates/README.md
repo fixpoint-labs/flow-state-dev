@@ -58,6 +58,11 @@ Ask lead *"Ask researcher for our launch date, and help me outline the post."* l
 messages researcher. Before researcher replies, send lead a second line: the reply shows as pending,
 then lands after lead's answer, and lead uses it in its next line.
 
+A conversation outlasts its history window (50 turns). Before a turn leaves it, the turn is folded
+into a running summary that lead reads with the turns it still has word for word. The divider sits
+where those begin, labelled *summarized*, so a fact you gave lead a hundred lines ago is above it and
+lead still knows it.
+
 Then ask lead *"Have coder fix the typo in the README's first line."* The task card asks for a
 project. Pick `relay`: lead files the task again, coder's run shows its steps, and the result lands
 in lead's conversation.
@@ -77,11 +82,10 @@ names the package call it makes.
 | A worker's project, and picking it | `setWorkProject`, read back from that action's own answer |
 | Task cards, the refusal for want of a project | the conversation board's rows, and `projectWorkspace()`'s `no-project` refusal |
 | coder's runs | the task row's `run` link, read as the run session's items |
+| The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 Not wired yet:
 
-- **The divider and its *summarized* label** wait on the history window's mark (G1, FIX-1613). Until
-  then the screen draws no divider.
 - **A worker's project, read from its conversation.** The package keeps it on the conversation as
   `workProjectId`, but doesn't show that state to a client, so the screen reads the last
   `setWorkProject` answer instead. A pick made anywhere else isn't seen (FIX-2280).
@@ -98,8 +102,8 @@ and on a flow over 200 lines; `--wired` also fails on any fixture.
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 16 | 518 |
-| React UI | 18 | 1566 |
+| Configuration | 16 | 538 |
+| React UI | 18 | 1633 |
 | Small flows | 1 | 148 |
-| Checks (not app code) | 5 | 764 |
+| Checks (not app code) | 6 | 804 |
 <!-- inventory:end -->
