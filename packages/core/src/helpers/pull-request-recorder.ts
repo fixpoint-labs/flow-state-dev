@@ -57,8 +57,20 @@ export interface PullRequestRecorderContext {
   readonly emit?: { status?(message: string, options?: { transient?: boolean }): unknown };
 }
 
-/** The running recorder of each request, by the request's response. */
-const recorders = new WeakMap<object, true>();
+/** The running recorder of each request, by the request's response: its writes so far. */
+const recorders = new WeakMap<object, () => Promise<void>>();
+
+/**
+ * Resolves once every write this request's recorder has started has
+ * finished; at once when the request has no recorder. A host writer that runs
+ * at the end of a request (the branch check, in a request `onFinished` hook,
+ * which runs before the recorder stops) awaits it first, so it reads the
+ * recorder's rows rather than racing them.
+ */
+export function pullRequestWritesSettled(response: unknown): Promise<void> {
+  if (typeof response !== "object" || response === null) return Promise.resolve();
+  return recorders.get(response)?.() ?? Promise.resolve();
+}
 
 /** The context's status-note emitter, when it has one. */
 function note(ctx: PullRequestRecorderContext, message: string): void {
@@ -120,7 +132,14 @@ export function recordPullRequests(ctx: PullRequestRecorderContext, options: Rec
     note(ctx, "Pull requests are not being recorded: this context has no request-end seam to stop the recorder at.");
     return;
   }
-  recorders.set(response, true);
+  recorders.set(response, async () => {
+    // A write can start while an earlier one runs: wait until the chain stops growing.
+    let settled: Promise<void>;
+    do {
+      settled = writes;
+      await settled;
+    } while (settled !== writes);
+  });
   for (const item of response.getItems()) take(item);
   unsubscribe = response.subscribeToItems((item) => take(item), {
     filter: (item) => item.type === "tool_output",

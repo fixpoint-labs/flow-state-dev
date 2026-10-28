@@ -330,13 +330,15 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       if (goalControl() === "no-backstop") return;
       // A turn has a record under its request; a `steer` request has none.
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      if ((harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)] === undefined) return;
+      const turnRecord = (harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)];
+      if (turnRecord === undefined) return;
       const workspace = readHarnessWorkspace();
       if (!workspace.ok) return;
       const place = placeOf(options.kind, harnessCtx);
       const cwd = locateSessionWorktree(workspace.repository, place);
       if (!existsSync(cwd)) return;
-      const result = await recordBranchPullRequests(ctx, { cwd, branches: [sessionBranch(place)] });
+      // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
+      const result = await recordBranchPullRequests(ctx, { cwd, branches: [sessionBranch(place)], openedSince: turnRecord.at ?? undefined });
       if (result.status === "unavailable") {
         ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
       }

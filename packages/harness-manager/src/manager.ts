@@ -734,6 +734,13 @@ const managerStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   /**
+   * When this run opened (epoch ms): the branch check writes only pull
+   * requests created since, so a reused branch's older ones are not this
+   * run's. `null` on a run recorded before it was kept: every pull request on
+   * the branch counts.
+   */
+  openedAt: z.number().nullable().default(null),
+  /**
    * The session the LAST attempt's harness confirmed it was in, captured before
    * this attempt's opening write clears the row's copy (see `openRun`).
    *
@@ -1325,8 +1332,9 @@ async function checkBranchPullRequests(ctx: BlockContext): Promise<void> {
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
     branches: [state.branch],
-    // Two calls (git, then gh) inside the one network-call bound the drain budget reserves.
-    timeoutMs: NETWORK_CALL_TIMEOUT_MS / 2,
+    openedSince: state.openedAt ?? undefined,
+    // The whole check, however many branches, inside the one network-call bound the drain budget reserves.
+    timeoutMs: NETWORK_CALL_TIMEOUT_MS,
   });
   if (result.status === "unavailable") {
     ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
@@ -1938,6 +1946,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ticket,
         goal: input.goal,
         decided: null,
+        openedAt: Date.now(),
       });
 
       // A row naming no issue and phase (a task a conversation filed) runs as

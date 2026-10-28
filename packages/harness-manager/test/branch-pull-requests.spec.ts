@@ -4,11 +4,13 @@
  * Driven end to end, in process, on the dotted-board host's shape: a real
  * task board, its same-flow dispatch and a real git checkout. The harness is a
  * fake that opens nothing a recorder could read, and `gh` is a stub on `PATH`
- * that knows one pull request on the run's branch.
+ * that knows two pull requests on the run's branch: one opened during the run,
+ * and one merged long before it.
  *
  * What a reader of a coding task relies on: when the run ends, a pull request
  * on its branch is on the run session's record, stamped with the run's
- * request, whichever way the agent opened it. A run that failed is checked too.
+ * request, whichever way the agent opened it, and one opened before the run is
+ * not claimed as the run's. A run that failed is checked too.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -44,7 +46,10 @@ beforeAll(() => {
     join(bin, "gh"),
     `#!/usr/bin/env node
 require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, process.argv[3] + "\\n");
-process.stdout.write(JSON.stringify([{ number: 96, html_url: "https://github.com/acme/app/pull/96", title: "From the branch", state: "open", draft: false, merged_at: null, head: { ref: "b" } }]));
+process.stdout.write(JSON.stringify([
+  { number: 96, html_url: "https://github.com/acme/app/pull/96", title: "From the branch", state: "open", draft: false, merged_at: null, created_at: new Date().toISOString(), head: { ref: "b" } },
+  { number: 12, html_url: "https://github.com/acme/app/pull/12", title: "An earlier run's", state: "closed", draft: false, merged_at: "2024-01-02T00:00:00Z", created_at: "2024-01-01T00:00:00Z", head: { ref: "b" } },
+]));
 `,
   );
   chmodSync(join(bin, "gh"), 0o755);

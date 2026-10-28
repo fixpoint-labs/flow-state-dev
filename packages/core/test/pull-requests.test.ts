@@ -17,6 +17,7 @@ import {
   githubPullRequestRule,
   observedPullRequestStateSchema,
   pullRequestKey,
+  pullRequestRefFromUrl,
   writePullRequests,
   type PullRequestRef,
 } from "../src/types/pull-requests";
@@ -207,5 +208,25 @@ describe("writePullRequests — one pull request, one row", () => {
 
   it("writes rows the schema reads, every field defaulting when an older row lacks it", () => {
     expect(observedPullRequestStateSchema.parse({})).toMatchObject({ host: null, number: null, source: null });
+  });
+});
+
+describe("pullRequestRefFromUrl", () => {
+  it("reads a listed link the way a tool's output is read, so both key one row", () => {
+    const listed = pullRequestRefFromUrl("https://www.GitHub.com/acme/app/pull/12");
+    const seen = findOpenedPullRequests({
+      id: "i",
+      type: "tool_output",
+      status: "completed",
+      output: { stdout: "https://github.com/acme/app/pull/12\n" },
+      toolCall: { name: "bash", arguments: JSON.stringify({ command: "gh pr create --fill" }) },
+    } as unknown as RuntimeItem)[0]!;
+    expect(listed).toEqual({ host: "github.com", owner: "acme", name: "app", number: 12, url: "https://github.com/acme/app/pull/12" });
+    expect(pullRequestKey(listed!)).toBe(pullRequestKey(seen));
+  });
+
+  it("is null for a link that is not a pull request's", () => {
+    expect(pullRequestRefFromUrl("https://github.com/acme/app/pull/new/feat")).toBeNull();
+    expect(pullRequestRefFromUrl("https://github.com/acme/app/issues/3")).toBeNull();
   });
 });

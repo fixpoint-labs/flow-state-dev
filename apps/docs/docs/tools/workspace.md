@@ -180,6 +180,7 @@ import { recordBranchPullRequests } from "@flow-state-dev/workspace";
 const result = await recordBranchPullRequests(ctx, {
   cwd: worktree,             // the checkout the run worked in
   branches: [sessionBranch], // optional: more branches to check
+  openedSince: turnStartedAt, // optional: leave out pull requests from before the turn
 });
 if (result.status === "unavailable") {
   ctx.emit.status(`Pull requests on the branch were not checked: ${result.reason}`, { transient: false });
@@ -191,7 +192,13 @@ any `branches` you pass. Pass the branch you created for the session there, in
 case the agent switched to another. It asks GitHub through the signed-in `gh`
 on the machine, in the repository the checkout's remote points to. Open, closed
 and merged pull requests all come back. A merged one is recorded as `merged`, an
-open draft as `draft`.
+open draft as `draft`. It finds pull requests whose branch is in that same
+repository, not ones opened from a fork.
+
+A branch the agent switched to can carry pull requests from long before the
+turn. Pass `openedSince`, the time the turn or run started in epoch
+milliseconds, and only pull requests GitHub says were created since then are
+written. Without it, every pull request on the branches is.
 
 The result is a `BranchPullRequestsResult`:
 
@@ -204,13 +211,15 @@ type BranchPullRequestsResult =
 `pullRequests` lists every pull request found, including any the session had
 already recorded. A row that exists keeps its `requestId` and `firstSeenAt`;
 only its empty fields are filled. New rows are stamped with the context's
-request, or with the `requestId` option when you pass one.
+request, or with the `requestId` option when you pass one. If the session's
+own recorder is still writing a pull request the turn opened, the check waits
+for it, so that row keeps `source: "tool"`.
 
 It never throws. A missing or signed-out `gh`, a checkout with no GitHub
 remote, a timeout, an undeclared collection, or a failed write comes back as
-`unavailable` with the reason. Each command it runs gets `timeoutMs` (default
-`BRANCH_PULL_REQUESTS_TIMEOUT_MS`, 30 seconds), separate from the turn's abort
-signal. Set `gh` to run a `gh` other than the one on `PATH`.
+`unavailable` with the reason. The whole check, however many branches it asks
+about, finishes within `timeoutMs` (default `BRANCH_PULL_REQUESTS_TIMEOUT_MS`,
+30 seconds), separate from the turn's abort signal. Set `gh` to run a `gh` other than the one on `PATH`.
 
 The flow must declare `observedPullRequestsCollection` from
 `@flow-state-dev/core`, which the coding agent blocks do by default. Only

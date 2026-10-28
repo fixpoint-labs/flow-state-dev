@@ -643,18 +643,20 @@ export {
   observedPullRequestStateSchema,
   observedPullRequestsCollection,
   pullRequestKey,
+  pullRequestRefFromUrl,
   writePullRequests,
 } from "./types/pull-requests";
 export type {
   ObservedPullRequestState,
   PullRequestCollection,
+  PullRequestLink,
   PullRequestRef,
   PullRequestRule,
   PullRequestSource,
   PullRequestToolCall,
   WritePullRequestsOptions,
 } from "./types/pull-requests";
-export { pullRequestRecorder, recordPullRequests } from "./helpers/pull-request-recorder";
+export { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "./helpers/pull-request-recorder";
 export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "./helpers/pull-request-recorder";
 
 /** The allowlisted environment for a harness's child process. */

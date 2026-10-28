@@ -10,6 +10,10 @@
  * writer, `writePullRequests`, as `source: "branch"`, so a row the recorder
  * already wrote stays one row and keeps the turn that opened it.
  *
+ * Only a pull request opened since `openedSince` counts, when the host passes
+ * it: a branch an agent switched to may carry pull requests from before the
+ * turn, and those are not the turn's.
+ *
  * Host-side only: this is where the framework talks to GitHub. It never throws.
  * A missing or signed-out `gh`, a checkout with no GitHub remote, or a store
  * that fails comes back as `unavailable` with the reason, for the host to show
@@ -17,13 +21,15 @@
  */
 import {
   OBSERVED_PULL_REQUESTS,
+  pullRequestRefFromUrl,
+  pullRequestWritesSettled,
   writePullRequests,
   type PullRequestCollection,
   type PullRequestRef,
 } from "@flow-state-dev/core";
 import { run } from "./exec";
 
-/** How long each command the check runs may take, by default. */
+/** How long the whole check may take, by default: every command it runs shares this one deadline. */
 export const BRANCH_PULL_REQUESTS_TIMEOUT_MS = 30_000;
 
 /** Options for {@link recordBranchPullRequests}. */
@@ -38,7 +44,14 @@ export interface RecordBranchPullRequestsOptions {
   readonly branches?: readonly string[];
   /** The request the rows are stamped with when new. Default: the context's. */
   readonly requestId?: string | null;
-  /** Each command's wall clock. Its own budget, never the turn's abort signal. */
+  /**
+   * Only pull requests GitHub says were created at or after this time (epoch
+   * ms) are written; older ones on the branch are left out. Pass the start of
+   * the turn or run the check follows. Unset, every pull request on the
+   * branches is written.
+   */
+  readonly openedSince?: number;
+  /** The whole check's wall clock, shared by every command it runs. Its own budget, never the turn's abort signal. */
   readonly timeoutMs?: number;
   /** The `gh` to run. Default `"gh"` on `PATH`. */
   readonly gh?: string;
@@ -53,6 +66,8 @@ export type BranchPullRequestsResult =
 export interface BranchPullRequestsContext {
   readonly resources?: unknown;
   readonly request?: { readonly identity: { readonly id: string } };
+  /** The request's response: the check waits for its in-turn recorder's writes before writing. */
+  readonly response?: unknown;
 }
 
 /** One pull request as GitHub's REST list returns it; only what is read. */
@@ -62,11 +77,13 @@ interface ListedPullRequest {
   title?: unknown;
   state?: unknown;
   draft?: unknown;
+  created_at?: unknown;
   merged_at?: unknown;
   head?: { ref?: unknown };
 }
 
-const PULL_LINK = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+/** How far GitHub's clock may run behind this host's before a pull request opened in the turn reads as older. */
+const CLOCK_SLACK_MS = 60_000;
 
 function reasonOf(err: unknown): string {
   const stderr = (err as { stderr?: unknown }).stderr;
@@ -76,18 +93,12 @@ function reasonOf(err: unknown): string {
 
 /** A listed pull request as a ref, or `null` when its link is not a pull request's. */
 function refOf(listed: ListedPullRequest): PullRequestRef | null {
-  if (typeof listed.html_url !== "string") return null;
-  const m = PULL_LINK.exec(listed.html_url);
-  if (m === null) return null;
-  const [, host = "", owner = "", name = "", num = ""] = m;
+  const link = typeof listed.html_url === "string" ? pullRequestRefFromUrl(listed.html_url) : null;
+  if (link === null) return null;
   const state =
     typeof listed.merged_at === "string" ? "merged" : listed.draft === true && listed.state === "open" ? "draft" : listed.state;
   return {
-    host: host.toLowerCase().replace(/^www\./, ""),
-    owner,
-    name,
-    number: Number(num),
-    url: listed.html_url,
+    ...link,
     title: typeof listed.title === "string" ? listed.title : null,
     state: typeof state === "string" ? state : null,
     branch: typeof listed.head?.ref === "string" ? listed.head.ref : null,
@@ -100,7 +111,10 @@ function refOf(listed: ListedPullRequest): PullRequestRef | null {
  *
  * The branches are the checkout's current one (unless it is detached) and
  * `options.branches`. Each is asked of GitHub's REST API through `gh api`,
- * in the repository `gh` resolves from the checkout's remote, open or closed.
+ * in the repository `gh` resolves from the checkout's remote, open or closed,
+ * all at once. Before writing, it waits for the request's in-turn recorder to
+ * finish its writes, so a pull request seen in a create call keeps
+ * `source: "tool"`.
  *
  * ```ts
  * const result = await recordBranchPullRequests(ctx, { cwd: worktree, branches: [sessionBranch] });
@@ -117,12 +131,14 @@ export async function recordBranchPullRequests(
   if (typeof collection?.upsert !== "function" || typeof collection.getOptional !== "function") {
     return { status: "unavailable", reason: `the "${OBSERVED_PULL_REQUESTS}" collection is not registered on this flow` };
   }
-  const timeoutMs = options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS;
+  const deadline = Date.now() + (options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS);
+  // What is left of the one budget, for the next command.
+  const left = () => Math.max(1, deadline - Date.now());
   const gh = options.gh ?? "gh";
 
   const branches = new Set<string>();
   try {
-    const head = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: options.cwd, timeoutMs })).stdout.trim();
+    const head = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: options.cwd, timeoutMs: left() })).stdout.trim();
     if (head !== "" && head !== "HEAD") branches.add(head);
   } catch (err) {
     return { status: "unavailable", reason: `the checkout's branch can't be read: ${reasonOf(err)}` };
@@ -130,27 +146,36 @@ export async function recordBranchPullRequests(
   for (const branch of options.branches ?? []) if (branch !== "") branches.add(branch);
   if (branches.size === 0) return { status: "recorded", branches: [], pullRequests: [] };
 
+  const asked = await Promise.all(
+    [...branches].map(async (branch) => {
+      try {
+        const { stdout } = await run(
+          gh,
+          // `gh` fills `{owner}` and `{repo}` from the checkout's remote.
+          ["api", `repos/{owner}/{repo}/pulls?head={owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
+          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" } },
+        );
+        return { branch, listed: JSON.parse(stdout) as unknown };
+      } catch (err) {
+        return { branch, error: reasonOf(err) };
+      }
+    }),
+  );
   const found: PullRequestRef[] = [];
-  for (const branch of branches) {
-    let listed: unknown;
-    try {
-      const { stdout } = await run(
-        gh,
-        // `gh` fills `{owner}` and `{repo}` from the checkout's remote.
-        ["api", `repos/{owner}/{repo}/pulls?head={owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
-        { cwd: options.cwd, timeoutMs, env: { GH_PROMPT_DISABLED: "1" } },
-      );
-      listed = JSON.parse(stdout);
-    } catch (err) {
-      return { status: "unavailable", reason: `GitHub could not be asked about branch ${branch}: ${reasonOf(err)}` };
+  for (const answer of asked) {
+    if ("error" in answer) {
+      return { status: "unavailable", reason: `GitHub could not be asked about branch ${answer.branch}: ${answer.error}` };
     }
-    if (!Array.isArray(listed)) continue;
-    for (const entry of listed as ListedPullRequest[]) {
+    if (!Array.isArray(answer.listed)) continue;
+    for (const entry of answer.listed as ListedPullRequest[]) {
+      const created = typeof entry.created_at === "string" ? Date.parse(entry.created_at) : Number.NaN;
+      if (options.openedSince !== undefined && !(created >= options.openedSince - CLOCK_SLACK_MS)) continue;
       const ref = refOf(entry);
       if (ref !== null) found.push(ref);
     }
   }
 
+  await pullRequestWritesSettled(ctx.response);
   try {
     await writePullRequests(collection, found, {
       source: "branch",

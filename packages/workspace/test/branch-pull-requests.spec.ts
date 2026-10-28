@@ -6,6 +6,8 @@
  * on the record after the check, marked as found on the branch; one the
  * recorder already wrote stays one row and keeps the turn that opened it; the
  * host's own session branch is checked even after the agent moved to another;
+ * a pull request from before the turn on a branch the agent switched to is
+ * not the turn's; one budget bounds the whole check, however many branches;
  * and a `gh` that fails is a reason handed back, never a throw.
  *
  * `gh` is a stub script that answers by branch; git is real.
@@ -28,7 +30,7 @@ function checkout(branch: string): string {
 }
 
 /** A `gh` that answers `gh api …pulls?head=…:<branch>…` from `byBranch`, logging each endpoint. */
-function stubGh(byBranch: Record<string, unknown[]>, fail?: string): { path: string; calls: () => string[] } {
+function stubGh(byBranch: Record<string, unknown[]>, fail?: string, hangMs = 0): { path: string; calls: () => string[] } {
   const dir = tempDir("gh");
   const log = join(dir, "calls.log");
   const answers = join(dir, "answers.json");
@@ -40,6 +42,7 @@ function stubGh(byBranch: Record<string, unknown[]>, fail?: string): { path: str
 const fs = require("node:fs");
 const endpoint = process.argv[3] ?? "";
 fs.appendFileSync(${JSON.stringify(log)}, endpoint + "\\n");
+${hangMs > 0 ? `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${hangMs});` : ""}
 ${fail === undefined ? "" : `process.stderr.write(${JSON.stringify(fail)} + "\\n"); process.exit(4);`}
 const branch = decodeURIComponent(/head=\\{owner\\}:([^&]*)/.exec(endpoint)?.[1] ?? "");
 process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync(${JSON.stringify(answers)}, "utf8"))[branch] ?? []));
@@ -133,4 +136,34 @@ describe("recordBranchPullRequests", () => {
     const result = await recordBranchPullRequests({ resources: {} }, { cwd: checkout("notes"), gh: "gh-never-run" });
     expect(result).toMatchObject({ status: "unavailable", reason: expect.stringMatching(/not registered/) });
   });
+
+  it("leaves out a pull request created before the turn, on a branch the agent switched to", async () => {
+    const collection = memoryCollection();
+    const turnStart = Date.parse("2026-10-28T12:00:00Z");
+    const gh = stubGh({
+      release: [
+        listed(40, "release", { created_at: "2025-03-01T00:00:00Z", merged_at: "2025-03-02T00:00:00Z", state: "closed" }),
+        listed(93, "release", { created_at: "2026-10-28T12:05:00Z" }),
+      ],
+    });
+    const result = await recordBranchPullRequests(ctxWith(collection), { cwd: checkout("release"), gh: gh.path, openedSince: turnStart });
+    expect(result).toMatchObject({ status: "recorded" });
+    expect([...collection.rows.keys()]).toEqual(["github.com/acme/app/93"]);
+  });
+
+  it("ends within its one budget when gh hangs, with several branches to ask", async () => {
+    const collection = memoryCollection();
+    const gh = stubGh({}, undefined, 10_000);
+    const started = Date.now();
+    const result = await recordBranchPullRequests(ctxWith(collection), {
+      cwd: checkout("a"),
+      branches: ["b", "c"],
+      gh: gh.path,
+      timeoutMs: 1_500,
+    });
+    expect(result).toMatchObject({ status: "unavailable" });
+    // Three commands at 1.5 s each, one after another, would take 4.5 s.
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(collection.rows.size).toBe(0);
+  }, 15_000);
 });

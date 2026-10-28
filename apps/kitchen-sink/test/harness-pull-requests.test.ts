@@ -35,13 +35,17 @@ beforeAll(() => {
   writeFileSync(join(repo, "README.md"), "hello\n");
   execFileSync("git", ["-C", repo, "add", "."]);
   execFileSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
-  // A `gh` that knows one pull request on every branch: #95, opened outside any create call the recorder reads.
+  // A `gh` that knows two pull requests on every branch: #95, opened outside any create call the recorder
+  // reads, and #30, merged before the turn began, which is not the turn's.
   ghDir = join(scratch, "bin");
   mkdirSync(ghDir);
   writeFileSync(
     join(ghDir, "gh"),
     `#!/usr/bin/env node
-process.stdout.write(JSON.stringify([{ number: 95, html_url: "https://github.com/acme/app/pull/95", title: "Raw API", state: "open", draft: false, merged_at: null, head: { ref: "x" } }]));
+process.stdout.write(JSON.stringify([
+  { number: 95, html_url: "https://github.com/acme/app/pull/95", title: "Raw API", state: "open", draft: false, merged_at: null, created_at: new Date().toISOString(), head: { ref: "x" } },
+  { number: 30, html_url: "https://github.com/acme/app/pull/30", title: "Before the turn", state: "closed", draft: false, merged_at: "2024-01-02T00:00:00Z", created_at: "2024-01-01T00:00:00Z", head: { ref: "x" } },
+]));
 `,
   );
   chmodSync(join(ghDir, "gh"), 0o755);

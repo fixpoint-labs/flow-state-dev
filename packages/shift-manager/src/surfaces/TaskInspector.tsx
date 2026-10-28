@@ -220,7 +220,11 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
               </li>
             ))}
             {work.pullRequests.rows.length === 0 ? <li className="text-xs text-muted-foreground">The run opened no pull requests.</li> : null}
-            {more(work.pullRequests.truncated)}
+            {work.pullRequests.truncated ? (
+              <p className="text-xs text-muted-foreground">
+                The session holds more pull requests than one read returns, so this run's may not all be shown.
+              </p>
+            ) : null}
           </ul>
         )}
       </Section>

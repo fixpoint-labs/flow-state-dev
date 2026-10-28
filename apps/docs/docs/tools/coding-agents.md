@@ -334,7 +334,9 @@ and writes any it finds with `source: "branch"`. Nothing runs it on its own;
 your server code calls it from a block that runs after the turn. Kitchen Sink's
 coding modes run it when a turn finishes, and the
 [harness manager](/docs/orchestration/harness-manager) runs it before its
-verdict and when a run fails. To run it yourself, see
+verdict and when a run fails. Both count only pull requests created since the
+turn or run began, so an older one on a branch the agent switched to is not
+claimed. To run it yourself, see
 [`recordBranchPullRequests`](./workspace.md#pull-requests-on-a-branch).
 
 A pull request found by both lands on one row. Whichever writes second fills

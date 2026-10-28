@@ -13,12 +13,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { RuntimeItem } from "../src/items/internal";
-import { pullRequestRecorder, recordPullRequests } from "../src/helpers/pull-request-recorder";
+import { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "../src/helpers/pull-request-recorder";
 import { REQUEST_END_SEAM, type RequestEndHook } from "../src/types/request-end";
-import { OBSERVED_PULL_REQUESTS } from "../src/types/pull-requests";
+import { OBSERVED_PULL_REQUESTS, writePullRequests } from "../src/types/pull-requests";
 import type { BlockContext } from "../src/types/block";
 
-function memoryCollection(fail = false) {
+function memoryCollection(fail = false, delayMs = 0) {
   const rows = new Map<string, Record<string, unknown>>();
   return {
     rows,
@@ -28,18 +28,19 @@ function memoryCollection(fail = false) {
     },
     async upsert(key: string, update: Record<string, unknown>) {
       if (fail) throw new Error("store unavailable");
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
       rows.set(key, { ...rows.get(key), ...update });
     },
   };
 }
 
 /** A request: its item stream, its end hooks, its notes. */
-function request(options: { fail?: boolean; seam?: boolean; declared?: boolean } = {}) {
+function request(options: { fail?: boolean; seam?: boolean; declared?: boolean; delayMs?: number } = {}) {
   const items: RuntimeItem[] = [];
   const listeners = new Set<(item: RuntimeItem, kind: "added" | "updated" | "done") => void>();
   const hooks: RequestEndHook[] = [];
   const notes: string[] = [];
-  const collection = memoryCollection(options.fail);
+  const collection = memoryCollection(options.fail, options.delayMs);
   const response = {
     emit: () => undefined,
     getItems: () => items,
@@ -71,7 +72,7 @@ function request(options: { fail?: boolean; seam?: boolean; declared?: boolean }
   const end = async () => {
     for (const hook of hooks) await hook({ status: "completed" });
   };
-  return { ctx, settle, end, collection, listeners, hooks, notes };
+  return { ctx, settle, end, collection, listeners, hooks, notes, response };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -150,5 +151,26 @@ describe("pullRequestRecorder", () => {
     await block.config.execute?.(undefined, r.ctx() as never);
     await r.end();
     expect([...r.collection.rows.keys()]).toEqual(["github.com/acme/app/9"]);
+  });
+});
+
+describe("pullRequestWritesSettled", () => {
+  it("lets a turn-end writer wait for the recorder's write in flight, so the turn's create call keeps its row", async () => {
+    // A slow store: the recorder's write is still running when the turn-end check writes.
+    const r = request({ delayMs: 30 });
+    recordPullRequests(r.ctx());
+    r.settle(7);
+    await pullRequestWritesSettled(r.response);
+    await writePullRequests(
+      r.collection,
+      [{ host: "github.com", owner: "acme", name: "app", number: 7, url: "https://github.com/acme/app/pull/7" }],
+      { source: "branch", requestId: "req_2" },
+    );
+    expect(r.collection.rows.get("github.com/acme/app/7")).toMatchObject({ source: "tool", requestId: "req_1" });
+  });
+
+  it("resolves at once for a request with no recorder", async () => {
+    await expect(pullRequestWritesSettled({})).resolves.toBeUndefined();
+    await expect(pullRequestWritesSettled(undefined)).resolves.toBeUndefined();
   });
 });

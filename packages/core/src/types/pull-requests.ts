@@ -218,16 +218,35 @@ function stringField(record: Record<string, unknown>, key: string): string | nul
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+/** A link found in text, as a ref with no title, state or branch. */
+export type PullRequestLink = Omit<PullRequestRef, "title" | "state" | "branch">;
+
+function refOfMatch(m: RegExpMatchArray): PullRequestLink | null {
+  const [, host, owner, name, num] = m;
+  if (host === undefined || owner === undefined || name === undefined || num === undefined) return null;
+  // `www.github.com` is github.com: one host, so one key.
+  const bare = host.toLowerCase().replace(/^www\./, "");
+  return { host: bare, owner, name, number: Number(num), url: `https://${bare}/${owner}/${name}/pull/${num}` };
+}
+
+/**
+ * A pull request's web link read as a ref (host, owner, name, number and the
+ * normalized `url`), or `null` when `url` does not start with one. The one
+ * reading of a link every writer keys by, so a link found in a tool's output
+ * and the same pull request listed by a host check are one row.
+ */
+export function pullRequestRefFromUrl(url: string): PullRequestLink | null {
+  const m = new RegExp(`^${PULL_LINK.source}`).exec(url);
+  return m === null ? null : refOfMatch(m);
+}
+
 /** The distinct pull-request links in `texts`, in first-seen order. */
-function linksIn(texts: readonly string[]): Array<Omit<PullRequestRef, "title" | "state" | "branch">> {
-  const found = new Map<string, Omit<PullRequestRef, "title" | "state" | "branch">>();
+function linksIn(texts: readonly string[]): PullRequestLink[] {
+  const found = new Map<string, PullRequestLink>();
   for (const text of texts) {
     for (const m of text.matchAll(PULL_LINK)) {
-      const [, host, owner, name, num] = m;
-      if (host === undefined || owner === undefined || name === undefined || num === undefined) continue;
-      // `www.github.com` is github.com: one host, so one key.
-      const bare = host.toLowerCase().replace(/^www\./, "");
-      const ref = { host: bare, owner, name, number: Number(num), url: `https://${bare}/${owner}/${name}/pull/${num}` };
+      const ref = refOfMatch(m);
+      if (ref === null) continue;
       const key = pullRequestKey(ref);
       if (!found.has(key)) found.set(key, ref);
     }

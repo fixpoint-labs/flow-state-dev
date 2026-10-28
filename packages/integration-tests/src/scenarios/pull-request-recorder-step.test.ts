@@ -24,7 +24,7 @@ function bashTool(seen: Array<boolean>) {
     description: "Run a shell command.",
     inputSchema: z.object({ command: z.string() }),
     execute: async (input, ctx) => {
-      const record = (ctx.resources as Record<string, { getOptional(key: string): Promise<unknown> } | undefined>)[OBSERVED_PULL_REQUESTS];
+      const record = (ctx.resources as unknown as Record<string, { getOptional(key: string): Promise<unknown> } | undefined>)[OBSERVED_PULL_REQUESTS];
       seen.push((await record?.getOptional(KEY)) !== undefined);
       if (input.command.startsWith("gh pr create")) return { stdout: "https://github.com/acme/app/pull/88\n", stderr: "", exitCode: 0 };
       return { stdout: "url:\thttps://github.com/other/repo/pull/12\n", stderr: "", exitCode: 0 };
