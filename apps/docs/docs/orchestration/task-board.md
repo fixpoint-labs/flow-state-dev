@@ -25,7 +25,7 @@ Start with a wrapper pattern when its shape fits:
 Reach for the board directly when none of those fit:
 
 - You need a long-running board that accepts new tasks from outside the initial seed list (Parallel Tasks decomposes once and stops).
-- You need a custom worker registry, dispatcher, or termination rule that none of the wrappers expose.
+- You need a custom worker registry, claim order, or termination rule that none of the wrappers expose.
 - You're building a new coordination pattern and want a tested concurrent drain underneath it.
 
 The page starts with the board you build and drain in code. Later sections cover the [task tools](#one-task-five-tools) a model uses to work a board, and boards whose [assignees dispatch](#assignees-that-dispatch) their tasks to other sessions.
@@ -63,7 +63,7 @@ const board = taskBoard({
 // `board.drain` plugs into a parent sequencer as a normal step.
 ```
 
-Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
+Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `claimOrder: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
 
 ## How a drain runs
 
@@ -141,21 +141,21 @@ The task tools can refuse a bad assignee when the task is filed instead, given a
 
 On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
-## Dispatcher modes
+## Claim orders
 
-The dispatcher decides which `pending` task gets claimed next. No dispatcher claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
+The claim order decides which `pending` task gets claimed next. No claim order claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
 
 - `"topological"` (default): earliest-added ready task first.
 - `"fifo"`: the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"`: highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
+Those three strings are the only names `claimOrder` accepts. It also takes any `ClaimOrder` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Claim orders](./task-substrate.md#claim-orders) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
-The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
+The `claimOrder` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
 
 ## Dependencies
 
-A task's `deps` name the tasks that must complete before it can be claimed. A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in an `addTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
+A task's `deps` name the tasks that must complete before it can be claimed. A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in a `createTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
 
 ### When a dependency fails
 
@@ -404,7 +404,7 @@ The rows sit in the user's own storage, which every flow of theirs reads, even o
 - `maxTotalRetries` (default `50`): how many failure retries the board may **authorize in total**, across every task.
 - `concurrency` (default `4`): how many run at the same time.
 
-Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
+Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `createTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
 
 The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, a `release`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
@@ -540,14 +540,14 @@ const enqueue = handler({
   inputSchema: z.unknown(),
   uses: [board.capability],
   execute: async (_input, ctx) => {
-    await ctx.cap.research.addTask({ goal: "check competitors" });
+    await ctx.cap.research.createTask({ goal: "check competitors" });
     const open = await ctx.cap.research.countTasks({ status: "pending" });
     return { open };
   },
 });
 ```
 
-The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
+The accessor has `createTask`, `createTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
 
 A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on the request, sequencer and durable backings, as long as the add and the drain happen in the same request.
 
@@ -557,7 +557,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 A model works a board through five task tools. Four belong to whoever files the work:
 
-- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-task-held-on-questions).
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, filed with `held: true`, when you release it, or, filed with `questions`, once the user has [answered them](#a-tasks-questions).
 - `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
 - `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
 - `updateTask({ id, ... })` changes one, each field by its own rule.
@@ -584,7 +584,7 @@ No tool finishes a task. A task ends when its worker's turn returns, or throws.
 | `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
 | `status: "cancelled"` | Until the task finishes. Sent alone |
 | `message` | Until the task finishes. Sent alone, and kept on the task; see [below](#sending-a-message-to-an-open-task) |
-| `question` with `message`, or with `done` | While the question is open. Answers one of the task's [questions](#a-task-held-on-questions) by its id. Sent alone |
+| `answers` with `message`, or with `done` | While the question is open. Answers one of the task's [questions](#a-tasks-questions) by its id. Sent alone |
 
 The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel or a message lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` to correct or extend it.
 
@@ -602,12 +602,13 @@ Every rule is checked inside the write, so a task that starts between your read 
 | `unknown_assignee` | An `assignee` the board's roster doesn't name |
 | `steer_limit` | A message to a task that already holds 20 |
 | `message_not_supported` | A message on a board whose task list keeps no messages |
-| `no_such_question` | A `question` id the task holds no open question or confirm under |
+| `no_such_question` | An `answers` id that names no open question or confirm on the task |
 | `question_answered` | Other words for a question that was already answered |
 | `question_is_the_users` | The filer's tool answering a question the user answers from their Inbox |
 | `question_takes_message` | A question answered without `message`, or with `done` |
 | `confirm_takes_done` | A confirm answered without `done` |
-| `done_without_question` | `done` sent without the `question` it answers |
+| `done_without_answers` | `done` sent without `answers`, the confirm it answers |
+| `answers_not_question` | `question` sent in place of `answers`. Nothing is written |
 | `answer_takes_no_edits` | An answer sent with a field or a status |
 | `questions_not_supported` | An answer on a board whose task list keeps no questions |
 
@@ -622,13 +623,13 @@ Every rule is checked inside the write, so a task that starts between your read 
 
 The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
 
-The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
+The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit, a hold or a release, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
 
 `getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). Unless it arrived before the task started, the message also shows in the task's session as a line from its sender, so later turns in that session read it.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
 
-### A task held on questions
+### A task's questions
 
 Some work can't start until a person decides something. File it with the questions, and it waits for the answers:
 
@@ -649,15 +650,15 @@ A worker can also ask midway, from the turn working the task. A model asks with 
 
 A Workforce worker has `askQuestion` on every task turn. For a worker flow of your own, build it with `createAskQuestion({ resolve })` from `@flow-state-dev/orchestration`, which takes the task list the turn's task is on, and offer its `tool` while its `offered(ctx)` check says so: on a turn working a running task. After calling it, the model ends its turn with a short note. Nothing it answers in that turn becomes the task's result.
 
-The worker that filed the task can hear a midway question too. Declare `onMidwayQuestion(ctx, row, holds)` in the task list's `delivery` and the board calls it after each question asked midway, from the request that asked it, with the row and its open midway questions. It's called again if the asking turn is replayed, so make it safe to repeat for the same question. A Workforce board uses it to send the question to its filer [as a message](../workforce/messaging-workers.md#when-a-task-asks-a-question). Without it, the filer reads the question with `getTask`.
+The worker that filed the task can hear a midway question too. Declare `onMidwayQuestion(ctx, row, questions)` in the task list's `delivery` and the board calls it after each question asked midway, from the request that asked it, with the row and its open midway questions. It's called again if the asking turn is replayed, so make it safe to repeat for the same question. A Workforce board uses it to send the question to its filer [as a message](../workforce/messaging-workers.md#when-a-task-asks-a-question). Without it, the filer reads the question with `getTask`.
 
-`getTask` and `listTasks` show what a task waits on as `holds`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A hold stays listed until it's answered. The same list carries a stop the task's run waits on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
+`getTask` and `listTasks` show what a task waits on as `questions`. Each has an `id`, its `ask` (`kind` and `prompt`), when it was opened, and its `due` time when it has one. A question stays listed until it's answered. The same list carries a stop the task's run waits on, with `source.kind: "suspension"`; see [A task waiting on a user](#a-task-waiting-on-a-user).
 
 The user answers from their [Inbox](#building-an-inbox). A screen of your own answers with the board's `updateTask` action, naming the question:
 
 ```ts
-updateTask_tasks({ id, question: holdId, message: "The March export, exports/2026-03.csv" })
-updateTask_tasks({ id, question: confirmId, done: true })   // or done: false, with an optional message
+updateTask_tasks({ id, answers: questionId, message: "The March export, exports/2026-03.csv" })
+updateTask_tasks({ id, answers: confirmId, done: true })   // or done: false, with an optional message
 ```
 
 The answer is kept on the task as one of its messages, from the user, so it counts toward the 20 a task takes. Sending the same answer again is a success that writes nothing, even once the task has finished. Different words for an answered question are refused. Only the user the task was filed for, in the same tenant and organization, can answer; anyone else is answered `task_not_found`. The filer's own `updateTask` tool answers only a question the worker asked midway, on a task that runs in a session of its own. Questions asked at filing are the user's.
@@ -674,7 +675,7 @@ While its questions are open, a task settles only by a cancel, which closes ever
 
 The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
 
-For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createAskQuestion`](#a-task-held-on-questions) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
+For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createAskQuestion`](#a-tasks-questions) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
 
 ## Changing tasks from outside a run
 
@@ -709,11 +710,11 @@ These are public actions. Anyone who can call your flow can call them, so add th
 
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
 
-`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, what it came back with, meaning its `output` or its `error`, and the `holds` it waits on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, what it came back with, meaning its `output` or its `error`, and the `questions` it waits on. A task with a completed follow-up also carries `current`: the latest one's `id` and `output`. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 ### Building an Inbox
 
-Everything a task waits on a user for (a [question](#a-task-held-on-questions), a confirm, or a [stop in its run](#a-task-waiting-on-a-user) for an approval, a review or an input) shows in the user's Inbox. [Shift Manager](../shift-manager/overview.md) has one. For a screen of your own, `@flow-state-dev/orchestration/inbox` builds the list and answers it, and it's safe to import in a browser:
+Everything a task waits on a user for (a [question](#a-tasks-questions), a confirm, or a [stop in its run](#a-task-waiting-on-a-user) for an approval, a review or an input) shows in the user's Inbox. [Shift Manager](../shift-manager/overview.md) has one. For a screen of your own, `@flow-state-dev/orchestration/inbox` builds the list and answers it, and it's safe to import in a browser:
 
 ```ts
 import { createInboxClient, inboxItems } from "@flow-state-dev/orchestration/inbox";
@@ -726,9 +727,9 @@ const items = inboxItems({
 await createInboxClient(client).answer(items[0], { approved: true });
 ```
 
-`inboxItems` returns one item per task that waits on the user, however many questions it holds, with its `holds` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its holds is.
+`inboxItems` returns one item per task that waits on the user, however many questions it has, with its `questions` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its questions is.
 
-The answer is typed by what the hold asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
+The answer is typed by what the question asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
 
 ## Assignees that dispatch {#assignees-that-dispatch}
 
@@ -810,20 +811,20 @@ The dispatch run settles its task once, when all of the task's work is over. Ret
 - the run's request has ended, along with any background work it started (`.sideChain()`) and any your flow's `onFinished` hook started;
 - every task it filed has ended, and the run's session has heard each of those endings.
 
-Until then the task stays `in_progress`, and its row's `waitingOn` says what it's waiting for:
+Until then the task stays `in_progress`, and its row's `keptOpenBy` says what it's waiting for:
 
-| `waitingOn` | The task is waiting on | Lease |
+| `keptOpenBy` | The task is waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
 | `"wait"` | a stop: `ctx.waitForUser()`, `ctx.suspend()`, or an external event | none |
 
-A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input`) is also listed in the task's `holds`.
+A stop that waits for a user (`ctx.waitForUser()`, or `ctx.suspend()` with `human_approval` or `human_input`) is also listed in the task's `questions`.
 
 A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart.
 
 #### A task waiting on a user
 
-When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `holds`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
+When the run stops to ask the user something (`ctx.waitForUser`), reading the task shows it. `getTask` and `listTasks` list the stop in the task's `questions`, with `source.kind: "suspension"`: its `ask` (`kind` is `approval`, `review` or `input`, beside the `prompt`), and its `due` time if it has one. The answer comes from the user's [Inbox](#building-an-inbox), through the [answer call](/docs/api/client#answerbody), and the same attempt carries on. Only that user can answer it.
 
 The stop can end three other ways, and each ends it once:
 
@@ -847,7 +848,7 @@ A message sent into a task while it waits on an approval or a review doesn't ans
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
-Anything else that runs in that session, such as a message another worker sent it, doesn't hold the task and isn't part of it. While the task's turn is running, it runs after that turn. It can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
+Anything else that runs in that session, such as a message another worker sent it, doesn't keep the task open and isn't part of it. While the task's turn is running, it runs after that turn. It can't write to the task, and if it fails, the task's result stands. To change work that's still running, [send the task a message](#sending-a-message-to-an-open-task) instead.
 
 Background work counts as part of the request. If a `.sideChain()` step throws in any request working the task, the attempt fails just as if the request had thrown. That covers steps your `onCompleted` or `onFinished` hooks start, and a step a plain `.waitForSideChain()` already waited on. The task runs again while it has attempts left. Otherwise it fails, and its error names the step, as in `Background work "notify" failed: ...`. The request itself still reports `completed`, so read the task, not the request, to see how the work went.
 
@@ -897,9 +898,9 @@ const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettle
   .tap(noteTaskAnswer);
 ```
 
-`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
+`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `keptOpenBy`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
 
-By default, the tasks a task filed hold it. To change that, pass `endRules: { filedWorkHolds }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkHolds` is an async predicate over the context, the task row and its ledger.
+By default, the tasks a task filed keep it open. To change that, pass `endRules: { filedWorkKeepsOpen }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkKeepsOpen` is an async predicate over the context, the task row and its ledger.
 
 ### Which session a task runs in
 
@@ -941,9 +942,9 @@ A run that handles several tasks does so under its entry's `concurrency` policy.
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
+The in-process runner applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A task keeps its session for its whole life. If its worker [asks a question](#a-task-held-on-questions), the answer brings it back to that same session for its next turn, so it carries on with everything it did before. When the task is done, the session stays open, and the task stays as it ended.
+A task keeps its session for its whole life. If its worker [asks a question](#a-tasks-questions), the answer brings it back to that same session for its next turn, so it carries on with everything it did before. When the task is done, the session stays open, and the task stays as it ended.
 
 To correct or extend a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The original's output never changes: `getTask` on it shows the latest completed follow-up as `current`, with that follow-up's output, and `listTasks` names it by id. On a Workforce conversation's board, a line typed in a finished task's session is [answered from the session](../workforce/coordinators.md#after-a-task-finishes) and changes nothing.
 
@@ -1054,7 +1055,7 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), `endRules` (what else [holds a task open](#when-a-dispatched-task-is-done)), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-Each run of the entry is a task turn: the run gets [`reportProgress`](#progress-from-the-worker), [`askQuestion`](#a-task-held-on-questions), whose question the task waits on until the user answers, and [`waitForUser`](#a-task-waiting-on-a-user). The entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds.
+Each run of the entry is a task turn: the run gets [`reportProgress`](#progress-from-the-worker), [`askQuestion`](#a-tasks-questions), whose question the task waits on until the user answers, and [`waitForUser`](#a-task-waiting-on-a-user). The entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds.
 
 A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
 
@@ -1343,7 +1344,7 @@ A board that could not record a result emits one more item, `task-board-recorder
 
 ## Migrating
 
-**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action.
+**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action. {/* retired-name-refusal: migration note */}
 File a new task with `createTask`, which starts it on a board that starts work on filing, and release a held
 one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
 `deadline` takes the place of `timeoutMs`.
@@ -1351,7 +1352,7 @@ one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({
 **Moving from `waitForResponse`.** `createTask` doesn't wait. It refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`, and files nothing. File the task, then wait with `getTask`. {/* retired-name-refusal: migration note */}
 
 **Moving from the question and review parks.** A task waiting on a person is never parked. A worker's model asks with `askQuestion` instead of `parkOnQuestion`, and the task waits on the question. {/* retired-name-refusal: migration note */}
-The question is answered with `updateTask({ id, question, message })`, which replaces `answerTask` and its action. {/* retired-name-refusal: migration note */}
+The question is answered with `updateTask({ id, answers, message })`, which replaces `answerTask` and its action. {/* retired-name-refusal: migration note */}
 A block asks for a review with `ctx.waitForUser({ kind: "review", prompt })` instead of `awaitReview`, and the Inbox answers it, so `unpark` and `unparkAndDrain` have no replacement to mount. {/* retired-name-refusal: migration note */}
 A board built with `onReview` is refused: a board whose open tasks only wait on a person stops `blocked` on its own. {/* retired-name-refusal: migration note */}
 

@@ -45,10 +45,10 @@ async function capBreach(fn: () => Promise<unknown>): Promise<TaskCapExceededErr
 describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
   it("refuses the add that would push `pending` past the cap, and inserts nothing", async () => {
     const collection = makeCollection({ maxEnqueuedTasks: 2 });
-    await collection.addTask({ goal: "a" });
-    await collection.addTask({ goal: "b" });
+    await collection.createTask({ goal: "a" });
+    await collection.createTask({ goal: "b" });
 
-    const err = await capBreach(() => collection.addTask({ goal: "c" }));
+    const err = await capBreach(() => collection.createTask({ goal: "c" }));
     expect(err.cap).toBe("enqueued");
     expect(err.limit).toBe(2);
     expect(err.attempted).toBe(3);
@@ -58,16 +58,16 @@ describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
 
   it("refreshes as tasks drain — claiming frees an enqueue slot", async () => {
     const collection = makeCollection({ maxEnqueuedTasks: 2 });
-    await collection.addTask({ goal: "a" });
-    await collection.addTask({ goal: "b" });
-    await capBreach(() => collection.addTask({ goal: "c" }));
+    await collection.createTask({ goal: "a" });
+    await collection.createTask({ goal: "b" });
+    await capBreach(() => collection.createTask({ goal: "c" }));
 
     // `claim` moves a task pending → in_progress. That is the whole mechanism:
     // the cap counts `pending`, so the slot is free again.
     const claimed = await collection.claim("w1");
     expect(claimed).not.toBeNull();
 
-    const c = await collection.addTask({ goal: "c" });
+    const c = await collection.createTask({ goal: "c" });
     expect(c.status).toBe("pending");
     expect(collection.count({ status: "pending" })).toBe(2);
     expect(collection.count()).toBe(3);
@@ -78,7 +78,7 @@ describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
     // Same-step framework tool calls run under Promise.all, which is precisely
     // what a "count then insert" guard cannot survive: all ten would read 0.
     const results = await Promise.allSettled(
-      Array.from({ length: 10 }, (_, i) => collection.addTask({ goal: `t-${i}` })),
+      Array.from({ length: 10 }, (_, i) => collection.createTask({ goal: `t-${i}` })),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(3);
     expect(collection.count()).toBe(3);
@@ -93,9 +93,9 @@ describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
     // park-and-promote mechanism whose recovery path never runs. If someone
     // later adds a ceiling on re-entry, this test fails — which is the point.
     const collection = makeCollection({ maxEnqueuedTasks: 1 });
-    const a = await collection.addTask({ goal: "a", maxAttempts: 3 });
+    const a = await collection.createTask({ goal: "a", maxAttempts: 3 });
     await collection.claim("w1"); // A leaves pending, freeing the one slot
-    await collection.addTask({ goal: "b" }); // B fills it
+    await collection.createTask({ goal: "b" }); // B fills it
 
     await collection.fail(a.id, "transient");
 
@@ -108,9 +108,9 @@ describe("task caps — maxEnqueuedTasks (the enqueue-burst bound)", () => {
 describe("task caps — maxTotalTasks (the lifetime bound)", () => {
   it("counts terminal tasks and is never refunded by draining", async () => {
     const collection = makeCollection({ maxTotalTasks: 3 });
-    await collection.addTask({ goal: "a" });
-    await collection.addTask({ goal: "b" });
-    await collection.addTask({ goal: "c" });
+    await collection.createTask({ goal: "a" });
+    await collection.createTask({ goal: "b" });
+    await collection.createTask({ goal: "c" });
 
     // Drain two to terminal states. A pending-only cap would now have room.
     // Settle whichever row each claim took: rows stamped in the same
@@ -121,7 +121,7 @@ describe("task caps — maxTotalTasks (the lifetime bound)", () => {
     await collection.fail(second!.id, "boom");
     expect(collection.count({ status: "pending" })).toBe(1);
 
-    const err = await capBreach(() => collection.addTask({ goal: "d" }));
+    const err = await capBreach(() => collection.createTask({ goal: "d" }));
     expect(err.cap).toBe("total");
     expect(err.limit).toBe(3);
     expect(err.attempted).toBe(4);
@@ -133,20 +133,20 @@ describe("task caps — maxTotalTasks (the lifetime bound)", () => {
     // what binds here.
     const collection = makeCollection({ maxTotalTasks: 4 });
     const results = await Promise.allSettled(
-      Array.from({ length: 12 }, (_, i) => collection.addTask({ goal: `t-${i}` })),
+      Array.from({ length: 12 }, (_, i) => collection.createTask({ goal: `t-${i}` })),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(4);
     expect(collection.count()).toBe(4);
   });
 });
 
-describe("task caps — batch addTasks is all-or-nothing", () => {
+describe("task caps — batch createTasks is all-or-nothing", () => {
   it("rejects a batch crossing maxEnqueuedTasks without inserting any of it", async () => {
     const collection = makeCollection({ maxEnqueuedTasks: 3 });
-    await collection.addTask({ goal: "a" });
+    await collection.createTask({ goal: "a" });
 
     const err = await capBreach(() =>
-      collection.addTasks([{ goal: "b" }, { goal: "c" }, { goal: "d" }]),
+      collection.createTasks([{ goal: "b" }, { goal: "c" }, { goal: "d" }]),
     );
     expect(err.cap).toBe("enqueued");
     // Not "three inserted, one refused" and not "two inserted up to the cap" —
@@ -157,7 +157,7 @@ describe("task caps — batch addTasks is all-or-nothing", () => {
   it("rejects a batch crossing maxTotalTasks without inserting any of it", async () => {
     const collection = makeCollection({ maxTotalTasks: 2, maxEnqueuedTasks: 2 });
     const err = await capBreach(() =>
-      collection.addTasks([{ goal: "a" }, { goal: "b" }, { goal: "c" }]),
+      collection.createTasks([{ goal: "a" }, { goal: "b" }, { goal: "c" }]),
     );
     expect(err.cap).toBe("total");
     expect(collection.count()).toBe(0);
@@ -165,7 +165,7 @@ describe("task caps — batch addTasks is all-or-nothing", () => {
 
   it("accepts a batch that lands exactly on the cap", async () => {
     const collection = makeCollection({ maxTotalTasks: 3, maxEnqueuedTasks: 3 });
-    const added = await collection.addTasks([{ goal: "a" }, { goal: "b" }, { goal: "c" }]);
+    const added = await collection.createTasks([{ goal: "a" }, { goal: "b" }, { goal: "c" }]);
     expect(added).toHaveLength(3);
     expect(collection.count()).toBe(3);
   });
@@ -174,20 +174,20 @@ describe("task caps — batch addTasks is all-or-nothing", () => {
 describe("task caps — off state", () => {
   it("is unbounded when neither cap is set (today's behavior)", async () => {
     const collection = makeCollection();
-    for (let i = 0; i < 40; i++) await collection.addTask({ goal: `t-${i}` });
+    for (let i = 0; i < 40; i++) await collection.createTask({ goal: `t-${i}` });
     expect(collection.count()).toBe(40);
   });
 
   it("treats an explicit `null` as unbounded on that axis", async () => {
     const collection = makeCollection({ maxTotalTasks: null, maxEnqueuedTasks: null });
-    for (let i = 0; i < 40; i++) await collection.addTask({ goal: `t-${i}` });
+    for (let i = 0; i < 40; i++) await collection.createTask({ goal: `t-${i}` });
     expect(collection.count()).toBe(40);
   });
 
   it("still enforces the other axis when one is `null`", async () => {
     const collection = makeCollection({ maxTotalTasks: null, maxEnqueuedTasks: 2 });
-    await collection.addTasks([{ goal: "a" }, { goal: "b" }]);
-    const err = await capBreach(() => collection.addTask({ goal: "c" }));
+    await collection.createTasks([{ goal: "a" }, { goal: "b" }]);
+    const err = await capBreach(() => collection.createTask({ goal: "c" }));
     expect(err.cap).toBe("enqueued");
   });
 });

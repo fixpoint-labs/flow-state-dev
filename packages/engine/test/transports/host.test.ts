@@ -11,16 +11,18 @@ import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
   createInMemoryStores,
+  createFlowApiRouter,
   createInboundTransportHost,
   createResponseEmitter,
   defaultBodyUserIdPrincipalResolver,
   OrgRequiredError,
   PrincipalResolutionError
 } from "../../src";
-import type { FlowDispatcher } from "../../src/transports/dispatcher";
+import type { FlowRunner } from "../../src/transports/runner";
+import { createFlowRouteHandlers } from "../../src/routes/http-handlers";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 
-function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
+function buildHost(opts?: { runner?: FlowRunner }) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   registry.register(
@@ -43,7 +45,7 @@ function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
     stores,
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {},
-    dispatcher: opts?.dispatcher
+    runner: opts?.runner
   });
   return { host, stores, registry };
 }
@@ -421,7 +423,7 @@ describe("createInboundTransportHost", () => {
   });
 
   describe("external dispatch — enqueue-time materialization (FIX-828)", () => {
-    it("registers activeRequests + an in_progress record before dispatching to the dispatcher", async () => {
+    it("registers activeRequests + an in_progress record before dispatching to the runner", async () => {
       let storesAtDispatch: { active: boolean; status?: string } | undefined;
       // The fake worker never starts: it reads the stores at the instant it is
       // handed the job, then leaves `finished` pending forever.
@@ -435,8 +437,8 @@ describe("createInboundTransportHost", () => {
           abort: () => {}
         };
       });
-      const dispatcher: FlowDispatcher = { dispatch, close: vi.fn(async () => {}) };
-      const { host, stores } = buildHost({ dispatcher });
+      const runner: FlowRunner = { dispatch, close: vi.fn(async () => {}) };
+      const { host, stores } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",
@@ -457,17 +459,17 @@ describe("createInboundTransportHost", () => {
       expect(record?.userId).toBe("u_ext");
       expect(await stores.activeRequests.get(handle.requestId)).toBeDefined();
 
-      // And the writes landed before the dispatcher was handed the job: the
+      // And the writes landed before the runner was handed the job: the
       // fake reads both stores at the instant it is invoked.
       await vi.waitFor(() => expect(storesAtDispatch).toBeDefined());
       expect(storesAtDispatch).toEqual({ active: true, status: "in_progress" });
     });
 
-    it("rejects `accepted` only after the dispatcher accepts the job", async () => {
+    it("rejects `accepted` only after the runner accepts the job", async () => {
       // `accepted` must cover the enqueue, not just the store writes — the
       // response path acks the 202 on it, so the enqueue has to be inside.
       let dispatchCalled = false;
-      const dispatcher: FlowDispatcher = {
+      const runner: FlowRunner = {
         dispatch: vi.fn(async (env: { requestId: string }) => {
           dispatchCalled = true;
           return {
@@ -478,7 +480,7 @@ describe("createInboundTransportHost", () => {
         }),
         close: vi.fn(async () => {})
       };
-      const { host } = buildHost({ dispatcher });
+      const { host } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",
@@ -494,17 +496,17 @@ describe("createInboundTransportHost", () => {
     });
 
     it("terminates the in_progress record when the enqueue fails, leaving no orphan", async () => {
-      // The writes succeed, then the dispatcher call rejects. `accepted`
+      // The writes succeed, then the runner call rejects. `accepted`
       // covers the enqueue, so it rejects — and the record must not linger
       // in_progress: the dispatch teardown deregisters the activeRequests entry,
       // so without cleanup the stale-request sweeper would have nothing to reap.
-      const dispatcher: FlowDispatcher = {
+      const runner: FlowRunner = {
         dispatch: vi.fn(async () => {
           throw new Error("enqueue failed");
         }),
         close: vi.fn(async () => {})
       };
-      const { host, stores } = buildHost({ dispatcher });
+      const { host, stores } = buildHost({ runner });
 
       const handle = host.dispatch({
         source: "http",
@@ -549,5 +551,29 @@ describe("createInboundTransportHost", () => {
       // After execution the record exists — written by the runtime, not the host.
       expect(await stores.request.get(handle.requestId)).toBeDefined();
     });
+  });
+});
+
+// A caller that is not type-checked, or spreads an older config, would otherwise lose its queue
+// runner without a word and run its work in process: each entry point refuses the old key by name.
+describe("the old `dispatcher` option", () => {
+  const legacy = { dispatcher: { dispatch: vi.fn(), close: vi.fn() } };
+
+  it("is refused by createInboundTransportHost, pointing at runner", () => {
+    expect(() =>
+      createInboundTransportHost({
+        registry: createFlowRegistry(),
+        stores: createInMemoryStores(),
+        resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+        runtimeConfig: {},
+        ...legacy
+      } as never)
+    ).toThrow(/createInboundTransportHost: the `dispatcher` option is now `runner`/);
+  });
+
+  it("is refused by createFlowRouteHandlers and createFlowApiRouter", () => {
+    const options = { registry: createFlowRegistry(), stores: createInMemoryStores(), ...legacy } as never;
+    expect(() => createFlowRouteHandlers(options)).toThrow(/createFlowRouteHandlers: the `dispatcher` option is now `runner`/);
+    expect(() => createFlowApiRouter(options)).toThrow(/createFlowApiRouter: the `dispatcher` option is now `runner`/);
   });
 });

@@ -43,7 +43,7 @@
  * ## What it does not cover
  *
  * Correlation rides `TaskTransitionOptions`, so it is available on the seven
- * methods that accept one. `addTask`, `addTasks`, `claim`, `reclaim` and the
+ * methods that accept one. `createTask`, `createTasks`, `claim`, `reclaim` and the
  * five field mutators bump the revision and mint no receipt — a caller of
  * those cannot correlate its own write. That is stated rather than implied,
  * because claiming coverage we do not have is the defect class this exists to

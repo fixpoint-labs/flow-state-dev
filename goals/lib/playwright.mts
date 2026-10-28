@@ -32,9 +32,9 @@ export function preinstalledChromium(): string | undefined {
   if (pool === undefined || !existsSync(pool)) return undefined;
   for (const entry of readdirSync(pool)) {
     if (!entry.startsWith("chromium-")) continue;
-    // Older builds unpack to `chrome-linux`, newer ones to `chrome-linux64`.
-    for (const folder of ["chrome-linux", "chrome-linux64"]) {
-      const binary = join(pool, entry, folder, "chrome");
+    // Newer builds unpack to `chrome-linux64`.
+    for (const dir of ["chrome-linux", "chrome-linux64"]) {
+      const binary = join(pool, entry, dir, "chrome");
       if (existsSync(binary)) return binary;
     }
   }

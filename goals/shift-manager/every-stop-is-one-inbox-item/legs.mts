@@ -84,7 +84,7 @@ export async function fileSix(c: Context, only: readonly Stop[] = STOPS, tag = "
       const filed = (await c.alice.rows()).filter((r) => !before.has(r.id));
       const held = filed.find((r) => r.assignee === CAST.doer && rowHolds(r).some((h) => h.ask?.prompt?.includes(c.words.heldQuestion.replace(/\?$/, ""))));
       if (said.status !== "completed" || held === undefined) {
-        c.fail(`${tag}:held-filed`, `desk.front's turn ${said.status} filed ${show(filed.map((r) => ({ goal: r.goal, assignee: r.assignee, holds: r.holds })))}, no task for ${CAST.doer} held on "${c.words.heldQuestion}"`);
+        c.fail(`${tag}:held-filed`, `desk.front's turn ${said.status} filed ${show(filed.map((r) => ({ goal: r.goal, assignee: r.assignee, questions: r.questions })))}, no task for ${CAST.doer} held on "${c.words.heldQuestion}"`);
       } else ids.held = held.id;
       if (filed.length > 1) c.fail(`${tag}:held-filed`, `desk.front filed ${filed.length} tasks, not one`);
     }
@@ -115,7 +115,7 @@ export async function legA(c: Context, tag = "a"): Promise<Filed> {
   const rows = await untilWaiting(c, ids, waitMs);
   for (const stop of STOPS) {
     if (ids[stop] !== undefined && !waiting(stop, rows[stop])) {
-      c.fail(`${tag}:six-items`, `the ${stop} task never waited: ${rows[stop]?.status}, holds ${show(rows[stop]?.holds)}${rows[stop]?.error ? `, error ${show(rows[stop]?.error)}` : ""}`);
+      c.fail(`${tag}:six-items`, `the ${stop} task never waited: ${rows[stop]?.status}, holds ${show(rows[stop]?.questions)}${rows[stop]?.error ? `, error ${show(rows[stop]?.error)}` : ""}`);
     }
   }
   await checkSix(c, ids, rows, tag);
@@ -130,17 +130,17 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     if (id === undefined) continue;
     const mine = items.filter((item) => item.task?.taskId === id);
     if (mine.length !== 1) {
-      c.fail(`${tag}:six-items`, `the ${stop} task has ${mine.length} Inbox items: ${show(mine.map((i) => i.holds.map((h) => [h.ask.kind, h.ask.prompt])))}`);
+      c.fail(`${tag}:six-items`, `the ${stop} task has ${mine.length} Inbox items: ${show(mine.map((i) => i.questions.map((h) => [h.ask.kind, h.ask.prompt])))}`);
       continue;
     }
-    const holds = mine[0]!.holds;
+    const holds = mine[0]!.questions;
     if (holds.length !== 1 || holds[0]!.ask.kind !== ASK_KIND[stop]) c.fail(`${tag}:six-items`, `the ${stop} item's holds are ${show(holds.map((h) => h.ask.kind))}, not one ${ASK_KIND[stop]}`);
     if (holds.some((h) => h.unanswerable !== null)) c.fail(`${tag}:six-items`, `the ${stop} item says it can't be answered: ${show(holds.map((h) => h.unanswerable))}`);
     if (holds.some((h) => h.source.kind !== (SUSPENDS[stop] ? "suspension" : "row"))) c.fail(`${tag}:six-items`, `the ${stop} item answers through ${show(holds.map((h) => h.source.kind))}`);
     if (holds.some((h) => h.due !== undefined)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} item has a deadline: ${show(holds.map((h) => h.due))}`);
   }
   const strays = items.filter((item) => item.task === null || !Object.values(ids).includes(item.task.taskId));
-  if (strays.length > 0) c.fail(`${tag}:six-items`, `the Inbox lists ${strays.length} item(s) beside the six: ${show(strays.map((i) => [i.task?.taskId ?? i.id, i.holds.map((h) => h.ask.kind)]))}`);
+  if (strays.length > 0) c.fail(`${tag}:six-items`, `the Inbox lists ${strays.length} item(s) beside the six: ${show(strays.map((i) => [i.task?.taskId ?? i.id, i.questions.map((h) => h.ask.kind)]))}`);
   const drift = await c.alice.reconciled([]);
   if (drift !== undefined) c.fail(`${tag}:six-items`, `the reconciler isn't green: ${drift}`);
 
@@ -150,7 +150,7 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     const kept = stored(c, ids[stop]);
     if (row.status === "parked") c.fail(`${tag}:rows-read`, `the ${stop} row reads parked`);
     if (SUSPENDS[stop]) {
-      if (suspensionHolds(row).length !== 1 || rowHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open suspension hold`);
+      if (suspensionHolds(row).length !== 1 || rowHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.questions)}, not one open suspension hold`);
       // Its claim kept: the run that stopped is still the row's, on its first attempt, and the stop's
       // mirror names that run. The lease is dropped in the write that mirrors the stop (FIX-2129).
       const mirror = suspensionHolds(row)[0];
@@ -159,10 +159,10 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
       }
       if (kept?.leaseUntil != null) c.fail(`${tag}:rows-read`, `the ${stop} row holds a lease (${kept.leaseUntil}) while its run waits on a person`);
     } else {
-      if (rowHolds(row).length !== 1 || suspensionHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open row hold`);
+      if (rowHolds(row).length !== 1 || suspensionHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.questions)}, not one open row hold`);
       if (kept?.leaseUntil != null) c.fail(`${tag}:rows-read`, `the ${stop} row holds a lease (${kept.leaseUntil}) while it waits on a person`);
     }
-    if ((row.holds ?? []).some((h: Row) => h.due != null)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} row's hold has a deadline: ${show(row.holds)}`);
+    if ((row.questions ?? []).some((h: Row) => h.due != null)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} row's hold has a deadline: ${show(row.questions)}`);
   }
 
   // Past the sweeper's interval, twice, and a board touch: nothing ends a stop with no deadline.
@@ -175,7 +175,7 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     if (id === undefined) continue;
     const row = await c.alice.row(id);
     if (!waiting(stop, row) || later.filter((i) => i.task?.taskId === id).length !== 1) {
-      c.fail(`${tag}:no-deadline-waits`, `past the sweeper's interval the ${stop} task reads ${row?.status}, holds ${show(row?.holds)}, ${later.filter((i) => i.task?.taskId === id).length} item(s)`);
+      c.fail(`${tag}:no-deadline-waits`, `past the sweeper's interval the ${stop} task reads ${row?.status}, holds ${show(row?.questions)}, ${later.filter((i) => i.task?.taskId === id).length} item(s)`);
     }
     if (proofsFor(c, id, "resumed").length > 0) c.fail(`${tag}:no-deadline-waits`, `the ${stop} task's block resumed with no answer: ${show(proofsFor(c, id, "resumed"))}`);
   }
@@ -254,7 +254,7 @@ export async function legB(c: Context, filed: Filed, tag = "b", only: readonly S
     const sent = await c.alice.answer(item, answerFor(c, stop));
     if (sent !== "ok") c.fail(`${tag}:${stop}-same-attempt`, `the Inbox's answer to the ${stop} stop was refused: ${sent}`);
     else {
-      filed.closed.push(item.holds[0]!.id);
+      filed.closed.push(item.questions[0]!.id);
       answered.push({ stop, id, item });
     }
   }
@@ -263,7 +263,7 @@ export async function legB(c: Context, filed: Filed, tag = "b", only: readonly S
     await carriedOn(c, stop, id, done, tag);
     if ((await c.alice.itemOf(id)) !== undefined) c.fail(`${tag}:answered-once`, `the ${stop} task's item is still listed after its answer`);
     // A row hold takes the same words again as a success (FIX-2133), so the second answer differs.
-    const again = await c.alice.answerHold(item.holds[0]!, SUSPENDS[stop] ? answerFor(c, stop) : { text: "A different answer." });
+    const again = await c.alice.answerOne(item.questions[0]!, SUSPENDS[stop] ? answerFor(c, stop) : { text: "A different answer." });
     // Only the stop's own refusal counts: 409 for a suspension, question_answered for a row hold.
     if (!(SUSPENDS[stop] ? /\b409\b/ : /question_answered/).test(again)) c.fail(`${tag}:answered-once`, `a second answer to the ${stop} stop wasn't refused as resolved: ${again.slice(0, 160)}`);
     else c.note(`${tag}: a second answer to the ${stop} stop: ${again.slice(0, 160)}`);
@@ -286,7 +286,7 @@ export async function legC(c: Context): Promise<void> {
   }
   const rows = await untilWaiting(c, { approval: suspended.id, held: held.id }, 120_000);
   if (!waiting("approval", rows.approval) || !waiting("held", rows.held)) {
-    c.fail("c:item-closes", `the two tasks never waited: ${show([rows.approval?.status, rows.approval?.holds, rows.held?.status, rows.held?.holds])}`);
+    c.fail("c:item-closes", `the two tasks never waited: ${show([rows.approval?.status, rows.approval?.questions, rows.held?.status, rows.held?.questions])}`);
     return;
   }
   const items = [await c.alice.itemOf(suspended.id), await c.alice.itemOf(held.id)];
@@ -310,8 +310,8 @@ export async function legC(c: Context): Promise<void> {
   if (ended[0]?.output != null) c.fail("c:item-closes", `the cancelled approval task kept output ${show(ended[0]?.output)}`);
   const heldRow = await c.alice.row(held.id);
   // What getTask shows, read as shown: it lists a row's open holds only, so a cancelled row lists none.
-  const shown = (heldRow?.holds ?? []) as Row[];
-  c.note(`c: the cancelled held row reads ${show({ status: heldRow?.status, holds: shown })}`);
+  const shown = (heldRow?.questions ?? []) as Row[];
+  c.note(`c: the cancelled held row reads ${show({ status: heldRow?.status, questions: shown })}`);
   if (heldRow?.status !== "cancelled" || shown.length > 0) {
     c.fail("c:held-cancel-closes-questions", `getTask on the cancelled held row reads ${heldRow?.status} with open holds ${show(shown)}`);
   }
@@ -339,7 +339,7 @@ export async function legD(c: Context): Promise<void> {
   }
   const rows = await untilWaiting(c, { review: review.id, midway: byId.id, coding: byLine.id }, 240_000);
   if (!waiting("review", rows.review) || !waiting("midway", rows.midway) || !waiting("midway", rows.coding)) {
-    c.fail("d:no-request-beside", `leg d's tasks never waited: ${show([rows.review?.status, rows.midway?.status, rows.midway?.holds, rows.coding?.status, rows.coding?.holds])}`);
+    c.fail("d:no-request-beside", `leg d's tasks never waited: ${show([rows.review?.status, rows.midway?.status, rows.midway?.questions, rows.coding?.status, rows.coding?.questions])}`);
     return;
   }
 
@@ -369,10 +369,10 @@ export async function legD(c: Context): Promise<void> {
   await sleep(3_000);
   const still = await c.alice.row(byId.id);
   if (!rowHolds(still).some((h) => h.id === question.id) || (await c.alice.itemOf(byId.id)) === undefined) {
-    c.fail("d:plain-answers-nothing", `a steer naming no question, or a line outside the task, answered it: holds ${show(still?.holds)}, steers ${show(still?.steers)}`);
+    c.fail("d:plain-answers-nothing", `a steer naming no question, or a line outside the task, answered it: holds ${show(still?.questions)}, steers ${show(still?.steers)}`);
   }
 
-  const answered = await c.alice.update({ id: byId.id, message: "Cheerful, for first-time customers in spring.", question: question.id });
+  const answered = await c.alice.update({ id: byId.id, message: "Cheerful, for first-time customers in spring.", answers: question.id });
   if (answered.output?.ok === false || answered.status !== "completed") c.fail("d:answer-by-id", `the steer naming the question was refused: ${show(answered.output ?? answered.error)}`);
   const byIdDone = await c.alice.until(() => c.alice.row(byId.id!), (r) => TERMINAL.has(r?.status), 180_000);
   if (byIdDone?.status !== "completed" || byIdDone.attempts !== 1) c.fail("d:answer-by-id", `after the steer naming its question the task ended ${byIdDone?.status} on attempt ${byIdDone?.attempts}`);

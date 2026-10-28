@@ -1,11 +1,11 @@
 /**
  * bullmqWorker — the one-option `createFlowState` integration.
  *
- * Composes the queue runtime, the Redis stream bridge, the worker dispatcher
+ * Composes the queue runtime, the Redis stream bridge, the worker runner
  * (enqueue side), and the flow worker (processing side) into a single
  * `WorkerAdapter` for `createFlowState({ worker: bullmqWorker({...}) })`.
  * The lower-level factories (`createBullmqRuntime`, `createFlowWorker`,
- * `createWorkerDispatcher`, `createRedisStreamBridge`) remain public as the
+ * `createWorkerRunner`, `createRedisStreamBridge`) remain public as the
  * extension layer for custom topologies; this is the setup path.
  *
  * It also supplies the engine a lease backend on the same Redis
@@ -21,7 +21,7 @@ import type {
 } from "@flow-state-dev/engine";
 import { createBullmqRuntime, type BullmqRuntime } from "./runtime";
 import { createRedisStreamBridge } from "./stream-bridge";
-import { createWorkerDispatcher } from "./dispatcher";
+import { createWorkerRunner } from "./runner";
 import { createRedisLeaseBackend } from "./lease-backend";
 import type { BullmqConnectionOptions, RetryConfig } from "./types";
 
@@ -97,8 +97,8 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
     runtime,
     leaseBackend,
 
-    createDispatcher: () =>
-      createWorkerDispatcher({
+    createRunner: () =>
+      createWorkerRunner({
         queue: runtime.queue,
         bridge,
         retryConfig: options.retry,

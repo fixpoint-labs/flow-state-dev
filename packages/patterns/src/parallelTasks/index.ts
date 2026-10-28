@@ -134,7 +134,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     ...pickTaskCapOverrides(config),
     workers: worker,
     concurrency: maxConcurrency,
-    dispatcher: "fifo",
+    claimOrder: "fifo",
     onIdle: "complete",
     onError: boardOnError,
   });

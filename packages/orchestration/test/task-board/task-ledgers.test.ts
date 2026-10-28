@@ -264,7 +264,7 @@ describe("the gate of a task entry served by many ledgers", () => {
     const resolved: string[] = [];
     for (const id of ["a", "b"] as const) {
       const parent = await ledgerOf(id);
-      await parent.addTask({ id: "t1", goal: `do it on ${id}`, assignee: "work", input: {} });
+      await parent.createTask({ id: "t1", goal: `do it on ${id}`, assignee: "work", input: {} });
       await parent.claim("drain", { leaseDurationMs: 60_000 });
     }
     const worker = handler({

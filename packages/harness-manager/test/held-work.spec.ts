@@ -21,7 +21,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
+  openRowQuestions,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
@@ -34,7 +34,7 @@ import {
   type RunSourceAnswer,
   type WorkspaceHost,
 } from "@flow-state-dev/workspace";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { heard } from "./heard";
@@ -215,7 +215,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { coder: dispatcher({ name: "held-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({
@@ -225,7 +225,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks = (ctx as { cap: Record<string, any> }).cap["held-board"];
-      await tasks.addTask({
+      await tasks.createTask({
         id: TASK_ID,
         goal: "the feature",
         input: { issue: ISSUE, phase: PHASE },
@@ -249,8 +249,8 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
         collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
       });
       const row = tasks.get(TASK_ID);
-      for (const hold of row === undefined ? [] : openRowHolds(row)) {
-        await tasks.answer!(TASK_ID, { hold: hold.id, message: "go ahead", from: "user", by: ALICE });
+      for (const hold of row === undefined ? [] : openRowQuestions(row)) {
+        await tasks.answer!(TASK_ID, { questionId: hold.id, message: "go ahead", from: "user", by: ALICE });
       }
       return {};
     },
@@ -334,14 +334,14 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   };
 
   /** The questions the task was ever held on, as its row keeps them. */
-  const questions = async (): Promise<string[]> => ((await row())?.holds ?? []).flatMap((hold) => (hold.source.kind === "row" ? [hold.ask.prompt] : []));
+  const questions = async (): Promise<string[]> => ((await row())?.questions ?? []).flatMap((hold) => (hold.source.kind === "row" ? [hold.ask.prompt] : []));
 
   /** Wait until the task is held on a question: still this attempt's, with no lease, and not settled. */
   const held = async (): Promise<Task> => {
     const deadline = Date.now() + 60_000;
     for (;;) {
       const current = await row();
-      if (current !== undefined && current.status === "in_progress" && current.leaseUntil == null && openRowHolds(current).length > 0) return current;
+      if (current !== undefined && current.status === "in_progress" && current.leaseUntil == null && openRowQuestions(current).length > 0) return current;
       if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(current)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }

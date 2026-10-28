@@ -5,11 +5,11 @@
  * The planner files work for its delegates on its own conversation's board.
  * Its flow carries Workforce's filing kit (`defineSessionBoard`), so a
  * conversation with the planner has the task actions (`createTask_tasks`,
- * `updateTask_tasks`, `answerTask_tasks`, `listTasks_tasks`, …) while one of
+ * `updateTask_tasks`, `listTasks_tasks`, …) while one of
  * the planner's `delegates:` takes a task. A row filed there names its
  * delegate by worker id, and the board hands it to that worker's task
  * session at once. A user answers a row parked on its worker's question
- * through the same conversation's `answerTask_tasks`.
+ * through the same conversation's `updateTask_tasks`, naming the question.
  *
  * No model: the planner's own turn says it heard a line, and a task's notice
  * lands in the conversation as a line without waking it.
