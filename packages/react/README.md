@@ -137,7 +137,7 @@ const lines = useHarnessLines(session);
 const outcome = await lines.send(text);
 ```
 
-A turn sent while one runs goes through the client, so the session view stays on the running turn: its stream, its Stop, its timing. The hook follows each waiting turn once the one before it has ended, and only then, so a dropped stream does not move the view off a turn that still runs. While a turn it sent still waits, no line steers, so a later line never reaches the agent ahead of an earlier one. A view opened while turns wait follows the oldest running turn first.
+A turn sent while one runs goes through the client, so the session view stays on the running turn: its stream, its Stop, its timing. The hook follows each waiting turn once the one before it has ended, and only then. When the running turn's stream drops while the turn still runs, the hook follows that turn again, up to three times, so its end still moves the view on to the waiting turn. While a turn it sent still waits, no line steers, so a later line never reaches the agent ahead of an earlier one. A view opened while turns wait follows the oldest running turn first.
 
 Declare the `turn` action `concurrency: "defer"`, so a waiting turn waits as long as the running one takes. Options: `turnAction` (default `"turn"`, takes `{ prompt }`), `steerAction` (default `"steer"`), and `sendOne` to replace the client's `sendHarnessLine` for one line.
 

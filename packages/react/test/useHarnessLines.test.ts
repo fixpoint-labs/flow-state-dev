@@ -10,7 +10,11 @@
  *
  * Red states produced before these were trusted:
  *   - follow the waiting turn whenever streaming stops, and the "stream
- *     drops" case fails: the view leaves a turn that still runs.
+ *     dropped" case fails: the view leaves a turn that still runs.
+ *   - stay off the stream when only it dropped, and the same case fails:
+ *     nothing follows the running turn again, so neither turn is seen.
+ *   - follow a running turn again with no limit, and the "keeps dropping"
+ *     case fails: the view reattaches on every drop.
  *   - let a line steer while a sent turn still waits, and both "a later line
  *     runs after" cases fail: the line is taken into the running turn ahead
  *     of the one waiting.
@@ -93,7 +97,7 @@ describe("useHarnessLines", () => {
     expect(followRequest).toHaveBeenCalledTimes(1);
   });
 
-  it("stays on the running turn when only its stream ended", async () => {
+  it("when only the running turn's stream dropped, follows that turn again, then the waiting one once it ends", async () => {
     const { result, rerender } = mount();
     await result.current.send("later");
     // The stream dropped; the server still runs the turn, and the line waits behind it.
@@ -102,9 +106,35 @@ describe("useHarnessLines", () => {
       { id: "line-1", actionName: "turn", startedAtMs: 2 }
     ];
     rerender({ session: view(false) });
-    await waitFor(() => expect(sessionsMock.requests).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(followRequest).not.toHaveBeenCalled();
+    // Left off the stream, the view would see neither turn end, and the waiting answer only on a reload.
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("turn-1"));
+    expect(followRequest).toHaveBeenCalledTimes(1);
+
+    rerender({ session: view(true) });
+    running = [{ id: "line-1", actionName: "turn", startedAtMs: 2 }];
+    rerender({ session: view(false) });
+    await waitFor(() => expect(followRequest).toHaveBeenLastCalledWith("line-1"));
+    expect(followRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops following a running turn again after its stream keeps dropping", async () => {
+    const { result, rerender } = mount();
+    await result.current.send("later");
+    running = [
+      { id: "turn-1", actionName: "turn", startedAtMs: 1 },
+      { id: "line-1", actionName: "turn", startedAtMs: 2 }
+    ];
+    for (let drop = 1; drop <= 5; drop++) {
+      rerender({ session: view(false) });
+      // One read when the view opened, then one per drop.
+      await waitFor(() => expect(sessionsMock.requests).toHaveBeenCalledTimes(drop + 1));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      rerender({ session: view(true) });
+    }
+    expect(followRequest).toHaveBeenCalledTimes(3);
+    expect(followRequest).not.toHaveBeenCalledWith("line-1");
   });
 
   it("while a sent turn still waits, a later line runs after it rather than steering past it", async () => {

@@ -41,6 +41,9 @@ export type HarnessLinesView<TOutcome extends string = HarnessLineOutcome> = {
 /** How many running requests are read to find the session's turns. */
 const RUNNING_READ_LIMIT = 20;
 
+/** How many times a running turn is followed again after its stream drops, before the view stays off it. */
+const MAX_REATTACH = 3;
+
 /**
  * Send a harness session's lines, in the order typed, while the session view
  * stays on the running turn.
@@ -66,6 +69,8 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   // Turns sent while one ran, oldest first. Each waits on the server for the one before it.
   const waiting = useRef<string[]>([]);
   const checkingRunning = useRef(false);
+  // How many times each running turn was followed again after its stream dropped.
+  const reattached = useRef(new Map<string, number>());
 
   const lines = useMemo(
     () =>
@@ -95,8 +100,16 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         checkingRunning.current = false;
         if (streaming.current) return;
         const running = turns[0];
-        // The turn followed still runs, and only its stream ended: stay on it.
-        if (running !== undefined && !waiting.current.includes(running.id)) return;
+        // The turn followed still runs, and only its stream ended: follow it
+        // again, so its end moves the view on to the waiting turn.
+        if (running !== undefined && !waiting.current.includes(running.id)) {
+          const drops = (reattached.current.get(running.id) ?? 0) + 1;
+          reattached.current.set(running.id, drops);
+          if (drops > MAX_REATTACH) return;
+          streaming.current = true;
+          followRequest(running.id);
+          return;
+        }
         const next = waiting.current.shift();
         if (next === undefined) return;
         // Following until the next render says so, so a second call follows nothing more.
@@ -120,6 +133,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
     checkedOpen.current = sessionId;
     waiting.current = [];
+    reattached.current.clear();
     runningTurns(sessionId).then(
       (turns) => {
         const oldest = turns[0];
