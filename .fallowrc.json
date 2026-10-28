@@ -40,6 +40,7 @@
     "labs/knowledge-hub/fsdev.config.ts",
     "labs/knowledge-hub/test/**/*.spec.ts",
     "labs/knowledge-hub/scripts/**/*.mts",
+    "labs/teammates/fsdev.config.mts",
 
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
