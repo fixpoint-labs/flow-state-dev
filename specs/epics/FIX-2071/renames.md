@@ -75,6 +75,26 @@ note, add the names to `RETIRED`.
 ## Decided by FIX-2183
 
 The four meanings of *hold* on the task surface, FIX-2092's held phase steps, *waiting* (a task
-waiting on a person and FIX-2214's status; FIX-2070's `onMessageReceived` field is `call`, so it is not one), and `updateTask`'s `question` field
+waiting on a user and FIX-2214's status; FIX-2070's `onMessageReceived` field is `call`, so it is not one), and `updateTask`'s `question` field
 ([the project spec](https://github.com/fixpoint-labs/flow-state-dev/pull/3102), *Decided since the
-last refresh*). FIX-2183's spec adds its rows to this table before it builds. FIX-2239's message row says `queuedBehind`, not `heldBy`, so a queued message is not one of them.
+last refresh*). FIX-2239's message row says `queuedBehind`, not `heldBy`, so a queued message is not one of them.
+Decided in [FIX-2183's spec](../../issues/FIX-2183/SPEC.md): *hold* keeps one meaning, the filer's
+hold before a start; a task's open asks are `questions`; what keeps a running task open is
+`keptOpenBy`. Counts are on `main` at 78b0b07, re-derived by its
+[`poc/inventory/check.mjs`](../../issues/FIX-2183/poc/inventory/check.mjs).
+
+| Retired | Becomes | Kept on purpose | Owner | Files |
+|---|---|---|---|---|
+| `Task.holds`, an Inbox item's `holds` | `questions` | — | FIX-2183 | read, not counted: up to 113 files name a `holds` field |
+| `TaskHold`, `taskHoldSchema`, `RowHold`, `rowHoldSchema`, `SuspensionHold`, `suspensionHoldSchema`, `RowHoldSource`, `SuspensionHoldSource`, `InboxHold` | `TaskQuestion`, `taskQuestionSchema`, `RowQuestion`, `rowQuestionSchema`, `SuspensionQuestion`, `suspensionQuestionSchema`, `RowQuestionSource`, `SuspensionQuestionSource`, `InboxQuestion` | — | FIX-2183 | 17 / 1 / 6 |
+| `HoldAsk`, `HoldReleaser` (and `source.releasedBy`), `HoldAnswer`, `MAX_HOLD_PROMPT` | `QuestionInit`, `QuestionCloser` (`source.closedBy`), `QuestionAnswer`, `MAX_QUESTION_PROMPT` | A question's `ask` field: the sweep's kept meaning, a question to a user | FIX-2183 | 9 / 0 / 2 |
+| `openHolds`, `hasOpenHold`, `openRowHolds`, `isRowHold`, `isSuspensionHold`, `suspensionHoldOf`, `holdsDue`, `nextHoldDue`, `newRowHolds`, `holdWrite`, `HoldChange`, `HoldWriteResult`, `payHoldDeadlines`, `holdDueMs`, `holdOfSuspension`, `openUserHolds` | The same with *question* for *hold*: `openQuestions`, `hasOpenQuestion`, `openRowQuestions`, `isRowQuestion`, `isSuspensionQuestion`, `suspensionQuestionOf`, `questionsDue`, `nextQuestionDue`, `newRowQuestions`, `questionWrite`, `QuestionChange`, `QuestionWriteResult`, `payQuestionDeadlines`, `questionDueMs`, `questionOfSuspension`, `openUserQuestions` | — | FIX-2183 | 21 / 2 / 26 |
+| The write outcomes `"held"` (a question is open) and `"no-such-hold"`; the options `whileHoldOpen`, `refuseWhenHeld` | `"open-question"`, `"no-such-question"`; `whileQuestionOpen`, `refuseWithOpenQuestion` | The status decline `held → errored`, which is the filer's hold | FIX-2183 | 6 / 1 / 1, and the readers of `"held"` |
+| The Inbox client's `answerHold` (and Shift Manager's `LabData.answerHold`); `answer`'s `holdId` argument | `answerOne`; `questionId` | The client's `answer(item, …)`, unchanged. Task-tools' live `answerQuestion` helper stays FIX-2243's keep entry | FIX-2183 | 4 / 1 / 3 |
+| `updateTask`'s `question` input (tool and action); its `done_without_question` refusal | `answers`, the field the steer stores (`TaskSteer.answers`); `done_without_answers` | The `no_such_question` refusal, already a question's word | FIX-2183 | read, not counted: a field name |
+| `Task.waitingOn`, `TaskWaitingOn`, `setWaitingOn` | `keptOpenBy`, `TaskKeptOpenBy`, `setKeptOpenBy`; values `wait`, `filed`, `steer` unchanged, and the `queued` read moves with it | `Task.wait` (the wait slot), `wait_changed`, `waitOnTask`: a request waiting on a task | FIX-2183 | 19 / 5 / 35 |
+| `endRules.filedWorkHolds`, the helpers `filedWorkHolds` and `holdsItsFiler` | `filedWorkKeepsOpen`, `keepsFilerOpen` | — | FIX-2183 | 4 / 2 / 1 |
+| `heldTask`, `heldTaskId`, `heldRowOf`, `ticketHoldsRow` (a request holding a task) | `claimedTask`, `claimedTaskId`, `claimedRowOf`, `ticketClaimsRow` | — | FIX-2183 | 5 / 0 / 2 |
+| Shift Manager's `holderSessionId`, `holderOf` (the session that holds a board) | `ownerSessionId`, `boardOwnerOf` | — | FIX-2183 | 4 / 0 / 3 |
+| `goals/task-board/holds-a-task-on-questions` | `goals/task-board/waits-on-its-questions` | Its verdict log | FIX-2183 | 1 goal |
+| Prose on published pages: "held on (a, its) question(s)", "a question holds its task", "row hold", "suspension hold", "open holds" | "waits on its questions", "waiting on a user", "question" | Status `held`, `held: true`, `hold()`, `release()`, the `held` and `released` change kinds, `counts.held`, `heldFromBlocked`, FIX-2092's held phase steps; a checkout's held work; hold as an English verb | FIX-2183 | the prose row in `RETIRED` |
