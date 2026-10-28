@@ -26,8 +26,7 @@
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
  * a conversation's board), `createTask` starts a ready row at once: the board
- * hands it over as soon as it is filed. `dispatchTask` is gone (FIX-2083): a
- * held row is released with `updateTask({ id, status: "pending" })`, and a
+ * hands it over as soon as it is filed. A held row is released with `updateTask({ id, status: "pending" })`, and a
  * wait is `getTask`'s (FIX-2082).
  *
  * `createTask` starts a task as its start setting says: at once, after its

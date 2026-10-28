@@ -402,7 +402,7 @@ describe("V2, V5 · a task turn's question (FIX-2131)", () => {
       for (const t of turn) {
         for (const name of ["createTask", "getTask", "listTasks", "updateTask"]) expect(t.names.filter((n) => n === name), name).toHaveLength(1);
         expect(t.names).not.toContain("askQuestion");
-        expect(t.names).not.toContain("answerTask");
+        expect(t.names).not.toContain("answerTask"); // retired-name-refusal: refusal test
       }
     } finally {
       await h.dispose();

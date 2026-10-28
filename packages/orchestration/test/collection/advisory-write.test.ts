@@ -336,7 +336,7 @@ describe.each([
 
   describe("the guard is off by default — direct callers still throw", () => {
     // BP-035: the off state of a new flag is a path, and it is the one that
-    // keeps the model-facing `failTask` tool honest about a bad call.
+    // keeps the model-facing `updateTask` tool honest about a bad call.
     it("fail on a cancelled task throws when no options are passed", async () => {
       await claimed({ id: "t" });
       await collection.cancel("t", "coordinator changed its mind");

@@ -5,7 +5,7 @@
  * are asserted separately here, because they fail independently:
  *
  * 1. **Lifecycle.** Stamped inside the claim write, cleared wherever the claim
- *    ends, and deliberately KEPT across `awaitReview` — a parked row keeps the
+ *    ends, and deliberately KEPT across a park — a parked row keeps the
  *    coordinate of the request that will resume it. Absent on a legacy row, and
  *    nothing infers from absence (BP-030).
  * 2. **It never reaches a client.** Schema membership is itself a publication:

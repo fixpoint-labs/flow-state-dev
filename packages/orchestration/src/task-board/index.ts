@@ -65,7 +65,7 @@
  * its run's stop for a review or an approval) is in flight but is no active
  * worker (FIX-2131), so a `complete-or-blocked` board whose only open rows
  * wait on a person exits `blocked` and leaves them as they are. The answer
- * owes the task its next turn; a board built with the retired `onReview` is
+ * owes the task its next turn; a board built with the removed review option is
  * refused by name.
  *
  * ## CAS-safe dispatch

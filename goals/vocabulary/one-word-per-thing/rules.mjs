@@ -81,6 +81,13 @@ export const RETIRED = [
     pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b|\bquestions? holds?\b|\b(a|the|one|its|open) (row|suspension) holds?\b|\bopen holds\b/i
   },
   {
+    id: "task-tool-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2243: the collection files with the filer tool's name, createTask; getTask reads, updateTask
+    // cancels; the old task tools and the question and review parks are gone with no new name.
+    pattern: /\b(addTasks?|readTask|cancelTask|dispatchTask|assignTask|failTask|blockTask|completeTask|answerTask\w*|(create)?[Pp]arkOnQuestion|parkedOnQuestion|awaitReview|unparkAndDrain|onReview|answerQuestion)(_\w+)?\b/
+  },
+  {
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
@@ -343,5 +350,29 @@ export const KEEP = [
     line: /\basked\??:/,
     rules: ["ask-mark", "ask-prose"],
     why: "D2: a notice's asked flag is a process-internal wire value, kept so a notice owed across the upgrade is taken (WR-13)"
+  },
+  {
+    path: /^packages\/(core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)$/,
+    line: /\baddTask\b/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: the engine's side-chain pool's addTask adds a promise to a request's pool, not a task to a collection"
+  },
+  {
+    path: /^packages\/core\/src\/blocks\/sequencer\.ts$/,
+    line: /\bpool\.addTask\(/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: a side chain's promise added to the request's side-chain pool, not a task"
+  },
+  {
+    path: /^packages\/orchestration\/src\/skills\/task-tools-capability\.ts$/,
+    line: /\banswerQuestion\(/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: updateTask's live helper that answers a task's open question; the harness manager's removed answerQuestion() was another thing"
+  },
+  {
+    path: /^(packages\/(workforce|cli)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
+    line: /\banswerQuestion\b/,
+    rules: ["task-tool-names"],
+    why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool"
   }
 ];

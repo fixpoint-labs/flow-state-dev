@@ -1,6 +1,6 @@
 /**
  * A held row and the release that starts it (FIX-1875 S3; `release` since
- * FIX-2080 D1, the one release since `dispatchTask` went, FIX-2083).
+ * FIX-2080 D1, the one release since FIX-2083).
  *
  * A row filed held doesn't start until something releases it, and no claimer
  * takes it before. No caller-patchable surface reaches the status.

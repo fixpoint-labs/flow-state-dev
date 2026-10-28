@@ -1344,7 +1344,7 @@ A board that could not record a result emits one more item, `task-board-recorder
 
 ## Migrating
 
-**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action.
+**Moving from `dispatchTask`.** There is no `dispatchTask` tool or `dispatchTask_<board>` action. {/* retired-name-refusal: migration note */}
 File a new task with `createTask`, which starts it on a board that starts work on filing, and release a held
 one with `updateTask({ id, status: "pending" })`. To wait on it, call `getTask({ id, wait: true })`;
 `deadline` takes the place of `timeoutMs`.

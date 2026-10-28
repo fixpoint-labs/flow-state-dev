@@ -84,7 +84,7 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...rest, status: "held", metadata: { ...metadata, heldReason: row.error } };
     },
   },
-  // The recorded-not-started mark (`dispatchTask`'s, FIX-1875) is a held row:
+  // The recorded-not-started mark (`dispatchTask`'s, FIX-1875) is a held row: // retired-name-refusal: a legacy reader
   // it starts when something releases it, and not before.
   recorded: {
     on: true,

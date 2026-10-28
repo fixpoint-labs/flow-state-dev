@@ -269,7 +269,7 @@ describe.each([
     });
   });
 
-  describe("hold / release / awaitReview / unpark / cancel", () => {
+  describe("hold / release / cancel", () => {
     it("hold transitions pending → held", async () => {
       await collection.createTask({ id: "t", goal: "t" });
       await collection.hold("t");
@@ -433,7 +433,7 @@ describe.each([
   // retrievable rather than silently discarded.
   describe("prototype-named task ids", () => {
     // `taskId` reaches the collection straight off a model tool call
-    // (`completeTask`/`failTask`/… take `taskId: z.string()`), and the
+    // (`getTask`/`updateTask` take `id: z.string()`), and the
     // sequencer backing keeps tasks in a plain object. An inherited
     // `Object.prototype` member is truthy, so a falsity-only guard resolves
     // `"constructor"` to a function and the not-found path never fires.

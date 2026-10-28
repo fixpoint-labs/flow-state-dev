@@ -266,7 +266,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 ### Upgrading from the question inbox
 
-- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type.
+- The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type. <!-- retired-name-refusal: migration note -->
 - `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
