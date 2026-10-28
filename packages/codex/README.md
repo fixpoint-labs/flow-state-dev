@@ -112,6 +112,29 @@ core's model price table and `cost.basis` reads `"estimated"`. It is `null`, nev
 `0`, when no model was named (Codex's output never names the model that ran),
 when the table has no entry for it, or when the turn reported no usage.
 
+## Checking for a credential before you start
+
+`probeCodexAccount({ env, timeoutMs?, signal? })` asks whether Codex has
+something to run on, with no run. A `CODEX_API_KEY` in `env` answers on its
+own (a run given a key uses it whatever login is saved); otherwise it runs the
+SDK's own `codex login status`. Pass the `env` your runs get:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { probeCodexAccount } from "@flow-state-dev/codex";
+
+const account = await probeCodexAccount({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME", "CODEX_API_KEY"] }) });
+if (account.status !== "account") throw new Error(`Codex can't run: ${account.reason}`);
+```
+
+It never throws. It reads `account` with `source: "api-key" | "login"`; `none`
+with a plain `reason` when Codex says nobody is signed in, plus `unanswered:
+true` when Codex gave no answer (it didn't answer within `timeoutMs`, default
+10 000 ms, the `signal` aborted, or the CLI couldn't start); or `sdk-missing`
+when `@openai/codex-sdk` can't be loaded. The shape follows `probeClaudeAccount`
+in `@flow-state-dev/claude-code`. It checks where a credential would come from,
+not that it works: a rejected key still reads `account`.
+
 ## Reading usage left
 
 `readCodexUsage({ env, timeoutMs?, signal? })` asks Codex how much of each

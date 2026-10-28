@@ -566,6 +566,19 @@ async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollection
   return collection.get(task.id) ?? task;
 }
 
+/**
+ * A row held before its first start (FIX-2238): its filed mark becomes a
+ * fresh chain, as {@link heldFromFiling}'s filing writes, keeping the filer's
+ * user lines the mark counted. A started row's hold is midway, and keeps its
+ * budget; a row with no mark runs at its session's count anyway.
+ */
+async function freshenFiledHop(ctx: BlockContext, collection: TaskCollectionRef, id: string): Promise<void> {
+  const task = collection.get(id);
+  const mark = hopMarkOf(task?.metadata?.[FILED_HOP]);
+  if (task === undefined || mark === undefined || hasStarted(task)) return;
+  await collection.patchMetadata(id, { [FILED_HOP]: { ...freshHopMark(ctx), lines: mark.lines } });
+}
+
 /** The filing session's worker, for a session the hand-over opens: where a message to it from there lands (FIX-2238). */
 function filingWorkerOf(state: unknown): Record<string, string> {
   const worker = (state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
@@ -1300,6 +1313,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
         const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
+        // Held before its first start, a task is held from its filing: released,
+        // it starts a fresh chain, as one filed held does (FIX-2238).
+        if (outcome.outcome !== "declined" && patch.held === true) await freshenFiledHop(ctx, ref, id);
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },

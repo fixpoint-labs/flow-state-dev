@@ -33,8 +33,15 @@
  * request it dispatched. When that request ends, the engine finds the gate in
  * the sender's session and resumes it with the request's result. A child that
  * ended before its parent parked is caught as the parent parks.
+ *
+ * A gate may also wait on a request of its own session that nobody dispatched:
+ * a message queued behind a request stopped for a person (FIX-2239). That
+ * request ends only by a run that resumed it (the person answered, stopped it,
+ * or let it expire), so the run of a resumed request looks in its own session
+ * too. A request that never parked costs nothing more.
  */
 import {
+  isUserSuspension,
   isWaitGate,
   taskDispatchInputSchema,
   waitGateDataOf,
@@ -293,6 +300,11 @@ export function createRequestWaits(inputs: {
       }
       return answers;
     },
+    userStop: async () => {
+      const pending = await inputs.provider.listSuspended({ userId: inputs.userId, sessionId: inputs.sessionId, status: "pending" });
+      const stop = pending.find((gate) => isUserSuspension(gate) && gate.requestId !== inputs.requestId);
+      return stop === undefined ? undefined : { requestId: stop.requestId };
+    },
     running: async (requestIds) => {
       const answers: Record<string, boolean> = {};
       for (const requestId of new Set(requestIds)) {
@@ -348,18 +360,23 @@ export function outcomeOfRequest(record: Pick<RequestRecord, "status" | "result"
  */
 export async function resumeRequestWaiters(
   deps: WaitResumeDeps & { stores: Pick<StoreRegistry, "request"> },
-  child: Pick<RequestRecord, "id" | "status" | "result" | "source" | "metadata" | "userId">
+  child: Pick<RequestRecord, "id" | "status" | "result" | "source" | "metadata" | "userId" | "sessionId">,
+  options: { readonly ownSession?: boolean } = {}
 ): Promise<void> {
   const outcome = outcomeOfRequest(child);
   if (outcome === undefined) return;
+  const sessions = new Set<string>();
   const stamp = readDispatchStamp(child.source, child.metadata);
-  if (stamp === undefined) return;
-  const gates = await deps.provider.listSuspended({ userId: child.userId, sessionId: stamp.from.sessionId, status: "pending" });
-  for (const gate of gates) {
-    if (!isWaitGate(gate)) continue;
-    const data = waitGateDataOf(gate);
-    if (data === undefined || !("requestId" in data.binding) || data.binding.requestId !== child.id) continue;
-    await resumeWaitGate(deps, gate, outcome, `request:${child.id}`);
+  if (stamp !== undefined) sessions.add(stamp.from.sessionId);
+  if (options.ownSession === true && child.sessionId != null) sessions.add(child.sessionId);
+  for (const sessionId of sessions) {
+    const gates = await deps.provider.listSuspended({ userId: child.userId, sessionId, status: "pending" });
+    for (const gate of gates) {
+      if (!isWaitGate(gate)) continue;
+      const data = waitGateDataOf(gate);
+      if (data === undefined || !("requestId" in data.binding) || data.binding.requestId !== child.id) continue;
+      await resumeWaitGate(deps, gate, outcome, `request:${child.id}`);
+    }
   }
 }
 

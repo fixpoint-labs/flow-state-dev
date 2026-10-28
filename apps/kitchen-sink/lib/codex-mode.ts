@@ -36,7 +36,7 @@
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
  * does so its controls apply to a real run.
  */
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { delimiter } from "node:path";
 import { harnessEnv } from "@flow-state-dev/core";
@@ -47,8 +47,10 @@ import {
   createDefaultResolveCodexClient,
   findCodexProgram,
   listCodexModels,
+  probeCodexAccount,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
+  type CodexAccountProbe,
   type CodexAgentOptions,
   type CodexClientOptions,
   type CodexModelList,
@@ -278,33 +280,8 @@ export interface CodexHostChecks {
   readonly sdk: InstalledSdkVersionReader;
   /** Make the worktree root and return it, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => string;
-  /** Whether Codex's own `codex login status` succeeds over `env`. No run. */
-  readonly loggedIn: (env: Record<string, string>) => Promise<boolean>;
-}
-
-/** Run the Codex program with `args` over `env`, the way the SDK would start it. */
-async function runCodex(args: readonly string[], env: Record<string, string>, cwd?: string) {
-  const program = await findCodexProgram(env);
-  const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
-  return spawnSync(program.path, args, {
-    // Next types `NODE_ENV` as always set; this process deliberately gets only `env`.
-    env: { ...env, PATH } as Record<string, string> as NodeJS.ProcessEnv,
-    ...(cwd !== undefined ? { cwd } : {}),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30_000,
-  });
-}
-
-/** The last line of what a failed Codex command said, or how it ended. */
-function failureOf(result: ReturnType<typeof spawnSync>): string {
-  if (result.error !== undefined) return result.error.message;
-  const said = `${String(result.stderr ?? "")}\n${String(result.stdout ?? "")}`
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("WARNING:"));
-  if (said.length > 0) return said.at(-1)!;
-  return result.signal !== null ? `it was ended by ${result.signal}` : `it exited with code ${String(result.status)}`;
+  /** The Codex package's answer about its sign-in, over the run's own environment. No run. */
+  readonly probe: (env: Record<string, string>) => Promise<CodexAccountProbe>;
 }
 
 /**
@@ -346,7 +323,9 @@ export const HOST_CHECKS: CodexHostChecks = {
     mkdirSync(root, { recursive: true });
     return root;
   },
-  loggedIn: async (env) => (await runCodex(["login", "status"], env)).status === 0,
+  // A loaded host can take a while to start Codex: give it longer than the package's default.
+  // Deliberate: 30 s keeps the limit this check had before it moved, for cold hosts, so it is longer than Claude Code mode's 10 s probe.
+  probe: (env) => probeCodexAccount({ env, timeoutMs: 30_000 }),
 };
 
 /**
@@ -381,12 +360,16 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
         reason: `The folder for session worktrees can't be made: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    const env = codexEnv();
-    // A key in the run's environment signs a run in, though `login status` says otherwise.
-    if ((env.CODEX_API_KEY ?? "") === "" && !(await checks.loggedIn(env))) {
+    // A key in the run's environment counts, though `codex login status` says otherwise.
+    const account = await checks.probe(codexEnv());
+    if (account.status === "sdk-missing") return { available: false, reason: `The Codex SDK is not installed. ${account.reason}` };
+    if (account.status === "none") {
       return {
         available: false,
-        reason: "Codex is not signed in on this host (`codex login status` fails and there is no CODEX_API_KEY in the run's environment). Sign in with `codex login`, then restart.",
+        reason:
+          account.unanswered === true
+            ? `${account.reason}, so its sign-in is unknown. Restart the server to ask again.`
+            : `Codex is not signed in on this host (\`codex login status\`: ${account.reason}, and there is no CODEX_API_KEY in the run's environment). Sign in with \`codex login\`, then restart.`,
       };
     }
     return { available: true };

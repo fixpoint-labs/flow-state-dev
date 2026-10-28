@@ -37,6 +37,7 @@
  * and `timeoutMs`. `personPage` types against Playwright; only those goals
  * open a browser.
  */
+import { onClosed } from "./server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -181,7 +182,7 @@ export async function startShiftManager(options: {
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

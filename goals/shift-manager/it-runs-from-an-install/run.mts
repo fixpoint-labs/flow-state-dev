@@ -43,6 +43,7 @@
  * `GOAL_LAB=<dir>` swaps the held-out Lab: a folder with an `fsdev.config.mts`
  * and its tree under `workforce/`, importing only installed packages.
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -163,7 +164,7 @@ async function serve(project: string, dev: boolean): Promise<Served> {
   });
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
-  const exited = new Promise<void>((r) => child.on("exit", () => r()));
+  const exited = new Promise<void>((r) => onClosed(child, () => r()));
   const origin = `http://127.0.0.1:${port}`;
   for (const until = Date.now() + 90_000; Date.now() < until; await sleep(250)) {
     if (child.exitCode !== null) throw new Error(`shift-manager exited ${child.exitCode}. Log tail:\n${log.slice(-2000)}`);

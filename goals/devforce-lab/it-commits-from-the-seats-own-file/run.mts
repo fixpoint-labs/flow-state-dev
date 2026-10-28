@@ -29,9 +29,8 @@
  *
  * A fresh git repository under the OS temp directory, with one commit. Not the
  * developer's tree: this check's side effects would otherwise be somebody's
- * working copy. Conductor already proves the `gh` probe, so the done-condition
- * here is a commit rather than a pull request — which is what keeps this
- * re-runnable a year from now.
+ * working copy. The done-condition here is a commit rather than a pull request
+ * — which is what keeps this re-runnable a year from now.
  *
  * Requires a signed-in Claude Code Agent SDK. There is no stub fallback and
  * there deliberately is not one: a model-backed check that silently degrades to

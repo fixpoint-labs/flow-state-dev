@@ -116,7 +116,7 @@ const userSchedules = defineScheduleCollection({ pattern: "schedules/*" });
 
 defineFlow({
   kind: "reminders",
-  user: { resources: { schedules: userSchedules } },
+  resources: { schedules: userSchedules },
   schedules: {
     resolve: createResourceCollectionScheduleResolver({
       collection: userSchedules,

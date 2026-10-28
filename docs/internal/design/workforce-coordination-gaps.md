@@ -48,7 +48,7 @@ the `asked` flag, an ordinary English word, counts package source only.
 | Retired | Say | In code | Files |
 | -- | -- | -- | -- |
 | Post | Routed task | `onDelegatedPost`, `isPostRow`, `onPostSettled`, `postCancelled`; `postId`, `RoundPost` | 7 / 1 / 17; 6 / 2 / 21, 2 / 0 / 1 |
-| Message entry; tool | `receive`; `sendMessage` | `onWorkerMessage`; `messageWorker` | 5 / 1 / 2; 7 / 4 / 5 |
+| Message entry; tool | `onMessageReceived`; `sendMessage` | `onWorkerMessage`; `messageWorker` | 5 / 1 / 2; 7 / 4 / 5 |
 | Park on a question; review park; a coding run's question inbox | Inbox item | `parkOnQuestion`, `parkedOnQuestion`; `awaitReview`, `unparkAndDrain`, `onReview`; `answerQuestion` | 8 / 4 / 15; 19 / 6 / 42; 2 / 3 / 5 |
 | Message door | Steer | `parkedForTurn`, `messageDoor`, `harnessMessageDoor` | 9 / 2 / 5 |
 | Reopen | Follow-up | `reopen*` | 26 / 12 / 56 |
@@ -72,6 +72,10 @@ the `asked` flag, an ordinary English word, counts package source only.
 
 Phase 5 makes the code renames, `chief-of-staff` becoming `shift-coordinator`; nothing outside the
 repo uses them, so the old worker id just stops working.
+
+The *Message entry; tool* and *Relay; reply* rows are removed by FIX-2070 as it builds their
+replacements (its ER-7); FIX-2070's closure, FIX-2242, adds them to the identifier sweep. Every other
+row is FIX-2071's, each with its owner in `specs/epics/FIX-2071/renames.md`.
 
 The `fsd.ask.*` keys, the `asked` flag and the hand-off route names were kept as durable spellings so
 a request resumed across an upgrade replays what it recorded (`.changeset/wait-vocabulary.md`,

@@ -52,6 +52,7 @@
  * Control:  GOAL_CONTROL=board-flow PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -171,7 +172,7 @@ async function startLab(pages: string): Promise<Running> {
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

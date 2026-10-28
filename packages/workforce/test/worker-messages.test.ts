@@ -129,7 +129,7 @@ describe("a worker messages another worker", () => {
       expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
 
       // Its own item: the sender, the id and the text, drawn by the client only.
-      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5 }]);
+      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5, call: false }]);
       const items = await itemsOf(h, lead!.id);
       expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
       // The line the model reads, in history only.
@@ -276,7 +276,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4 }]);
+      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4, call: false }]);
       expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
@@ -333,6 +333,34 @@ describe("a message sent from a task's turn", () => {
       const lines = await h.messages(question.fromSession);
       expect(lines).toContainEqual({ agentName: "helper-a", text: "From helper-a: Teal." });
       expect(lines.at(-1)?.text, "the answer woke the task's session's turn").toBe("Helper A says teal.");
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // An answer reopens the exchange in a finished task's session, so a user's
+  // line there is one a user typed: it starts a fresh budget, as anywhere else.
+  it("starts a fresh budget at a user's line in a finished task's session", async () => {
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callOnce("Ask helper-a for its favourite colour", "sendMessage", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
+        fallback
+      ]
+    });
+    const h = boot({ standard: teamWorkers(), agentAnswer });
+    try {
+      const chief = await h.conversation("alice", "chief");
+      await h.act("alice", chief, "createTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
+      await h.settled();
+      expect((await h.rows("alice"))[0]!.status).toBe("completed");
+      const taskSession = (await logRows(h, "alice")).find((row) => row.from === "otto")!.fromSession;
+      const before = (await h.session(taskSession)).state;
+
+      await h.post("alice", taskSession, "respond", { message: "Thanks, anything else?" }, "agent");
+      await h.settled();
+      const after = (await h.session(taskSession)).state;
+      expect(after.workforceUserLines, "the user's line counted").toBe(((before.workforceUserLines as number | undefined) ?? 0) + 1);
+      expect(after.workforceMessageChain, "a chain of its own").not.toBe(before.workforceMessageChain);
     } finally {
       await h.dispose();
     }
@@ -747,6 +775,41 @@ describe("the hop count through a delegation", () => {
     }
   });
 
+  // A task held by `updateTask` before it starts is held from its filing too
+  // (FIX-2238): released, it starts afresh, as one filed held does.
+  it("starts a task held before its first start afresh when it is released", async () => {
+    const h = boot({
+      standard: teamWorkers({ unassignedWaits: true }),
+      agentAnswer: mockGenerator({ script: relayThroughTask({}, { unassigned: true }) })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [filed] = await h.rows("alice");
+      expect(filed!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const held = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "held" }, "agent");
+      expect(held.error, messageOf(held.error)).toBeUndefined();
+      expect((await h.rows("alice"))[0]!.status).toBe("held");
+      const assigned = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, assignee: "helper-b" }, "agent");
+      expect(assigned.error, messageOf(assigned.error)).toBeUndefined();
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      const first = rows.find((row) => row.from === "otto")!;
+      expect(rows.find((row) => row.from === "helper-b")!.chain, "a fresh chain, not the filing's").not.toBe(first.chain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("runs an ongoing-session task filed before rows recorded a count at its session's count, which counts on from its filer's", async () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true }) }) });
     try {
@@ -947,10 +1010,12 @@ describe("who can be messaged", () => {
     }
   });
 
-  it("takes no sender, no wait and no other key: the tool's input is strict", () => {
+  it("takes no sender, no call flag and no other key: the tool's input is strict", () => {
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true, deadline: 60_000 }).success).toBe(true);
     expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
-    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true }).success).toBe(false);
+    // Whether a message is a call is the server's to say, from `wait`: a model can't set it.
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", call: true }).success).toBe(false);
   });
 });
 

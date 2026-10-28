@@ -119,11 +119,13 @@ Every scope handle exposes its identity:
 
 ```ts
 ctx.session.identity  // { type: "session", id, userId, orgId? }
-ctx.user.identity     // { type: "user", id }
+ctx.user.identity     // { type: "user", id, userId }
 ctx.org?.identity     // { type: "org", id, ... }
 ctx.request.identity  // { type: "request", id }
 ctx.request.incarnation // same across retries and resumes of this request
 ```
+
+The caller's id is `userId`. Read it as `ctx.user.identity.userId`. The `id` on the user identity is the key the user record is stored under, which includes the organization, so it is not the same value.
 
 `ScopeIdentity` is:
 

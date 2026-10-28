@@ -530,7 +530,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(stub.runs[1]!.resume).toBe("sess_stub_1");
   });
 
-  it("holds the task on the run's own question, and the user's answer continues the same session on the same attempt", async () => {
+  it("holds the task on the run's own question, tells the conversation, and the answer continues the same session on the same attempt", async () => {
     const reply = `use the main branch ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     const stub = readsMarker({
       duringRun: (run) => {
@@ -547,6 +547,10 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     const { taskId, question } = await heldOnQuestion(lab, id);
     expect(question.ask.prompt).toBe("Which branch should I read?");
     await quiet(lab);
+    // The conversation that filed it hears the question once, from the coder, with what to answer it by (FIX-2241).
+    expect((await coderLines(lab, id, taskId)).map((line) => line.text)).toEqual([
+      expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*question: "${question.id}"`)),
+    ]);
 
     expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, question: question.id, message: reply })).output).toMatchObject({ ok: true });
     const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");

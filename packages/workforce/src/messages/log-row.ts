@@ -75,6 +75,21 @@ export const workerMessageRowSchema = z.object({
   status: z.enum(MESSAGE_STATUSES),
   /** Why it was refused or couldn't be delivered, or why its last send failed. */
   reason: z.string().optional(),
+  /**
+   * A call (FIX-2239): the sender waits on the recipient's reply, the result
+   * of the request that acts on it. Server-set from the tool's `wait`, never
+   * input. Absent on a plain message.
+   */
+  call: z.literal(true).optional(),
+  /** When a call's sender stops waiting (epoch ms): a reply after it is late. */
+  deadlineAt: z.number().optional(),
+  /** When a call's reply was given: the recipient's turn ended. */
+  repliedAt: z.number().optional(),
+  /**
+   * Why a taken message waits before it lands (FIX-2239): its session is
+   * stopped for the user, or its task is held on one. Cleared when it lands.
+   */
+  queuedBehind: z.literal("user").optional(),
   /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
   takenBy: z.string().min(1).optional(),
   /** The request it landed in. Set once. */

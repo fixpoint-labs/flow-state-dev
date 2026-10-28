@@ -14,7 +14,9 @@
  *
  * A `sendMessage` call is talk, not background: it is its own line, *To
  * <recipient>: <text>*, with a link to Messages, and a refused one says it
- * wasn't sent and why (FIX-1989).
+ * wasn't sent and why (FIX-1989). One that waits for the answer (a call,
+ * FIX-2239) reads *Asked <recipient>* and shows the reply under it, or says no
+ * answer came by its deadline.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
@@ -144,20 +146,53 @@ function messageTargetLabel(to: unknown): string {
   return "another worker";
 }
 
+/** What a call's answer says under its line: the reply, or why none came yet (FIX-2239). */
+function callOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
+  if (output?.status === "answered" && typeof output.reply === "string") return output.reply;
+  if (output?.status === "running") {
+    return output.recipient === "waiting_on_person" ? "No answer by the deadline: it waits on the user." : "No answer by the deadline yet.";
+  }
+  return null;
+}
+
 function MessageCallLine({ item }: { item: ToolOutputItem }) {
-  const args = argsOf(item) as { to?: unknown; text?: unknown } | undefined;
+  const args = argsOf(item) as { to?: unknown; text?: unknown; wait?: unknown; callId?: unknown } | undefined;
+  const callId = typeof args?.callId === "string" ? args.callId : undefined;
   const to = messageTargetLabel(args?.to);
-  const text = typeof args?.text === "string" ? args.text : "";
+  const text = callId !== undefined ? `call ${callId}` : typeof args?.text === "string" ? args.text : "";
+  const isCall = args?.wait === true || callId !== undefined;
   const state = stateOf(item);
-  const output = item.output as { ok?: unknown; error?: unknown } | undefined;
-  const refused = state === "error" || output?.ok === false;
+  const output = item.output as { ok?: unknown; error?: unknown; status?: unknown; reply?: unknown; recipient?: unknown } | undefined;
+  const refused = state === "error" || output?.ok === false || output?.status === "failed";
   const reason = typeof output?.error === "string" ? output.error : item.error?.message;
-  const label = refused ? `Not sent to ${to}` : state === "running" || state === "pending" ? `Sending to ${to}…` : `To ${to}`;
+  const busy = state === "running" || state === "pending" || state === "waiting";
+  const label =
+    callId !== undefined
+      ? refused
+        ? "Couldn't wait again"
+        : busy
+          ? "Waiting again…"
+          : "Waited again"
+      : refused
+        ? `Not sent to ${to}`
+        : busy
+          ? isCall
+            ? `Asking ${to}…`
+            : `Sending to ${to}…`
+          : isCall
+            ? `Asked ${to}`
+            : `To ${to}`;
+  const answer = isCall && !refused ? callOutcomeLine(output) : null;
   return (
     <div className="not-prose text-sm" data-testid="message-call" data-to={to} data-state-kind={refused ? "error" : state}>
       <p className="whitespace-pre-wrap">
         <span className={cn("font-medium", refused && "text-destructive")}>{label}:</span> {text}
       </p>
+      {answer === null ? null : (
+        <p className="mt-0.5 whitespace-pre-wrap" data-testid="message-call-answer" data-status={String(output?.status)}>
+          {answer}
+        </p>
+      )}
       <p className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
         {refused && reason !== undefined ? <span data-testid="message-call-reason">{reason}</span> : null}
         <button type="button" className="hover:text-foreground hover:underline" onClick={() => navigate({ level: "messages" })} data-testid="message-call-messages">
