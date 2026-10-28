@@ -20,6 +20,16 @@ export {
   type TaskStatus,
   type TaskWriteReceipt,
 } from "./schema/task";
+// What a task's runs spent (FIX-2288): the stored shape, and the fold a reader shows.
+export {
+  taskSpendSchema,
+  taskSpendViewSchema,
+  type TaskSpend,
+  type TaskSpendRequest,
+  type TaskSpendSource,
+  type TaskSpendView,
+} from "./schema/spend";
+export { spendAfterWrite, taskSpendView, type TaskSpendWrite } from "./spend";
 export {
   taskStatusSchema,
   isTerminalStatus,

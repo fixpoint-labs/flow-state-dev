@@ -11,6 +11,7 @@ import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
 import { QUEUED_WAIT } from "./retired-shapes";
 import { taskQuestionSchema } from "./question";
+import { taskSpendSchema } from "./spend";
 
 /** The base Task schema. */
 
@@ -277,6 +278,25 @@ export const taskSchema = z.object({
       startedAt: z.number().optional(),
     })
     .optional(),
+
+  /**
+   * What the task's runs spent (FIX-2288): per request admitted for the task,
+   * the spend its endings settled and what it has spent so far while it runs,
+   * with the harness and model it last reported. Read it folded, through
+   * `taskSpendView`: model, harness and tokens.
+   *
+   * **Written from inside the run**, as `run` is: the request admitted for the
+   * task writes its live spend every few seconds while it changes and settles
+   * it at each ending, through the identity-fenced `recordSpend`, so a failed
+   * attempt's tokens land after its row settled. Never model-writable, absent
+   * from `TaskInit` and every patch surface. **Client-visible** through the
+   * board's `listTasks` action, and kept out of its model-facing tool. Kept
+   * across attempts: a retry adds to it.
+   *
+   * **Absent** on rows stored before it, and on a task that never ran in a
+   * request of its own: one `== null` guard (BP-030).
+   */
+  spend: taskSpendSchema.nullable().optional(),
 
   input: z.unknown().optional(),
   output: z.unknown().optional(),
@@ -660,3 +680,4 @@ export type TaskWriteReceipt = NonNullable<
 >[number];
 
 export type { TaskStatus };
+export type { TaskSpend, TaskSpendRequest, TaskSpendSource } from "./spend";

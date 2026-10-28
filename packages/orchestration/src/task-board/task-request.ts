@@ -51,7 +51,7 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, onRequestEnded, waitForUserKindOf, type RequestEndVerdict, type RequestEnding, type SuspensionAddress } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, waitForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -71,7 +71,7 @@ import { ticketClaimsRow } from "../tasks/collection/internal";
 import { askedOnTicket } from "../tasks/collection/questions";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
-import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";
+import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { currentWorkerClaim, openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
 
@@ -126,7 +126,15 @@ interface Admitted {
    * later one admitted for it while it waits (a notice, a steer's turn).
    */
   readonly own: boolean;
+  /** The tick writing this request's live spend onto the row (FIX-2288), while it runs. */
+  spendTick?: Ticker;
 }
+
+/**
+ * How often a request admitted for a task writes what it has spent so far
+ * onto the row, while that changes (FIX-2288 D2).
+ */
+export const SPEND_TICK_MS = 2_000;
 
 /**
  * The requests admitted in this process, by request id. Each leaves at its
@@ -235,7 +243,9 @@ export async function admitClaimedTask(
           signal: ctx.signal,
         });
   const key = requestKey(ctx);
-  admitted.get(key)?.renewal?.stop();
+  const before = admitted.get(key);
+  before?.renewal?.stop();
+  before?.spendTick?.stop();
   const record: Admitted = {
     ctx,
     ref,
@@ -251,8 +261,79 @@ export async function admitClaimedTask(
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.
   const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending));
+  // What the request spends, written onto the row while it runs (FIX-2288):
+  // only where its end settles it, so a live part never outlives its request.
+  if (registered) record.spendTick = startSpendTick(record);
   admitted.set(key, registered ? record : { ...record, inline: true });
   return { renewal, ticket };
+}
+
+/**
+ * The tasks a request's spend is written to: the one it was admitted for.
+ * Every request for a task is admitted for that task alone, so two tasks a
+ * session holds never share a request's spend.
+ */
+function spendTargets(record: Admitted): string[] {
+  return [record.ticket.taskId];
+}
+
+/**
+ * Write one part of the request's spend onto its task (FIX-2288): the one
+ * writer of `Task.spend`. Never fails the request: a write that can't land is
+ * logged, and the next tick or the ending writes again.
+ */
+async function writeSpend(record: Admitted, part: "live" | "settle", spend: RequestSpend): Promise<boolean> {
+  const recordSpend = record.ref.recordSpend;
+  if (recordSpend === undefined) return false;
+  const requestId = requestKey(record.ctx);
+  try {
+    for (const taskId of spendTargets(record)) {
+      await recordSpend.call(record.ref, taskId, { requestId, part, spend }, { claim: record.ticket });
+    }
+    return true;
+  } catch (error) {
+    console.warn(`[task-board] task "${record.ticket.taskId}": what its run spent couldn't be written: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Start writing the request's live spend onto its task every
+ * {@link SPEND_TICK_MS} while it changes, on the lease driver's ticker
+ * (single-flight, stopped on the request's signal). `undefined` when the
+ * board keeps no spend or the request carries no spend ledger.
+ */
+function startSpendTick(record: Admitted): Ticker | undefined {
+  const { ctx, ref } = record;
+  if (ref.recordSpend === undefined || readRequestSpend(ctx) === undefined) return undefined;
+  let written: string | undefined;
+  return startTicker({
+    cadenceMs: SPEND_TICK_MS,
+    firstDelayMs: SPEND_TICK_MS,
+    now: () => ref.now(),
+    signal: ctx.signal,
+    tick: async () => {
+      const spend = readRequestSpend(ctx);
+      if (spend === undefined) return;
+      const seen = JSON.stringify(spend);
+      if (seen === written) return;
+      if (await writeSpend(record, "live", spend)) written = seen;
+    },
+  });
+}
+
+/**
+ * Settle what the request's ending handed on into its task's spend, clearing
+ * its live part, in one write, once no live write is in flight (FIX-2288).
+ * Before the task's check, so the check's own write never races it. A context
+ * whose ending carries no spend (the inline check) writes nothing.
+ */
+async function settleSpend(record: Admitted, spend: RequestSpend | undefined): Promise<void> {
+  const tick = record.spendTick;
+  if (tick === undefined || spend === undefined) return;
+  tick.stop();
+  await tick.idle();
+  await writeSpend(record, "settle", spend);
 }
 
 /**
@@ -294,9 +375,15 @@ async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
  * its lease. A failure to record the result is handed back as the request's
  * own (FIX-963), so the run's status never reads as success.
  */
-async function endRequest(key: string, record: Admitted, ending: TaskEnding): Promise<RequestEndVerdict | undefined> {
+async function endRequest(
+  key: string,
+  record: Admitted,
+  ending: TaskEnding & { readonly spend?: RequestSpend }
+): Promise<RequestEndVerdict | undefined> {
   // Only this record's own entry leaves the map: a resume's is another record.
   if (admitted.get(key) === record) admitted.delete(key);
+  // What it spent first, in one write, before the check (FIX-2288).
+  await settleSpend(record, ending.spend);
   try {
     const failure = await checkTask(record, ending);
     return failure === undefined ? undefined : { fail: failure };

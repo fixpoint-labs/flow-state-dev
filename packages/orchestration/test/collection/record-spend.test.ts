@@ -1,0 +1,144 @@
+/**
+ * A task's spend (FIX-2288): the write its run makes onto its row, and the
+ * fold a reader shows.
+ *
+ * Why it matters: a task card shows which model and harness ran it and how
+ * many tokens it spent, rising mid-run. So the write must land on a row that
+ * has already settled (a failed attempt's tokens arrive after it failed),
+ * never on a recreated row, and never announce itself as a lifecycle change;
+ * and the fold must count every request, never show 0 for "not reported yet",
+ * and say whether a request is still running.
+ */
+import { describe, expect, it } from "vitest";
+import type { RequestSpend } from "@flow-state-dev/core/types";
+import {
+  createResourceBackedTaskCollection,
+  createStateBackedTaskCollection,
+  taskSpendView,
+  ticketForClaim,
+  type TaskChangeEvent,
+  type TaskClaimTicket,
+  type TaskCollectionRef,
+} from "../../src/tasks";
+import { createCapturedChanges, createFakeResourceCollection, createFakeSequencerState } from "../helpers";
+
+const NONE: RequestSpend = { byModel: {}, harnessRuns: [] };
+const harnessRun = (inputTokens: number | null, outputTokens: number | null, model = "claude-sonnet-4-5"): RequestSpend => ({
+  byModel: {},
+  harnessRuns: [{ runId: "r", harness: "claude-code", model, inputTokens, outputTokens, costUsd: null, billing: "subscription" }],
+});
+const modelCalls = (prompt: number, completion: number, model = "openai/gpt-6-luna"): RequestSpend => ({
+  byModel: { [model]: { prompt, completion, total: prompt + completion, cacheReadTokens: 0, cacheCreationTokens: 0 } },
+  harnessRuns: [],
+});
+
+describe("taskSpendView", () => {
+  it("is null for a task that never ran in a request of its own", () => {
+    expect(taskSpendView({})).toBeNull();
+    expect(taskSpendView({ spend: null })).toBeNull();
+  });
+
+  it("names a harness run's model before any tokens, and reads its tokens as null, not 0, while unreported", () => {
+    const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null }] } });
+    expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+  });
+});
+
+interface Backing {
+  collection: TaskCollectionRef;
+  events: TaskChangeEvent[];
+}
+
+async function stateBacking(): Promise<Backing> {
+  const captured = createCapturedChanges();
+  return {
+    collection: createStateBackedTaskCollection({
+      collectionId: "tasks",
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      onChange: captured.onChange,
+      now: () => 1_000,
+    }),
+    events: captured.events,
+  };
+}
+
+async function resourceBacking(): Promise<Backing> {
+  const captured = createCapturedChanges();
+  return {
+    collection: await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      onChange: captured.onChange,
+      now: () => 1_000,
+    }),
+    events: captured.events,
+  };
+}
+
+describe.each([
+  ["state-backed", stateBacking],
+  ["resource-backed", resourceBacking],
+])("recordSpend (%s)", (_name, makeBacking) => {
+  async function claimed(): Promise<Backing & { claim: TaskClaimTicket }> {
+    const backing = await makeBacking();
+    await backing.collection.createTask({ id: "t", goal: "t", maxAttempts: 2 });
+    const task = (await backing.collection.claim("w", { leaseDurationMs: 10_000 }))!;
+    return { ...backing, claim: ticketForClaim(backing.collection.collectionId, task) };
+  }
+  const view = (c: TaskCollectionRef) => taskSpendView(c.get("t")!);
+
+  it("rises with each live write, settles at the ending, and publishes no task-change", async () => {
+    const { collection, claim, events } = await claimed();
+    const before = events.length;
+
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(null, null) }, { claim });
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(100, 20) }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 100, outputTokens: 20, unreported: false, live: true });
+
+    // The ending hands on the run's final report: it replaces the live part, never adds to it.
+    expect(await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: harnessRun(1000, 200) }, { claim })).toEqual({ outcome: "recorded" });
+    expect(view(collection)).toMatchObject({ inputTokens: 1000, outputTokens: 200, live: false });
+    expect(events.length).toBe(before);
+  });
+
+  it("is unchanged when a live write says what the row already holds", async () => {
+    const { collection, claim } = await claimed();
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(4, 4) }, { claim });
+    expect(await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(4, 4) }, { claim })).toEqual({ outcome: "unchanged" });
+  });
+
+  it("counts every request: a failed attempt's tokens land on the settled row, and the retry's add to them", async () => {
+    const { collection, claim } = await claimed();
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(200, 50) }, { claim });
+    await collection.fail("t", "check failed", { ifAllowed: true, claim });
+    // The first attempt's ending arrives after its failure was written: still taken.
+    expect(await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: harnessRun(250, 50) }, { claim })).toEqual({ outcome: "recorded" });
+    const second = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
+    const claim2 = ticketForClaim(collection.collectionId, second);
+    await collection.recordSpend!("t", { requestId: "q2", part: "settle", spend: harnessRun(1000, 200) }, { claim: claim2 });
+    await collection.complete("t", "done", { ifAllowed: true, claim: claim2 });
+    // And on a completed row, a late ending of the first request still lands.
+    await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: modelCalls(4, 4) }, { claim });
+
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, unreported: false, live: false });
+  });
+
+  it("declines not-my-task for a ticket naming another incarnation of the row, writing nothing", async () => {
+    const { collection, claim } = await claimed();
+    for (const other of [{ ...claim, createdAt: claim.createdAt - 1 }, { ...claim, collectionId: "other" }]) {
+      expect(await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(1, 1) }, { claim: other })).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+    }
+    expect(collection.get("t")!.spend).toBeUndefined();
+  });
+
+  it("writes no entry for a request that ended having spent nothing", async () => {
+    const { collection, claim } = await claimed();
+    expect(await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: NONE }, { claim })).toEqual({ outcome: "unchanged" });
+    expect(view(collection)).toBeNull();
+  });
+});
