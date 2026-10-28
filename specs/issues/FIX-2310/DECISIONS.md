@@ -106,3 +106,13 @@ worker that needs both before it goes on files tasks or calls.
 ## Notes from review
 
 - FSD Architect (2026-10-28, #4156): name FIX-2300's `runsTurn` and make the turnless rule one rule with the call's. Folded into E4 and the debt table.
+- Cursor /simplify (2026-10-28, approved), for the implementer:
+  - Drop the asker's owed entry as soon as the guarded answer write succeeds; the pass then only
+    tells server death and never-landed, it isn't the detector of "answered".
+  - One answer status on the asked row (e.g. `answerStatus`) may beat a nullable id plus rules
+    across fields; implementer's call.
+  - The model's own `inReplyTo` and the turn-end send can't both send (E2), but check they can't
+    both wake the asker either.
+  - D2's "what would change my mind" (a receiver whose final text is for its own user) is an
+    escape hatch, not built here.
+  - E4 was raised as heavy; it is now FIX-2300's up-front refusal, so it adds little.

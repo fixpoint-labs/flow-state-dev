@@ -16,8 +16,9 @@
 
 ## The goal, and how we'll know it's met
 
-**A message sent with "reply requested" ends in exactly one answer the asker can see: the
-receiver's reply, or a "no answer", whatever the receiving model remembers to do.**
+**Every message sent with "reply requested" ends in exactly one outcome the asker can see: the
+receiver's reply, a "no answer", or a told line when it never landed or its server died. The
+receiving model doesn't have to remember `inReplyTo`.**
 
 - **Smaller, and rejected:** prompt the receiver harder to call `sendMessage({ inReplyTo })`.
   That is today's design; the live run showed the model doesn't.
