@@ -74,6 +74,8 @@ It comes down to a lost fold: in the background, a killed fold drops a turn with
   the session record; it writes with the record's version check, and the high-water mark only
   moves forward. Two turns of one conversation at once: the loser keeps the view it loaded and
   does not fold again. That is the convergence point for "a turn is folded once".
+  To avoid two summary calls for one fold, a turn re-reads the high-water mark from the session
+  record just before it calls the summarizer, and skips the fold if another turn already moved it.
 - **When to fold, early.** The fold fires when the oldest unfolded turn reaches the oldest
   quarter of the window, and takes up to a quarter of the window. The turns read word for word
   float between three quarters of the window and all of it. A failed fold has about a quarter of
@@ -114,6 +116,7 @@ It comes down to a lost fold: in the background, a killed fold drops a turn with
 |---|---|
 | Raise `historyWindow` | Every turn pays for the whole conversation, and it still ends. An invent-kill on this issue since 2026-09-27 |
 | Memory alone (the lab's probe) | Keeps facts, not the thread (FIX-1612); a pass on memory is not evidence it replaces the summary (FIX-2154) |
+| Fold one settled turn at the boundary, the turn before it would leave | Simpler rules, but a failed call loses that turn on the next one (the flaw the analysis caught), and it is a summary call on every turn once the window fills |
 | Summarize every dropped turn on every turn, no batches | One summary call per turn after the window fills; batches cost the same tokens and a twelfth of the pauses |
 | A new block kind or a `historySummary` capability | A capability would install per generator, but the summary is one per conversation and the window is flow-level. The option sits where the window is |
 | Store the summary in session state | State is the app's schema and is projected to the client by the app's rules |
@@ -149,5 +152,15 @@ It comes down to a lost fold: in the background, a killed fold drops a turn with
   turn, because a failed or late fold lost turns for good.
 - **Review round 1, Codex** — a parked turn the fold moves past is kept by id and folded when
   it settles, because moving the mark past it lost it for good.
+
+- **Review round 1, Cursor** — concurrent turns re-read the high-water mark before the summary
+  call; folding one turn at the boundary added to *Considered and dropped*.
+
+## Notes from review
+
+- "Avoid hydrating full items on the +1 probe when only `historyStart` is needed (split query / `withItems: false` tail row). Big perf win on long sessions with summary off." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/4063#discussion_r4403725867))
+- "Both snippets use `granularity: \"detailed\"`. For lab latency and the 4k summary signal, `brief` (or documenting workforce defaults) may be a simpler default unless step 4 truly needs detailed." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/4063#discussion_r4403725859))
+
+These are inputs, not instructions. Adopt, adapt, or discard.
 
 **Open: none.**
