@@ -91,22 +91,27 @@ function checkoutFor(commit: string | undefined): { root: string; commit: string
   return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
 }
 
-/** The names FIX-2238 removed, as Workforce wrote them. `replyTo` only where the message field lived. */
-const REMOVED = /\b(onWorkerMessage|messageWorker|MESSAGE_WORKER_TOOL|WORKER_MESSAGE_ENTRY|workerMessageEntry|workforceRelayTo|takes_tasks_only|no_turn|takesWorkerMessages|sendWorkerMessage|answerTo)\b/;
-const REMOVED_FIELD = /\breplyTo\b/;
+/** The names FIX-2070 removed: the vocabulary sweep's two rows (FIX-2242 D2), so there is one list. */
+type RetiredRow = { id: string; files: RegExp; pattern: RegExp };
+const RULES = new URL("../../vocabulary/one-word-per-thing/rules.mjs", import.meta.url).href;
+const { RETIRED } = (await import(RULES)) as { RETIRED: RetiredRow[] };
+const REMOVED_ROWS = RETIRED.filter((r) => r.id === "message-names" || r.id === "message-reply-to");
 
-/** `sweep`: no package's source names a removed name. */
+/** `sweep`: no package's source names a removed name, each row at its own scope. */
 function sweep(root: string): string[] {
+  if (REMOVED_ROWS.length !== 2) return ["sweep — setup: the vocabulary sweep's message rows are missing"];
   const hits: string[] = [];
-  const walk = (dir: string, field: boolean) => {
+  const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
-      if (statSync(path).isDirectory()) walk(path, field);
+      if (statSync(path).isDirectory()) walk(path);
       else if (/\.(ts|tsx|mts)$/.test(name)) {
+        const rel = path.slice(root.length + 1);
+        const rows = REMOVED_ROWS.filter((r) => r.files.test(rel));
         readFileSync(path, "utf8")
           .split("\n")
           .forEach((line, i) => {
-            if (REMOVED.test(line) || (field && REMOVED_FIELD.test(line))) hits.push(`${path.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 120)}`);
+            if (rows.some((r) => r.pattern.test(line))) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`);
           });
       }
     }
@@ -114,7 +119,7 @@ function sweep(root: string): string[] {
   const packages = join(root, "packages");
   for (const pkg of readdirSync(packages)) {
     const src = join(packages, pkg, "src");
-    if (existsSync(src)) walk(src, pkg === "workforce" || pkg === "shift-manager");
+    if (existsSync(src)) walk(src);
   }
   return hits.length === 0 ? [] : [`sweep — removed names are still in package source: ${hits.slice(0, 8).join(" | ")}`];
 }

@@ -71,6 +71,20 @@ export const RETIRED = [
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
+  },
+  {
+    id: "message-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2070's retired message surface (FIX-2242 D2): the old tool, entry, relay and refusals.
+    // The entry's first names are swept as receiveProblem/receiveEntry/RECEIVE_ENTRY, never a bare `receive`.
+    pattern:
+      /\b(onWorkerMessage|messageWorker|MESSAGE_WORKER_TOOL|WORKER_MESSAGE_ENTRY|workerMessageEntry|sendWorkerMessage|SendWorkerMessage|takesWorkerMessages|messageWorkerInputSchema|workerMessageInputSchema|WORKER_MESSAGES_SEEN_STATE|workforceRelayTo|takes_tasks_only|no_turn|answerTo|receiveProblem|receiveEntry|RECEIVE_ENTRY)\b/
+  },
+  {
+    id: "message-reply-to",
+    // Core's dispatcher keeps the word for its own fields, so only Workforce, Shift Manager and the pages.
+    files: new RegExp(`^packages\\/(workforce|shift-manager)\\/.*\\.(ts|tsx|mts)$|${PUBLISHED.source}`),
+    pattern: /\breplyTo\b/
   }
 ];
 
