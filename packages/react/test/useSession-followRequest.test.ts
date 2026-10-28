@@ -25,8 +25,9 @@
  *   - resume a request whose stream ended rather than dropped, and the
  *     "after it ended" case fails: the stream starts past its own end and
  *     never settles.
- *   - follow a request the person stopped, and the "stopped" case fails:
- *     the view opens its stream again from the start.
+ *   - follow a request the person stopped or dismissed, and the "stopped"
+ *     and "dismissed" cases fail: the view opens its stream again from the
+ *     start.
  *   - keep an earlier stream's cursor when a stream starts from the
  *     beginning, and the "dropped before its first event" case fails: the
  *     next follow resumes past the earlier stream's end.
@@ -238,6 +239,27 @@ describe("useSession.followRequest (FIX-2265)", () => {
     expect(followed).toBe(false);
     expect(connections.length).toBe(opened);
     expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("does not follow a request the person dismissed", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    act(() => connections.at(-1)!.callbacks.onError?.(new Error("dropped")));
+    await act(async () => {
+      await result.current.dismissRequest();
+    });
+    const opened = connections.length;
+
+    let followed = true;
+    act(() => {
+      followed = result.current.followRequest("req_turn");
+    });
+    expect(followed).toBe(false);
+    expect(connections.length).toBe(opened);
   });
 
   it("makes the followed request the one a stop reaches", async () => {

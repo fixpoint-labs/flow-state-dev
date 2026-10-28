@@ -437,8 +437,8 @@ export type SessionView = {
    * `abortRequest` stops. The stream followed now is closed. Followed again
    * after its stream dropped, it picks up after the last event the view had,
    * so state changes already applied are not applied twice. Returns `false`
-   * and follows nothing for a request the person stopped: a stopped request
-   * is not picked back up, even while the server still lists it as running.
+   * and follows nothing for a request the person stopped or dismissed: it is
+   * not picked back up, even while the server still lists it as running.
    *
    * For a request sent beside the one the page follows, so the page stays on
    * that one until it ends: a turn that waits for the running turn, say, sent
@@ -651,6 +651,8 @@ export function useSession(
    * when the POST answers.
    */
   const stoppedRequestsRef = useRef(new Set<string>());
+  /** Requests the person stopped or dismissed: `followRequest` does not pick them back up. */
+  const letGoRef = useRef(new Set<string>());
   /**
    * Wall-clock timestamp of the most recent SSE event or heartbeat. The
    * watchdog reads this to decide whether the stream has gone silent
@@ -1598,6 +1600,7 @@ export function useSession(
       activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
       stoppedRequestsRef.current.clear();
+      letGoRef.current.clear();
       lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
     };
@@ -1747,6 +1750,7 @@ export function useSession(
         );
         return;
       }
+      letGoRef.current.add(targetId);
 
       try {
         await flow.request(targetId).abort();
@@ -1955,6 +1959,7 @@ export function useSession(
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
     stoppedRequestsRef.current.add(requestId);
+    letGoRef.current.add(requestId);
 
     // Mark the request as abort-requested in the persistent store. This
     // flag lets the server distinguish an intentional stop from an
@@ -1989,7 +1994,7 @@ export function useSession(
     (requestId: string) => {
       // Resume only the stream that dropped: anything since (an end, a
       // session change, a stop) clears the drop, and the view's state for it.
-      if (stoppedRequestsRef.current.has(requestId)) return false;
+      if (letGoRef.current.has(requestId)) return false;
       const last = lastStreamEventRef.current;
       const resume = latestRequestIdAfterDropRef.current === requestId && last?.requestId === requestId;
       activeRequestIdRef.current = requestId;
