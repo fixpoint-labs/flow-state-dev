@@ -46,7 +46,7 @@ items' own reading rule, or a flow gets the opt-out.
 |---|---|
 | **Instead of** | The other session's own window plus its FIX-1613 summary of everything before it |
 | **Because** | The budget is the cost control, and cost is why the tool exists. The read packs whole turns from the end under `{ tokens }` with the existing `selectRequestsByLimit`; where the newest turn alone is over the budget, the tool cuts it to its last messages rather than send it whole, so no consult sends more than its budget. The summary lives in a session resource that a capability installs (#4085, still open); reading it from another session needs a cross-session resource read the engine doesn't have, and a generic read can't know one capability's resource. Its turns and `historyStart` are on #4085's open head, which this builds after |
-| **Locks in** | A default budget of 24,000 tokens, which the tool's factory and the capability can change. The result always says how many turns it read, whether earlier ones were left out, and whether the newest was cut. Old decisions in a long conversation are out of reach until the follow-up adds the summary |
+| **Locks in** | A default budget of 24,000 tokens, which the tool's factory and the capability can change. The result always says how many turns it read, whether earlier ones were left out, and whether the newest was cut. The hard cut is the tool's: `sessions.history` packs its `limit` as a window does. Old decisions in a long conversation are out of reach until the follow-up adds the summary |
 
 ![D2: how much of a long history a consult reads. Chosen: the most recent turns under a hard token budget. Instead of: the other session's window plus its FIX-1613 summary. Decides it: the summary needs a cross-session resource read nobody has built. Price: old turns are out of reach. Locks in: a budget, and a result that says what was left out](figures/d2-token-budget.svg)
 
@@ -84,6 +84,8 @@ built around the choice is the better teacher.
   and org close over the running request, as every `RequestHost` verb does. The flow is not
   checked: any of the person's sessions answers, as `read` does.
 - **`history` returns #4085's shapes.** Settled `HistoryTurn`s oldest first, and `startRequestId` when earlier turns were left out, as a window marks it. `createRequestSessions` gains the request store, the durability provider (for the parked filter) and the token counter it needs. Its `limit` packs as a window does, the newest turn whole even over a `{ tokens }` limit, so its docs never call it a hard budget: the tool's cut is the hard one. The retried filter is read for the other session, not from the running request's metadata.
+- **The engine answers `undefined`; the tools refuse.** A missing or foreign session reads `undefined` from `sessions.history`, as from `read`. Both tools turn that into `no_session`, and `self` is the tools' own refusal.
+- **The cross-session read is bounded at the store.** It lists from the newest turn back and stops at what the `limit` can use, the way the window lists `historyWindowTurns`; it never loads a whole long session to trim it (BP-033).
 - **`asOf` is the newest settled turn read**: its request id and when it settled. A turn still
   running there is named in the result (`running: true`), not read.
 - **The model is a factory option, not a model-facing parameter.** The issue's `model?` stays on
@@ -126,6 +128,10 @@ built around the choice is the better teacher.
 No POC. The one premise, that the engine can read another session's past turns under the same
 scope a turn's window uses, is the window load's own code (`sessionRequestScope` and
 `stores.request.list`), which takes any session id.
+
+## Notes from review
+
+- cursor[bot], 2026-10-28: "Consider calling out extracting `resolveConsultTarget(of)` shared with write-path refusals (minus `task_running`, plus `self`) so consult doesn't grow a second target matrix." Also: "justify or trim redundant tool result tallies (`turnsRead`, `earlierTurnsLeftOut`) vs `HistoryTurn[]` + `startRequestId`."
 
 ## Analysis
 

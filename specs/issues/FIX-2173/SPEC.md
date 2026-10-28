@@ -105,7 +105,7 @@ way `sendMessage`'s `to` does: a worker's id, `{ task: id }` or `{ session: id }
 ```diff
   // in any block: another of the principal's sessions
   const view = await ctx.requestHost.sessions.read(sessionId);
-+ const history = await ctx.requestHost.sessions.history(sessionId, { limit: { tokens: 24_000 } });
++ const history = await ctx.requestHost.sessions.history(sessionId, { limit: { turns: 20 } });
 + // { turns: HistoryTurn[], startRequestId? } | undefined: settled turns only, oldest first
 ```
 
@@ -151,7 +151,7 @@ sees is exactly what the other session's model would read next. The owner rule i
 | Ways to ask another conversation something. Searched `sendMessage`, `callWorker`, `getTask`, `listTasks`, `read`, `history`, `selectForContext`, `consult` across `packages/`. Four hits: `sendMessage` (lands and wakes), `sendMessage` with `wait: true` (a call: wakes, runs, waits), a message to `{ task }` (lands in the task's session), and `getTask` (the row's status and result, not its turns). **This would be the fifth way to ask another conversation a question, and the first that runs nothing there.** The closest is the call | **Beside it.** A read-only mode on `sendMessage` was weighed and dropped ([Considered and dropped](DECISIONS.md#considered-and-dropped)) |
 | `requestHost.sessions.read` (FIX-2160 D2) and its owner rule | **Extends** `sessions` with `history`. One owner check serves both |
 | The window load in `createExecutionContext`: `stores.request.list` with `sessionRequestScope`, `PAST_TURN_STATUSES`, the retried and parked filters, the settled items of an interrupted turn, then `loadLLMHistory` | **Builds on.** Extracted into one settled-turns read that the window and `history` both call |
-| `MessageLimit` and `selectRequestsByLimit`: whole turns from the end under `{ tokens }` | **Builds on** for the budget, with a hard cut where the newest turn alone is over it ([D2](DECISIONS.md#d2)) |
+| `MessageLimit` and `selectRequestsByLimit`: whole turns from the end under `{ tokens }` | **Builds on** for `history`'s `limit`, which packs as a window does. The tool adds the hard cut where the newest turn alone is over its budget ([D2](DECISIONS.md#d2)) |
 | `intent/utility`, core's cheap-model intent (the repair pass, `memoryExtractor`) | **Builds on.** It is the default model |
 | `checkTaskTarget`, `checkTargetSession` and the by-name lookup in `send-message.ts` | **Builds on** for `of`. The refusals that exist because a message runs the target (a coding task still open, a task session addressed as a conversation) don't apply to a read |
 | Per-worker preset selection (FIX-1459): a worker picks presets of capabilities in the app's `uses` | **Builds on.** The consult is its own capability the app puts in `uses`, because the board's `workerMessages` is added inside the flow and can't be picked from a file |
