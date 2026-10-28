@@ -16,6 +16,8 @@
 
   "entry": [
     "scripts/*.mjs",
+    // One-shot codemods, run by path (`pnpm tsx scripts/codemod/<name>.ts`).
+    "scripts/codemod/*.ts",
     ".omp/extensions/*.ts",
     ".omp/test/*.mjs",
 
