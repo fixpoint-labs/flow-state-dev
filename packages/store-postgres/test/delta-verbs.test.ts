@@ -4,8 +4,9 @@
  * Validates `patchField`, `incField`, and `pushToArray` on the Postgres
  * SessionStore (the other three stores use the same generic record store,
  * so coverage transitively applies). Mirrors the in-memory conformance
- * suite, plus a benchmark that asserts the spec's "100 patchField faster
- * than 100 set" acceptance criterion under PGlite.
+ * suite, plus a check that patchField sends only the changed value (the
+ * reason the spec expects it to beat a full `set`), asserted on the SQL it
+ * issues rather than on wall-clock time.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,9 +17,13 @@ import type { SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
 
-function pgliteExecutor(pglite: PGlite): QueryExecutor {
+type RecordedQuery = { text: string; values?: unknown[] };
+
+/** PGlite as a `QueryExecutor`; pushes each query onto `recorded` when given. */
+function pgliteExecutor(pglite: PGlite, recorded?: RecordedQuery[]): QueryExecutor {
   return {
     async query(text: string, values?: unknown[]) {
+      recorded?.push({ text, values });
       const result = await pglite.query(text, values);
       return {
         rows: result.rows as Record<string, unknown>[],
@@ -54,9 +59,9 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
     await stores?.close();
   });
 
-  async function freshStores(): Promise<PostgresStoreRegistry> {
+  async function freshStores(recorded?: RecordedQuery[]): Promise<PostgresStoreRegistry> {
     pglite = await freshPglite();
-    const executor = pgliteExecutor(pglite);
+    const executor = pgliteExecutor(pglite, recorded);
     stores = await createPostgresStores({ executor });
     return stores;
   }
@@ -246,71 +251,75 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
     });
   });
 
-  describe("benchmark — patchField vs set", () => {
-    // The spec's "measurably faster" criterion is a real-Postgres concern
-    // (the JSONB delta path ships only the new value over the wire; `set`
-    // ships the whole row). On PGlite both calls are in-process, so the
-    // wire-payload savings disappear and timing is dominated by JSONB
-    // operator cost, which is roughly comparable to a full-row UPDATE on
-    // these small payloads. This test runs the workload, logs the timings
-    // when `FSDEV_DEBUG_BENCHMARK=1`, and only asserts that neither path
-    // catastrophically regresses (3× the other). Tighter "X faster than Y"
-    // assertions live in a real-Postgres integration test out of scope here.
-    it("100 sequential patchField and set ops both complete without timeout", async () => {
-      const s = await freshStores();
+  describe("patchField takes the delta path, not a full-record write", () => {
+    // The spec's "100 patchField faster than 100 set" criterion comes from
+    // what each path sends to Postgres: the JSONB delta path ships only the
+    // changed value, `set` ships the whole serialized record. Timing the two
+    // on PGlite measured CI load, not that difference, so this test asserts
+    // the difference itself: what SQL each call issues and what it carries.
+    // If patchField regressed to a read-modify-write or a full `set`, its
+    // queries would carry the untouched fields and the assertions fail.
+    it("each patchField is one jsonb_set UPDATE that never carries the untouched fields", async () => {
+      const recorded: RecordedQuery[] = [];
+      const s = await freshStores(recorded);
 
-      // Wide state to make the full-record write expensive: a 50-field state
-      // makes JSON.stringify and the full-row UPDATE non-trivial.
+      // Wide state: 50 fields the patch never touches. Their payload is the
+      // marker for "the whole record went over the wire".
+      const untouched = "value_with_some_payload_padding";
       const wideState: JsonObject = {};
       for (let i = 0; i < 50; i++) {
-        wideState[`field_${i}`] = `value_${i}_with_some_payload_padding`;
+        wideState[`field_${i}`] = `${untouched}_${i}`;
       }
       await seed(s, "patch_target", { ...wideState, count: 0 });
       await seed(s, "set_target", { ...wideState, count: 0 });
 
-      // Warm up to ignore one-time pglite costs.
-      await s.session.patchField!("patch_target", ["count"], -1, 0, Date.now());
-      await s.session.set(
-        "set_target",
-        makeSession("set_target", 1, { ...wideState, count: -1 }),
-        0
-      );
+      const carriesUntouched = (q: RecordedQuery): boolean =>
+        JSON.stringify(q.values ?? []).includes(untouched);
 
-      const patchStart = performance.now();
+      recorded.length = 0;
       for (let i = 0; i < 100; i++) {
         const result = await s.session.patchField!(
           "patch_target",
           ["count"],
-          i,
           i + 1,
+          i,
           Date.now()
         );
         if (!result.ok) throw new Error("unexpected conflict");
       }
-      const patchMs = performance.now() - patchStart;
+      const patchQueries = recorded.splice(0);
 
-      const setStart = performance.now();
+      // One round trip per call: no read before the write.
+      expect(patchQueries).toHaveLength(100);
+      for (const q of patchQueries) {
+        expect(q.text).toMatch(/^\s*UPDATE\b/);
+        expect(q.text).toContain("jsonb_set");
+        expect(carriesUntouched(q)).toBe(false);
+      }
+
+      // Control: the full-record path does carry the untouched fields, so
+      // the check above can tell the two paths apart.
       for (let i = 0; i < 100; i++) {
         const result = await s.session.set(
           "set_target",
-          makeSession("set_target", i + 2, { ...wideState, count: i }),
-          i + 1
+          makeSession("set_target", i + 1, { ...wideState, count: i + 1 }),
+          i
         );
         if (!result.ok) throw new Error("unexpected conflict");
       }
-      const setMs = performance.now() - setStart;
+      const setQueries = recorded.splice(0);
+      expect(setQueries.length).toBeGreaterThanOrEqual(100);
+      expect(setQueries.every(carriesUntouched)).toBe(true);
 
-      if (process.env.FSDEV_DEBUG_BENCHMARK === "1") {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[FIX-405 bench] patchField=${patchMs.toFixed(1)}ms set=${setMs.toFixed(1)}ms ratio=${(patchMs / setMs).toFixed(2)}`
-        );
-      }
-      // Sanity bound only — neither path should be catastrophically slower
-      // than the other on PGlite. Real "X faster than Y" comparison needs
-      // a Postgres-over-the-wire harness.
-      expect(patchMs).toBeLessThan(setMs * 3);
-      expect(setMs).toBeLessThan(patchMs * 3);
+      // Both paths reach the same end state.
+      expect((await s.session.get("patch_target"))?.state).toEqual({
+        ...wideState,
+        count: 100
+      });
+      expect((await s.session.get("set_target"))?.state).toEqual({
+        ...wideState,
+        count: 100
+      });
     });
   });
 });

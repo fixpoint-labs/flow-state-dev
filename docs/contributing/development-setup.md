@@ -227,6 +227,16 @@ pnpm test:watch
 pnpm --filter @flow-state-dev/core test:watch
 ```
 
+### Redis in CI
+
+The `test` and `packed-install` jobs in `.github/workflows/ci.yml` start a Redis
+service container for the BullMQ cases, which fail rather than skip when `CI` is
+set and Redis is missing. The image is the official `redis` image from Docker
+Hub, pinned by tag and digest (`redis:7.4.12@sha256:…`) so a moved tag can't
+change what CI runs. To bump it, pick the new tag on Docker Hub, read its index
+digest with `docker buildx imagetools inspect redis:<tag>` (the `Digest:` line),
+and update both `image:` lines together.
+
 ### Type-level assertions
 
 Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `src/**/*.type-test.ts`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet, so a type assertion there goes in a `.test-d.ts` for now. How test files are compiled and guarded (`tsconfig.test.json`, `scripts/validate-test-typecheck.mjs`, its `DEFERRED` list) is under [TypeScript Configuration](#typescript-configuration).
