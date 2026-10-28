@@ -89,10 +89,10 @@ describe("createTask starts a task as its start setting says", () => {
     expect(collection.get(added.taskId!)!.status).toBe("pending");
   });
 
-  it("offers no dispatchTask on any board: createTask starts a task (FIX-2083)", async () => {
+  it("offers no dispatchTask on any board: createTask starts a task (FIX-2083)", async () => { // retired-name-refusal: refusal test
     const collection = await board();
     for (const starts of [true, false]) {
-      expect(toolsOf(collection, starts).map((t) => (t as { name?: string }).name)).not.toContain("dispatchTask");
+      expect(toolsOf(collection, starts).map((t) => (t as { name?: string }).name)).not.toContain("dispatchTask"); // retired-name-refusal: refusal test
     }
   });
 });

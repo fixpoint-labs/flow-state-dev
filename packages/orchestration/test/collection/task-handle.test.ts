@@ -108,7 +108,7 @@ for (const { name, build } of factories) {
   describe(`TaskHandle.items (${name})`, () => {
     it("returns [] for a task that has not been claimed", async () => {
       const { collection } = await build();
-      const t = await collection.addTask({ id: "t1", goal: "do the thing" });
+      const t = await collection.createTask({ id: "t1", goal: "do the thing" });
       const handle = collection.get(t.id);
       expect(handle).toBeDefined();
       expect(handle!.items()).toEqual([]);
@@ -116,7 +116,7 @@ for (const { name, build } of factories) {
 
     it("returns items in the task's claim window after worker emissions", async () => {
       const { collection, itemLog } = await build();
-      await collection.addTask({ id: "t1", goal: "g" });
+      await collection.createTask({ id: "t1", goal: "g" });
 
       // Synthesize the substrate's task-change events directly into the log.
       // Real lifecycle events are emitted via ctx.emit.component, and worker
@@ -141,7 +141,7 @@ for (const { name, build } of factories) {
 
     it("list returns TaskHandles each scoped to their own taskId", async () => {
       const { collection, itemLog } = await build();
-      await collection.addTasks([
+      await collection.createTasks([
         { id: "t1", goal: "a" },
         { id: "t2", goal: "b" },
       ]);
@@ -167,7 +167,7 @@ for (const { name, build } of factories) {
 
     it("snapshots at call time — late-arriving items appear on subsequent reads", async () => {
       const { collection, itemLog } = await build();
-      await collection.addTask({ id: "t1", goal: "g" });
+      await collection.createTask({ id: "t1", goal: "g" });
 
       itemLog.push(
         taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
@@ -201,7 +201,7 @@ for (const { name, build } of factories) {
         });
       }
 
-      await collection.addTask({ id: "t1", goal: "g" });
+      await collection.createTask({ id: "t1", goal: "g" });
       const handle = collection.get("t1");
       expect(handle!.items()).toEqual([]);
     });
@@ -228,7 +228,7 @@ describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
       now: () => 1000,
     });
 
-    await collection.addTask({ id: "t1", goal: "g" });
+    await collection.createTask({ id: "t1", goal: "g" });
     const handle = collection.get("t1");
     expect(handle).toBeDefined();
     expect(() => handle!.items()).not.toThrow();

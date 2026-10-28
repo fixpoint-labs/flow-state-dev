@@ -215,7 +215,7 @@ export const EXCEPTIONS = [
   {
     id: "claude-code-threads",
     terms: ["thread"],
-    where: (path) => path.startsWith("labs/claude-code-style/workforce/"),
+    where: (path) => path.startsWith("labs/claude-code-style/"),
     strip: /\bthreads?\b/gi,
     why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
   },

@@ -6,7 +6,7 @@
  * `uses` and call the sugar directly:
  *
  * ```ts
- * await ctx.cap.<name>.addTask({ goal: "…" });
+ * await ctx.cap.<name>.createTask({ goal: "…" });
  * const done = await ctx.cap.<name>.listTasks({ status: "completed" });
  * ```
  *
@@ -16,7 +16,7 @@
  *   `stateKey` are declared once on `taskBoard({...})`. Consumers import only
  *   `board.capability` — no second `getOrCreateTaskCollection` call with
  *   matching arguments, no drift.
- * - **Direct sugar.** `addTask`/`addTasks`/`getTask`/`listTasks`/`countTasks`
+ * - **Direct sugar.** `createTask`/`createTasks`/`getTask`/`listTasks`/`countTasks`
  *   delegate to the resolved `TaskCollectionRef`, so a read or write is one call
  *   instead of resolve-then-call. `tasks()` is retained as the full-ref escape
  *   hatch.
@@ -141,12 +141,12 @@ export type TaskBoardCapabilityOptions<TInput = unknown, TOutput = unknown> =
  * Capability accessor — what consumers see at `ctx.cap.<boardName>`.
  *
  * Generic in the board's task payload types: `taskBoard<TInput, TOutput>(...)`
- * threads `TInput`/`TOutput` through the handle to here, so `addTask` type-checks
+ * threads `TInput`/`TOutput` through the handle to here, so `createTask` type-checks
  * the payload and the query methods return `Task<TInput, TOutput>`. Without the
- * threading a mismatched `addTask({ input })` would compile silently.
+ * threading a mismatched `createTask({ input })` would compile silently.
  *
  * `tasks()` returns the full `TaskCollectionRef`. The sugar methods delegate to
- * that ref: `addTask`/`addTasks` mutate; `getTask`/`listTasks`/`countTasks`
+ * that ref: `createTask`/`createTasks` mutate; `getTask`/`listTasks`/`countTasks`
  * wrap the ref's synchronous reads (they're `async` only because resolving the
  * ref is). Every method re-resolves the ref, so reads always reflect the latest
  * committed state.
@@ -160,9 +160,9 @@ export type TaskBoardCapabilityAccessor<TInput = unknown, TOutput = unknown> = {
   /** The board's full `TaskCollectionRef` — the escape hatch for the whole API. */
   tasks: () => Promise<TaskCollectionRef<TInput, TOutput>>;
   /** Add one task. */
-  addTask: (task: TaskInit<TInput>) => Promise<Task<TInput, TOutput>>;
+  createTask: (task: TaskInit<TInput>) => Promise<Task<TInput, TOutput>>;
   /** Add several tasks. */
-  addTasks: (tasks: TaskInit<TInput>[]) => Promise<Task<TInput, TOutput>[]>;
+  createTasks: (tasks: TaskInit<TInput>[]) => Promise<Task<TInput, TOutput>[]>;
   /** Read one task by id (undefined if absent). */
   getTask: (id: string) => Promise<TaskHandle<TInput, TOutput> | undefined>;
   /** List tasks, optionally filtered. */
@@ -185,8 +185,8 @@ function buildTaskBoardAccessor<TInput, TOutput>(
 ): TaskBoardCapabilityAccessor<TInput, TOutput> {
   return {
     tasks: resolve,
-    addTask: async (task) => (await resolve()).addTask(task),
-    addTasks: async (tasks) => (await resolve()).addTasks(tasks),
+    createTask: async (task) => (await resolve()).createTask(task),
+    createTasks: async (tasks) => (await resolve()).createTasks(tasks),
     getTask: async (id) => (await resolve()).get(id),
     listTasks: async (filter) => (await resolve()).list(filter),
     countTasks: async (filter) => (await resolve()).count(filter),
@@ -232,7 +232,7 @@ export function createTaskBoardCapability<
 
   if (options.backing === "request") {
     // The caps ride the capability too, not just the drain's factory (FIX-931):
-    // `getOrCreateTaskCollection` never caches, so `ctx.cap.<board>.addTask`
+    // `getOrCreateTaskCollection` never caches, so `ctx.cap.<board>.createTask`
     // builds its OWN ref. One resolver per board, not one per writer — without
     // this the capability would be an uncapped writer onto the same board.
     const { stateKey, maxTotalTasks, maxEnqueuedTasks, maxTotalRetries } = options;

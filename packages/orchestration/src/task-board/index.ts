@@ -65,7 +65,7 @@
  * its run's stop for a review or an approval) is in flight but is no active
  * worker (FIX-2131), so a `complete-or-blocked` board whose only open rows
  * wait on a person exits `blocked` and leaves them as they are. The answer
- * owes the task its next turn; a board built with the retired `onReview` is
+ * owes the task its next turn; a board built with the removed review option is
  * refused by name.
  *
  * ## CAS-safe dispatch
@@ -98,7 +98,7 @@ import {
   type DefinedTaskCollection,
   type TaskCapOptions,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskInit,
   type TaskWorker,
   type TaskWorkerRegistry,
@@ -123,7 +123,7 @@ import {
   type ClaimResult,
 } from "./schemas";
 import { taskSchema, type Task } from "../tasks";
-import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
+import { resolveClaimOrder, type TaskBoardClaimOrderInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { owesATouch } from "../tasks/collection/cascade";
 import { createClaimTask } from "./blocks/claim-task";
@@ -180,7 +180,7 @@ export type {
   ClaimResult,
   CheckBoardOutput,
 } from "./schemas";
-export type { TaskBoardDispatcherInput } from "./shared";
+export type { TaskBoardClaimOrderInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
 export type { SeedCollectionOptions } from "./blocks/seed-collection";
 export {
@@ -515,11 +515,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   maxTotalRetries?: number | null;
 
   /**
-   * Dispatcher for ready-task selection. Either a `TaskDispatcher`
-   * instance or a string naming one of the standard dispatchers
+   * Claim order for ready-task selection. Either a `ClaimOrder`
+   * instance or a string naming one of the standard claim orders
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
    */
-  dispatcher?: TaskBoardDispatcherInput;
+  claimOrder?: TaskBoardClaimOrderInput;
 
   /**
    * Termination behavior when the worker pool is idle.
@@ -637,7 +637,7 @@ export interface TaskBoardHandle<
    * Capability exposing the board's tasks at `ctx.cap.<name>` (the board name
    * verbatim; hyphenated names via bracket access, e.g. `ctx.cap["my-board"]`).
    * Add to any block's `uses` array and call the sugar directly —
-   * `ctx.cap.<name>.addTask({...})`, `.listTasks(...)`, `.tasks()` for the full
+   * `ctx.cap.<name>.createTask({...})`, `.listTasks(...)`, `.tasks()` for the full
    * ref.
    *
    * Backing-aware: the request default (and resource backing) let sibling and
@@ -647,7 +647,7 @@ export interface TaskBoardHandle<
    * backed boards defer entirely to the user's factory.
    *
    * Carries the board's `TInput`/`TOutput` AND its name literal, so a consumer
-   * doing `ctx.cap.<name>.addTask({ input })` type-checks the payload against the
+   * doing `ctx.cap.<name>.createTask({ input })` type-checks the payload against the
    * board's task input rather than `unknown`, and only the actual `<name>` key is
    * exposed on `ctx.cap` (a wrong key is a compile error, not a runtime
    * `undefined`).
@@ -730,7 +730,7 @@ export function taskBoard<
     defaultWorker: defaultWorkerConfig,
     newSession: newSessionConfig,
     concurrency = 4,
-    dispatcher: dispatcherInput = "topological",
+    claimOrder: claimOrderInput = "topological",
     onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
@@ -747,9 +747,19 @@ export function taskBoard<
   if ("onReview" in (config as object)) { // retired-name-refusal: the board refuses the removed option by name
     throw new Error(
       `[task-board] "${name}" sets \`onReview\`, which was removed (FIX-2131). A task waiting on a person ` + // retired-name-refusal
-        `no longer parks: a worker's question holds the task (\`askQuestion\`) and a review suspends its run ` +
+        `no longer parks: a worker's question keeps the task waiting (\`askQuestion\`) and a review suspends its run ` +
         `(\`ctx.waitForUser({ kind: "review" })\`), and a board whose only open rows wait on a person exits ` +
         `\`blocked\` on its own. Remove the option.`
+    );
+  }
+
+  // The claim order's option was `dispatcher` (FIX-2245), the word the block
+  // keeps. Refused by name, so a board built with it does not quietly drop its
+  // claim order, and with it a guard such as `runOwnerClaimOrder()`.
+  if ((config as { dispatcher?: unknown }).dispatcher !== undefined) {
+    throw new Error(
+      `[task-board] "${name}" sets \`dispatcher\`, which is now \`claimOrder\`. Pass the same ` +
+        `claim order (or "fifo", "topological", "priority") as \`claimOrder\`.`
     );
   }
 
@@ -792,7 +802,7 @@ export function taskBoard<
   // Every dispatcher the board holds, for the refusals that apply to any.
   const allDispatchers = newSession === undefined ? dispatchers : [...dispatchers, newSession];
 
-  const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
+  const claimOrder: ClaimOrder = resolveClaimOrder(claimOrderInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig,
@@ -890,7 +900,7 @@ export function taskBoard<
   const claimTask = createClaimTask({
     name: claimStepName,
     collection: collectionFactory,
-    dispatcher,
+    claimOrder,
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 

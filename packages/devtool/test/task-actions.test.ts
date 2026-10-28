@@ -36,7 +36,6 @@ const familySchemas = (suffix: string): Record<string, ActionInputSchema> => ({
   [`getTask_${suffix}`]: takesId,
   [`listTasks_${suffix}`]: { type: "object", fields: {} },
   [`updateTask_${suffix}`]: takesId,
-  [`answerTask_${suffix}`]: takesTaskId,
 });
 
 describe("taskActionsFor", () => {
@@ -53,7 +52,7 @@ describe("taskActionsFor", () => {
     expect(offered).not.toContain("deleteProject");
     // `getTask_other` has no family behind it, so it is no board's getTask.
     expect(offered).not.toContain("getTask_other");
-    expect(offered).toEqual(expect.arrayContaining(["getTask_issues", "updateTask_issues", "answerTask_issues"]));
+    expect(offered).toEqual(expect.arrayContaining(["getTask_issues", "updateTask_issues"]));
   });
 
   it("sends taskId, not id, to an action whose input names both", () => {
@@ -69,7 +68,7 @@ describe("taskActionsFor", () => {
 
   it("offers no action whose taskId is optional on a row, an app's own included", () => {
     // A board has no generated action that starts a held row by an optional
-    // id any more (dispatchTask is gone, FIX-2083): updateTask releases it.
+    // id any more (FIX-2083): updateTask releases it.
     const schemas: Record<string, ActionInputSchema> = {
       ...familySchemas("tasks"),
       maybe: optionalTaskId,
@@ -147,14 +146,14 @@ describe("taskActionsFor", () => {
     it("keeps a sibling board's tools off this board's rows", () => {
       const names = [...family("eng_queue_work"), ...family("eng_other_work")];
       const offered = taskActionsFor(names, schemasFor(names), "eng.queue.work", ["eng.queue.work"]);
-      expect(offered).toEqual(["getTask_eng_queue_work", "updateTask_eng_queue_work", "answerTask_eng_queue_work"]);
+      expect(offered).toEqual(["getTask_eng_queue_work", "updateTask_eng_queue_work"]);
     });
 
     it("keeps an unlisted board's tools off a listed board that shares its ending", () => {
       const names = [...family("work"), ...family("feature_work")];
       const offered = taskActionsFor(names, schemasFor(names), "work", ["work"]);
       expect(offered.every((name) => name.endsWith("_work") && !name.endsWith("_feature_work"))).toBe(true);
-      expect(offered).toHaveLength(3);
+      expect(offered).toHaveLength(2);
     });
 
     it("still offers an app's own action on every board when no family names its ending", () => {

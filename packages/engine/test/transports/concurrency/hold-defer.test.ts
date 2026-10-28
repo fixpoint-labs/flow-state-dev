@@ -24,7 +24,7 @@ import {
   ConcurrencyLeaseLostError,
   ConcurrencyRejectedError
 } from "../../../src/transports/errors";
-import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
+import type { DispatchEnvelope } from "../../../src/transports/runner";
 import { admitAndRun } from "./admit-and-run";
 
 function envelope(requestId: string, actionName: string): DispatchEnvelope {

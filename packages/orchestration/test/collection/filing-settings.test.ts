@@ -114,7 +114,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("start: held, hold and release", () => {
     it("files a held task that no claim starts, and starts it once released", async () => {
       const { tasks, events } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "chart it", held: true });
+      await tasks.createTask({ id: "t", goal: "chart it", held: true });
 
       expect(tasks.get("t")?.status).toBe("held");
       expect(await tasks.claim("w")).toBeNull();
@@ -127,7 +127,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("holds a task that hasn't started, and refuses a hold once it has", async () => {
       const { tasks, events } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t" });
+      await tasks.createTask({ id: "t", goal: "t" });
 
       expect(await tasks.hold("t")).toEqual({ outcome: "recorded" });
       expect(tasks.get("t")?.status).toBe("held");
@@ -140,7 +140,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("refuses a hold after a retry put a started task back to pending", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+      await tasks.createTask({ id: "t", goal: "t", maxAttempts: 2 });
       const retried = await claimAndFail(tasks);
       expect(retried.status).toBe("pending");
 
@@ -151,7 +151,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("changes dependencies and attempts until the task starts, and not after", async () => {
       const { tasks, events } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a" },
         { id: "b", goal: "b" },
       ]);
@@ -168,7 +168,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("refuses a hold on an ended task as terminal", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t" });
+      await tasks.createTask({ id: "t", goal: "t" });
       await tasks.cancel("t", "not needed");
       expect(await tasks.hold("t")).toEqual({ outcome: "declined", reason: "terminal", status: "cancelled" });
     });
@@ -177,7 +177,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("dependencies: on this board, alive, and no loop", () => {
     it("refuses a dependency no task on this board has, and files nothing", async () => {
       const { tasks } = await makeBacking();
-      const refused = await refusal(() => tasks.addTask({ id: "t", goal: "t", deps: ["pull-csv"] }));
+      const refused = await refusal(() => tasks.createTask({ id: "t", goal: "t", deps: ["pull-csv"] }));
 
       expect(refused.rule).toBe("dependency_not_on_board");
       expect(refused.message).toMatch(/cross boards with a wait or a held task/);
@@ -186,7 +186,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("takes a dependency filed in the same batch", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "b", goal: "b", deps: ["a"] },
         { id: "a", goal: "a" },
       ]);
@@ -196,7 +196,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
     it("refuses a whole batch when one of its rows names a dependency off the board", async () => {
       const { tasks } = await makeBacking();
       const refused = await refusal(() =>
-        tasks.addTasks([
+        tasks.createTasks([
           { id: "a", goal: "a" },
           { id: "b", goal: "b", deps: ["elsewhere"] },
         ])
@@ -210,10 +210,10 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       ["cancelled", async (tasks: TaskCollectionRef) => void (await tasks.cancel("dead"))],
     ])("refuses a dependency already %s", async (_how, end) => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "dead", goal: "dead" });
+      await tasks.createTask({ id: "dead", goal: "dead" });
       await end(tasks);
 
-      const refused = await refusal(() => tasks.addTask({ id: "t", goal: "t", deps: ["dead"] }));
+      const refused = await refusal(() => tasks.createTask({ id: "t", goal: "t", deps: ["dead"] }));
       expect(refused.rule).toBe("dependency_ended");
       expect(tasks.get("t")).toBeUndefined();
     });
@@ -221,7 +221,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
     it.each(["errored", "cancelled"] as const)("refuses a dependency filed %s in the same batch, and files none of it", async (status) => {
       const { tasks } = await makeBacking();
       const refused = await refusal(() =>
-        tasks.addTasks([
+        tasks.createTasks([
           { id: "dead", goal: "dead", status },
           { id: "t", goal: "t", deps: ["dead"] },
         ])
@@ -234,19 +234,19 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       const { tasks } = await makeBacking();
       expect(
         (await refusal(() =>
-          tasks.addTasks([
+          tasks.createTasks([
             { id: "a", goal: "a", deps: ["b"] },
             { id: "b", goal: "b", deps: ["a"] },
           ])
         )).rule
       ).toBe("dependency_loop");
-      expect((await refusal(() => tasks.addTask({ id: "s", goal: "s", deps: ["s"] }))).rule).toBe("dependency_loop");
+      expect((await refusal(() => tasks.createTask({ id: "s", goal: "s", deps: ["s"] }))).rule).toBe("dependency_loop");
       expect(tasks.list()).toHaveLength(0);
     });
 
     it("refuses an edit whose dependencies close a loop through the board", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a" },
         { id: "b", goal: "b", deps: ["a"] },
         { id: "c", goal: "c", deps: ["b"] },
@@ -259,10 +259,10 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("settings a board can't honour", () => {
     it("refuses an ongoing session and a conversation result on a plain board, naming the setting", async () => {
       const { tasks } = await makeBacking();
-      const session = await refusal(() => tasks.addTask({ id: "t", goal: "t", session: "ongoing" }));
+      const session = await refusal(() => tasks.createTask({ id: "t", goal: "t", session: "ongoing" }));
       expect(session.rule).toBe("setting_not_supported");
       expect(session.message).toMatch(/session "ongoing"/);
-      const result = await refusal(() => tasks.addTask({ id: "t", goal: "t", resultTo: "conversation" }));
+      const result = await refusal(() => tasks.createTask({ id: "t", goal: "t", resultTo: "conversation" }));
       expect(result.rule).toBe("setting_not_supported");
       expect(result.message).toMatch(/"conversation"/);
       expect(tasks.get("t")).toBeUndefined();
@@ -270,19 +270,19 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("takes the defaults, written on the row as filed", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t", session: "new", resultTo: "filer" });
+      await tasks.createTask({ id: "t", goal: "t", session: "new", resultTo: "filer" });
       expect(tasks.get("t")).toMatchObject({ session: "new", resultTo: "filer" });
     });
 
     it("refuses a follow-up that names a session", async () => {
       const { tasks } = await makeBacking();
-      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", session: "new" }));
+      const refused = await refusal(() => tasks.createTask({ id: "f", goal: "f", followUpOf: "root", session: "new" }));
       expect(refused.rule).toBe("follow_up_takes_no_session");
     });
 
     it("refuses a follow-up that names a workstream target, and files nothing: it runs where its root ran", async () => {
       const { tasks } = await makeBacking();
-      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", target: "launch" }));
+      const refused = await refusal(() => tasks.createTask({ id: "f", goal: "f", followUpOf: "root", target: "launch" }));
       expect(refused.rule).toBe("follow_up_takes_no_target");
       expect(tasks.get("f")).toBeUndefined();
     });
@@ -295,11 +295,11 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       const base = { attempts: 1, createdAt: 1_000, updatedAt: 1_000, revision: 2 } as const;
       const routed = { session: "ongoing", target: "launch", targetSessionId: "dsx_workstream" } as const;
       const tasks = await seed({ ...base, ...routed, id: "root", goal: "root", status: "completed", assignee: "writer", run: { sessionId: "dsx_workstream" } } as Task);
-      await tasks.addTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root" });
+      await tasks.createTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root" });
       expect(tasks.get("root-f1")).toMatchObject({ session: "ongoing", target: "launch", targetSessionId: "dsx_workstream" });
       // A follow-up of a root filed with no setting stays unset.
-      await tasks.addTask({ id: "plain", goal: "plain", assignee: "writer" });
-      await tasks.addTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain" });
+      await tasks.createTask({ id: "plain", goal: "plain", assignee: "writer" });
+      await tasks.createTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain" });
       expect(tasks.get("plain-f1")?.session).toBeUndefined();
       expect(tasks.get("plain-f1")?.targetSessionId).toBeUndefined();
     });
@@ -311,18 +311,18 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       const base = { attempts: 1, createdAt: 1_000, updatedAt: 1_000, revision: 2 } as const;
       const tasks = await seed({ ...base, id: "root", goal: "root", status: "completed", assignee: "writer", resultTo: "conversation", maxAttempts: 1, run: { sessionId: "dsx_s" } } as Task);
       // The filer's default attempts don't make it a retried conversation result.
-      await tasks.addTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root", maxAttempts: 3 });
+      await tasks.createTask({ id: "root-f1", goal: "shorter", assignee: "writer", followUpOf: "root", maxAttempts: 3 });
       expect(tasks.get("root-f1")).toMatchObject({ resultTo: "conversation", maxAttempts: 1 });
       // A root whose result went to its filer leaves the follow-up's there too.
-      await tasks.addTask({ id: "plain", goal: "plain", assignee: "writer", maxAttempts: 3 });
-      await tasks.addTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain", maxAttempts: 3 });
+      await tasks.createTask({ id: "plain", goal: "plain", assignee: "writer", maxAttempts: 3 });
+      await tasks.createTask({ id: "plain-f1", goal: "more", assignee: "writer", followUpOf: "plain", maxAttempts: 3 });
       expect(tasks.get("plain-f1")?.resultTo).toBeUndefined();
       expect(tasks.get("plain-f1")?.maxAttempts).toBe(3);
     });
 
     it("refuses a follow-up that names where its result goes, and files nothing", async () => {
       const { tasks } = await makeBacking();
-      const refused = await refusal(() => tasks.addTask({ id: "f", goal: "f", followUpOf: "root", resultTo: "filer" }));
+      const refused = await refusal(() => tasks.createTask({ id: "f", goal: "f", followUpOf: "root", resultTo: "filer" }));
       expect(refused.rule).toBe("follow_up_takes_no_result_to");
       expect(tasks.get("f")).toBeUndefined();
     });
@@ -331,7 +331,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("the dependents cascade", () => {
     it("cancels a failed task's dependents down the chain, labelled skipped, naming the cause", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a" },
         { id: "b", goal: "b", deps: ["a"] },
         { id: "c", goal: "c", deps: ["b"] },
@@ -350,7 +350,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("cancels a cancelled task's dependents too", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a" },
         { id: "b", goal: "b", deps: ["a"] },
         { id: "c", goal: "c", deps: ["b"] },
@@ -362,7 +362,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("cancels nothing on a retry: the task runs again, and its dependents wait for it", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a", maxAttempts: 2 },
         { id: "b", goal: "b", deps: ["a"] },
       ]);
@@ -373,7 +373,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("cancels a held dependent too: it would wait on a task that will never finish", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "a", goal: "a" },
         { id: "b", goal: "b", deps: ["a"], held: true },
       ]);
@@ -401,7 +401,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("a row filed skipped", () => {
     it("keeps the cause and the reason only on a row filed cancelled: a live row names no cause", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTasks([
+      await tasks.createTasks([
         { id: "skipped", goal: "skipped", status: "cancelled", causedBy: "gone", error: "dep gone failed" },
         { id: "live", goal: "live", causedBy: "gone", error: "dep gone failed" },
       ]);
@@ -413,7 +413,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
 
     it("names no cause on a row filed cancelled and held: it is stored held, not skipped", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "h", goal: "h", held: true, status: "cancelled", causedBy: "gone", error: "dep gone failed" });
+      await tasks.createTask({ id: "h", goal: "h", held: true, status: "cancelled", causedBy: "gone", error: "dep gone failed" });
       expect(tasks.get("h")?.status).toBe("held");
       expect(tasks.get("h")?.causedBy).toBeUndefined();
       expect(tasks.get("h")?.error).toBeUndefined();
@@ -423,7 +423,7 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   describe("attempts", () => {
     it("fails a task filed with three attempts after its third failure", async () => {
       const { tasks } = await makeBacking();
-      await tasks.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+      await tasks.createTask({ id: "t", goal: "t", maxAttempts: 3 });
       expect((await claimAndFail(tasks)).status).toBe("pending");
       expect((await claimAndFail(tasks)).status).toBe("pending");
       expect((await claimAndFail(tasks)).status).toBe("errored");
@@ -541,10 +541,10 @@ describe("a dependency that ends while its dependent is written (resource-backed
 
   it("cancels a dependent whose dependency was cancelled while it was being filed", async () => {
     const { tasks, gates } = await slowBoard();
-    await tasks.addTask({ id: "a", goal: "a" });
+    await tasks.createTask({ id: "a", goal: "a" });
     gates.create = gate();
     gates.createReached = gate();
-    const filing = tasks.addTask({ id: "b", goal: "b", deps: ["a"] });
+    const filing = tasks.createTask({ id: "b", goal: "b", deps: ["a"] });
     // Past the filing's dependency check, at its write: the check saw "a" open.
     await gates.createReached.opened;
     await tasks.cancel("a");
@@ -555,8 +555,8 @@ describe("a dependency that ends while its dependent is written (resource-backed
 
   it("cancels a dependent whose new dependency was cancelled while the edit was being written", async () => {
     const { tasks, gates } = await slowBoard();
-    await tasks.addTask({ id: "a", goal: "a" });
-    await tasks.addTask({ id: "b", goal: "b", held: true });
+    await tasks.createTask({ id: "a", goal: "a" });
+    await tasks.createTask({ id: "b", goal: "b", held: true });
     gates.update = { key: "b", gate: gate(), computed: gate() };
     const editing = tasks.patchSettings("b", { deps: ["a"] });
     await gates.update.computed.opened;
@@ -579,7 +579,7 @@ describe("the debt an ending records (FIX-2080 D2)", () => {
       now: () => clock.at,
       cascadeFiled: { owes: () => true, pay: async () => false },
     });
-    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+    await tasks.createTask({ id: "t", goal: "t", maxAttempts: 2 });
     const claimed = (await tasks.claim("w"))!;
     clock.at = 6_000;
     await tasks.fail(claimed.id, "boom", { claim: ticketForClaim("tasks", claimed) });
@@ -599,10 +599,10 @@ describe("a dependent another process filed (resource-backed)", () => {
     // Each process holds its own handle on the one store, and so its own mirror.
     const open = () => createResourceBackedTaskCollection({ collectionId: "tasks", collection: { ...store }, now: () => 1_000 });
     const first = await open();
-    await first.addTask({ id: "a", goal: "a" });
+    await first.createTask({ id: "a", goal: "a" });
     // The second process loads the board before the dependent exists.
     const second = await open();
-    await first.addTask({ id: "b", goal: "b", deps: ["a"] });
+    await first.createTask({ id: "b", goal: "b", deps: ["a"] });
     await second.cancel("a");
     expect(second.get("a")?.cascadeOwed).toBeUndefined();
     // Until a touch cancels it, the claim itself never starts a row behind an

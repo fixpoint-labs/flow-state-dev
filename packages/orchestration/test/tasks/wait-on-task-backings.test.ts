@@ -92,7 +92,7 @@ const KEY = "req_1:root/step[0]/tool[getTask][0%3Ac1]";
 const wait = { key: KEY, step: "req_1:root:0" };
 
 async function filed(board: TaskCollectionRef, extra: Record<string, unknown> = {}): Promise<string> {
-  return (await board.addTask({ goal: "Is ACME's SOC 2 current?", assignee: "researcher", ...extra })).id;
+  return (await board.createTask({ goal: "Is ACME's SOC 2 current?", assignee: "researcher", ...extra })).id;
 }
 
 for (const [backing, build] of Object.entries(BACKINGS)) {

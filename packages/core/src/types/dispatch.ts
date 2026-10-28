@@ -500,7 +500,7 @@ export type DispatchRefusal =
   /** The host refused before starting — a `reject` concurrency policy whose key is held. */
   | "dispatch-rejected"
   /**
-   * An `id` delivery on a deployment whose dispatcher hands work to an external
+   * An `id` delivery on a deployment whose runner hands work to an external
    * queue and whose worker adapter supplies no shared lease backend, where the
    * recipient's concurrency policy would not be applied to it.
    * A `key` child is unaffected.

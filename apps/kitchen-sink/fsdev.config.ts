@@ -74,7 +74,7 @@ const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
 // BullMQ execution backend for local dev (docker compose Redis). Created
 // whenever REDIS_URL is set so Bull Board can mount the queue; only installed
 // as the FlowState `worker` when FSD_BULLMQ_DISPATCH=1 routes actions through
-// the queue. Colocated mode: the dispatcher and the worker run in this
+// the queue. Colocated mode: the runner and the worker run in this
 // process, both against the runtime's resolved stores.
 export const bullmq = redisUrl
   ? bullmqWorker({ connection: redisUrl })
@@ -226,7 +226,7 @@ const flowstate = createFlowState({
   debugAllowAnonymousLocal: databaseUrl ? undefined : true,
   // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
   // queue instead of running in-process. Requires REDIS_URL. The adapter
-  // wires the dispatcher and the co-located worker against the same resolved
+  // wires the runner and the co-located worker against the same resolved
   // runtime the router uses.
   worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],

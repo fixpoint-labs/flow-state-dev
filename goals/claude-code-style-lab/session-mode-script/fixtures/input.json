@@ -1,0 +1,6 @@
+{
+  "project": "Goal notes",
+  "ask": "Compare PostgreSQL and SQLite for a small team's internal tools, and write me a summary. Start one quick research task on SQLite's license, and one long research task on PostgreSQL's history, release by release, with two full paragraphs for every major release from 6.0 to 17. Keep writing the comparison outline yourself while they run.",
+  "stop": "I don't need the PostgreSQL history any more. Stop that task, please.",
+  "change": "Change the first line of README.md in the project to exactly: # {marker}. That's a code change, so hand it to the coder."
+}

@@ -30,7 +30,7 @@ import {
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
-import { heldTask } from "../src/conversation-board/held-task";
+import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import { runProjectOf } from "../src/projects/run-project";
@@ -66,7 +66,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       const worker = (await installation.resolveWorker(rawCtx, "taker")).id;
-      const held = (await heldTask(ctx))?.row;
+      const held = (await claimedTask(ctx))?.row;
       // The answer turn after a step runs holding the same task: record only the first.
       if (input.message.startsWith("The steps you filed for yourself have ended")) return "answered";
       runs.push({
@@ -82,7 +82,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
         const ref = await board.board.resolver(ctx as never);
         // The delegate names a project of its own: the board writes the one it
         // works in over the guess, so the piece isn't refused other-project.
-        await ref!.addTask({
+        await ref!.createTask({
           goal: `piece of ${held.goal}`,
           assignee: "eng.coder",
           input: { message: "piece", project: { visibility: "shared", id: "beta" } }
@@ -91,7 +91,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
       if (held !== undefined && held.goal.startsWith("plan") && !split.has(held.id)) {
         split.add(held.id);
         const ref = await board.board.turnResolver(ctx as never);
-        await ref!.addTask({ id: "s-own", goal: `step of ${held.goal}`, assignee: worker, session: "new" });
+        await ref!.createTask({ id: "s-own", goal: `step of ${held.goal}`, assignee: worker, session: "new" });
       }
       return "asked";
     }
@@ -220,6 +220,15 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Another user can't read it.
     const bob = createClient({ userId: "bob", fetcher: h.fetcherFor("bob", ORG) });
     await expect(bob.sessions.get(writer.id)).rejects.toThrow();
+  });
+
+  it("read: the session read shows the project a conversation works in once it is set, so a screen can name it", async () => {
+    const h = await withProjects();
+    const session = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "main" });
+    const read = createClient({ userId: "alice", fetcher: h.fetcherFor("alice", ORG) }).sessions;
+    expect((await read.get(session)).state).not.toHaveProperty("workProjectId");
+    await h.client("alice").setWorkProject("main", apollo, { sessionId: session });
+    expect((await read.get(session)).state).toMatchObject({ workProjectId: "shared/apollo" });
   });
 
   it("new-session: a session of the worker created at its own id, then set, runs its tasks in the project", async () => {

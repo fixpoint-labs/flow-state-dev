@@ -65,7 +65,7 @@ function host(options: { turnFailsAt?: "before-ack" | "after-ack"; entryGate?: P
     inputSchema: z.object({}),
     outputSchema: z.any(),
     execute: async (_input, ctx) => {
-      await (await boardOf(ctx)).addTask({ id: "t1", goal: "Find the fact" });
+      await (await boardOf(ctx)).createTask({ id: "t1", goal: "Find the fact" });
       return {};
     }
   });

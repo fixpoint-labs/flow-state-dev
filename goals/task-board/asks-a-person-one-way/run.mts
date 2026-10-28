@@ -56,8 +56,8 @@ import type { BlockContext, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
-import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { getOrCreateTaskCollection, openQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
+import { createInboxClient, type InboxQuestion, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
@@ -373,7 +373,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
     outputSchema: z.unknown(),
     execute: async (_input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
-      return (await planCollection(ctx)).list().map((row) => ({ id: row.id, status: row.status, attempts: row.attempts, turn: row.turn, lease: row.leaseUntil ?? null, open: openHolds(row).map((h) => h.ask.prompt) }));
+      return (await planCollection(ctx)).list().map((row) => ({ id: row.id, status: row.status, attempts: row.attempts, turn: row.turn, lease: row.leaseUntil ?? null, open: openQuestions(row).map((h) => h.ask.prompt) }));
     }
   });
   const planFlow = defineFlow({
@@ -476,9 +476,9 @@ async function inbox(run: Run): Promise<InboxItem<unknown>[]> {
 }
 const itemOf = async (run: Run, id: string) => (await inbox(run)).find((item) => item.task?.taskId === id);
 /** Answer one hold as the Inbox does. What it said: `ok`, or the refusal's words. */
-async function answerHold(run: Run, hold: InboxHold<unknown>, value: Parameters<ReturnType<typeof createInboxClient>["answerHold"]>[1]): Promise<string> {
+async function answerOne(run: Run, hold: InboxQuestion<unknown>, value: Parameters<ReturnType<typeof createInboxClient>["answerOne"]>[1]): Promise<string> {
   try {
-    await createInboxClient(run.h.http.client).answerHold(hold, value);
+    await createInboxClient(run.h.http.client).answerOne(hold, value);
     return "ok";
   } catch (error) {
     return (error as Error).message;
@@ -489,13 +489,13 @@ async function filerSays(run: Run, args: Record<string, unknown>): Promise<void>
   await run.h.http.act("desk", run.conversation, "respond", { message: `[filer]${JSON.stringify(args)}[/filer]` });
   await run.h.idle();
 }
-const openOf = (row: Task | undefined) => (row === undefined ? [] : openHolds(row));
+const openOf = (row: Task | undefined) => (row === undefined ? [] : openQuestions(row));
 
 /** The Inbox's truth, read apart from the list: the board's `listTasks` rows, and every task session's suspended requests. */
 async function truthOf(run: Run): Promise<InboxTruth> {
   const listed = (await run.h.http.act("desk", run.conversation, "listTasks_tasks", {}))?.tasks ?? [];
   const board = `${run.conversation}.tasks`;
-  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, holds: t.holds ?? [], steers: [] }));
+  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, questions: t.questions ?? [], steers: [] }));
   const sessions = new Set<string>(listed.flatMap((t: any) => (t.run?.sessionId === undefined ? [] : [t.run.sessionId])));
   sessions.add(run.conversation);
   const suspensions = [];
@@ -522,23 +522,23 @@ async function legA(run: Run): Promise<void> {
   await run.h.idle();
   const askedRead = await getTask(run, asked);
   const reviewRead = await getTask(run, reviewed);
-  const askedHolds = (askedRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
+  const askedHolds = (askedRead?.questions ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
   if (!heldOk || askedRead?.status !== "in_progress" || askedRead.leaseUntil != null || askedHolds.length !== 1 || askedHolds[0]?.source.kind !== "row" || askedHolds[0]?.ask.kind !== "question" || askedHolds[0]?.ask.prompt !== REGION) {
-    run.failures.push(`a:question-holds — wanted the asking task running with no lease and one open row hold, a question "${REGION}"; getTask shows ${show(askedRead && { status: askedRead.status, lease: askedRead.leaseUntil, holds: askedRead.holds })}`);
+    run.failures.push(`a:question-holds — wanted the asking task running with no lease and one open row hold, a question "${REGION}"; getTask shows ${show(askedRead && { status: askedRead.status, lease: askedRead.leaseUntil, questions: askedRead.questions })}`);
   }
-  const reviewHolds = (reviewRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
+  const reviewHolds = (reviewRead?.questions ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
   const reviewRow = await run.h.byId(reviewed);
   if (!waitOk || reviewRead?.status !== "in_progress" || reviewHolds.length !== 1 || reviewHolds[0]?.source.kind !== "suspension" || reviewHolds[0]?.ask.kind !== "review" || reviewRow?.claimedBy == null) {
-    run.failures.push(`a:review-suspends — wanted the reviewed task running on its claim with one open suspension hold, a review; getTask shows ${show(reviewRead && { status: reviewRead.status, holds: reviewRead.holds })}, claim ${show(reviewRow?.claimedBy)}`);
+    run.failures.push(`a:review-suspends — wanted the reviewed task running on its claim with one open suspension hold, a review; getTask shows ${show(reviewRead && { status: reviewRead.status, questions: reviewRead.questions })}, claim ${show(reviewRow?.claimedBy)}`);
   }
   const items = await inbox(run);
   const askedItems = items.filter((i) => i.task?.taskId === asked);
   const reviewItems = items.filter((i) => i.task?.taskId === reviewed);
-  if (askedItems.length !== 1 || askedItems[0]!.holds.length !== 1 || askedItems[0]!.holds[0]!.ask.kind !== "question") {
-    run.failures.push(`a:one-question-item — wanted one Inbox item for the asking task, a question; the Inbox lists ${show(askedItems.map((i) => i.holds.map((h) => h.ask)))}`);
+  if (askedItems.length !== 1 || askedItems[0]!.questions.length !== 1 || askedItems[0]!.questions[0]!.ask.kind !== "question") {
+    run.failures.push(`a:one-question-item — wanted one Inbox item for the asking task, a question; the Inbox lists ${show(askedItems.map((i) => i.questions.map((h) => h.ask)))}`);
   }
-  if (reviewItems.length !== 1 || reviewItems[0]!.holds.length !== 1 || reviewItems[0]!.holds[0]!.ask.kind !== "review") {
-    run.failures.push(`a:one-review-item — wanted one Inbox item for the reviewed task, named a review; the Inbox lists ${show(reviewItems.map((i) => i.holds.map((h) => h.ask)))}`);
+  if (reviewItems.length !== 1 || reviewItems[0]!.questions.length !== 1 || reviewItems[0]!.questions[0]!.ask.kind !== "review") {
+    run.failures.push(`a:one-review-item — wanted one Inbox item for the reviewed task, named a review; the Inbox lists ${show(reviewItems.map((i) => i.questions.map((h) => h.ask)))}`);
   }
   const statuses = (await run.h.rows()).map((r) => r.status as string);
   if (statuses.includes("parked")) run.failures.push(`a:no-row-parked — a row reads parked: ${show(statuses)}`);
@@ -564,7 +564,7 @@ async function legB(run: Run): Promise<void> {
     run.failures.push(`b:steer-names-no-question — wanted the question still open and listed after the filer's steer naming none; open ${show(stillOpen)}`);
   }
   // Naming the question answers it.
-  await filerSays(run, { id, question: question.id, message: "Use eu-west." });
+  await filerSays(run, { id, answers: question.id, message: "Use eu-west." });
   run.closed.push(question.id);
   const done = await run.h.until(async () => (await run.h.byId(id))?.status === "completed", 20_000);
   await run.h.idle();
@@ -580,7 +580,7 @@ async function legB(run: Run): Promise<void> {
   if (answerSteer?.from !== "filer") run.failures.push(`b:from-the-filer — wanted the answer kept from the filer; it is ${show(answerSteer)}`);
   if ((await itemOf(run, id)) !== undefined) run.failures.push("b:item-gone — the answered question is still listed");
   // An Inbox answer after it is told the question is answered.
-  const late = await answerHold(run, staleItem.holds[0]!, { text: "Use us-east." });
+  const late = await answerOne(run, staleItem.questions[0]!, { text: "Use us-east." });
   if (late === "ok" || !/answered/.test(late)) run.failures.push(`b:late-inbox-answer — wanted an Inbox answer after the filer's told the question is answered; it said ${late}`);
   await reconciled(run, "b");
   run.notes.push(`b: the filer's steer naming none left it open; naming it answered it, one more turn on attempt 1 with the answer in its brief; a later Inbox answer: ${late.slice(0, 120)}`);
@@ -590,13 +590,13 @@ async function legB(run: Run): Promise<void> {
 async function legC(run: Run): Promise<void> {
   const id = run.reviewed!;
   const item = await itemOf(run, id);
-  const hold = item?.holds[0];
+  const hold = item?.questions[0];
   if (hold?.ask.kind !== "review" || hold.source.kind !== "suspension" || hold.ask.prompt !== REVIEW) {
-    run.failures.push(`c:listed-as-review — wanted the review listed as one suspension hold named a review; the Inbox shows ${show(item?.holds)}`);
+    run.failures.push(`c:listed-as-review — wanted the review listed as one suspension hold named a review; the Inbox shows ${show(item?.questions)}`);
     return;
   }
   await reconciled(run, "c:held");
-  const said = await answerHold(run, hold, { value: "Reads right; ship it." });
+  const said = await answerOne(run, hold, { value: "Reads right; ship it." });
   if (said !== "ok") run.failures.push(`c:answered — the Inbox's verdict was refused: ${said}`);
   run.closed.push(hold.id);
   const done = await run.h.until(async () => (await run.h.byId(id))?.status === "completed", 20_000);
@@ -608,7 +608,7 @@ async function legC(run: Run): Promise<void> {
     run.failures.push(`c:verdict-resumes — wanted the verdict to resume the block once, on attempt 1, and the task to complete; resumed ${show(resumed.map((r) => [r.attempt, r.outcome]))}, the row ${show(row && { status: row.status, attempts: row.attempts })}`);
   }
   if ((await itemOf(run, id)) !== undefined) run.failures.push("c:item-gone — the answered review is still listed");
-  if (openOf(row).length !== 0) run.failures.push(`c:hold-closed — the resume left a hold open: ${show(row?.holds)}`);
+  if (openOf(row).length !== 0) run.failures.push(`c:hold-closed — the resume left a hold open: ${show(row?.questions)}`);
   await reconciled(run, "c");
   run.notes.push(`c: the review listed as a review and reconciled from its suspension hold; the Inbox's verdict resumed the block on attempt 1`);
 }
@@ -617,7 +617,7 @@ async function legC(run: Run): Promise<void> {
 async function legD(run: Run): Promise<void> {
   const id = await file(run, word("Reconcile the two exports [ask2]"));
   if (!(await run.h.until(async () => openOf(await run.h.byId(id)).length === 2, 20_000))) {
-    run.failures.push(`d:setup — the task never held on its two questions: ${show((await run.h.byId(id))?.holds)}`);
+    run.failures.push(`d:setup — the task never held on its two questions: ${show((await run.h.byId(id))?.questions)}`);
     return;
   }
   await run.h.idle();
@@ -658,7 +658,7 @@ async function legD(run: Run): Promise<void> {
 async function legE(run: Run): Promise<void> {
   const id = await file(run, word("Draft the migration note [review]"));
   if (!(await run.h.until(async () => openOf(await run.h.byId(id)).some((h) => h.source.kind === "suspension"), 20_000))) {
-    run.failures.push(`e:setup — the task never waited on its review: ${show((await run.h.byId(id))?.holds)}`);
+    run.failures.push(`e:setup — the task never waited on its review: ${show((await run.h.byId(id))?.questions)}`);
     return;
   }
   await run.h.idle();
@@ -667,13 +667,13 @@ async function legE(run: Run): Promise<void> {
   await run.h.idle();
   const item = await itemOf(run, id);
   const kept = ((await run.h.byId(id))?.steers ?? []).find((s) => s.message === steer);
-  if (item?.holds[0]?.ask.kind !== "review" || kept === undefined || kept.answers !== undefined) {
-    run.failures.push(`e:steer-kept — wanted the review still listed and the steer kept, answering nothing; item ${show(item?.holds)}, steer ${show(kept)}`);
+  if (item?.questions[0]?.ask.kind !== "review" || kept === undefined || kept.answers !== undefined) {
+    run.failures.push(`e:steer-kept — wanted the review still listed and the steer kept, answering nothing; item ${show(item?.questions)}, steer ${show(kept)}`);
   }
-  if (item?.holds[0] === undefined) return;
-  const said = await answerHold(run, item.holds[0], { value: "Fine." });
+  if (item?.questions[0] === undefined) return;
+  const said = await answerOne(run, item.questions[0], { value: "Fine." });
   if (said !== "ok") run.failures.push(`e:answered — the Inbox's verdict was refused: ${said}`);
-  run.closed.push(item.holds[0].id);
+  run.closed.push(item.questions[0].id);
   await run.h.until(async () => (await run.h.byId(id))?.status === "completed", 20_000);
   await run.h.idle();
   const turns = proofsOf(id, "turn");
@@ -692,12 +692,12 @@ async function legG(run: Run): Promise<void> {
   const suspended = await run.h.until(async () => (await run.h.http.client.sessions.requests(run.conversation, { status: "suspended" })).some((r) => r.id === sent.id), 15_000);
   // No deadline set: past several sweeps, still suspended and still listed.
   await sleep(SWEEP_MS * 4);
-  const lone = (await inbox(run)).find((i) => i.task === null && i.holds[0]?.ask.prompt === INPUT);
+  const lone = (await inbox(run)).find((i) => i.task === null && i.questions[0]?.ask.prompt === INPUT);
   const stillSuspended = (await run.h.http.client.sessions.requests(run.conversation, { status: "suspended" })).some((r) => r.id === sent.id);
-  if (!suspended || !stillSuspended || lone === undefined || lone.holds[0]!.ask.kind !== "input") {
-    run.failures.push(`g:input-waits — wanted the input listed in the Inbox with no task, and the request still suspended past the sweeper; suspended ${suspended}/${stillSuspended}, item ${show(lone?.holds)}`);
+  if (!suspended || !stillSuspended || lone === undefined || lone.questions[0]!.ask.kind !== "input") {
+    run.failures.push(`g:input-waits — wanted the input listed in the Inbox with no task, and the request still suspended past the sweeper; suspended ${suspended}/${stillSuspended}, item ${show(lone?.questions)}`);
   } else {
-    const said = await answerHold(run, lone.holds[0]!, { value: "acct-eu-42" });
+    const said = await answerOne(run, lone.questions[0]!, { value: "acct-eu-42" });
     if (said !== "ok") run.failures.push(`g:input-answered — the Inbox's answer was refused: ${said}`);
     await sent.wait({ pollMs: 20, timeoutMs: 20_000 }).catch(() => undefined);
     const result = toolResultsWith("[input] the report").at(-1)?.message ?? "";
@@ -716,8 +716,8 @@ async function legG(run: Run): Promise<void> {
   // A block's own input on a task turn still suspends (FIX-2129).
   const blockId = await file(run, word("Ask the block's way [block-input]"));
   const blockWaits = await run.h.until(async () => openOf(await run.h.byId(blockId)).some((h) => h.source.kind === "suspension" && h.ask.kind === "input"), 20_000);
-  if (!blockWaits || (await itemOf(run, blockId))?.holds[0]?.ask.kind !== "input") {
-    run.failures.push(`g:block-input-suspends — wanted a block's own waitForUser input to suspend and list; holds ${show((await run.h.byId(blockId))?.holds)}`);
+  if (!blockWaits || (await itemOf(run, blockId))?.questions[0]?.ask.kind !== "input") {
+    run.failures.push(`g:block-input-suspends — wanted a block's own waitForUser input to suspend and list; holds ${show((await run.h.byId(blockId))?.questions)}`);
   }
   await run.h.http.act("desk", run.conversation, "updateTask_tasks", { id: blockId, status: "cancelled" }).catch(() => undefined);
   // One step, both tools: one wait opens, the sibling names the other.

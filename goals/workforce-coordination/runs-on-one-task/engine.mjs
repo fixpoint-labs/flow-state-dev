@@ -519,7 +519,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
   // A tree with no Inbox read (a commit from before it, swept with `--at`) has a second list by
   // definition: a finding, not a rule that read nothing.
   if (inboxItemDecl === undefined) findings.push({ rule: "inbox", where: INBOX_MODULE, what: "no InboxItem type: there is no one Inbox read, so every list of what waits on the user is its own" });
-  const ITEM_SHAPE = ["task", "holds", "answerable"];
+  const ITEM_SHAPE = ["task", "questions", "answerable"];
   // A literal typed `any` or `unknown` (a spread of an `any` value) is no item: every slot accepts it.
   const isInboxItem = (node) => {
     if (typeDeclaredIn(checker.getContextualType(node), INBOX_MODULE, "InboxItem")) return true;
@@ -533,7 +533,7 @@ export function sweepTaskSurface({ repo, plants = [], tracked: given, table: tab
     const visit = (node) => {
       // Any syntax that can give the literal an item's `holds`: assigned, shorthand, quoted or computed, or a spread.
       const mayHoldHolds = (p) =>
-        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "holds"));
+        ts.isSpreadAssignment(p) || (p.name !== undefined && (ts.isComputedPropertyName(p.name) || p.name.getText(sf).replace(/["']/g, "") === "questions"));
       if (inboxItemDecl !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some(mayHoldHolds) && isInboxItem(node)) {
         inboxScanned.items++;
         const key = `${packageOf(path)}:${recorderOf(node)}`;

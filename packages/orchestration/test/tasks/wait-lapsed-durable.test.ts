@@ -77,7 +77,7 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
     const owed: Owed[] = [];
     const ctx = hostCtx(owed, () => false);
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     const before = Date.now();
     expect(await waitOnTask(ctx, board, id, wait)).toMatchObject({ ok: true, ended: false });
     expect(board.get(id)!.wait).toMatchObject({ lapsed: true, requestId: "req_1" });
@@ -90,7 +90,7 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
     const owed: Owed[] = [];
     const ctx = hostCtx(owed, () => requestEnded);
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(ctx, board, id, wait);
     // The task ends while the request still runs: held for it.
     await board.claim("researcher-worker");
@@ -113,7 +113,7 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
   it("does nothing on a board with no lapsed slot, or on a host that can't say whether a request ended", async () => {
     const ctx = hostCtx([], () => true);
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     expect(await releaseEndedWaits(ctx, board, Date.now())).toBeUndefined();
     await waitOnTask(ctx, board, id, wait);
     const blind = { ...ctx, requestHost: { ...ctx.requestHost, waits: { deadlines: DEADLINES, depth: async () => 1 } } } as unknown as BlockContext;
@@ -125,7 +125,7 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
     const owed: Owed[] = [];
     const ctx = hostCtx(owed, () => false);
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(ctx, board, id, wait);
     const lapsedAt = board.get(id)!.wait!.deadline;
     // The first looks come every thirty seconds; then the gap grows with the slot's age, up to an hour.
@@ -152,8 +152,8 @@ describe("a lapsed wait slot the pass can't read the request of", () => {
     const owed: Owed[] = [];
     const boardCtx = hostCtx(owed, () => false);
     const board = await boardFor(boardCtx);
-    const bad = (await board.addTask({ goal: "a request whose gate can't be read", assignee: "researcher" })).id;
-    const ok = (await board.addTask({ goal: "a request that ended", assignee: "researcher" })).id;
+    const bad = (await board.createTask({ goal: "a request whose gate can't be read", assignee: "researcher" })).id;
+    const ok = (await board.createTask({ goal: "a request that ended", assignee: "researcher" })).id;
     await waitOnTask(hostCtx(owed, () => false, new Map(), "req_bad"), board, bad, wait);
     await waitOnTask(hostCtx(owed, () => false, new Map(), "req_ok"), board, ok, wait);
 
@@ -197,7 +197,7 @@ describe("a lapsed wait slot on a ledger two sessions share", () => {
     // Session A's request lapses a wait on a task it filed, and still runs.
     const a = hostCtx([], () => false, new Map(), "req_a");
     const boardA = await resolve(a);
-    const id = (await boardA.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await boardA.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(a, boardA, id, wait);
     await boardA.claim("researcher-worker");
     await boardA.complete(id, "done late");
@@ -225,7 +225,7 @@ describe("the line the pass logs when it stops looking at a slot", () => {
   it("is logged once, by the pass that crosses the bound, with the reason", async () => {
     const ctx = hostCtx([], () => false, new Map(), "req_log");
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(ctx, board, id, wait);
     const lapsedAt = board.get(id)!.wait!.deadline;
     const maxAge = 86_400_000;
@@ -248,7 +248,7 @@ describe("the slots this process holds to release at a request's end", () => {
     let requestEnded = false;
     const ctx = hostCtx([], () => requestEnded, new Map(), "req_forget_pass");
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(ctx, board, id, wait);
     expect(lapsedSlotsHeldInProcess().get("req_forget_pass")).toEqual(new Set([id]));
     requestEnded = true;
@@ -259,7 +259,7 @@ describe("the slots this process holds to release at a request's end", () => {
   it("forgets a request once its read delivered its last held ending", async () => {
     const ctx = hostCtx([], () => false, new Map(), "req_forget_read");
     const board = await boardFor(ctx);
-    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     await waitOnTask(ctx, board, id, wait);
     await board.claim("researcher-worker");
     await board.complete(id, "done late");

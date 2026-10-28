@@ -583,7 +583,7 @@ describe("rounds (V5)", () => {
       coordinator: "desk"
     });
     const base = { ...warm };
-    for (const field of ["session", "resultTo", "run", "output", "startedAt", "completedAt", "leaseUntil", "claimedBy", "metadata", "filer", "waitingOn"]) {
+    for (const field of ["session", "resultTo", "run", "output", "startedAt", "completedAt", "leaseUntil", "claimedBy", "metadata", "filer", "keptOpenBy"]) {
       delete base[field];
     }
     // As a coordinator before FIX-2083 left them: the EM's post answered and heard, the coder's still running

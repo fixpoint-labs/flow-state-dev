@@ -85,7 +85,7 @@ describe("FIX-1068: session-scoped dispatching boards", () => {
       inputSchema: z.object({ request: z.string() }),
       uses: [board.capability],
       execute: async (input, ctx) => {
-        await ctx.cap.briefs.addTask({
+        await ctx.cap.briefs.createTask({
           goal: input.request,
           assignee: "brief",
           input: { request: input.request }

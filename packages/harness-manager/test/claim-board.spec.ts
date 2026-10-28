@@ -57,7 +57,7 @@ describe("a manager reading its board from the claim", () => {
     expect(await lab.record(runTopic(CONVERSATIONS, "t1", PHASE))).toBeNull();
   }, 60_000);
 
-  // A conversation's board mints its task ids (`addTask` takes none), so a
+  // A conversation's board mints its task ids (`createTask` takes none), so a
   // worker filing feature work there can never write the id the payload
   // derives. If this refused, no feature task filed from a conversation could
   // ever run, and the commit rule that comes with naming an issue and a phase

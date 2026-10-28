@@ -107,7 +107,7 @@ export const researchBoard = taskBoard({
   name: "research-board",
   collection: { collectionId: "research" },
   concurrency: 3,
-  dispatcher: "topological",
+  claimOrder: "topological",
   workers: {
     "market-analyst": marketAnalyst,
     "financial-analyst": financialAnalyst,
@@ -137,7 +137,7 @@ const result = await testBlock(researchBoard.drain, { input: undefined });
 // The two analysts run concurrently; `synth` only runs once both complete.
 ```
 
-The `topological` dispatcher is what enforces the wait: it will not hand `synth` to a worker until every id in its `deps` has reached `completed`. You wrote the dependency; the board honored it.
+The `topological` claim order is what enforces the wait: it will not hand `synth` to a worker until every id in its `deps` has reached `completed`. You wrote the dependency; the board honored it.
 
 ## 3. Fan out at runtime with a router
 
@@ -184,7 +184,7 @@ export const researchRouter = router({
       name: "competitor-board",
       collection: { backing: "request", collectionId: "competitors" },
       concurrency: 4,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
     }).drain;
@@ -196,7 +196,7 @@ A few things worth calling out, because they answer "when does the board actuall
 
 - **The router runs first; the board runs second.** You mount `researchRouter`. When it executes, it builds a board seeded with the computed tasks and returns that board's block. The engine then runs the returned block — that's when the drain happens. There is no board running until the router hands one back.
 - **`routes: []` + `validateRoute: () => true`** let the router return a board it constructed on this call, rather than picking from a fixed list. (A router normally selects among pre-declared `routes`; here the route is built per request.)
-- **Seed through `initialTasks`, not a manual `addTask` in the router.** A router's `execute` must be replay-safe — on a resumed request it re-runs. The board's seed step is idempotent by task id, so re-running it never double-seeds. Do the seeding declaratively and you get that for free.
+- **Seed through `initialTasks`, not a manual `createTask` in the router.** A router's `execute` must be replay-safe — on a resumed request it re-runs. The board's seed step is idempotent by task id, so re-running it never double-seeds. Do the seeding declaratively and you get that for free.
 
 The example's [`test/flow.test.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/test/flow.test.ts) drives this router with three competitors and asserts all four tasks (three analyzers + the synthesizer) complete.
 
@@ -214,6 +214,6 @@ Whether a task blocks the request comes down to the same dependency graph: the s
 ## Where to go next
 
 - [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team) — the complete, tested source for this guide.
-- [Task board](/docs/orchestration/task-board) — every config option, dispatcher, and termination mode.
+- [Task board](/docs/orchestration/task-board) — every config option, claim order, and termination mode.
 - [Task substrate](/docs/orchestration/task-substrate) — the `Task` and `TaskCollection` contracts underneath.
 - [Supervisor](/docs/patterns/supervisor) — add a review step before each result is written back.

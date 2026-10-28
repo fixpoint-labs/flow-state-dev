@@ -379,7 +379,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     ...pickTaskCapOverrides(config),
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
-    dispatcher: "topological",
+    claimOrder: "topological",
     onError: boardOnError,
     // FIX-610: pin declaredDepsOnly explicitly. Supervisor workers
     // are reviewed per-task; widening visibility across all tasks
