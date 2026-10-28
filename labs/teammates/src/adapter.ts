@@ -305,6 +305,21 @@ export function workProjectOf(state: Readonly<Record<string, unknown>> | undefin
   return ref?.visibility === "shared" ? ref.id : undefined;
 }
 
+/**
+ * `onChange`, called only when the value differs from the one it last passed on. A
+ * watch fed both by reads and by a pick made on this page compares with what the
+ * screen shows, not with the last read: a change made elsewhere back to that read
+ * still reaches the screen.
+ */
+export function shownOnChange<T>(onChange: (value: T) => void): (value: T) => void {
+  let shown: { value: T } | undefined;
+  return (value) => {
+    if (shown !== undefined && shown.value === value) return;
+    shown = { value };
+    onChange(value);
+  };
+}
+
 /** The adapter the app runs on: the package, through one client. */
 export function createLabAdapter(client: Client = connect()): LabAdapter {
   const workforce: WorkforceClient = createWorkforceClient(client);
@@ -425,15 +440,19 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     watchWorkProject(worker, onChange) {
       // The project stored on the conversation, whoever set it: the session read shows it, read only.
+      // A pick here shows at once, so each read is checked against what was last shown.
+      const show = shownOnChange(onChange);
       const watchers = projectWatchers.get(worker) ?? new Set();
       projectWatchers.set(worker, watchers);
-      watchers.add(onChange);
+      watchers.add(show);
+      let reads = 0;
       const stop = poll(async () => {
         const { sessionId } = await conversationOf(worker);
-        return workProjectOf((await client.sessions.get(sessionId)).state);
-      }, onChange);
+        // Numbered, so `poll` passes every read on rather than only a changed one.
+        return { read: reads++, project: workProjectOf((await client.sessions.get(sessionId)).state) };
+      }, ({ project }) => show(project));
       return () => {
-        watchers.delete(onChange);
+        watchers.delete(show);
         stop();
       };
     },
