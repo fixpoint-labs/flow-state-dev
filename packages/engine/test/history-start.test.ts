@@ -227,6 +227,21 @@ describe("items.turns()", () => {
     ]);
   });
 
+  it("orders turns that share a start time the same way whether or not they have settled", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_1", turn("sess_tie_open", 1, { startedAtMs: 1001, status: "suspended", completedAtMs: undefined }), "any");
+    await stores.request.set("req_2", turn("sess_tie_open", 2, { startedAtMs: 1001 }), "any");
+
+    const whileOpen = await (await contextFor(stores, "sess_tie_open", 4)).session.items.turns();
+    await stores.request.set("req_1", turn("sess_tie_open", 1, { startedAtMs: 1001 }), "any");
+    const onceSettled = await (await contextFor(stores, "sess_tie_open", 4)).session.items.turns();
+
+    // A summary's mark is a position in this list: a turn that settles must
+    // not move to the other side of a sibling the mark already passed.
+    expect(whileOpen.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
+    expect(onceSettled.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
+  });
+
   it("reads a turn that left the window by id", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_byid", 5);

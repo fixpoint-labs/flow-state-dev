@@ -76,6 +76,17 @@ import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { ownRowOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
+/**
+ * Oldest first by start time, ties by id: the reverse of the store's
+ * newest-first listing (`list-order.ts`), so a turn keeps its place among
+ * same-millisecond siblings whether it comes from the window or the open-turn
+ * read, settled or not. A history summary's mark is a position in this order.
+ */
+function compareTurnsOldestFirst(aStartedAtMs: number, aId: string, bStartedAtMs: number, bId: string): number {
+  if (aStartedAtMs !== bStartedAtMs) return aStartedAtMs - bStartedAtMs;
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
 function waitedByStamp(source: string | undefined, metadata: unknown) {
   const waitedBy = waitedByOf(source, metadata);
   return waitedBy === undefined ? {} : { waitedBy };
@@ -827,7 +838,7 @@ export async function createExecutionContext<
     .filter((r) => r.id !== requestId)
     .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
-    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+    .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
   // `items.turns()` (FIX-1613): the window's turns and every turn of this
   // session still open, each marked settled or not, or named turns read by id
@@ -868,7 +879,7 @@ export async function createExecutionContext<
         const open = record.status === "in_progress" || record.status === "suspended" || (await isParked(record));
         turns.push(historyTurn(record, !open));
       }
-      return turns.sort((a, b) => a.startedAtMs - b.startedAtMs);
+      return turns.sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
     }
     const windowTurns = priorRequests
       .filter((r) => r.id !== requestId && !(r.status === "interrupted" && retried.has(r.id)))
@@ -879,7 +890,7 @@ export async function createExecutionContext<
     )
       .filter((r) => r.id !== requestId && !listed.has(r.id))
       .map((r) => historyTurn(r, false));
-    return [...windowTurns, ...openTurns].sort((a, b) => a.startedAtMs - b.startedAtMs);
+    return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
   };
 
   // Build prior items from the settled prior request records. This replaces the
