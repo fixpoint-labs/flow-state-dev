@@ -31,13 +31,13 @@ export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
  * are two boards (BR-40); else the worker the conversation is with
  * (`@<worker>`); else the conversation's id.
  */
-export function holderOf(snapshot: LoadedSnapshot, row: BoardRow): string {
-  const session = snapshot.sessions.find((s) => s.id === row.holderSessionId);
-  if (session === undefined) return row.holderSessionId;
+export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardRow): string {
+  const session = snapshot.sessions.find((s) => s.id === row.ownerSessionId);
+  if (session === undefined) return row.ownerSessionId;
   const workstream = workstreamOf(session);
   if (workstream !== null) return workstream;
   const worker = workerOf(session);
-  return worker === null ? row.holderSessionId : `@${worker}`;
+  return worker === null ? row.ownerSessionId : `@${worker}`;
 }
 
 /** The rows Tasks shows: every attached board's, excluding done ones (BR-15). */
@@ -153,7 +153,7 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
  */
 export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+  return items.find((item) => item.questions.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
 }
 
 /**
@@ -164,7 +164,7 @@ export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): s
 export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxItem<Ask> | null {
   if (id === null) return null;
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
+  return items.find((item) => item.id === id) ?? items.find((item) => item.questions.some((hold) => hold.id === id)) ?? null;
 }
 
 /**
@@ -176,7 +176,7 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
 export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
-    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
+    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.questions.some((hold) => hold.source.kind === "row"),
   );
 }
 
@@ -313,7 +313,7 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
     asks: snapshot.asks,
     running:
       failed === undefined
-        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.holderSessionId)).size } }
+        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.ownerSessionId)).size } }
         : { ok: false, failure: failed },
   };
 }

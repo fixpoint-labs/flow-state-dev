@@ -33,7 +33,7 @@ describe("@flow-state-dev/bullmq exports", () => {
 
   it("exports dispatcher factory", async () => {
     const mod = await import("../src/index");
-    expect(typeof mod.createWorkerDispatcher).toBe("function");
+    expect(typeof mod.createWorkerRunner).toBe("function");
   });
 
   it("exports stream bridge factory", async () => {

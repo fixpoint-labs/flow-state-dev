@@ -17,7 +17,7 @@
  * Run it before the host's router is built, so the durability sweep can't
  * fire an old-name wake first.
  *
- * Not covered: a job already queued on an external dispatcher (BullMQ) under
+ * Not covered: a job already queued on an external runner (BullMQ) under
  * an old name. Let the queues empty before deploying.
  */
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";

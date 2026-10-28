@@ -36,13 +36,13 @@ const probe = handler({
     }
     if (input.op === "file-and-note") {
       // The `work` entry's note, for a task some host claimed without taking the record.
-      await board.addTask({ id: input.taskId, goal: "a routed task for the workstream", assignee: "eng.em", targetSessionId: WORKSTREAM_SESSION });
+      await board.createTask({ id: input.taskId, goal: "a routed task for the workstream", assignee: "eng.em", targetSessionId: WORKSTREAM_SESSION });
       await noteRoutedSession(ctx, WORKSTREAM_SESSION, { partition: input.partition, taskId: input.taskId });
       const records = (ctx.resources as Record<string, { getOptional(key: string): Promise<{ state: { taskId: string } } | undefined> }>).workforceRoutedSessions!;
       return { holds: (await records.getOptional(encodeURIComponent(WORKSTREAM_SESSION)))?.state.taskId ?? null };
     }
     if (input.op === "file" || input.op === "file-together") {
-      await board.addTask({ id: input.taskId, goal: "a routed task for the workstream", assignee: "eng.em", targetSessionId: WORKSTREAM_SESSION });
+      await board.createTask({ id: input.taskId, goal: "a routed task for the workstream", assignee: "eng.em", targetSessionId: WORKSTREAM_SESSION });
     }
     if (input.op === "file-together") {
       filed += 1;

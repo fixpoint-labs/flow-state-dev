@@ -27,7 +27,7 @@ async function board() {
 
 /** File `id`, claim it, and settle it as `ending` with `output`. */
 async function ran(ref: TaskCollectionRef, id: string, ending: "completed" | "errored" | "cancelled", output: unknown, followUpOf?: string) {
-  await ref.addTask({ id, goal: `do ${id}`, ...(followUpOf !== undefined ? { followUpOf } : {}) });
+  await ref.createTask({ id, goal: `do ${id}`, ...(followUpOf !== undefined ? { followUpOf } : {}) });
   const claimed = (await ref.claim("w", { eligibility: (t) => t.id === id }))!;
   const claim = { claim: ticketForClaim(ref.collectionId, claimed, ref.partition) };
   if (ending === "completed") await ref.complete(id, output, claim);
@@ -38,7 +38,7 @@ async function ran(ref: TaskCollectionRef, id: string, ending: "completed" | "er
 describe("updateTask's message (FIX-2086)", () => {
   it("steers a task that hasn't started: the words join its brief, and nothing else changes", async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
 
     expect(await b.call("updateTask", { id: "t", message: "Use the North America numbers" })).toEqual({ ok: true });
 
@@ -53,7 +53,7 @@ describe("updateTask's message (FIX-2086)", () => {
 
   it("steers a running task without using an attempt, ending it or cancelling it", async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
     const claimed = (await b.ref.claim("w"))!;
 
     expect(await b.call("updateTask", { id: "t", message: "Skip the archive" })).toEqual({ ok: true });
@@ -86,7 +86,7 @@ describe("updateTask's message (FIX-2086)", () => {
     // Two writes can't be one: the edit could land and the steer be refused
     // (a finish or the limit in between), so the pair is refused up front.
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
     const before = JSON.stringify(b.get("t"));
 
     const out = await b.call("updateTask", { id: "t", ...edit, message: "and the totals" });
@@ -97,7 +97,7 @@ describe("updateTask's message (FIX-2086)", () => {
 
   it(`refuses a message past ${MAX_STEERS}, naming the limit, and writes nothing`, async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
     for (let i = 0; i < MAX_STEERS; i += 1) await b.call("updateTask", { id: "t", message: `steer ${i}` });
     const before = JSON.stringify(b.get("t"));
 
@@ -111,7 +111,7 @@ describe("updateTask's message (FIX-2086)", () => {
 
   it("refuses a message sent with a cancel", async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
     const out = await b.call("updateTask", { id: "t", status: "cancelled", message: "never mind" });
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^cancel_takes_no_edits:/) });
     expect(b.get("t")).toMatchObject({ status: "pending" });
@@ -120,7 +120,7 @@ describe("updateTask's message (FIX-2086)", () => {
 
   it("from a screen, the updateTask_<board> action steers as the user", async () => {
     const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
+    await b.ref.createTask({ id: "t", goal: "count the rows" });
     const actions = taskToolActions("desk", ownStateResolver);
     const asAlice = { ...(b.ctx as object), user: { identity: { userId: "u_alice" } } };
 
@@ -186,7 +186,7 @@ describe("the task view's current (D3)", () => {
     const b = await board();
     await ran(b.ref, "root", "completed", "v1");
     await ran(b.ref, "f1", "errored", undefined, "root");
-    await b.ref.addTask({ id: "f2", goal: "do f2", followUpOf: "root" });
+    await b.ref.createTask({ id: "f2", goal: "do f2", followUpOf: "root" });
 
     expect((await b.call("getTask", { id: "root" })).task).not.toHaveProperty("current");
   });

@@ -71,13 +71,14 @@ import {
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
-import type { FlowDispatcher, DispatchEnvelope, LeaseTurn } from "../dispatcher";
+import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
+import { refuseRetiredDispatcherOption } from "../runner";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
-  createInProcessDispatcher,
-  isInProcessDispatcher,
-  type InProcessDispatcher
-} from "./in-process-dispatcher";
+  createInProcessRunner,
+  isInProcessRunner,
+  type InProcessRunner
+} from "./in-process-runner";
 import type {
   DispatchHandle,
   HostContinueRequestOptions,
@@ -130,10 +131,10 @@ export type CreateInboundTransportHostOptions = {
   runtimeConfig: RuntimeConfig;
   /**
    * Controls where flow actions execute. Default: in-process via runAction.
-   * Set to a FlowDispatcher implementation to route execution to an
-   * external worker (e.g., BullMQ WorkerDispatcher).
+   * Set to a FlowRunner implementation to route execution to an
+   * external worker (e.g., BullMQ WorkerRunner).
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
   /**
    * Concurrency arbiter to enforce policy through. Defaults to a fresh one.
    *
@@ -144,7 +145,7 @@ export type CreateInboundTransportHostOptions = {
    *
    * An arbiter over a backend shared across processes
    * (`arbitratesAcrossProcesses`) also arbitrates work this host hands to an
-   * external dispatcher (FIX-1634).
+   * external runner (FIX-1634).
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -431,22 +432,23 @@ export async function resolveInProcessPrincipal(
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
+  refuseRetiredDispatcherOption(options, "createInboundTransportHost");
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 
-  const inProcessDispatcher = createInProcessDispatcher({
+  const inProcessRunner = createInProcessRunner({
     registry,
     stores,
     runtimeConfig
   });
-  const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
-    options.dispatcher ?? inProcessDispatcher;
-  const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
+  const effectiveRunner: FlowRunner | InProcessRunner =
+    options.runner ?? inProcessRunner;
+  const isExternalRunner = !isInProcessRunner(effectiveRunner);
 
   // One arbiter governs every dispatch, so an action's concurrency policy is
   // enforced once at this shared seam (FIX-837). Work handed to an external
-  // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
+  // runner (BullMQ) runs in another process, so it is arbitrated only when
   // the arbiter's keys are shared with that process: the dispatch takes its
   // place here, the place rides the job, and the worker waits its turn and gives
   // it back when the run ends (FIX-1634). A `hold` job's place has its turn at
@@ -455,7 +457,7 @@ export function createInboundTransportHost(
   // arbitrated at all — releasing a key at enqueue would free a `reject` lease
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
-  const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
+  const arbitratesExternalDispatch = isExternalRunner && arbiter.arbitratesAcrossProcesses;
   /**
    * Per concurrency key, the turn of the latest dispatch to take a place there
    * after its ownership check. A dispatch waits for the one before it on its
@@ -718,7 +720,7 @@ export function createInboundTransportHost(
     // No brand and no CLI plumbing needed: the condition IS the divergence. A
     // launching request whose config carries a different resolver from the
     // host's is one a caller derived — `fsdev run --model` is the shipped case —
-    // and an external dispatcher cannot carry it, because a `RuntimeConfig`
+    // and an external runner cannot carry it, because a `RuntimeConfig`
     // holds live resolvers and providers that do not serialize. Serializing just
     // the model id was the alternative and is worse: the worker is a different
     // process with its own gateways and keys, so a forced id may not resolve
@@ -730,7 +732,7 @@ export function createInboundTransportHost(
     // flows never detach is unaffected. This fires only at the exact dispatch
     // that loses the override.
     if (
-      isExternalDispatcher &&
+      isExternalRunner &&
       envelope.runtimeConfig !== undefined &&
       envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
     ) {
@@ -775,7 +777,7 @@ export function createInboundTransportHost(
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
     const decision =
-      isExternalDispatcher && !arbitratesExternalDispatch
+      isExternalRunner && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
@@ -900,13 +902,13 @@ export function createInboundTransportHost(
       //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
       //                             redundant live stream and waste a slot
       //
-      // External dispatchers (BullMQ, etc.) execute in a separate context and
+      // External runners (BullMQ, etc.) execute in a separate context and
       // persist events to the shared store. The client falls back to the GET
       // request-stream endpoint (store-driven live tail) when it receives a 202
       // instead of an inline SSE response, so creating a live stream here would
       // be an empty pipe that never receives events.
       liveStream =
-        envelope.responseEmitter === undefined && !isExternalDispatcher
+        envelope.responseEmitter === undefined && !isExternalRunner
           ? createLiveRequestStream({
               requestId,
               maxBufferSize: maxResponseBufferSize,
@@ -925,10 +927,10 @@ export function createInboundTransportHost(
         liveStream?.emitter ??
         createResponseEmitter({ requestId, maxRecordedValueBytes });
 
-      // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
-      // (carries non-serializable context); external dispatchers use the
+      // Delegate to the runner. InProcessRunner uses dispatchLocal
+      // (carries non-serializable context); external runners use the
       // generic dispatch interface.
-      if ("dispatchLocal" in effectiveDispatcher) {
+      if ("dispatchLocal" in effectiveRunner) {
         // The in-process milestones, held here rather than read off the handle
         // because `gateStart` owns *when* the run is started and the handle does
         // not exist until it does (FIX-982). The `queue` branch below has its own,
@@ -961,7 +963,7 @@ export function createInboundTransportHost(
           // A run holding its turn on a shared backend is stopped once its
           // place can no longer be kept: another process may take the key.
           const lost = held?.lost;
-          const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
+          const handle = (effectiveRunner as InProcessRunner).dispatchLocal(
             dispatchEnvelope,
             {
               signal:
@@ -1018,7 +1020,7 @@ export function createInboundTransportHost(
           // (which registers `activeRequests` and writes the request record) has
           // not run when this handle is returned. Materialize a discoverable
           // `in_progress` record + activeRequests entry now — the same enqueue-time
-          // stub the external dispatcher writes (FIX-828) — so the synchronously
+          // stub the external runner writes (FIX-828) — so the synchronously
           // returned `requestId` resolves instead of 404ing on `.../requests/:id/
           // stream` while queued. `runAction` adopts/overwrites the stub when the
           // run starts (last-write-wins). If the wait budget elapses the run never
@@ -1247,14 +1249,14 @@ export function createInboundTransportHost(
           accepted = inProcessAccepted;
         }
       } else {
-        // External dispatchers (BullMQ, etc.) run in a separate process and only
+        // External runners (BullMQ, etc.) run in a separate process and only
         // register the request once the worker starts `runAction`. A client GET
         // .../stream that arrives first would find no record and 404. Materialize
         // the activeRequests entry and an `in_progress` record here, at enqueue
         // time, so the stream route resolves a live record and tails events
         // immediately (FIX-828). The shared `createInitialRequestRecord` builder
         // constructs this stub the same way the worker would, so the worker
-        // adopts it as-is and skips its own write. Gating the dispatcher call
+        // adopts it as-is and skips its own write. Gating the runner call
         // on these writes means a store failure fails the dispatch rather than
         // enqueueing a job with no discoverable record (no orphan). Resume and the
         // Vercel adapter route through here too, so both inherit the fix.
@@ -1275,10 +1277,10 @@ export function createInboundTransportHost(
         // depend on the liveness of a process that is not running it, and would
         // beat on behalf of work it has no knowledge of.
         // `acceptance` resolves once the request is accepted: the enqueue-time
-        // writes commit AND the dispatcher accepts the job. The response path
+        // writes commit AND the runner accepts the job. The response path
         // awaits the exposed `accepted` view before acking, so the 202 means
         // "discoverable and enqueued" — not merely "record written". Crucially the
-        // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
+        // enqueue (`effectiveRunner.dispatch`) is inside this promise, so an
         // enqueue failure rejects the ack (failing the POST / reverting the
         // resume) rather than landing in the detached `finished` chain after a 202
         // already went out.
@@ -1321,7 +1323,7 @@ export function createInboundTransportHost(
                   : decision.policy === "defer"
                     ? { kind: "when-free", key: decision.key }
                     : undefined;
-            const handle = await effectiveDispatcher.dispatch({
+            const handle = await effectiveRunner.dispatch({
               ...dispatchEnvelope,
               ...(place !== undefined ? { leasePlace: place } : {}),
               ...(leaseTurn !== undefined ? { leaseTurn } : {})
@@ -1408,7 +1410,7 @@ export function createInboundTransportHost(
    * Wait for this continuation's place inside `finished`, after the handle
    * returns, so a run that continues another request in its own session is
    * not blocked on its own place. The key is the stored record's. An external
-   * dispatcher with no shared backend skips arbitration, as `dispatch` does.
+   * runner with no shared backend skips arbitration, as `dispatch` does.
    * The run stops if a shared backend can no longer keep the place. A wait
    * that ends before the run starts releases the caller's lease (`leaseId`),
    * never one another process took after it lapsed; the answer stays on the
@@ -1420,7 +1422,7 @@ export function createInboundTransportHost(
     leaseId: string | undefined
   ): Promise<ExecutionResult> => {
     const decision =
-      isExternalDispatcher && !arbitratesExternalDispatch
+      isExternalRunner && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : continuationDecision(
             arbiter.resolve(flow, record.actionName, {
@@ -1566,7 +1568,7 @@ export function createInboundTransportHost(
       voice: runtimeConfig.voiceProvider
     },
     logger: runtimeConfig.logger,
-    usesExternalDispatcher: isExternalDispatcher,
+    usesExternalRunner: isExternalRunner,
     arbitratesExternalDispatch,
     dispatch,
     continueRequest,

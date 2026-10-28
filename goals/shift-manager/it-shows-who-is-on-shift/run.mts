@@ -258,7 +258,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
       const answered = new Set(((data.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
       const question =
         data.status === "in_progress" &&
-        ((data.holds ?? []) as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+        ((data.questions ?? []) as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
       rows.push({ key: `${ref}/${data.id}`, id: String(data.id), status: String(data.status), assignee: String(data.assignee ?? ""), question });
     }
     break;

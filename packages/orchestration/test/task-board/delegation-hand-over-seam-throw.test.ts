@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineTaskCollection, type Task, type TaskDispatcher, type TaskWorkerInput } from "../../src/tasks";
+import { defineTaskCollection, type Task, type ClaimOrder, type TaskWorkerInput } from "../../src/tasks";
 import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { heard } from "../fixtures/heard";
@@ -22,7 +22,7 @@ import { heard } from "../fixtures/heard";
 const USER_ID = "u_delegation_throw";
 const SESSION = "filer";
 /** Claims under the shortest lease, so its lapse is observable on the wall clock: the board has no lease knob. */
-const shortLease: TaskDispatcher = {
+const shortLease: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
   }
@@ -47,7 +47,7 @@ describe("a delegation board whose seam throws once the claim is released", () =
       boardId: LEDGER.id,
       mode: "delegation",
       collection: LEDGER,
-      dispatcher: shortLease,
+      claimOrder: shortLease,
       workers: { work: dispatcher<TaskWorkerInput>({ name: "delegation-throw-dispatch", action: "work", session: "per-task" }) },
       initialTasks: [{ id: "t1", goal: "Review", assignee: "work", input: {} }]
     });

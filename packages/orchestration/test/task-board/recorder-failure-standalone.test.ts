@@ -54,7 +54,7 @@ async function claimedWithFailingAnnouncement(
     collectionId: "tasks",
     state: state,
   });
-  await inner.addTask({ id: "t", goal: "work" });
+  await inner.createTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w"))!;
 
   const collection = {

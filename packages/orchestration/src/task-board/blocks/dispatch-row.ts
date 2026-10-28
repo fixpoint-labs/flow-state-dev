@@ -173,7 +173,7 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     });
 
     // Take the round trip HERE, so both deployment modes send the same value:
-    // an external dispatcher serializes the envelope, the in-process path
+    // an external runner serializes the envelope, the in-process path
     // hands the child the very object graph this block is holding, and a
     // payload referencing one object from two places is observable either
     // way. Snapshotting also makes the value that was checked the value that
@@ -265,7 +265,7 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     // stop asserting a lease this request no longer holds, and return.
     //
     // Nobody renews the lease between here and the child's gate — with an
-    // external dispatcher or under flow-level `queue` concurrency the start
+    // external runner or under flow-level `queue` concurrency the start
     // is deferred past this call by design, so a queue deeper than the lease
     // TTL leaves the row lapsed when the child arrives. That is no longer a
     // refusal: the gate takes the row back with a fenced renewal on the same

@@ -13,7 +13,7 @@ export const researchBoard = taskBoard({
   name: "research-board",
   collection: { collectionId: "research" },
   concurrency: 3,
-  dispatcher: "topological",
+  claimOrder: "topological",
   workers: {
     "market-analyst": analyst("market"),
     "financial-analyst": analyst("financial"),

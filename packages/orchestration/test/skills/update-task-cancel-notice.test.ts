@@ -37,8 +37,8 @@ async function deliveryBoard(): Promise<TaskCollectionRef> {
       },
     },
   });
-  await board.addTask({ id: "t", goal: "t" });
-  await board.addTask({ id: "after", goal: "after", deps: ["t"] });
+  await board.createTask({ id: "t", goal: "t" });
+  await board.createTask({ id: "after", goal: "after", deps: ["t"] });
   return board;
 }
 
