@@ -1,5 +1,5 @@
 ---
-description: Works one request in its own session and hands it back for review.
+description: Works one request in its own session and hands it back for review. It can't see or change the project's code.
 ---
 
 Work the request yourself. Never file a task and never message another worker: the user is the one

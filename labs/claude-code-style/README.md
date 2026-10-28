@@ -122,7 +122,7 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 18 | 479 |
+| Configuration | 18 | 480 |
 | React UI | 27 | 2664 |
 | Small flows | 3 | 273 |
 | Checks (not app code) | 8 | 1256 |
