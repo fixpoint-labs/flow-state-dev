@@ -1,10 +1,9 @@
 /**
- * fixture: the whole file. Deleted at wiring (spec, "Decided, not asked").
- *
- * An in-memory stand-in for the package, behind `LabAdapter`, that plays each
- * mode's script on a timer so the screen can be seen and tested before the
- * package pieces it needs exist. It proves the UI only. The README lists which
- * gap each part stands for.
+ * A test double for the screen's tests: an in-memory `LabAdapter` that plays
+ * each mode's script on a timer, so the layout and its interactions can be
+ * tested without a server. It proves the UI only; the goal check
+ * (`goals/claude-code-style-lab/`) proves the package. The app never imports
+ * it: `src/adapter.ts` binds every verb to the package.
  *
  * Session mode: any ask starts the vendor script. The main session writes,
  * starts two background tasks, takes the quick one's result while its turn
@@ -29,11 +28,11 @@ import type {
   ThreadEntry,
   ThreadView,
   Unsubscribe,
-} from "./adapter";
-import { modeById, modeOfWorker, type ModeId } from "./modes";
+} from "../src/adapter";
+import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
-/** How the fixtures keep time. Tests pass `speed` to run the script fast. */
-export interface FixtureOptions {
+/** How the fake keeps time. Tests pass `speed` to run the script fast. */
+export interface FakeOptions {
   /** Multiplies every delay. 1 is real time. */
   speed?: number;
   /** The clock, in ms. */
@@ -63,8 +62,8 @@ type Step = [delayMs: number, run: () => void, background?: "background"];
 
 const MINUTE = 60_000;
 
-/** fixture: stands in for the whole package until wiring. */
-export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
+/** fake: stands in for the whole package until wiring. */
+export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const sessions = new Map<string, FixtureSession>();
@@ -165,7 +164,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const task = s.tasks.find((t) => t.title === title);
     if (!task || task.status !== "in_progress") return;
     writeStep(s, task, { status: "completed", statusNote: undefined }, summary);
-    // fixture: stands in for the main worker's `answerAgain: true` (FIX-2159): the take shows as an item in the running request.
+    // fake: stands in for the main worker's `answerAgain: true` (FIX-2159): the take shows as an item in the running request.
     push(s, {
       kind: "result",
       id: nextId("r"),
@@ -285,7 +284,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     }
   };
 
-  // fixture: the person's access to each project. A session may open only where they may work: a
+  // fake: the person's access to each project. A session may open only where they may work: a
   // member of a shared project or the owner of a private one. Reading one is not enough, the same
   // not-a-member refusal projectWorkspace() makes for a run.
   const projects: (ProjectRow & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
@@ -312,14 +311,14 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       tasks: [],
     });
   };
-  // fixture: an older session with no project, so the screen shows what asking looks like.
+  // fake: an older session with no project, so the screen shows what asking looks like.
   seed("Fix the onboarding copy", 26 * 60 * MINUTE, null, ["Tighten the onboarding copy.", "Done. The three screens now read in under ten seconds each."]);
   seed("Draft the launch note", 2 * 60 * MINUTE, "project-vendor-notes", ["Draft the launch note.", "Here is a first draft, about 200 words."]);
 
-  // fixture: your pinned task ids, which the lab's pins flow keeps at wiring.
+  // fake: your pinned task ids, which the lab's pins flow keeps at wiring.
   const pins = new Set<string>();
 
-  // fixture: an older threads-mode session, with a pinned thread, a failed one and two resolved.
+  // fake: an older threads-mode session, with a pinned thread, a failed one and two resolved.
   const seedThreads = () => {
     const id = nextId("session");
     const ago = 26 * 60 * MINUTE;
@@ -351,12 +350,19 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   seedThreads();
 
   return {
+    modes: ["session", "threads"],
     watchSessions(onChange) {
       return watch(() => onChange([...sessions.values()].map((s) => s.row).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
       return mayWorkIn;
+    },
+
+    async createProject(name: string) {
+      const project = { id: nextId("project"), name };
+      mayWorkIn.push(project);
+      return project;
     },
 
     async openSession(mode: ModeId, projectId: string) {

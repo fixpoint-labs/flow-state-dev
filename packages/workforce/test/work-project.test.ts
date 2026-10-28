@@ -198,6 +198,15 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.runs[0]!.state).toMatchObject({ filingProjectId: "shared/apollo" });
   });
 
+  it("read: the session read shows the project a conversation works in once it is set, so a screen can name it", async () => {
+    const h = await withProjects();
+    const session = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "main" });
+    const read = createClient({ userId: "alice", fetcher: h.fetcherFor("alice", ORG) }).sessions;
+    expect((await read.get(session)).state).not.toHaveProperty("workProjectId");
+    await h.client("alice").setWorkProject("main", apollo, { sessionId: session });
+    expect((await read.get(session)).state).toMatchObject({ workProjectId: "shared/apollo" });
+  });
+
   it("new-session: a session of the worker created at its own id, then set, runs its tasks in the project", async () => {
     const h = await withProjects();
     const session = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "main" });
