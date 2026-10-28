@@ -40,7 +40,7 @@ const taskSpendRequestSchema = z.object({
   model: z.string().nullable().default(null),
 });
 
-/** `Task.spend`: the task's requests, in the order they were admitted. */
+/** `Task.spend`: the task's requests, the one that last reported its harness or model last. */
 export const taskSpendSchema = z.object({
   requests: z.array(taskSpendRequestSchema).default([]),
 });

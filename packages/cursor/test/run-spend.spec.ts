@@ -167,3 +167,25 @@ describe("cursorAgent's settled report names the model the run settled on", () =
     expect(reported.at(-1)?.model).toBe("composer-2-fast");
   });
 });
+
+describe("cursorAgent reports the model the run names as soon as it names it", () => {
+  it("reports the init message's model before any turn's tokens", async () => {
+    // A long first turn must not show the configured model, or none, while Cursor already said which it runs.
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: scripted(async function* () {
+        yield { type: "system", subtype: "init", model: { id: "composer-2" } } as CursorSdkMessage;
+        yield TURN_USAGE;
+      }),
+    });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported.map((r) => [r.model, r.inputTokens])).toEqual([
+      [null, null],
+      ["composer-2", null],
+      ["composer-2", 300],
+      ["composer-2", 1200],
+    ]);
+  });
+});

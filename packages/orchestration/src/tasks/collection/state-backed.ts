@@ -74,7 +74,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { spendAfterWrite } from "../spend";
-import { ticketNamesTask } from "../claim-ticket";
+import { ticketNamesIncarnation } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -743,7 +743,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           const spend = spendAfterWrite(task as Task, write);
           return spend === undefined ? undefined : ({ spend } as Partial<Task<TInput, TOutput>>);
         },
-        { decline: (task) => (ticketNamesTask(spendOptions.claim, collectionId, task as Task) ? undefined : "not-my-task") }
+        { decline: (task) => (ticketNamesIncarnation(spendOptions.claim, collectionId, task as Task) ? undefined : "not-my-task") }
       );
     },
 

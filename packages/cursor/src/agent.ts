@@ -842,6 +842,8 @@ async function mirrorRun(
         } else if (event.kind === "model") {
           model = event.model;
           spent.model = event.model;
+          // The model the run named, on the task before its first turn's tokens (FIX-2288).
+          spent.report();
         } else if (event.kind === "plan_list") {
           // Written in stream order, so the record ends equal to the last list
           // Cursor confirmed. An empty list is still a write: it is what tells

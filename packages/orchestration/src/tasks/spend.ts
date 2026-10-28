@@ -61,7 +61,15 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
     ...(names.model !== undefined ? { model: names.model } : {}),
   };
   if (at >= 0 && JSON.stringify(next) === JSON.stringify(was)) return undefined;
-  const requests = at < 0 ? [...stored.requests, next] : stored.requests.map((entry, i) => (i === at ? next : entry));
+  // The entry that reported its harness or model last is the last one, so the
+  // view names what ran most recently across requests: a running request's
+  // write, or an ending that names something new. A late ending of an older
+  // attempt naming what it always did stays where it is.
+  const named = names.harness !== undefined || names.model !== undefined;
+  const renamed = next.harness !== was.harness || next.harnessModel !== was.harnessModel || next.model !== was.model;
+  const moved = at < 0 || (named && (write.part === "live" || renamed));
+  const others = stored.requests.filter((_, i) => i !== at);
+  const requests = moved ? [...others, next] : stored.requests.map((entry, i) => (i === at ? next : entry));
   return { requests };
 }
 

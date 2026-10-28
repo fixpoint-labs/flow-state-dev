@@ -138,9 +138,21 @@ describe.each([
     expect(view(collection)).toMatchObject({ inputTokens: 1200, outputTokens: 250, live: false });
   });
 
+  it("names the model reported last across requests, not the request admitted last", async () => {
+    // The task's request suspends on model A, a notice's turn runs B, then the request resumes on C: the card shows C.
+    const { collection, claim } = await claimed();
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(1, 1, "model-a") }, { claim });
+    await collection.recordSpend!("t", { requestId: "q2", part: "settle", spend: modelCalls(1, 1, "model-b") }, { claim });
+    expect(view(collection)).toMatchObject({ model: "model-b" });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: modelCalls(2, 2, "model-c") }, { claim });
+    expect(view(collection)).toMatchObject({ model: "model-c", inputTokens: 3 });
+  });
+
   it("declines not-my-task for a ticket naming another incarnation of the row, writing nothing", async () => {
     const { collection, claim } = await claimed();
-    for (const other of [{ ...claim, createdAt: claim.createdAt - 1 }, { ...claim, collectionId: "other" }]) {
+    // Same id and createdAt but a fresh nonce: a row deleted and recreated within one millisecond.
+    expect(claim.incarnationId).toBeDefined();
+    for (const other of [{ ...claim, createdAt: claim.createdAt - 1 }, { ...claim, collectionId: "other" }, { ...claim, incarnationId: "another-incarnation" }]) {
       expect(await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(1, 1) }, { claim: other })).toMatchObject({
         outcome: "declined",
         reason: "not-my-task",

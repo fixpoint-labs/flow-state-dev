@@ -143,7 +143,7 @@ import {
 import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
 import { stampWrite } from "../write-provenance";
 import { spendAfterWrite } from "../spend";
-import { ticketNamesTask } from "../claim-ticket";
+import { ticketNamesIncarnation } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
@@ -1109,7 +1109,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // Fenced by the row's identity only (FIX-2288): a terminal row and a
       // lapsed claim still take a spend; a recreated row declines.
       return patchRef(id, null, (task) => {
-        if (!ticketNamesTask(spendOptions.claim, options.collectionId, task as Task)) throw new WriteDeclined("not-my-task", task.status);
+        if (!ticketNamesIncarnation(spendOptions.claim, options.collectionId, task as Task)) throw new WriteDeclined("not-my-task", task.status);
         const spend = spendAfterWrite(task as Task, write);
         return spend === undefined ? undefined : ({ spend } as Partial<Task<TInput, TOutput>>);
       });
