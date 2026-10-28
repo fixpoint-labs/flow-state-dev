@@ -162,26 +162,56 @@ async function boundId(page: Page): Promise<string> {
   return ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim();
 }
 
-/** Send a turn and wait for it to end. Returns whether one of the run's items showed while it ran. */
-async function turn(walk: Walk, prompt: string): Promise<{ sawItemWhileRunning: boolean }> {
+/**
+ * Send a turn and wait for it to end. Returns whether one of the run's items showed while it ran, and whether it
+ * ended before `TURN_MS`. The items are watched in the page from before the send, so a reply drawn and finished
+ * between two polls still counts.
+ */
+async function turn(walk: Walk, prompt: string): Promise<{ sawItemWhileRunning: boolean; ended: boolean }> {
   const { page } = walk;
-  const items = () => shown(page, "conversation").first().locator(RUN_ITEMS).count();
-  const before = await items();
+  // A string, not a function: tsx's name-keeping wraps local functions in a helper the page doesn't have.
+  await page.evaluate(`(() => {
+    const selector = ${JSON.stringify(RUN_ITEMS)};
+    window.__walkTurn?.observer.disconnect();
+    const visible = (el) => el.getClientRects().length > 0;
+    const count = () => {
+      const conversation = [...document.querySelectorAll('[data-testid="conversation"]')].find(visible);
+      return conversation === undefined ? 0 : conversation.querySelectorAll(selector).length;
+    };
+    const running = () => [...document.querySelectorAll('button[aria-label="Stop"]')].some(visible);
+    const before = count();
+    const state = {
+      saw: false,
+      observer: new MutationObserver(() => {
+        if (!state.saw && running() && count() > before) state.saw = true;
+      }),
+    };
+    state.observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+    window.__walkTurn = state;
+  })()`);
   const input = shown(page, "message-input").first();
   await input.fill(prompt);
   await input.press("Enter");
   // A turn the page never shows running (a control that sent it elsewhere) still ends here.
   await stopButton(page).first().waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
-  let sawItemWhileRunning = false;
+  let ended = false;
   const deadline = Date.now() + TURN_MS;
   while (Date.now() < deadline) {
-    if (!(await stopButton(page).first().isVisible())) break;
-    if ((await items()) > before) sawItemWhileRunning = true;
+    if (!(await stopButton(page).first().isVisible())) {
+      ended = true;
+      break;
+    }
     await page.waitForTimeout(500);
   }
+  const sawItemWhileRunning = await page.evaluate(() => {
+    const state = (window as unknown as { __walkTurn?: { saw: boolean; observer: MutationObserver } }).__walkTurn;
+    state?.observer.disconnect();
+    return state?.saw ?? false;
+  });
+  if (!ended) return { sawItemWhileRunning, ended };
   if (harness(walk)) await page.getByTestId("turn-notice").waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
   await page.waitForTimeout(1_500);
-  return { sawItemWhileRunning };
+  return { sawItemWhileRunning, ended };
 }
 
 /** The plan panel, as drawn: its rows' titles and its whole text. */
@@ -229,6 +259,12 @@ async function startOverOnce(walk: Walk): Promise<() => Promise<void>> {
 await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
   const fail = (leg: string, message: string) => failures.push(`[${leg}] ${message}`);
+  /** A turn still running at its deadline fails its leg: nothing it drew so far counts as its answer. */
+  const walkTurn = async (walk: Walk, leg: string, prompt: string) => {
+    const result = await turn(walk, prompt);
+    if (!result.ended) fail(`${walk.mode.tag}:${leg}`, `the turn was still running after ${TURN_MS / 1000} s`);
+    return result;
+  };
   const modes = fixture.modes.filter((m) => !SERVER_CONTROL || m.id !== "flow-state");
   if (SERVER_CONTROL) evidence.push(`GOAL_CONTROL=${CONTROL} runs in test mode, where Flow State is scripted: fs not walked`);
   if (SCRIPTED) failures.push("[scripted] GOAL_SCRIPTED=1 walked the scripted harnesses and model: a dry run, not a verdict");
@@ -285,7 +321,7 @@ await runGoal(async (failures, tell) => {
         await page.locator('button[aria-label="New session"]:visible').first().click();
         await page.waitForTimeout(2_000);
       }
-      const first = await turn(walk, `Remember this token for later: ${walk.token}. Reply "noted" and nothing else.`);
+      const first = await walkTurn(walk, "l", `Remember this token for later: ${walk.token}. Reply "noted" and nothing else.`);
       if (!first.sawItemWhileRunning) fail(`${mode.tag}:l`, `nothing of ${mode.label}'s showed before turn 1 completed`);
       if (harness(walk)) {
         walk.bound = await boundId(page);
@@ -301,7 +337,7 @@ await runGoal(async (failures, tell) => {
     for (const walk of walks) {
       const seen = await tokenCount(walk);
       if (walk === fsWalk && startOver !== undefined) await startOver();
-      await turn(walk, TURN_2);
+      await walkTurn(walk, "c", TURN_2);
       if ((await tokenCount(walk)) <= seen) fail(`${walk.mode.tag}:c`, "turn 2's reply did not name the token");
       const now = harness(walk) ? await boundId(walk.page) : walk.sentTo.at(-1) ?? "";
       if (now !== walk.bound) fail(`${walk.mode.tag}:c`, `the conversation moved from ${walk.bound} to ${now}`);
@@ -310,8 +346,9 @@ await runGoal(async (failures, tell) => {
     // ---- p: the job in each harness; the panel shows its own plan, or says it reports none
     for (const walk of walks.filter(harness)) {
       const { page, mode, steps } = walk;
-      await turn(
+      await walkTurn(
         walk,
+        "p",
         `Use your ${mode.plan} to plan exactly three steps, with these names in this order: ${steps.join(", ")}. ` +
           `Then mark each one completed in turn. Don't run any commands or edit any files. Reply "done".`,
       );
@@ -351,7 +388,7 @@ await runGoal(async (failures, tell) => {
         continue;
       }
       const seen = await tokenCount(walk);
-      await turn(walk, "One more time: the token, only.");
+      await walkTurn(walk, "r", "One more time: the token, only.");
       if ((await tokenCount(walk)) <= seen) fail(`${mode.tag}:r`, "after a reload, turn 3 did not name the token");
       const now = harness(walk) ? await boundId(page) : walk.sentTo.at(-1) ?? "";
       if (now !== walk.bound) fail(`${mode.tag}:r`, `after a reload turn 3 went to ${now} (want ${walk.bound})`);
