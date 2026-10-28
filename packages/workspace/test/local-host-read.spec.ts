@@ -444,6 +444,16 @@ describe("a project with no repository reads its kept files", () => {
     expect(spawned).not.toHaveBeenCalled();
     expect(placesUnder()).toEqual([]);
   });
+  it("refuses a pattern that backtracks past the grep's time, rather than freezing the server", async () => {
+    const collection = createFakeCollection("project-files/**", { "p1/notes/a.txt": `${"a".repeat(32)}!\n` });
+    const answer: RunSourceAnswer = { kind: "files", projectId: "p1", files: { collection, collectionId: "project-files" } };
+    const started = Date.now();
+
+    const attempt = host().readSource!(answer, { kind: "grep", pattern: "(a+)+$" });
+
+    await expect(attempt).rejects.toMatchObject({ reason: "pattern-too-slow" });
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
 });
 
 describe("a project mapped to a checkout on this machine", () => {
