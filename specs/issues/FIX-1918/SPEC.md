@@ -53,8 +53,9 @@ The walk reads only the page; each control breaks its named leg in every mode it
 |---|---|
 | `<m>:c` | Turn 2 asks for the token without naming it; the reply names it, and the conversation the page shows (the harness id for `cc`, `cx`, `cu`; the session for `fs`) is turn 1's |
 | `<m>:l` | One of the run's items shows on the page before turn 1 completes |
-| `<m>:p` | `cc` and `cu`: after the job, the panel's rows are the job's steps, in order, with the names picked for this run, none "No plan recorded…". `cx`: the panel says "Codex reports no plan." and holds no row. `fs`: not graded (its flows' plans are their own, ER-8) |
+| `<m>:p` | `cc` and `cu`: after the job, the panel's rows are the job's steps, in order, with the names picked for this run, none "No plan recorded…". `cx`: [follows the one answer](DECISIONS.md#open-codexs-plan) FIX-2259 and FIX-1951 settle: Codex's own rows, graded as `cc`'s, if Codex's plan lands before the run; otherwise "Codex reports no plan." with no row. `fs`: not graded (its flows' plans are their own, ER-8) |
 | `<m>:r` | After a reload, the page is back in that session without a click, with the same id, and turn 3 names the token |
+| `<m>:kept` | After the reload and turn 3, which leaves the plan alone, the panel still holds `<m>:p`'s rows: the plan is the conversation's, not the turn's ([FIX-2259](../FIX-2259/SPEC.md)) |
 | `<m>:own` | The mode's rail lists only its own session, and its panel holds none of another mode's step names |
 
 The modes run interleaved: turn 1 in each, then turn 2 in each, then the job in each, then a reload
@@ -95,6 +96,7 @@ switch for the new control: `new-conversation` acts at the page's `fetch`, as
 |---|---|
 | The epic's goal and its two controls | **Builds on.** Walked in four modes at once |
 | `goals/kitchen-sink-harness/*-continues-*` (FIX-1915, 1916, 1917) | **Composed.** Their prompts, token reading and `no-resume`, `no-record` controls reused, not their servers |
+| [FIX-2259](../FIX-2259/SPEC.md): the plan record keyed by the harness conversation, not the turn | **Graded as it keys it.** `<m>:p` and `<m>:own` read the conversation's plan, and `<m>:kept` reads it again after a reload and a turn that left it alone |
 | `goals/kitchen-sink-harness-mode/opens-on-the-picker` (FIX-1914) | **Re-run** in row 3; the walk enters each mode through its picker |
 | `goals/lib/kitchen-sink.mts`, `playwright.mts` | **Reused** for the browser and the page's handles |
 | [FIX-2242](../FIX-2242/SPEC.md), the last closure | **Kept** its shape |
@@ -104,7 +106,7 @@ switch for the new control: `new-conversation` acts at the page's `fetch`, as
 |---|---|
 | **Removes** | Nothing |
 | **Adds** | One goal. Permanent by design, as every closure's is |
-| **Leaves** | Codex writes no plan: its CLI offers the model no plan tool at SDK 0.164.0, re-checked on 2026-10-28 ([FIX-1951](https://linear.app/fixpoint-labs/issue/FIX-1951), not a blocker). Plan rows move about 1 s after their update ([FIX-1948](https://linear.app/fixpoint-labs/issue/FIX-1948)) |
+| **Leaves** | Codex writes no plan today: its CLI offers the model no plan tool at SDK 0.164.0, re-checked on 2026-10-28 ([poc](poc/codex-plan-tool/README.md)). Whether that waits as [FIX-1951](https://linear.app/fixpoint-labs/issue/FIX-1951) or is folded into FIX-2259 is [open](DECISIONS.md#open-codexs-plan). Plan rows move about 1 s after their update ([FIX-1948](https://linear.app/fixpoint-labs/issue/FIX-1948)) |
 
 **Net: up, a little.** One goal, for an epic's promise that stays true.
 
@@ -119,8 +121,8 @@ real-model check to keep green.
 1. **[D1](DECISIONS.md#d1) · One walk, four modes on one server, not the three checks side by side.**
    If wrong: a longer run whose failures are harder to split.
 
-**Open: none of its own.** Codex's plan leg grades its empty state until FIX-1951 can land
-([decided](DECISIONS.md#decided-not-asked)).
+**Open: one, shared with FIX-2259.** [Does Codex's plan wait for Codex's CLI, or does FIX-2259
+take it in now?](DECISIONS.md#open-codexs-plan) `cx:p` grades whichever answer both specs write.
 
 Improvement · closure (QA) · `goals/` only · medium, repeats per finding · epic
 [FIX-1907](../../epics/FIX-1907/SPEC.md), closure · required · runs now: every blocker (FIX-1914,

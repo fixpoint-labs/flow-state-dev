@@ -44,14 +44,30 @@ once. Then the walk splits by host, and `<m>:own` is graded on the host that has
 **Must be green first:** every blocker merged (done: FIX-1914, 1915, 1916, 1917, 1185, 2259), and
 the commit pinned before row 1 starts.
 
+<a name="open-codexs-plan"></a>
+## Open · Codex's plan: wait for Codex's CLI, or fold it into FIX-2259 now
+
+This is the owner's call, and it's shared with FIX-2259. The closure doesn't settle it. It grades
+whichever answer both specs write down.
+
+- **The evidence.** On 2026-10-28, at the SDK `main` pins (0.164.0), Codex's CLI still offers its
+  model no `update_plan` tool, and a scripted call gets `unsupported call: update_plan`. Turning on
+  `include_plan_tool`, `tools.update_plan` or `features.collaboration_modes` changes neither
+  ([poc/codex-plan-tool](poc/codex-plan-tool/README.md), with the command and the full output). A
+  ChatGPT-account sign-in on a real model is the one path not probed.
+- **If FIX-2259 takes Codex in** and a signed-in run shows Codex's list, `cx:p` grades Codex's own
+  rows the way `cc:p` does, and `cx:kept` grades them after the reload. Codex's plan then blocks
+  this run.
+- **If Codex waits for its CLI**, `cx:p` grades "Codex reports no plan." with no row, as this
+  issue's acceptance item says. FIX-2259's amendment says the same, and FIX-1951 stays a follow-up
+  that doesn't block.
+
+**My recommendation: wait for the CLI,** unless the signed-in probe finds the tool. FIX-2259 can't
+write a list that Codex never produces, so folding it in would hold the epic on another company's
+release. **What would change my mind:** a ChatGPT-account run that offers `update_plan`.
+
 ## Decided, not asked
 
-- **Codex's plan leg grades its empty state.** The issue's own acceptance item says so until
-  FIX-1951 lands. FIX-1951 can't land yet: re-run on 2026-10-28 against the SDK `main` now pins
-  (0.164.0), [FIX-1916's probe](../FIX-1916/poc/codex-wire/README.md) still finds no `update_plan`
-  among the tools Codex offers its model, and a scripted call still gets `unsupported call:
-  update_plan`. Turning on `include_plan_tool` or `tools.update_plan` in Codex's config changes
-  neither. FIX-1951 stays a related follow-up, not a blocker.
 - **FIX-1948 doesn't block.** On `main` after #4016 a real run moved each row about 1 s after its
   update, inside its own done-when; closing it is the owner's call in its own thread.
 - **Flow State's plan leg is not graded.** Its flows' sessions and plans are their own (ER-8), and
@@ -72,7 +88,6 @@ the commit pinned before row 1 starts.
 |---|---|
 | Re-run the modes' checks and stop there | Each mode alone is proved by its own child; row 3 re-runs them. What none can show is the modes together (D1) |
 | A deployed host | Harness modes are off on a deployed host (ER-12); the picker's check proves that |
-| Wait for FIX-1951 before the run | Codex's own CLI is what's missing. The closure would wait on another company's release |
 | A Kitchen Sink switch for the Flow State control | The product would carry a switch only a goal uses |
 
 ## How it got here
@@ -83,6 +98,9 @@ the commit pinned before row 1 starts.
 
 ## Notes from review
 
-*(none yet)*
+- **FSD Architect, folded:** `cx:p` no longer fixes Codex's empty state in place. It follows the
+  one answer FIX-2259 and FIX-1951 settle, now [open](#open-codexs-plan). The 0.164.0 re-check is
+  kept as a poc with its command and output. FIX-2259 is in the debt table, and `<m>:kept` grades
+  the plan as FIX-2259 keys it, after the reload. D1 unchanged.
 
-**Open: none of its own.**
+**Open: one,** [Codex's plan](#open-codexs-plan), shared with FIX-2259.
