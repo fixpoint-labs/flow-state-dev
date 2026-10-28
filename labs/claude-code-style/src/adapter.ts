@@ -455,7 +455,8 @@ function createWiredLab(fsd: Client): LabAdapter {
     if (task.assignee === undefined || (await flowOf(task.assignee).catch(() => undefined)) !== CODING_FLOW) return undefined;
     if (task.runSessionId === undefined) return harnesses.get(task.assignee);
     if (!harnesses.has(task.assignee)) {
-      harnesses.set(task.assignee, run(CODING_FLOW, task.runSessionId, "harness", {}).then((out) => out.harness as string, () => undefined));
+      const runSession = task.runSessionId;
+      harnesses.set(task.assignee, flowOfSession(runSession).then((flow) => run(flow, runSession, "harness", {})).then((out) => out.harness as string, () => undefined));
     }
     return harnesses.get(task.assignee);
   };
