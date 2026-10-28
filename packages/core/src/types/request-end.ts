@@ -16,7 +16,7 @@
  */
 
 import type { ModelUsageEntry } from "./flow";
-import type { HarnessRunSpend } from "./harness";
+import type { HarnessBilling, HarnessRunSpend } from "./harness";
 
 /** How a request ended, as a request-end hook is told. */
 export type RequestEndStatus = "completed" | "incomplete" | "failed" | "aborted" | "interrupted" | "suspended";
@@ -70,8 +70,9 @@ export interface RequestEnding {
    * What the request spent since its last ending (FIX-2145): its model calls
    * by model and its harness runs, as the request's spend ledger counted them.
    * Counted per ending, so a request that suspends and resumes hands each
-   * part on once. Always present; both parts are empty for a request that
-   * spent nothing.
+   * part on once: a harness run reported again after an ending is handed on
+   * as its change since. Always present; both parts are empty for a request
+   * that spent nothing.
    */
   readonly spend: RequestSpend;
 }
@@ -87,7 +88,10 @@ export interface RequestEnding {
 export interface RequestSpend {
   /** Model calls, by model id: the same entries `ctx.request.tokenUsage.byModel` reads. */
   readonly byModel: Readonly<Record<string, ModelUsageEntry>>;
-  /** Harness runs, one entry per run, in the order they were reported. */
+  /**
+   * Harness runs, one entry per run, as each was last reported, in the order
+   * they were last reported (FIX-2288: a run reported again moves to the end).
+   */
   readonly harnessRuns: readonly HarnessRunSpend[];
 }
 
@@ -158,13 +162,121 @@ export type SessionRequestEndHook = (ctx: import("./block").BlockContext) => Req
 
 /**
  * The context slot the runtime attaches the request's spend ledger under
- * (FIX-2145). Reached through {@link reportHarnessSpend} in `./harness`, never
- * by name from a handler body.
+ * (FIX-2145). Reached through {@link reportHarnessSpend} in `./harness` and
+ * {@link readRequestSpend}, never by name from a handler body.
  */
 export const REQUEST_SPEND_SEAM: unique symbol = Symbol.for("@flow-state-dev/request-spend-seam");
 
-/** The request's spend ledger, as a harness reaches it. */
+/** The request's spend ledger, as a harness and {@link readRequestSpend} reach it. */
 export interface RequestSpendSeam {
-  /** Add one settled harness run to the request's spend. */
+  /**
+   * Add one harness report to the request's spend. A report with a `runId`
+   * replaces that run's earlier report; one without is one settled run.
+   */
   reportHarnessRun(run: HarnessRunSpend): void;
+  /**
+   * What the request has spent since its last ending: the part its next
+   * ending hands on (FIX-2288). Reads, never takes: the ending still hands it
+   * on. Optional, so a seam built before it keeps compiling (BP-030).
+   */
+  pending?(): RequestSpend;
+}
+
+/**
+ * What the running request has spent since its last ending (FIX-2288): its
+ * model calls by model and its harness runs as last reported, the part its
+ * next ending hands on in `RequestEnding.spend`. A request that suspended and
+ * resumed reads only what it spent since it resumed, as its ending hands on.
+ *
+ * Framework-facing, like {@link reportHarnessSpend}: a framework package that
+ * shows a request's spend while it runs (a task's run, which writes it onto
+ * its task) reads it here. A flow author reads `ctx.request.tokenUsage`.
+ *
+ * @returns `undefined` when the context carries no spend ledger: a hand-built
+ *   test context, or a block run outside a request.
+ */
+export function readRequestSpend(ctx: object): RequestSpend | undefined {
+  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  return seam?.pending?.();
+}
+
+/**
+ * One source of a request's spend (FIX-2145, shared by FIX-2288): a model, or
+ * a harness billed one way. What {@link requestSpendSources} turns a
+ * {@link RequestSpend} into, so a worker's usage and a task's tokens count
+ * the same way.
+ */
+export interface RequestSpendSource {
+  /** The model id, or the harness name. */
+  source: string;
+  kind: "model" | "harness";
+  /** How a harness run was paid for; `null` for a model and when the harness can't tell. */
+  billing: HarnessBilling | null;
+  /** The model's prompt tokens, or what the harness reported as input. */
+  inputTokens: number;
+  /** The model's completion tokens, or what the harness reported as output. */
+  outputTokens: number;
+  /** The cost a harness reported on an `api-key` run, summed; `null` when none was. */
+  costUsd: number | null;
+  /** Harness runs, or request endings that called the model. */
+  runs: number;
+  /** Harness runs that reported no tokens. */
+  unreported: number;
+}
+
+/**
+ * Add one source into a list of sources, matched on source, kind and billing.
+ * Returns a new list; neither input is changed.
+ */
+export function addRequestSpendSource(sources: readonly RequestSpendSource[], add: RequestSpendSource): RequestSpendSource[] {
+  const at = sources.findIndex((s) => s.source === add.source && s.kind === add.kind && s.billing === add.billing);
+  if (at < 0) return [...sources, add];
+  const was = sources[at]!;
+  const merged: RequestSpendSource = {
+    ...was,
+    inputTokens: was.inputTokens + add.inputTokens,
+    outputTokens: was.outputTokens + add.outputTokens,
+    costUsd: was.costUsd === null && add.costUsd === null ? null : (was.costUsd ?? 0) + (add.costUsd ?? 0),
+    runs: was.runs + add.runs,
+    unreported: was.unreported + add.unreported
+  };
+  return sources.map((s, i) => (i === at ? merged : s));
+}
+
+/**
+ * What a request spent, as tokens per source (FIX-2145; one conversion, so a
+ * task's count and a worker's agree, FIX-2288). Input is the model's prompt
+ * tokens or what the harness reported as input; output likewise. A harness
+ * run that reported no tokens counts as a run, with `unreported: 1` and no
+ * tokens. A dollar figure only where a harness reported one on an `api-key`
+ * run. Empty when the request spent nothing.
+ */
+export function requestSpendSources(spend: RequestSpend): RequestSpendSource[] {
+  let sources: RequestSpendSource[] = [];
+  for (const [model, entry] of Object.entries(spend.byModel)) {
+    sources = addRequestSpendSource(sources, {
+      source: model,
+      kind: "model",
+      billing: null,
+      inputTokens: entry.prompt,
+      outputTokens: entry.completion,
+      costUsd: null,
+      runs: 1,
+      unreported: 0
+    });
+  }
+  for (const run of spend.harnessRuns) {
+    const reported = run.inputTokens !== null || run.outputTokens !== null;
+    sources = addRequestSpendSource(sources, {
+      source: run.harness,
+      kind: "harness",
+      billing: run.billing,
+      inputTokens: run.inputTokens ?? 0,
+      outputTokens: run.outputTokens ?? 0,
+      costUsd: run.billing === "api-key" && run.costUsd !== null ? run.costUsd : null,
+      runs: 1,
+      unreported: reported ? 0 : 1
+    });
+  }
+  return sources;
 }

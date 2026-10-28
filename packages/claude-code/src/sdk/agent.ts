@@ -14,6 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
+import { randomUUID } from "node:crypto";
 import { formatRunDuration, handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
 import { reportHarnessSpend, type BlockContext, type HarnessBilling } from "@flow-state-dev/core/types";
 import type {
@@ -1044,6 +1045,34 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // `undefined` until the query has started: a run that never started
       // spent nothing and reports nothing.
       let runBilling: { value: HarnessBilling | null } | undefined;
+      // What the run has spent so far, reported as it goes (FIX-2288), under
+      // one id for the run: its model as Claude Code's init message names it,
+      // and each model message's usage, kept once per message id (the SDK
+      // repeats it on every assistant message a parallel tool call splits one
+      // into). The result's whole-query count replaces the sum at the end.
+      const spendRunId = `claude-code:${randomUUID()}`;
+      let spendModel: string | null = runModel ?? null;
+      const usageByMessage = new Map<string, { inputTokens: number; outputTokens: number }>();
+      let unnamedMessages = 0;
+      const reportSpend = () => {
+        if (runBilling === undefined) return;
+        // Set inside the stream's callbacks, which narrowing can't see.
+        const whole = spentTokens as SdkAgentHandle["usage"];
+        let sum: SdkAgentHandle["usage"] = null;
+        for (const tokens of usageByMessage.values()) {
+          sum = { inputTokens: (sum?.inputTokens ?? 0) + tokens.inputTokens, outputTokens: (sum?.outputTokens ?? 0) + tokens.outputTokens };
+        }
+        const spent = whole ?? sum;
+        reportHarnessSpend(ctx, {
+          runId: spendRunId,
+          harness: CLAUDE_CODE_HARNESS,
+          model: spendModel,
+          inputTokens: spent?.inputTokens ?? null,
+          outputTokens: spent?.outputTokens ?? null,
+          costUsd,
+          billing: runBilling.value,
+        });
+      };
 
       // The vendor loop, hoisted so the abort branch can wait on it (bounded)
       // after the race below has been lost to the signal.
@@ -1212,6 +1241,24 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 }
               }
 
+              // **What the run has spent so far** (FIX-2288): its model as the
+              // init message names it, before any token, then each model
+              // message's usage as it lands.
+              if (message.type === "system" && message.subtype === "init") {
+                if (typeof message.model === "string" && message.model !== "") spendModel = message.model;
+                reportSpend();
+              } else if (message.type === "assistant" && message.message?.usage != null) {
+                const u = message.message.usage;
+                const tokens = {
+                  inputTokens: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+                  outputTokens: u.output_tokens ?? 0,
+                };
+                const id = message.message.id ?? `unnamed-${unnamedMessages++}`;
+                const was = usageByMessage.get(id);
+                usageByMessage.set(id, tokens);
+                if (was === undefined || was.inputTokens !== tokens.inputTokens || was.outputTokens !== tokens.outputTokens) reportSpend();
+              }
+
               // **Exactly the handed servers.** The init message lists every MCP
               // server the run connected to; one this block didn't hand it came
               // from somewhere the strict flags were meant to keep out.
@@ -1261,6 +1308,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   if (event.usage !== null) usage = event.usage;
                   if (event.spentTokens !== null) spentTokens = event.spentTokens;
                   if (event.costUsd !== null) costUsd = event.costUsd;
+                  // The whole query's count replaces the running sum.
+                  reportSpend();
                 }
               }
               if (ctx.signal.aborted) return;
@@ -1425,20 +1474,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         return handle;
       } finally {
         // What the run spent, into the request, however it ended (FIX-2145):
-        // whatever Claude Code had reported by now. Its result message is the
-        // only place it reports usage, so a run stopped before it reports one
-        // run with nothing counted.
-        if (runBilling !== undefined) {
-          // Set inside the stream's callbacks, which narrowing can't see.
-          const spent = spentTokens as SdkAgentHandle["usage"];
-          reportHarnessSpend(ctx, {
-            harness: CLAUDE_CODE_HARNESS,
-            inputTokens: spent?.inputTokens ?? null,
-            outputTokens: spent?.outputTokens ?? null,
-            costUsd,
-            billing: runBilling.value,
-          });
-        }
+        // whatever Claude Code had reported by now, replacing the run's
+        // earlier reports (FIX-2288). A run stopped before any usage reports
+        // one run with nothing counted.
+        reportSpend();
         // The last recording window, and anything still in flight. A clean run
         // can still end with a plan create unanswered (`error_max_turns` ends
         // the stream mid-exchange), so this is not a failure-path concern.

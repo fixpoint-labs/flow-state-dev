@@ -40,7 +40,17 @@ async function runReporting(block: ReturnType<typeof claudeCodeAgent>) {
     () => "returned",
     () => "threw",
   );
-  return { reported, outcome };
+  return { reported, outcome, settled: settledOf(reported) };
+}
+
+/** The run's last report (the one that stands), with its run id checked and dropped. */
+function settledOf(reported: HarnessRunSpend[]) {
+  const last = reported.at(-1);
+  if (last === undefined) return [];
+  expect(new Set(reported.map((r) => r.runId)).size).toBe(1);
+  expect(typeof last.runId).toBe("string");
+  const { runId: _runId, model: _model, ...rest } = last;
+  return [rest];
 }
 
 const RESULT: SdkMessageLike = {
@@ -56,7 +66,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
   it("reports the run's tokens, its reported cost, and api-key billing when Claude Code runs on a key", async () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([RESULT], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
-    const { reported, outcome } = await runReporting(block);
+    const { settled: reported, outcome } = await runReporting(block);
 
     expect(outcome).toBe("returned");
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
@@ -68,7 +78,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
       detached: true,
     });
 
-    const { reported } = await runReporting(block);
+    const { settled: reported } = await runReporting(block);
 
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "subscription" }]);
   });
@@ -76,7 +86,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
   it("reports a run that failed after its result arrived", async () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([RESULT], { apiKeySource: "ANTHROPIC_API_KEY" }, { throwAfter: true }), detached: true });
 
-    const { reported, outcome } = await runReporting(block);
+    const { settled: reported, outcome } = await runReporting(block);
 
     expect(outcome).toBe("threw");
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
@@ -88,7 +98,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
       detached: true,
     });
 
-    const { reported, outcome } = await runReporting(block);
+    const { settled: reported, outcome } = await runReporting(block);
 
     expect(outcome).toBe("threw");
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: null, outputTokens: null, costUsd: null, billing: null }]);
@@ -107,7 +117,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
     };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([result], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
-    const { reported } = await runReporting(block);
+    const { settled: reported } = await runReporting(block);
 
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 5350, outputTokens: 260, costUsd: 0.42, billing: "api-key" }]);
   });
@@ -116,7 +126,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
     const result: SdkMessageLike = { ...RESULT, usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 } };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([result], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
-    const { reported } = await runReporting(block);
+    const { settled: reported } = await runReporting(block);
 
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 5310, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]);
   });
@@ -138,9 +148,65 @@ describe("claudeCodeAgent reports its run's spend", () => {
     };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([window, window, RESULT], account), detached: true, onUsage: () => undefined });
 
-    const { reported } = await runReporting(block);
+    const { settled: reported } = await runReporting(block);
 
     expect(asked).toBe(2);
     expect(reported).toEqual([{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "subscription" }]);
+  });
+});
+
+/**
+ * FIX-2288: a Claude Code run reports as it goes. Why it matters: a task card's
+ * count must rise while a run works, name the model Claude Code says it runs
+ * (not the configured one), and end at the whole query's total, never that
+ * total added on top of the running sum.
+ */
+describe("claudeCodeAgent reports its spend as the run goes", () => {
+  const INIT: SdkMessageLike = { type: "system", subtype: "init", session_id: "sess_1", model: "claude-sonnet-4-5" };
+  const assistant = (id: string, input: number, output: number, cacheRead = 0): SdkMessageLike => ({
+    type: "assistant",
+    session_id: "sess_1",
+    message: { id, content: [{ type: "text", text: "working" }], usage: { input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead } },
+  });
+
+  it("names the init message's model before any tokens, then rises per assistant message, then ends at the result's whole-query total", async () => {
+    const result: SdkMessageLike = {
+      ...RESULT,
+      modelUsage: { "claude-sonnet-4-5": { inputTokens: 1000, outputTokens: 200, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } },
+    };
+    const block = claudeCodeAgent({
+      model: "claude-opus-4-1",
+      resolveClaudeAgent: scripted([INIT, assistant("m1", 100, 20), assistant("m2", 100, 20), assistant("m3", 100, 20), result], { apiKeySource: "ANTHROPIC_API_KEY" }),
+      detached: true,
+    });
+
+    const { reported } = await runReporting(block);
+
+    expect(reported.map((r) => [r.model, r.inputTokens, r.outputTokens])).toEqual([
+      // At init: the model Claude Code named, not the configured one, and no tokens yet (never 0).
+      ["claude-sonnet-4-5", null, null],
+      ["claude-sonnet-4-5", 100, 20],
+      ["claude-sonnet-4-5", 200, 40],
+      ["claude-sonnet-4-5", 300, 60],
+      // The result replaces the running sum: 1 000 + 200, not 1 300 + 260.
+      ["claude-sonnet-4-5", 1000, 200],
+      // The finally's report says the same.
+      ["claude-sonnet-4-5", 1000, 200],
+    ]);
+  });
+
+  it("counts a message's usage once when the SDK repeats it across the assistant messages sharing its id", async () => {
+    // A parallel tool call splits one model message into several assistant
+    // messages, each carrying the same usage.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scripted([INIT, assistant("m1", 100, 20, 50), assistant("m1", 100, 20, 50), assistant("m2", 10, 5)], {}, { throwAfter: true }),
+      detached: true,
+    });
+
+    const { reported, outcome } = await runReporting(block);
+
+    expect(outcome).toBe("threw");
+    // Stopped before its result: the running sum stands, cached input counted.
+    expect(reported.at(-1)).toMatchObject({ model: "claude-sonnet-4-5", inputTokens: 160, outputTokens: 25 });
   });
 });

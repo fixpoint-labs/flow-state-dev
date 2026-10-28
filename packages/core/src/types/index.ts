@@ -109,7 +109,15 @@ export { waitForUserOn } from "./wait-for-user";
 export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
-export { REQUEST_END_SEAM, REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded } from "./request-end";
+export {
+  REQUEST_END_SEAM,
+  REQUEST_SPEND_SEAM,
+  SESSION_REQUEST_END_HOOK,
+  addRequestSpendSource,
+  onRequestEnded,
+  readRequestSpend,
+  requestSpendSources
+} from "./request-end";
 export type {
   BackgroundFailure,
   RequestEndHook,
@@ -119,6 +127,7 @@ export type {
   RequestEnding,
   RequestSpend,
   RequestSpendSeam,
+  RequestSpendSource,
   SessionRequestEndHook
 } from "./request-end";
 

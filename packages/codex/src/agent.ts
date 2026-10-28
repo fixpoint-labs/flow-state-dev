@@ -15,6 +15,7 @@
  * could throw. A cancelled run returns no handle, so the hook is the only
  * carrier that survives exactly the deadline it exists for.
  */
+import { randomUUID } from "node:crypto";
 import { formatRunDuration, handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type {
@@ -299,9 +300,23 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // A manager settles runs on that difference (LAB-152's contract).
       let outcome: HarnessRunOutcome | null = null;
 
-      // What the run spent, into the request, however it ends (FIX-2145): the
-      // tokens Codex reported by then, never a cost (Codex reports none, and an
-      // estimate is not a reported cost).
+      // What the run spent, into the request, as it goes and however it ends
+      // (FIX-2145, FIX-2288): the tokens Codex reported by then, under one id
+      // for the run, never a cost (Codex reports none, and an estimate is not
+      // a reported cost). The model is the one the run was started with:
+      // Codex never names the model it ran, and `null` means its default.
+      const spendRunId = `codex:${randomUUID()}`;
+      const reportSpend = () =>
+        reportHarnessSpend(ctx, {
+          runId: spendRunId,
+          harness: CODEX_HARNESS,
+          model: runModel ?? null,
+          inputTokens: usage?.inputTokens ?? null,
+          outputTokens: usage?.outputTokens ?? null,
+          costUsd: null,
+          billing,
+        });
+      reportSpend();
       try {
         try {
           const stream = await runStreamed(thread, prompt, ctx.signal);
@@ -342,6 +357,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                 if (event.kind === "turn_completed") {
                   outcome = "finished";
                   usage = event.usage;
+                  reportSpend();
                 }
                 if (event.kind === "turn_failed") {
                   outcome = "failed";
@@ -428,13 +444,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
 
         return handle;
       } finally {
-        reportHarnessSpend(ctx, {
-          harness: CODEX_HARNESS,
-          inputTokens: usage?.inputTokens ?? null,
-          outputTokens: usage?.outputTokens ?? null,
-          costUsd: null,
-          billing,
-        });
+        reportSpend();
       }
     },
   });
