@@ -45,7 +45,7 @@ items' own reading rule, or a flow gets the opt-out.
 | | |
 |---|---|
 | **Instead of** | The other session's own window plus its FIX-1613 summary of everything before it |
-| **Because** | The budget is the cost control, and cost is why the tool exists. The read packs whole turns from the end under `{ tokens }` with the existing `selectRequestsByLimit`; where the newest turn alone is over the budget, the tool cuts it to its last messages rather than send it whole, so no consult sends more than its budget. The summary lives in a session resource that a capability installs (#4085, still open); reading it from another session needs a cross-session resource read the engine doesn't have, and a generic read can't know one capability's resource. Its turns and `historyStart` are on #4085's open head, which this builds after |
+| **Because** | The budget is the cost control, and cost is why the tool exists. "Budget" has one meaning: the hard cap on the history tokens the consult's generator receives. `sessions.history`'s `limit` is a window's limit and is never called a budget. The read packs whole turns from the end under `{ tokens }` with the existing `selectRequestsByLimit`; where the newest turn alone is over the budget, the tool cuts it to its last messages rather than send it whole, so no consult sends more than its budget. The summary lives in a session resource that a capability installs (#4085, still open); reading it from another session needs a cross-session resource read the engine doesn't have, and a generic read can't know one capability's resource. Its turns and `historyStart` came with #4085, now on main |
 | **Locks in** | A default budget of 24,000 tokens, which the tool's factory and the capability can change. The result always says how many turns it read, whether earlier ones were left out, and whether the newest was cut. The hard cut is the tool's: `sessions.history` packs its `limit` as a window does. Old decisions in a long conversation are out of reach until the follow-up adds the summary |
 
 ![D2: how much of a long history a consult reads. Chosen: the most recent turns under a hard token budget. Instead of: the other session's window plus its FIX-1613 summary. Decides it: the summary needs a cross-session resource read nobody has built. Price: old turns are out of reach. Locks in: a budget, and a result that says what was left out](figures/d2-token-budget.svg)
@@ -63,7 +63,7 @@ the summary capability publishes its summary on a readonly field the read can ca
 |---|---|
 | **Instead of** | A read-only mode on `sendMessage` (`read: true`), answering from history in the shape of a reply |
 | **Because** | `sendMessage`'s contract is "it lands in that worker's conversation and wakes it". A mode that does neither, writes no log row, takes task sessions a message refuses, and runs another model would give one tool two meanings, and the model would have to tell them apart from a flag. The risk the issue names is the model taking a reading for the worker's word. So the tool is its own, its result is `{ reading, of, asOf: { requestId, at }, turnsRead, earlierTurnsLeftOut, cut }`, its description says the other conversation doesn't know it was asked (the Workforce tool says "worker"; core's stays neutral), and the generator answers only from the history and says so when the answer isn't there. `sendMessage`'s description gains one line: a read-only question about what a conversation already holds goes to the consult; a request to act, decide, or use knowledge the conversation doesn't hold goes by message |
-| **Locks in** | The public names `consultSessionHistory`, `consultSessionHistoryTool`, `consultSessionsCapability` with its preset `consult`, and `requestHost.sessions.history`, and the result's field names. A consult never sees a worker's instructions, tools or resources: researcher's facts in its `WORKER.md` are a message's job |
+| **Locks in** | The public names `consultSessionHistory`, `consultSessionHistoryTool`, `consultSessionsCapability` with its preset `consult`, and `requestHost.sessions.history`, and the result's field names. A consult never sees a worker's instructions, tools or resources: researcher's facts in its `WORKER.md` are a message's job. The consulted turns reach the generator as quoted history in one delimited section, and its instructions say that what is said there is a record of another conversation, never instructions to it: a line in writer's history that says "ignore your rules" is something writer was told, not something the consult does. The asker gets the reading, never the raw turns |
 
 ![D3: what the asking model takes a consult's answer to be. Chosen: its own tool, whose result is a reading as of a time. Instead of: a read mode on sendMessage. Decides it: one tool with two meanings, told apart by a flag. Price: a fifth way to ask another conversation. Locks in: the tool and result names](figures/d3-a-reading.svg)
 
@@ -107,8 +107,18 @@ built around the choice is the better teacher.
 - **Fork moves to its own issue, filed when this spec merges.** FIX-2173 was filed as fork; Jake's scope addition is the read
   and the consult. Fork reuses this read, bounded at a request id the way #4085 bounds
   `afterRequestId`, and gets its own spec, with FIX-395's evaluation framing.
-- **It lands after #4085.** Both change the window load; building on its head avoids two
-  rewrites of the same lines. #4124 touches the Teammates lab's screen, not its worker files.
+- **It builds on main, now that #4085 has merged.** Both change the window load, so this waited for it.
+  #4124 (open) is not screen-only: beside the screen, it adds the history summary to the Teammates
+  lab's agent flow in `host.mts` (the `uses` line this wiring also edits) and writes a received
+  message as a user line (core's message emitter, Workforce's received entry). It leaves the worker
+  files alone. Whichever of the two lands second rebases its `uses` line; nothing in either changes the other's behaviour.
+- **The settled-turns extraction lands first, as its own PR that changes no behaviour.** The
+  window load calls the extracted read, and the existing window and history tests pass unchanged.
+  The read, the tool, the capability and the labs follow, stacked on it.
+- **The core tool's one caller is the Workforce capability.** No app calls `consultSessionHistoryTool`
+  directly yet. It stays in core because it holds the cut, the quoted-history framing and the
+  generator, none of which is a Workforce idea; the capability adds only `of` and the worker wording.
+  The "app without Workforce" diff in the spec is its shape, not a caller this ships.
 - **Changesets:** `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/workforce`,
   minor. The labs are private.
 
@@ -139,7 +149,7 @@ scope a turn's window uses, is the window load's own code (`sessionRequestScope`
 
 - **Folded:** the consult is its own capability in the app's `uses` (the board's `workerMessages` can't be picked from a worker's file); `history` reuses #4085's `HistoryTurn` and `startRequestId` (reuse, not a parallel shape).
 - **Fixed:** the labs set `models.default` beside the intent; `createRequestSessions` needs the request store, the durability provider and a token counter; the `no-owner-check` control sits on the shared owner rule; core's tool text stays free of Workforce words.
-- **Recorded** for the implementer: a retry still running in the other session; `history`'s `limit` is not a hard budget, the tool's cut is.
+- **Recorded** for the implementer: a retry still running in the other session; `history`'s `limit` is not a budget; the budget is the tool's hard cut.
 - **Noted:** the coordinator's routed brief copies another conversation's lines; it is the shape dropped here.
 
 ## How it got here

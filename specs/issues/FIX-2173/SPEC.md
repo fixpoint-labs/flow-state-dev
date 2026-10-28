@@ -10,7 +10,7 @@
 | **asks the main session what a finished background task said along the way** | Gets the task's result only, or a message that lands in the task's session and runs it again | Gets an answer read from the task session's turns. The task session runs nothing |
 | **names another of their own conversations by id** ("what did I decide in my other session?") | Is asked to paste it | Gets an answer read from that conversation |
 | **tries to consult a conversation that isn't theirs** | n/a | Is refused `no_session`, the same answer as a session that doesn't exist. Nothing is read ([D1](DECISIONS.md#d1)) |
-| **consults a conversation longer than the read's budget** | n/a | Gets an answer from its most recent turns, and the answer says earlier turns were left out ([D2](DECISIONS.md#d2)) |
+| **consults a conversation longer than the consult's budget** | n/a | Gets an answer from its most recent turns, and the answer says earlier turns were left out ([D2](DECISIONS.md#d2)) |
 | **needs the other worker to do something, or to know something new** | Messages it | Still messages it. A consult reads only what that conversation already holds, and says so ([D3](DECISIONS.md#d3)) |
 
 Jake asked for this after the history-window work (agent-mailbox PR 46, comment 6483134362):
@@ -121,9 +121,10 @@ the inventory). No new page.
 ```mermaid
 flowchart LR
   T["consultSessionHistory · in lead's turn"] --> W["workforce · resolve of · worker, task or session"]
-  W --> H["requestHost.sessions.history · owner rule · settled turns · budget"]
+  W --> H["requestHost.sessions.history · owner rule · settled turns · limit"]
   H -->|"undefined"| T
-  H -->|"settled turns · startRequestId"| G["one generator · no tools · utility model"]
+  H -->|"settled turns · startRequestId"| C["the tool's hard cut · the budget"]
+  C -->|"quoted as history"| G["one generator · no tools · utility model"]
   G -->|"a reading as of asOf"| T
   S["the window load of a turn"] --> L["one settled-turns read"]
   H --> L
@@ -151,18 +152,18 @@ sees is exactly what the other session's model would read next. The owner rule i
 | Ways to ask another conversation something. Searched `sendMessage`, `callWorker`, `getTask`, `listTasks`, `read`, `history`, `selectForContext`, `consult` across `packages/`. Four hits: `sendMessage` (lands and wakes), `sendMessage` with `wait: true` (a call: wakes, runs, waits), a message to `{ task }` (lands in the task's session), and `getTask` (the row's status and result, not its turns). **This would be the fifth way to ask another conversation a question, and the first that runs nothing there.** The closest is the call | **Beside it.** A read-only mode on `sendMessage` was weighed and dropped ([Considered and dropped](DECISIONS.md#considered-and-dropped)) |
 | `requestHost.sessions.read` (FIX-2160 D2) and its owner rule | **Extends** `sessions` with `history`. One owner check serves both |
 | The window load in `createExecutionContext`: `stores.request.list` with `sessionRequestScope`, `PAST_TURN_STATUSES`, the retried and parked filters, the settled items of an interrupted turn, then `loadLLMHistory` | **Builds on.** Extracted into one settled-turns read that the window and `history` both call |
-| `MessageLimit` and `selectRequestsByLimit`: whole turns from the end under `{ tokens }` | **Builds on** for `history`'s `limit`, which packs as a window does. The tool adds the hard cut where the newest turn alone is over its budget ([D2](DECISIONS.md#d2)) |
+| `MessageLimit` and `selectRequestsByLimit`: whole turns from the end under `{ tokens }` | **Builds on** for `history`'s `limit`, which packs as a window does and is never called a budget. The budget is only the tool's: a hard cap on the history tokens its generator receives, cut where the newest turn alone is over it ([D2](DECISIONS.md#d2)) |
 | `intent/utility`, core's cheap-model intent (the repair pass, `memoryExtractor`) | **Builds on.** It is the default model |
 | `checkTaskTarget`, `checkTargetSession` and the by-name lookup in `send-message.ts` | **Builds on** for `of`. The refusals that exist because a message runs the target (a coding task still open, a task session addressed as a conversation) don't apply to a read |
 | Per-worker preset selection (FIX-1459): a worker picks presets of capabilities in the app's `uses` | **Builds on.** The consult is its own capability the app puts in `uses`, because the board's `workerMessages` is added inside the flow and can't be picked from a file |
-| #4085's `HistoryTurn`, `turnScope` and `historyStart` (FIX-1613, open) | **Builds on.** `history` returns `HistoryTurn`s and the same `startRequestId` mark a window carries; no parallel shape |
+| #4085's `HistoryTurn`, `turnScope` and `historyStart` (FIX-1613, merged) | **Builds on.** `history` returns `HistoryTurn`s and the same `startRequestId` mark a window carries; no parallel shape |
 | The coordinator's routed brief (`coordinator/routed-brief.ts`), which copies another conversation's recent lines into a turn | **Kept.** It is the copying shape this drops for a read ([Considered and dropped](DECISIONS.md#considered-and-dropped)) |
-| FIX-1613's `historySummary` capability (#4085, open) | **Kept apart.** A consult doesn't read the other session's summary yet ([D2](DECISIONS.md#d2)) |
+| FIX-1613's `historySummary` capability (#4085, merged) | **Kept apart.** A consult doesn't read the other session's summary yet ([D2](DECISIONS.md#d2)) |
 
 | Adds | Existing piece considered | Why it doesn't fit, or how this is composed |
 |---|---|---|
 | `requestHost.sessions.history` | `sessions.read`; a block's own `ctx.session.items.history()` | `read` is flow and readonly state by design; `items.history()` is the running session's. Composed from the window's own read and `sessions.read`'s owner rule |
-| `consultSessionHistoryTool` in core | `summarizer`, `memoryExtractor` | Both summarise the running session. Composed: a read step and one tool-less generator |
+| `consultSessionHistoryTool` in core | `summarizer`, `memoryExtractor` | Both summarise the running session. Composed: a read step and one tool-less generator. Its one caller today is the Workforce capability; no app calls it directly yet |
 | `consultSessionsCapability` (preset `consult`) and its tool in Workforce | `sendMessage` and the board's `workerMessages` | Composed from core's tool and `sendMessage`'s target lookup. Its own capability so a worker can pick it from its file |
 
 | The debt | |
@@ -198,4 +199,4 @@ worker that models confuse with the other four.
 **Open: none.** D2 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
 Feature · `core` + `engine` + `workforce` + the Teammates and Claude Code-style labs · medium ·
-epic [FIX-2171](https://linear.app/fixpoint-labs/issue/FIX-2171) · builds on #4085 (FIX-1613)
+epic [FIX-2171](https://linear.app/fixpoint-labs/issue/FIX-2171) · builds on #4085 (FIX-1613, merged)
