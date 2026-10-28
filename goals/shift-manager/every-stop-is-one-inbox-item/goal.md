@@ -12,7 +12,8 @@
 - `b`: each stop answered once in the Inbox carries on as its kind says, `attempts` never past 1 and work counted once (`b:<stop>-same-attempt`); a second answer is told the stop is resolved (`b:answered-once`). The coding run resumes the same Claude Code session.
 - `c`: cancelling a suspended and a held task closes both items, and nothing the resumed block writes is kept (`c:item-closes`); `getTask` on the cancelled held row shows no open hold (`c:held-cancel-closes-questions`).
 - `d`: a steer into a task waiting on a review starts no request beside it, and one more turn takes it after the answer (`d:no-request-beside`); a held question is answered only by a steer carrying its id, through `updateTask` or a line typed in the task's session (`d:answer-by-id`); a plain message and a steer naming no question answer nothing (`d:plain-answers-nothing`).
-- `j1` *files work:* the filer's steer answers its own midway question and nothing else (`j1:filer-answers-own`, `j1:routed-answers-nothing`).
+- `j1` *files work* (amended by FIX-2241): the asker's midway question reaches desk.front's conversation as one received message naming the task and the question, and an `onMessageReceived` turn runs there (`j1:filer-hears`); that turn's steer answers it, from the filer, and the task completes on attempt 1 with no line from Alice after the filing (`j1:filer-answers-own`); the Inbox lists the waiting task once (`j1:one-item`); a coding task desk.front's model files for eng.coder asks through its marker, and its question reaches the conversation as one received message from eng.coder (`j1b:coder-heard`); the filer's steer on a question asked at filing is refused and answers nothing (`j1:routed-answers-nothing`).
+  - *Not walked here:* FIX-2241's `j1:routed-told`, a task routed to a workstream telling its filer the user answers it. The desk team has no project or workstream to route to; the routed text and its refusal are pinned model-free in `packages/workforce/test/project-coordinator.test.ts` ("tells the conversation that routed it the lead's midway question") and `midway-question-to-filer.test.ts`. The spec's `question-pays` control is likewise model-free there (a spent per-request limit), since the walk never spends a budget.
 - `j2` *writes a flow that asks:* on its own host with set deadlines, an approval reads as a no, an input fails its try, a held question goes ahead from its brief, and a user's stop cancels the task (`j2:approval-reads-no`, `j2:input-fails-try`, `j2:held-deadline-goes-ahead`, `j2:stop-cancels-task`).
 - `j3` *runs it locally:* the host restarts while six wait; all six are listed once, then each is answered once and carries on the same attempt (`j3:six-after-restart`, `j3:answered-after-restart`).
 
@@ -38,6 +39,7 @@
 - `GOAL_CONTROL=new-attempt` (FIX-2132's): an answered coding question starts a new attempt. Must fail **`b:coding-same-attempt`**.
 - `GOAL_CONTROL=cancel-keeps-item`: the cancel is written, but neither the suspension nor the row's holds are resolved. Must fail **`c:item-closes`** and **`c:held-cancel-closes-questions`**.
 - `GOAL_CONTROL=steer-ignores-mark`: steer admission ignores the row's open hold. Must fail **`d:no-request-beside`**.
+- `GOAL_CONTROL=no-question-message` (FIX-2241's): the board's `onMidwayQuestion` hook is gone. Must fail **`j1:filer-hears`** and **`j1b:coder-heard`**.
 - `GOAL_CONTROL=default-deadline` (FIX-2129's): a stop with no deadline gets one anyway. Must fail **`a:no-deadline-waits`**.
 
 ## Verdict log

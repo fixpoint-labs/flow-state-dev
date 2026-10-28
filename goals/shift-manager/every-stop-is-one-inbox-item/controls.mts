@@ -58,6 +58,18 @@ export const CONTROLS: Record<string, Control> = {
       },
     ],
   }),
+  // FIX-2241's: a board tells no filer its task's question.
+  "no-question-message": control("no-question-message", {
+    legs: ["j1"],
+    mustFail: ["j1:filer-hears", "j1b:coder-heard"],
+    patches: [
+      {
+        module: "packages/workforce/src/conversation-board/delivery.ts",
+        from: String.raw`onMidwayQuestion: async \(ctx, row, holds\) =>`,
+        to: "onMidwayQuestionOff: async (ctx: unknown, row: unknown, holds: unknown) =>",
+      },
+    ],
+  }),
   // FIX-2129's: a stop with no deadline gets 1.5 s anyway.
   "default-deadline": control("default-deadline", {
     legs: ["a"],
