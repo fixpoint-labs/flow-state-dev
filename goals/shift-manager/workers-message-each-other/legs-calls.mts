@@ -44,7 +44,7 @@ const SLACK_MS = 6_000;
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 
 /** A turn, read until its request ends: a call parks it on a wait, which isn't an end. */
-async function talkThrough(world: World, leg: string, worker: string, session: SessionSummary, words: string, timeoutMs = 180_000): Promise<Turn & { seen: string[]; seenAt: number[] }> {
+export async function talkThrough(world: World, leg: string, worker: string, session: SessionSummary, words: string, timeoutMs = 180_000): Promise<Turn & { seen: string[]; seenAt: number[] }> {
   const { alice } = world;
   const client = alice.flow(session.flowKind);
   const requestId = (await client.send("respond", { message: words }, { sessionId: session.id })).id;
@@ -74,7 +74,7 @@ async function talkThrough(world: World, leg: string, worker: string, session: S
  * When a parked turn went on: the first time it read as running again after
  * it first parked, as polled every 500 ms. A call's answer is the turn going on.
  */
-function resumedAt(turn: { seen: string[]; seenAt: number[] }): number | undefined {
+export function resumedAt(turn: { seen: string[]; seenAt: number[] }): number | undefined {
   const parked = turn.seen.indexOf("suspended");
   if (parked < 0) return undefined;
   const next = turn.seen.findIndex((status, i) => i > parked && status !== "suspended");

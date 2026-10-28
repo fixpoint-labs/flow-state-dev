@@ -8,13 +8,12 @@
  * Legs:     GOAL_LEGS=1,1b,2,3b,3,4,6,7,8,9,10,10b,10c,5 (default: all, in that order)
  *           GOAL_LEG9=<sub-leg,...> runs only those of leg 9 (legs-delivery.mts names them)
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
+import { RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages, openShiftManager, personPage, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
@@ -43,6 +42,7 @@ import { leg10, leg10b, leg10c, WAIT_DEFAULT_MS } from "./legs-calls.mts";
 import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
 import { leg9, SUB_LEGS, type Servers, type SubLeg } from "./legs-delivery.mts";
 import { faultPatches, type FaultName } from "./faults.mts";
+import { checkoutFor } from "./checkout.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
 const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "9", "10", "10b", "10c", "5"] as const;
@@ -68,28 +68,6 @@ const subLegs = new Set(
     .filter(Boolean),
 ) as Set<SubLeg>;
 for (const s of subLegs) if (!(SUB_LEGS as readonly string[]).includes(s)) throw new Error(`unknown sub-leg "${s}" in GOAL_LEG9`);
-
-/** The tree a run serves: this checkout, or another commit's own tree and install. */
-function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
-  const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
-  if (commit === undefined || commit === "") {
-    const head = git("rev-parse", "HEAD");
-    const dirty = git("status", "--porcelain", "--", ".", ":(exclude)goals").length > 0;
-    return { root: REPO_ROOT, commit: head, describe: `this checkout, \`${head.slice(0, 9)}\`${dirty ? " with uncommitted changes outside goals/" : ""}` };
-  }
-  const sha = git("rev-parse", `${commit}^{commit}`);
-  const root = join(tmpdir(), "fsd-goal-messages-trees", sha.slice(0, 12));
-  if (!existsSync(join(root, "package.json"))) {
-    mkdirSync(root, { recursive: true });
-    execFileSync("sh", ["-c", `git -C "${REPO_ROOT}" archive --format=tar ${sha} | tar -x -C "${root}"`]);
-  }
-  if (!existsSync(join(root, "node_modules"))) {
-    say(`installing ${sha.slice(0, 9)} in ${root}`);
-    const installed = spawnSync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: root, encoding: "utf8", timeout: 900_000 });
-    if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
-  }
-  return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
-}
 
 /** The names FIX-2070 removed: the vocabulary sweep's two rows (FIX-2242 D2), so there is one list. */
 type RetiredRow = { id: string; files: RegExp; pattern: RegExp };
