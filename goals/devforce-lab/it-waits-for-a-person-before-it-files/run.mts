@@ -335,7 +335,7 @@ await runGoal(async (failures) => {
         const rows = await lab.rows();
         const ids = Object.values(rows).map((r) => r.id);
         if (ids.length !== 1) note("2", `after approve the board holds ${ids.length} row(s): ${ids.join(", ")}`);
-        if (row !== undefined && (row.input as { issue?: string } | undefined)?.issue !== feature.issue) {
+        if (row !== undefined && (row.input as { harnessFeature?: { issue?: string } } | undefined)?.harnessFeature?.issue !== feature.issue) {
           note("2", `the row "${row.id}" names ${JSON.stringify(row.input)}, not "${feature.issue}"`);
         }
         if (row?.status !== "completed") note("2", `the row settled "${row?.status}", wanted "completed"`);

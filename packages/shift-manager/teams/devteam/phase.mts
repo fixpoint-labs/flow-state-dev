@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ASK_MARKER_DIR, assertBaseRefExists, harnessFeatureOf } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_DIR, assertBaseRefExists, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import type {
   CompletionRunContext,
   PhaseSpec,
@@ -44,6 +44,20 @@ import type { WorkerOf } from "./worker-config.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
+
+/**
+ * A feature row's `input`: its issue in {@link PHASE}, under the manager's
+ * feature key. Here rather than in the EM's file, which imports no harness
+ * package: the EM files rows, it never runs one.
+ */
+export function featureInput(issue: string): Record<string, unknown> {
+  return { [HARNESS_FEATURE_KEY]: { issue, phase: PHASE } };
+}
+
+/** The issue a row's `input` names as feature work, or `undefined` for none. */
+export function featureIssueOfInput(input: unknown): string | undefined {
+  return harnessFeatureOf(input)?.issue;
+}
 
 /**
  * What {@link defineImplementPhase}'s `validate` learned, handed back to `isDone`:

@@ -44,7 +44,6 @@ import { defineFlow, generator, handler, sequencer, SuspensionRejectedError } fr
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import {
   defineSessionBoard,
   projectAddressSchema,
@@ -58,7 +57,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 
-import { PHASE } from "../../../phase.mts";
+import { featureInput, featureIssueOfInput } from "../../../phase.mts";
 import {
   ASK_ENTRY,
   defineReadOwnFacts,
@@ -128,7 +127,7 @@ export const askInputSchema = z.object({
  * for a row that names none.
  */
 export function featureIssueOf(row: { input?: unknown }): string | undefined {
-  return harnessFeatureOf(row.input)?.issue;
+  return featureIssueOfInput(row.input);
 }
 
 /** What the turn reads off the worker it runs as: its file's settings. */
@@ -225,10 +224,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     if (filed !== undefined) return { taskId: filed.id, existed: true };
     const added = await tasks.addTask({
       goal: input.goal,
-      input: {
-        [HARNESS_FEATURE_KEY]: { issue: input.issue, phase: PHASE },
-        ...(input.project === undefined ? {} : { project: input.project }),
-      },
+      input: { ...featureInput(input.issue), ...(input.project === undefined ? {} : { project: input.project }) },
       assignee: options.coderWorker,
       maxAttempts: input.maxAttempts,
     });

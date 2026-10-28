@@ -173,7 +173,7 @@ async function runRow(lab: Lab, projectId: string, issue: string): Promise<Task 
   let row: Task | undefined;
   while (Date.now() < deadline) {
     const rows = Object.values(await lab.stored("user", board)) as Task[];
-    row = rows.find((r) => (r.input as { issue?: string } | undefined)?.issue === issue);
+    row = rows.find((r) => (r.input as { harnessFeature?: { issue?: string } } | undefined)?.harnessFeature?.issue === issue);
     if (row !== undefined && SETTLED.has(row.status)) return row;
     if (row === undefined || row.status === "pending") await emAct(lab, session, DRAIN_ENTRY, {});
     await sleep(200);
