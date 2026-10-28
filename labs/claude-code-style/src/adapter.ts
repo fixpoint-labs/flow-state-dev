@@ -30,6 +30,7 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { modeById, MODES, type ModeId } from "./modes";
+import { resultSummary } from "./lib/result-summary";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -250,7 +251,7 @@ function entriesOf(items: readonly Item[]): ThreadEntry[] {
         taskId: taskId!,
         title: title!,
         status,
-        summary: summary ?? text,
+        summary: resultSummary(summary ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
       });
