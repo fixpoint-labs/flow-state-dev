@@ -369,7 +369,7 @@ defineFlow({
 });
 ```
 
-`summarize` is any block that takes `{ summary: string | null, turns: LLMMessage[] }` and returns `{ summary: string }`. `summary` is the summary so far (`null` the first time) and `turns` are the turns being added, oldest first. Core's `utility.summarizer` fits as is. Give it an objective like the first one above that says what `summary` and `turns` are. Without it, a small model will sometimes summarize only the new turns and drop what the earlier summary held.
+`summarize` is any block that takes `{ summary: string | null, turns: LLMMessage[] }` and returns `{ summary: string, keyPoints?: string[] }`. `summary` is the summary so far (`null` the first time) and `turns` are the turns being added, oldest first. Key points are kept as a list under the summary. Core's `utility.summarizer` fits as is. Give it an objective like the first one above that says what `summary` and `turns` are. Without it, a small model will sometimes summarize only the new turns and drop what the earlier summary held.
 
 `historySummary` also takes `name`, the resource's name and storage key (default `historySummary`).
 

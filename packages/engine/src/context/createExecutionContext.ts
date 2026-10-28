@@ -2945,6 +2945,7 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
+        turnOrder: async () => (await readTurns()).map((t) => t.requestId),
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {

@@ -337,7 +337,8 @@ export async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => RuntimeItem[]
+  readLiveItems?: () => RuntimeItem[],
+  turnOrder?: () => Promise<string[]>
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -345,7 +346,7 @@ export async function loadLLMHistory(
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
   const selectedTurns = await selectRequestsByLimit(
-    afterRequest(priorRequests, query?.afterRequestId),
+    await afterRequest(priorRequests, query?.afterRequestId, turnOrder),
     query?.limit,
     tokenCounter,
     resolveModelId,
@@ -376,11 +377,21 @@ export async function loadLLMHistory(
  * The turns after `requestId`, for `history({ afterRequestId })`. A turn the
  * window does not hold is older than every turn it does, so naming one (or
  * none) leaves the turns whole.
+ *
+ * `turnOrder` is every turn in order, unsettled ones included: a summary's
+ * mark can be a turn still waiting, which `priorRequests` leaves out.
  */
-function afterRequest(priorRequests: RequestRecord[], requestId: string | undefined): RequestRecord[] {
+async function afterRequest(
+  priorRequests: RequestRecord[],
+  requestId: string | undefined,
+  turnOrder?: () => Promise<string[]>
+): Promise<RequestRecord[]> {
   if (requestId === undefined) return priorRequests;
-  const index = priorRequests.findIndex((r) => r.id === requestId);
-  return index === -1 ? priorRequests : priorRequests.slice(index + 1);
+  const order = turnOrder !== undefined ? await turnOrder() : priorRequests.map((r) => r.id);
+  const index = order.indexOf(requestId);
+  if (index === -1) return priorRequests;
+  const after = new Set(order.slice(index + 1));
+  return priorRequests.filter((r) => after.has(r.id));
 }
 
 /**
@@ -482,6 +493,8 @@ export function createSessionItemViews(
     readLiveItems?: () => RuntimeItem[];
     /** Backs `turns()`; it reads beyond the loaded window, so the context supplies it. */
     readTurns?: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
+    /** Every turn's id in order, unsettled ones included, for `afterRequestId`. */
+    turnOrder?: () => Promise<string[]>;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -545,7 +558,8 @@ export function createSessionItemViews(
         options.tokenCounter,
         options.resolveModelId,
         query,
-        options.readLiveItems
+        options.readLiveItems,
+        options.turnOrder
       ),
     selectForContext: (query) => select(query),
     turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),

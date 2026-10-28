@@ -115,6 +115,24 @@ describe("historySummary on the engine", () => {
     expect(users).toEqual(["u4", "u5", "u6", "u7"]);
   });
 
+  it("keeps the key points core's summarizer returns beside its summary", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    // The shape of core's `summarizer` output: facts can land in `keyPoints` alone.
+    const withKeyPoints = handler({
+      name: "earlier-turns",
+      inputSchema: z.object({ summary: z.string().nullable(), turns: z.array(z.any()) }),
+      outputSchema: z.object({ summary: z.string(), keyPoints: z.array(z.string()).optional() }),
+      execute: () => ({ summary: "The user planned a launch.", keyPoints: ["Launch date: 3 May", "Codename: Blue Heron"] })
+    });
+    await talk(stores, chatFlow({ window: 4, summarize: withKeyPoints as never }), calls, 6);
+
+    const { system } = lastInput(calls);
+    expect(system).toContain("The user planned a launch.");
+    expect(system).toContain("Launch date: 3 May");
+    expect(system).toContain("Codename: Blue Heron");
+  });
+
   it("changes nothing for a flow without it", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
@@ -149,6 +167,30 @@ describe("historySummary on the engine", () => {
     expect(results.map((r) => r.error)).toEqual(Array(7).fill(undefined));
     const row = await stores.resourceState.get("session", "s", "historySummary");
     expect(row?.state).toMatchObject({ summary: null, folds: 0, gap: true, complete: false });
+  });
+
+  it("discards its fold when another turn of the conversation folded first", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    // While this turn summarizes, another turn's fold commits: it adds turns
+    // the summary holds without moving the mark.
+    const racing = handler({
+      name: "earlier-turns",
+      inputSchema: z.object({ summary: z.string().nullable(), turns: z.array(z.any()) }),
+      outputSchema: z.object({ summary: z.string() }),
+      execute: async (_input, ctx) => {
+        await (ctx.resources as any).historySummary.updateState((state: any) => ({
+          ...state,
+          summary: "the other turn's summary",
+          folds: state.folds + 1
+        }));
+        return { summary: "this turn's stale summary" };
+      }
+    });
+    await talk(stores, chatFlow({ window: 4, summarize: racing as never }), calls, 5);
+
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    expect(row?.state).toMatchObject({ summary: "the other turn's summary", folds: 1, throughRequestId: null });
   });
 
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {

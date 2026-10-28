@@ -64,8 +64,8 @@ const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.p
 type FoldPlan = {
   summary: string | null;
   turns: LLMMessage[];
-  /** The mark this plan read; another turn moving it first discards this plan. */
-  expectedThroughStartedAtMs: number | null;
+  /** The folds this plan read; another turn folding first discards this plan. */
+  expectedFolds: number;
   /** The oldest turn after the mark now. A failed fold records it, so its leaving unfolded is seen. */
   oldestUnfolded: string | null;
   next: Pick<
@@ -77,7 +77,8 @@ type FoldPlan = {
 export interface HistorySummaryOptions {
   /**
    * The block that writes the summary: handed the summary so far and the turns
-   * to fold, returning `{ summary }`. Core's `summarizer(...)` fits as is.
+   * to fold, returning `{ summary }`, optionally with `keyPoints`, which are kept
+   * under the summary. Core's `summarizer(...)` returns that shape.
    */
   summarize: BlockDefinition<any, any>;
   /** The resource's accessor name and storage key. Default `historySummary`. */
@@ -191,7 +192,7 @@ export function historySummary(options: HistorySummaryOptions) {
       return {
         summary: state.summary,
         turns: folded.flatMap((t) => t.messages),
-        expectedThroughStartedAtMs: state.throughStartedAtMs,
+        expectedFolds: state.folds,
         oldestUnfolded: after[0]?.requestId ?? state.nextRequestId,
         next: {
           throughRequestId: last?.requestId ?? state.throughRequestId,
@@ -207,19 +208,25 @@ export function historySummary(options: HistorySummaryOptions) {
 
   const write = handler({
     name: `${name}-write`,
-    inputSchema: z.object({ summary: z.string() }).passthrough(),
+    inputSchema: z.object({ summary: z.string(), keyPoints: z.array(z.string()).optional() }).passthrough(),
     resources,
     execute: async (output, ctx) => {
+      // Core's `summarizer` can put a fact in `keyPoints` alone: keep them
+      // with the summary, so the next fold and the model both read them.
+      const summary =
+        output.keyPoints !== undefined && output.keyPoints.length > 0
+          ? `${output.summary}\n\nKey points:\n${output.keyPoints.map((point) => `- ${point}`).join("\n")}`
+          : output.summary;
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
       await update(ctx as BlockContext, (state) =>
         // Another turn of this conversation folded first: keep its write.
-        state.throughStartedAtMs !== decided.expectedThroughStartedAtMs
+        state.folds !== decided.expectedFolds
           ? state
           : {
               ...state,
               ...decided.next,
-              summary: output.summary,
+              summary,
               folds: state.folds + 1,
               attempts: state.attempts + 1,
             }
@@ -243,7 +250,7 @@ export function historySummary(options: HistorySummaryOptions) {
       // seen, and any turns already lost.
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       await update(ctx as BlockContext, (state) =>
-        decided == null || state.throughStartedAtMs !== decided.expectedThroughStartedAtMs
+        decided == null || state.folds !== decided.expectedFolds
           ? { ...state, attempts: state.attempts + 1 }
           : {
               ...state,
