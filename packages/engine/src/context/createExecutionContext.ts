@@ -848,18 +848,11 @@ export async function createExecutionContext<
     settled,
     messages: settled ? turnMessages(record) : []
   });
-  const isParked = async (record: RequestRecord): Promise<boolean> => {
-    if (record.status !== "interrupted") return false;
-    try {
-      return (await parkedInterruptedIds(options.effectiveRuntimeConfig?.durabilityProvider, [record])).has(record.id);
-    } catch {
-      // The same reading the window load takes when a gate read fails.
-      return false;
-    }
-  };
   // An interrupted turn a retry re-ran still takes its row in the window, so
   // it is listed settled with nothing to read, by id too: history reads the
   // retry, and a summary counting the window's turns counts what it counts.
+  // Any other interrupted turn is open: parked ones run again, and `/continue`
+  // can re-enter the rest under the same id and add their final output.
   const isRetried = (record: RequestRecord): boolean => record.status === "interrupted" && retried.has(record.id);
   const emptyTurn = (record: RequestRecord): HistoryTurn => ({ ...historyTurn(record, true), messages: [] });
   const readTurns = async (query?: HistoryTurnQuery): Promise<HistoryTurn[]> => {
@@ -873,7 +866,7 @@ export async function createExecutionContext<
         // Read by id, so held to the session's scope: an id from anywhere
         // never reads another session's turn.
         if (record === undefined || !requestInSessionScope(record, turnScope)) continue;
-        const open = record.status === "in_progress" || record.status === "suspended" || (await isParked(record));
+        const open = record.status === "in_progress" || record.status === "suspended" || record.status === "interrupted";
         // A turn that ended outside history (failed, aborted) is over with
         // nothing to read, as is one a retry re-ran.
         const ended = !open && !PAST_TURN_STATUSES.includes(record.status);
@@ -883,7 +876,7 @@ export async function createExecutionContext<
     }
     const windowTurns = priorRequests
       .filter((r) => r.id !== requestId)
-      .map((r) => (isRetried(r) ? emptyTurn(r) : historyTurn(r, !parked.has(r.id))));
+      .map((r) => (isRetried(r) ? emptyTurn(r) : historyTurn(r, r.status !== "interrupted")));
     const listed = new Set(windowTurns.map((t) => t.requestId));
     const openTurns = (
       await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
