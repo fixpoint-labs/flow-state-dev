@@ -871,9 +871,16 @@ export async function createExecutionContext<
       }
       return turns.sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
     }
+    // An interrupted turn a retry re-ran still takes its row in the window, so
+    // it is listed as settled with nothing to read (history reads the retry):
+    // a summary counting the window's turns counts what the window counts.
     const windowTurns = priorRequests
-      .filter((r) => r.id !== requestId && !(r.status === "interrupted" && retried.has(r.id)))
-      .map((r) => historyTurn(r, !parked.has(r.id)));
+      .filter((r) => r.id !== requestId)
+      .map((r) =>
+        r.status === "interrupted" && retried.has(r.id)
+          ? { ...historyTurn(r, true), messages: [] }
+          : historyTurn(r, !parked.has(r.id))
+      );
     const listed = new Set(windowTurns.map((t) => t.requestId));
     const openTurns = (
       await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })

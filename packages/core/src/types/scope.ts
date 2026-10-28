@@ -160,7 +160,9 @@ export type SessionItemViews = {
    * The session's past turns, oldest first. With no query: the turns the
    * window holds, plus any turn of this session that has not settled yet
    * (running, suspended, or parked), so a caller can tell which turns are
-   * still open. With `requestIds`: those turns, read from the store when the
+   * still open. An interrupted turn a retry re-ran is listed settled with no
+   * messages: it holds a place in the window, and history reads the retry.
+   * With `requestIds`: those turns, read from the store when the
    * window no longer holds them.
    */
   turns: (query?: HistoryTurnQuery) => Promise<HistoryTurn[]>;
