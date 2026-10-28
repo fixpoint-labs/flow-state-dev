@@ -255,14 +255,53 @@ function linksIn(texts: readonly string[]): PullRequestLink[] {
 }
 
 /**
+ * The pull request a create-pull-request tool's result describes: the
+ * outermost object whose `html_url` (else `url`) is a pull request's web link.
+ * JSON strings are parsed, so a result wrapped in a text block reads too.
+ * `null` when no object names one.
+ */
+function createdPullRequestIn(output: unknown): PullRequestLink | null {
+  let level: unknown[] = [output];
+  for (let depth = 0; depth <= 8 && level.length > 0; depth++) {
+    const next: unknown[] = [];
+    for (const value of level) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) continue;
+        try {
+          next.push(JSON.parse(trimmed));
+        } catch {
+          // Not JSON: no fields to read.
+        }
+      } else if (Array.isArray(value)) {
+        next.push(...value);
+      } else if (value !== null && typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        for (const key of ["html_url", "url"]) {
+          const link = stringField(record, key);
+          const ref = link === null ? null : pullRequestRefFromUrl(link);
+          if (ref !== null) return ref;
+        }
+        next.push(...Object.values(record));
+      }
+    }
+    level = next;
+  }
+  return null;
+}
+
+/**
  * GitHub's rule, for github.com and GitHub Enterprise hosts.
  *
  * A call is a create call when its command runs `gh pr create` (or `gh pr
  * new`), or when the tool is a create-pull-request tool (GitHub's MCP
- * `create_pull_request`, under any harness's prefix). The pull request is the
- * link the call's OUTPUT names; the command is read from the arguments, never
- * the link, so a link the agent only typed is not a pull request it opened. A
- * `gh pr view`, `gh pr list` or search names links and is not a create call.
+ * `create_pull_request`, under any harness's prefix). A create call opens one
+ * pull request, read from the call's OUTPUT: the tool's result fields
+ * (`html_url`, else `url`), or the first link `gh pr create` prints. Other links
+ * in the output, such as one the new pull request's body names, are not
+ * opened. The command is read from the arguments, never the link, so a link
+ * the agent only typed is not a pull request it opened. A `gh pr view`, `gh pr
+ * list` or search names links and is not a create call.
  *
  * A create that fails because the branch already has a pull request still
  * names it ("already exists: <link>"), and it counts: the session's branch has
@@ -276,9 +315,11 @@ export const githubPullRequestRule: PullRequestRule = {
     const tool = bareToolName(call.name);
     let title: string | null = null;
     let branch: string | null = null;
+    let created: PullRequestLink | null = null;
     if (tool === "create_pull_request") {
       title = stringField(args, "title");
       branch = stringField(args, "head");
+      created = createdPullRequestIn(call.output);
     } else {
       // The parsed fields first, so a quoted title reads unescaped; the raw
       // arguments last, for a harness that passes a bare command string.
@@ -288,7 +329,10 @@ export const githubPullRequestRule: PullRequestRule = {
       title = flagValue(command, ["--title", "-t"]);
       branch = flagValue(command, ["--head", "-H"]);
     }
-    return linksIn(stringsIn(call.output)).map((ref) => ({ ...ref, title, branch, state: "open" }));
+    // A result with no structured fields (plain text, an "already exists"
+    // error) names the pull request as its first link.
+    created ??= linksIn(stringsIn(call.output))[0] ?? null;
+    return created === null ? [] : [{ ...created, title, branch, state: "open" }];
   },
 };
 

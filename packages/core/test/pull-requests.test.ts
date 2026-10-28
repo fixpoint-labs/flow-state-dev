@@ -86,6 +86,28 @@ describe("findOpenedPullRequests — a create call whose result names it", () =>
     }
   });
 
+  it("records only the pull request a create call opened, not one its body links", () => {
+    const body = "Follow-up to https://github.com/acme/app/pull/12";
+    const args = { owner: "acme", repo: "app", title: "Eighty-nine", head: "eighty-nine", base: "main", body };
+    const created = { number: 89, html_url: "https://github.com/acme/app/pull/89", body, title: "Eighty-nine" };
+    // As the tool's JSON, wrapped in a text block the way an MCP result arrives, and as GitHub's own MCP server answers.
+    const shapes = [
+      JSON.stringify(created),
+      [{ type: "text", text: JSON.stringify(created) }],
+      JSON.stringify({ id: "1", url: "https://github.com/acme/app/pull/89", body }),
+    ];
+    for (const output of shapes) {
+      expect(findOpenedPullRequests(toolItem("mcp__github__create_pull_request", args, output)).map((r) => r.number)).toEqual([89]);
+    }
+  });
+
+  it("records only the first pull request a `gh pr create` prints", () => {
+    const item = toolItem("bash", { command: "gh pr create --fill && gh pr view 12 --json url -q .url" }, {
+      stdout: "https://github.com/acme/app/pull/89\nhttps://github.com/acme/app/pull/12\n",
+    });
+    expect(findOpenedPullRequests(item).map((r) => r.number)).toEqual([89]);
+  });
+
   it("counts a create that failed because the branch already has the pull request", () => {
     expect(refsOf(cursorAlreadyExists)).toEqual(["Acme-Org/My.App#88"]);
   });
