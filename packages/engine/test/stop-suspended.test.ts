@@ -867,7 +867,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
 
     // An answer can't be replayed onto a gate the log does not hold: refused
     // as retryable, so its sender keeps it for when the turn parks again.
-    const answered = await resumeWaitGate(h.parked, gate, { answered: true, answer: "late" }, "ask:s1");
+    const answered = await resumeWaitGate(h.parked, gate, { answered: true, answer: "late" }, "wait:s1");
     expect(answered).toMatchObject({ ok: false, refused: "busy" });
     expect(h.finished).toHaveLength(0);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");

@@ -12,7 +12,7 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-const MARK = { gateId: "ask:tasks:t#1", deadline: 9_000_000_000_000, requestId: "r1" };
+const MARK = { gateId: "wait:tasks:t#1", deadline: 9_000_000_000_000, requestId: "r1" };
 
 /** A board plus a way to put the old mark back on a stored row. */
 interface LegacyBacking {
