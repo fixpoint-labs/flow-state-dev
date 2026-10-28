@@ -134,7 +134,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   /** `createTask` for coder: a card in the filer's conversation. The run gets the filer's project, or is refused before it starts. */
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const project = workProjects.get(w.row.id);
-    const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
+    const id = nextId("t");
+    const task: FixtureTask = { id, to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId, ...(project === undefined ? {} : { runSessionId: id }) };
     tasks = [...tasks, task];
     push(w, { kind: "task", id: nextId("k"), taskId: task.id });
     if (!project) return;
@@ -344,8 +345,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
     },
 
-    watchRun(taskId, onChange) {
-      return watch(() => onChange(runs.get(taskId) ?? []));
+    watchRun(sessionId, onChange) {
+      return watch(() => onChange(runs.get(sessionId) ?? []));
     },
   };
 }
