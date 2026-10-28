@@ -14,6 +14,7 @@ import { taskSpendSchema, type TaskSpend, type TaskSpendRequest, type TaskSpendS
 
 export type { TaskSpendView };
 import type { Task } from "./schema/task";
+import { isTerminalStatus } from "./schema/task-status";
 
 /** One spend write: a request's live part, or what its ending handed on. */
 export interface TaskSpendWrite {
@@ -27,6 +28,7 @@ export interface TaskSpendWrite {
 /** The harness and model a request's spend names last, if any. */
 function namesOf(spend: RequestSpend): { harness?: string; harnessModel?: string | null; model?: string } {
   const run = spend.harnessRuns.at(-1);
+  // `byModel` is keyed in last-called order, so the last key is the latest model.
   const model = Object.keys(spend.byModel).at(-1);
   return {
     ...(run !== undefined ? { harness: run.harness, harnessModel: run.model ?? null } : {}),
@@ -67,8 +69,13 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  * A task's spend, folded for a reader (FIX-2288), or `null` when the task
  * never ran in a request of its own. Every request counts, every attempt's
  * included; a request's live part counts until its ending settles it.
+ *
+ * `live` is never true on a terminal row: a request whose process died keeps
+ * its last live part (its tokens were spent, so they still count), and no
+ * ending will ever clear it, so the row's status, not the part, says the task
+ * stopped running.
  */
-export function taskSpendView(task: Pick<Task, "spend">): TaskSpendView | null {
+export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "status">>): TaskSpendView | null {
   if (task.spend == null) return null;
   const { requests } = taskSpendSchema.parse(task.spend);
   if (requests.length === 0) return null;
@@ -92,6 +99,6 @@ export function taskSpendView(task: Pick<Task, "spend">): TaskSpendView | null {
     inputTokens: reportedAny ? input : null,
     outputTokens: reportedAny ? output : null,
     unreported,
-    live: requests.some((entry) => entry.live !== null),
+    live: (task.status === undefined || !isTerminalStatus(task.status)) && requests.some((entry) => entry.live !== null),
   };
 }

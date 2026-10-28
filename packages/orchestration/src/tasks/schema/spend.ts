@@ -61,7 +61,7 @@ export const taskSpendViewSchema = z.object({
   outputTokens: z.number().nullable(),
   /** `true` while some source in the count hasn't reported its tokens. */
   unreported: z.boolean(),
-  /** `true` while a request for the task is running. */
+  /** `true` while a request for the task is running; never on a terminal row. */
   live: z.boolean(),
 });
 

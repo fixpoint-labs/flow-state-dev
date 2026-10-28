@@ -125,6 +125,19 @@ describe.each([
     expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, unreported: false, live: false });
   });
 
+  it("keeps a dead request's live tokens but stops reading live once a retry finishes the task", async () => {
+    // A worker that died after a live write never runs its ending, so its live part is never cleared.
+    const { collection, claim } = await claimed();
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(200, 50) }, { claim });
+    await collection.fail("t", "worker died", { ifAllowed: true, claim });
+    const second = (await collection.claim("w", { leaseDurationMs: 10_000 }))!;
+    const claim2 = ticketForClaim(collection.collectionId, second);
+    await collection.recordSpend!("t", { requestId: "q2", part: "settle", spend: harnessRun(1000, 200) }, { claim: claim2 });
+    await collection.complete("t", "done", { ifAllowed: true, claim: claim2 });
+
+    expect(view(collection)).toMatchObject({ inputTokens: 1200, outputTokens: 250, live: false });
+  });
+
   it("declines not-my-task for a ticket naming another incarnation of the row, writing nothing", async () => {
     const { collection, claim } = await claimed();
     for (const other of [{ ...claim, createdAt: claim.createdAt - 1 }, { ...claim, collectionId: "other" }]) {

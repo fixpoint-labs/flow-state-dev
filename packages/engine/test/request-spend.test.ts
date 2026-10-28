@@ -21,6 +21,7 @@ import {
   type GeneratorModel,
   type GeneratorModelCallOptions,
   type GeneratorModelResult,
+  type GeneratorModelResultPayload,
   type RequestEnding,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
@@ -29,6 +30,7 @@ import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { createRequestSpendLedger } from "../src/execution/request-spend-ledger";
 
 const previousObservability = process.env.FSDEV_TRACE_OBSERVABILITY;
 afterEach(() => {
@@ -649,6 +651,19 @@ describe("request spend read mid-run", () => {
       ["-", "cursor", 5],
       ["a", "codex", 3]
     ]);
+  });
+
+  it("keys model calls in the order each model was last called, so a task names the model it called last", () => {
+    // A task card reads the last key as the request's model: A, then B, then A again must read A.
+    const ledger = createRequestSpendLedger();
+    const call = (model: string) =>
+      ledger.addModelResult({ model, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } } as GeneratorModelResultPayload);
+    call("model-a");
+    call("model-b");
+    call("model-a");
+    expect(Object.keys(ledger.pending().byModel)).toEqual(["model-b", "model-a"]);
+    expect(Object.keys(ledger.total().byModel)).toEqual(["model-b", "model-a"]);
+    expect(ledger.total().byModel["model-a"]!.total).toBe(4);
   });
 
   it("reads undefined outside a request", () => {

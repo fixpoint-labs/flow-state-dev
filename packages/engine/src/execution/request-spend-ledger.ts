@@ -88,7 +88,11 @@ export function createRequestSpendLedger(
   return {
     addModelResult(report) {
       if (report.countsIn === "trace" || report.usage === undefined) return;
-      addEntry((byModel[report.model] ??= emptyEntry()), entryOf(report));
+      const entry = byModel[report.model] ?? emptyEntry();
+      addEntry(entry, entryOf(report));
+      // Moved to the end, as a harness run is: the model called last is the last key.
+      delete byModel[report.model];
+      byModel[report.model] = entry;
     },
     reportHarnessRun(run) {
       const key = run.runId === undefined ? `settled:${settledRuns++}` : `run:${run.runId}`;

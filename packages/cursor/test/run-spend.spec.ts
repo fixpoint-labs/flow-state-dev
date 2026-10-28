@@ -146,3 +146,24 @@ describe("cursorAgent reports its spend as the run goes", () => {
     ]);
   });
 });
+
+describe("cursorAgent's settled report names the model the run settled on", () => {
+  it("takes the wait result's model over the configured one, as the handle does", async () => {
+    // A task card keeps the run's last report: a configured model the run did not use must not stand.
+    const block = cursorAgent({
+      ...GATE_OFF,
+      agent: { model: { id: "composer-2" } },
+      resolveCursorClient: scripted(
+        async function* () {
+          yield TURN_USAGE;
+        },
+        async () => ({ status: "finished", model: { id: "composer-2-fast" }, usage: { inputTokens: 1200, outputTokens: 300 } }),
+      ),
+    } as CursorAgentOptions);
+
+    const { reported } = await runReporting(block);
+
+    expect(reported.at(0)?.model).toBe("composer-2");
+    expect(reported.at(-1)?.model).toBe("composer-2-fast");
+  });
+});

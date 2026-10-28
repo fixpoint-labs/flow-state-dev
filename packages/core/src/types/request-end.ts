@@ -86,7 +86,10 @@ export interface RequestEnding {
  * handed both.
  */
 export interface RequestSpend {
-  /** Model calls, by model id: the same entries `ctx.request.tokenUsage.byModel` reads. */
+  /**
+   * Model calls, by model id: the same entries `ctx.request.tokenUsage.byModel`
+   * reads. Keyed in the order each model was last called (FIX-2288).
+   */
   readonly byModel: Readonly<Record<string, ModelUsageEntry>>;
   /**
    * Harness runs, one entry per run, as each was last reported, in the order

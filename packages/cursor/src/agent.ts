@@ -520,6 +520,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent);
         const settled = await settleRun(run, mirrored, ctx.signal);
         runSpent.usage = settled.usage;
+        // The settled model wins over the configured or streamed one, as on the handle.
+        if (settled.model !== undefined) runSpent.model = settled.model;
         if (steering !== null) {
           steering.withdraw();
           await steering.answered(ctx.signal);
