@@ -136,6 +136,28 @@ the way a run with that `env` would, without starting one. It returns `{ support
 `{ supported: false, reason }` with Cursor's own message. It takes about a second, so call it once,
 from a startup or health check.
 
+## Sign-in check
+
+`cursorSignIn(env)` tells you whether Cursor is signed in for a run with that `env`, without
+starting one. Pass the same environment you give the block's `env`.
+
+```ts
+import { cursorSignIn } from "@flow-state-dev/cursor";
+
+const signIn = await cursorSignIn(runEnv);
+if (signIn.status === "none") console.warn(`Cursor is not signed in: ${signIn.reason}`);
+```
+
+It returns a `CursorSignIn`:
+
+- `{ status: "key" }` when `env` has a non-empty `CURSOR_API_KEY`. The SDK is not loaded.
+- `{ status: "login" }` when there is no key and the SDK reports a stored login. The login is
+  read under the `HOME` of the calling process, so call it with the same `HOME` the run gets.
+- `{ status: "none", reason }` otherwise.
+
+`@cursor/sdk` is imported only on the no-key path, so a host signed in by key, or one without the
+SDK, can import this package safely. Without the SDK and without a key, the call rejects.
+
 ## The handle
 
 The neutral harness handle (`source: "cursor/sdk"`, `status`, `sessionId`, `url`,
