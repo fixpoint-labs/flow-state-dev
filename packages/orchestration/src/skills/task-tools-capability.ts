@@ -1242,7 +1242,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "message steers the task until it finishes, and is sent alone: the words join its brief, " +
       "and a running task's worker reads them before its next model call. It uses none of the " +
       "task's tries and never cancels it. A finished task changes no more, and takes no message: file a " +
-      "follow-up instead. question answers one of the task's open questions, by its id, with message: only one " +
+      "follow-up instead. answers names one of the task's open questions, by its id, with message: only one " +
       "its worker asked you midway; the user answers the rest. A refusal names the rule.",
     // Passthrough, so a filing setting reaches `execute` to be refused by name
     // rather than stripped by the parse.
@@ -1290,11 +1290,20 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       const message = input.message;
+      // `question` was the answer's field before FIX-2183: refused by name, so a call
+      // that still sends it is never kept as a plain message.
+      if ((input as Record<string, unknown>).question !== undefined) {
+        return {
+          ok: false as const,
+          taskId: input.id,
+          error: "answers_not_question: name the question you answer with answers, not question. Nothing was written.", // retired-name-refusal: question
+        };
+      }
       // An answer (FIX-2133) is its own write, decided apart from every edit.
-      const question = input.answers;
+      const answers = input.answers;
       const done = (input as { done?: unknown }).done;
-      if (question !== undefined || done !== undefined) {
-        return answerQuestion(ctx, { id: input.id, answers: question, message, done, fields, status: input.status });
+      if (answers !== undefined || done !== undefined) {
+        return answerQuestion(ctx, { id: input.id, answers, message, done, fields, status: input.status });
       }
       if (input.status === "cancelled" && (fields.length > 0 || message !== undefined)) {
         const sent = [...fields, ...(message !== undefined ? ["message"] : [])];

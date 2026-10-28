@@ -608,6 +608,7 @@ Every rule is checked inside the write, so a task that starts between your read 
 | `question_takes_message` | A question answered without `message`, or with `done` |
 | `confirm_takes_done` | A confirm answered without `done` |
 | `done_without_answers` | `done` sent without `answers`, the confirm it answers |
+| `answers_not_question` | `question` sent in place of `answers`. Nothing is written |
 | `answer_takes_no_edits` | An answer sent with a field or a status |
 | `questions_not_supported` | An answer on a board whose task list keeps no questions |
 

@@ -1,6 +1,6 @@
 /**
  * A task held on questions through the task tools (FIX-2133): `createTask`'s
- * `questions` (and `confirm`), `updateTask`'s `question`, and the open holds
+ * `questions` (and `confirm`), `updateTask`'s `answers`, and the open questions
  * `getTask` and `listTasks` show. The answer path is the board's own
  * `updateTask`, scoped to the caller (D1); the filer's tool answers only a
  * question its worker asked it midway, on a task not routed (ER-4).
@@ -64,8 +64,8 @@ describe("createTask's questions", () => {
     const filed = await b.call("createTask", { goal: "Write the adoption script", questions: [] });
     expect(filed).toMatchObject({ ok: true });
     const row = b.get(filed.taskId)!;
-    expect(openHolds(row)).toEqual([]);
-    expect(row.holds ?? []).toEqual([]);
+    expect(openQuestions(row)).toEqual([]);
+    expect(row.questions ?? []).toEqual([]);
     const plain = await b.call("createTask", { goal: "Write the adoption script" });
     expect(row.status).toBe(b.get(plain.taskId)!.status);
   });
@@ -78,7 +78,7 @@ describe("createTask's questions", () => {
   });
 });
 
-describe("updateTask's question", () => {
+describe("updateTask's answers", () => {
   async function held() {
     const b = await board();
     const filed = await b.call("createTask", { goal: "Write the adoption script", questions: [CSV, COLUMN] });
@@ -93,6 +93,16 @@ describe("updateTask's question", () => {
     const read = await b.call("getTask", { id: b.id });
     expect(read.task.steers).toEqual([expect.objectContaining({ message: "The March export", from: "user", by: "u1", answers: b.csv })]);
     expect(read.task.questions.map((hold: { id: string }) => hold.id)).toEqual([b.column]);
+  });
+
+  it("refuses the old question field by name, so an answer sent with it is never kept as a plain message", async () => {
+    const b = await held();
+    expect(await b.call("updateTask", { id: b.id, question: b.csv, message: "The March export" })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/^answers_not_question:/),
+    });
+    expect(b.get(b.id)!.steers ?? []).toEqual([]);
+    expect(openQuestions(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.csv, b.column]);
   });
 
   it("a retried answer is a success; other words are refused as answered", async () => {
