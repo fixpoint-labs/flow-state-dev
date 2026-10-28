@@ -115,6 +115,24 @@ describe("historySummary on the engine", () => {
     expect(users).toEqual(["u4", "u5", "u6", "u7"]);
   });
 
+  it("keeps the key points core's summarizer returns beside its summary", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    // The shape of core's `summarizer` output: facts can land in `keyPoints` alone.
+    const withKeyPoints = handler({
+      name: "earlier-turns",
+      inputSchema: z.object({ summary: z.string().nullable(), turns: z.array(z.any()) }),
+      outputSchema: z.object({ summary: z.string(), keyPoints: z.array(z.string()).optional() }),
+      execute: () => ({ summary: "The user planned a launch.", keyPoints: ["Launch date: 3 May", "Codename: Blue Heron"] })
+    });
+    await talk(stores, chatFlow({ window: 4, summarize: withKeyPoints as never }), calls, 6);
+
+    const { system } = lastInput(calls);
+    expect(system).toContain("The user planned a launch.");
+    expect(system).toContain("Launch date: 3 May");
+    expect(system).toContain("Codename: Blue Heron");
+  });
+
   it("changes nothing for a flow without it", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];

@@ -77,7 +77,8 @@ type FoldPlan = {
 export interface HistorySummaryOptions {
   /**
    * The block that writes the summary: handed the summary so far and the turns
-   * to fold, returning `{ summary }`. Core's `summarizer(...)` fits as is.
+   * to fold, returning `{ summary }`, optionally with `keyPoints`, which are kept
+   * under the summary. Core's `summarizer(...)` returns that shape.
    */
   summarize: BlockDefinition<any, any>;
   /** The resource's accessor name and storage key. Default `historySummary`. */
@@ -207,9 +208,15 @@ export function historySummary(options: HistorySummaryOptions) {
 
   const write = handler({
     name: `${name}-write`,
-    inputSchema: z.object({ summary: z.string() }).passthrough(),
+    inputSchema: z.object({ summary: z.string(), keyPoints: z.array(z.string()).optional() }).passthrough(),
     resources,
     execute: async (output, ctx) => {
+      // Core's `summarizer` can put a fact in `keyPoints` alone: keep them
+      // with the summary, so the next fold and the model both read them.
+      const summary =
+        output.keyPoints !== undefined && output.keyPoints.length > 0
+          ? `${output.summary}\n\nKey points:\n${output.keyPoints.map((point) => `- ${point}`).join("\n")}`
+          : output.summary;
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
       await update(ctx as BlockContext, (state) =>
@@ -219,7 +226,7 @@ export function historySummary(options: HistorySummaryOptions) {
           : {
               ...state,
               ...decided.next,
-              summary: output.summary,
+              summary,
               folds: state.folds + 1,
               attempts: state.attempts + 1,
             }
