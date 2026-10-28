@@ -271,7 +271,11 @@ await runGoal(async (failures, tell) => {
   if (SCRIPTED) failures.push("[scripted] GOAL_SCRIPTED=1 walked the scripted harnesses and model: a dry run, not a verdict");
 
   const server = await startDev();
-  const browser = await launchChromium();
+  // The server runs in its own process group, so a browser that never starts must not leave it holding the port.
+  const browser = await launchChromium().catch((error: unknown) => {
+    server.stop();
+    throw error;
+  });
   try {
     // ---- host: which modes this host can run, read off the picker
     const picker = await browser.newPage();
