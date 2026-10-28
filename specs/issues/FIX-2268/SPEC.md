@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **asks Codex, Claude Code or Cursor in Kitchen Sink to open two pull requests** | Finds each link only by scrolling the run's tool calls for `gh pr create` output | Sees both in the session's panel, with repository, number, title and link, while the turn is still running. Each appears once, even if the agent prints its link again |
-| **does the same in Flow State mode, where our own generator runs `gh` through the bash tool** | The same scroll | The same panel list. The flow turned it on with one option on its generator |
+| **does the same in Flow State mode, where our own generator runs `gh` through the bash tool** | The same scroll | The same panel list. The flow added core's recorder block as a step beside its generator |
 | **has an agent open a pull request in a way the tool-call check can't read** (a raw API call, an unknown tool) | Nothing records it | Kitchen Sink checks GitHub for pull requests on the session's branch at the end of the turn and adds what the turn missed |
 | **opens a coding task in Shift Manager** | Sees the run's plan and files, and no pull requests | Sees the pull requests the task's session opened, read from the same record through the task's run link |
 | **builds an app on a harness block** | Writes their own parser over the tool calls | Reads one session collection, `observed-pull-requests`, and writes no parser |
@@ -57,7 +57,8 @@ The check reads the panel the person sees and compares it with GitHub's own list
 flowchart LR
   subgraph run ["During a turn"]
     H["harness block · on by default"] --> I["tool_output items"]
-    G["generator · recordPullRequests on"] --> I
+    G["generator"] --> I
+    S["recorder block · a tap step before or after the generator"] --> R
     I --> R["core recorder · subscribes to the request's items"]
     R -->|"a create call whose result names a pull request"| C["observed-pull-requests · session · live"]
   end
@@ -75,7 +76,7 @@ tool calls alike), writes a row as soon as a create call's result names a pull r
 stops through the request-end seam (`onRequestEnded`), so overlapping blocks share one
 listener. The row is neutral (host, repository, number, link); GitHub is the one rule set core
 ships, and another forge is another rule. The three harness blocks start it by default and
-declare the collection. A generator starts it when its flow sets `recordPullRequests: true`.
+declare the collection. A flow with no harness adds `pullRequestRecorder()`, a handler block, as a step: it reads the items the request has emitted so far (`ctx.response.getItems()`) and starts the recorder for the rest. Tapped before the generator, rows appear live; tapped after it, they appear when the generator step ends. The generator does not change.
 `workspace` gains one helper that asks `gh` for the pull requests on a checkout's branch and
 writes what the record lacks; Kitchen Sink and the harness manager run it when a turn or run
 ends, however it ended.
@@ -91,15 +92,15 @@ ends, however it ended.
 +export const githubPullRequestRule: PullRequestRule   // gh pr create, create-PR tools, /pull/<n> links
 +/** Starts this request's recorder, once; it stops when the request ends. */
 +export function recordPullRequests(ctx: BlockContext): void
++/** A handler block that records this request's pull requests and declares the collection. */
++export function pullRequestRecorder(): HandlerBlock
 +/** The one write path: upsert by key, keep the first requestId; every writer calls it. */
 +export function writePullRequests(collection, refs: PullRequestRef[], opts: { requestId?, source }): Promise<void>
 
  // An app's own flow, Flow State mode
- generator({
-   name: "assistant",
-   uses: [bashCap],
-+  recordPullRequests: true,
- })
+ sequencer({ name: "turn" })
++  .tap(pullRequestRecorder())          // before: live; after: at the step's end
+   .step(assistant)
 
  // A harness block: nothing to write. `recordPullRequests: false` turns it off.
  codexAgent({ cwd, resume, onSession, model })
@@ -118,7 +119,7 @@ Pull requests · 2
 
 **Docs:** extend `apps/docs/docs/tools/coding-agents.md` with a *Pull requests a session opened*
 section after *The run's plan* (the record, what counts as opened, reading it, turning it on for
-your own generator, the branch check, adding a rule for another forge), and extend
+your own flow with the recorder block, the branch check, adding a rule for another forge), and extend
 `apps/docs/docs/tools/workspace.md` with the branch check. Update the `core`, `workspace`, `codex`, `claude-code`, `cursor` and `harness-manager`
 READMEs. Changesets for those six packages (minor). No new page.
 
@@ -155,16 +156,16 @@ the first that is a session record or live.
 | `observed-pull-requests` collection | The plan record | Different rows (one per pull request, keyed by repository and number, kept for the session, not a list per conversation). Same declaration and reader path |
 | `recordPullRequests` recorder | `onToolCompleted` flow hook; each adapter's own recorder (Claude Code's work recorder, Cursor's plan writer) | The flow hook misses harness tool calls. Three adapter recorders would be three parsers. One subscription sees all four sources; its lifetime is `onRequestEnded`'s |
 | `findOpenedPullRequests` and `githubPullRequestRule` | None (searches above) | New, and pure, so each harness's shape is a fixture |
-| `recordPullRequests` option on the generator | The bash capability's own tool block recording what it ran ([D3](DECISIONS.md#d3)) | The bash tool misses a create-PR tool the generator holds; the option on the block that emits the items covers both |
+| `pullRequestRecorder()` block | A `recordPullRequests` option on `generator`; the bash capability's own tool recording what it ran ([D3](DECISIONS.md#d3)) | A generator option bakes one opinion into the universal block; the bash route misses a create-PR tool. A step composes with any flow and sees every item |
 | `recordBranchPullRequests` in `workspace` | The conductor's retired check; harness-manager's comment-only "completion probe" (`manager.ts:974`, no code); `workspace/src/exec.ts`'s `run` | Extends `run`, whose header names this use. One helper, so Kitchen Sink and the harness manager don't each glue a lookup to a write |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | A second place a run's pull request appears, beside FIX-2256's handle field; accepted because the handle is one run's return value and the record is the session's, and the writer is shared so they agree. One generator option, off by default. GitHub's command and tool names in core, as one replaceable rule ([D1](DECISIONS.md#d1)) |
+| **Adds** | A second place a run's pull request appears, beside FIX-2256's handle field; accepted because the handle is one run's return value and the record is the session's, and the writer is shared so they agree. One recorder block a flow adds as a step. GitHub's command and tool names in core, as one replaceable rule ([D1](DECISIONS.md#d1)) |
 | **Leaves** | Keeping state current after the session (webhook, out of scope). Flow State mode has no session branch, so it has no turn-end check. Harness-manager's stale "completion probe" comment (`manager.ts:974`) describes code that is gone; noted for the implementer, not filed |
 
-**Net: up.** One record, a recorder, one rule set, a branch check and one generator option, for
+**Net: up.** One record, a recorder, one rule set, a branch check and one recorder block, for
 a job nothing did before.
 
 ## Sign off
@@ -184,9 +185,9 @@ If wrong: two places that name a run's pull request grow apart.
 2. **[D2](DECISIONS.md#d2) · A pull request counts when the session opened it: a create call
    whose result names it, or a pull request on the session's own branch at turn end.** If wrong:
    a pull request the agent only pushed commits to is missing from the list.
-3. **[D3](DECISIONS.md#d3) · Harness blocks record by default; our own generator records when
-   its flow sets one option on it.** If wrong: a generator flow that opens pull requests shows
-   none until its author sets it.
+3. **[D3](DECISIONS.md#d3) · Harness blocks record by default; a flow with no harness adds
+   core's recorder block as a step; the generator is unchanged.** If wrong: a generator flow
+   that opens pull requests shows none until its author adds the step.
 
 **Open: none.** D2 is the one to weigh: it decides what the list means.
 

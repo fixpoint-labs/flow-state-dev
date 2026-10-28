@@ -13,8 +13,8 @@ flowchart TD
   D1 -.->|"rejected · misses flows with no harness or no task"| X1["harness-manager or Workforce"]
   I --> D2["D2 · opened means a create call names it<br/>or the session's branch has it at turn end"]
   D2 -.->|"rejected · a gh pr view would count as opened"| X2["any pull-request link in tool output"]
-  I --> D3["D3 · harness blocks on by default<br/>a generator opts in with one option"]
-  D3 -.->|"rejected · misses a create-PR tool the generator holds"| X3["the bash capability records what it ran"]
+  I --> D3["D3 · harness blocks on by default<br/>other flows add the recorder block as a step"]
+  D3 -.->|"rejected · bakes one opinion into the universal block"| X3["a recordPullRequests option on generator"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -56,21 +56,21 @@ That is a third `source`, `pushed`, from the branch check over every branch the 
 it needs the ref comparison the issue mentions.
 
 <a name="d3"></a>
-## D3 · Harness blocks record by default; our own generator records when its flow turns it on
+## D3 · Harness blocks record by default; a flow with no harness adds core's recorder block as a step; the generator is unchanged
 
 | | |
 |---|---|
-| **Instead of** | The bash capability recording what its own tool ran (`createBashCapability({ recordPullRequests })`), which keeps a coding flag off the general `generator` |
-| **Because** | Jake: "harnesses should definitely track this", and a coding harness is the block that opens pull requests, so the default costs a harness flow one collection it will use. For our own flows, a capability can't watch the generator's items (capabilities have no item hook), only its own tool's: the bash route would miss a create-PR tool the generator holds, such as GitHub's MCP `create_pull_request`. The option on the block that emits the items sees both, and off by default it costs other apps nothing. The plan record is opt-in on the harness blocks because the task board dispatches the bare block; a coding task's pull requests are exactly what Shift Manager wants, so here the default is on |
-| **Locks in** | `recordPullRequests` on the Codex, Claude Code and Cursor blocks (default `true`) and on `generator` (default `false`). A flow with a harness block gains the collection in its manifest |
+| **Instead of** | A `recordPullRequests` option on `generator`, or the bash capability recording what its own tool ran |
+| **Because** | Jake (2026-10-28, on this PR's thread): building it into the generator "becomes an opinionated thing that we're trying to avoid in the framework … the whole point of the sequence and the block system is to be able to add these steps if you want to add them to your flow." A step can do the whole job: `pullRequestRecorder()` reads the items the request has already emitted (`ctx.response.getItems()`, the snapshot `.waitForCondition` uses) and starts the per-request recorder for the rest, so it sees every tool call in the request whichever block made it. Tapped before the generator, rows appear live; tapped after, when the step ends. The bash capability route would miss a create-PR tool the generator holds. Harness blocks keep the default because Jake asked for it ("harnesses should definitely track this") and a coding harness is the block that opens pull requests; the plan record is opt-in there only because the task board dispatches the bare block |
+| **Locks in** | `recordPullRequests` on the Codex, Claude Code and Cursor blocks (default `true`); `pullRequestRecorder()` exported from core, declaring the collection. `generator` gains nothing |
 
-![D3: what records without app code. Chosen: harness blocks on by default, a generator opts in. Instead of: the bash capability recording what its tool ran. Decides it: a create-PR tool the generator holds would be missed. The price: the general generator gains a coding option, off by default. Locks in the option and its two defaults. Flips if our flows open pull requests only through bash](figures/d3-harness-on-generator-opts-in.svg)
+![D3: what records without app code. Chosen: harness blocks on by default, other flows add the recorder block as a step. Instead of: an option on the generator. Decides it: an option bakes one opinion into the universal block, while a step composes with any flow. The price: a flow author adds one step, and placed after the generator the rows appear at the step's end. Locks in the harness default and the block. Flips if a step cannot see the tool items the generator emitted](figures/d3-harness-on-recorder-step.svg)
 
-It comes down to a create-PR tool: the bash route never sees it.
+It comes down to the universal block: a step adds the behaviour without giving the generator an opinion.
 
-**What would change my mind:** our own flows opening pull requests only through the bash tool.
-Then the capability route is enough and the generator keeps no coding option. On for every
-generator was also weighed and dropped: most generators open no pull request.
+**What would change my mind:** a flow where a step can't see the generator's tool items (a
+generator in a separate request). Then the step goes inside that request, still not into the
+generator.
 
 ## Decided, not asked
 
@@ -156,8 +156,8 @@ folds into D1 before merge.
   `mcp__github__create_pull_request`, generator tool names; Codex may wrap a command in
   `bash -lc "…"`; generator `toolCall.arguments` is a JSON string.
 - **Flow State runs more than one generator.** The background workers in
-  `flows/chat-agent/pipelines/background-work.ts` are separate generators; set the option on
-  each one that holds bash, and give the goal leg a checkout with a remote in the local
+  `flows/chat-agent/pipelines/background-work.ts` are separate generators, possibly in separate
+  requests; add the recorder step to each request that runs one holding bash, and give the goal leg a checkout with a remote in the local
   provider's directory.
 - **Default-on reaches dispatched blocks.** The task board refuses only session state, not a
   session resource, so dispatch still works. Under a shared child session several tasks' rows
@@ -189,6 +189,10 @@ Linear and the web were not swept. **Verdict: right approach, fold needed.**
 - **Cursor review on `18ca05c`** (comment): (1) optional phasing, recorder, rules, panel and legs r1/r2 first, then the branch check, leg b and the harness manager; (2) add "a Flow State generator that can open pull requests was not opted in" to the goal's *not done if*, since Flow State runs several generators; (3) merge should wait on the Architect's answer on D1. Folded inline: leg b now runs in the harness modes only, matching the debt row, and the diff names `writePullRequests`.
 
 ## How it got here
+
+- **Jake's direction** — 2026-10-28, on the thread: no option on the generator; a block a flow
+  adds as a step. D3 re-drafted: `pullRequestRecorder()` replaces the generator option, because
+  a step can read the request's items so far and subscribe to the rest.
 
 - **Draft** — 2026-10-28: framed as a session record of opened pull requests that every source
   writes through one recorder; builds on the plan record's shape, the shared `tool_output` item

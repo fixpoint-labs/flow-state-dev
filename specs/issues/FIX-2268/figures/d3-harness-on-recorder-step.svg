@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 434" role="img" aria-label="D3, which blocks record without app code. Chosen: harness blocks on by default, a generator opts in with one option. Instead of: the bash capability recording what its tool ran. Decides it: a create-PR tool the generator holds would be missed. The price: the general generator gains a coding option, off by default. A tie: neither needs a parser. Locks in the option and its two defaults. Flips if our flows open pull requests only through bash."
+<svg viewBox="0 0 940 434" role="img" aria-label="D3, which blocks record without app code. Chosen: harness blocks on by default, and a flow with no harness adds core&#x27;s recorder block as a step. Instead of: a recordPullRequests option on the generator. Decides it: an option bakes one opinion into the universal block, while a step composes with any flow. The price: a flow author adds one step. A tie: both see every tool item in the request. Locks in the harness default and the recorder block. Flips if a step cannot see the tool items the generator emitted."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,52 +43,52 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="340" height="46" rx="5"/>
     <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="226" y="112">Harnesses on, a generator opts in</text>
+    <text class="t-h c-code" x="226" y="112">Harnesses on, a recorder step</text>
     <rect class="lost" x="568" y="76" width="340" height="46" rx="5"/>
     <text class="t-tag c-mute" x="582" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="582" y="112">The bash capability records</text>
+    <text class="t-h c-lost" x="582" y="112">An option on the generator</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
-    <text class="t-lbl" x="32" y="154">A CREATE-PR TOOL</text>
+    <text class="t-lbl" x="32" y="154">THE GENERATOR</text>
     <text class="mark plus" x="216" y="162">+</text>
-    <text class="t-b" x="234" y="161">Recorded</text>
-    <text class="t-s" x="234" y="179">the generator emits its item</text>
+    <text class="t-b" x="234" y="161">Unchanged</text>
+    <text class="t-s" x="234" y="179">no coding opinion on the universal block</text>
     <text class="mark minus" x="572" y="162">−</text>
-    <text class="t-b" x="590" y="161">Missed</text>
-    <text class="t-s" x="590" y="179">the bash tool sees only its own runs</text>
+    <text class="t-b" x="590" y="161">Gains a coding option</text>
+    <text class="t-s" x="590" y="179">one of many someone might want</text>
     <line class="row" x1="16" y1="196" x2="924" y2="196"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="216">THE GENERATOR&#x27;S SURFACE</text>
+    <text class="t-lbl" x="32" y="216">A FLOW WITH NO HARNESS</text>
     <text class="mark minus" x="216" y="224">−</text>
-    <text class="t-b" x="234" y="223">Gains a coding option</text>
-    <text class="t-s" x="234" y="241">off by default</text>
+    <text class="t-b" x="234" y="223">Adds one step</text>
+    <text class="t-s" x="234" y="241">tap before for live, after for the step&#x27;s end</text>
     <text class="mark plus" x="572" y="224">+</text>
-    <text class="t-b" x="590" y="223">Unchanged</text>
-    <text class="t-s" x="590" y="241">the flag sits on the capability</text>
+    <text class="t-b" x="590" y="223">Sets one option</text>
+    <text class="t-s" x="590" y="241">no step to place</text>
     <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="278">A PARSER IN THE APP</text>
+    <text class="t-lbl" x="32" y="278">WHAT IT SEES</text>
     <text class="mark c-mute" x="216" y="286">=</text>
-    <text class="t-b" x="234" y="285">None</text>
-    <text class="t-s" x="234" y="303">the recorder reads the items</text>
+    <text class="t-b" x="234" y="285">Every tool item</text>
+    <text class="t-s" x="234" y="303">getItems plus the subscription</text>
     <text class="mark c-mute" x="572" y="286">=</text>
-    <text class="t-b" x="590" y="285">None</text>
-    <text class="t-s" x="590" y="303">the recorder reads the items</text>
+    <text class="t-b" x="590" y="285">Every tool item</text>
+    <text class="t-s" x="590" y="303">the generator&#x27;s own emitter</text>
     <line class="row" x1="16" y1="320" x2="924" y2="320"/>
   </g>
   <g id="foot">
     <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="357">LOCKS IN</text>
-    <text class="t-b" x="32" y="377">recordPullRequests on four blocks</text>
-    <text class="t-s" x="32" y="395">harness default true · generator default false</text>
+    <text class="t-b" x="32" y="377">recordPullRequests on three harness blocks</text>
+    <text class="t-s" x="32" y="395">and pullRequestRecorder() from core</text>
     <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="357">FLIPS IF</text>
-    <text class="t-b" x="494" y="377">Our flows open pull requests only through bash</text>
-    <text class="t-s" x="494" y="395">then the capability route is enough</text>
+    <text class="t-b" x="494" y="377">A step cannot see the generator&#x27;s tool items</text>
+    <text class="t-s" x="494" y="395">a generator in another request: the step moves there</text>
   </g>
 </svg>
