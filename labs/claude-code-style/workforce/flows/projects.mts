@@ -5,7 +5,8 @@
  *
  * A session works in one of these projects (spec D3): *New session* lists
  * them through `listProjects`, which answers only the projects the caller may
- * work in (it belongs to a shared one, or owns a private one), and `setWorkProject` checks the same rule on the server.
+ * work in (a shared one it belongs to, or a private one it owns), and
+ * `setWorkProject` checks the same rule on the server.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { defineProjectBlocks } from "@flow-state-dev/workforce";
