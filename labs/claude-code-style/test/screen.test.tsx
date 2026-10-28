@@ -150,16 +150,64 @@ describe("the session-mode screen", () => {
     expect(within(thread()).getByText(/updateTask · Research Globex → cancelled/)).toBeTruthy();
   });
 
-  it("keeps the tasks pane read only: a row opens the task's work, with no stop or composer", async () => {
+  it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {
     render(<App adapter={fast()} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Globex")).toBeTruthy());
     fireEvent.click(row("Research Globex"));
-    const work = within(pane()).getByRole("region", { name: "Work: Research Globex" });
+    // The sheet sits over the main thread, not squeezed into the pane, and the pane keeps the row picked.
+    const work = screen.getByRole("dialog", { name: "Work: Research Globex" });
+    expect(within(pane()).queryByRole("dialog")).toBeNull();
+    expect(thread().parentElement!.contains(work)).toBe(true);
+    expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
     expect(within(work).getByText(/Starting:/)).toBeTruthy();
-    expect(within(pane()).queryByRole("button", { name: /stop|cancel/i })).toBeNull();
-    expect(within(pane()).queryByRole("textbox")).toBeNull();
+    expect(within(work).getByText(/To stop or steer a task, ask the main session/)).toBeTruthy();
+    expect(within(work).queryByRole("button", { name: /stop|cancel/i })).toBeNull();
+    expect(within(work).queryByRole("textbox")).toBeNull();
+  });
+
+  it("closes the sheet with Esc, its close button, or a click on the thread around it, and leaves the thread in place", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    const sheet = () => screen.queryByRole("dialog", { name: "Work: Research Globex" });
+
+    fireEvent.click(row("Research Globex"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(sheet()).toBeNull();
+
+    fireEvent.click(row("Research Globex"));
+    fireEvent.click(within(sheet()!).getByRole("button", { name: "Close" }));
+    expect(sheet()).toBeNull();
+
+    fireEvent.click(row("Research Globex"));
+    // A click inside the sheet keeps it; one on the backdrop over the thread closes it.
+    fireEvent.click(within(sheet()!).getByText(/Starting:/));
+    expect(sheet()).not.toBeNull();
+    fireEvent.click(sheet()!.parentElement!);
+    expect(sheet()).toBeNull();
+    expect(within(thread()).getByRole("textbox", { name: "Message the main session" })).toBeTruthy();
+    expect(within(thread()).getAllByText("Compare Acme and Globex for us.").length).toBeGreaterThan(0);
+  });
+
+  it("folds finished tasks into a collapsed Done group of one-line rows, and counts only the active ones", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    // Acme is done and Globex still runs: one card, one done row, and the count is the active one.
+    expect(within(pane()).getByText(/Background tasks · 1/)).toBeTruthy();
+    const done = within(pane()).getByText(/Done · 1/).closest("details")!;
+    expect(done.open).toBe(false);
+    expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
+    expect(within(done).queryByText("Research Globex")).toBeNull();
+
+    // A finished row still opens like any task.
+    done.open = true;
+    fireEvent.click(within(done).getByRole("button", { name: /Research Acme/ }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
   });
 
   it("queues a line sent while a turn runs, and runs it after", async () => {

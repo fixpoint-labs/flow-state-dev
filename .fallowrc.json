@@ -83,7 +83,10 @@
   // registry sources.
   "ignoreFindings": [
     "packages/ui/registry/**",
-    "packages/ui/.storybook/shadcn/**"
+    "packages/ui/.storybook/shadcn/**",
+    // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
+    "labs/claude-code-style/src/components/ui/**",
+    "labs/claude-code-style/src/components/flow-state/message.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
