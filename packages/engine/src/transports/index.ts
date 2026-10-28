@@ -21,7 +21,7 @@ export type {
 export type {
   DispatchEnvelope,
   FlowDispatchHandle,
-  FlowRunner as FlowRunner,
+  FlowRunner,
   LeaseTurn,
   StreamBridge,
   StreamEvent,
@@ -93,10 +93,10 @@ export {
 } from "./host/createInboundTransportHost";
 
 export {
-  createInProcessRunner as createInProcessRunner,
-  type InProcessRunner as InProcessRunner,
+  createInProcessRunner,
+  type InProcessRunner,
   type InProcessDispatchContext,
-  type InProcessRunnerDeps as InProcessRunnerDeps
+  type InProcessRunnerDeps
 } from "./host/in-process-runner";
 
 export {

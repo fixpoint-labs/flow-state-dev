@@ -12,7 +12,7 @@ export { createBullmqRuntime } from "./runtime";
 export type { BullmqRuntime, CreateBullmqRuntimeOptions } from "./runtime";
 export { createFlowWorker, createFlowJobProcessor } from "./worker";
 export type { FlowWorkerDeps, CreateFlowWorkerOptions } from "./worker";
-export { createWorkerRunner as createWorkerRunner } from "./runner";
+export { createWorkerRunner } from "./runner";
 export { createRedisLeaseBackend, leaseJobId, DEFAULT_LEASE_MS } from "./lease-backend";
 export type {
   CreateRedisLeaseBackendOptions,
@@ -20,7 +20,7 @@ export type {
   JobLeaseTakeInput,
   RedisLeaseBackend,
 } from "./lease-backend";
-export type { CreateWorkerRunnerOptions as CreateWorkerRunnerOptions } from "./runner";
+export type { CreateWorkerRunnerOptions } from "./runner";
 export { createRedisStreamBridge } from "./stream-bridge";
 export type { CreateRedisStreamBridgeOptions } from "./stream-bridge";
 export { createBullmqScheduleIndex } from "./schedule-index";

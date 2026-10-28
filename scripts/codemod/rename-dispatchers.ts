@@ -22,6 +22,7 @@
  *    `transports/runner.ts`, `host/in-process-dispatcher.ts` →
  *    `host/in-process-runner.ts`, BullMQ's `dispatcher.ts` → `runner.ts`, and
  *    their tests.
+ *    Re-exports the first pass left as `newName as oldName` take the new name.
  * 3. **Word-bounded text** for what the checker can't reach (`.mts` goals,
  *    comments, docs, test helpers): the identifiers in `IDENTIFIERS` and the
  *    moved paths. Every name in it is one of the two retired meanings; none is
@@ -200,6 +201,15 @@ for (const [from, to] of Object.entries(MOVES)) {
   if (sourceFile === undefined) throw new Error(`not loaded: ${from}`);
   sourceFile.move(resolve(repoRoot, to));
   console.log(`moved ${from} → ${to}`);
+}
+// Renaming an exported declaration with prefix/suffix text keeps the old public name on its re-exports
+// (`newName as oldName`). There is no alias (D1): the re-export takes the new name.
+const OLD_NAME_OF = new Map(DECL_RENAMES.map((rename) => [rename.to, rename.from]));
+for (const sourceFile of project.getSourceFiles()) {
+  for (const specifier of sourceFile.getDescendantsOfKind(SyntaxKind.ExportSpecifier)) {
+    const alias = specifier.getAliasNode()?.getText();
+    if (alias !== undefined && OLD_NAME_OF.get(specifier.getNameNode().getText()) === alias) specifier.removeAlias();
+  }
 }
 project.saveSync();
 // The moves wrote new files and deleted the old ones; stage both so git records a rename.

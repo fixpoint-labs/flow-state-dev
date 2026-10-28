@@ -180,7 +180,7 @@ export type {
   ClaimResult,
   CheckBoardOutput,
 } from "./schemas";
-export type { TaskBoardClaimOrderInput as TaskBoardClaimOrderInput } from "./shared";
+export type { TaskBoardClaimOrderInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
 export type { SeedCollectionOptions } from "./blocks/seed-collection";
 export {

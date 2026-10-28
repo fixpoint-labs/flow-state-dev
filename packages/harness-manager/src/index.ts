@@ -102,7 +102,7 @@ export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStor
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
-  runOwnerClaimOrder as runOwnerClaimOrder,
+  runOwnerClaimOrder,
   HARNESS_RUN_OWNER_KEY,
   runOwnerOf,
   type RunOwner,

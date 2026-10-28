@@ -151,7 +151,7 @@ The claim order decides which `pending` task gets claimed next. No claim order c
 
 Those three strings are the only names `claimOrder` accepts. It also takes any `ClaimOrder` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Claim orders](./task-substrate.md#claim-orders) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
-The `dispatcher` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
+The `claimOrder` option only orders claims. The `dispatcher()` block from `@flow-state-dev/core` is a different thing: an [assignee that dispatches](#assignees-that-dispatch) its tasks to another session.
 
 ## Dependencies
 

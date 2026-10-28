@@ -76,7 +76,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 ## Orchestration: a task board
 
-<Figure svg={OrchestrationDrawing} caption="Orchestration: what a task board is made of" description={"A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board."} />
+<Figure svg={OrchestrationDrawing} caption="Orchestration: what a task board is made of" description={"A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a claim order picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board."} />
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -156,5 +156,4 @@ A few words are used in two places. The package tells you which one you're readi
 
 - **Worker.** In Workforce, a configuration one user owns. On a task board, a board worker: the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, one of your workers.
 - **Kind.** A flow's `kind` is its name to the engine. Workforce calls the flow a worker runs on its worker flow.
-- **Dispatcher.** Core's `dispatcher()` is a block that sends to another flow. A task board's dispatcher is the rule that picks the next task.
 - **Roster.** Your Workforce roster is your workers. Shift Manager's Roster screen shows them by what they are doing.
