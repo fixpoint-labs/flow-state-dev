@@ -267,6 +267,22 @@ describe("items.turns()", () => {
     ]);
   });
 
+  it("reads an interrupted turn a retry re-ran by id as settled with nothing to read", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_retried", 3);
+    await stores.request.set("req_2", turn("sess_retried", 2, { status: "interrupted" }), "any");
+    await stores.request.set("req_3", turn("sess_retried", 3, { metadata: { retryOf: "req_2" } }), "any");
+
+    const ctx = await contextFor(stores, "sess_retried", 5);
+
+    // History reads the retry; by id, the cut-off original must not bring its
+    // partial output back beside it.
+    const byId = await ctx.session.items.turns({ requestIds: ["req_2"] });
+    expect(byId.map((t) => [t.requestId, t.settled, t.messages.length])).toEqual([["req_2", true, 0]]);
+    const listed = await ctx.session.items.turns();
+    expect(listed.find((t) => t.requestId === "req_2")).toMatchObject({ settled: true, messages: [] });
+  });
+
   it("never reads another session's turn by id", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_mine", 2);
