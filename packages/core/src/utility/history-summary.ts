@@ -165,7 +165,11 @@ export function historySummary(options: HistorySummaryOptions) {
         ? await ctx.session.items.turns({ requestIds: state.pending })
         : [];
       const settledPending = pendingTurns.filter((t) => t.settled);
-      const stillPending = pendingTurns.filter((t) => !t.settled).map((t) => t.requestId);
+      // Every pending turn not read as settled stays pending, the one running
+      // this fold included: a resumed turn cannot read itself, and it is
+      // behind the mark, so no later window would fold it.
+      const settledIds = new Set(settledPending.map((t) => t.requestId));
+      const stillPending = state.pending.filter((id) => !settledIds.has(id));
 
       const all = await ctx.session.items.turns();
       // After the mark by position, since two turns can share a start
@@ -180,15 +184,20 @@ export function historySummary(options: HistorySummaryOptions) {
           : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
 
       // Turns lost: the oldest unfolded turn the last fold saw left the window
-      // unfolded (gone, or older than the window's first turn; one newer than
-      // the window was folded by a turn that started after this one loaded),
-      // or the summary started after turns had already left the window.
+      // unfolded (gone, or before the window's first turn by start time then
+      // id, the engine's turn order; one after the window was folded by a turn
+      // that started after this one loaded), or the summary started after
+      // turns had already left the window.
       const nextGone =
         state.nextRequestId !== null && nextAt === -1
           ? (await ctx.session.items.turns({ requestIds: [state.nextRequestId] }))[0]
           : null;
+      const first = all[0];
+      const beforeWindow = (t: HistoryTurn) =>
+        first !== undefined &&
+        (t.startedAtMs < first.startedAtMs || (t.startedAtMs === first.startedAtMs && t.requestId < first.requestId));
       const lost =
-        (nextGone !== null && (nextGone === undefined || (all[0] !== undefined && nextGone.startedAtMs <= all[0].startedAtMs))) ||
+        (nextGone !== null && (nextGone === undefined || beforeWindow(nextGone))) ||
         (state.attempts === 0 && window.startRequestId !== undefined);
 
       const due = after.length > window.turns - quarter;

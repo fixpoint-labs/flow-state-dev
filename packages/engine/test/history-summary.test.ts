@@ -211,7 +211,10 @@ describe("historySummary on the engine", () => {
     expect(state).toMatchObject({ gap: false, complete: true });
   });
 
-  it("says no turn was lost when another turn moved the summary past every turn this one loaded", async () => {
+  it.each([
+    ["after it", false],
+    ["in the millisecond its first turn started, ranked after it by id", true]
+  ])("says no turn was lost when another turn moved the summary past every turn this one loaded (%s)", async (_case, tied) => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
     const earlier = utility.historySummary({ summarize: foldingSummarize() });
@@ -221,14 +224,16 @@ describe("historySummary on the engine", () => {
       name: "overtaken",
       execute: async (_input, ctx) => {
         const newest = (await stores.request.get("req_002"))!;
+        const first = (await stores.request.get("req_001"))!;
+        const startOf = (n: number) => (tied ? first.startedAtMs : Date.now() + 1000 + n);
         for (const [n, id] of [[1, "req_later_1"], [2, "req_later_2"]] as const) {
-          await stores.request.set(id, { ...newest, id, startedAtMs: Date.now() + 1000 + n }, "any");
+          await stores.request.set(id, { ...newest, id, startedAtMs: startOf(n) }, "any");
         }
         await (ctx.resources as any).historySummary.updateState((state: any) => ({
           ...state,
           summary: "u2 u3",
           throughRequestId: "req_later_1",
-          throughStartedAtMs: Date.now() + 1001,
+          throughStartedAtMs: startOf(1),
           nextRequestId: "req_later_2",
           pending: ["req_001"],
           complete: false,
@@ -301,6 +306,40 @@ describe("historySummary on the engine", () => {
     const state = row?.state as { summary: string; gap: boolean };
     expect(state.summary.split(" ")).toEqual(expect.arrayContaining(["u1", "u3", "u4"]));
     expect(state.gap).toBe(false);
+  });
+
+  it("keeps this turn pending when it is itself a pending turn the fold cannot read yet", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const earlier = utility.historySummary({ summarize: foldingSummarize() });
+    // Turn 5 stands in for a waiting turn that a fold moved past and that has
+    // now resumed: the summary holds it pending while it runs its own fold.
+    const resumed = handler({
+      name: "resumed",
+      execute: async (input: string, ctx) => {
+        if (input !== "u5") return;
+        await (ctx.resources as any).historySummary.updateState((state: any) => ({ ...state, pending: ["req_005"], complete: false }));
+      }
+    });
+    const answer = generator({ name: "answer", model: "mock", prompt: "You answer.", history: true, uses: [earlier.capability] });
+    const flow = defineFlow({
+      kind: "summary-chat",
+      session: { historyWindow: { turns: 4 } },
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: sequencer({ name: "chat", inputSchema: z.string() }).tap(resumed).tap(earlier.fold).step(answer),
+          userMessage: (input: string) => input
+        }
+      }
+    })();
+
+    await talk(stores, flow, calls, 5);
+
+    // Its own fold cannot read it (it has not settled), so it stays pending
+    // for a later turn to fold.
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    expect(row?.state).toMatchObject({ summary: "u1", pending: ["req_005"], complete: false });
   });
 
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
