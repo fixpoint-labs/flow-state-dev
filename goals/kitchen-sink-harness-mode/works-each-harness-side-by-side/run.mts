@@ -147,9 +147,9 @@ async function conversationLoaded(page: Page): Promise<boolean> {
     .then(() => true, () => false);
 }
 
-/** The conversation a harness tab shows as bound, once the session's state has arrived. */
+/** The conversation a harness tab shows as bound, once the session's state has arrived; "" when it shows none. */
 async function boundId(page: Page): Promise<string> {
-  await page
+  const shownId = await page
     .waitForFunction(
       () => {
         const text = document.querySelector('[data-testid="bound-conversation"]')?.textContent?.trim();
@@ -158,8 +158,9 @@ async function boundId(page: Page): Promise<string> {
       undefined,
       { timeout: 30_000 },
     )
-    .catch(() => undefined);
-  return ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim();
+    .then(() => true, () => false);
+  // The placeholder ("none yet") is no binding: an id that never arrives must not compare equal to itself.
+  return shownId ? ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim() : "";
 }
 
 /**
@@ -340,7 +341,7 @@ await runGoal(async (failures, tell) => {
       await walkTurn(walk, "c", TURN_2);
       if ((await tokenCount(walk)) <= seen) fail(`${walk.mode.tag}:c`, "turn 2's reply did not name the token");
       const now = harness(walk) ? await boundId(walk.page) : walk.sentTo.at(-1) ?? "";
-      if (now !== walk.bound) fail(`${walk.mode.tag}:c`, `the conversation moved from ${walk.bound} to ${now}`);
+      if (now === "" || now !== walk.bound) fail(`${walk.mode.tag}:c`, `the conversation moved from ${walk.bound} to ${now}`);
     }
 
     // ---- p: the job in each harness; the panel shows its own plan, or says it reports none
@@ -381,7 +382,7 @@ await runGoal(async (failures, tell) => {
           continue;
         }
         const reloaded = await boundId(page);
-        if (reloaded !== walk.bound) fail(`${mode.tag}:r`, `after a reload the session shows ${reloaded} (want ${walk.bound})`);
+        if (reloaded === "" || reloaded !== walk.bound) fail(`${mode.tag}:r`, `after a reload the session shows ${reloaded} (want ${walk.bound})`);
       }
       if (!(await conversationLoaded(page))) {
         fail(`${mode.tag}:r`, "after a reload the conversation never drew turn 2 again");
@@ -391,7 +392,7 @@ await runGoal(async (failures, tell) => {
       await walkTurn(walk, "r", "One more time: the token, only.");
       if ((await tokenCount(walk)) <= seen) fail(`${mode.tag}:r`, "after a reload, turn 3 did not name the token");
       const now = harness(walk) ? await boundId(page) : walk.sentTo.at(-1) ?? "";
-      if (now !== walk.bound) fail(`${mode.tag}:r`, `after a reload turn 3 went to ${now} (want ${walk.bound})`);
+      if (now === "" || now !== walk.bound) fail(`${mode.tag}:r`, `after a reload turn 3 went to ${now} (want ${walk.bound})`);
 
       if (harness(walk)) {
         const drawn = await panel(page);
