@@ -1,10 +1,8 @@
 /**
- * fixture: the whole file. Deleted at wiring (spec, "What changes").
- *
- * An in-memory stand-in for the package, behind `LabAdapter`, that plays the
- * script on a timer so the screen can be seen and tested before the package
- * pieces it needs exist. It proves the UI only. The README lists which gap
- * each part stands for.
+ * A test double for the screen tests: an in-memory `LabAdapter` that plays the
+ * script on a timer. It proves the UI only, including the divider G1 will
+ * place; the goal check (`goals/teammates-lab/`) proves the package. Nothing
+ * in `src/` imports it.
  *
  * Three workers, each with one conversation, and coder, which takes tasks
  * only. Your first ask to lead makes it message researcher; researcher looks
@@ -15,9 +13,9 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * lead's conversation starts past the 50-turn history window.
  */
-import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "./adapter";
+import type { ConversationEntry, LabAdapter, ProjectRow, RunStep, TalkRow, BoardTask, Unsubscribe, WindowMark, WorkerRow } from "../src/adapter";
 
-/** How the fixtures keep time, and what they stand in for. */
+/** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
   /** Multiplies every delay. 1 is real time; tests pass a small number. */
   speed?: number;
@@ -35,7 +33,7 @@ const ROSTER: WorkerRow[] = [
   { id: "teammates.lead", name: "lead", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", role: "Drafts and tightens copy when you or another worker asks." },
-  { id: "teammates.coder", name: "coder", role: "Makes code changes lead hands it, in lead's project.", takesTasks: true, harness: "Claude Code" },
+  { id: "teammates.coder", name: "coder", role: "Makes code changes lead hands it, in lead's project.", takesTasks: true },
 ];
 const PROJECTS: ProjectRow[] = [
   { id: "relay", name: "relay" },
@@ -73,7 +71,7 @@ const OLDER_TURNS: [string, string][] = [
   ["Do we need a demo video?", "A 40-second clip of the setup. Writer can script it later."],
 ];
 
-/** fixture: stands in for the whole package until wiring. */
+/** The double. */
 export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
@@ -137,6 +135,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const fileTask = (w: FixtureWorker, title: string): Step[1] => () => {
     const project = workProjects.get(w.row.id);
     const task: FixtureTask = { id: nextId("t"), to: CODER, title, status: project ? "running" : "needs-project", project, sessionId: w.sessionId };
+    if (project) task.runSessionId = `run:${task.id}`;
     tasks = [...tasks, task];
     push(w, { kind: "task", id: nextId("k"), taskId: task.id });
     if (!project) return;
@@ -321,7 +320,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     watchWindow(sessionId, onChange) {
       return watch(() => {
         const w = bySession(sessionId);
-        // fixture: stands in for the history window's mark (G1). A turn starts at your line or at a received message.
+        // Stands in for the history window's mark (G1). A turn starts at your line or at a received message.
         const starts = (w?.entries ?? []).filter((e) => e.kind === "user" || e.kind === "received");
         const mark: WindowMark | undefined =
           starts.length > WINDOW_TURNS ? { firstVerbatimEntryId: starts[starts.length - WINDOW_TURNS].id, summarized: options.summary ?? false } : undefined;
@@ -346,8 +345,8 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
     },
 
-    watchRun(taskId, onChange) {
-      return watch(() => onChange(runs.get(taskId) ?? []));
+    watchRun(runSessionId, onChange) {
+      return watch(() => onChange(runs.get(runSessionId.replace(/^run:/, "")) ?? []));
     },
   };
 }

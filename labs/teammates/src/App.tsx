@@ -28,7 +28,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       setWorkers(roster);
       setProjects(projectRows);
       setSessions(Object.fromEntries(talking.map((w, i) => [w.id, ids[i]])));
-      setSelected((current) => current ?? roster[0]?.id);
+      // Open on the first worker you can talk to: one that takes tasks only has no conversation.
+      setSelected((current) => current ?? talking[0]?.id ?? roster[0]?.id);
     })();
     return () => {
       live = false;
