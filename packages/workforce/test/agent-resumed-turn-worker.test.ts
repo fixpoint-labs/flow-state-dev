@@ -25,7 +25,7 @@ const approveRefund = handler({
   inputSchema: z.object({ order: z.string() }),
   outputSchema: z.object({ refunded: z.string() }),
   execute: async (input, ctx) => {
-    await ctx.suspend!({ reason: "human_approval", message: `Refund ${input.order}?`, allow: ["approve", "reject"] });
+    await ctx.suspend!({ reason: "user_approval", message: `Refund ${input.order}?`, allow: ["approve", "reject"] });
     return { refunded: input.order };
   }
 });

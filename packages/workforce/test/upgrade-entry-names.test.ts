@@ -231,7 +231,7 @@ describe("a reply an older host parked under `run`", () => {
       name: "upgrade-ask",
       inputSchema: z.object({ message: z.string() }),
       outputSchema: z.unknown(),
-      execute: async (input, ctx) => ({ asked: input.message, decision: await ctx.suspend!({ reason: "human_approval", message: "Go?" }) })
+      execute: async (input, ctx) => ({ asked: input.message, decision: await ctx.suspend!({ reason: "user_approval", message: "Go?" }) })
     });
     const answer = handler({ name: "upgrade-answer", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "answered" });
     const flow = defineFlow({

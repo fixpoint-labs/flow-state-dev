@@ -24,7 +24,7 @@ function approval(id: string, expiresAt: number): SuspensionRecord {
     flowKind: "review",
     actionName: "submit",
     userId: "devuser",
-    reason: "human_approval",
+    reason: "user_approval",
     message: "Publish?",
     status: "pending",
     blockInstanceId: "seq_1",
@@ -81,7 +81,7 @@ describe("durability sweeper: a person's deadline", () => {
       name: "gated",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Publish?", timeoutMs: 500 })
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", message: "Publish?", timeoutMs: 500 })
     });
     const flow = defineFlow({ kind: "review", actions: { submit: { block: sequencer({ name: "seq" }).step(gated) } } })({
       id: "review"

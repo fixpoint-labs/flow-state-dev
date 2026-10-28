@@ -1,7 +1,7 @@
 /**
  * Built-in default card for a clarifying-question suspension (FIX-849).
  *
- * Chosen by `ItemRenderer` for a `human_input` suspension whose `resumeSchema` is
+ * Chosen by `ItemRenderer` for a `user_input` suspension whose `resumeSchema` is
  * a single string (or absent). Renders the question and a free-text box; submit
  * sends the raw string back as the resume payload. Logic is delegated to
  * `useSuspensionForm`. Once resolved it collapses to a one-line receipt.
