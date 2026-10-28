@@ -15,6 +15,7 @@
  * | (none) | names the thread (the asked one, or a new one), runs a command with a pause, replies, completes |
  * | `[slow]` | after the command and the reply have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the thread, so a stop lands before it is confirmed |
+ * | `[long]` | after the command and the reply have shown, holds past the engine's 30 s `queue` wait budget, then replies again |
  * | `[new]` | names a new thread even when asked to continue one |
  * | `[refuse]` | refuses the asked thread the way Codex does: no thread named, then the SDK's throw with Codex's `no rollout found` error |
  * | `[fail]` | names the thread, then Codex fails the turn (`turn.failed`, a result rather than a throw) |
@@ -28,11 +29,15 @@ import type { CodexThreadEvent, CodexThreadLike, ResolveCodexClient } from "@flo
 import { scriptedReceived } from "./scripted-received";
 
 /**
- * The script's pauses, in milliseconds: between steps, and the long one a
- * `[slow]` or `[slow-start]` turn takes, long enough to press stop. Unit tests
- * shorten them.
+ * The script's pauses, in milliseconds: between steps, the long one a
+ * `[slow]` or `[slow-start]` turn takes, long enough to press stop, and the
+ * one a `[long]` turn takes, longer than a turn sent behind it would wait
+ * under `queue`. Unit tests shorten them.
  */
-export const scriptedCodexPauses = { stepMs: 400, slowMs: 20_000 };
+export const scriptedCodexPauses = { stepMs: 400, slowMs: 20_000, longMs: 35_000 };
+
+/** What a `[long]` turn replies once its hold is over. */
+export const SCRIPTED_LONG_DONE = "Scripted Codex, done after the long hold.";
 
 /** The command every scripted turn runs, as Codex reports it. */
 export const SCRIPTED_COMMAND = "ls";
@@ -114,6 +119,10 @@ function scriptedThread(threads: Threads, asked: string | null): CodexThreadLike
         };
         // A slow turn holds here, after its command and reply have shown and its thread is confirmed.
         await pause(has("slow") ? scriptedCodexPauses.slowMs : step, signal);
+        if (has("long")) {
+          await pause(scriptedCodexPauses.longMs, signal);
+          if (!stopped()) yield { type: "item.completed", item: { id: "msg_2", type: "agent_message", text: SCRIPTED_LONG_DONE } };
+        }
         if (stopped()) throw new Error("The operation was aborted");
         if (has("fail")) {
           yield { type: "turn.failed", error: { message: "scripted turn Codex failed" } };

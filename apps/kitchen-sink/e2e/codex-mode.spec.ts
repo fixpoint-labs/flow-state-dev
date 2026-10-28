@@ -99,6 +99,43 @@ test.describe("Codex mode (V2)", () => {
   });
 });
 
+test.describe("a line sent while a long turn runs (FIX-2265)", () => {
+  // The scripted turn holds past the engine's 30 s `queue` wait budget
+  // (`lib/scripted-codex.ts`, `[long]`). Red state produced before this was
+  // trusted: the `turn` action on `concurrency: "queue"` (main before the
+  // fix), and the line never runs: "turn 2" never shows, before or after a
+  // reload. With the page sending the line through the session hook, as it
+  // did, the page leaves the running turn and this fails before the line runs.
+  test("runs after the turn, the page stays on the running turn, and both survive a reload", async ({
+    page,
+    consoleErrors: _consoleErrors,
+  }) => {
+    test.setTimeout(120_000);
+    const conversation = page.getByTestId("conversation");
+    await newSession(page);
+    await send(page, "[long] look around");
+    await expect(conversation).toContainText(/turn 1 of thread scripted-codex-\S+\./);
+    const thread = /turn 1 of thread (scripted-codex-\S+)\./.exec((await conversation.textContent())!)![1]!;
+
+    await send(page, "After that, reply BRAVO.");
+    await expect(page.getByTestId("line-after")).toBeVisible();
+    // Still on the running turn: its stop control is up and nothing stamps it finished.
+    await expect(stop(page)).toBeVisible();
+    await expect(page.getByTestId("worked-for")).toHaveCount(0);
+
+    // The running turn's last reply arrives live, past the budget, then the line runs as the next turn.
+    await expect(conversation).toContainText("Scripted Codex, done after the long hold.", { timeout: 60_000 });
+    await expect(conversation).toContainText(`turn 2 of thread ${thread}`, { timeout: 15_000 });
+    await expect(conversation).toContainText("After that, reply BRAVO.");
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+
+    await page.reload();
+    await expect(conversation).toContainText("Scripted Codex, done after the long hold.");
+    await expect(conversation).toContainText(`turn 2 of thread ${thread}`);
+    await expect(conversation).toContainText("After that, reply BRAVO.");
+  });
+});
+
 test.describe("the plan panel in Codex mode (V3)", () => {
   test("says Codex reports no plan, before a turn and after one", async ({ page, consoleErrors: _consoleErrors }) => {
     await newSession(page);

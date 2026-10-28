@@ -163,6 +163,45 @@ function SessionBody({
   const lines = useMemo(() => harnessLines((prompt, running, sender: LineSender) => sendLine(prompt, running, sender)), []);
   useEffect(() => lines.turnChanged(), [lines, turnId, isStreaming]);
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
+  // Turns sent while one runs, oldest first. Each waits on the server for the
+  // turn before it, with no time limit, and is sent beside the running turn
+  // rather than through the session hook, so the page stays on the running
+  // turn. The page follows the next one once the turn it follows ends.
+  const waiting = useRef<string[]>([]);
+  const { followRequest } = session;
+  const followWaiting = useCallback(() => {
+    if (streaming.current) return;
+    const next = waiting.current.shift();
+    if (next === undefined) return;
+    // Following until the next render says so, so a second call follows nothing more.
+    streaming.current = true;
+    followRequest(next);
+  }, [followRequest]);
+  useEffect(() => {
+    if (!isStreaming) followWaiting();
+  }, [isStreaming, followWaiting]);
+  // A page opened while turns wait follows the session's newest request, which
+  // is a waiting one: follow the oldest running turn instead, and the rest after it.
+  const { isLoading } = session;
+  const checkedOpen = useRef<string | null>(null);
+  useEffect(() => {
+    if (isLoading || checkedOpen.current === sessionId) return;
+    checkedOpen.current = sessionId;
+    waiting.current = [];
+    client.sessions.requests(sessionId, { status: "in_progress", limit: 20 }).then(
+      (requests) => {
+        const turns = requests
+          .filter((request) => request.actionName === "turn")
+          .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+        if (checkedOpen.current !== sessionId || turns.length < 2) return;
+        const listed = turns.slice(1).map((request) => request.id);
+        waiting.current = [...listed, ...waiting.current.filter((id) => !listed.includes(id))];
+        followRequest(turns[0]!.id);
+      },
+      // Unread, the page stays on the request it follows.
+      () => undefined,
+    );
+  }, [client, sessionId, isLoading, followRequest]);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
@@ -170,7 +209,14 @@ function SessionBody({
       const sender: LineSender = {
         steer: (text) => steerRunningTurn(client, { flowKind, sessionId, prompt: text }),
         turn: async (text) => {
-          await session.sendAction("turn", { prompt: text }, { userMessage: text });
+          if (!streaming.current) {
+            await session.sendAction("turn", { prompt: text }, { userMessage: text });
+            return;
+          }
+          const sent = await client.flow(flowKind).send("turn", { prompt: text }, { sessionId });
+          waiting.current.push(sent.id);
+          // The running turn may have ended while the line was sent.
+          followWaiting();
         },
       };
       try {
@@ -184,7 +230,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [client, flowKind, lines, refresh, session, sessionId, setMessage],
+    [client, flowKind, followWaiting, lines, refresh, session, sessionId, setMessage],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 

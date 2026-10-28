@@ -431,6 +431,17 @@ export type SessionView = {
    * via a GET stream instead.
    */
   continueRequest: (requestId: string) => Promise<void>;
+  /**
+   * Follow a request of this session that was sent without the hook: stream
+   * its items into `items`, from the start, and make it the request
+   * `abortRequest` stops. The stream followed now is closed.
+   *
+   * For a request sent beside the one the page follows, so the page stays on
+   * that one until it ends: a turn that waits for the running turn, say, sent
+   * through the client and followed once the running turn is over. Sends
+   * nothing.
+   */
+  followRequest: (requestId: string) => void;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1956,6 +1967,14 @@ export function useSession(
     if (!refused) injectSyntheticAbortItem(requestId);
   }, [flow, flushContentDeltas, injectSyntheticAbortItem]);
 
+  const followRequest = useCallback(
+    (requestId: string) => {
+      activeRequestIdRef.current = requestId;
+      attachToStream(requestId);
+    },
+    [attachToStream]
+  );
+
   const refresh = useCallback(async () => {
     // Refreshes the whole view, background work included. Under the
     // interaction-only design this is also the app's way to bring a
@@ -2151,6 +2170,7 @@ export function useSession(
     resumeLatestRequest,
     resumeSuspension,
     continueRequest,
+    followRequest,
     refresh,
     subscribeAudioDelta
   };
