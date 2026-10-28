@@ -166,7 +166,7 @@ describe("ensureSeeded — a source that still declares `agents:`", () => {
       await ensureSeeded(c, [
         {
           name: "team-skill",
-          skillMd: `---\ndescription: Team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with addTask, then runBoard.`,
+          skillMd: `---\ndescription: Team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with createTask, then runBoard.`,
         },
       ]);
       expect(c._store.has("skills/team-skill/SKILL.md")).toBe(false);

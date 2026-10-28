@@ -24,7 +24,7 @@ const probe = handler({
   resources: { ...conversationLedgerResources },
   execute: async (input, ctx) => {
     const board = await conversationLedgerAt(ctx, input.partition);
-    await board!.addTask({
+    await board!.createTask({
       id: input.taskId,
       goal: "a row on another conversation's board",
       ...(input.filedForMe ? { targetSessionId: ctx.session.identity.id } : {})

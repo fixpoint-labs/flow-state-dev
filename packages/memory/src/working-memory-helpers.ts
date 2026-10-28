@@ -111,7 +111,7 @@ export async function add(
 ): Promise<WorkingMemoryEntry> {
   const resolved = resolveConfig(config)
   // Generated once, so the id is stable across CAS retries — same reasoning as
-  // `addTask` in the task collection. Only the state-derived fields below are
+  // `createTask` in the task collection. Only the state-derived fields below are
   // computed per invocation.
   const id = entry.id ?? `wm_${shortId()}`
 

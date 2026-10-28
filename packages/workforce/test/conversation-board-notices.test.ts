@@ -166,9 +166,9 @@ describe("a task held on a question (FIX-2131)", () => {
       // Nothing ended: the filer is told the question (FIX-2241), and no notice.
       const held = (await host.row("alice", filing, filed.taskId!))!;
       expect(held.status).toBe("in_progress");
-      const question = held.holds!.find((hold) => hold.source.kind === "row")!;
-      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`question: "${question.id}"`)]);
-      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: question.id, message: "eu" });
+      const question = held.questions!.find((hold) => hold.source.kind === "row")!;
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`answers: "${question.id}"`)]);
+      const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, answers: question.id, message: "eu" });
       expect(answered.output).toMatchObject({ ok: true });
       await host.settled();
       await touch(host, "alice", conv);
@@ -197,7 +197,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
 
   /**
    * A user's message, sent through the host as an app sends it, whose reply
-   * files the task and is then held open (after its model call, so `addTask`
+   * files the task and is then held open (after its model call, so `createTask`
    * has run) until the task's notice has been dispatched to the conversation,
    * for a further half second in which the notice could land, and then for as
    * long as `during` takes. `seen` says what happened while it was held.

@@ -365,7 +365,7 @@ function writeReport(r: {
   out.push("", "## 5. Parts 3 and 4", "", "| Entry | Check | Control | Verdict | Time |", "|---|---|---|---|---|");
   for (const x of r.p3) out.push(`| ${x.id} | \`${x.path}\` | ${x.control ?? "green path"} | ${x.verdict} | ${Math.round(x.ms / 1000)} s |`);
   out.push("");
-  for (const row of r.p4) out.push(`**${row.check}: ${row.ok ? "holds" : "FAILS"}**`, "", "```", ...row.output, "```", "");
+  for (const row of r.p4) out.push(`**${row.check}: ${row.ok ? "questions" : "FAILS"}**`, "", "```", ...row.output, "```", "");
   out.push("## 6. Findings", "", ...(r.failures.length === 0 ? ["None."] : r.failures.map((f) => `- ${f.replaceAll("\n", " ").slice(0, 800)}`)));
   const path = join(SCRATCH, "report.md");
   writeFileSync(path, out.join("\n"));

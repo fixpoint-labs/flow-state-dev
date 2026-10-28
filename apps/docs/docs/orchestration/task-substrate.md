@@ -7,7 +7,7 @@ description: The Task record and storage-agnostic TaskCollection that the task b
 
 # Task substrate
 
-Coordination patterns in flow-state-dev share one shape: a list of work items that get claimed, run, and marked done. The task substrate is where that shape lives. It gives you the `Task` record and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Dispatchers, the task board, and the patterns above them (Supervisor, Plan and Execute) all read and write through this one API.
+Coordination patterns in flow-state-dev share one shape: a list of work items that get claimed, run, and marked done. The task substrate is where that shape lives. It gives you the `Task` record and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Claim orders, the task board, and the patterns above them (Supervisor, Plan and Execute) all read and write through this one API.
 
 Reach for it directly when you need a coordination shape none of the wrappers provide. Otherwise you're using it underneath one of them.
 
@@ -36,11 +36,11 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `attempts` | `number` | How many times the task has been claimed. Starts at 0. |
 | `maxAttempts` | `number?` | Optional retry budget. Governs soft vs hard fail. |
 | `assignee` | `string?` | Worker key a board uses to route the task. |
-| `priority` | `number?` | Higher wins under the priority dispatcher. Unset reads as 0. |
+| `priority` | `number?` | Higher wins under the priority claim order. Unset reads as 0. |
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `holds` | `TaskHold[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [holding a task on questions](#holding-a-task-on-questions). |
+| `questions` | `TaskQuestion[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [waiting on questions](#waiting-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -99,24 +99,24 @@ Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *so
 
 ### Holding a task until someone releases it
 
-A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `addTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
+A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `createTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
 
 A held task keeps a board from finishing: nothing will start it, so a [task board](./task-board.md#termination-onidle-modes)'s drain reports it with the failures, as `"blocked-by-failures"`. Release it, or cancel it, to let the board finish.
 
-### Holding a task on questions
+### Waiting on questions
 
-A task can also wait on a person's answers. Its `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open hold starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. Its `questions` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openQuestions(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 
-- **A question or a confirm** (`"row"`). File the task with `addTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
+- **A question or a confirm** (`"row"`). File the task with `createTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
 - **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
 
-`answer(id, { hold, message, from })` answers one question. The answer is kept on the task as a message carrying the hold's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
+`answer(id, { questionId, message, from })` answers one question. The answer is kept on the task as a message carrying the question's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
 
-A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payHoldDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
+A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payQuestionDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
-A task with open holds settles only by a cancel, which closes every hold; an answer closes its own hold and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
+A task with open questions settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
 ### Changing a filing before it starts
 
@@ -133,13 +133,13 @@ Once a worker has claimed the task, the answer is `started`. A retry that return
 
 ### Dependencies are checked when you file
 
-`addTask`, `addTasks` and `patchSettings` refuse a dependency the board could never satisfy, and file nothing. Each refusal throws a `TaskFilingRefusedError` whose `rule` names what was wrong:
+`createTask`, `createTasks` and `patchSettings` refuse a dependency the board could never satisfy, and file nothing. Each refusal throws a `TaskFilingRefusedError` whose `rule` names what was wrong:
 
 - `dependency_not_on_board`: the id names no task on this board. To wait on work somewhere else, wait on it, or file the task held and release it when the other work is done.
 - `dependency_ended`: the dependency has already failed or been cancelled, so the task could never start.
 - `dependency_loop`: the dependencies lead back to the task itself.
 
-In an `addTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
+In a `createTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
 
 ### When a task ends badly, its dependents end too
 
@@ -153,7 +153,7 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 
 The mutation surface:
 
-- **Create** — `addTask`, `addTasks`.
+- **Create** — `createTask`, `createTasks`.
 - **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `cancel`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
 - **Mutate** — `patchSettings` (until the task starts), `steer` / `takeSteers` (until the task finishes; [below](#messages-on-an-open-task)), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
@@ -172,7 +172,7 @@ Here's a handler that seeds two tasks with a dependency between them and dispatc
 import { handler } from "@flow-state-dev/core";
 import {
   getOrCreateTaskCollection,
-  topologicalDispatcher,
+  topologicalClaimOrder,
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -187,19 +187,19 @@ export const seedResearchPlan = handler({
       collectionId: "research-plan",
     });
 
-    await collection.addTask({
+    await collection.createTask({
       id: "research",
       goal: `Research the current state of ${input.topic}`,
     });
-    await collection.addTask({
+    await collection.createTask({
       id: "draft",
       goal: `Draft a briefing on ${input.topic}`,
       deps: ["research"],
     });
 
-    // "draft" waits on "research", so the topological dispatcher
+    // "draft" waits on "research", so the topological claim order
     // claims "research" and leaves "draft" pending.
-    const claimed = await topologicalDispatcher.claim(collection, "writer-1", ctx);
+    const claimed = await topologicalClaimOrder.claim(collection, "writer-1", ctx);
 
     return { claimedGoal: claimed?.goal ?? null };
   },
@@ -252,7 +252,7 @@ await tasks.steer("release-note", { message: "Mention the new flag too.", from: 
 // { outcome: "declined", reason: "steer-limit", status: "in_progress" }
 ```
 
-Messages are appended in order on the task's `steers`. Each one records the attempt that took it (`takenBy`). A claim takes every message on the task into the new attempt, and its worker input carries them as `steers`. A request already working the task takes later ones with `takeSteers(id, { claim, takenIn })`, which needs the claim's ticket, so only the attempt holding the task takes its messages. `takenIn` is a name you give the read, such as `step:<request id>`: reading again under the same name returns the same messages, so a step that runs again after a crash sees what it took the first time, and nothing is taken twice. A steer changes no status, uses no attempt and records no ending. A steer to a task waiting on work it filed sets its `waitingOn` to `"steer"`, so the turn that takes it can start.
+Messages are appended in order on the task's `steers`. Each one records the attempt that took it (`takenBy`). A claim takes every message on the task into the new attempt, and its worker input carries them as `steers`. A request already working the task takes later ones with `takeSteers(id, { claim, takenIn })`, which needs the claim's ticket, so only the attempt holding the task takes its messages. `takenIn` is a name you give the read, such as `step:<request id>`: reading again under the same name returns the same messages, so a step that runs again after a crash sees what it took the first time, and nothing is taken twice. A steer changes no status, uses no attempt and records no ending. A steer to a task waiting on work it filed sets its `keptOpenBy` to `"steer"`, so the turn that takes it can start.
 
 `complete` with `refuseUntakenSteers: true` declines, reason `untaken-steers`, while the task holds a message its attempt hasn't taken. It is decided inside the write, so a message that lands after your own read of the row still holds the task open. Pass it only where something then gives the message a turn, as a task board's end check does.
 
@@ -271,7 +271,7 @@ While a task is `in_progress`, your writes are good for as long as you hold the 
 
 One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it: `{ outcome: "declined", reason: "lost-claim" }` if another claimant has meanwhile taken the task, and `{ outcome: "recorded" }` if nobody has, which means the task is yours again for the deadline you just wrote. Pass `committedLeaseSpan(task)` past `now()` as that deadline, so the task keeps the lease length its claim was granted. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
 
-The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [hold](#holding-a-task-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
+The lease answers one question: is a live worker on this right now? A task waiting on a person is stopped on purpose and nobody is running it. It stays `in_progress` with an open [question](#waiting-on-questions). The task isn't handed out again while it waits, however long that takes. So when a task has to wait on a person for longer than any lease you would want to set, ask a question rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing: it runs the terminal check whether you pass options or not.
 
@@ -302,9 +302,9 @@ type TaskWriteOutcome =
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed or re-queued while you were working on it, or its lease ran out while it was still `in_progress`.
 - `started` — a `hold` or a `patchSettings` on a task that has already started. What a task was filed with is fixed once it runs.
-- `held` — the task has an open [hold](#holding-a-task-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a held task.
+- `open-question` — the task has an open [question](#waiting-on-questions). A settlement, a lease renewal and a second wait are refused until it closes. Only a cancel settles a task with an open question.
 - `answered` — an `answer` with other words, or from another sender, for a question already answered.
-- `no-such-hold` — an `answer` naming no question or confirm on the task.
+- `no-such-question` — an `answer` naming no question or confirm on the task.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
@@ -389,7 +389,7 @@ Surface `undefined` as its own condition instead of guessing. It means the task 
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
-**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `addTask`, `addTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+**Which writes you can correlate.** The methods whose options carry a write token: `complete`, `fail` and `cancel`, where the argument is optional, and `renewLease` and `linkRun` (which records the run working a claimed task), where it is required because it carries the claim ticket. `createTask`, `createTasks`, `claim`, `reclaim`, `hold`, `release`, `patchSettings` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
@@ -497,9 +497,9 @@ This is not exactly-once dispatch. A lease that runs out sends the task back to 
 
 **The limit.** The guarantee covers concurrent executions inside one process. Every store backend satisfies that. Two separate OS processes over a filesystem-backed store do not: comparison there happens under an in-process lock, so each process compares against its own view. Use SQLite or Postgres for a board two processes share.
 
-## Dispatchers
+## Claim orders
 
-A dispatcher decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+A claim order decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
 A custom `eligibility` predicate **narrows** the substrate's candidates. Claimability is the substrate's to decide: dependencies satisfied, and either never started or abandoned by a worker that stopped renewing. Your predicate selects among the tasks that already pass it.
 
@@ -509,17 +509,17 @@ A custom `eligibility` predicate **narrows** the substrate's candidates. Claimab
 collection.claim(workerId, { eligibility: (t) => t.id === picked });
 ```
 
-**Do not assert `status` in an eligibility predicate.** Other filters say which work this drain is for, and abandoned tasks matching them are still recovered. Asserting `status === "pending"` switches recovery off for that dispatcher.
+**Do not assert `status` in an eligibility predicate.** Other filters say which work this drain is for, and abandoned tasks matching them are still recovered. Asserting `status === "pending"` switches recovery off for that claim order.
 
-An abandoned task your predicate filters out is not taken back by *this* dispatcher, so if no drain on the board matches a task, nothing recovers it.
+An abandoned task your predicate filters out is not taken back by *this* claim order, so if no drain on the board matches a task, nothing recovers it.
 
-| Dispatcher | Picks | Eligibility |
+| Claim order | Picks | Eligibility |
 |------------|-------|-------------|
-| `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
+| `fifoClaimOrder` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `topologicalClaimOrder` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `priorityClaimOrder` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
 
-`fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
+`fifoClaimOrder` and `topologicalClaimOrder` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
 
 ## task-change items
 

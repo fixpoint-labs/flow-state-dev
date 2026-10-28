@@ -75,7 +75,7 @@ describe.each([
   async function claimed(): Promise<Backing & { claim: TaskClaimTicket }> {
     const backing = await makeBacking();
     backing.setNow(1000);
-    await backing.collection.addTask({ id: "t", goal: "t" });
+    await backing.collection.createTask({ id: "t", goal: "t" });
     const task = await backing.collection.claim("w", { leaseDurationMs: 10_000 });
     return {
       ...backing,

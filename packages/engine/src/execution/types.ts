@@ -167,7 +167,7 @@ export type RunActionOptions<
    * only `runAction` knows when the second one becomes true. `runAction` is
    * async, so a caller holding its promise has a run that may still fail during
    * registration; a caller that wants "it exists" without waiting for "it
-   * finished" has nothing else to await. The in-process dispatcher turns this
+   * finished" has nothing else to await. The in-process runner turns this
    * into its handle's `accepted`, which is what a detached spawn awaits before
    * it lets go of the task it handed over.
    *

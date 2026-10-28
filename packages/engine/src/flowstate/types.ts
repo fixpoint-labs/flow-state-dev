@@ -14,7 +14,7 @@ import type {
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
-import type { FlowDispatcher } from "../transports/dispatcher";
+import type { FlowRunner } from "../transports/runner";
 import type { ConcurrencyLeaseBackend } from "../transports/concurrency/lease-backend";
 import type {
   InProcessPrincipal,
@@ -58,7 +58,7 @@ export interface FlowStateVoiceConfig {
  *   deployment). A dedicated worker process consumes the queue.
  * - `"worker-only"` — process only (a dedicated worker container). Build
  *   the same `createFlowState(...)` from shared config and call `ready()`;
- *   no dispatcher is installed and the router is typically never served.
+ *   no runner is installed and the router is typically never served.
  */
 export type WorkerMode = "colocated" | "dispatch-only" | "worker-only";
 
@@ -82,9 +82,9 @@ export interface WorkerAdapter {
   readonly mode?: WorkerMode;
   /**
    * Build the dispatch side (enqueue + live-event bridge). Installed as the
-   * router's `FlowDispatcher` unless mode is `"worker-only"`.
+   * router's `FlowRunner` unless mode is `"worker-only"`.
    */
-  createDispatcher(runtime: FlowStateRuntime): FlowDispatcher;
+  createRunner(runtime: FlowStateRuntime): FlowRunner;
   /**
    * Start the processing side against the resolved runtime. Called during
    * runtime init unless mode is `"dispatch-only"`. The returned handle is
@@ -310,13 +310,13 @@ export interface CreateFlowStateOptions<
   userDeadlineMs?: RuntimeConfig["userDeadlineMs"];
   
   /**
-   * Low-level escape hatch: a pre-built FlowDispatcher controlling where
+   * Low-level escape hatch: a pre-built FlowRunner controlling where
    * flow actions execute. Default: in-process (runAction called directly).
-   * Most deployments should use `worker` instead — it wires the dispatcher
+   * Most deployments should use `worker` instead — it wires the runner
    * AND the processing side from one adapter. Mutually exclusive with
    * `worker`.
    */
-  dispatcher?: FlowDispatcher;
+  runner?: FlowRunner;
 
   /**
    * Execution-backend adapter (e.g. `bullmqWorker(...)` from
@@ -324,7 +324,7 @@ export interface CreateFlowStateOptions<
    * side per the adapter's `mode`, both against the same resolved runtime.
    * Worker startup happens on first `ready()` / `getRouter()` /
    * `getRuntime()` — call `ready()` eagerly in processes that must consume
-   * the queue from boot. Mutually exclusive with `dispatcher`.
+   * the queue from boot. Mutually exclusive with `runner`.
    */
   worker?: WorkerAdapter;
 

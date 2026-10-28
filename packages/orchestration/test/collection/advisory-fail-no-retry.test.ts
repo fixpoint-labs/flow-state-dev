@@ -15,7 +15,7 @@ import { createFakeSequencerState } from "../helpers";
 it("a noRetry fail that commits and then throws reaches the caller", async () => {
   const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   const inner = createStateBackedTaskCollection({ collectionId: "tasks", state });
-  await inner.addTask({ id: "t", goal: "work", maxAttempts: 3 });
+  await inner.createTask({ id: "t", goal: "work", maxAttempts: 3 });
   const claim = ticketForClaim("tasks", (await inner.claim("w"))!);
   const commitsThenThrows = {
     ...inner,
