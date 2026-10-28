@@ -4,7 +4,7 @@
  * A held row is never started by any of the board's start paths: the claim,
  * the drain's exit, a filing's wake, an assign's wake, a touch's wake.
  * `updateTask({ status: "pending" })` releases one, and `createTask` files a
- * new row ready, starting it at once (`dispatchTask` is gone, FIX-2083). Some rows are
+ * new row ready, starting it at once (FIX-2083). Some rows are
  * seeded in the shape an older build stored a recorded row in (`undispatched`,
  * FIX-1875), which the board reads as held (FIX-2080); every leg reads the
  * store, never the action's own say-so.

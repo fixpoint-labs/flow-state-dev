@@ -64,7 +64,7 @@ function buildFlow(backing: "resource" | "request") {
         ? defineTaskCollection({ id: collectionId, scope: "session", stateSchema: z.object({ topic: z.string() }) })
         : { backing: "request", collectionId },
     concurrency: 1,
-    dispatcher: "fifo",
+    claimOrder: "fifo",
     workers: worker,
     // No initial tasks — the worker finds nothing claimable on its very
     // first iteration and goes straight into `.waitForCondition`, caching
@@ -95,7 +95,7 @@ function buildFlow(backing: "resource" | "request") {
       // install its `.waitForCondition` subscription before we add.
       await new Promise((r) => setTimeout(r, IDLE_POLL_MS * 4));
       addedAt.value = Date.now();
-      await ctx.cap[boardName].addTask({
+      await ctx.cap[boardName].createTask({
         id: "late",
         goal: "late-task",
         ...(backing === "resource" ? { input: { topic: "late" } } : {}),

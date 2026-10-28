@@ -17,7 +17,7 @@ const board = taskBoard({
   name: "research",
   workers: researcher,
   concurrency: 4,
-  dispatcher: "topological",
+  claimOrder: "topological",
   onIdle: "complete-or-blocked",
   initialTasks: [{ id: "brief", goal: "Write the research brief" }],
 });
@@ -41,7 +41,7 @@ const board = taskBoard({
 | `maxEnqueuedTasks` | `number \| null` | `100` | Cap on tasks added while others are still `pending`. `null` is unbounded. Only when the board builds its own collection. |
 | `maxTotalTasks` | `number \| null` | `500` | Cap including completed and failed tasks. Those still count after they finish. Same supplied-collection rule as `maxEnqueuedTasks`. |
 | `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `release` / `reclaim` do not spend this. |
-| `dispatcher` | `"fifo"` \| `"topological"` \| `"priority"` \| instance | `"topological"` | How a ready task is picked. |
+| `claimOrder` | `"fifo"` \| `"topological"` \| `"priority"` \| instance | `"topological"` | How a ready task is picked. |
 | `onIdle` | `"complete-or-blocked"` \| `"complete"` \| `"wait"` | `"complete-or-blocked"` | When the pool stops. See [Task board](./task-board#termination-onidle-modes). |
 | `initialTasks` | `TaskInit[]` | omitted | Tasks seeded at board start. |
 | `onError` | `"skip"` \| `"fail"` | `"skip"` | `"skip"` records the failure and lets siblings continue. `"fail"` fails the board. |
@@ -62,7 +62,7 @@ const board = taskBoard({
 | `maxEntries` | `number` | `5000` | LRU eviction ceiling. |
 | `defaultScope` | `"run"` \| `"request"` \| `"session"` | `"run"` | Scope for tools that do not set their own. `"run"` lasts for one board run. |
 
-Narrative for termination, dispatchers, registries, and backing: [Task board](./task-board).
+Narrative for termination, claim orders, registries, and backing: [Task board](./task-board).
 
 ## `goalSeekLoop` options
 

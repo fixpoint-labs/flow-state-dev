@@ -114,7 +114,7 @@ describe("a task stored while a queued message held it open", () => {
     await h.writeRow("alice", decodeURIComponent(done!.partition!), {
       ...rest,
       status: "in_progress",
-      waitingOn: "queued",
+      keptOpenBy: "queued",
       leaseUntil: Date.now() - 1_000,
       output: "the kept answer"
     } as unknown as Task);
@@ -138,7 +138,7 @@ describe("a task stored while a queued message held it open", () => {
     await h.settled();
     const [after] = await h.rowsNamed("alice", "Write the memo");
     expect(after).toMatchObject({ status: "completed", attempts: done!.attempts, output: "the kept answer" });
-    expect(after!.waitingOn ?? undefined).toBeUndefined();
+    expect(after!.keptOpenBy ?? undefined).toBeUndefined();
     // Its work, which had answered, never ran again.
     expect(workTurns()).toBe(worked);
   }, 30_000);

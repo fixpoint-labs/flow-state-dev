@@ -27,7 +27,7 @@ const board = taskBoard({
 });
 ```
 
-A worker here is an ordinary block, so it can be a handler with no model in it at all, and it declares its own `outputSchema`. [Task board](./task-board) is the reference for the registry, the dispatchers, and the termination modes.
+A worker here is an ordinary block, so it can be a handler with no model in it at all, and it declares its own `outputSchema`. [Task board](./task-board) is the reference for the registry, the claim orders, and the termination modes.
 
 ## Personas
 

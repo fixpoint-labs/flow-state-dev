@@ -18,7 +18,7 @@ async function runningTurn(requestId = "r-turn") {
     return write;
   };
   const ref = (await ownStateResolver(ctx as never))!;
-  await ref.addTask({ id: "t", goal: "count the rows" });
+  await ref.createTask({ id: "t", goal: "count the rows" });
   const claimed = (await ref.claim("w"))!;
   const ticket = ticketForClaim(BOARD_FIELD, claimed);
   await ref.linkRun("t", { sessionId: "s-task", requestId, attempt: claimed.attempts }, { claim: ticket });

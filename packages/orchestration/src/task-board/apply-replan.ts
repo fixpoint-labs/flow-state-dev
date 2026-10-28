@@ -18,7 +18,7 @@
  *
  * Id-collision handling: an LLM replanner naturally re-emits ids that
  * already exist in the collection (e.g. it asks to "redo task-1"). The
- * substrate's `addTasks` rejects duplicates, so we auto-suffix the
+ * substrate's `createTasks` rejects duplicates, so we auto-suffix the
  * conflicting ids with `-replan-N` and remap any within-batch deps that
  * referenced the original id. The replanner's intent — adding fresh work — is
  * preserved without breaking referential integrity inside the batch.
@@ -158,7 +158,7 @@ export function createApplyReplan(options: ApplyReplanOptions) {
       // LLM's natural "redo task-1" output doesn't clobber the original — and so
       // two tasks in the SAME batch that carry the same id become two DISTINCT
       // tasks rather than collapsing onto one final id (which would make
-      // `addTasks` reject the whole batch). `idRemap` (original id → final id) is
+      // `createTasks` reject the whole batch). `idRemap` (original id → final id) is
       // built alongside for dependency rewriting; when a batch repeats an id, the
       // last occurrence wins for dep resolution, which is the best we can do for
       // an inherently ambiguous input.
@@ -236,7 +236,7 @@ async function addSkippingDeadDeps(collection: TaskCollectionRef, tasks: readonl
   let batch: TaskInit[] = tasks.map((task) => ({ ...task, id: task.id ?? generateId("task") }));
   for (;;) {
     try {
-      await collection.addTasks(batch);
+      await collection.createTasks(batch);
       return;
     } catch (error) {
       if (!(error instanceof TaskFilingRefusedError) || error.rule !== "dependency_ended" || error.taskId === undefined) throw error;

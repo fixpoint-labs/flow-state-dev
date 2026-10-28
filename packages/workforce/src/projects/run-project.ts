@@ -26,7 +26,7 @@ import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { RunSourceRefusal } from "@flow-state-dev/workspace";
 import { filingProjectAddressOf, filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
-import { filedProjectOf, heldTask } from "../conversation-board/held-task";
+import { filedProjectOf, claimedTask } from "../conversation-board/held-task";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { projectAddressSchema, projectRowSchema, type ProjectAddress, type ProjectRow, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
@@ -63,7 +63,7 @@ export interface RunProject {
  * @returns The project, its visibility and the run's owner, or a refusal.
  */
 export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
-  const held = (await heldTask(ctx as unknown as BlockContext))?.row;
+  const held = (await claimedTask(ctx as unknown as BlockContext))?.row;
   const named = namedProjectOf(held);
   if (named.kind === "malformed") return named.refusal;
   // The session's project address is the one the board writes on a task it
@@ -102,7 +102,7 @@ type NamedProject =
  * The project the task this run holds names in `input.project`, by visibility
  * and id. The row is the one the gate verified for this run, on the
  * conversation's board the task session was opened for: the row whose run
- * link names this request (`heldTask`). Never the dispatch's payload. A run
+ * link names this request (`claimedTask`). Never the dispatch's payload. A run
  * outside a conversation's task session names none.
  */
 function namedProjectOf(held: Task | undefined): NamedProject {

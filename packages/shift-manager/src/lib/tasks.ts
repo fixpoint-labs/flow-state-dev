@@ -53,7 +53,7 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
     `${inFlight.length} in flight`,
     waiting,
     `${counts["on shift"]} on shift`,
-    plural(new Set(inFlight.map((row) => row.holderSessionId)).size, "stream", "streams"),
+    plural(new Set(inFlight.map((row) => row.ownerSessionId)).size, "stream", "streams"),
   ].join(" · ");
 }
 

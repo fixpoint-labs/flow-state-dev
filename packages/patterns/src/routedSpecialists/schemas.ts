@@ -46,7 +46,7 @@ const tasksRecordSchema: ZodTypeAny = z
  * `currentClaim` is the ownership ticket the record-iteration step's own
  * `claim` produced, carried so `recordCompletion` and `recordError`
  * can scope their write-back to that claim. It must be minted from the
- * claim's return value, not from `addTask`'s: the claim is what
+ * claim's return value, not from `createTask`'s: the claim is what
  * increments `attempts`, so the pre-claim task reads `0` where the
  * claimed one reads `1`, and a ticket built from the wrong one would
  * decline every normal completion.

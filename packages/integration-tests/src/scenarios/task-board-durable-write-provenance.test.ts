@@ -149,7 +149,7 @@ async function seedBoard(ids: string[]) {
   const stores = createInMemoryStores();
   const sessionId = `write-provenance-${Math.random().toString(36).slice(2)}`;
   const seeded = await run(stores, sessionId, "seed", async (tasks) => {
-    await tasks.addTasks(
+    await tasks.createTasks(
       ids.map((id) => ({ id, goal: id, input: { goal: id }, maxAttempts: 3 }))
     );
     return "seeded";
@@ -274,7 +274,7 @@ describe("durable task board: telling a committed write from one that never land
 
     const row = await durableTask(stores, sessionId, "a");
     expect(row?.status).toBe("completed");
-    // addTask (1), claim (2), complete (3) — every committed write bumped it.
+    // createTask (1), claim (2), complete (3) — every committed write bumped it.
     expect(row?.revision).toBe(3);
     expect(row?.writeLog).toEqual([{ id: token.id, revision: 3 }]);
     expect(row?.writeLogTruncated).toBe(false);

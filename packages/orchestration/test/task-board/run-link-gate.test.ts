@@ -69,7 +69,7 @@ async function harness(fault: Fault) {
   const parent = await ledger();
   // Two attempts, so a gate failure the rescue settles goes back for retry
   // rather than ending the row.
-  await parent.addTask({ id: "t1", goal: "do it", assignee: ASSIGNEE, input: {}, maxAttempts: 2 });
+  await parent.createTask({ id: "t1", goal: "do it", assignee: ASSIGNEE, input: {}, maxAttempts: 2 });
   const claimed = (await parent.claim("drain", { leaseDurationMs: 10_000 }))!;
 
   const inject = (inner: TaskCollectionRef): TaskCollectionRef => {

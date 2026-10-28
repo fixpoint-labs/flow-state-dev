@@ -1,5 +1,5 @@
 /**
- * WorkerDispatcher — routes all flow dispatches through a BullMQ queue.
+ * WorkerRunner — routes all flow dispatches through a BullMQ queue.
  *
  * The web process enqueues and subscribes to live events via the bridge.
  * The subscriber is created *before* the job is enqueued so no early events
@@ -8,7 +8,7 @@
  */
 import type { Queue } from "bullmq";
 import type {
-  FlowDispatcher,
+  FlowRunner,
   FlowDispatchHandle,
   DispatchEnvelope,
   StreamBridge,
@@ -17,19 +17,19 @@ import { toJobOptions } from "./retry";
 import { leaseJobId } from "./lease-backend";
 import type { RetryConfig } from "./types";
 
-export interface CreateWorkerDispatcherOptions {
+export interface CreateWorkerRunnerOptions {
   queue: Queue;
   bridge: StreamBridge;
   retryConfig?: RetryConfig;
 }
 
 /**
- * Creates a `FlowDispatcher` that enqueues flow-run jobs to a BullMQ queue
+ * Creates a `FlowRunner` that enqueues flow-run jobs to a BullMQ queue
  * and bridges live events back to the caller via a `StreamBridge`.
  */
-export function createWorkerDispatcher(
-  options: CreateWorkerDispatcherOptions
-): FlowDispatcher {
+export function createWorkerRunner(
+  options: CreateWorkerRunnerOptions
+): FlowRunner {
   const { queue, bridge, retryConfig } = options;
   const jobOpts = toJobOptions(retryConfig);
 
