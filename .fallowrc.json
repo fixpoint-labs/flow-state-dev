@@ -16,6 +16,8 @@
 
   "entry": [
     "scripts/*.mjs",
+    // Committed one-shot codemods, run by path with tsx (scripts/codemod/README.md).
+    "scripts/codemod/*.ts",
     ".omp/extensions/*.ts",
     ".omp/test/*.mjs",
 
