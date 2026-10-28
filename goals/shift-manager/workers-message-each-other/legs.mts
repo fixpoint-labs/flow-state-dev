@@ -396,7 +396,7 @@ export async function leg1(world: World): Promise<LegResult> {
   const told = await talk(turns, "1", alice, COS, cos, `The team's codename is ${codename}. Any worker on the team may ask you for it, and you should tell them. Reply only with "Noted."`);
   if (told.status !== "completed") r.failures.push(`1:setup — the Shift Coordinator's turn on the codename ${told.status}: ${told.reply.slice(0, 300)}`);
 
-  const asked = await talk(turns, "1", alice, RESEARCHER, researcher, `Ask the Shift Coordinator (worker id ${COS}) what the codename is, and tell me.`);
+  const asked = await talk(turns, "1", alice, RESEARCHER, researcher, `Ask the Shift Coordinator (worker id ${COS}) what the codename is with a message, without waiting for the reply (no wait), and tell me once its answer arrives.`);
   const sent = asked.calls.filter((c) => c.args.to === COS && typeof c.output?.sent === "string");
   if (sent.length === 0) {
     r.failures.push(`1:sent — Researcher's turn sent the Shift Coordinator no message: its calls ${show(asked.calls.map((c) => ({ args: c.args, output: c.output })))}; reply: ${asked.reply.slice(0, 200)}`);
