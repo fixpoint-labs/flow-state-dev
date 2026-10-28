@@ -184,6 +184,10 @@ Linear and the web were not swept. **Verdict: right approach, fold needed.**
   `bash.md` has no `gh` note; FIX-2256's field is neutral, not Cursor's; `flow.ts:122`); eight
   notes, recorded under *Notes for the implementer*.
 
+## Notes from review
+
+- **Cursor review on `18ca05c`** (comment): (1) optional phasing, recorder, rules, panel and legs r1/r2 first, then the branch check, leg b and the harness manager; (2) add "a Flow State generator that can open pull requests was not opted in" to the goal's *not done if*, since Flow State runs several generators; (3) merge should wait on the Architect's answer on D1. Folded inline: leg b now runs in the harness modes only, matching the debt row, and the diff names `writePullRequests`.
+
 ## How it got here
 
 - **Draft** — 2026-10-28: framed as a session record of opened pull requests that every source

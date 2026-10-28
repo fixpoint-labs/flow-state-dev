@@ -34,7 +34,7 @@ flowchart LR
   K["Kitchen Sink · real model · Codex, Claude Code, Cursor and Flow State modes"] --> T["one turn · open two pull requests on two branches · then gh pr view one"]
   T -->|"panel shows both before the turn ends"| P["PASS · r1 r2"]
   T -->|"links match GitHub · no repeats · the viewed one once"| P
-  M["second turn · open one with a raw API call"] -->|"added at turn end"| P2["PASS · b"]
+  M["harness modes · second turn · open one with a raw API call"] -->|"added at turn end"| P2["PASS · b"]
   C["control · no-pr-record"] -.-> T
   T -.->|"under the control"| F["must FAIL · r1"]
   C2["control · no-backstop"] -.-> M
@@ -45,7 +45,7 @@ The check reads the panel the person sees and compares it with GitHub's own list
 
 | How we verify | |
 |---|---|
-| **Goal check** | A new goal `goals/kitchen-sink-harness/session-lists-its-pull-requests/`, legs **r1**, **r2** and **b**, run once per mode (Codex, Claude Code, Cursor, Flow State). Real model, against a scratch repository the implementer names, with `gh` signed in on the host; the run closes its pull requests after. PASS is every leg green in each mode, 2 of 2 runs; the verdict and a screenshot per mode go in the implementation PR. Model-free: CI tests in `core` (the matcher, over each harness's recorded tool-item shapes and the bash tool's), `workspace` (the branch lookup over a stubbed `gh`), each harness package, and Kitchen Sink |
+| **Goal check** | A new goal `goals/kitchen-sink-harness/session-lists-its-pull-requests/`, legs **r1** and **r2** run once per mode (Codex, Claude Code, Cursor, Flow State), and leg **b** once per harness mode (Flow State has no session branch to check). Real model, against a scratch repository the implementer names, with `gh` signed in on the host; the run closes its pull requests after. PASS is every leg green in each mode, 2 of 2 runs; the verdict and a screenshot per mode go in the implementation PR. Model-free: CI tests in `core` (the matcher, over each harness's recorded tool-item shapes and the bash tool's), `workspace` (the branch lookup over a stubbed `gh`), each harness package, and Kitchen Sink |
 | **Signal** | `r1:live` each pull request is on the panel while the turn's status is still running. `r2:matches` the panel's set equals `gh pr list --author @me --head <each branch>`, by repository and number, with no repeats; the pull request the turn only viewed shows once, as opened by the turn that opened it. `b:caught` a pull request opened by a call the matcher does not read is on the panel after the turn ends, marked as found on the branch |
 | **Input** | Branch names and titles picked at run time (`pickWords`), so no fixed list passes |
 | **Anti-game** | Read the page and GitHub, never the record's keys. Nothing seeded. The raw API call in leg **b** goes through the shell, so only the branch check can see it |
@@ -91,6 +91,8 @@ ends, however it ended.
 +export const githubPullRequestRule: PullRequestRule   // gh pr create, create-PR tools, /pull/<n> links
 +/** Starts this request's recorder, once; it stops when the request ends. */
 +export function recordPullRequests(ctx: BlockContext): void
++/** The one write path: upsert by key, keep the first requestId; every writer calls it. */
++export function writePullRequests(collection, refs: PullRequestRef[], opts: { requestId?, source }): Promise<void>
 
  // An app's own flow, Flow State mode
  generator({
