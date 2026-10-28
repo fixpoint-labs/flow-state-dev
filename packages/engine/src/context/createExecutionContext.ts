@@ -881,7 +881,9 @@ export async function createExecutionContext<
     const openTurns = (
       await stores.request.list({ ...turnScope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })
     )
-      .filter((r) => r.id !== requestId && !listed.has(r.id))
+      // The running request too: a fold must see where it stands among the
+      // conversation's other open turns, or it could move its mark past it.
+      .filter((r) => !listed.has(r.id))
       .map((r) => historyTurn(r, false));
     return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
   };

@@ -355,6 +355,34 @@ describe("historySummary on the engine", () => {
     expect(settled.pending).toEqual([]);
   });
 
+  it("keeps the request running the fold pending when the fold moves past it", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    // Four newer requests of the conversation are already running when the
+    // oldest one folds: every turn it can list is open, so the fold moves its
+    // mark past all of them, and past itself.
+    const template = { flowKind: "summary-chat", flowId: "summary-chat", orgId: DEFAULT_ORG_ID, actionName: "run", source: "http", userId: "u", sessionId: "s", status: "in_progress", version: 1, state: {}, items: [] };
+    const later = Date.now() + 60_000;
+    for (let n = 1; n <= 4; n++) {
+      const id = `req_run_${n}`;
+      await stores.request.set(id, { ...template, id, startedAtMs: later + n, createdAt: later + n, updatedAt: later + n } as never, "any");
+    }
+
+    await talk(stores, flow, calls, 1);
+
+    const moved = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { throughRequestId: string; pending: string[]; complete: boolean };
+    expect(moved.throughRequestId).toBe("req_run_4");
+    expect(moved.pending).toContain("req_001");
+    expect(moved.complete).toBe(false);
+
+    // Once it has settled, the next turn folds it.
+    await talk(stores, flow, calls, 1, 2);
+    const folded = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { summary: string; pending: string[] };
+    expect(folded.summary.split(" ")).toContain("u1");
+    expect(folded.pending).not.toContain("req_001");
+  });
+
   it("keeps this turn pending when it is itself a pending turn the fold cannot read yet", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
