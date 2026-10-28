@@ -23,6 +23,8 @@ import {
   defineAgentWorkerFlow,
   defineSessionBoard,
   hireWorkforce,
+  messageReceivedEntry,
+  MESSAGE_RECEIVED_ENTRY,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry
@@ -37,7 +39,6 @@ import {
   goalModel,
   goalTmpDir,
   actingAs,
-  hearsMessages,
   keysServing,
   modulePatchEnv,
   runGoal,
@@ -162,7 +163,9 @@ const seen = {
   /** Every message the desk's turn was handed. */
   deskTurns: [] as Array<{ sessionId: string; message: string }>,
   /** Every run of a `taker` worker, when it started. */
-  takerRuns: [] as Array<{ worker: string; taskId: string; at: number }>
+  takerRuns: [] as Array<{ worker: string; taskId: string; at: number }>,
+  /** Every message a `taker` worker was sent: a call or a note, never a task. */
+  takerMessages: [] as Array<{ from: string; text: string }>
 };
 
 const tree = await readWorkforce(TREE);
@@ -211,13 +214,26 @@ function startHost(db: string) {
       return "I don't hold any codename.";
     }
   });
+  // A taker looks things up only for a task filed for it, as a worker that
+  // keeps its book behind its task queue does: a message (a call included)
+  // gets that answer and never the codename. Since FIX-2239 a model can call a
+  // delegate and wait for the reply, so a taker that answered nothing read as
+  // "it has no codename" (FIX-2294).
+  const takerMessageTurn = handler({
+    name: "split-to-roster-taker-message",
+    inputSchema: z.object({ from: z.string(), text: z.string() }).passthrough(),
+    execute: async (input) => {
+      seen.takerMessages.push({ from: input.from, text: input.text });
+      return "I only look things up for a task filed for me.";
+    }
+  });
   const taker = defineFlow({
     kind: "taker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: hearsMessages(installation, "taker") },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "taker", turn: takerMessageTurn }) } },
     task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
   } as never);
 
