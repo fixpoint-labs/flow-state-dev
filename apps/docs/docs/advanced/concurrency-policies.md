@@ -25,6 +25,19 @@ It sits next to [idempotency](./idempotency.md). Idempotency stops the *same* de
 
 Parallel runs are safe from data corruption. An update computed from current state is refused and retried if another run moved the record first, and an increment or an append is applied to whatever the store holds. What `allow` doesn't prevent is one run overwriting another's value on the same field, or two replies to one session interleaving. If ordering matters, use `queue` or `reject`.
 
+### A control sent beside a running request
+
+Sometimes an `allow` action exists to talk to a request that's already running, such as a line handed into a turn in progress. By default every request becomes the newest on its session, and that's the one a client reattaching to the session (`useSession` with `autoResume`) looks for. A short control request would take that place, so a page reloaded mid-turn would find the control, already finished, and not reconnect to the turn. Set `autoResume: false` on the control's action and the session keeps pointing at the request before it:
+
+```ts
+actions: {
+  turn: { block: turn, concurrency: "queue" },
+  steer: { block: steerRunningTurn, concurrency: "allow", autoResume: false },
+},
+```
+
+The control's own request is still recorded and listed with the session's requests. Only the reattach target stays where it was.
+
 ## Setting a policy
 
 Set `concurrency` on an action, or `request.concurrency` for a flow-wide default every action inherits:

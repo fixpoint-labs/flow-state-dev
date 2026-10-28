@@ -21,7 +21,8 @@ import {
 } from "../src/error-reporter";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { boardWorkers, bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
+import { boardWorkers, bootBoardHost, messageOf, ORG, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 const OPERATOR = "olive";
 const CONVERSATION = "s_error-reporter";
@@ -96,7 +97,8 @@ function breakerFlow(installation: WorkerInstallation) {
     kind: "breaker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "breaker") },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message } }
   });
 }

@@ -33,6 +33,12 @@ import {
 } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
 import { ROSTER_FLOW } from "../src/workers/keys";
+import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
+import { findTaskPartitions } from "@flow-state-dev/orchestration/tasks";
+import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../src/conversation-board/ledger";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
+import { messageReceivedEntry } from "../src/messages/message-received-entry";
+import { workerMessagesResources } from "../src/messages";
 import { bootProjectsHost, countingStores, OTHER_ORG, refusal } from "./projects-harness";
 
 const apollo = { visibility: "shared" as const, id: "apollo" };
@@ -94,6 +100,8 @@ async function boot(
     /** When set, the fit check's evaluation is refused as a language model's, and this answers the same question. */
     leadFitAsLanguage?: MockGeneratorInstance;
     coordinatorDelegates?: "all";
+    /** The lead flow hears worker messages, so its tasks' questions are told to their filer. */
+    hears?: boolean;
   } = {}
 ) {
   const heard: Heard[] = [];
@@ -131,15 +139,29 @@ async function boot(
           }
         };
       },
-      leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+      leadInternal: (installation) => ({
+        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
+        ...(options.hears === true ? { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "lead" }) } : {})
+      }),
       leadTask: (installation) => {
         const turn = handler({
           name: "lead-task-turn",
           inputSchema: z.object({ message: z.string() }),
-          resources: { ...installation.resources },
+          resources: { ...installation.resources, ...(options.hears === true ? workerMessagesResources : {}) },
           execute: async (input, ctx) => {
             const worker = await installation.resolveWorker(ctx, "lead");
             heard.push({ worker: worker.id, message: input.message, sessionId: ctx.session.identity.id });
+            // `[ask]` asks one question midway, once: the lead's model calling askQuestion.
+            const claim = input.message.includes("[ask]") ? currentWorkerClaim(ctx as never) : undefined;
+            if (claim !== undefined) {
+              const [partition] = await findTaskPartitions(ctx as never, CONVERSATION_LEDGER_ID, claim.taskId);
+              const board = (await conversationLedgerAt(ctx as never, partition!))!;
+              if (board.get(claim.taskId)?.askedInTurn === undefined) {
+                const asked = await askMidway(ctx as never, board, [{ prompt: "Which payment provider?" }]);
+                if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
+                return "asked";
+              }
+            }
             return `${worker.id} on it: ${input.message}`;
           }
         });
@@ -425,6 +447,23 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
       })
     ]);
     expect(messages.some((message) => message.agentName === "alice-lead" && message.text.includes("on it"))).toBe(true);
+  });
+
+  it("tells the conversation that routed it the lead's midway question, saying the user answers it from the Inbox (FIX-2241)", async () => {
+    const judgment = scripted([{ toolName: "createTask", args: { goal: "Take this [ask]", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } }]);
+    const h = await boot({ judgment, hears: true });
+    const opened = await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "respond", { message: "Please add guest checkout." })).settled).toBe("completed");
+    await h.settled();
+    expect(h.heard.map((heard) => heard.sessionId)).toEqual([opened.workstream.sessionId]);
+    const listed = (await h.ok("alice", COORDINATOR_FLOW, id, "listTasks_tasks", {})) as { tasks: Array<{ id: string; status: string }> };
+    expect(listed.tasks).toEqual([expect.objectContaining({ status: "in_progress" })]);
+    const told = (await h.items(id)).messages.filter((message) => message.agentName === "alice-lead" && message.text.includes("asks:"));
+    expect(told).toHaveLength(1);
+    expect(told[0]!.text).toContain(`(${listed.tasks[0]!.id}) asks: \\"Which payment provider?\\"`);
+    expect(told[0]!.text).toContain("The user answers it from their Inbox; it isn't yours to answer.");
+    expect(told[0]!.text).not.toContain("updateTask");
   });
 
   it("hands her next ask to the same workstream once the lead answered the first (FIX-2083)", async () => {

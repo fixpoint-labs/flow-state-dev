@@ -37,6 +37,8 @@ import { workerConfigSchema } from "../src/worker-config";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { workerConfigOf } from "../src/workers/verified-worker";
+import { hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 type ModelMessage = { role: string; content: unknown };
 
@@ -128,7 +130,8 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     kind: "research",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "research") },
     request: { onStarted: loadWorker },
     actions: { respond: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research-task", turn: door }) } }

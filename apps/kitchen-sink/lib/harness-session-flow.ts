@@ -19,6 +19,11 @@
  *   not check the id: the harness judges what it runs, and a refusal reaches
  *   the person in the harness's words.
  *
+ * A line sent while a turn runs goes to the `steer` action. A run that can
+ * take a line into its turn in flight offers that through `onSteerable`;
+ * `steer` hands it the line and answers whether it took it. When it didn't,
+ * the page sends the line as the next `turn` (`lib/harness-line.ts`).
+ *
  * Each turn also gets a record under its request id: what it asked for, what
  * the harness confirmed during it, and how it failed, read through core's
  * neutral `harnessFailureKind` and never a harness's message. The page derives
@@ -27,7 +32,7 @@
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. Kitchen Sink writes no item of its own.
  */
-import { defineFlow, handler, harnessFailureKind, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, harnessFailureKind, harnessSteering, sequencer, type HarnessSteering } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessCallbackContext,
@@ -35,6 +40,7 @@ import type {
   HarnessResolver,
   HarnessBlock,
   HarnessSessionHook,
+  HarnessSteerHook,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
@@ -65,7 +71,13 @@ export interface HarnessFeeds {
    * writable paths). Its real path once `cwd` has provisioned it.
    */
   readonly worktree: HarnessResolver<string>;
+  /**
+   * Holds the steer a running turn's harness offers, for the `steer` action.
+   * A harness that can't take a line in flight never calls it.
+   */
+  readonly onSteerable: HarnessSteerHook;
 }
+
 
 /** Options for {@link harnessSessionFlow}. */
 export interface HarnessSessionFlowOptions {
@@ -106,7 +118,15 @@ function repository(): string {
   return workspace.repository;
 }
 
-const BLANK_TURN: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: null };
+const BLANK_TURN: TurnRecord = {
+  asked: null,
+  confirmed: null,
+  failure: null,
+  stopped: null,
+  error: null,
+  at: null,
+  steered: null,
+};
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
 function withTurn(state: HarnessSessionState, requestId: string, change: (turn: TurnRecord) => TurnRecord): HarnessSessionState {
@@ -157,9 +177,12 @@ export const MODEL_REQUIRED = "A new session must name the model it runs (`state
  *
  * @param kind The flow kind.
  * @param defaultModel What {@link HarnessSessionFlowOptions.defaultModel} says.
+ * @param steering The flow's steering, which holds a running turn's offer for its `steer` action.
  */
-export function harnessFeeds(kind: string, defaultModel?: string): HarnessFeeds {
+export function harnessFeeds(kind: string, defaultModel?: string, steering: HarnessSteering = harnessSteering()): HarnessFeeds {
   return {
+    // Never holds an offer under the control, so goal legs **k** and **w** can be seen to fail.
+    onSteerable: (steer, ctx) => steering.onSteerable(goalControl() === "no-live-steer" ? null : steer, ctx),
     model: (ctx) => {
       // Hands the harness the mode's default whatever was picked, so the goal's
       // "the harness ran the picked model" leg can be seen to fail.
@@ -205,11 +228,23 @@ export function harnessFeeds(kind: string, defaultModel?: string): HarnessFeeds 
 /**
  * Build a harness mode's session flow.
  *
- * One action, `turn`, taking the prompt. A turn sent while another runs waits
- * for it (`concurrency: "queue"`), then continues the same conversation.
+ * `turn` takes the prompt. A turn sent while another runs waits for it
+ * (`concurrency: "queue"`), then continues the same conversation. `steer`
+ * takes a line for the turn running now: `{ taken: true }` when the harness
+ * took it into that turn, else `{ taken: false }` and nothing was sent. `live`
+ * says whether the running turn offered to take one at all.
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
-  const agent = options.agent(harnessFeeds(options.kind, options.defaultModel));
+  const steering = harnessSteering();
+  const agent = options.agent(harnessFeeds(options.kind, options.defaultModel, steering));
+  // Core's steer action, allowed beside a running turn: it runs no harness, it
+  // hands the running one a line. Recorded on the turn that took it.
+  const steer = steering.action({
+    onTaken: (ctx, turnRequestId, text) =>
+      changeState(ctx, (state) =>
+        withTurn(state, turnRequestId, (record) => ({ ...record, steered: [...(record.steered ?? []), text] })),
+      ),
+  });
   // A failure is recorded on the turn, classified by the harness, so the page
   // can tell a refused conversation from any other error and from a stop. The
   // turn still fails with the harness's own error, rethrown here, and the
@@ -283,6 +318,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         userMessage: (input: { prompt: string }) => input.prompt,
         concurrency: "queue",
       },
+      steer,
     },
     session: {
       stateSchema: harnessSessionStateSchema,

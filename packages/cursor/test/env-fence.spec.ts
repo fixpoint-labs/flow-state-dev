@@ -190,3 +190,25 @@ describe("cursorAgent — env set, the installed SDK across the process boundary
     expect(String(error?.message)).toContain("agent-fix1917-unknown");
   }, 60_000);
 });
+
+describe("cursorAgent — env set: steering the turn in flight", () => {
+  it.each([
+    ["steer", "delivered", "took: add a README"],
+    ["steer-refuse", "refused", "took: (refused)"],
+  ])("a %s run answers the line across the process boundary", async (prompt, expected, said) => {
+    let answer: string | undefined;
+    const block = cursorAgent({
+      ...FENCED_FAKE,
+      env: harnessEnv({ pass: ["PATH"] }),
+      onSteerable: (steer) => {
+        if (steer !== null) void steer("add a README").then((a) => (answer = a));
+      },
+    });
+
+    const { error, items } = await testBlock(block, { input: { prompt } });
+
+    expect(error).toBeNull();
+    expect(answer).toBe(expected);
+    expect(JSON.stringify(items)).toContain(said);
+  }, 30_000);
+});

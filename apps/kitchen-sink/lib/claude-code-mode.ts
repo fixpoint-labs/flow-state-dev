@@ -23,6 +23,7 @@
 import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
+  CLAUDE_CODE_PASS,
   claudeCodeAgent,
   listClaudeModels,
   probeClaudeAccount,
@@ -43,34 +44,10 @@ import { scriptedClaudeCode } from "./scripted-claude-code";
 export const CLAUDE_CODE_SESSION = flowKindOf(modeById("claude-code"));
 
 /**
- * The only variables of the server's environment a Claude Code run is handed
- * (what it starts with, not what it could read: see the header), the same list
- * Shift Manager's Claude Code harness passes. `PATH` (its shell
- * and git are found through it), `HOME`, `USER` and `SHELL` (its sign-in, git
- * identity and Bash tool), `TMPDIR`, the two ways it can be given a
- * credential, and the proxy and CA settings a proxied network needs. Add a
- * name here, never a spread of `process.env`.
+ * The environment a Claude Code run gets, and the one its sign-in is probed
+ * with: the Claude Code package's own pass-list (what a run starts with, not
+ * what it could read: see the header).
  */
-export const CLAUDE_CODE_PASS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "ANTHROPIC_API_KEY",
-  "CLAUDE_CODE_OAUTH_TOKEN",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-] as const;
-
-/** The environment a Claude Code run gets, and the one its sign-in is probed with. */
 export function claudeCodeEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS, env });
 }

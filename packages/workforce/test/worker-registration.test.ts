@@ -13,6 +13,8 @@ import { createFlowRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { createWorkerInstallation, hireWorkforce, ROSTER_FLOW, workerFlow, type WorkerInstallation } from "../src/index";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerMessagesResources } from "../src/messages/message-log";
+import { hearsMessages } from "./conversation-board-harness";
 
 const door = z.object({ message: z.string() });
 
@@ -20,7 +22,13 @@ function researchFlow(installation: WorkerInstallation | undefined) {
   return defineFlow({
     kind: "research",
     configSchema: workerConfigSchema(),
-    ...(installation !== undefined ? { session: installation.session(), resources: { ...installation.resources } } : {}),
+    ...(installation !== undefined
+      ? {
+          session: installation.session(),
+          resources: { ...installation.resources, ...workerMessagesResources },
+          internal: { actions: hearsMessages(installation, "research") }
+        }
+      : {}),
     actions: {
       respond: {
         inputSchema: door,
@@ -98,6 +106,32 @@ describe("hireWorkforce", () => {
     });
     flows = { research: researchFlow(made), doorless };
     expect(() => hireWorkforce(made)).toThrow(/refused 1 worker flow \("doorless"\); nothing was hired[\s\S]*no door/);
+  });
+
+  // Every worker on an installation can be messaged, so a flow no worker
+  // could hear a message on is refused before anything registers (FIX-2238).
+  it("refuses a worker flow with no onMessageReceived, naming it, and hires the same flow with the entry", () => {
+    const hire = (internal: (made: WorkerInstallation) => Record<string, unknown>) => {
+      let flows: Record<string, unknown> = {};
+      const made = createWorkerInstallation({
+        standardWorkers: [{ id: "desk.ok", declared: { flow: "research" }, body: "Fine." }],
+        workerFlows: () => flows as never
+      });
+      const deaf = defineFlow({
+        kind: "deaf",
+        configSchema: workerConfigSchema(),
+        session: made.session(),
+        resources: { ...made.resources, ...workerMessagesResources },
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "deaf-run", inputSchema: door, execute: (input) => input }) } },
+        internal: { actions: internal(made) }
+      });
+      flows = { research: researchFlow(made), deaf };
+      return () => hireWorkforce(made);
+    };
+    expect(hire(() => ({}))).toThrow(/refused 1 worker flow[\s\S]*worker flow "deaf" has no "onMessageReceived"/);
+    const handBuilt = { inputSchema: z.object({ messageId: z.string() }), block: handler({ name: "deaf-hand-built", inputSchema: z.object({ messageId: z.string() }), execute: () => ({}) }) };
+    expect(hire(() => ({ onMessageReceived: handBuilt })), "a hand-built entry is no entry").toThrow(/"deaf" has a "onMessageReceived" that `messageReceivedEntry` didn't build/);
+    expect(hire((made) => hearsMessages(made, "deaf"))).not.toThrow();
   });
 
   it("builds a workerFlow(...) entry on its installation, once, and registers it like any flow", () => {

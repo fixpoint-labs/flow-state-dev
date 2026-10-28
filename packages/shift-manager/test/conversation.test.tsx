@@ -42,6 +42,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
+import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -142,16 +143,26 @@ describe("what a view of its own draws", () => {
     expect(screen.getAllByText("REVIEWER")).toHaveLength(2);
   });
 
-  it("labels another worker's message with its sender on any worker's conversation, and links it to Messages (FIX-1989)", async () => {
-    const from = { ...item("m", "ignored"), agentName: "eng.author", content: [{ type: "output_text", text: "From eng.author: the codename?" }] };
-    read.mockResolvedValue({ items: [from, item("a", "BLUE-HERON")], truncated: false });
-    // The sender is known from the session it sent from, one of the user's own.
-    const authors = { ...session("s_author"), state: { workerId: "eng.author" } } as unknown as SessionSummary;
-    drawn([session(s1), authors]);
+  it("draws another worker's message as its own item under its sender's name, with a link to Messages, whatever the view draws", async () => {
+    const received = {
+      id: "m",
+      requestId: "r",
+      type: "component",
+      component: RECEIVED_MESSAGE_COMPONENT,
+      ts: Date.UTC(2026, 9, 7, 17, 33),
+      data: { id: "msg_1", from: "eng.author", text: "the codename?", inReplyTo: "msg_0" },
+    };
+    read.mockResolvedValue({ items: [received, item("a", "BLUE-HERON")], truncated: false });
+    drawn([session(s1)]);
     await screen.findAllByTestId("mine");
-    expect(screen.getAllByText("ENG.AUTHOR")).toHaveLength(1);
+    // The view's renderItem draws its own messages, never another worker's.
+    expect(screen.getAllByTestId("mine").map((n) => n.textContent)).toEqual(["BLUE-HERON"]);
+    const drawnMessage = screen.getByTestId("received-message");
+    expect(drawnMessage.textContent).toContain("ENG.AUTHOR");
+    expect(drawnMessage.textContent).toContain("the codename?");
+    expect(screen.getByTestId("received-message-answers")).toBeTruthy();
+    expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
-    expect(screen.getAllByTestId("rev-item-messages")).toHaveLength(1);
   });
 
   it("says the worker has the line while one from this page is in flight", () => {

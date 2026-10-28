@@ -21,7 +21,7 @@ export const WORKER_MESSAGES_RESOURCE = "workforceMessages";
 /** The longest text a message may carry. A longer one is refused, not cut (BP-042). */
 export const MAX_MESSAGE_CHARS = 8_000;
 
-/** Where a message is delivered, or where an answer to it goes: a session on a worker flow, and the state it starts with when it isn't there yet. */
+/** Where a message is delivered: a session on a worker flow, and the state it starts with when it isn't there yet. */
 export const messageAddressSchema = z
   .object({
     sessionId: z.string().min(1),
@@ -33,8 +33,12 @@ export const messageAddressSchema = z
 
 export type MessageAddress = z.infer<typeof messageAddressSchema>;
 
-/** What became of a message: `delivered` once the host accepted it; `refused` when it refused it; `unconfirmed` when a dispatch threw twice. */
-export const MESSAGE_STATUSES = ["delivered", "refused", "unconfirmed"] as const;
+/**
+ * What became of a message (FIX-2240): `unconfirmed` until the recipient's
+ * `onMessageReceived` takes it; `delivered` once it landed there; `refused`,
+ * final; `undeliverable` once it was owed past the host's debt age.
+ */
+export const MESSAGE_STATUSES = ["unconfirmed", "delivered", "refused", "undeliverable"] as const;
 
 /** One message. */
 export const workerMessageRowSchema = z.object({
@@ -43,27 +47,58 @@ export const workerMessageRowSchema = z.object({
   from: z.string().min(1),
   /** The recipient worker's id. */
   to: z.string().min(1),
+  /**
+   * How the sender addressed it (FIX-2160): by a task (`task`) or a conversation
+   * (`session`). Absent when by the worker's name, as on every row from before.
+   */
+  addressedBy: z.enum(["task", "session"]).optional(),
+  /** The task it was addressed to, when `addressedBy` is `task`. */
+  toTask: z.string().min(1).optional(),
   text: z.string(),
   /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
   exchange: z.string().min(1),
   /** The message this one answers. */
-  replyTo: z.string().optional(),
-  /** The session the sending turn ran in. */
+  inReplyTo: z.string().optional(),
+  /** The session the sending turn ran in: where an answer to this message lands. */
   fromSession: z.string().min(1),
   /** The flow the sending session runs on. */
   fromFlow: z.string().min(1),
   /** Where this message was delivered. */
   toSession: z.string().min(1),
   toFlow: z.string().min(1),
-  /** Where an answer to this message goes: the sending session, or the sender's own conversation when that session was a task's. */
-  answerTo: messageAddressSchema,
+  /** The state a derived conversation is opened with, so a resend opens it too when the first dispatch never did. */
+  toState: z.record(z.string()).optional(),
   /** How many worker messages this one is from the last user's turn, counted across the whole exchange. */
   hop: z.number().int().min(1),
   /** The chain the hop is counted in: the user's turn the exchange descends from. Absent on rows from before rows carried one. */
   chain: z.string().min(1).optional(),
   status: z.enum(MESSAGE_STATUSES),
-  /** Why the host refused it, or why it is unconfirmed. */
+  /** Why it was refused or couldn't be delivered, or why its last send failed. */
   reason: z.string().optional(),
+  /**
+   * A call (FIX-2239): the sender waits on the recipient's reply, the result
+   * of the request that acts on it. Server-set from the tool's `wait`, never
+   * input. Absent on a plain message.
+   */
+  call: z.literal(true).optional(),
+  /** When a call's sender stops waiting (epoch ms): a reply after it is late. */
+  deadlineAt: z.number().optional(),
+  /** When a call's reply was given: the recipient's turn ended. */
+  repliedAt: z.number().optional(),
+  /**
+   * Why a taken message waits before it lands (FIX-2239): its session is
+   * stopped for the user, or its task is held on one. Cleared when it lands.
+   */
+  queuedBehind: z.literal("user").optional(),
+  /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
+  takenBy: z.string().min(1).optional(),
+  /** The request it landed in. Set once. */
+  deliveredAs: z.string().min(1).optional(),
+  deliveredAt: z.number().optional(),
+  /** How often the sending session's pass has sent it again, and when last. */
+  resent: z.object({ n: z.number().int().min(1), at: z.number() }).optional(),
+  /** When the sending session was told it was refused or couldn't be delivered. */
+  toldAt: z.number().optional(),
   /** When it was sent, in ms. */
   at: z.number()
 });

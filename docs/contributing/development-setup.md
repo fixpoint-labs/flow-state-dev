@@ -227,9 +227,18 @@ pnpm test:watch
 pnpm --filter @flow-state-dev/core test:watch
 ```
 
+### Redis in CI
+
+`test` and `packed-install` share `&redis_service` in `.github/workflows/ci.yml`.
+BullMQ cases fail rather than skip when `CI` is set and that service is missing.
+The image is official `redis`, pinned by tag and index digest
+(`redis:7.4.12@sha256:…`). To bump it, run
+`docker buildx imagetools inspect redis:<tag>` and put the `Digest:` line on
+that anchor.
+
 ### Type-level assertions
 
-Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `src/**/*.type-test.ts`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet, so a type assertion there goes in a `.test-d.ts` for now. How test files are compiled and guarded (`tsconfig.test.json`, `scripts/validate-test-typecheck.mjs`, its `DEFERRED` list) is under [TypeScript Configuration](#typescript-configuration).
+Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `.type-test.ts` under the package's `test/`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet, so a type assertion there goes in a `.test-d.ts` for now. How test files are compiled and guarded (`tsconfig.test.json`, `scripts/validate-test-typecheck.mjs`, its `DEFERRED` list) is under [TypeScript Configuration](#typescript-configuration).
 
 ### Shared module cache
 

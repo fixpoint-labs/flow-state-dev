@@ -107,7 +107,7 @@ describe("flow config bag — the value and its door", () => {
 
   /**
    * Behaviour 2. A copy may only carry settings the definition declared. The
-   * compile-time half is in `types/tests/flow-config.type-test.ts`; this is
+   * compile-time half is in `flow-config.type-test.ts`; this is
    * the runtime half, for the caller who reaches past the types.
    */
   it("refuses a bag when the definition declared no configSchema, naming the flow", () => {

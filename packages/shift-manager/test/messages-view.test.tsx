@@ -25,14 +25,13 @@ const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "fr
   fromFlow: "agent",
   toSession: `s_${over.to}`,
   toFlow: "agent",
-  answerTo: { sessionId: `s_${over.from}`, flow: "agent" },
   hop: 1,
   status: "delivered",
   ...over,
 });
 
 const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
-const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", replyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
+const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 const snapshot = { sessions: [{ id: "workforce-roster-own-u_1", flowKind: "workforce-roster", parentSessionId: null }], readAt: 1 } as unknown as LoadedSnapshot;
@@ -72,10 +71,39 @@ describe("the Messages view", () => {
     ]);
     expect(within(lines[1]!).getByTestId("message-text").textContent).toBe("What is the codename?");
     expect(within(lines[2]!).getByTestId("message-status").textContent).toBe("not delivered");
+    expect(within(lines[0]!).queryByTestId("message-status")).toBeNull();
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-to")));
     expect(window.location.pathname).toBe("/s/s_coordinator");
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-from")));
     expect(window.location.pathname).toBe("/s/s_researcher");
+  });
+
+  it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
+    const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
+    const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
+    readPages.mockResolvedValue([onItsWay, gaveUp].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    render(<Messages snapshot={snapshot} />);
+    const lines = await screen.findAllByTestId("message");
+    const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
+    expect(status("msg_d")).toBe("on its way");
+    expect(status("msg_e")).toBe("couldn't be delivered");
+  });
+
+  it("says where a call's answer is: waiting, waiting on the user, answered, or answered after its deadline (FIX-2239)", async () => {
+    const waiting = row({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", call: true, deadlineAt: 66_000 });
+    const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", call: true, deadlineAt: 67_000, queuedBehind: "user" });
+    const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, call: true, deadlineAt: 68_000, repliedAt: 9_000 });
+    const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, call: true, deadlineAt: 10_000, repliedAt: 70_000 });
+    readPages.mockResolvedValue([waiting, onPerson, answered, late, ask].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    render(<Messages snapshot={snapshot} />);
+    const lines = await screen.findAllByTestId("message");
+    const callState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-call-state")?.textContent;
+    expect(callState("msg_f")).toBe("call · waiting");
+    expect(callState("msg_g")).toBe("call · waiting on the user");
+    expect(callState("msg_h")).toBe("call · answered");
+    expect(callState("msg_i")).toBe("call · answered late");
+    // A plain message is no call.
+    expect(callState("msg_a")).toBeUndefined();
   });
 
   it("says so when there are none", async () => {
@@ -99,7 +127,7 @@ describe("the Messages view", () => {
 
 describe("a message the worker sent, in its own conversation", () => {
   const call = (id: string, args: unknown, output: unknown, status = "completed"): ToolOutputItem =>
-    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "messageWorker", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
+    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "sendMessage", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
   const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { name: "discover", arguments: "{}" } } as unknown as ToolOutputItem;
 
   it("is its own line, To <recipient>: <text>, never folded into the run's tool count", () => {
@@ -111,22 +139,41 @@ describe("a message the worker sent, in its own conversation", () => {
     expect(window.location.pathname).toBe("/messages");
   });
 
+  it("reads Asked <recipient> for a call, with the reply under it, or that no answer came by the deadline (FIX-2239)", () => {
+    render(
+      <ToolLineGroup
+        items={[
+          call("t1", { to: "coordinator", text: "What is the codename?", wait: true }, { status: "answered", callId: "msg_a", reply: "BLUE-HERON" }),
+          call("t2", { to: "helper-b", text: "Ready?", wait: true }, { status: "running", callId: "msg_b", recipient: "waiting_on_person" }),
+          call("t3", { callId: "msg_b" }, { status: "answered", callId: "msg_b", reply: "Yes." }),
+        ]}
+      />,
+    );
+    const [asked, running, again] = screen.getAllByTestId("message-call");
+    expect(asked!.textContent).toContain("Asked coordinator: What is the codename?");
+    expect(within(asked!).getByTestId("message-call-answer").textContent).toBe("BLUE-HERON");
+    expect(within(running!).getByTestId("message-call-answer").textContent).toBe("No answer by the deadline: it waits on the user.");
+    expect(again!.textContent).toContain("Waited again: call msg_b");
+    expect(within(again!).getByTestId("message-call-answer").textContent).toBe("Yes.");
+  });
+
   it("says it wasn't sent, and why, when the send was refused", () => {
     render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "takes_tasks_only: file a task" })]} />);
     expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
     expect(screen.getByTestId("message-call-reason").textContent).toContain("takes_tasks_only");
   });
 
-  it("says it was sent but not confirmed delivered, and why, when the delivery couldn't be confirmed", () => {
-    const why = "the delivery couldn't be confirmed (socket hang up); it may still arrive.";
-    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a", unconfirmed: why })]} />);
-    expect(screen.getByTestId("message-call").textContent).toContain("To coordinator: hi");
-    expect(screen.getByTestId("message-call-unconfirmed").textContent).toBe(`Sent, but not confirmed delivered: ${why}`);
-    expect(screen.queryByTestId("message-call-reason")).toBeNull();
-  });
-
-  it("draws no warning for a delivered send", () => {
-    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a" })]} />);
-    expect(screen.queryByTestId("message-call-unconfirmed")).toBeNull();
+  it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
+    render(
+      <ToolLineGroup
+        items={[
+          call("t1", { to: { task: "task_42" }, text: "Done yet?" }, { sent: "msg_a" }),
+          call("t2", { to: { session: "s_other" }, text: "FYI" }, { ok: false, error: "no_session: no conversation" })
+        ]}
+      />
+    );
+    const [toTask, toSession] = screen.getAllByTestId("message-call");
+    expect(toTask!.textContent).toContain("To task task_42: Done yet?");
+    expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");
   });
 });

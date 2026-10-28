@@ -29,6 +29,7 @@
  *
  * Run: pnpm tsx goals/hand-offs/survives-a-restart-and-runs-once/run.mts
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -109,7 +110,7 @@ function run(check: Check, log: string): Promise<{ code: number; output: string 
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
-    child.on("exit", (code) => file.end(() => resolve({ code: code ?? 1, output })));
+    onClosed(child, (code) => file.end(() => resolve({ code: code ?? 1, output })));
   });
 }
 

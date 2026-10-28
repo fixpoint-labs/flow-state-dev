@@ -98,7 +98,12 @@ run. The stream's own errors (its reconnect attempts) are the transient status;
 the last one becomes the failure when no turn result follows it. A run that fails emits one
 `error` item whose `message` is one line saying why, read out of the API's error
 body when Codex passes one through; everything the Codex CLI printed on its way
-out is on that item's `details.output`.
+out is on that item's `details.output`, and no closing status repeats the line.
+
+A turn Codex reports as failed returns an `errored` handle with `outcome:
+"failed"`, also when the CLI then exits non-zero. The block throws only when
+the run ends without a turn result: the CLI exiting first, a refused thread, or
+a stop.
 
 ## Cost
 
@@ -107,9 +112,34 @@ core's model price table and `cost.basis` reads `"estimated"`. It is `null`, nev
 `0`, when no model was named (Codex's output never names the model that ran),
 when the table has no entry for it, or when the turn reported no usage.
 
+<<<<<<< HEAD
 ## What a run spent
 
 When a run ends, however it ends, `codexAgent` reports its spend to the request with `reportHarnessSpend`: `harness: "codex"`, the tokens Codex reported, `costUsd: null` (the estimate above is never reported as spend), and `billing: "api-key"` when `client.apiKey` is set, otherwise `null`. A run that failed before any usage arrived reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
+=======
+## Checking for a credential before you start
+
+`probeCodexAccount({ env, timeoutMs?, signal? })` asks whether Codex has
+something to run on, with no run. A `CODEX_API_KEY` in `env` answers on its
+own (a run given a key uses it whatever login is saved); otherwise it runs the
+SDK's own `codex login status`. Pass the `env` your runs get:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { probeCodexAccount } from "@flow-state-dev/codex";
+
+const account = await probeCodexAccount({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME", "CODEX_API_KEY"] }) });
+if (account.status !== "account") throw new Error(`Codex can't run: ${account.reason}`);
+```
+
+It never throws. It reads `account` with `source: "api-key" | "login"`; `none`
+with a plain `reason` when Codex says nobody is signed in, plus `unanswered:
+true` when Codex gave no answer (it didn't answer within `timeoutMs`, default
+10 000 ms, the `signal` aborted, or the CLI couldn't start); or `sdk-missing`
+when `@openai/codex-sdk` can't be loaded. The shape follows `probeClaudeAccount`
+in `@flow-state-dev/claude-code`. It checks where a credential would come from,
+not that it works: a rejected key still reads `account`.
+>>>>>>> origin/main
 
 ## Reading usage left
 
@@ -140,6 +170,29 @@ pathDirs }`), and throws when the SDK can't be loaded.
 machine, not in a hosted service. A host opts in by passing `readCodexUsage` as
 its Codex usage reader, for example to `harnessUsageAction` in
 `@flow-state-dev/harness-manager`.
+
+## Listing models
+
+`listCodexModels({ env, timeoutMs? })` asks Codex which models it offers, with
+no run. It asks the same `codex app-server` the usage read does, and gets the
+models Codex's own picker shows for that sign-in, so a model the account can't
+run is left out:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { listCodexModels } from "@flow-state-dev/codex";
+
+const list = await listCodexModels({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }) });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+Each entry is `{ id, label, description?, isDefault }`, Codex's default first.
+Pass `id` as the block's `model`. It never throws: a CLI that can't be found,
+stops, refuses, lists nothing, or doesn't answer within `timeoutMs` (default
+10 000 ms) reads `{ status: "failed", reason }`. **Local only**, like the usage
+read.
 
 ## Tests
 

@@ -37,6 +37,8 @@
  * - {@link HarnessRunSpend}, {@link HarnessBilling} and
  *   {@link reportHarnessSpend} — what one run spent, reported into the
  *   running request when the run ends (FIX-2145).
+ * - {@link HarnessSteer} and {@link HarnessSteerHook} — how a run that can take
+ *   a line into its turn in flight offers that to the host.
  *
  * Nothing in core imports a harness package, and nothing here names a vendor
  * notion. A harness's own extras (an SDK's result enum, the tools it observed)
@@ -492,3 +494,25 @@ export function reportHarnessSpend(ctx: object, spend: HarnessRunSpend): boolean
   seam.reportHarnessRun(spend);
   return true;
 }
+
+/**
+ * Hands one line to a run's turn in flight. Resolves `"delivered"` only when
+ * the turn has the words; anything less (the run refused, the turn ended, the
+ * call threw) is `"refused"`, and the caller sends the line some other way.
+ *
+ * It never rejects. It waits for the vendor's own answer rather than a timer:
+ * a timeout cannot tell a refusal from a delivery, and guessing would send the
+ * line twice.
+ */
+export type HarnessSteer = (text: string) => Promise<"delivered" | "refused">;
+
+/**
+ * Called by a harness while its run can take a line in flight, with the
+ * {@link HarnessSteer} that does it, and again with `null` once it no longer
+ * can, before the block returns, on every exit.
+ *
+ * A fact about one run, not about the harness: a harness that can steer still
+ * has runs that can't (a cloud run, a turn not yet started). A harness that
+ * never steers simply never calls it. The twin of {@link HarnessSessionHook}.
+ */
+export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallbackContext) => void;

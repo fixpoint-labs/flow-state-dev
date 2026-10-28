@@ -15,6 +15,7 @@ import { promises as fs } from "node:fs";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -22,7 +23,7 @@ import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/en
 import { conceptCollection, type ConceptState } from "../src/concepts";
 import { importOkf, exportOkf, parseOkfBundle, OKF_VERSION } from "../src/okf/index";
 
-const SAMPLE_BUNDLE = new URL("../sample-bundle", import.meta.url).pathname;
+const SAMPLE_BUNDLE = fileURLToPath(new URL("../sample-bundle", import.meta.url));
 
 async function emptyCollection(): Promise<ResourceCollectionRef<ConceptState>> {
   const block = handler({ name: "noop", resources: { concepts: conceptCollection }, execute: () => "ok" });

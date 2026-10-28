@@ -5,6 +5,7 @@
  *
  * Run: pnpm tsx goals/durable-by-default/a-local-stop-is-held-and-answered/run.mts
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -88,7 +89,7 @@ async function startDev(cwd: string, env: Env, config?: string): Promise<Dev> {
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
   let exited = false;
-  const gone = new Promise<void>((resolve) => child.on("exit", () => ((exited = true), resolve())));
+  const gone = new Promise<void>((resolve) => onClosed(child, () => ((exited = true), resolve())));
   for (let i = 0; i < 240 && !exited; i += 1) {
     try {
       if ((await fetch(`${origin}/healthz`)).status === 200) {

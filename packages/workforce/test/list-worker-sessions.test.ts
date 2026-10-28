@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
-import { WORKER_MESSAGE_ENTRY } from "../src/messages/keys";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 /** A scripted model input as text, with its escapes dropped. */
@@ -29,7 +29,7 @@ function tellsOtto(): MockGeneratorScriptEntry[] {
         sent = true;
         return true;
       },
-      then: { toolCalls: [{ toolCallId: "tell-otto", toolName: "messageWorker", args: { to: "otto", text: "Hello otto." } }] }
+      then: { toolCalls: [{ toolCallId: "tell-otto", toolName: "sendMessage", args: { to: "otto", text: "Hello otto." } }] }
     },
     fallback
   ];
@@ -135,7 +135,7 @@ describe("a user's conversations with one worker", () => {
       await h.post("alice", helper, "respond", { message: "Tell otto hello" }, "agent");
       await h.settled();
       const received = (await (await h.state.getRuntime()).stores.request.list({})).filter(
-        (request) => request.actionName === WORKER_MESSAGE_ENTRY
+        (request) => request.actionName === MESSAGE_RECEIVED_ENTRY
       );
       expect(received.map((request) => request.sessionId)).toEqual([main.id]);
       const [top] = await alice.listWorkerSessions("otto");

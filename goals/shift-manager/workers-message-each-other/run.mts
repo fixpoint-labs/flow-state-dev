@@ -1,16 +1,18 @@
 /**
- * Goal check for FIX-1989. See goal.md.
+ * Goal check for FIX-1989, amended for FIX-2238, FIX-2160 and FIX-2239. See goal.md.
  *
  * Run:      pnpm tsx goals/shift-manager/workers-message-each-other/run.mts
- * Controls: GOAL_CONTROL=no-wake | drop-ended | no-hop-cap | no-roster-check | fresh-hop-on-task | memory-log
+ * Controls: GOAL_CONTROL=<name> (controls.mts names each)
  *           (each runs the legs it needs, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=1,1b,2,2b,3b,3,4,5 (default: all, in that order)
+ * Legs:     GOAL_LEGS=1,1b,2,3b,3,4,6,7,8,9,10,10b,10c,5 (default: all, in that order)
+ *           GOAL_LEG9=<sub-leg,...> runs only those of leg 9 (legs-delivery.mts names them)
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
@@ -23,7 +25,6 @@ import {
   leg1,
   leg1b,
   leg2,
-  leg2b,
   leg3,
   leg3b,
   leg4,
@@ -38,9 +39,13 @@ import {
   type Person,
   type World,
 } from "./legs.mts";
+import { leg10, leg10b, leg10c, WAIT_DEFAULT_MS } from "./legs-calls.mts";
+import { leg6, leg7, leg8, setupTargets, type Targets } from "./legs-targets.mts";
+import { leg9, SUB_LEGS, type Servers, type SubLeg } from "./legs-delivery.mts";
+import { faultPatches, type FaultName } from "./faults.mts";
 
 const SCRATCH = goalTmpDir("workers-message");
-const ORDER = ["1", "1b", "2", "2b", "3b", "3", "4", "5"] as const;
+const ORDER = ["1", "1b", "2", "3b", "3", "4", "6", "7", "8", "9", "10", "10b", "10c", "5"] as const;
 const say = (s: string) => console.error(`[messages ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -56,6 +61,13 @@ const legs = new Set(
     .filter(Boolean),
 );
 for (const l of legs) if (!(ORDER as readonly string[]).includes(l)) throw new Error(`unknown leg "${l}" in GOAL_LEGS`);
+const subLegs = new Set(
+  (process.env.GOAL_LEG9 ?? (control?.subLegs ?? SUB_LEGS).join(","))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+) as Set<SubLeg>;
+for (const s of subLegs) if (!(SUB_LEGS as readonly string[]).includes(s)) throw new Error(`unknown sub-leg "${s}" in GOAL_LEG9`);
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
 function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
@@ -77,6 +89,34 @@ function checkoutFor(commit: string | undefined): { root: string; commit: string
     if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
   }
   return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
+}
+
+/** The names FIX-2238 removed, as Workforce wrote them. `replyTo` only where the message field lived. */
+const REMOVED = /\b(onWorkerMessage|messageWorker|MESSAGE_WORKER_TOOL|WORKER_MESSAGE_ENTRY|workerMessageEntry|workforceRelayTo|takes_tasks_only|no_turn|takesWorkerMessages|sendWorkerMessage|answerTo)\b/;
+const REMOVED_FIELD = /\breplyTo\b/;
+
+/** `sweep`: no package's source names a removed name. */
+function sweep(root: string): string[] {
+  const hits: string[] = [];
+  const walk = (dir: string, field: boolean) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path, field);
+      else if (/\.(ts|tsx|mts)$/.test(name)) {
+        readFileSync(path, "utf8")
+          .split("\n")
+          .forEach((line, i) => {
+            if (REMOVED.test(line) || (field && REMOVED_FIELD.test(line))) hits.push(`${path.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 120)}`);
+          });
+      }
+    }
+  };
+  const packages = join(root, "packages");
+  for (const pkg of readdirSync(packages)) {
+    const src = join(packages, pkg, "src");
+    if (existsSync(src)) walk(src, pkg === "workforce" || pkg === "shift-manager");
+  }
+  return hits.length === 0 ? [] : [`sweep — removed names are still in package source: ${hits.slice(0, 8).join(" | ")}`];
 }
 
 /** Leg 5: after a restart, the Messages view lists every message the legs sent, and each side opens its session. */
@@ -111,8 +151,8 @@ async function leg5(origin: string, alice: Person, sent: Map<string, { sessionId
       await opened.waitFor();
       if ((await opened.getAttribute("data-session-id")) !== toSession) r.failures.push(`5:opens-side — the recipient's link opened ${await opened.getAttribute("data-session-id")}, not ${toSession}`);
       await page.waitForFunction(() => document.querySelectorAll("[data-testid=session-item]").length > 0, undefined, { timeout: 20_000 });
-      const holds = await opened.textContent();
-      if (!holds?.includes(`From ${RESEARCHER}:`)) r.failures.push(`5:opens-side — the coordinator's session the link opened doesn't show the line from Researcher`);
+      const shown = await page.locator(`[data-testid=received-message][data-from="${RESEARCHER}"]`).count();
+      if (shown === 0) r.failures.push(`5:opens-side — the coordinator's session the link opened doesn't show Researcher's message as its own item`);
       await page.goBack();
       await page.getByTestId("messages").waitFor();
       await page.locator(`[data-testid=message][data-message-id="${first[0]}"]`).getByTestId("message-from").click();
@@ -134,9 +174,9 @@ await runGoal(async () => {
   mkdirSync(SCRATCH, { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });
-  const env = control === undefined ? {} : modulePatchEnv([control], checkout.root, mark);
+  const env = control === undefined ? {} : modulePatchEnv(control.patches, checkout.root, mark);
   say(`serving ${checkout.describe}; legs ${[...legs].join(", ")}${control === undefined ? "" : `; control ${control.name}`}`);
-  if (control !== undefined) say(`control ${control.name}: ${control.does}\n${describePatches([control], checkout.root)}`);
+  if (control !== undefined) say(`control ${control.name}: ${control.does}\n${describePatches(control.patches, checkout.root)}`);
 
   const profile = join(checkout.root, "packages", "shift-manager", "teams", "devteam");
   for (const model of ["openai/gpt-5.4-mini", "anthropic/claude-haiku-5-5"]) {
@@ -156,13 +196,22 @@ await runGoal(async () => {
   const storeDir = join(SCRATCH, "stores", RUN_STAMP);
   mkdirSync(storeDir, { recursive: true });
   const store = join(storeDir, "devteam.sqlite");
-  const serve = (label: string) =>
+  // Leg 9's faults go on before the control's patches, which may anchor on the same lines.
+  const faultLog = join(storeDir, "faults.ndjson");
+  const release = join(storeDir, "release-held-resends");
+  const withFaults = (faults: readonly FaultName[]) =>
+    faults.length === 0
+      ? env
+      : { ...modulePatchEnv([...faultPatches(faults), ...(control?.patches ?? [])], checkout.root, mark), GOAL_FAULT_LOG: faultLog, GOAL_FAULT_RELEASE: release };
+  const serve = (label: string, faults: readonly FaultName[] = []) =>
     startShiftManager({
       scratch: SCRATCH,
       label: `devteam-${label}`,
       config: join(profile, "fsdev.config.mts"),
       pages,
-      env: { DEVTEAM_STORE: store, ...env },
+      // The coder's scripted run paces its steps, so leg 8 can message a task while it runs.
+      // A call with no deadline waits the host default, short here so leg 10 can time it.
+      env: { DEVTEAM_STORE: store, DEVFORCE_LAB_STEP_MS: "6000", DEVTEAM_WAIT_DEFAULT_MS: String(WAIT_DEFAULT_MS), ...withFaults(faults) },
       root: join(checkout.root, "packages", "shift-manager"),
       tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
       timeoutMs: 180_000,
@@ -203,15 +252,75 @@ await runGoal(async () => {
       filedGoals.push("helper-a");
       return leg2(world);
     });
-    await runLeg("2b", () => leg2b(world));
     await runLeg("3b", async () => {
       filedGoals.push(world.words.w3b);
       return leg3b(world);
     });
-    await runLeg("3", () => leg3(world));
-    await runLeg("4", () => leg4(world, filedGoals));
+    await runLeg("3", async () => {
+      filedGoals.push(world.words.ring);
+      return leg3(world);
+    });
+    // The hire check runs in its own process, under the control's patches.
+    const hireCheck = async () => {
+      const ran = spawnSync(join(checkout.root, "node_modules", ".bin", "tsx"), [join(dirname(fileURLToPath(import.meta.url)), "hire-check.mts"), checkout.root], {
+        cwd: checkout.root,
+        encoding: "utf8",
+        env: { ...process.env, ...env },
+        timeout: 120_000,
+      });
+      const last = ran.stdout.trim().split("\n").at(-1) ?? "";
+      try {
+        return JSON.parse(last) as { deaf: string | null; heard: string | null };
+      } catch {
+        throw new Error(`the hire check printed no verdict: ${(ran.stdout + ran.stderr).slice(-800)}`);
+      }
+    };
+    await runLeg("4", () => leg4(world, filedGoals, hireCheck));
+    // Legs 6 to 8 (FIX-2160) share the courier and the sessions they address.
+    if (legs.has("6") || legs.has("7") || legs.has("8")) {
+      const setup = await setupTargets(world);
+      const targets: Targets | undefined = setup.targets;
+      if (targets === undefined) {
+        for (const l of ["6", "7", "8"]) if (legs.has(l)) results[l] = { failures: setup.failures, notes: [] };
+      } else {
+        await runLeg("6", () => leg6(world, targets));
+        await runLeg("7", () => leg7(world, targets));
+        await runLeg("8", () => leg8(world, targets));
+      }
+    }
+    // Leg 9 (FIX-2240) restarts the server per sub-leg, each with its fault; the world's clients follow it.
+    const servers: Servers = {
+      faultLog,
+      release,
+      restart: async (faults, label) => {
+        await served.stop();
+        served = await serve(label, faults);
+        world.alice = connect(shipped, served.origin, alicePerson);
+        world.bob = connect(shipped, served.origin, bobPerson);
+        say(`${label}: serving at ${served.origin}${faults.length === 0 ? "" : ` with ${faults.join(", ")}`}`);
+      },
+      crashed: async (timeoutMs) => {
+        let timer: NodeJS.Timeout | undefined;
+        const late = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs)));
+        try {
+          return await Promise.race([served.exited.then(() => true), late]);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+    };
+    await runLeg("9", async () => {
+      try {
+        return await leg9(world, servers, subLegs);
+      } finally {
+        await servers.restart([], "9-done");
+      }
+    });
+    await runLeg("10", () => leg10(world));
+    await runLeg("10b", () => leg10b(world));
+    await runLeg("10c", () => leg10c(world));
     for (const t of world.turns) {
-      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${String(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
+      say(`turn (${t.leg}) ${t.worker} ${t.status}: calls ${t.calls.map((c) => `${typeof c.args.to === "string" ? c.args.to : JSON.stringify(c.args.to)}→${c.output?.sent ?? String(c.output?.error ?? "").slice(0, 40)}`).join(", ") || "none"}; reply: ${t.reply.slice(0, 200).replace(/\n/g, " ")}`);
     }
     sent = new Map([...(await sentIds(world.alice)).entries()].map(([id, c]) => [id, { sessionId: c.sessionId, args: c.args }]));
   } finally {
@@ -233,11 +342,11 @@ await runGoal(async () => {
   else say(`store kept at ${store}`);
 
   if (control !== undefined) {
-    assertPatched([control], checkout.root, mark);
-    say(`control ${control.name}: the patch reached ${control.module}`);
+    assertPatched(control.patches, checkout.root, mark);
+    say(`control ${control.name}: the patch reached ${control.patches.map((p) => p.module).join(", ")}`);
   }
 
-  const failures: string[] = [];
+  const failures: string[] = sweep(checkout.root);
   for (const l of ORDER) {
     const r = results[l];
     if (r === undefined) continue;
@@ -245,11 +354,15 @@ await runGoal(async () => {
     failures.push(...r.failures);
   }
   if (control !== undefined) {
-    const named = failures.some((f) => f.startsWith(`${control.assertion} `));
+    // A leg 9 control must fail every sub-leg it names, on what the sub-leg grades: a setup failure
+    // or a throw means the scenario never ran, so it counts for nothing.
+    const required = control.subLegs?.map((s) => `9:${s}`) ?? [control.assertion];
+    const graded = failures.filter((f) => !/^\S+ — (setup|threw):/.test(f));
+    const missed = required.filter((a) => !graded.some((f) => f.startsWith(`${a} `)));
     failures.unshift(
-      named
-        ? `control ${control.name}: failed on ${control.assertion}, as it must`
-        : `control ${control.name}: did NOT fail on ${control.assertion}, so the check can't see what the control removes`,
+      missed.length === 0
+        ? `control ${control.name}: failed on ${required.join(" and ")}, as it must`
+        : `control ${control.name}: did NOT fail on ${missed.join(" and ")}, so the check can't see what the control removes`,
     );
   }
   return { failures, evidence: `legs ${[...legs].join(", ")} PASS on ${checkout.describe}; worker turns on the models their files name (openai/gpt-5.4-mini, the Shift Coordinator on anthropic/claude-haiku-5-5)` };

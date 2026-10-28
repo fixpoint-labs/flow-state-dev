@@ -20,6 +20,9 @@
  * - **A notice nobody can take** (the filer's session is gone) is said where
  *   its writer runs, and a final failure's report goes to the Error Reporter
  *   from there (epic decision (f)).
+ * - **A midway question** (FIX-2241) is no ending and no notice: it reaches
+ *   the filer as a message from the task's worker, sent by the running
+ *   flow's `onMessageReceived` (`../messages/received-mark`).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { DeclaredDelivery, Task, TaskNotice } from "@flow-state-dev/orchestration/tasks";
@@ -29,6 +32,7 @@ import { boardAboveOf } from "./board-above";
 import { DISPATCH_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { sendTaskReport } from "./report-owed";
+import { midwayQuestionTellerOf } from "../messages/received-mark";
 
 /** The conversation ledger's delivery. `ledgerId` is the board id its notices name. */
 export function conversationDelivery(ledgerId: string): DeclaredDelivery {
@@ -51,6 +55,16 @@ export function conversationDelivery(ledgerId: string): DeclaredDelivery {
       return undefined;
     },
     legacyFiler: (_row, partition) => (partition === undefined ? undefined : sessionIdOfFiling(partition)),
+    // A task's question, told to its filer as a message (FIX-2241), by the
+    // running flow's own `onMessageReceived`, which knows its installation.
+    onMidwayQuestion: async (ctx, row, holds) => {
+      const tell = midwayQuestionTellerOf((ctx as { readonly flow?: unknown }).flow);
+      if (tell === undefined) {
+        console.warn("[workforce] a task's midway question has no worker to tell: its flow hears no messages, so it is in the Inbox only", { taskId: row.id });
+        return;
+      }
+      await tell(ctx, row, holds);
+    },
     onUndeliverable: async (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => {
       // The task's ending stands; the conversation that filed it can't be told.
       ctx.emit.message(`The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${detail}`);

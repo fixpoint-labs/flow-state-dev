@@ -38,7 +38,7 @@ plus the message half of the *2 · One Inbox* question row, which FIX-2058 moved
 
 ```mermaid
 flowchart LR
-  A["Shift Manager · real model · durable file-backed host"] --> L1["leg a · writer calls coder"]
+  A["Shift Manager · real model · durable file-backed host"] --> L1["leg a · a worker calls another"]
   A --> L2["leg b · a message to a task's session, open and finished"]
   A --> L3["leg c · restart between the log write and the delivery"]
   A --> L4["leg d · a ring of workers passing messages on"]
@@ -60,7 +60,7 @@ tries), and a filer hears no question.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2242), real model, in Shift Manager, on one `main` commit after every other child merges |
-| **Signal** | Leg a: writer's request reads coder's answer as the call's result; past a short deadline it resumes without it, and waiting again returns the kept result. Leg b: the message runs as `onMessageReceived` in the task's session, with its history; an open task's turn finishes first, and the task's status, output and attempts don't change. Leg c: the server stops after the log row is written and before the dispatch; after the restart the recipient sees the message once. Leg d: the fourth message from one request and the seventh from one typed message are refused. Leg e: the midway question arrives at the filer's `onMessageReceived` in the session that filed the task; its steer releases the hold. A sweep: the removed names have no references in package source |
+| **Signal** | Leg a: the caller's request reads the other worker's answer as the call's result (the coder hears only in its tasks' sessions, FIX-2238 D1, so it is reached by `{ task }`); past a short deadline it resumes without it, and waiting again returns the kept result. Leg b: the message runs as `onMessageReceived` in the task's session, with its history; an open task's turn finishes first, and the task's status, output and attempts don't change. Leg c: the server stops after the log row is written and before the dispatch; after the restart the recipient sees the message once. Leg d: the fourth message from one request and the seventh from one typed message are refused. Leg e: the midway question arrives at the filer's `onMessageReceived` in the session that filed the task; its steer releases the hold. A sweep: the removed names have no references in package source |
 | **Anti-game** | Assert on what the recipient's session and the message log show, read through public actions; never on a child's own helper |
 | **Control that must fail** | Today's `main`: legs a, b, c and e, and the sweep. Every other check names its control, and each is run red at least once |
 
@@ -127,8 +127,9 @@ flowchart LR
 
 An edge is what one issue hands the next; a dashed input is consumed, not owned. FIX-2238 goes
 first; the other four are specified in parallel on it. Three share the send path, so their
-implementation PRs land stacked in order, FIX-2160, FIX-2240, FIX-2239
-([the send-path seam](DECISIONS.md#coordination-seams)); FIX-2241 lands on its own. The closure waits on all of them. FIX-2071 starts
+implementation PRs land stacked in order on FIX-2238's, FIX-2160, FIX-2240, FIX-2239
+([the send-path seam](DECISIONS.md#coordination-seams)); FIX-2241's orchestration half lands on its own, and its
+Workforce send stacks last. The closure waits on all of them. FIX-2071 starts
 after this epic wraps.
 
 ## What stays as it is

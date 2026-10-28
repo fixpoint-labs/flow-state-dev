@@ -41,7 +41,7 @@ import { z } from "zod";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import { readCommittedTask } from "../collection/read-committed";
-import { hasEnded, requestStates } from "../helpers/request-states";
+import { decideTake, requestStates } from "../helpers/request-states";
 import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
@@ -149,13 +149,12 @@ async function takeFor(
   row: Task,
   notice: TaskSettledInput
 ): Promise<TaskSettledInput | "busy" | "gone"> {
-  const own = ctx.request.identity.id;
-  const taker = noticeTakenBy(row, notice);
-  if (taker !== undefined && taker !== own && !(await hasEnded(ctx, taker))) return "busy";
+  const rule = await decideTake(ctx, noticeTakenBy(row, notice));
+  if (rule.take === "busy") return "busy";
   if (board.ref.takeNotice !== undefined) {
     const took = await board.ref.takeNotice(row.id, notice, {
-      by: own,
-      ...(taker !== undefined && taker !== own ? { replacing: taker } : {})
+      by: ctx.request.identity.id,
+      ...(rule.take === "takeover" ? { replacing: rule.replacing } : {})
     });
     if (took.outcome !== "recorded") return "gone";
   }

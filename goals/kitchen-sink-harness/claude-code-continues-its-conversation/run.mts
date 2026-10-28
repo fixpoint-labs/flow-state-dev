@@ -15,11 +15,16 @@
  *   c      turn 2 names the token without being told it, under turn 1's id.
  *   s      a stopped turn says so, and the next turn names the token under the same id.
  *   r      a reload lands back in the same session, which shows the same id, and its next turn names the token.
+ *   p2     in a second session: turn 1 plans four steps and does the first; turn 2 does the second, by id alone.
+ *          The panel keeps all four rows with turn 1's titles, two done, labelled "Last changed in turn 2"
+ *          (p2:kept); a turn 3 that leaves the plan alone leaves the rows and label as they were
+ *          (p2:quiet-turn); and the rows equal Claude Code's own TaskList, read back in a turn 4 (p2:matches).
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/claude-code-continues-its-conversation/run.mts
  * Controls: GOAL_CONTROL=no-resume     (must FAIL at c, s and r, and nothing else)
  *           GOAL_CONTROL=no-record     (must FAIL at p, and nothing else)
  *           GOAL_CONTROL=main-checkout (must FAIL at w, and nothing else)
+ *           GOAL_CONTROL=plan-per-turn (must FAIL at p2, and nothing else: the panel shows only what the latest turn wrote)
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -43,6 +48,7 @@ const EXPECTED: Record<string, string[]> = {
   "no-resume": ["c", "s", "r"],
   "no-record": ["p"],
   "main-checkout": ["w"],
+  "plan-per-turn": ["p2"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -128,6 +134,76 @@ async function turn(page: Page, prompt: string): Promise<{ sawStepWhileRunning: 
   }
   await page.getByTestId("turn-notice").waitFor({ state: "visible", timeout: 30_000 });
   return { sawStepWhileRunning };
+}
+
+/** The plan panel's rows, as drawn: each title and its stage, and the label above them. */
+async function panelPlan(page: Page): Promise<{ label: string | null; rows: { title: string; stage: string }[] }> {
+  const panel = page.getByTestId("plan-panel");
+  const label = await panel.getByTestId("plan-turn").textContent({ timeout: 2_000 }).catch(() => null);
+  const rows = await panel.getByTestId("plan-row").evaluateAll((lis) =>
+    lis.map((li) => ({
+      title: li.querySelector('[data-testid="plan-row-title"]')?.textContent?.trim() ?? "",
+      stage: li.getAttribute("data-stage") ?? "",
+    })),
+  );
+  return { label, rows };
+}
+
+/**
+ * Leg p2 (FIX-2259): four steps planned in turn 1, the second done in turn 2
+ * by id alone, a turn 3 that leaves the plan alone, and a turn 4 that reads
+ * Claude Code's own list back. The step names are picked per run.
+ */
+async function planAcrossTurns(page: Page, fail: (message: string) => void, evidence: string[]): Promise<void> {
+  const words = Array.from({ length: 4 }, (_, i) => `step-${i + 1}-${randomBytes(3).toString("hex")}`);
+  await page.goto(`${ORIGIN}/claude-code${CONTROL === "plan-per-turn" ? "?goalControl=plan-per-turn" : ""}`);
+  await page.getByTestId("new-session").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="stream"]')?.getAttribute("data-session-id"));
+
+  await turn(
+    page,
+    `Use your task list to plan exactly four tasks, with these subjects in this order: ${words.join(", ")}. ` +
+      `Then mark the first one completed and do nothing else. Don't run any commands or edit any files. Reply "planned".`,
+  );
+  await turn(
+    page,
+    "Mark the second task in your task list completed, by its id, and do nothing else. Don't create, list or change any other task. Reply \"ok\".",
+  );
+  const afterTwo = await panelPlan(page);
+  const titles = afterTwo.rows.map((r) => r.title);
+  if (JSON.stringify(titles) !== JSON.stringify(words)) {
+    fail(`p2:kept after turn 2 the panel's rows are ${JSON.stringify(titles)} (want turn 1's ${JSON.stringify(words)})`);
+  }
+  const stages = afterTwo.rows.map((r) => r.stage);
+  if (JSON.stringify(stages.slice(0, 2)) !== JSON.stringify(["done", "done"])) {
+    fail(`p2:kept after turn 2 the first two rows read ${JSON.stringify(stages)} (want done, done)`);
+  }
+  if (afterTwo.label !== "Last changed in turn 2") fail(`p2:kept after turn 2 the label reads ${JSON.stringify(afterTwo.label)}`);
+
+  await turn(page, "What is 2 + 2? Answer with the number only, and don't touch your task list.");
+  const afterThree = await panelPlan(page);
+  if (JSON.stringify(afterThree) !== JSON.stringify(afterTwo)) {
+    fail(`p2:quiet-turn turn 3 changed the panel from ${JSON.stringify(afterTwo)} to ${JSON.stringify(afterThree)}`);
+  }
+
+  // Claude Code's own list, read back in its words: one `<status> | <subject>` line per task.
+  await turn(
+    page,
+    "Call TaskList, then reply with one line per task and nothing else, each exactly `<status> | <subject>`, where status is pending, in_progress or completed.",
+  );
+  const text = (await page.getByTestId("conversation").textContent()) ?? "";
+  const stageOf: Record<string, string> = { pending: "pending", in_progress: "active", completed: "done" };
+  const own = words.map((word) => {
+    const found = [...text.matchAll(new RegExp(`(pending|in_progress|completed) \\| ${word}`, "g"))].at(-1)?.[1];
+    return found === undefined ? null : stageOf[found]!;
+  });
+  const shown = (await panelPlan(page)).rows;
+  if (own.some((stage) => stage === null)) {
+    fail(`p2:matches Claude Code's TaskList reply did not name every task: ${JSON.stringify(own)}`);
+  } else if (JSON.stringify(shown.map((r) => r.stage)) !== JSON.stringify(own) || shown.length !== words.length) {
+    fail(`p2:matches the panel reads ${JSON.stringify(shown)}, and Claude Code's own list ${JSON.stringify(own)}`);
+  }
+  evidence.push(`p2 panel ${JSON.stringify(afterTwo)}; TaskList ${JSON.stringify(own)}`);
 }
 
 await runGoal(async (failures) => {
@@ -227,6 +303,9 @@ await runGoal(async (failures) => {
       if ((await boundId(page)) !== id1) fail("r", `after a reload the conversation moved to ${await boundId(page)}`);
     }
     evidence.push(`ids ${id1} → ${id2} → ${await boundId(page)}`);
+
+    // ---- p2: a second session, whose plan must outlast the turn that made it
+    await planAcrossTurns(page, (message) => fail("p2", message), evidence);
   } finally {
     await browser.close();
     server.stop();

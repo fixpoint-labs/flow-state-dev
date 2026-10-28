@@ -9,7 +9,8 @@
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1791/BUSINESS-RULES.md`, V3, V4, V6, V7):
  *   BR-13  one evaluator call picks one delegate, by its note or else its description; one with neither isn't a choice;
- *   BR-14  the user's next post goes to the delegate still on the last one, with no call; a removed holder holds nothing;
+ *   BR-14  the user's next post goes to the delegate still on the last one, with no call; a removed holder holds nothing,
+ *          and nor does one whose task failed or was cancelled (FIX-1610 D1);
  *   BR-15  a failed call, or a pick that isn't a delegate, goes to the fallback;
  *   BR-16  with no fallback, best fit's miss goes to the judgment turn, recorded `by: judgment`;
  *   BR-16a when that turn fails too, the post is unplaced, recorded and said in the conversation;
@@ -45,7 +46,7 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
+import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.worker);
 
@@ -56,6 +57,13 @@ async function post(host: ReturnType<typeof bootHost>, sessionId: string, messag
   const result = await host.act(userId, sessionId, "respond", { message });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   await host.settled();
+  return result;
+}
+
+/** Post a message without waiting for its delegates: one marked `[hang:<worker>]` stays on it until cancelled. */
+async function postUnsettled(host: ReturnType<typeof bootHost>, sessionId: string, message: string, userId = "alice") {
+  const result = await host.act(userId, sessionId, "respond", { message });
+  expect(result.error, messageOf(result.error)).toBeUndefined();
   return result;
 }
 
@@ -90,16 +98,19 @@ describe("best fit (V3)", () => {
   it("holds the next post for the delegate still on the last one, with no call; a removed holder holds nothing (BR-14)", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
-    // `[fail]` keeps eng.coder from answering, so it is still on the post.
-    await post(host, id, "the build is red [route:eng.coder] [fail]");
-    await post(host, id, "any news?");
+    // `[hang:eng.coder]` keeps eng.coder working, so it is still on the post.
+    await postUnsettled(host, id, "the build is red [route:eng.coder] [hang:eng.coder]");
+    await postUnsettled(host, id, "any news?");
     expect(host.route.calls).toHaveLength(1);
-    expect(heardBy(host)).toEqual(["eng.coder", "eng.coder"]);
+    // Both posts went to eng.coder; the second waits behind the first in its session.
+    expect((await host.routedRows("alice")).map((row) => row.assignee)).toEqual(["eng.coder", "eng.coder"]);
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
 
     expect((await host.act("alice", id, "removeDelegate", { worker: "eng.coder" })).error).toBeUndefined();
     await post(host, id, "who plans this? [route:eng.em]");
     expect(host.route.calls).toHaveLength(2);
-    expect(heardBy(host)).toEqual(["eng.coder", "eng.coder", "eng.em"]);
+    expect(heardBy(host)).toEqual(["eng.coder", "eng.em"]);
     const bys = (await host.items(id)).records.map((record: any) => record.by);
     expect(bys).toEqual(["evaluated", "held", "evaluated"]);
   });
@@ -116,6 +127,42 @@ describe("best fit (V3)", () => {
     expect((await host.items(id)).messages.filter((line) => line.agentName === "eng.coder").map((line) => line.text)).toEqual([
       "eng.coder heard: alice, through desk: any news?"
     ]);
+  });
+
+  it("releases the hold when the holder's task fails, so the next post takes the call (BR-14, FIX-1610 D1)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "the build is red [route:eng.coder] [fail]");
+    expect((await host.sessionState(id)).bestFitHold).toBeNull();
+    await post(host, id, "and who plans the fix? [route:eng.em]");
+    expect(host.route.calls).toHaveLength(2);
+    expect(heardBy(host)).toEqual(["eng.coder", "eng.em"]);
+    expect((await host.items(id)).records.map((record: any) => record.by)).toEqual(["evaluated", "evaluated"]);
+  });
+
+  it("releases the hold when the holder's task is cancelled, so the next post takes the call (BR-14, FIX-1610 D1)", async () => {
+    // eng.lead takes tasks, so this conversation's board answers the task tools.
+    const host = bootHost({
+      standard: standardWorkers({ desk: { delegates: ["eng.em", "eng.coder", "support.general", "eng.lead"] } })
+    });
+    const id = await host.conversation("alice", "desk");
+    await postUnsettled(host, id, "the build is red [route:eng.coder] [hang:eng.coder]");
+    expect((await host.sessionState(id)).bestFitHold).toMatchObject({ delegate: { worker: "eng.coder" } });
+    // Cancelled from the board while eng.coder works on it.
+    for (let i = 0; i < 200 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const [row] = await host.routedRows("alice");
+    const cancelled = await host.act("alice", id, "updateTask_tasks", { id: row.id, status: "cancelled" });
+    expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
+    // Stop the run the cancel left going, so the host settles.
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+    expect((await host.routedRows("alice"))[0]).toMatchObject({ status: "cancelled" });
+    expect((await host.sessionState(id)).bestFitHold).toBeNull();
+    await post(host, id, "and who plans the fix? [route:eng.em]");
+    expect(host.route.calls).toHaveLength(2);
+    expect(heardBy(host)).toEqual(["eng.coder", "eng.em"]);
   });
 
   it("releases the hold once the holder answers", async () => {
@@ -254,14 +301,16 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
     const judgment = answersItself();
     const host = bootHost({ judgment });
     const id = await host.conversation("alice", "desk");
-    // `[fail]` keeps eng.coder from answering, so it holds the user's next post...
-    await post(host, id, "the build is red [route:eng.coder] [fail]");
+    // `[hang:eng.coder]` keeps eng.coder working, so it holds the user's next post...
+    await postUnsettled(host, id, "the build is red [route:eng.coder] [hang:eng.coder]");
     expect((await host.sessionState(id)).bestFitHold).toMatchObject({ delegate: { worker: "eng.coder" } });
     // ...until it is removed, and the call gives the next post to the coordinator.
     expect((await host.act("alice", id, "removeDelegate", { worker: "eng.coder" })).error).toBeUndefined();
-    await post(host, id, "who works here? [route:desk]");
+    await postUnsettled(host, id, "who works here? [route:desk]");
     expect(judgment.calls).toHaveLength(1);
     expect((await host.sessionState(id)).bestFitHold).toBeNull();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
   });
 
   it("delivers a delegate pick at or above the floor, recorded evaluated with no fit (BR-6)", async () => {
@@ -369,11 +418,13 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
   it("holds a post for the delegate still on the last one with no call, even one meant for the coordinator (BR-13)", async () => {
     const host = bootHost({ standard: floored() });
     const id = await host.conversation("alice", "desk");
-    // `[fail]` keeps eng.coder from answering, so it is still on the post.
-    await post(host, id, "the build is red [route:eng.coder] [conf:0.9] [fail]");
-    await post(host, id, "who works here? [route:desk] [conf:1]");
+    // `[hang:eng.coder]` keeps eng.coder working, so it is still on the post.
+    await postUnsettled(host, id, "the build is red [route:eng.coder] [conf:0.9] [hang:eng.coder]");
+    await postUnsettled(host, id, "who works here? [route:desk] [conf:1]");
     expect(host.route.calls).toHaveLength(1);
-    expect(heardBy(host)).toEqual(["eng.coder", "eng.coder"]);
+    expect((await host.routedRows("alice")).map((row) => row.assignee)).toEqual(["eng.coder", "eng.coder"]);
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
     expect((await host.items(id)).records.map((record: any) => record.by)).toEqual(["evaluated", "held"]);
   });
 
@@ -584,8 +635,12 @@ describe("judgment (V7)", () => {
     expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
-    // Never in its prompt: the turn's system text names no delegate.
-    const prompt = JSON.stringify(judgment.calls[0]!.input);
+    // Never in its prompt: the turn's system text names no delegate. The
+    // tool list is left out: sendMessage's names every roster worker it
+    // could message, delegate or not.
+    const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
+    const prompt = JSON.stringify(messages.filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>"))));
+    expect(prompt).toContain("Route the work.");
     expect(prompt).not.toContain("eng.coder");
   });
 

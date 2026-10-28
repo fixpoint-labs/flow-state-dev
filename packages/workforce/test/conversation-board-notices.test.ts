@@ -154,7 +154,7 @@ describe("an attempt that fails", () => {
 });
 
 describe("a task held on a question (FIX-2131)", () => {
-  it("gives no notice while it waits, and one completed notice once it's answered and done", async () => {
+  it("gives no ending notice while it waits, and one completed notice once it's answered and done", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -163,17 +163,17 @@ describe("a task held on a question (FIX-2131)", () => {
       const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
       await host.settled();
       await touch(host, "alice", conv);
-      // Nothing ended: until FIX-2070 the filer is told nothing when its task asks.
-      expect(await linesAbout(host, conv, goal)).toEqual([]);
+      // Nothing ended: the filer is told the question (FIX-2241), and no notice.
       const held = (await host.row("alice", filing, filed.taskId!))!;
       expect(held.status).toBe("in_progress");
       const question = held.holds!.find((hold) => hold.source.kind === "row")!;
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`question: "${question.id}"`)]);
       const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, question: question.id, message: "eu" });
       expect(answered.output).toMatchObject({ ok: true });
       await host.settled();
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
-      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining("completed by eng.tasker")]);
+      expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining("asks:"), expect.stringContaining("completed by eng.tasker")]);
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", attempts: 1 });
     } finally {
       await host.dispose();

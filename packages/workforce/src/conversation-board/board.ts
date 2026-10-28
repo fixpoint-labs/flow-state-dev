@@ -116,7 +116,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import { carriedHopState, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
+import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -126,6 +126,7 @@ import { resolveWorkstreamTarget } from "../projects/project-coordinator";
 import { cancelIfParentEnded, refuseIfParentCancelled, stampFiledMarker } from "./cascade";
 import {
   FILING_FLOW_STATE_KEY,
+  FILING_WORKER_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   FILING_SESSION_STATE_KEY,
@@ -200,6 +201,15 @@ export interface ConversationBoardOptions {
    * conversation is handed here, which attaches the message and files it.
    */
   routes?: RoutedFiling;
+  /**
+   * The messages the session sent that are still owed (FIX-2240): the pass's
+   * first half pays them, beside the plan ledger's debts, and its settle
+   * keeps the next one's due time. `resources` are what the step reads.
+   */
+  messages?: {
+    readonly resources: Record<string, unknown>;
+    readonly payDebts: (ctx: BlockContext) => Promise<number | undefined>;
+  };
 }
 
 /**
@@ -557,6 +567,25 @@ async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollection
 }
 
 /**
+ * A row held before its first start (FIX-2238): its filed mark becomes a
+ * fresh chain, as {@link heldFromFiling}'s filing writes, keeping the filer's
+ * user lines the mark counted. A started row's hold is midway, and keeps its
+ * budget; a row with no mark runs at its session's count anyway.
+ */
+async function freshenFiledHop(ctx: BlockContext, collection: TaskCollectionRef, id: string): Promise<void> {
+  const task = collection.get(id);
+  const mark = hopMarkOf(task?.metadata?.[FILED_HOP]);
+  if (task === undefined || mark === undefined || hasStarted(task)) return;
+  await collection.patchMetadata(id, { [FILED_HOP]: { ...freshHopMark(ctx), lines: mark.lines } });
+}
+
+/** The filing session's worker, for a session the hand-over opens: where a message to it from there lands (FIX-2238). */
+function filingWorkerOf(state: unknown): Record<string, string> {
+  const worker = (state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+  return typeof worker === "string" && worker.length > 0 ? { [FILING_WORKER_STATE_KEY]: worker } : {};
+}
+
+/**
  * Whether a row this board can start is waiting: startable ({@link isStartable})
  * and claimable now (a dead run's row included). Such a row is owed a run of
  * the board; this is the whole of a start's debt (`./ledger`). With `id`, only
@@ -760,7 +789,8 @@ const HELD_ELSEWHERE_RETRY_MS = 5_000;
 const passStateSchema = z.object({
   passWake: z.object({ dueAt: z.number(), landBy: z.number(), version: z.number() }).optional(),
   passRounds: z.number().optional(),
-  passPlanDue: z.number().optional()
+  passPlanDue: z.number().optional(),
+  passMessagesDue: z.number().optional()
 });
 type PassState = z.infer<typeof passStateSchema>;
 const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) as PassState;
@@ -812,6 +842,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
         [FILING_FLOW_STATE_KEY]: options.flowKind,
+        ...filingWorkerOf(ctx.session.state),
         [TASK_ID_STATE_KEY]: task.taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, task.taskId).birth,
         ...carriedHopState(ctx.session.state),
@@ -933,14 +964,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const partition = await filingSessionIdOf(ctx.session);
       const flow = (await reach(ctx)).available.get(task.assignee);
       // The delegate's ongoing session for the conversation works no one
-      // task (FIX-2080): born naming its worker, the conversation and the
-      // flow that filed into it, and no task or chain place. One that exists
-      // keeps its own state.
+      // task (FIX-2080): born naming its worker, the worker, conversation and
+      // flow that filed into it, and no task or task-chain place. It counts
+      // its messages on in its filer's budget (FIX-2238), so its notices,
+      // steers and posts never start a fresh one. One that exists keeps its
+      // own state.
       if ((await sessionSettingOf(ctx, task.taskId)).session === "ongoing") {
         return {
           [WORKER_ID_STATE_KEY]: task.assignee,
           [FILING_SESSION_STATE_KEY]: partition,
           [FILING_FLOW_STATE_KEY]: options.flowKind,
+          ...filingWorkerOf(ctx.session.state),
+          ...carriedHopState(ctx.session.state),
           ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {})
         };
       }
@@ -953,6 +988,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [WORKER_ID_STATE_KEY]: task.assignee,
         [FILING_SESSION_STATE_KEY]: partition,
         [FILING_FLOW_STATE_KEY]: options.flowKind,
+        ...filingWorkerOf(ctx.session.state),
         [TASK_ID_STATE_KEY]: taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
         // The filer's worker-message hop count and chain (FIX-1989): a
@@ -1132,11 +1168,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // project even after the conversation's changes (FIX-2161).
       const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
       const { stamp: project, own } = await filedProjectFor(ctx, root);
-      // The filing turn's hop count, which the task's turn starts at (FIX-2106).
+      // The filing turn's hop count, which the task's turn starts at
+      // (FIX-2106); a task held from its filing starts a fresh chain (FIX-2238).
       const metadata = {
         ...(given ?? {}),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
-        [FILED_HOP]: turnHopMark(ctx),
+        [FILED_HOP]: heldFromFiling(init) ? freshHopMark(ctx) : turnHopMark(ctx),
         [FILED_PROJECT]: project
       };
       const input = ownProjectIn(init.input, own);
@@ -1276,6 +1313,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
         const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
+        // Held before its first start, a task is held from its filing: released,
+        // it starts a fresh chain, as one filed held does (FIX-2238).
+        if (outcome.outcome !== "declined" && patch.held === true) await freshenFiledHop(ctx, ref, id);
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
@@ -1628,7 +1668,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     name: "conversation-board-before-drain",
     inputSchema: z.unknown(),
     outputSchema: z.object({}),
-    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources },
+    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources, ...(options.messages?.resources ?? {}) },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       notePassStarted(ctx as never);
@@ -1646,6 +1686,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (plan !== undefined) {
         const planDebts = await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
         if (planDebts.nextDue !== undefined) await ctx.request.patchState({ passPlanDue: planDebts.nextDue });
+      }
+      // The messages this session sent that haven't landed (FIX-2240), in
+      // any session that sends, filing or not: sent again, or ended and told.
+      if (options.messages !== undefined) {
+        const messagesDue = await options.messages.payDebts(ctx as never);
+        if (messagesDue !== undefined) await ctx.request.patchState({ passMessagesDue: messagesDue });
       }
       return {};
     }
@@ -1687,8 +1733,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
       notePassEnded(ctx as never);
-      const planDue = passStateOf(ctx as never).passPlanDue;
-      const due = planDue === undefined ? round.nextDue : round.nextDue === undefined ? planDue : Math.min(round.nextDue, planDue);
+      const { passPlanDue, passMessagesDue } = passStateOf(ctx as never);
+      const dues = [round.nextDue, passPlanDue, passMessagesDue].filter((at): at is number => at !== undefined);
+      const due = dues.length === 0 ? undefined : Math.min(...dues);
       await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, due);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
@@ -1773,7 +1820,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     const { stamp, own } = await filedProjectFor(ctx);
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: turnHopMark(ctx), [FILED_PROJECT]: stamp };
+    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = filing;
     const init: TaskInit & { id: string } = {

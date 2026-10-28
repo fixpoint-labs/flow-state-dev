@@ -1,6 +1,6 @@
 /**
  * Any worker with a conversation can message any other on its user's roster
- * (FIX-1989): `messageWorker` lands a line in the recipient's own
+ * (FIX-1989): `sendMessage` lands a line in the recipient's own
  * conversation, opening it at the worker's derived address when needed, and
  * wakes its turn; an answer names the message it answers and goes back to the
  * session that asked. No task row, no delegate, no task-chain count.
@@ -8,13 +8,18 @@
  * Everything is read from what reached each session and the store, never
  * from the tool's return value alone.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runAction } from "@flow-state-dev/engine";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
-import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { boardWorkers, bootBoardHost, hearsMessages, messageOf, type BoardHost } from "./conversation-board-harness";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
-import { messageWorkerInputSchema } from "../src/messages/message-tool";
+import { sendMessageInputSchema } from "../src/messages/message-tool";
+import { recheckRecipient, recipientRefusal } from "../src/messages/send-message";
+import { createWorkerInstallation, type RosterWorker } from "../src/workers/installation";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { workerConfigSchema } from "../src/worker-config";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { FILED_HOP } from "../src/conversation-board/board-entries";
 
@@ -45,7 +50,7 @@ function callOnce(marker: string, toolName: string, args: unknown, after = "Sent
  */
 function answerOnce(from: string, marker: string, text: string, after = "Answered."): MockGeneratorScriptEntry[] {
   let answered = false;
-  const step = { toolCalls: [{ toolCallId: `answer-${marker}`, toolName: "messageWorker", args: {} as Record<string, unknown> }] };
+  const step = { toolCalls: [{ toolCallId: `answer-${marker}`, toolName: "sendMessage", args: {} as Record<string, unknown> }] };
   return [
     { when: (input: unknown) => answered && textOf(input).includes(marker), then: { text: after } },
     {
@@ -54,7 +59,7 @@ function answerOnce(from: string, marker: string, text: string, after = "Answere
         const message = new RegExp(`Message (msg_\\w+) from ${from.replace(".", "\\.")}`).exec(text_);
         if (answered || message === null || !text_.includes(marker)) return false;
         answered = true;
-        step.toolCalls[0]!.args = { to: from, text, replyTo: message[1] };
+        step.toolCalls[0]!.args = { to: from, text, inReplyTo: message[1] };
         return true;
       },
       then: step
@@ -87,6 +92,16 @@ async function logRows(h: BoardHost, userId: string) {
   return Object.values(entries).map((value) => value.state as Record<string, any>);
 }
 
+/** Every item a session holds, oldest first, as stored. */
+async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
+  return (await h.requestsOf(sessionId)).flatMap((request) => (request as unknown as { items?: any[] }).items ?? []);
+}
+
+/** The received-message items a session holds: the client-only component a received message is drawn by. */
+async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+}
+
 /** Every tool output item a session holds, oldest first. */
 async function toolOutputs(h: BoardHost, sessionId: string): Promise<unknown[]> {
   return (await h.requestsOf(sessionId))
@@ -96,11 +111,11 @@ async function toolOutputs(h: BoardHost, sessionId: string): Promise<unknown[]> 
 }
 
 describe("a worker messages another worker", () => {
-  it("lands a line from the sender in the recipient's own conversation, opened at its derived address, and wakes its turn", async () => {
+  it("lands as its own item in the recipient's own conversation, opened at its derived address, with a history line its turn reads, and wakes its turn", async () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -109,14 +124,18 @@ describe("a worker messages another worker", () => {
 
       const lead = await h.client("alice").findWorkerSession({ worker: "lead" });
       expect(lead, "the lead's conversation was opened").toBeDefined();
-      const lines = await h.messages(lead!.id);
-      expect(lines).toContainEqual({ agentName: "otto", text: "From otto: What is the codename?" });
-      expect(lines.some((line) => line.text === "Thinking."), "the lead's turn ran").toBe(true);
-
       const rows = await logRows(h, "alice");
-      // The lead's "Thinking." is relayed back as its answer; the message itself is the first row.
-      expect(rows.map((row) => row.from).sort()).toEqual(["lead", "otto"]);
-      expect(rows.find((row) => row.from === "otto")).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
+
+      // Its own item: the sender, the id and the text, drawn by the client only.
+      expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5, call: false }]);
+      const items = await itemsOf(h, lead!.id);
+      expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
+      // The line the model reads, in history only.
+      const line = items.find((item) => item.type === "message" && item.agentName === "otto");
+      expect(line?.itemVisibility).toEqual({ client: false, history: true });
+      expect((await h.messages(lead!.id)).some((m) => m.text === "Thinking."), "the lead's turn ran").toBe(true);
       // A message is not a task.
       expect(await h.rows("alice")).toEqual([]);
     } finally {
@@ -133,7 +152,7 @@ describe("what a worker knows of who it can message", () => {
       agentAnswer: mockGenerator({ script: [fallback] }),
       observeTools: (block, _names, options) => {
         if (block !== "agent-answer") return;
-        const tool = ((options as { tools?: Array<{ name: string; description?: string }> }).tools ?? []).find((t) => t.name === "messageWorker");
+        const tool = ((options as { tools?: Array<{ name: string; description?: string }> }).tools ?? []).find((t) => t.name === "sendMessage");
         if (tool !== undefined) descriptions.push(tool.description ?? "");
       }
     });
@@ -148,8 +167,8 @@ describe("what a worker knows of who it can message", () => {
       expect(descriptions[0]).toContain("- helper-a: Knows colours.");
       expect(listed).not.toContain("otto");
       expect(listed).not.toContain("eng.tasker");
-      // A round-robin coordinator runs no turn, so the send would refuse it: the list never offers it.
-      expect(listed).not.toContain("rota");
+      // A coordinator hears a message whatever its routing: a round-robin one is offered too.
+      expect(listed).toContain("rota");
     } finally {
       await h.dispose();
     }
@@ -159,7 +178,7 @@ describe("what a worker knows of who it can message", () => {
 describe("the log, read by an app", () => {
   it("is read through the user's roster session, and holds only that user's messages", async () => {
     const h = boot({
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -185,30 +204,20 @@ describe("the log, read by an app", () => {
 });
 
 describe("an answer", () => {
-  it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the sender", async () => {
+  it("is never the woken turn's own text: a turn that ends in plain text sends nothing back", async () => {
     const h = boot({
-      // The lead answers in plain text, with no messageWorker call.
+      // The lead answers in plain text, with no sendMessage call.
       judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "It is Bluebird." } }, fallback] }),
-      agentAnswer: mockGenerator({
-        script: [
-          { when: (input) => textOf(input).includes("From lead: It is Bluebird."), then: { text: "The codename is Bluebird." } },
-          ...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }),
-          fallback
-        ]
-      })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
-      const rows = await logRows(h, "alice");
-      const question = rows.find((row) => row.from === "otto")!;
-      expect(rows.find((row) => row.from === "lead")).toMatchObject({
-        to: "otto", text: "It is Bluebird.", replyTo: question.id, toSession: otto, status: "delivered", hop: 2
-      });
-      expect((await h.messages(otto)).at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
-      // otto's text, in a turn woken by an answer, is not sent back: the exchange ends.
-      expect(rows).toHaveLength(2);
+      const lead = await h.client("alice").findWorkerSession({ worker: "lead" });
+      expect((await h.messages(lead!.id)).some((m) => m.text === "It is Bluebird."), "the lead's turn ran").toBe(true);
+      expect((await logRows(h, "alice")).map((row) => row.from)).toEqual(["otto"]);
+      expect(await receivedIn(h, otto)).toEqual([]);
     } finally {
       await h.dispose();
     }
@@ -225,8 +234,8 @@ describe("an answer", () => {
       }),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("ask the first", "messageWorker", { to: "lead", text: "first question" }),
-          ...callOnce("ask the second", "messageWorker", { to: "lead", text: "second question" }),
+          ...callOnce("ask the first", "sendMessage", { to: "lead", text: "first question" }),
+          ...callOnce("ask the second", "sendMessage", { to: "lead", text: "second question" }),
           fallback
         ]
       })
@@ -248,7 +257,7 @@ describe("an answer", () => {
     const agentAnswer = mockGenerator({
       script: [
         { when: (input) => textOf(input).includes("It is Bluebird."), then: { text: "The codename is Bluebird." } },
-        ...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }),
+        ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
         fallback
       ]
     });
@@ -262,13 +271,13 @@ describe("an answer", () => {
       await h.settled();
 
       const lines = await h.messages(otto);
-      expect(lines).toContainEqual({ agentName: "lead", text: "From lead: It is Bluebird." });
       expect(lines.at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
 
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(answer).toMatchObject({ to: "otto", replyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
+      expect(await receivedIn(h, otto)).toEqual([{ id: answer.id, from: "lead", text: "It is Bluebird.", inReplyTo: question.id, budget: 4, call: false }]);
+      expect(answer).toMatchObject({ to: "otto", inReplyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
     }
@@ -276,23 +285,29 @@ describe("an answer", () => {
 });
 
 /** The board's workers, a coordinator that files for `otto`, and two more agent workers. */
-function teamWorkers(): WorkerManifest[] {
+/**
+ * @param options.unassignedWaits Give helper-a a second delegate, so a task it
+ *   files with no assignee waits on its board until it is assigned: a hand-over
+ *   held back without filing the task held.
+ */
+function teamWorkers(options: { unassignedWaits?: boolean } = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({ id, declared, body, skills: [] });
   return [
     ...boardWorkers(),
     worker("chief", { flow: "coordinator", delegates: ["otto"] }, "Hand the work to otto."),
-    worker("helper-a", { description: "Knows colours.", delegates: ["helper-b"] }, "You help."),
-    worker("helper-b", { description: "Knows numbers." }, "You help.")
+    worker("helper-a", { description: "Knows colours.", delegates: options.unassignedWaits === true ? ["helper-b", "helper-c"] : ["helper-b"] }, "You help."),
+    worker("helper-b", { description: "Knows numbers." }, "You help."),
+    ...(options.unassignedWaits === true ? [worker("helper-c", { description: "Knows letters." }, "You help.")] : [])
   ];
 }
 
 describe("a message sent from a task's turn", () => {
-  it("makes no row, and the answer lands in the sender's own conversation and wakes it, since the task's session ended", async () => {
+  it("makes no row, and the answer lands in the task's session it was sent from, even after the task ended, and wakes it", async () => {
     const agentAnswer = mockGenerator({
       script: [
         { when: (input) => textOf(input).includes("From helper-a") || textOf(input).includes("from helper-a"), then: { text: "Helper A says teal." } },
         ...answerOnce("otto", "favourite colour", "Teal."),
-        ...callOnce("Ask helper-a for its favourite colour", "messageWorker", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
+        ...callOnce("Ask helper-a for its favourite colour", "sendMessage", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
         fallback
       ]
     });
@@ -308,16 +323,44 @@ describe("a message sent from a task's turn", () => {
       expect(rows.map((row) => row.assignee)).toEqual(["otto"]);
       expect(rows[0]!.status).toBe("completed");
 
-      const own = await h.client("alice").findWorkerSession({ worker: "otto" });
-      expect(own, "otto's own conversation was opened by the answer").toBeDefined();
-      const lines = await h.messages(own!.id);
-      expect(lines).toContainEqual({ agentName: "helper-a", text: "From helper-a: Teal." });
-      expect(lines.at(-1)?.text).toBe("Helper A says teal.");
-
+      // An answer lands where its original came from: the task's session, not otto's own conversation.
       const log = await logRows(h, "alice");
       const question = log.find((row) => row.from === "otto")!;
-      expect(question.answerTo).toMatchObject({ sessionId: own!.id, flow: "agent" });
-      expect(question.fromSession).not.toBe(own!.id);
+      const answer = log.find((row) => row.from === "helper-a")!;
+      expect(answer).toMatchObject({ inReplyTo: question.id, toSession: question.fromSession });
+      expect(await h.client("alice").findWorkerSession({ worker: "otto" }), "otto's own conversation stays unopened").toBeUndefined();
+      expect(await receivedIn(h, question.fromSession)).toEqual([expect.objectContaining({ from: "helper-a", text: "Teal.", inReplyTo: question.id })]);
+      const lines = await h.messages(question.fromSession);
+      expect(lines).toContainEqual({ agentName: "helper-a", text: "From helper-a: Teal." });
+      expect(lines.at(-1)?.text, "the answer woke the task's session's turn").toBe("Helper A says teal.");
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // An answer reopens the exchange in a finished task's session, so a user's
+  // line there is one a user typed: it starts a fresh budget, as anywhere else.
+  it("starts a fresh budget at a user's line in a finished task's session", async () => {
+    const agentAnswer = mockGenerator({
+      script: [
+        ...callOnce("Ask helper-a for its favourite colour", "sendMessage", { to: "helper-a", text: "What is your favourite colour?" }, "Asked."),
+        fallback
+      ]
+    });
+    const h = boot({ standard: teamWorkers(), agentAnswer });
+    try {
+      const chief = await h.conversation("alice", "chief");
+      await h.act("alice", chief, "createTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
+      await h.settled();
+      expect((await h.rows("alice"))[0]!.status).toBe("completed");
+      const taskSession = (await logRows(h, "alice")).find((row) => row.from === "otto")!.fromSession;
+      const before = (await h.session(taskSession)).state;
+
+      await h.post("alice", taskSession, "respond", { message: "Thanks, anything else?" }, "agent");
+      await h.settled();
+      const after = (await h.session(taskSession)).state;
+      expect(after.workforceUserLines, "the user's line counted").toBe(((before.workforceUserLines as number | undefined) ?? 0) + 1);
+      expect(after.workforceMessageChain, "a chain of its own").not.toBe(before.workforceMessageChain);
     } finally {
       await h.dispose();
     }
@@ -329,31 +372,33 @@ describe("a message sent from a task's turn", () => {
  * it on to the next worker once; the user's line in otto's conversation
  * starts it.
  */
-function ringScript(after = ""): MockGeneratorScriptEntry[] {
+function ringScript(options: { answer?: boolean } = {}): MockGeneratorScriptEntry[] {
   const next: Record<string, string> = { otto: "helper-a", "helper-a": "helper-b", "helper-b": "otto" };
   const handled = new Set<string>();
-  const step = { toolCalls: [{ toolCallId: "pass", toolName: "messageWorker", args: {} as Record<string, unknown> }] };
+  const step = { toolCalls: [] as Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> };
   return [
     {
       when: (input: unknown) => {
         const text = textOf(input);
-        const all = [...text.matchAll(/Message (msg_\w+) from ([\w.-]+)/g)];
+        const all = [...text.matchAll(/Message (msg_\w+) from ([\w.-]+)(, answering)?/g)];
         const started = text.lastIndexOf("start the ring");
         const last = all.at(-1);
         // Whichever came last: the user's line, or a message.
         const key = last !== undefined && last.index! > started ? last[1]! : `user-${started}`;
         if (handled.has(key) || (last === undefined && started < 0)) return false;
         handled.add(key);
-        const me = last !== undefined && last.index! > started ? next[last[2]!]! : "otto";
-        step.toolCalls[0]!.toolCallId = `pass-${key}`;
-        step.toolCalls[0]!.args = { to: next[me]!, text: "Pass this on to the next one, always." };
+        const woken = last !== undefined && last.index! > started;
+        const me = woken ? next[last[2]!]! : "otto";
+        step.toolCalls = [{ toolCallId: `pass-${key}`, toolName: "sendMessage", args: { to: next[me]!, text: "Pass this on to the next one, always." } }];
+        // With `answer`, a worker woken by a first message also answers its sender, so the exchange branches.
+        if (options.answer === true && woken && last[3] === undefined) {
+          step.toolCalls.push({ toolCallId: `answer-${key}`, toolName: "sendMessage", args: { to: last[2]!, text: "Passed it on.", inReplyTo: last[1]! } });
+        }
         return true;
       },
       then: step
     },
-    // No text after passing it on, so no answer is relayed back down the ring,
-    // unless the test asks for some.
-    { when: () => true, then: { text: after } }
+    { when: () => true, then: { text: "" } }
   ];
 }
 
@@ -375,7 +420,7 @@ describe("the hop limit", () => {
         "helper-b>otto@6"
       ]);
       // The seventh send was refused, in the conversation of the worker that tried it.
-      const refusals = (await toolOutputs(h, otto.id)).filter((output) => /hop_limit/.test(JSON.stringify(output)));
+      const refusals = (await toolOutputs(h, otto.id)).filter((output) => /budget/.test(JSON.stringify(output)));
       expect(refusals).toHaveLength(1);
 
       // One more line from the user: one more round.
@@ -394,7 +439,7 @@ describe("the hop limit", () => {
 function fanOutScript(): MockGeneratorScriptEntry[] {
   const toAll = ["helper-a", "helper-b", "lead", "pm", "chief"].map((to, i) => ({
     toolCallId: `all-${i}`,
-    toolName: "messageWorker",
+    toolName: "sendMessage",
     args: { to, text: "Heads up: the release moved." }
   }));
   let called = false;
@@ -417,14 +462,14 @@ describe("the hop limit across a branching exchange", () => {
   // limit is the whole exchange's, so the exchange stops at 6 messages in all,
   // not at 6 down each branch.
   it("stops everything descending from one user's line at 6 messages in all", async () => {
-    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript("Passed it on.") }) });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript({ answer: true }) }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please start the ring" }, "agent");
       await h.settled();
 
       const rows = await logRows(h, "alice");
-      expect(rows.some((row) => row.replyTo !== undefined), "the exchange branched: some message is an answer").toBe(true);
+      expect(rows.some((row) => row.inReplyTo !== undefined), "the exchange branched: some message is an answer").toBe(true);
       expect(rows.filter((row) => row.status !== "refused")).toHaveLength(6);
       expect(rows.map((row) => row.hop).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
     } finally {
@@ -468,7 +513,7 @@ describe("the per-turn limit", () => {
       expect(rows.filter((row) => row.from === "otto")).toHaveLength(3);
       // One turn's sends share its exchange's budget: each takes its own place.
       expect(rows.map((row) => row.hop).sort((a, b) => a - b)).toEqual([1, 2, 3]);
-      const refused = (await toolOutputs(h, otto.id)).filter((output) => /per_turn_limit/.test(JSON.stringify(output)));
+      const refused = (await toolOutputs(h, otto.id)).filter((output) => /per_request_limit/.test(JSON.stringify(output)));
       expect(refused).toHaveLength(2);
     } finally {
       await h.dispose();
@@ -480,11 +525,13 @@ describe("the per-turn limit", () => {
  * otto's user line asks helper-a (message 1); helper-a, woken by it, files a
  * task for helper-b with `setting`; the task's turn messages otto.
  */
-function relayThroughTask(setting: Record<string, unknown>): MockGeneratorScriptEntry[] {
+/** A relay through a task helper-a files for helper-b; `unassigned`, filed with no assignee. */
+function relayThroughTask(setting: Record<string, unknown>, options: { unassigned?: boolean } = {}): MockGeneratorScriptEntry[] {
+  const assignee = options.unassigned === true ? {} : { assignee: "helper-b" };
   return [
-    ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
-    ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b", ...setting }, ""),
-    ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+    ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
+    ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", ...assignee, ...setting }, ""),
+    ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
     fallback
   ];
 }
@@ -503,9 +550,9 @@ describe("the hop count through a delegation", () => {
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
           ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+          ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -554,7 +601,7 @@ describe("the hop count through a delegation", () => {
       await h.settled();
       expect((await h.rows("alice")).map((row) => [row.assignee, row.status])).toEqual([["helper-b", "completed"]]);
       expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>helper-a@1"]);
-      const refusals = (await allToolOutputs(h)).filter((output) => /hop_limit: this would be message 2\b/.test(JSON.stringify(output)));
+      const refusals = (await allToolOutputs(h)).filter((output) => /budget: this would be message 2\b/.test(JSON.stringify(output)));
       expect(refusals).toHaveLength(1);
     } finally {
       await h.dispose();
@@ -563,20 +610,24 @@ describe("the hop count through a delegation", () => {
 
   it("starts a task's turn at the count its filing recorded, never one a caller writes on the row (BP-031)", async () => {
     const forged = { [FILED_HOP]: { hop: 0, chain: null } };
-    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true, metadata: forged }) }) });
+    const h = boot({
+      standard: teamWorkers({ unassignedWaits: true }),
+      agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", metadata: forged }, { unassigned: true }) })
+    });
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
+      expect(held!.status).toBe("pending");
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
       const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
       const patched = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, metadata: forged }, "agent");
       expect(patched.error, messageOf(patched.error)).toBeUndefined();
       expect((await h.rows("alice"))[0]!.metadata?.[FILED_HOP]).toEqual(held!.metadata?.[FILED_HOP]);
 
-      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, assignee: "helper-b" }, "agent");
       expect(released.error, messageOf(released.error)).toBeUndefined();
       await h.settled();
       expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
@@ -588,7 +639,7 @@ describe("the hop count through a delegation", () => {
   it("counts a message from a routed task in the chain of the user's line it hands on, at 1", async () => {
     const h = boot({
       standard: teamWorkers(),
-      agentAnswer: mockGenerator({ script: [...callOnce("Ask helper-a about the colour", "messageWorker", { to: "helper-a", text: "What colour?" }, ""), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("Ask helper-a about the colour", "sendMessage", { to: "helper-a", text: "What colour?" }, ""), fallback] })
     });
     try {
       // front routes every line to otto, its one delegate, in otto's ongoing session for the conversation.
@@ -616,8 +667,8 @@ describe("the hop count through a delegation", () => {
     // user's line say nothing: only the task's own turn messages otto.
     const quietAfterUser: MockGeneratorScriptEntry = { when: (input) => textOf(input).includes("Go ahead whenever you like"), then: { text: "" } };
     const h = boot({
-      standard: teamWorkers(),
-      agentAnswer: mockGenerator({ script: [quietAfterUser, ...relayThroughTask({ ...setting, held: true })] })
+      standard: teamWorkers({ unassignedWaits: true }),
+      agentAnswer: mockGenerator({ script: [quietAfterUser, ...relayThroughTask(setting, { unassigned: true })] })
     });
     try {
       const alice = h.client("alice");
@@ -625,13 +676,13 @@ describe("the hop count through a delegation", () => {
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
-      expect(held!.status).toBe("held");
+      expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
 
       const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
       await h.post("alice", helperA.id, "respond", { message: "Go ahead whenever you like." }, "agent");
       await h.settled();
-      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, assignee: "helper-b" }, "agent");
       expect(released.error, messageOf(released.error)).toBeUndefined();
       await h.settled();
 
@@ -654,12 +705,12 @@ describe("the hop count through a delegation", () => {
   ])("keeps a task filed %s in its filing's chain when a message from another chain wakes its filer before it is handed over", async (_where, setting) => {
     const quietAfterPing: MockGeneratorScriptEntry = { when: (input) => textOf(input).includes("Just a ping"), then: { text: "" } };
     const h = boot({
-      standard: teamWorkers(),
+      standard: teamWorkers({ unassignedWaits: true }),
       agentAnswer: mockGenerator({
         script: [
           quietAfterPing,
-          ...callOnce("Please ping helper-a", "messageWorker", { to: "helper-a", text: "Just a ping." }, ""),
-          ...relayThroughTask({ ...setting, held: true })
+          ...callOnce("Please ping helper-a", "sendMessage", { to: "helper-a", text: "Just a ping." }, ""),
+          ...relayThroughTask(setting, { unassigned: true })
         ]
       })
     });
@@ -669,7 +720,7 @@ describe("the hop count through a delegation", () => {
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
       const [held] = await h.rows("alice");
-      expect(held!.status).toBe("held");
+      expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       const filedIn = (held!.metadata?.[FILED_HOP] as { chain: string }).chain;
 
       // A new line to otto starts chain W there; otto's message moves helper-a's session to W.
@@ -678,7 +729,7 @@ describe("the hop count through a delegation", () => {
       const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
       expect((await h.session(helperA.id)).state.workforceMessageChain, "helper-a's session is in chain W now").not.toBe(filedIn);
 
-      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, assignee: "helper-b" }, "agent");
       expect(released.error, messageOf(released.error)).toBeUndefined();
       await h.settled();
       expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
@@ -689,7 +740,77 @@ describe("the hop count through a delegation", () => {
     }
   });
 
-  it("runs an ongoing-session task filed before rows recorded a count at its session's count, as it did", async () => {
+  // No exchange waits on a task filed held: released, it uses no attempt of
+  // the filer's budget and starts a fresh one. A hold put on midway carries on.
+  it.each([
+    ["in a session of its own", {}],
+    ['in the delegate\'s ongoing session (session: "ongoing")', { session: "ongoing" }]
+  ])("starts a task filed %s held afresh when it is released", async (_where, setting) => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ ...setting, held: true }) }) });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [held] = await h.rows("alice");
+      expect(held!.status).toBe("held");
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      const first = rows.find((row) => row.from === "otto")!;
+      const fromTask = rows.find((row) => row.from === "helper-b")!;
+      expect(fromTask.chain, "a fresh chain, not the filing's").not.toBe(first.chain);
+      // Minted once, at the filing: every request the task runs reloads this
+      // mark, so a retry or a continuation counts in the same budget.
+      const mark = held!.metadata?.[FILED_HOP] as { hop: number; chain: string | null };
+      expect(mark.hop).toBe(0);
+      expect(fromTask.chain, "the chain the filing recorded").toBe(mark.chain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // A task held by `updateTask` before it starts is held from its filing too
+  // (FIX-2238): released, it starts afresh, as one filed held does.
+  it("starts a task held before its first start afresh when it is released", async () => {
+    const h = boot({
+      standard: teamWorkers({ unassignedWaits: true }),
+      agentAnswer: mockGenerator({ script: relayThroughTask({}, { unassigned: true }) })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [filed] = await h.rows("alice");
+      expect(filed!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
+
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const held = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "held" }, "agent");
+      expect(held.error, messageOf(held.error)).toBeUndefined();
+      expect((await h.rows("alice"))[0]!.status).toBe("held");
+      const assigned = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, assignee: "helper-b" }, "agent");
+      expect(assigned.error, messageOf(assigned.error)).toBeUndefined();
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: filed!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      const first = rows.find((row) => row.from === "otto")!;
+      expect(rows.find((row) => row.from === "helper-b")!.chain, "a fresh chain, not the filing's").not.toBe(first.chain);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("runs an ongoing-session task filed before rows recorded a count at its session's count, which counts on from its filer's", async () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true }) }) });
     try {
       const alice = h.client("alice");
@@ -710,8 +831,9 @@ describe("the hop count through a delegation", () => {
       expect(released.error, messageOf(released.error)).toBeUndefined();
       await h.settled();
       expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
-      // Its session kept no count, so its message starts one, as before the row recorded it.
-      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@1", "otto>helper-a@1"]);
+      // No record on the row: the task runs at its session's count, and the
+      // delegate's ongoing session was born with its filer's (FIX-2238).
+      expect((await logRows(h, "alice")).map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
     } finally {
       await h.dispose();
     }
@@ -728,7 +850,7 @@ describe("the hop count through a delegation", () => {
           fallback
         ]
       }),
-      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, ""), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "sendMessage", { to: "chief", text: "Who takes this?" }, ""), fallback] })
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
@@ -750,9 +872,9 @@ describe("the hop count through a delegation", () => {
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
           ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
+          ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -779,14 +901,56 @@ describe("the hop count through a delegation", () => {
 });
 
 describe("who can be messaged", () => {
-  it("refuses another user's worker as missing, a task-only worker with 'file a task', a turnless coordinator, and itself; writes nothing", async () => {
+  // A worker that hears only in its tasks' sessions still hears an answer:
+  // the answer lands in the task session its question came from.
+  it("refuses a worker that hears only in its tasks' sessions by name, and lets an answer to it through", () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+    const door = z.object({ message: z.string() });
+    flows = {
+      coder: defineFlow({
+        kind: "coder",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
+      })
+    };
+    const coder: RosterWorker = { id: "eng.coder", standard: true, flow: "coder", description: null, delegates: [] } as RosterWorker;
+    expect(recipientRefusal(installation, "otto", "eng.coder", coder)).toMatch(/^task_sessions_only/);
+    expect(recipientRefusal(installation, "otto", "eng.coder", coder, true)).toBeUndefined();
+  });
+
+  // A resend re-runs the send's check: an answer that was let through once
+  // must not be refused for good when its first dispatch didn't land.
+  it("lets a resent answer to a worker that hears only in its tasks' sessions through, and still refuses one by name", async () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+    const door = z.object({ message: z.string() });
+    flows = {
+      coder: defineFlow({
+        kind: "coder",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
+      })
+    };
+    const coder: RosterWorker = { id: "eng.coder", standard: true, flow: "coder", description: null, delegates: [] } as RosterWorker;
+    vi.spyOn(installation, "rosterWorker").mockResolvedValue(coder);
+    const row = { from: "otto", to: "eng.coder" };
+    expect(await recheckRecipient({} as never, installation, { ...row, inReplyTo: "msg-1" })).toBeUndefined();
+    expect(await recheckRecipient({} as never, installation, { ...row, inReplyTo: undefined })).toMatch(/^task_sessions_only/);
+  });
+
+  it("refuses another user's worker as missing, a worker that hears only in its tasks' sessions with 'file a task', and itself, writing nothing; a round-robin coordinator hears one", async () => {
     const calls = [
       { to: "bob.friend", text: "Hi Bob's worker." },
       { to: "nobody", text: "Hi." },
       { to: "eng.tasker", text: "Hi coder." },
       { to: "rota", text: "Hi rota." },
       { to: "otto", text: "Hi me." }
-    ].map((args, i) => ({ toolCallId: `who-${i}`, toolName: "messageWorker", args }));
+    ].map((args, i) => ({ toolCallId: `who-${i}`, toolName: "sendMessage", args }));
     let called = false;
     const h = boot({
       standard: teamWorkers(),
@@ -813,10 +977,13 @@ describe("who can be messaged", () => {
       expect(outputs).toHaveLength(5);
       expect(outputs[0]).toMatch(/no_worker: no worker \\"bob.friend\\" on your roster/);
       expect(outputs[1]).toMatch(/no_worker: no worker \\"nobody\\" on your roster/);
-      expect(outputs[2]).toMatch(/takes_tasks_only.*File a task/);
-      expect(outputs[3]).toMatch(/no_turn/);
+      expect(outputs[2]).toMatch(/task_sessions_only.*File it a task/);
+      expect(outputs[3]).toMatch(/"sent":"msg_/);
       expect(outputs[4]).toMatch(/not_yourself/);
-      expect(await logRows(h, "alice")).toEqual([]);
+      // Only rota's message is a row, and it landed in rota's conversation as its own item.
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}`)).toEqual(["otto>rota"]);
+      expect(await receivedIn(h, rows[0]!.toSession)).toEqual([expect.objectContaining({ from: "otto", text: "Hi rota." })]);
       expect(await logRows(h, "bob")).toEqual([]);
       const bobs = await (await h.state.getRuntime()).stores.session.list({ userId: "bob" } as never);
       expect((bobs as Array<{ flowKind: string }>).filter((session) => session.flowKind === "agent")).toEqual([]);
@@ -843,10 +1010,12 @@ describe("who can be messaged", () => {
     }
   });
 
-  it("takes no sender, no wait and no other key: the tool's input is strict", () => {
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
-    expect(messageWorkerInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true }).success).toBe(false);
+  it("takes no sender, no call flag and no other key: the tool's input is strict", () => {
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi." }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", wait: true, deadline: 60_000 }).success).toBe(true);
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", from: "lead" }).success).toBe(false);
+    // Whether a message is a call is the server's to say, from `wait`: a model can't set it.
+    expect(sendMessageInputSchema.safeParse({ to: "lead", text: "Hi.", call: true }).success).toBe(false);
   });
 });
 
@@ -864,7 +1033,7 @@ describe("a busy recipient", () => {
     });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] }),
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] }),
       afterModelCall: async (block) => {
         if (block === "coordinator-judgment" && holding) {
           holding = false;
@@ -892,15 +1061,71 @@ describe("a busy recipient", () => {
       await h.dispose();
     }
   });
+
+  // A queued message's budget is what its chain has left when it is heard,
+  // not when it was sent: the sender's next send has spent one more.
+  it("tells a message heard after a busy turn what its chain has left by then", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let holding = true;
+    let asked = false;
+    const h = boot({
+      judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("long question"), then: { text: "Long answer." } }, fallback] }),
+      agentAnswer: mockGenerator({
+        script: [
+          { when: (input) => asked && textOf(input).includes("Please ask the lead twice"), then: { text: "Sent." } },
+          {
+            when: (input) => {
+              if (asked || !textOf(input).includes("Please ask the lead twice")) return false;
+              asked = true;
+              return true;
+            },
+            then: {
+              toolCalls: [
+                { toolCallId: "call-first", toolName: "sendMessage", args: { to: "lead", text: "First." } },
+                { toolCallId: "call-second", toolName: "sendMessage", args: { to: "lead", text: "Second." } }
+              ]
+            }
+          },
+          fallback
+        ]
+      }),
+      afterModelCall: async (block) => {
+        if (block === "coordinator-judgment" && holding) {
+          holding = false;
+          await held;
+        }
+      }
+    });
+    try {
+      const lead = await h.client("alice").ensureWorkerSession({ worker: "lead" });
+      await h.post("alice", lead.id, "respond", { message: "A long question" }, "coordinator");
+      for (let i = 0; i < 200 && holding; i += 1) await new Promise((r) => setTimeout(r, 10));
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead twice" }, "agent");
+      for (let i = 0; i < 300 && (await logRows(h, "alice")).length < 2; i += 1) await new Promise((r) => setTimeout(r, 10));
+      expect((await logRows(h, "alice")).map((row) => row.hop).sort()).toEqual([1, 2]);
+      release();
+      await h.settled();
+      const heard = await receivedIn(h, lead.id);
+      expect(heard.map((item) => [item.text, item.budget])).toEqual([
+        ["First.", 4],
+        ["Second.", 4]
+      ]);
+    } finally {
+      release();
+      await h.dispose();
+    }
+  });
 });
 
 describe("delivery", () => {
-  /** Deliver `messageId` to `sessionId`'s onWorkerMessage again, as a second copy of the dispatch would. */
+  /** Deliver `messageId` to `sessionId`'s onMessageReceived again, as a second copy of the dispatch would. */
   async function deliverAgain(h: BoardHost, flow: string, sessionId: string, messageId: string) {
     const runtime = await h.state.getRuntime();
     const run = await runAction({
       flow: h.instances[flow]!,
-      actionName: "onWorkerMessage",
+      actionName: "onMessageReceived",
       input: { messageId },
       userId: "alice",
       orgId: ORG,
@@ -917,7 +1142,7 @@ describe("delivery", () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
     const h = boot({
       judgment,
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
       const otto = await agentSession(h, "alice", "otto");
@@ -939,20 +1164,21 @@ describe("delivery", () => {
     }
   });
 
-  it("marks the row refused, and the tool says why, when the host refuses the dispatch", async () => {
+  it("keeps the row unconfirmed, and the tool answers it sent, when the host turns the dispatch away for now", async () => {
     const h = boot({
-      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
+      agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
-      const lost = await h.loseDispatches("onWorkerMessage");
+      const lost = await h.loseDispatches("onMessageReceived");
       const otto = await agentSession(h, "alice", "otto");
       await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
       await h.settled();
       lost.restore();
+      // Busy is not final (FIX-2240): the sending session's pass sends it again.
       const [row] = await logRows(h, "alice");
-      expect(row).toMatchObject({ status: "refused", reason: expect.stringMatching(/^dispatch-rejected/) });
+      expect(row).toMatchObject({ status: "unconfirmed", reason: expect.stringMatching(/^dispatch-rejected/) });
       const outputs = (await toolOutputs(h, otto)).map((output) => JSON.stringify(output));
-      expect(outputs[0]).toMatch(/not_delivered.*dispatch-rejected/);
+      expect(outputs[0]).toMatch(/^\{"sent":"msg_\w+"\}$/);
     } finally {
       await h.dispose();
     }

@@ -16,6 +16,9 @@ import { defineSetWorkProjectBlock, setWorkProjectInputSchema } from "../project
 import { markUserTurnStep } from "../standing-rules/user-turn";
 import { turnConfigOf } from "../workers/verified-worker";
 import type { WorkerInstallation } from "../workers/installation";
+import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
+import { workerMessagesResources } from "../messages/message-log";
+import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
 import { PROJECT_STATE_KEY, SET_WORK_PROJECT_ACTION } from "../workers/keys";
 import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
@@ -713,7 +716,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     configSchema: turn.settings,
     ...turn.bound,
     session,
-    resources: { ...(turn.bound.resources ?? {}), ...errorReportsResources },
+    resources: { ...(turn.bound.resources ?? {}), ...errorReportsResources, ...workerMessagesResources },
     actions: {
       [RESPOND_ACTION]: { inputSchema: turn.inputSchema.strict(), block: door, userMessage: (input: { message: string }) => input.message },
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
@@ -731,7 +734,9 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     internal: {
       actions: {
         [COMMENT_ENTRY]: { inputSchema: z.object({}).passthrough(), block: comment },
-        [LINE_ENTRY]: { inputSchema: z.object({ text: z.string() }), block: line }
+        [LINE_ENTRY]: { inputSchema: z.object({ text: z.string() }), block: line },
+        // A worker's message wakes the reporter's turn, as it does any worker's (FIX-2238).
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn.run), installation, flowKind })
       }
     }
   } as never);

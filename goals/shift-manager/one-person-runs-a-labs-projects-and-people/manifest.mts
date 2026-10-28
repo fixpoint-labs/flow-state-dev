@@ -10,6 +10,7 @@
  * some other assertion is not the control going red; one that exits 0 never
  * went red. Both are findings like any other.
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -224,7 +225,7 @@ function runOne(entry: Entry, control: string | null, logDir: string, env: Recor
         /* gone */
       }
     }, 45 * 60_000);
-    child.on("exit", (code) => {
+    onClosed(child, (code) => {
       clearTimeout(timer);
       writeFileSync(log, out);
       const verdictLine = out.split("\n").filter((l) => /^(PASS|FAIL) —/.test(l) || /^\s+- /.test(l)).join("\n");

@@ -241,6 +241,14 @@ export type ActionCore<
    * `"allow"`.
    */
   concurrency?: ConcurrencyConfig;
+  /**
+   * Whether a request on this entry becomes its session's auto-resume target
+   * (`latestRequestId`): the request a client attaching to the session finds
+   * and reattaches to. Set `false` on a control action sent beside a running
+   * request, such as a line handed into it, so a client that reloads still
+   * finds the running request rather than the control. Default: `true`.
+   */
+  autoResume?: boolean;
 };
 
 /**

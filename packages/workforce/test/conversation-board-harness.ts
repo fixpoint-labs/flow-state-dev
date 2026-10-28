@@ -29,6 +29,9 @@ import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
+import { workerMessagesResources } from "../src/messages/message-log";
+import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
@@ -120,7 +123,8 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
       const ask = /\[ask:([^\]]+)\]/.exec(message);
       if (ask !== null && held !== undefined && held.askedInTurn === undefined && tasks !== undefined) {
-        const asked = await askMidway(ctx as never, tasks, [{ prompt: ask[1]! }]);
+        // `[ask:a|b]` asks two questions at once.
+        const asked = await askMidway(ctx as never, tasks, ask[1]!.split("|").map((prompt) => ({ prompt })));
         if (!asked.ok) throw new Error(`the question could not hold the task: ${asked.reason}`);
         return "asked";
       }
@@ -131,8 +135,10 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
     kind: "tasker",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...conversationLedgerResources },
+    resources: { ...installation.resources, ...conversationLedgerResources, ...workerMessagesResources },
     actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    // Like a coding worker: it hears messages only in its tasks' sessions.
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "tasker", hears: "task-sessions" }) } },
     task: { actions: { work: workerTaskEntry({ name: "tasker-task", turn }) } }
   });
 }
@@ -148,8 +154,9 @@ function helperFlow(installation: WorkerInstallation) {
     kind: "helper",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "helper", hears: "task-sessions" }) } },
     task: { actions: { work: workerTaskEntry({ name: "helper-task", turn: door }) } }
   });
 }
@@ -181,6 +188,10 @@ export type BoardHostOptions = {
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
   /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
   durable?: boolean;
+  /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
+  maxDebtAgeMs?: number;
+  /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
+  waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
   holds?: ReadonlyMap<string, Promise<void>>;
   /**
@@ -304,6 +315,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     flows: instances,
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
+    ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
     modelResolver: withJudgmentModel(
@@ -531,4 +544,14 @@ export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error !== null && typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);
   return String(error);
+}
+
+/**
+ * A fixture worker flow's `onMessageReceived`, which every worker flow on an
+ * installation must carry: spread into `internal.actions`, with
+ * `workerMessagesResources` in the flow's resources. No turn: a message lands
+ * as its items and nothing runs.
+ */
+export function hearsMessages(installation: WorkerInstallation, flowKind: string, hears?: "task-sessions") {
+  return { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind, ...(hears === undefined ? {} : { hears }) }) };
 }

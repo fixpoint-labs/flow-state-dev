@@ -713,6 +713,8 @@ export interface OpenLabOptions {
   userDeadlineMs?: number;
   /** How often the durability sweeper runs (`durabilityRetention.sweepIntervalMs`). Absent: the engine's. */
   sweepIntervalMs?: number;
+  /** The bounds on a wait on work: a call's or `getTask`'s (`createFlowState`'s `waitDeadlines`). Absent: the engine's. */
+  waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
 }
 
 /** What a Lab's Error Reporter is opened with (`openLab({ errorReporter })`). */
@@ -1226,6 +1228,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     durable: true,
     ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.sweepIntervalMs === undefined ? {} : { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } }),
+    ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),

@@ -20,7 +20,7 @@
     ".omp/test/*.mjs",
 
     "packages/*/test/**/*.{test,spec}.{ts,tsx}",
-    "packages/*/**/*.type-test.ts",
+    "packages/*/test/**/*.type-test.ts",
     "packages/cli/bin/*.ts",
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.
@@ -40,9 +40,6 @@
     "labs/knowledge-hub/fsdev.config.ts",
     "labs/knowledge-hub/test/**/*.spec.ts",
     "labs/knowledge-hub/scripts/**/*.mts",
-    "labs/conductor/fsdev.config.ts",
-    "labs/conductor/test/**/*.spec.ts",
-    "labs/conductor/test/harness.ts",
 
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",

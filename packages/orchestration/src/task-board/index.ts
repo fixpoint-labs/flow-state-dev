@@ -93,6 +93,7 @@ import {
   onTaskChangeFor,
   resolveTaskCapDefaults,
   startLeaseRenewal,
+  taskLedgerResources,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -250,10 +251,16 @@ export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring
 // The wait on a task (FIX-1816; one wait since FIX-2082): under `getTask({ wait })`
 // and a plan board's drain on a row it handed to another session, and whether
 // this request's host can hold one. Node-only, like the claim seam it reads.
+// `checkWaitable` and `toolCallOf` are the checks every wait shares, a
+// worker's call too (FIX-2239).
 export {
   waitOnTask,
   canHoldWait,
+  checkWaitable,
+  toolCallOf,
   waitGateId,
+  type WaitableOptions,
+  type WaitableRefusal,
   type TaskWaitRefusal,
   type TaskWaitResult,
   type WaitOnTaskOptions,
@@ -1549,7 +1556,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     // `ctx.cap.<name>` board cap so the two never collide in `flattenCapabilities`.
     const resourceCapability = defineCapability({
       name: `${boardName}__taskCollection`,
-      resources: { [resourceKey]: definedCollection },
+      resources: taskLedgerResources(definedCollection),
     });
     const collectionFactory = (ctx: BlockContext) =>
       resolveResourceTaskCollection<TInput, TOutput>(ctx, {

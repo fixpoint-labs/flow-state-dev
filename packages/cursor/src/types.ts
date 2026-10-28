@@ -277,6 +277,11 @@ export interface CursorRunLike {
   cancel(): Promise<void>;
   /** The SDK's own capability probe. Absent on a scripted double, and then every operation is assumed supported. */
   supports?(operation: string): boolean;
+  /**
+   * Hand a line to the turn in flight. Local runs only; settles on Cursor's
+   * terminal answer, and `revert_to_followup` means "send it as a follow-up".
+   */
+  steer?(text: string): Promise<string>;
 }
 
 /** The subset of the SDK's `SDKAgent` this package drives. */

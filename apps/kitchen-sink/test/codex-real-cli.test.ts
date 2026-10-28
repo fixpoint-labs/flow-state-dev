@@ -34,6 +34,9 @@ import type { HarnessSessionState } from "@/lib/harness-turn";
 import { worktreeRoot } from "@/lib/harness-worktree";
 
 const PLANTED = "do-not-hand-this-over";
+/** The model the endpoint refuses, and the words it refuses it with (the reported 400's). */
+const REFUSED_MODEL = "model-this-account-cannot-use";
+const REFUSAL = "The 'model-this-account-cannot-use' model is not supported when using Codex with a ChatGPT account.";
 
 let scratch: string;
 let repo: string;
@@ -84,6 +87,12 @@ beforeAll(async () => {
       }
       const request = JSON.parse(body) as { input?: Array<{ type?: string; output?: unknown }>; model?: unknown; service_tier?: unknown };
       requestsSeen.push({ model: request.model, service_tier: request.service_tier });
+      // How the API answers a ChatGPT sign-in that asks for a model it can't use.
+      if (request.model === REFUSED_MODEL) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ detail: REFUSAL }));
+        return;
+      }
       for (const item of request.input ?? []) {
         if (item.type === "function_call_output") toolOutputs.push(String(item.output));
       }
@@ -191,5 +200,25 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
     } finally {
       rmSync(config, { force: true });
     }
+  }, 120_000);
+
+  it("a model the account refuses fails the turn with the API's one line, the CLI's output folded into details", async () => {
+    const stores = createInMemoryStores();
+    const resolveCodexClient = createDefaultResolveCodexClient({ ...codexClientOptions(), baseUrl, apiKey: "sk-scripted" });
+    const result = await testFlow({
+      flow: codexSessionFlow({ resolveCodexClient }),
+      action: "turn",
+      userId: "u",
+      sessionId: "s-refused",
+      input: { prompt: "say done" },
+      stores,
+      seed: { session: { state: { model: REFUSED_MODEL } } },
+    });
+    const errors = result.items.filter((item) => item.type === "error") as Array<{ message?: string; details?: { output?: unknown } }>;
+    // One error, its message the refusal itself on one line, not a dump of the CLI's log.
+    expect(errors, JSON.stringify(errors, null, 1)).toHaveLength(1);
+    expect(errors[0]!.message).toBe(`Codex run failed: ${REFUSAL}`);
+    // Whatever else the CLI printed is kept, collapsed under Details, not lost.
+    if (errors[0]!.details !== undefined) expect(errors[0]!.details.output).toEqual(expect.any(String));
   }, 120_000);
 });

@@ -7,9 +7,10 @@
  * ever stops being true, the import sweep at the bottom of this file fails.
  *
  * The end-to-end behaviours — a real board, a real dispatch, a real claim gate —
- * stay with `labs/conductor`, which is this package's first consumer and drives
- * the whole loop through its own flow. Duplicating that here would be a second
- * copy of a suite, not a second thing tested.
+ * stay with this package's own host tests (`steer-a-run`, `dotted-board`) and
+ * the harness-manager goal checks, which drive the whole loop through a host
+ * flow. Duplicating that here would be a second copy of a suite, not a second
+ * thing tested.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, mkdtempSync } from "node:fs";

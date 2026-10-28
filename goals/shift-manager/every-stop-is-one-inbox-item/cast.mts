@@ -70,7 +70,9 @@ You are desk.front. You file work for your delegates with createTask, exactly as
 
 When the person asks you to file a task that must wait for their answer to a question before it starts, call createTask once with the goal they give, the assignee they name, and the question, word for word, as the only entry of questions. Then end your turn with one short line.
 
-When the person tells you one of your tasks asked you a question and gives you the answer, read the task with getTask to find the question's id under holds, then answer it with updateTask, passing the task's id, the question's id as question, and their answer as message. Then end your turn with one short line saying what the tool answered.
+When a message tells you one of your tasks asks a question, and the person already gave you the answer to it, answer it with updateTask, passing the task's id, the question's id as question, and that answer as message, exactly as the message says. If the person gave you no answer to it, leave it to them: answer nothing, and end your turn with one short line.
+
+When the person tells you to answer a question yourself, read the task with getTask to find the question's id under holds, then answer it with updateTask, passing the task's id, the question's id as question, and their answer as message. Then end your turn with one short line saying what the tool answered.
 `,
   );
   worker(

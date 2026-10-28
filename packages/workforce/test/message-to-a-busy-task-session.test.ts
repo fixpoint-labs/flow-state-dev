@@ -11,7 +11,7 @@
  *
  * On the real engine, through the board host: `lead` files a task for
  * `eng.doer`, whose task turn sends a message to its own session while it
- * runs (a delivered row in the message log, and its delivery dispatched), so
+ * runs (a row in the message log, not yet taken, and its delivery dispatched), so
  * the message waits on the session's reply line behind the task's turn. The
  * message's turn calls `reportProgress`, built as Workforce builds it.
  */
@@ -26,9 +26,10 @@ import { defineSessionBoard, filingConversationBoard, workerConfigSchema, worker
 import { boardAboveOf } from "../src/conversation-board/board-above";
 import { conversationLedgerAt } from "../src/conversation-board/ledger";
 import { messageLogOf } from "../src/messages/message-log";
-import { WORKER_MESSAGE_ENTRY } from "../src/messages/keys";
+import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { bootBoardHost, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
 
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 const WORKERS = [
@@ -70,7 +71,8 @@ function slowHelperFlow(installation: WorkerInstallation, behaviour: Behaviour) 
     kind: "slowhelper",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    internal: { actions: hearsMessages(installation, "slowhelper") },
     actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "slow-helper-task", turn }) } }
   } as never);
@@ -80,8 +82,8 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
   const board = defineSessionBoard({ installation, flowKind: "doer" });
   const doorInput = z.object({ message: z.string() });
 
-  // The task's turn sends a message to its own session: delivered, and its
-  // delivery dispatched, so it queues behind this turn.
+  // The task's turn sends a message to its own session: a row the entry has
+  // yet to take, and its delivery dispatched, so it queues behind this turn.
   const sendToSelf = async (ctx: BlockContext) => {
     const id = `msg_${Math.random().toString(16).slice(2, 10)}`;
     const sessionId = ctx.session.identity.id;
@@ -95,14 +97,13 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
       fromFlow: "doer",
       toSession: sessionId,
       toFlow: "doer",
-      answerTo: { sessionId, flow: "doer" },
       hop: 1,
-      status: "delivered",
+      status: "unconfirmed",
       at: Date.now()
     } as never);
     await dispatchThroughSeam(ctx, {
       type: "internal",
-      action: WORKER_MESSAGE_ENTRY,
+      action: MESSAGE_RECEIVED_ENTRY,
       flowKind: "doer",
       session: { id: sessionId },
       payload: { messageId: id },
@@ -146,7 +147,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
         return "the work's answer";
       }
     }),
-    { type: "internal", action: WORKER_MESSAGE_ENTRY }
+    { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
   );
 
   return defineFlow({

@@ -4,6 +4,32 @@ Reference application for `@flow-state-dev`. Hosts one or more flows; the flagsh
 
 Living under `apps/` (not `examples/`) because kitchen-sink is too large to serve as a pedagogical example — it integrates every subsystem (DevTool, skills, thinking style, advisor, workforce). Pedagogical snippets live in `examples/`.
 
+## What belongs here, and what belongs in the framework
+
+Kitchen Sink is glue. It assembles pieces the framework packages already ship into one app, and it should read as a clean example of how to do that. When a change needs new behaviour, the behaviour goes in the package that owns it, and Kitchen Sink picks it up with an import and a few lines of wiring.
+
+**The test: would a second app that used the same piece need this code too?** If yes, it belongs in the framework. If it only makes sense for this app, it can stay here.
+
+Belongs in Kitchen Sink:
+
+- Registering flows, workers and modes, and mounting them on pages (`fsdev.config.ts`, `app/`, `lib/modes.ts`).
+- Choosing among options a package exposes: which model intent, which store profile, which preset, which harness mode is on.
+- Layout and composition of framework components into this app's screens.
+- Demo content: the support team's `WORKER.md` files, prompts, the example flows' own schemas and blocks.
+- This app's own tests and scripted test-mode fixtures that drive them.
+
+Belongs in a framework package, not here:
+
+- **Features.** New behaviour a user of the framework would want. Build it in the owning package, with its tests and README, then wire it here.
+- **Knowledge about an outside tool.** Model lists, version pins, sign-in probes, parsing a CLI's output. The integration package owns these, because every app using that integration needs the same answer. Kitchen Sink may still decide whether one of its modes is on by composing those probes (`lib/harness-gate.ts`). Example: Codex mode kept a hand-written model list and parsed `codex login status` itself; #4035 moves both into `@flow-state-dev/codex`.
+- **Workarounds.** If a package misbehaves, fix the package. A workaround here hides the bug from every other app and from the package's tests.
+- **Custom config that should be a default.** If Kitchen Sink has to pass the same option every app would pass, change the package's default or add a preset.
+- **Reusable UI.** See "UI Components: Upstream-First Convention" below.
+
+If the framework change is too large for the task you're on, don't land the workaround here as a stopgap. Raise it as a scope decision (see `docs/contributing/asking-for-decisions.md`): build it in the package now, or file the package work and leave the Kitchen Sink side undone.
+
+When you touch existing Kitchen Sink code that fails this test, say so in the PR. Move it if the move is small and in scope; otherwise name it as follow-up rather than adding to it.
+
 ## Commands
 
 ```bash
@@ -55,7 +81,7 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `lib/harness-worktree.ts` — one git worktree and branch per session, through `@flow-state-dev/workspace`, under `${XDG_STATE_HOME:-~/.local/state}/flow-state-dev/kitchen-sink-harness/`. Never cleared.
 - `lib/claude-code-mode.ts` — Claude Code mode: its block (no sandbox, `bypassPermissions`, allowlisted env, `settingSources: []`) and its own availability check (not root, worktree root, SDK + sign-in). Under `KITCHEN_SINK_TEST_MODE=1` the SDK is `lib/scripted-claude-code.ts`, whose prompt directives (`[slow]`, `[plan]`, `[refuse]`, …) drive the e2e; `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one.
 - `lib/cursor-mode.ts` — Cursor mode: its block's options (`recordPlan`, agent mode, `composer-2.5` as `CURSOR_DEFAULT_MODEL`, Cursor's sandbox off, the allowlisted `env`, so the Cursor package runs the runtime in its own process) and its own availability check (the pinned SDK, a process that starts with only that env, a key or stored login). Under `KITCHEN_SINK_TEST_MODE=1` the SDK is `lib/scripted-cursor.ts` (directives `[plan]`, `[slow]`, `[refuse]`, …) with `env` unset; `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one.
-- `lib/codex-mode.ts` — Codex mode: its block's options (`danger-full-access` with no approvals, the allowlisted `client.env`, and no plan record, so the panel says "Codex reports no plan") and its own availability check (the pinned SDK through the Codex package's own version gate, `codex login status` or `CODEX_API_KEY`, and `codex login status` or `CODEX_API_KEY`). `CODEX_MODELS` is the app-maintained picker list: GPT-6.1-Sol (default), GPT-6-Sol, GPT-6-Luna, GPT-6-Astra, GPT-5.6-Sol, GPT-5.6-Terra and GPT-5.6-Luna. Access depends on the account and client; a session keeps its selected model without fallbacks. Sessions with no saved model use `CODEX_DEFAULT_MODEL`. `codexClientOptions` supplies the default service tier and disables discovered MCP servers with valid command or URL transport overrides, leaving personal `config.toml` unchanged. The first turn reads the MCP inventory with `codex mcp list` and caches it for the server process; restart after inventory changes. Discovery failures warn that configured servers may start and retry on the next turn. Under `KITCHEN_SINK_TEST_MODE=1` the SDK is `lib/scripted-codex.ts` (directives `[slow]`, `[slow-start]`, `[refuse]`, `[new]`, `[fail]`, `[fail-early]`); `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one.
+- `lib/codex-mode.ts` — Codex mode: its block's options (`danger-full-access` with no approvals, the allowlisted `client.env`, and no plan record, so the panel says "Codex reports no plan") and its own availability check (the pinned SDK through the Codex package's own version gate, and a sign-in through the Codex package's own `probeCodexAccount`: `CODEX_API_KEY` or `codex login status`). New session's list is Codex's own, read with the Codex package's `listCodexModels` (`codexModelChoices`), Codex's default preselected; a list that can't be read offers nothing and says why. Sessions with no saved model run Codex's listed default; when the list can't be read their turn fails with the reason rather than start a run with no model. `codexClientOptions` supplies the default service tier and disables discovered MCP servers with valid command or URL transport overrides, leaving personal `config.toml` unchanged. The first turn reads the MCP inventory with `codex mcp list` and caches it for the server process; restart after inventory changes. Discovery failures warn that configured servers may start and retry on the next turn. Under `KITCHEN_SINK_TEST_MODE=1` the SDK is `lib/scripted-codex.ts` (directives `[slow]`, `[slow-start]`, `[refuse]`, `[new]`, `[fail]`, `[fail-early]`, `[refused-model]`); `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one.
 - `lib/harness-gate.ts` — whether each mode can run on this host, decided once per server start (memoized on `globalThis`) and read by the picker, the harness addresses and the flow list alike. Order: host (`lib/harness-workspace.ts`, the one reader of `KITCHEN_SINK_HARNESS_WORKSPACE`), then "not built yet" (no `flowKind` in `lib/modes.ts`), then the mode's own check (`MODE_CHECKS`). A harness mode registers its flow in `fsdev.config.ts` only through `availableHarnessFlows`, so an unavailable mode's `/api/flows/<kind>/…` is not found. Goal control `gate-open` skips the host and each mode's own check in a test-mode build.
 - `lib/flowstate.ts` — re-exports the FlowState from `fsdev.config.ts` (which holds the `createFlowState` runtime assembly: flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API, now shared with the `fsdev` CLI via the root config.
 

@@ -93,13 +93,17 @@ async function handle(msg) {
     case "send": {
       run = await agent.send(msg.prompt, msg.options);
       const supportsWait = typeof run.supports === "function" ? run.supports("wait") !== false : true;
+      // Not `supports("steer")`: the SDK's probe knows no such operation and answers false.
+      const supportsSteer = typeof run.steer === "function";
       // Started after the reply is queued, so the parent knows the run before
       // its first message arrives.
       queueMicrotask(() => void pump(run));
-      return { runId: run.id, supportsWait };
+      return { runId: run.id, supportsWait, supportsSteer };
     }
     case "wait":
       return await run.wait();
+    case "steer":
+      return await run.steer(msg.text);
     case "cancel":
       await run?.cancel();
       return null;

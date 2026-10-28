@@ -15,9 +15,9 @@
  *   this lab's code.
  * - **`isDone` refuses a run that reported `stopped-at-limit`, and otherwise is
  *   a commit the base ref does not have**, read out of the run's
- *   own checkout with git. Not a pull request: conductor already proves the `gh`
- *   probe, and re-proving it would make this check expensive to re-run a year
- *   from now, which is the one thing a goal is for. On a workspace host the
+ *   own checkout with git. Not a pull request: a `gh` probe would make this
+ *   check expensive to re-run a year from now, which is the one thing a goal is
+ *   for. On a workspace host the
  *   base is the remote the checkout was cut from, and a run in a project with
  *   no repository has no git at all: it is done when it left files in its
  *   `workspace/`, which the manager saves back to the project.

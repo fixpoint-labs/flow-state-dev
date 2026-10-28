@@ -137,6 +137,8 @@ export type {
   ResumeWaitInput,
   ResumeWaitResult,
   RequestWaits,
+  RequestSessions,
+  SessionView,
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,
@@ -289,6 +291,9 @@ export {
   sequencer,
   type DispatchHandle,
   type DispatchWaitResult,
+  waitOnRequest,
+  type RequestWaitOutcome,
+  type WaitOnRequestInput,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
@@ -609,8 +614,11 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   observedPlanListStateSchema,
+  harnessConversationNamespace,
+  planConversationPrefix,
   planKeySegment,
   planRowsPrefix,
+  readPlanTarget,
   replacePlanList,
 } from "./types/harness-plan";
 export type {
@@ -619,10 +627,14 @@ export type {
   PlanListCollection,
   PlanListItem,
   PlanListMarkerCollection,
+  PlanMarkerRead,
   ReplacePlanListResult,
 } from "./types/harness-plan";
 
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";
 export type { HarnessEnvOptions } from "./helpers/harness-env";
+/** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
+export { harnessSteering } from "./helpers/harness-steering";
+export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "./helpers/harness-steering";
 export { formatRunDuration } from "./helpers/run-duration";

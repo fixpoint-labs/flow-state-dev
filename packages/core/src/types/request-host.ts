@@ -15,9 +15,14 @@
  * **What crosses is behaviour, not handles.** No type in this file names a store,
  * a flow instance, a session record, or a task row. A value read from another
  * session crosses as `unknown` and the consumer parses it with its own schema —
- * `core` cannot name `orchestration`'s types either.
+ * `core` cannot name `orchestration`'s types either. The one read of another
+ * session's record, `sessions.read`, answers only what that session's flow
+ * declares readonly, never the record.
  *
- * **Identity is never a parameter, and neither is a session id.** Every operation
+ * **Identity is never a parameter, and neither is a session id**, but for a
+ * target the running principal already owns: the dispatch seam's `{ id }`
+ * target, and `sessions.read`. Both refuse any session but the principal's own,
+ * in its tenant and org, and answer such a one as absent. Every operation
  * closes over the running request's server-derived identity (tenant, user, org,
  * session, flow). A caller supplies the *target* of an operation and never the
  * *authority* for it: it hands over a routing seed and the seam derives the child
@@ -25,14 +30,17 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at seven verbs**. The fifth, `resumeWait`, was added by
+ * The seam is **closed at eight verbs**. The fifth, `resumeWait`, was added by
  * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
  * here; FIX-2129 widened it to cancel a wait for a user, rather than add a
  * verb. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
  * wake the engine keeps). The seventh, `waits`, by FIX-2082 (one wait gate:
- * its deadline bounds and the depth the engine counts). Adding an eighth verb
- * is a decision someone reviews, not a surface that grows by transitivity.
+ * its deadline bounds and the depth the engine counts). The eighth,
+ * `sessions`, by FIX-2160 D2: a message's server checks a target session of the
+ * principal's before anything is written. Adding a ninth verb is a decision
+ * someone reviews, not a surface that grows by transitivity; a later lookup of
+ * the principal's sessions extends `sessions` instead.
  */
 
 import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
@@ -243,6 +251,46 @@ export interface RequestWaits {
    * (FIX-2123), and not while that request is parked.
    */
   running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  /**
+   * The running session's open stop for the user (FIX-2239): a request of
+   * this session, other than the running one, parked on a user's suspension
+   * (`isUserSuspension`). `undefined` when none is. Read from the suspensions
+   * pending now. A message to a session stopped for the user queues behind
+   * that request until it ends.
+   */
+  userStop?(): Promise<{ readonly requestId: string } | undefined>;
+}
+
+/**
+ * A session of the running principal as {@link RequestSessions.read} answers it:
+ * which flow it runs and its readonly state, and nothing else of its record.
+ */
+export type SessionView = {
+  /** The definition kind of the session's flow. */
+  readonly flowKind: string;
+  /** The flow instance the session belongs to; absent on a record written before instances had ids. */
+  readonly flowId?: string;
+  /**
+   * The session's state, cut to the fields its flow declares readonly
+   * (server-written markers). Empty when the flow is not registered in this
+   * process. Untyped: parse it with your own schema.
+   */
+  readonly state: Readonly<Record<string, unknown>>;
+};
+
+/**
+ * Sessions of the running principal (FIX-2160 D2): a check on a target session
+ * before anything is written to it.
+ */
+export interface RequestSessions {
+  /**
+   * The session `sessionId`, when it is the running principal's: the same
+   * user, tenant and organization as the running request. `undefined` for any
+   * other, and for one that doesn't exist: the two read alike, so the verb is
+   * not an existence oracle. Any flow's session answers; the caller checks the
+   * flow it needs.
+   */
+  read(sessionId: string): Promise<SessionView | undefined>;
 }
 
 /**
@@ -370,6 +418,12 @@ export interface RequestHost {
    * wakes, since a wait's deadline is a wake.
    */
   readonly waits?: RequestWaits;
+
+  /**
+   * Sessions of the running principal (FIX-2160 D2). Absent on a host that
+   * can't read its session records, such as a hand-built test context.
+   */
+  readonly sessions?: RequestSessions;
 }
 
 /**

@@ -15,10 +15,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { judgeFiles, pinnedVersions, suiteCases, SUITE_DIR } from "./suite.mjs";
 
-const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
+const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
 /** A pnpm-lock.yaml importers slice: two importers that pin different versions. */
 const LOCK = `lockfileVersion: '9.0'

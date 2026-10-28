@@ -1,6 +1,9 @@
 /**
  * Who talked to whom (FIX-1989), from the user's message log.
  * A message makes no task row, so nothing here is on Tasks.
+ *
+ * A call (FIX-2239) says where its answer is: waiting, answered, or answered
+ * after its sender's deadline.
  */
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
@@ -27,12 +30,21 @@ function Side({ worker, sessionId, testId }: { worker: string; sessionId: string
 
 function statusNote(row: WorkerMessageRow): string | null {
   if (row.status === "refused") return "not delivered";
-  if (row.status === "unconfirmed") return "delivery unconfirmed";
+  if (row.status === "undeliverable") return "couldn't be delivered";
+  if (row.status === "unconfirmed") return "on its way";
   return null;
+}
+
+/** Where a call's answer is, or `null` for a plain message or a call that ended undelivered. */
+function callNote(row: WorkerMessageRow): string | null {
+  if (row.call !== true || row.status === "refused" || row.status === "undeliverable") return null;
+  if (row.repliedAt === undefined) return row.queuedBehind === "user" ? "call · waiting on the user" : "call · waiting";
+  return row.deadlineAt !== undefined && row.repliedAt > row.deadlineAt ? "call · answered late" : "call · answered";
 }
 
 function MessageLine({ row }: { row: WorkerMessageRow }) {
   const note = statusNote(row);
+  const call = callNote(row);
   return (
     <li
       className="grid grid-cols-[max-content_max-content_1fr] items-baseline gap-x-3 py-1.5"
@@ -54,6 +66,11 @@ function MessageLine({ row }: { row: WorkerMessageRow }) {
       </span>
       <span className="min-w-0 truncate text-sm" data-testid="message-text" title={row.text}>
         {firstLine(row.text)}
+        {call === null ? null : (
+          <Meta className="ml-2 text-muted-foreground" testId="message-call-state">
+            {call}
+          </Meta>
+        )}
         {note === null ? null : (
           <Meta className="ml-2 text-destructive" testId="message-status">
             {note}

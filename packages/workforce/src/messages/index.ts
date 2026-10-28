@@ -1,10 +1,20 @@
 /**
  * Worker messages (FIX-1989): any worker with a conversation can message any
  * other on its user's roster. Talk, not delegation: no task row, no delegate,
- * no task-chain count. The session kit carries the tool and the entry, so
- * both worker flows get them; `hireWorkforce`'s `messages` sets the limits.
+ * no task-chain count. The session kit carries the tool and the entry; a
+ * worker flow without it mounts `messageReceivedEntry` itself, and the hire
+ * refuses one with neither (FIX-2238). `hireWorkforce`'s `messages` sets the budget.
  */
-export { MESSAGE_WORKER_TOOL, WORKER_MESSAGE_ENTRY } from "./keys";
+export { SEND_MESSAGE_TOOL, MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT } from "./keys";
+export {
+  messageReceivedEntry,
+  messageReceivedInputSchema,
+  messageReceivedSchema,
+  promptedMessageTurn,
+  receivedMessagePrompt,
+  type MessageHearing,
+  type MessageReceived
+} from "./message-received-entry";
 export {
   MAX_MESSAGE_CHARS,
   MESSAGE_STATUSES,
@@ -17,5 +27,7 @@ export {
   type WorkerMessageRow
 } from "./message-log";
 export { DEFAULT_MESSAGE_HOP_LIMIT, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
-export { messageWorkerInputSchema } from "./message-tool";
-export { sendWorkerMessage, takesWorkerMessages, type SendOutcome, type SendWorkerMessage } from "./send-message";
+export { sendMessageInputSchema } from "./message-tool";
+export { sendMessage, type SendOutcome, type SendMessageInput } from "./send-message";
+// A message to a task or a conversation, checked before anything is written (FIX-2160).
+export { checkTargetSession, checkTaskTarget, type CheckedTarget, type MessageTarget, type TargetCheck } from "./message-target";

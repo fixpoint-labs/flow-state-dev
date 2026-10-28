@@ -14,11 +14,18 @@
  * - `die`: exit the process mid-run.
  * - `wedged`: stream one message, then wait forever; a cancel never settles,
  *   as a wedged runtime's might never.
+ * - `steer` / `steer-refuse`: stream one message, then wait for a steer; it
+ *   answers `complete_delivered` (or `revert_to_followup`), and the run ends
+ *   with a message carrying the line it took.
  */
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 function makeRun(prompt) {
+  let steered = () => {};
+  const steeredLine = new Promise((resolve) => {
+    steered = resolve;
+  });
   let release = () => {};
   const cancelled = new Promise((resolve) => {
     release = resolve;
@@ -33,6 +40,12 @@ function makeRun(prompt) {
       if (prompt === "wedged") {
         yield { type: "thinking", text: "working" };
         await new Promise(() => {});
+      }
+      if (prompt === "steer" || prompt === "steer-refuse") {
+        yield { type: "thinking", text: "working" };
+        const line = await steeredLine;
+        yield { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `took: ${line}` }] } };
+        return;
       }
       if (prompt === "hang") {
         yield { type: "thinking", text: "working" };
@@ -55,6 +68,10 @@ function makeRun(prompt) {
     },
     async wait() {
       return { status: "finished", result: "done" };
+    },
+    async steer(text) {
+      steered(prompt === "steer" ? text : "(refused)");
+      return prompt === "steer" ? "complete_delivered" : "revert_to_followup";
     },
     async cancel() {
       if (prompt === "wedged") await new Promise(() => {});

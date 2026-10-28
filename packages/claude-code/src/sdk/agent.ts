@@ -628,8 +628,10 @@ export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
  * degrade to status notes alone. The two records are not optional that way —
  * without them there is nothing to record into.
  *
- * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
- * child session's runs apart.
+ * File and gap entries are keyed under {@link runNamespace}, which is what keeps
+ * a reused child session's runs apart. Plan rows go under the conversation the
+ * SDK confirms (`bindConversation`), so a plan lasts as long as its
+ * conversation, and the run's marker points there.
  */
 function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
@@ -651,6 +653,7 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
   }
   return createWorkRecorder({
     runId: runNamespace(ctx),
+    requestId: ctx.request.identity.id,
     files,
     plan,
     ...(planList !== undefined ? { planList } : {}),
@@ -1126,7 +1129,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.
               const sid = (message as { session_id?: string }).session_id;
-              if (typeof sid === "string" && sid !== "") newSessionId = sid;
+              if (typeof sid === "string" && sid !== "") {
+                newSessionId = sid;
+                // The plan is the conversation's: key it under the session the
+                // SDK confirmed, so the next turn of it updates the same plan.
+                // A no-op after the first message names it.
+                recorder?.bindConversation(sid);
+              }
 
               // **Tell the host, before this message is translated or the next
               // one is read.**
