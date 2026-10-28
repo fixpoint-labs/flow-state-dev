@@ -783,7 +783,7 @@ describe("a steer no request took gives the task one more turn before it settles
     await (await h.ledger()).answer!("t1", { questionId: question, message: "EU", from: "user", by: "u1" });
     // That owed turn asks the user to review its work before it finishes, as a thread does.
     h.setSteerTurn(async (_steers, ctx) => {
-      const resolution = await ctx.suspend!({ reason: "human_input", message: "review the EU draft" });
+      const resolution = await ctx.suspend!({ reason: "user_input", message: "review the EU draft" });
       return { reviewed: resolution };
     });
     const turn = await h.runLater("steerTurn");
