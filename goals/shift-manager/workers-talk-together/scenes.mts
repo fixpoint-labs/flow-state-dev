@@ -239,7 +239,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const words =
     `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, leaving the questions field out entirely (the task asks its own while it works), whose goal is, word for word: ` +
-    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue: before writing, ask the worker who filed this task for it with askQuestion, then write the line." ` +
+    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the askQuestion tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
     `Second, call sendMessage with to "${RESEARCHER}", text "What is seven times six? Answer with the number only.", wait: true and deadline: ${PARKED_CALL_MS}. ` +
     `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as question, and the venue as message. Don't message or call anyone about it.`;
   const requestId = (await alice.flow(helperA.flowKind).send("respond", { message: words }, { sessionId: helperA.id })).id;
