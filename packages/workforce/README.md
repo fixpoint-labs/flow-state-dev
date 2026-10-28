@@ -419,7 +419,9 @@ that worker on every turn with `installation.resolveWorker(ctx, flowKind)`. `hir
 worker flow that doesn't declare it. The same session state (`installation.sessionStateShape`)
 carries `workProjectId` (`WORK_PROJECT_STATE_KEY`), the project a user set their own conversation
 to work in, as `<visibility>/<id>`. Only the `setWorkProject` action writes it, and a create that
-seeds it is refused with a 400 naming the field (see [Projects](#projects)).
+seeds it is refused with a 400 naming the field (see [Projects](#projects)). A user's session read,
+the session listing and the state read show it, read only, so a screen can name the project. It is
+not `projectId`: that readonly field is the project coordinator's link to its project, set at create.
 
 A worker takes a user's message through its flow's **door**: the one public action the flow
 declares with `userMessage` and a `{ message }` input. `openInventory` writes it on the worker's

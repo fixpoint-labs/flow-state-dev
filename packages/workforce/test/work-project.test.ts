@@ -14,6 +14,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { createWorkforceClient } from "../src/browser";
 import {
   COORDINATOR_FLOW,
@@ -118,6 +119,8 @@ const standardWorkers: WorkerManifest[] = [
   // Two task-taking delegates, so a task filed with no assignee waits on the board.
   worker("lead", { flow: COORDINATOR_FLOW, delegates: ["eng.taker", "eng.coder"] }),
   worker("main", { flow: COORDINATOR_FLOW, delegates: ["eng.taker"] }),
+  // A worker on the built-in agent flow, the one a lab's talking workers run on.
+  worker("writer", { flow: AGENT_FLOW }),
   worker("eng.taker", { flow: "taker", description: "Takes tasks.", delegates: ["eng.coder"] }),
   worker("eng.coder", { flow: "taker", description: "Codes." })
 ];
@@ -137,7 +140,8 @@ async function boot() {
     leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
     flows: (installation) => ({
       taker: { flow: takerFlow(installation, runs), roles: ["contributor", "manager"] },
-      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" }),
+      [AGENT_FLOW]: defineAgentWorkerFlow({ installation })
     }),
     models: { generators: { "coordinator-judgment": judgment } },
     // A step in a session of its own parks its request until the step ends.
@@ -196,6 +200,26 @@ describe("a user's conversation with a worker, set to a project", () => {
     expect(h.answerOf("look at the repo")).toEqual(inApollo);
     // The task's session was handed the project, readonly.
     expect(h.runs[0]!.state).toMatchObject({ filingProjectId: "shared/apollo" });
+  });
+
+  it("read elsewhere: on the agent flow, a project another client set shows on this client's read and listing, and can't be seeded", async () => {
+    const h = await withProjects();
+    const reader = createClient({ userId: "alice", fetcher: h.fetcherFor("alice", ORG) });
+    const writer = await createWorkforceClient(reader).ensureWorkerSession({ worker: "writer" });
+    expect((await reader.sessions.get(writer.id)).state).not.toHaveProperty("workProjectId");
+    // Set from a second client: the reader sent no setWorkProject of its own.
+    await h.client("alice").setWorkProject("writer", apollo);
+    expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/apollo" });
+    const [row] = await createWorkforceClient(reader).listWorkerSessions("writer");
+    expect(row!.session.state).toMatchObject({ workProjectId: "shared/apollo" });
+    await h.client("alice").setWorkProject("writer", beta);
+    expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/beta" });
+    // Reading it gives no way to write it.
+    const forged = await h.tryOpenSession("alice", AGENT_FLOW, { workerId: "writer", workProjectId: "shared/apollo" });
+    expect(forged.status).toBe(400);
+    // Another user can't read it.
+    const bob = createClient({ userId: "bob", fetcher: h.fetcherFor("bob", ORG) });
+    await expect(bob.sessions.get(writer.id)).rejects.toThrow();
   });
 
   it("new-session: a session of the worker created at its own id, then set, runs its tasks in the project", async () => {

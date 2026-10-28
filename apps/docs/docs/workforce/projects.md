@@ -677,6 +677,17 @@ await workforce.setWorkProject("main", { visibility: "shared", id: "apollo" }, {
 
 Without `sessionId`, it sets the user's default conversation with that worker, creating the conversation if there isn't one. With `sessionId`, it sets that session, which must be the user's own and run that worker. It resolves to `{ project: { visibility, id } }`. A new session takes two calls, as above: create it, then set its project. A create that puts `workProjectId` in `state` is refused with a 400 naming the field.
 
+To show the project on screen, read the session. Its state carries `workProjectId` as `<visibility>/<id>`, whoever set it and however long ago, and `parseProjectRef` from `@flow-state-dev/workforce/browser` splits it:
+
+```ts
+import { parseProjectRef, WORK_PROJECT_STATE_KEY } from "@flow-state-dev/workforce/browser";
+
+const { state } = await fsd.sessions.get(session.id);
+const project = parseProjectRef(String(state[WORK_PROJECT_STATE_KEY] ?? "")); // { visibility: "shared", id: "apollo" }
+```
+
+The field is read only. `setWorkProject` is the only way to change it.
+
 Calling it again with another project replaces the first. Tasks already filed keep the project they were filed in, including one still waiting on the board for a delegate and one handed to a delegate's ongoing session, along with whatever that delegate files while working it. A run that has already started stays where it is. There's no way to clear the project: once set, the conversation always has one.
 
 The worker flows the package ships take the call as they are: `agent`, `coordinator` and the [Error Reporter](./error-reporter.md)'s flow. A worker flow of your own declares the action under its name:
