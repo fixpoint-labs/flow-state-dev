@@ -269,15 +269,6 @@ export async function admitClaimedTask(
 }
 
 /**
- * The tasks a request's spend is written to: the one it was admitted for.
- * Every request for a task is admitted for that task alone, so two tasks a
- * session holds never share a request's spend.
- */
-function spendTargets(record: Admitted): string[] {
-  return [record.ticket.taskId];
-}
-
-/**
  * Write one part of the request's spend onto its task (FIX-2288): the one
  * writer of `Task.spend`. Never fails the request: a write that can't land is
  * logged, and the next tick or the ending writes again.
@@ -287,9 +278,8 @@ async function writeSpend(record: Admitted, part: "live" | "settle", spend: Requ
   if (recordSpend === undefined) return false;
   const requestId = requestKey(record.ctx);
   try {
-    for (const taskId of spendTargets(record)) {
-      await recordSpend.call(record.ref, taskId, { requestId, part, spend }, { claim: record.ticket });
-    }
+    // Only the task this request was admitted for: two tasks a worker runs at once never share a request's spend.
+    await recordSpend.call(record.ref, record.ticket.taskId, { requestId, part, spend }, { claim: record.ticket });
     return true;
   } catch (error) {
     console.warn(`[task-board] task "${record.ticket.taskId}": what its run spent couldn't be written: ${(error as Error).message}`);

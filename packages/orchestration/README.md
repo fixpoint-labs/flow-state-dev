@@ -159,6 +159,20 @@ client-visible, unlike `claimedBy`, and no write surface a caller reaches can se
 If you implement `TaskCollectionRef` yourself, implement `linkRun` too: a board that
 dispatches calls it on every attempt.
 
+**What a task's run spent.** A dispatched task carries `spend: { requests }`: one entry
+per request its runs made, on every attempt, each with its model calls and harness runs
+(`settled`), what the running request has reported so far (`live`, `null` once it ends),
+and the harness and model it ran on. The board writes it from the task's own request
+only: every 2 s while the request runs (`SPEND_TICK_MS`), and once more as it ends,
+before the task is checked. The write is `recordSpend(id, { requestId, part, spend },
+{ claim })`, fenced by the row's identity only, so a failed attempt's tokens land even
+after its row settled; it emits no `task-change`. A row written before this field reads
+`spend: null`. `taskSpendView(task)` folds it to `{ harness, model, inputTokens,
+outputTokens, unreported, live }`, the shape `listTasks` returns from
+`taskToolActions` (never to a model): tokens are `null` until something reports one,
+never 0. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
+the board writes no spend.
+
 `rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger
 order: each row whose run link names it, with every row of its follow-up chain. Follow-ups
 run in the root's session one at a time, so the list includes one that hasn't started yet.

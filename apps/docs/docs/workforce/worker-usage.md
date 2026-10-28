@@ -35,6 +35,8 @@ When a request on that flow ends, however it ends, what it spent is added to the
 
 Records belong to the user who made the request. One user never reads another's.
 
+A [task's spend](../orchestration/task-board.md#what-a-tasks-run-spent) is counted from the same figures, per task rather than per worker and day. A task's tokens and what its worker's usage records for the same requests add up to the same numbers.
+
 A worker whose flow declares `installation.session()` but leaves `installation.resources` out of `resources` has nowhere to write. In development, a request on it that spent tokens fails, naming the missing collection. In production, the request goes on and a warning is logged.
 
 A record that fails to write is logged, and the request is not failed. Two requests that end at the same moment for the same worker both land.

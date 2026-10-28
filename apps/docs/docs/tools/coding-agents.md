@@ -245,22 +245,24 @@ and let the manager feed your harness its `onUsage`.
 
 ## What a run spent
 
-When a run ends, however it ends, the harness block reports what it spent to the request it ran in: one `HarnessRunSpend` per run.
+A harness block reports what its run has spent to the request it runs in, as the run goes: when it starts, each time the agent reports usage, and when the run ends, however it ends. Each report is a `HarnessRunSpend` carrying the whole run so far, and a later report for the same run replaces the earlier one, so a run counts once. A [task board](/docs/orchestration/task-board#what-a-tasks-run-spent) shows these reports on the task while it runs.
 
 | Field | What it holds |
 |---|---|
+| `runId` | The harness's own id for the run. Reports with the same id replace each other. |
 | `harness` | `claude-code`, `codex` or `cursor`. |
+| `model` | The model the run uses: the one the agent named, else the one the run was started with. `null` when neither is known. |
 | `inputTokens` / `outputTokens` | The tokens the agent reported, or `null` when it reported none, as for a run killed before its usage arrived. |
 | `costUsd` | The cost the agent reported, in US dollars, or `null`. Never an estimate. |
 | `billing` | `"api-key"`, `"subscription"`, or `null` when the harness can't tell. |
 
 What each harness fills in:
 
-| Harness | Tokens | `costUsd` | `billing` |
-|---|---|---|---|
-| Claude Code | From its result | The cost Claude Code reported | From Claude Code's own account info: `api-key` when it runs on a key, `subscription` when it is signed in to a plan, otherwise `null` |
-| Codex | From its turns | Always `null` | `api-key` when you hand its client an `apiKey`, otherwise `null` |
-| Cursor | Added up turn by turn, so a stopped run keeps the turns it finished | Always `null` | Always `null` |
+| Harness | Tokens | `model` | `costUsd` | `billing` |
+|---|---|---|---|---|
+| Claude Code | Rising with each model message while it runs, then the whole query's count from its result | The one its first message names | The cost Claude Code reported | From Claude Code's own account info: `api-key` when it runs on a key, `subscription` when it is signed in to a plan, otherwise `null` |
+| Codex | At the end of each turn, `null` until then | The model you started the run with; `null` when Codex picks its own default | Always `null` | `api-key` when you hand its client an `apiKey`, otherwise `null` |
+| Cursor | Added up at the end of each turn, so a stopped run keeps the turns it finished; `null` until the first ends | The model you configured, or the one the run names | Always `null` | Always `null` |
 
 A failed run reports the tokens it got before it failed. A run that failed before any usage arrived reports `null` tokens.
 
@@ -268,26 +270,36 @@ The report is a count kept apart from the request's model tokens: it never adds 
 
 ### Reporting from a harness of your own
 
-Call `reportHarnessSpend` once per run, from a `finally`, with whatever the agent had sent by then:
+Pick one `runId` per run, then call `reportHarnessSpend` when the run starts, each time the agent reports usage, and from a `finally`. Each call carries the run's total so far, never the change since the last one:
 
 ```ts
+import { randomUUID } from "node:crypto";
 import { reportHarnessSpend } from "@flow-state-dev/core/types";
 
+const runId = `my-agent:${randomUUID()}`;
 let usage: { input: number; output: number } | null = null;
-try {
-  // ... run the agent, setting `usage` when it reports tokens
-} finally {
+const report = () =>
   reportHarnessSpend(ctx, {
+    runId,
     harness: "my-agent",
+    model: "my-model",
     inputTokens: usage?.input ?? null,
     outputTokens: usage?.output ?? null,
     costUsd: null,
     billing: null,
   });
+
+report(); // the model, before any tokens
+try {
+  // ... run the agent; each time it reports usage, set `usage` to its total and call report()
+} finally {
+  report();
 }
 ```
 
-It returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
+A report without a `runId` counts as one finished run of its own, so a harness that reports once, from its `finally`, still counts correctly; a task then shows its tokens only once the run ends.
+
+`reportHarnessSpend` returns `false`, and counts nothing, when the context belongs to no request, such as a hand-built test context.
 
 ## The prompt is the input; everything else is configuration
 

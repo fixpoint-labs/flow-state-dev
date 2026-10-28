@@ -112,11 +112,10 @@ core's model price table and `cost.basis` reads `"estimated"`. It is `null`, nev
 `0`, when no model was named (Codex's output never names the model that ran),
 when the table has no entry for it, or when the turn reported no usage.
 
-<<<<<<< HEAD
 ## What a run spent
 
-When a run ends, however it ends, `codexAgent` reports its spend to the request with `reportHarnessSpend`: `harness: "codex"`, the tokens Codex reported, `costUsd: null` (the estimate above is never reported as spend), and `billing: "api-key"` when `client.apiKey` is set, otherwise `null`. A run that failed before any usage arrived reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
-=======
+`codexAgent` reports its spend to the request with `reportHarnessSpend` as the run goes, under one `runId` for the run: when it starts, with `model` the model you started it with (`null` when Codex picks its own default) and `null` tokens; at the end of its turn, with the tokens Codex reported; and when the run ends, however it ends. Each report replaces the run's last. `harness: "codex"`, `costUsd: null` (the estimate above is never reported as spend), and `billing: "api-key"` when `client.apiKey` is set, otherwise `null`. A run that failed before any usage arrived reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
+
 ## Checking for a credential before you start
 
 `probeCodexAccount({ env, timeoutMs?, signal? })` asks whether Codex has
@@ -139,7 +138,6 @@ true` when Codex gave no answer (it didn't answer within `timeoutMs`, default
 when `@openai/codex-sdk` can't be loaded. The shape follows `probeClaudeAccount`
 in `@flow-state-dev/claude-code`. It checks where a credential would come from,
 not that it works: a rejected key still reads `account`.
->>>>>>> origin/main
 
 ## Reading usage left
 

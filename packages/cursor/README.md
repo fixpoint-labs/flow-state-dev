@@ -209,7 +209,7 @@ landed, and `0` reads as "this was free".
 
 ## What a run spent
 
-When a run ends, however it ends, `cursorAgent` reports its spend to the request with `reportHarnessSpend`: `harness: "cursor"`, the tokens Cursor reported, added up turn by turn so a stopped run keeps the turns it finished, and `costUsd` and `billing` both `null`. A run that failed before any turn reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
+`cursorAgent` reports its spend to the request with `reportHarnessSpend` as the run goes, under one `runId` for the run, each report replacing the last: once the run is sent, with the configured `model` and `null` tokens; at the end of each turn, with the tokens so far; and when the run ends, however it ends. `harness: "cursor"`, the tokens Cursor reported, added up turn by turn so a stopped run keeps the turns it finished, and `costUsd` and `billing` both `null`. A run that failed before any turn reports `null` tokens. Guide: [what a run spent](https://flow-state.dev/docs/tools/coding-agents#what-a-run-spent).
 
 ## Tests
 

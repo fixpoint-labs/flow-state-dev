@@ -1060,7 +1060,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         const whole = spentTokens as SdkAgentHandle["usage"];
         let sum: SdkAgentHandle["usage"] = null;
         for (const tokens of usageByMessage.values()) {
-          sum = { inputTokens: (sum?.inputTokens ?? 0) + tokens.inputTokens, outputTokens: (sum?.outputTokens ?? 0) + tokens.outputTokens };
+          sum = { inputTokens: (sum === null ? 0 : sum.inputTokens) + tokens.inputTokens, outputTokens: (sum === null ? 0 : sum.outputTokens) + tokens.outputTokens };
         }
         const spent = whole ?? sum;
         reportHarnessSpend(ctx, {
