@@ -29,3 +29,4 @@ Steps 2 and 3 have no isolating red state for lead's side: without lead's messag
 | 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini | FAIL (expected) | `pick-not-kept`: only [5] "the task filed again ended refused · no project", "0 worktree(s) carry a commit" |
 | 2026-10-28 | 42fdeb2+ | openai/gpt-5.4-mini | FAIL (expected) | `no-lead-send`: [2] no card, no Talk group, no log row, no line in researcher's conversation; [3] no reply; [5] lead never filed again after the pick (the run then also flagged 5 as a leak; 5 is now `mayAlso`) |
 | 2026-10-28 | 42fdeb2+ | openai/no-such-model-goal-control | FAIL (expected) | `no-model`: [1] no answer (and CAN'T TELL on 1, nothing drawn), [2], [3], [5] all red |
+| 2026-10-28 | 920da34+ | openai/gpt-5.4-mini, Claude Code | PASS | After FIX-2289's Markdown entries; the goal reads entries as shown (innerText). Typo "servce"; date 5 May; one worktree, README.md only |
