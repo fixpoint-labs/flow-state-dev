@@ -200,6 +200,13 @@ export const RETIRED = [
     files: CODE_OR_PUBLISHED,
     // FIX-2244: the worker is the Shift Coordinator.
     pattern: /\b[Cc]hiefs? [Oo]f [Ss]taff\b|\bCoS\b/
+  },
+  {
+    id: "seat-mailbox-goal-names",
+    files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
+    // FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only.
+    pattern: /(?<![\w-])(mailbox-boards|multi-seat-collab|workforce-mailboxes|workforce-seats|it-commits-from-the-seats-own-file|it-keeps-its-rows-on-the-mailboxes-board|it-wakes-the-seat-a-file-declared|it-ships-an-artifact-a-person-can-open|refuses-a-board-drain-onto-a-seat-it-is-outside|a-person-talks-to-a-seat-a-mailbox-and-back|agent-replies-in-the-mailbox|it-routes-a-queue-to-the-seats-their-files-name|it-hands-a-row-between-two-seats-in-view|a-post-reaches-both-declared-seats|a-seat-answers-from-its-own-document|it-sends-a-turn-into-a-seat-session|a-team-says-once-what-its-seats-are-told|a-callers-own-agent-wins-every-seat|a-non-agent-seat-receives-its-skills|a-seat-reaches-the-documents-its-file-names)(?![\w-])/,
+    pathName: /(^|\/)(mailbox-boards|multi-seat-collab|workforce-mailboxes|workforce-seats|it-commits-from-the-seats-own-file|it-keeps-its-rows-on-the-mailboxes-board|it-wakes-the-seat-a-file-declared|it-ships-an-artifact-a-person-can-open|refuses-a-board-drain-onto-a-seat-it-is-outside|a-person-talks-to-a-seat-a-mailbox-and-back|agent-replies-in-the-mailbox|it-routes-a-queue-to-the-seats-their-files-name|it-hands-a-row-between-two-seats-in-view|a-post-reaches-both-declared-seats|a-seat-answers-from-its-own-document|it-sends-a-turn-into-a-seat-session|a-team-says-once-what-its-seats-are-told|a-callers-own-agent-wins-every-seat|a-non-agent-seat-receives-its-skills|a-seat-reaches-the-documents-its-file-names)\//
   }
 ];
 
@@ -246,6 +253,19 @@ export const KEEP = [
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace"
+  },
+  {
+    path: /^goals\//,
+    line: /^\| \d{4}-\d{2}-\d{2} \||^\*\*The model-free sibling is red, and this issue did not break it\.\*\*/,
+    rules: ["seat-mailbox-goal-names"],
+    why: "a goal's verdict log: a dated run keeps the goal names it ran under"
+  },
+  {
+    path: /^goals\/(README\.md|coordinators\/every-coordinator-is-a-worker-file\/(goal\.md|run\.mts))$/,
+    // Exact retired goals only: a live goal cited under an old name on these files stays open.
+    line: /(mailbox-boards\/it-hands-a-task-to-a-fresh-hire|workforce-seats\/two-seats-run-their-own-configuration|workforce-mailboxes\/a-pre-rename-lab-is-refused-by-name)\b/,
+    rules: ["seat-mailbox-goal-names"],
+    why: "a goal retired before FIX-2248, named under the folder it lived in"
   },
   {
     path: /^packages\/engine\/src\/stores\/testing\/request-store-conformance\.ts$/,
