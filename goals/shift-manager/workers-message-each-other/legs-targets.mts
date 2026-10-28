@@ -168,14 +168,18 @@ export async function leg6(world: World, targets: Targets): Promise<LegResult> {
     await quiet(alice, 240_000);
     const requests = await alice.routes.requests(taskSession);
     const heard = requests.find((q) => q.id === received?.requestId);
-    const taskTurns = requests.filter((q) => q.id !== received?.requestId && startOf(q) < startOf(heard ?? { startedAtMs: Number.POSITIVE_INFINITY }));
+    // A deferred turn's record is written when it is queued, so its
+    // `startedAtMs` is that time. It ran when its first item was written.
+    const heardItems = (await alice.routes.items(taskSession, "")).filter((i) => i.requestId === heard?.id);
+    const heardRan = heardItems.length > 0 ? Math.min(...heardItems.map((i) => Number((i as { ts?: unknown }).ts))) : startOf(heard ?? {});
+    const taskTurns = requests.filter((q) => q.id !== received?.requestId && startOf(q) < heardRan);
     const lastTaskEnd = Math.max(...taskTurns.map(endOf));
     if (received === undefined || heard === undefined) {
       r.failures.push(`6:lands-in-task-session — task ${taskId}'s session shows no line from the courier`);
-    } else if (taskTurns.length > 0 && !(startOf(heard) >= lastTaskEnd)) {
-      r.failures.push(`6:lands-in-task-session — the message's turn started at ${startOf(heard)}, before the task's turn ended at ${lastTaskEnd}`);
+    } else if (taskTurns.length > 0 && !(heardRan >= lastTaskEnd)) {
+      r.failures.push(`6:lands-in-task-session — the message's turn ran at ${heardRan}, before the task's turn ended at ${lastTaskEnd}`);
     }
-    r.notes.push(`the task was ${runningWhenSent} when the courier sent; the message's turn ${heard?.id} started ${startOf(heard ?? {})}, the task's turns ended ${lastTaskEnd}`);
+    r.notes.push(`the task was ${runningWhenSent} when the courier sent; the message's turn ${heard?.id} was queued ${startOf(heard ?? {})} and ran ${heardRan}, the task's turns ended ${lastTaskEnd}`);
   }
   await quiet(alice, 240_000);
 
