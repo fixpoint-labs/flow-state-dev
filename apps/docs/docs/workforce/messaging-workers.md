@@ -139,6 +139,8 @@ If the user stops the sender's request while it waits, the call ends with it. Th
 
 A call answers `failed` when its message was refused or couldn't be delivered (`error` starts `not_delivered:`), or when the recipient's turn failed.
 
+Some workers take messages but run no turn on them, so nothing ever replies. A call to one is refused with `no_reply` before anything is sent. If the sender can't tell until the message lands, the call answers `failed` with `no_reply` instead. Either way, send to that worker without `wait`, or file it a task.
+
 ### Where a call can run
 
 A call needs a host that can hold a wait: [durable execution](../advanced/durable-execution.md), a store that keeps [wakes](../advanced/durable-execution.md#wakes), and the [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) running, which resumes a wait at its deadline. On any other host it's refused with `wait_unavailable`, and nothing is sent. The call is never turned into a plain send. Send without `wait` there, and the answer comes back as a message.
@@ -305,6 +307,7 @@ A refused send or call answers `{ ok: false, error }`, and nothing is sent. The 
 | `wait_already_pending` | This round of tool calls already waits on something: a call, or `getTask` with `wait`. See [Where a call can run](#where-a-call-can-run). |
 | `wait_too_deep` | The call would be a sixth wait nested in its chain. |
 | `no_such_call` | `callId` names no call sent from this conversation. |
+| `no_reply` | `wait: true` to a worker that runs nothing on a message, so no reply would come. Send without `wait`, or file it a task. See [When a call fails](#when-a-call-fails). |
 | `wait_again_only` | `callId` was passed with `to`, `text`, `inReplyTo` or `wait`. Pass only `callId` and, if you like, `deadline`. |
 
 ## Message or delegate?
