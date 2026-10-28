@@ -416,6 +416,82 @@ describe("request spend ledger", () => {
     ]);
   });
 
+  it("keeps a continuation's newer count when the interrupted run's ending finishes after it", async () => {
+    // The interrupted run's observer is still going when a continuation takes
+    // the request, spends more and suspends. The older ending's write must not
+    // put back the smaller count.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const usage3 = { promptTokens: 2, completionTokens: 1, totalTokens: 3 };
+    const modelResolver = Object.assign(
+      () => ({ modelId: "openai/gpt-6-luna", async generate() { return { text: "ok", usage: usage3 }; } }),
+      { resolveId: (id: string) => id }
+    );
+    let waited = false;
+    const waitOnce = handler({
+      name: "wait-once",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        if (waited) return value;
+        waited = true;
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        return value;
+      }
+    });
+    let releaseObserver: () => void = () => {};
+    let observerHeld = false;
+    const holdFirstObserver = handler({
+      name: "hold-first",
+      inputSchema: z.any(),
+      execute: async () => {
+        if (observerHeld) return;
+        observerHeld = true;
+        await new Promise<void>((resolve) => (releaseObserver = resolve));
+      }
+    });
+    const gate = handler({
+      name: "approve",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Go?" });
+        return value;
+      }
+    });
+    const ask = (name: string) => generator({ name, model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
+    const flow = defineFlow({
+      kind: "spend-late-ending",
+      request: { onFinished: holdFirstObserver },
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: sequencer({ name: "seq", durable: true }).step(ask("first")).step(waitOnce).step(ask("second")).step(gate)
+        }
+      }
+    })({ id: "spend-late-ending" });
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider, modelResolver };
+    const disconnect = new AbortController();
+
+    const older = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-late", signal: disconnect.signal, stores, runtimeConfig });
+    while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
+    disconnect.abort();
+    while (!observerHeld) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect((await stores.request.get("r-late"))?.status).toBe("interrupted");
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId: "r-late", stores, flowRegistry: registry, runtimeConfig });
+    await finished;
+    expect((await stores.request.get("r-late"))?.status).toBe("suspended");
+    const settled = await stores.request.get("r-late");
+
+    releaseObserver();
+    await older;
+
+    const after = await stores.request.get("r-late");
+    expect(after?.spentByModel?.["openai/gpt-6-luna"]?.total).toBe(6);
+    expect(after?.spentThroughItemIndex).toBe(settled?.spentThroughItemIndex);
+  });
+
   it.each(["false", "true"])(
     "keeps counting a request's token budget across a continuation after its process died (observability %s)",
     async (observability) => {
@@ -439,14 +515,19 @@ describe("request spend ledger", () => {
       );
       let crashed = true;
       let stalledOnce = false;
-      // On the first run this step never returns, standing in for a process that died mid-step.
+      let endDeadRun: () => void = () => {};
+      // On the first run this step doesn't return, standing in for a process
+      // that died mid-step. The test ends that run once it is done, so its
+      // timers don't outlive the test.
       const stall = handler({
         name: "stall",
         inputSchema: z.any(),
         execute: async (value) => {
           if (!crashed) return value;
           stalledOnce = true;
-          return new Promise<never>(() => {});
+          return new Promise<never>((_resolve, reject) => {
+            endDeadRun = () => reject(new Error("the process died"));
+          });
         }
       });
       const ask = (name: string) => generator({ name, model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" });
@@ -465,7 +546,7 @@ describe("request spend ledger", () => {
       const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
       const runtimeConfig = { durabilityProvider: provider, modelResolver };
 
-      void runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash", stores, runtimeConfig });
+      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash", stores, runtimeConfig });
       while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash"]);
@@ -475,11 +556,14 @@ describe("request spend ledger", () => {
       const { finished } = await continueRequest({ requestId: "r-crash", stores, flowRegistry: registry, runtimeConfig });
 
       const outcome = await finished;
+      // The dead run never ended, so the continuation's one ending hands on both runs.
+      const endingsBeforeTeardown = endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total]);
+      endDeadRun();
+      await deadRun.catch(() => undefined);
       // The first answer was replayed, not asked again.
       expect(calls).toBe(2);
       expect(outcome.error?.message).toBe("Token budget exceeded: consumed 11 > 10");
-      // The dead run never ended, so the continuation's one ending hands on both runs.
-      expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 11]]);
+      expect(endingsBeforeTeardown).toEqual([["failed", 11]]);
     }
   );
 });

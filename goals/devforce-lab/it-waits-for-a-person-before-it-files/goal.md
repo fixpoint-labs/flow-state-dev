@@ -20,7 +20,7 @@ different valid feature still passes a correct implementation.
    lab code; the run is keyless *(AR-1, AR-7)*;
 1. opened with the ask: the session listing, read as Inbox reads it (`GET /sessions?include=dispatch-runs`
    through the lab's door with its verified bearer), returns the EM seat's own session `s_eng_em`;
-   its requests hold exactly one pending `human_approval` naming both held-out strings and allowing
+   its requests hold exactly one pending `user_approval` naming both held-out strings and allowing
    approve and reject; the EM's file names the coder among its `delegates:`; the board holds **no row**;
    nothing dispatched; the coder not reached *(AR-2, AR-3, AR-4)*;
 2. Approve, through `POST /eng.em/requests/:id/resume`: first a resume with no bearer (401) and one

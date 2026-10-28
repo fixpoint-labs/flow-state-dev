@@ -765,7 +765,7 @@ session. Until then the row stays `in_progress`, and `keptOpenBy` says why:
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
 continues the same attempt. A stop for a person (a `ctx.waitForUser()`, or a `ctx.suspend()`
-for `human_approval` or `human_input`) is also mirrored on the row as a question.
+for `user_approval` or `user_input`) is also mirrored on the row as a question.
 
 **A task waiting on a user.** `getTask` and `listTasks` show `keptOpenBy` on a running
 task, and its `questions`. A stop for a person is one with `source.kind: "suspension"`: its

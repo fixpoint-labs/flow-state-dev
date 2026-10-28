@@ -141,7 +141,7 @@ describe("request-end seam", () => {
                 name: "ask",
                 inputSchema: z.any(),
                 outputSchema: z.unknown(),
-                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+                execute: (_input, ctx) => ctx.suspend!({ reason: "user_input", message: "Which one?" })
               })
             )
         }
@@ -165,7 +165,7 @@ describe("request-end seam", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
 
-    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "human_input", suspensionId: expect.any(String) }) }]);
+    expect(endings).toEqual([{ status: "suspended", suspension: expect.objectContaining({ reason: "user_input", suspensionId: expect.any(String) }) }]);
   });
 
   it("runs on a suspended request before the request can be resumed", async () => {
@@ -196,7 +196,7 @@ describe("request-end seam", () => {
                 name: "ask",
                 inputSchema: z.any(),
                 outputSchema: z.unknown(),
-                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+                execute: (_input, ctx) => ctx.suspend!({ reason: "user_input", message: "Which one?" })
               })
             )
         }
@@ -256,7 +256,7 @@ describe("request-end seam", () => {
                 name: "ask",
                 inputSchema: z.any(),
                 outputSchema: z.unknown(),
-                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+                execute: (_input, ctx) => ctx.suspend!({ reason: "user_input", message: "Which one?" })
               })
             )
         }

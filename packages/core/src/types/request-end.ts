@@ -35,7 +35,7 @@ export interface RequestEnding {
   readonly status: RequestEndStatus;
   /**
    * On `suspended`: the suspension it parked on. `reason` is why
-   * (`human_approval`, `human_input`, `external_event`, or a flow's own); the
+   * (`user_approval`, `user_input`, `external_event`, or a flow's own); the
    * rest is what a reader of a task waiting on it shows (FIX-2129): its id,
    * its kind when `waitForUser` set one, what it asks (`title`, `message`),
    * and its deadline (`expiresAt`), absent when it has none.

@@ -361,7 +361,7 @@ const forCoding = handler({
  *
  * **A repository waits for the user.** Which remote a project's code is
  * cloned from is the user's to say, so `setRepository`, and `createProject`
- * with a `repository`, pause on a stock `human_approval` before the write.
+ * with a `repository`, pause on a stock `user_approval` before the write.
  * Approve writes it; Deny throws out of the tool before the write runs, and
  * nothing changes. Without durable execution the tool refuses rather than
  * writing unasked.
@@ -434,7 +434,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks, workstreams: Wor
  * is the block under `.as()`; `fire` is a sequencer, because it waits for an
  * approval first.
  *
- * **A fire waits for the user.** It pauses on a stock `human_approval`
+ * **A fire waits for the user.** It pauses on a stock `user_approval`
  * naming the worker before the write; Deny throws out of the tool before the
  * write runs, and nothing changes. Without durable execution the tool refuses
  * rather than firing unasked.
@@ -460,7 +460,7 @@ export function chiefOfStaffRosterTools(installation: WorkerInstallation) {
   };
 }
 
-/** The approval a fire waits on: a stock `human_approval` naming the worker. Returns on Approve; on Deny the runtime throws out of it. */
+/** The approval a fire waits on: a stock `user_approval` naming the worker. Returns on Approve; on Deny the runtime throws out of it. */
 const askFire = handler({
   name: "devforce-cos-ask-fire",
   inputSchema: z.object({ id: z.string() }).passthrough(),
@@ -468,7 +468,7 @@ const askFire = handler({
   execute: async (input: { id: string }, ctx: BlockContext) => {
     // A host without durable execution refuses at the stop itself (FIX-2063).
     await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Fire worker "${input.id}"?`,
       data: { worker: input.id },
       allow: ["approve", "reject"],
@@ -486,7 +486,7 @@ const repositoryAskInputSchema = z
   .passthrough();
 
 /**
- * The approval a repository write waits on: a stock `human_approval` naming
+ * The approval a repository write waits on: a stock `user_approval` naming
  * the project and the remote, with any user or password left out of what
  * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
  */
@@ -504,7 +504,7 @@ function askRepository(
       const repository = input.repository == null ? null : redactRemote(input.repository);
       // A host without durable execution refuses at the stop itself (FIX-2063).
       await ctx.suspend!({
-        reason: "human_approval",
+        reason: "user_approval",
         message:
           repository === null
             ? `Clear the repository of project "${project}"? Its coding work will run on its files.`

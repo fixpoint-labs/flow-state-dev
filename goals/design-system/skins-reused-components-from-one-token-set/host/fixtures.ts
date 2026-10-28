@@ -89,7 +89,7 @@ export function container(component: string, requestId: string, blockInstanceId:
 export function suspension(options: {
   suspensionId: string;
   message: string;
-  reason?: "human_approval" | "human_input";
+  reason?: "user_approval" | "user_input";
   resumeSchema?: Record<string, unknown>;
   allow?: string[];
 }): SuspensionItem {
@@ -98,7 +98,7 @@ export function suspension(options: {
     type: "suspension",
     suspensionId: options.suspensionId,
     suspensionStatus: "pending",
-    reason: options.reason ?? "human_approval",
+    reason: options.reason ?? "user_approval",
     message: options.message,
     ...(options.resumeSchema ? { resumeSchema: options.resumeSchema } : {}),
     ...(options.allow ? { allow: options.allow } : {}),

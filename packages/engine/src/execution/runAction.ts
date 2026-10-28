@@ -604,6 +604,22 @@ async function patchRequestRecord(
 }
 
 /**
+ * Writes an interrupted request's settled spend once its ending has handed it
+ * on (FIX-2145), only while the record is still `interrupted` under this
+ * request and no later settlement recorded a further cursor.
+ */
+async function recordSettledSpend(
+  stores: StoreRegistry,
+  requestId: string,
+  incarnation: string,
+  spend: { spentByModel: RequestRecord["spentByModel"]; spentThroughItemIndex: number }
+): Promise<void> {
+  const current = await stores.request.get(requestId);
+  if (current?.status !== "interrupted" || (current.spentThroughItemIndex ?? -1) > spend.spentThroughItemIndex) return;
+  await stores.request.setFieldsIfStatus(requestId, spend, ["interrupted"], Date.now(), incarnation);
+}
+
+/**
  * Ends a request's record: its status and the action result built from
  * `settlement` land in one write, so a poller never sees a final status
  * without its result (FIX-1661). A suspension goes through here too, and
@@ -3189,9 +3205,11 @@ async function runActionAttempt<
     }
     // The ending just handed on what the observers and side-chains after the
     // settlement spent too: record it as settled, so a continuation never
-    // counts it again from the log (FIX-2145).
+    // counts it again from the log (FIX-2145). Only while the record is still
+    // this settlement's: a continuation that already took it, or settled past
+    // this cursor, holds newer accounting.
     if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
-      await patchRequestRecord(options.stores, requestId, {
+      await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
         spentByModel: ctx.request.tokenUsage.byModel,
         spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
       });
