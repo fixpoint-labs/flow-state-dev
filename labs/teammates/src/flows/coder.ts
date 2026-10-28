@@ -14,7 +14,7 @@
  * before any file exists, and the task ends with that reason.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
- * by name, and its door answers a person's line with where to go instead: in
+ * by name, and its door answers a user's line with where to go instead: in
  * this lab you steer a coding job through the worker that filed it.
  */
 import { z } from "zod";
@@ -69,7 +69,7 @@ const PHASE: PhaseSpec = {
   isDone: (run) => run.stopReport === "finished",
 } as PhaseSpec;
 
-/** What a person's line in one of coder's sessions is answered with. */
+/** What a user's line in one of coder's sessions is answered with. */
 const DOOR_REPLY =
   "coder takes tasks only. To change what it is doing, tell the worker that filed the task, and that worker files the next one.";
 

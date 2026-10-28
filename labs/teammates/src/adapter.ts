@@ -48,7 +48,7 @@ export type Unsubscribe = () => void;
 export interface WorkerRow {
   /** The worker's address on the roster, e.g. `teammates.lead`. */
   id: string;
-  /** The name a person reads. */
+  /** The name the user reads. */
   name: string;
   /** Its `WORKER.md` description: the ongoing role. */
   role: string;
