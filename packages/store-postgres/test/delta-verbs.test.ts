@@ -4,9 +4,7 @@
  * Validates `patchField`, `incField`, and `pushToArray` on the Postgres
  * SessionStore (the other three stores use the same generic record store,
  * so coverage transitively applies). Mirrors the in-memory conformance
- * suite, plus a check that patchField sends only the changed value (the
- * reason the spec expects it to beat a full `set`), asserted on the SQL it
- * issues rather than on wall-clock time.
+ * suite, plus the SQL `patchField` sends: the changed value, not the row.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,7 +17,6 @@ import type { QueryExecutor } from "../src";
 
 type RecordedQuery = { text: string; values?: unknown[] };
 
-/** PGlite as a `QueryExecutor`; pushes each query onto `recorded` when given. */
 function pgliteExecutor(pglite: PGlite, recorded?: RecordedQuery[]): QueryExecutor {
   return {
     async query(text: string, values?: unknown[]) {
@@ -252,19 +249,13 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
   });
 
   describe("patchField takes the delta path, not a full-record write", () => {
-    // The spec's "100 patchField faster than 100 set" criterion comes from
-    // what each path sends to Postgres: the JSONB delta path ships only the
-    // changed value, `set` ships the whole serialized record. Timing the two
-    // on PGlite measured CI load, not that difference, so this test asserts
-    // the difference itself: what SQL each call issues and what it carries.
-    // If patchField regressed to a read-modify-write or a full `set`, its
-    // queries would carry the untouched fields and the assertions fail.
+    // PGlite timing measured runner load. The speed claim is which bytes
+    // each path sends.
     it("each patchField is one jsonb_set UPDATE that never carries the untouched fields", async () => {
       const recorded: RecordedQuery[] = [];
       const s = await freshStores(recorded);
 
-      // Wide state: 50 fields the patch never touches. Their payload is the
-      // marker for "the whole record went over the wire".
+      // 50 fields the patch never touches. This string marks a full-record write.
       const untouched = "value_with_some_payload_padding";
       const wideState: JsonObject = {};
       for (let i = 0; i < 50; i++) {
@@ -297,8 +288,7 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
         expect(carriesUntouched(q)).toBe(false);
       }
 
-      // Control: the full-record path does carry the untouched fields, so
-      // the check above can tell the two paths apart.
+      // Set carries those fields, so the check above can tell the paths apart.
       for (let i = 0; i < 100; i++) {
         const result = await s.session.set(
           "set_target",
@@ -311,7 +301,6 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
       expect(setQueries.length).toBeGreaterThanOrEqual(100);
       expect(setQueries.every(carriesUntouched)).toBe(true);
 
-      // Both paths reach the same end state.
       expect((await s.session.get("patch_target"))?.state).toEqual({
         ...wideState,
         count: 100
