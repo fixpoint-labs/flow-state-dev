@@ -101,14 +101,36 @@ export const CODEX_DEFAULT_MODEL = CODEX_MODELS.find((model) => !CHATGPT_REFUSED
 export type CodexSignIn = "api-key" | "chatgpt" | "unknown";
 
 /**
- * What Codex mode's New session offers: the list above, its first entry
- * preselected. Signed in with a ChatGPT account, the models it refuses are
- * left out, the reason says which and why, and the first one left is
- * preselected. `signIn` is a seam for tests.
+ * Kept on `globalThis` beside the harness gate's answer, and like it decided
+ * once per server (`lib/harness-gate.ts`): the ChatGPT list carries a reason,
+ * so its read is never kept, and each New session would otherwise run
+ * `codex login status` again.
  */
-export async function codexModelChoices(signIn: () => Promise<CodexSignIn> = () => codexSignIn(codexEnv())): Promise<ModelChoices> {
-  if (codexIsScripted() || (await signIn()) !== "chatgpt") {
+const SIGN_IN = Symbol.for("kitchen-sink.codex-sign-in");
+type SignInMemo = typeof globalThis & { [SIGN_IN]?: Promise<CodexSignIn> };
+
+/** How Codex is signed in on this server, asked once and kept until restart. */
+function serverSignIn(): Promise<CodexSignIn> {
+  const memo = globalThis as SignInMemo;
+  memo[SIGN_IN] ??= codexSignIn(codexEnv());
+  return memo[SIGN_IN];
+}
+
+/**
+ * What Codex mode's New session offers: the list above. Signed in with an API
+ * key, its first entry is preselected; otherwise `CODEX_DEFAULT_MODEL` is, so
+ * a sign-in that can't be read never leads with a refused model. Signed in
+ * with a ChatGPT account, the models it refuses are left out and the reason
+ * says which and why. `signIn` is a seam for tests.
+ */
+export async function codexModelChoices(signIn: () => Promise<CodexSignIn> = serverSignIn): Promise<ModelChoices> {
+  if (codexIsScripted()) {
     return { models: CODEX_MODELS, defaultId: CODEX_MODELS[0]!.id, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+  }
+  const how = await signIn();
+  if (how !== "chatgpt") {
+    const defaultId = how === "api-key" ? CODEX_MODELS[0]!.id : CODEX_DEFAULT_MODEL;
+    return { models: CODEX_MODELS, defaultId, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
   }
   const models = CODEX_MODELS.filter((model) => !CHATGPT_REFUSED.has(model.id));
   const refused = CODEX_MODELS.filter((model) => CHATGPT_REFUSED.has(model.id)).map((model) => model.label);

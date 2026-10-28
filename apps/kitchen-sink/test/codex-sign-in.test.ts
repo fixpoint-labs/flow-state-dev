@@ -44,7 +44,8 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-describe("codexSignIn, on the real Codex program", () => {
+// A cold first start of the Codex program can take seconds, as in `codex-mode.test.ts`.
+describe("codexSignIn, on the real Codex program", { timeout: 30_000 }, () => {
   it("a ChatGPT sign-in reads as chatgpt", async () => {
     const token = chatgptToken();
     const env = home("chatgpt", {

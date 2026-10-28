@@ -295,6 +295,14 @@ describe("what each mode offers to pick", () => {
     ]);
   });
 
+  it("Codex: a sign-in that can't be read offers the whole list but preselects the model every sign-in can run", async () => {
+    // `login status` may fail or print something new; New session must not then lead with a refused model.
+    const choices = await codexModelChoices(async () => "unknown");
+    expect(choices.models).toBe(CODEX_MODELS);
+    expect(choices.defaultId).toBe(CODEX_DEFAULT_MODEL);
+    expect(choices.reason).toBeNull();
+  });
+
   it("Codex: signed in with a ChatGPT account, the model that account is refused is not offered or preselected, and the reason says so", async () => {
     // A ChatGPT account's first turn on gpt-6.1-sol is a 400; New session must not lead with it.
     const choices = await codexModelChoices(async () => "chatgpt");
