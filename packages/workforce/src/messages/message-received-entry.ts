@@ -79,12 +79,11 @@ const RECEIVED_MARK = Symbol.for("@flow-state-dev/workforce/message-received");
 /** What the mark carries. */
 interface ReceivedMark {
   readonly hears?: MessageHearing;
-  /** The installation and flow the entry was built for: what a server-sent message from this flow sends with. */
   readonly sender?: MessageSender;
 }
 
-/** The installation and flow a session's worker sends a server-written message with (FIX-2241). */
-export interface MessageSender {
+/** The installation and flow a server-written message from this flow sends with. */
+interface MessageSender {
   readonly installation: WorkerInstallation;
   readonly flowKind: string;
 }
@@ -112,12 +111,7 @@ export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | u
   return mark.hears ?? "anywhere";
 }
 
-/**
- * The installation and flow kind `flow`'s `onMessageReceived` was built with,
- * or `undefined` for a flow with no entry `messageReceivedEntry` built. How a
- * server-written message (a task's midway question, FIX-2241) finds the
- * running worker's installation from the running flow.
- */
+/** This flow's installation and flow kind, or `undefined` when `messageReceivedEntry` didn't build it. */
 export function messageSenderOf(flow: unknown): MessageSender | undefined {
   return receivedMarkOf(internalActionsOf(flow)?.[MESSAGE_RECEIVED_ENTRY])?.sender;
 }

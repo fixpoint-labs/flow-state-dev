@@ -53,9 +53,7 @@ export function conversationDelivery(ledgerId: string): DeclaredDelivery {
       return undefined;
     },
     legacyFiler: (_row, partition) => (partition === undefined ? undefined : sessionIdOfFiling(partition)),
-    // A task's question, told to its filer as a message (FIX-2241). Imported
-    // when called: the messages modules import the board, so a static import
-    // here would close a cycle the board's own module load runs into.
+    // Dynamic import: the messages modules import the board, so a static import cycles this module's load.
     onMidwayQuestion: async (ctx, row, holds) => (await import("../messages/midway-question")).sendQuestionToFiler(ctx, row, holds),
     onUndeliverable: async (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => {
       // The task's ending stands; the conversation that filed it can't be told.

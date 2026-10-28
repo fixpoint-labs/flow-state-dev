@@ -1,13 +1,4 @@
-/**
- * A task's midway question, told to the worker that filed it (FIX-2241).
- *
- * When a task asks a question midway, its worker's session sends the filer one
- * message per question, in the session that filed the task, under an id
- * derived from the task and the question. The message is the server's: it
- * costs the exchange no budget, so a spent one never keeps a question from its
- * filer. The Inbox item the hold opens stays the one stop; the message only
- * tells, and the filer may answer it with `updateTask`.
- */
+/** A task's midway question reaches the worker that filed it (FIX-2241). */
 import { describe, expect, it } from "vitest";
 import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
@@ -51,7 +42,6 @@ describe("a task's midway question", () => {
         `From eng.tasker: Your task "pick a region [ask:Which region?]" (${taskId}) asks: "Which region?"\n` +
           `Answer it with updateTask({ id: "${taskId}", question: "${question!.id}", message }), or leave it to the user, who sees it in their Inbox.`
       ]);
-      // Touched again, the board sends nothing more: one row, under the question's own id.
       expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
       await host.settled();
       expect(await told(host, conv)).toHaveLength(1);

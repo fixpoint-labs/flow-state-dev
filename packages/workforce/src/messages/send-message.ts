@@ -223,15 +223,6 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
 }
 
 /**
- * The server's own message's place (FIX-2241): one past the sending turn's, in
- * its chain or a new one, written into neither the chain's row nor the
- * request's count, so it costs no budget and no spent one refuses it.
- */
-function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
-  return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
-}
-
-/**
  * Send one message from the running session's worker.
  *
  * @param flowKind The flow the running session runs on.
@@ -308,8 +299,12 @@ export async function sendMessage(
   }
 
   // ---- the budget ----------------------------------------------------------
-  // The server's own message costs none (FIX-2241); every other send pays its place.
-  const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
+  // Exempt (FIX-2241): one past this turn, written onto neither the chain row
+  // nor the request count. Every other send pays its place.
+  const paid: Place =
+    options.exempt === true
+      ? { ok: true, id: options.id ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 }
+      : await payPlace(ctx, installation, options.id);
   if (!paid.ok) return paid;
   const { id, chain, hop } = paid;
 
