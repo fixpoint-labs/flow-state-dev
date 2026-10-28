@@ -1,11 +1,11 @@
 /**
- * The `projects` flow: where a person lists the projects they may work in
+ * The `projects` flow: where a user lists the projects they may work in
  * and creates one. Nothing of the lab's own: the project blocks' actions
  * (`defineProjectBlocks`), on a flow the screen opens one session of.
  *
  * A session works in one of these projects (spec D3): *New session* lists
- * them through `listProjects`, which answers only the projects the caller is
- * a member of, and `setWorkProject` checks the same rule on the server.
+ * them through `listProjects`, which answers only the projects the caller may
+ * work in (it belongs to a shared one, or owns a private one), and `setWorkProject` checks the same rule on the server.
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { defineProjectBlocks } from "@flow-state-dev/workforce";
