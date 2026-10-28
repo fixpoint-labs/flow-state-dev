@@ -154,7 +154,7 @@ export function createSeedTasksFromPlan<TState>(
       });
 
       if (tasks.length > 0) {
-        await collection.addTasks(tasks);
+        await collection.createTasks(tasks);
       }
 
       if (stateSchema && ctx.sequencer) {

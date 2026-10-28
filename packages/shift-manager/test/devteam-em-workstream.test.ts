@@ -5,7 +5,7 @@
  * Alice opens the `feature` workstream on Storefront herself, with the EM as
  * its lead. Her Storefront project coordinator hands a two-part job to it,
  * and the EM adds the coder's two tasks from that workstream session with
- * `addTask`, each naming its issue and its phase. The tasks run as coding
+ * `createTask`, each naming its issue and its phase. The tasks run as coding
  * runs in checkouts of Storefront's repository; each one's end reaches the
  * workstream session once; and the EM updates the workstream entry, whose
  * report Alice's project screen reads.

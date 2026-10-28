@@ -478,6 +478,7 @@ describe("useSession childSessions — every interaction path is classified (FIX
   const NON_SIDE_CHAIN_STARTING: Record<string, string> = {
     refresh: "is itself the read",
     abortRequest: "stops work, never starts it",
+    followRequest: "follows a request already sent; starts nothing",
     dismissRequest: "drops a stuck request locally",
     subscribeAudioDelta: "registers a listener",
     getOwnedItems: "pure selector over items already held",

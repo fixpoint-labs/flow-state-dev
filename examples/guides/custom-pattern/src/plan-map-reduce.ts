@@ -51,7 +51,7 @@ export function planMapReduce<TResult>(
     name: config.name,
     collection: { collectionId },
     concurrency: 8,
-    dispatcher: "fifo",
+    claimOrder: "fifo",
     // One assignee, "map", staffed by the caller's worker.
     workers: { map: config.map },
     initialTasks: [],
@@ -69,7 +69,7 @@ export function planMapReduce<TResult>(
         collectionId,
       });
       for (const item of input.items) {
-        await collection.addTask({
+        await collection.createTask({
           id: item.id,
           goal: item.id,
           assignee: "map",

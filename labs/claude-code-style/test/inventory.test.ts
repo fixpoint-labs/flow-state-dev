@@ -22,7 +22,7 @@ describe("the inventory", () => {
   });
 
   it("fails on a flow over 200 lines, and on a fixture left after wiring", () => {
-    const { problems } = inventory(["src/flows/turn.ts", "src/fixtures.ts"], { wired: true, linesOf: () => 201 });
+    const { problems } = inventory(["workforce/flows/turn.mts", "src/fixtures.ts"], { wired: true, linesOf: () => 201 });
     expect(problems).toEqual([expect.stringContaining("flow over 200"), expect.stringContaining("fixture left")]);
   });
 });

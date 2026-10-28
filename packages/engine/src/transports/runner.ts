@@ -1,0 +1,183 @@
+/**
+ * Pluggable flow execution runner.
+ *
+ * Controls WHERE a flow action executes. The default InProcessRunner
+ * runs actions in the current process via runAction. Alternative
+ * implementations (WorkerRunner for BullMQ, future TriggerDevRunner)
+ * route execution to external workers with live event bridging.
+ */
+import type { ActionCore } from "@flow-state-dev/core/types";
+import type { ExecutionResult } from "../execution/types";
+import type { LeasePlace } from "./concurrency/lease-backend";
+
+/**
+ * Serializable subset of InboundRequestEnvelope — everything a remote
+ * worker needs to call runAction.
+ */
+export interface DispatchEnvelope {
+  requestId: string;
+  /**
+   * The address of the flow instance this request is for — its exact `id`
+   * (a singleton's kind, or a collection member's explicit id). The field
+   * keeps its historical name; the value is what the receiving process hands
+   * to `FlowRegistry.get`. A collection's bare kind is not an address and
+   * resolves nothing on either side of a queue.
+   */
+  flowKind: string;
+  actionName: string;
+  input: unknown;
+  userId: string;
+  sessionId?: string;
+  /**
+   * The organization the run belongs to. Required (FIX-1442): a runner
+   * hands work to a worker that runs BELOW principal resolution, so the
+   * envelope is the only place that worker can learn the organization from.
+   * A durable job written before this field existed is refused on the way
+   * back in rather than run without one — see `context/org-attribution.ts`.
+   */
+  orgId: string;
+  tenantId?: string;
+  source?: string;
+  metadata?: Record<string, unknown>;
+  /**
+   * Pre-resolved action core for an event dispatch with no static coordinate
+   * (the dynamic schedule). NOT serializable — a block cannot cross a queue
+   * boundary — so it is honoured only by the in-process runner; external
+   * runners (BullMQ) drop it, which is consistent with dynamic schedules
+   * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
+   */
+  resolvedActionCore?: ActionCore;
+  /**
+   * The run's place on its concurrency key, taken by the dispatching host
+   * before the job was enqueued (FIX-1634). Present only when the host
+   * arbitrates external dispatch over a backend the worker shares: the worker
+   * waits for the place's turn before running and gives it back when the job
+   * is done for good.
+   *
+   * `== null` → no place: a job from a host that does not arbitrate, or one
+   * enqueued before this field existed. It runs as it always did.
+   *
+   * The place can be gone from the line by the time the worker reads it: the
+   * host gives it back when the enqueue fails, and a failure can be ambiguous
+   * (the queue accepted the job but the acknowledgement was lost), or its lease
+   * can lapse. A worker must not run under a place that is no longer on the
+   * line. The four-call contract cannot yet tell such a place from one still
+   * waiting (`isMyTurn` answers `false` for both), so how a worker recovers an
+   * orphaned job is not settled here; it is designed with the first shared
+   * backend.
+   */
+  leasePlace?: LeasePlace | null;
+  /**
+   * How the job reaches its turn, when not by waiting in line for
+   * `leasePlace` (FIX-1836). Set by the host from the entry's policy:
+   *
+   *   - `{ kind: "now" }` — `hold`: `leasePlace` has its turn already. The
+   *     worker runs the job at once, renews the place while it runs, and gives
+   *     it back when the job is done for good.
+   *   - `{ kind: "when-free", key }` — `defer`: no place yet. The worker claims
+   *     `key` only once nothing holds or waits on it, yielding to newer runs
+   *     for at most the patience `planDeferWait` sets, then lining up behind
+   *     the places on the key.
+   *
+   * `== null` → `leasePlace`, if any, waits its turn in line (`queue`,
+   * `reject`), as a job from a release before this field does.
+   */
+  leaseTurn?: LeaseTurn | null;
+}
+
+/** How a queued job reaches its turn on its concurrency key; see `DispatchEnvelope.leaseTurn`. */
+export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
+
+/**
+ * Handle returned by FlowRunner.dispatch(). Exposes the request id
+ * and a promise that resolves when execution finishes, plus an abort hook.
+ */
+export interface FlowDispatchHandle {
+  readonly requestId: string;
+  readonly finished: Promise<ExecutionResult>;
+  /**
+   * Resolves once the request is *accepted* — registered and discoverable —
+   * without waiting for the run (FIX-982). Rejects with the run's own error
+   * when it dies before getting that far.
+   *
+   * Optional because a runner is free not to distinguish the two, but the
+   * in-process one does: `dispatchLocal` returns as soon as `runAction` reaches
+   * its first await, which is before the registration write has landed, so the
+   * handle alone is not evidence the request exists.
+   */
+  readonly accepted?: Promise<void>;
+  abort(): void;
+}
+
+/**
+ * Controls where flow actions execute. Implementations:
+ * - InProcessRunner (default) — calls runAction in the current process
+ * - WorkerRunner (BullMQ) — enqueues to a BullMQ queue, subscribes via bridge
+ * - Future: TriggerDevRunner, PgBossRunner
+ */
+export interface FlowRunner {
+  dispatch(
+    envelope: DispatchEnvelope,
+    bridge?: StreamBridge
+  ): Promise<FlowDispatchHandle>;
+  close(): Promise<void>;
+}
+
+/**
+ * Single event published through the bridge. Matches the shape of SSE
+ * events emitted by the response emitter so the web process can forward
+ * them to SSE clients without transformation.
+ */
+export interface StreamEvent {
+  id?: string;
+  event: string;
+  data: string;
+}
+
+/**
+ * Publisher side of the bridge — used by the worker to push events.
+ */
+export interface StreamPublisher {
+  publishEvent(event: StreamEvent): Promise<void>;
+  publishTerminal(result: ExecutionResult): Promise<void>;
+  close(): Promise<void>;
+}
+
+/**
+ * Subscriber side of the bridge — used by the web process to receive events.
+ */
+export interface StreamSubscriber {
+  events(): AsyncIterable<StreamEvent>;
+  completed: Promise<ExecutionResult>;
+  abort(): void;
+  close(): Promise<void>;
+}
+
+/**
+ * Bridges events between a remote worker and a local SSE consumer.
+ * The worker writes events to the bridge; the web process reads them
+ * and forwards to SSE. Redis pub/sub is the BullMQ implementation;
+ * future adapters implement the same interface.
+ *
+ * Key invariant: stores persist, bridges push. The bridge is best-effort
+ * live push. Late/reconnecting clients recover from the store.
+ */
+export interface StreamBridge {
+  createPublisher(requestId: string): StreamPublisher;
+  createSubscriber(requestId: string): StreamSubscriber;
+}
+
+/**
+ * Refuse the `dispatcher` option key, which is now `runner`. A caller that is
+ * not type-checked, or spreads an older config object, would otherwise have
+ * its queue runner silently dropped and its work run in process.
+ *
+ * @param options - The options object an entry point was handed.
+ * @param where - The entry point's name, for the message.
+ */
+export function refuseRetiredDispatcherOption(options: object, where: string): void {
+  if ((options as { dispatcher?: unknown }).dispatcher === undefined) return;
+  throw new Error(
+    `${where}: the \`dispatcher\` option is now \`runner\`. Pass the same FlowRunner as \`runner\`.`
+  );
+}

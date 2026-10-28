@@ -167,7 +167,7 @@ describe("eventActors fan-out — all-or-nothing at the cap boundary", () => {
       outputSchema: z.any(),
       execute: async (input, ctx) => {
         const c = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
-        await c.addTasks(
+        await c.createTasks(
           Array.from({ length: 99 }, (_, i) => ({ id: `pre-${i}`, goal: `pre ${i}` })),
         );
         return input;
@@ -272,7 +272,7 @@ describe("eventActors re-emission — atomic across ALL entries, not per entry",
 
 describe("eventActors re-emission — the workspace is visible before dispatch", () => {
   it("a downstream actor sees every re-emitted entry in the shared log", async () => {
-    // The ordering race. `addTasks` publishes pending tasks and emits their
+    // The ordering race. `createTasks` publishes pending tasks and emits their
     // task-change items, so an idle worker can claim and run a downstream actor
     // the moment it returns. If the workspace appends happen after that call,
     // the actor can execute while the shared log is still missing the entries

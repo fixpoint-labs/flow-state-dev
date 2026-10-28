@@ -30,7 +30,7 @@ open the run row  →  build the prompt, take the checkout  →  run the harness
 
 **Read the verdict.** The handle carries two separate facts. `status` is whether the run terminated normally, and the manager's succeed-or-fail verdict is read from that alone. `outcome` is the run's own report of how it stopped, in a neutral vocabulary: `finished`, `stopped-at-limit`, `failed`, or `null` for no terminal result at all. Both are the framework's spelling rather than a vendor's, so two different harnesses settle identically.
 
-**Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. A run that asked a question holds its task on the question instead. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
+**Settle or re-queue.** A run that terminated normally goes on to the phase's completion check, including one that reports `stopped-at-limit`. Pass the check and the row completes. A run that asked a question leaves its task waiting on the question instead. Anything else is a failed attempt, re-queued with the reason, until the retry budget runs out.
 
 ## Choosing the harness
 
@@ -107,12 +107,12 @@ The manager installs it on the blocks a phase's hooks run inside, so `ctx.resour
 
 ## Asking and being answered
 
-A run that needs a decision writes its question to a path the prompt names, and stops. Its work is saved, the checkout is let go, and **the task is held on the question**: it keeps its attempt, it has no lease, and nothing settles it or starts another run while the question is open. Nothing is spent while the user thinks. The question shows in the user's Inbox, and in the task's open holds when you read it with `getTask`.
+A run that needs a decision writes its question to a path the prompt names, and stops. Its work is saved, the checkout is let go, and **the task waits on the question**: it keeps its attempt, it has no lease, and nothing settles it or starts another run while the question is open. Nothing is spent while the user thinks. The question shows in the user's Inbox, and in the task's open `questions` when you read it with `getTask`.
 
 The user answers from the Inbox, or by typing a line in the run's session (see [Talking to a run](#talking-to-a-run)). Either goes through the board's `updateTask` action, naming the question:
 
 ```ts
-await updateTask_tasks({ id: task.id, question: hold.id, message: "Use the v2 endpoint" });
+await updateTask_tasks({ id: task.id, answers: hold.id, message: "Use the v2 endpoint" });
 ```
 
 Once the task's last question is answered, the task takes one more turn on **the same attempt**, and that turn's run picks up **the same coding session**. Everything the run had worked out is still there. The phase's prompt builder runs again, and `run.answers` hands it the task's answered questions, oldest first, each with its answer. The run can ask again; each run writes its question to a path of its own, so it never re-reads one an earlier run asked.
@@ -270,7 +270,7 @@ Call `message` with `{ message }` on the run's session. The line goes into the s
 | Holds a task that finished before the line reached it | `finished` |
 | Is on a board that keeps no messages | `not-supported` |
 
-**A line doesn't spend a retry.** While the task is held on a question, a line answers its oldest open question, and the turn that answer owes resumes the coding session, as an answer from the Inbox does.
+**A line doesn't spend a retry.** While the task waits on a question, a line answers its oldest open question, and the turn that answer owes resumes the coding session, as an answer from the Inbox does.
 
 **Only the run's own user can send one.** The session belongs to them, so anyone else is refused before the line is written.
 
@@ -278,13 +278,13 @@ Call `message` with `{ message }` on the run's session. The line goes into the s
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Any later session works out the same path from the same inputs, without looking it up.
 
-The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the user who started it, and another user's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the user who started it, and another user's drain doesn't run it. Give the draining board `runOwnerClaimOrder()` and that drain leaves the row untouched, without spending one of its attempts.
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. A process that was displaced never removes its replacement's lock.
 
 The lease is not a mutex. Checking the lock and removing it are two steps, so a lock whose holder has died is reclaimed after a stale window rather than instantly. The manager refuses a configuration that shortens that window below the longest a live attempt can hold the lock.
 
-A checkout lives on the machine that made it, unless you give the manager somewhere to save it. With a workspace host from `@flow-state-dev/workspace` that has a held-work store, and a source that returns a `heldPrefix` for the run (the key prefix its work is stored under), the manager saves the run's commits and uncommitted changes at the end of each turn and when the harness fails. A retry that lands on another machine gets the checkout back from the last save, with the changes unstaged, and the coding agent starts a fresh conversation there. If the saved work doesn't match the run's record, the harness doesn't run: the task is held on a question for the run's owner, naming what disagreed. The run record's `place` and `held` fields show which machine the run is on and what the last save held. The package README's [Running a project's work](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#running-a-projects-work) has the setup.
+A checkout lives on the machine that made it, unless you give the manager somewhere to save it. With a workspace host from `@flow-state-dev/workspace` that has a held-work store, and a source that returns a `heldPrefix` for the run (the key prefix its work is stored under), the manager saves the run's commits and uncommitted changes at the end of each turn and when the harness fails. A retry that lands on another machine gets the checkout back from the last save, with the changes unstaged, and the coding agent starts a fresh conversation there. If the saved work doesn't match the run's record, the harness doesn't run: the task waits on a question for the run's owner, naming what disagreed. The run record's `place` and `held` fields show which machine the run is on and what the last save held. The package README's [Running a project's work](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#running-a-projects-work) has the setup.
 
 ## The deadline
 
@@ -435,7 +435,7 @@ plus the pieces you need around it: `harnessManager` and its options,
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
-your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per
+your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per
 organization, the run-record collection for building a status
 surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with its collection and
 helpers.

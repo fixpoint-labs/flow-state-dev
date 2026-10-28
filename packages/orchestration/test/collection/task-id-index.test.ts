@@ -43,14 +43,14 @@ function setup(options: { installIndex?: boolean } = {}) {
 describe("a partitioned ledger's id index", () => {
   it("finds the partition an add filed the id in", async () => {
     const { ctx, at } = setup();
-    await (await at("conv-a")).addTask({ id: "t1", goal: "g" });
+    await (await at("conv-a")).createTask({ id: "t1", goal: "g" });
 
     expect(await findTaskPartitions(ctx, LEDGER, "t1")).toEqual(["conv-a"]);
   });
 
   it("finds every id of a batch add", async () => {
     const { ctx, at } = setup();
-    await (await at("conv-a")).addTasks([
+    await (await at("conv-a")).createTasks([
       { id: "t1", goal: "g" },
       { id: "t2", goal: "g" },
     ]);
@@ -62,15 +62,15 @@ describe("a partitioned ledger's id index", () => {
     // Ids a caller picks are unique per partition only, so the lookup must
     // see both and let the caller refuse the ambiguity.
     const { ctx, at } = setup();
-    await (await at("conv-a")).addTask({ id: "t1", goal: "g" });
-    await (await at("conv-b")).addTask({ id: "t1", goal: "g" });
+    await (await at("conv-a")).createTask({ id: "t1", goal: "g" });
+    await (await at("conv-b")).createTask({ id: "t1", goal: "g" });
 
     expect((await findTaskPartitions(ctx, LEDGER, "t1")).sort()).toEqual(["conv-a", "conv-b"]);
   });
 
   it("answers nothing for an id no add filed, or an id that only prefixes one", async () => {
     const { ctx, at } = setup();
-    await (await at("conv-a")).addTask({ id: "t10", goal: "g" });
+    await (await at("conv-a")).createTask({ id: "t10", goal: "g" });
 
     expect(await findTaskPartitions(ctx, LEDGER, "t1")).toEqual([]);
     expect(await findTaskPartitions(ctx, LEDGER, "")).toEqual([]);
@@ -89,7 +89,7 @@ describe("a partitioned ledger's id index", () => {
     const { at, rows } = setup({ installIndex: false });
     const ref = await at("conv-a");
 
-    await expect(ref.addTask({ id: "t1", goal: "g" })).rejects.toThrow(/without its id index/);
+    await expect(ref.createTask({ id: "t1", goal: "g" })).rejects.toThrow(/without its id index/);
     expect(await rows.list()).toEqual([]);
   });
 

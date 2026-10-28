@@ -26,7 +26,7 @@ function stringAt(ctx: BlockContext, key: string): string | undefined {
  * a delegate's ongoing session or a workstream's its routed tasks, FIX-2083), so this is the
  * one running now. None in a request that holds no task.
  */
-export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
+export async function claimedTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
   const partition = boardAboveOf(ctx);
   if (partition === undefined) return undefined;
   const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
@@ -51,7 +51,7 @@ export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollection
  * turn there that works no task files plain tasks.
  */
 export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
-  return (await heldTask(ctx))?.row.id ?? (await linkedTaskOf(ctx)) ?? stringAt(ctx, TASK_ID_STATE_KEY);
+  return (await claimedTask(ctx))?.row.id ?? (await linkedTaskOf(ctx)) ?? stringAt(ctx, TASK_ID_STATE_KEY);
 }
 
 /** The row on the board above whose run link names the running request, in any status. */
@@ -85,5 +85,5 @@ export function isStamped(row: Pick<Task, "metadata"> | undefined): boolean {
  * piece filed there carries its project on. `null` for none.
  */
 export async function filingProjectStampOf(ctx: BlockContext): Promise<string | null> {
-  return filingProjectOf(ctx.session.state) ?? filedProjectOf((await heldTask(ctx))?.row) ?? null;
+  return filingProjectOf(ctx.session.state) ?? filedProjectOf((await claimedTask(ctx))?.row) ?? null;
 }

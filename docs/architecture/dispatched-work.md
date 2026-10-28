@@ -82,7 +82,7 @@ task ids coincide; a custom key is used as returned, so two dispatchers that ret
 the same string share one child. A shared child serialises its rows:
 `defineFlow` defaults the entry a `per-worker` or `key` dispatcher dispatches to
 `queue` concurrency, and an explicit policy on the entry wins. The in-process
-dispatcher always enforces it. An external dispatcher enforces it only when its
+runner always enforces it. An external runner enforces it only when its
 adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`): the host
 takes the run's place before enqueueing and the job carries it
 (`DispatchEnvelope.leasePlace`). Without one the host skips arbitration
@@ -320,34 +320,34 @@ nothing: the work runs on. Identity is never a parameter to any of them.
 
 ## The rule that decides everything
 
-**Locality is decided by the effective dispatcher, not by `worker.mode`.**
+**Locality is decided by the effective runner, not by `worker.mode`.**
 
-`createFlowState` resolves `options.dispatcher ?? #workerDispatcher`, then asks
-`isInProcessDispatcher`, whose test is `dispatcher === undefined || "dispatchLocal" in dispatcher`.
+`createFlowState` resolves `options.runner ?? #workerRunner`, then asks
+`isInProcessRunner`, whose test is `runner === undefined || "dispatchLocal" in runner`.
 `dispatchLocal` is the discriminator because it accepts a live `AbortSignal` and
 `ResponseEmitter` — capabilities that cannot cross a serialization boundary, so
-a dispatcher offering it is necessarily running the work here.
+a runner offering it is necessarily running the work here.
 
 The two genuinely disagree, which is why the mode is the wrong thing to read:
 
-- `options.dispatcher` is mutually exclusive with `worker`, so `mode` reads as
-  its `colocated` default while the dispatcher may be external.
-- A custom dispatcher exposing `dispatchLocal` is local whatever the mode says.
-- `worker-only` constructs **no** dispatcher at all (`createFlowState` skips
-  `createDispatcher` for that mode), so the effective dispatcher is `undefined`
+- `options.runner` is mutually exclusive with `worker`, so `mode` reads as
+  its `colocated` default while the runner may be external.
+- A custom runner exposing `dispatchLocal` is local whatever the mode says.
+- `worker-only` constructs **no** runner at all (`createFlowState` skips
+  `createRunner` for that mode), so the effective runner is `undefined`
   — which is *in-process*.
 
 Everything below follows from that one test.
 
 ## Topology matrix
 
-| Topology | Effective dispatcher | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
+| Topology | Effective runner | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
 |---|---|---|---|---|---|
-| No `worker`, no `dispatcher` | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
-| Custom `dispatcher` exposing `dispatchLocal` | that dispatcher, **in-process** | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
-| Custom `dispatcher` without `dispatchLocal` | that dispatcher, **external** | wherever it routes the job | whatever that dispatcher confirms on accept | its dispatcher's answer, not ours | **no** — the child is never tracked, so nothing drains it |
-| `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
-| `dispatch-only` | queue dispatcher | another container | the job is on the queue | yes | no |
+| No `worker`, no `runner` | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| Custom `runner` exposing `dispatchLocal` | that runner, **in-process** | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| Custom `runner` without `dispatchLocal` | that runner, **external** | wherever it routes the job | whatever that runner confirms on accept | its runner's answer, not ours | **no** — the child is never tracked, so nothing drains it |
+| `colocated` | queue runner | a worker (may be this process) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
+| `dispatch-only` | queue runner | another container | the job is on the queue | yes | no |
 | `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | dispatched children **yes**, bounded; a claimed job yes, *unbounded* |
 | No dispatch seam (a hand-built context) | — | nowhere | `NoDispatchSeamError` is thrown | — | — |
 
@@ -355,12 +355,12 @@ There is no "started" milestone to report — the column is acceptance, and
 [What acceptance means](#what-acceptance-means) is the long form of these cells.
 
 **Read the rows by what the runtime resolved, not by which option you typed.**
-`worker` and `dispatcher` are mutually exclusive — `createFlowState` throws when
-given both — and the low-level `dispatcher` option is the one that most easily
+`worker` and `runner` are mutually exclusive — `createFlowState` throws when
+given both — and the low-level `runner` option is the one that most easily
 gets misread here: it produces no `worker` and no `mode`, so it looks like the
-first row and behaves like the third if the dispatcher it installs is external.
-The effective dispatcher is `options.dispatcher ?? worker.createDispatcher(...)`,
-and `isInProcessDispatcher` decides everything downstream of it.
+first row and behaves like the third if the runner it installs is external.
+The effective runner is `options.runner ?? worker.createRunner(...)`,
+and `isInProcessRunner` decides everything downstream of it.
 
 **Two different waits hide in that last column, and only one of them is
 bounded.** The drain below waits for *in-process dispatched children* and races
@@ -377,7 +377,7 @@ the one place they silently are not durable. The mode consumes the queue and
 dispatches nothing, so a dispatch there runs the child in the worker process
 itself and enqueues nothing. A crash or a redeploy loses the run outright
 rather than costing a retry. For the queue to own the work, dispatch it from a
-process that has a dispatcher — `colocated` or `dispatch-only`.
+process that has a runner — `colocated` or `dispatch-only`.
 
 That the feature works at all in `worker-only` is deliberate: a topology that
 claims support while refusing dispatched work is not supporting it. Running it
@@ -440,7 +440,7 @@ input, identity, source, metadata, request id — and the worker runs it under t
 The shipped case is `fsdev run --model`. The override reaches every generator in
 the command's own process, including in-process dispatched work, and stops at
 the queue. `createInboundTransportHost` detects exactly this — an external
-dispatcher plus a launching config whose `modelResolver` differs from the host's
+runner plus a launching config whose `modelResolver` differs from the host's
 — and logs a warning naming the request that lost it.
 
 The envelope contract this rests on, including why carrying the selected model
@@ -493,7 +493,7 @@ and wrong. `parentTask` and `settleParentTask` are unaffected.
 
 `dispose()` drains **in-process** dispatched children and no others.
 
-The tracking is keyed on the same `isInProcessDispatcher` test: `onDispatched`
+The tracking is keyed on the same `isInProcessRunner` test: `onDispatched`
 registers a child for the drain only when it runs here. An externally dispatched
 child is deliberately untracked — the enqueue is already confirmed, so there is
 no half-written row to strand, and its `finished` resolves only when some worker
@@ -563,7 +563,7 @@ stirs into an exit check that no longer calls the board drained.
 ### Two exclusions, and why only one is lease-gated
 
 The routing exclusion above is not the only way a row drops out of a count. A
-running row waiting on a person — an open hold on it, a question or a
+running row waiting on a person — an open question on it, a question or a
 suspension mirrored from a `waitForUser` stop (FIX-2131) — is excused from
 `activeWorkerCount`, though `inFlightCount` keeps it. Both live in
 `countWaitable` as separate predicates rather than one widened predicate,
@@ -572,8 +572,8 @@ because they answer different questions:
 | | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnUser`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |
-| Applies to | `in_progress` rows | `in_progress` rows with an open hold |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's open questions |
+| Applies to | `in_progress` rows | `in_progress` rows with an open question |
 | Applies on | `mode: "delegation"` boards, every row | any board, in the active-worker count only |
 | Liveness conjunct | **yes** — the lease | **no** |
 
@@ -679,7 +679,7 @@ and the row stays as it is.
 
 | Concern | Module |
 |---|---|
-| Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
+| Locality test | `engine/src/transports/host/in-process-runner.ts` → `isInProcessRunner` |
 | Dispatch operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` (`dispatchDrainTimeoutMs`) |
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
 | Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |

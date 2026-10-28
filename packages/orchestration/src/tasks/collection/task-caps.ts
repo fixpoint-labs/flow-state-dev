@@ -10,7 +10,7 @@
  * - `maxEnqueuedTasks` — how many tasks may be *added* while others are still
  *   waiting in `pending`. Checked at creation against the resulting `pending`
  *   count, so it refreshes as tasks drain: a task leaving `pending` frees a slot
- *   for a later `addTask`. It bounds a single up-front fan-out burst.
+ *   for a later `createTask`. It bounds a single up-front fan-out burst.
  * - `maxTotalTasks` — the board's lifetime size: the count of *all* tasks in the
  *   ledger, terminal ones included. Never refunded on drain, so it is the
  *   backstop that catches a drain-then-re-enqueue runaway.
@@ -79,7 +79,7 @@
  *   full (`eviction` defaults to `"none"`). The collection's public `delete()`
  *   frees a slot, so a delete-and-requeue loop can create more tasks over the
  *   board's lifetime than `maxInstances` — it is not a runaway backstop.
- *   Neither is it all-or-nothing: resource-backed `addTasks` awaits one
+ *   Neither is it all-or-nothing: resource-backed `createTasks` awaits one
  *   `collection.create` per task (`resource-backed.ts`), so a batch crossing the
  *   limit leaves every task before the throw in place — unlike the single CAS
  *   write that makes this file's caps atomic on the state backing.
@@ -135,8 +135,8 @@ export type TaskCapKind = "total" | "enqueued";
 
 /**
  * A task creation was refused because it would cross one of the collection's
- * caps. Thrown from `addTask`/`addTasks` after the CAS write no-ops, so nothing
- * is inserted. The `addTask` task tool catches this and returns a soft
+ * caps. Thrown from `createTask`/`createTasks` after the CAS write no-ops, so nothing
+ * is inserted. The `createTask` task tool catches this and returns a soft
  * error; internal batch callers (seed, replan) let it propagate.
  */
 export class TaskCapExceededError extends Error {

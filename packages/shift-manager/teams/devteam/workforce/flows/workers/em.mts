@@ -222,7 +222,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     }
     const filed = tasks.list().find((row) => featureIssueOf(row) === input.issue);
     if (filed !== undefined) return { taskId: filed.id, existed: true };
-    const added = await tasks.addTask({
+    const added = await tasks.createTask({
       goal: input.goal,
       input: { ...featureInput(input.issue), ...(input.project === undefined ? {} : { project: input.project }) },
       assignee: options.coderWorker,

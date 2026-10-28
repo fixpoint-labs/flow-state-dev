@@ -16,6 +16,7 @@ export function SessionsList({
   onView,
   onSelect,
   onNew,
+  modes,
 }: {
   view: ModeId;
   sessions: SessionRow[];
@@ -23,19 +24,23 @@ export function SessionsList({
   onView: (view: ModeId) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
+  /** The modes the adapter serves; a view whose mode it doesn't serve shows disabled. */
+  modes: readonly ModeId[];
 }) {
   const now = useNow(true, 30_000);
   return (
     <nav aria-label="Sessions" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div role="tablist" aria-label="View" className="flex gap-1 px-3 pt-4 pb-3">
-        {MODES.map((mode) => (
+        {MODES.map((mode) => {
+          const available = mode.available && modes.includes(mode.id);
+          return (
           <button
             key={mode.id}
             type="button"
             role="tab"
             aria-selected={mode.id === view}
-            disabled={!mode.available}
-            title={mode.available ? undefined : "Coming soon"}
+            disabled={!available}
+            title={available ? undefined : "Coming soon"}
             onClick={() => onView(mode.id)}
             className={cn(
               "flex-1 border border-transparent px-2 py-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase hover:bg-accent",
@@ -45,7 +50,8 @@ export function SessionsList({
           >
             {mode.view}
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="px-3 pb-3">
         <button

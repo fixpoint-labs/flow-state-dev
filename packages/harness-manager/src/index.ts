@@ -25,7 +25,7 @@
  *   a message about a finished task.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
  *   coding door kept before FIX-2086 onto its task as a steer.
- * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
+ * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
@@ -105,7 +105,7 @@ export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStor
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
-  runOwnerDispatcher,
+  runOwnerClaimOrder,
   HARNESS_RUN_OWNER_KEY,
   runOwnerOf,
   type RunOwner,

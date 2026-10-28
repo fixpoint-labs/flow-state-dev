@@ -431,6 +431,17 @@ export type SessionView = {
    * via a GET stream instead.
    */
   continueRequest: (requestId: string) => Promise<void>;
+  /**
+   * Follow a request of this session that was sent without the hook: stream
+   * its items into `items`, from the start, and make it the request
+   * `abortRequest` stops. The stream followed now is closed.
+   *
+   * For a request sent beside the one the page follows, so the page stays on
+   * that one until it ends: a turn that waits for the running turn, say, sent
+   * through the client and followed once the running turn is over. Sends
+   * nothing.
+   */
+  followRequest: (requestId: string) => void;
   refresh: () => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
@@ -1940,21 +1951,34 @@ export function useSession(
     const refused = await serverRefusedStop(flow, requestId);
     if (refused) stoppedRequestsRef.current.delete(requestId);
 
-    // Close the SSE connection. On the server, request.signal fires
-    // and the catch block checks the abortRequested flag to decide
-    // between "aborted" (intentional) or "interrupted" (accidental).
-    streamHandleRef.current?.close();
-    streamHandleRef.current = null;
-    activeRequestIdRef.current = null;
-    latestRequestIdAfterDropRef.current = null;
+    // The view moved to another request while the stop was out (one followed
+    // once the stopped request ended, say): that one keeps its stream.
+    const following = activeRequestIdRef.current;
+    if (following === null || following === requestId) {
+      // Close the SSE connection. On the server, request.signal fires
+      // and the catch block checks the abortRequested flag to decide
+      // between "aborted" (intentional) or "interrupted" (accidental).
+      streamHandleRef.current?.close();
+      streamHandleRef.current = null;
+      activeRequestIdRef.current = null;
+      latestRequestIdAfterDropRef.current = null;
 
-    flushContentDeltas();
-    setIsStreaming(false);
-    setIsFinishing(false);
-    setIsStuck(false);
+      flushContentDeltas();
+      setIsStreaming(false);
+      setIsFinishing(false);
+      setIsStuck(false);
+    }
 
     if (!refused) injectSyntheticAbortItem(requestId);
   }, [flow, flushContentDeltas, injectSyntheticAbortItem]);
+
+  const followRequest = useCallback(
+    (requestId: string) => {
+      activeRequestIdRef.current = requestId;
+      attachToStream(requestId);
+    },
+    [attachToStream]
+  );
 
   const refresh = useCallback(async () => {
     // Refreshes the whole view, background work included. Under the
@@ -2151,6 +2175,7 @@ export function useSession(
     resumeLatestRequest,
     resumeSuspension,
     continueRequest,
+    followRequest,
     refresh,
     subscribeAudioDelta
   };

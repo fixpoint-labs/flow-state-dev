@@ -54,7 +54,7 @@ export type SplitControls = {
   failAfterFiling: Set<string>;
   /** How long a worker's turn waits after filing its pieces, in ms. */
   holdAfterFiling: Record<string, number>;
-  /** Workers whose turn files its pieces as one batch (`addTasks`), not one by one. */
+  /** Workers whose turn files its pieces as one batch (`createTasks`), not one by one. */
   batch: Set<string>;
   /** What a worker's turn waits on before it files its pieces (not on a notice). */
   holdBeforeFiling: Record<string, Promise<void>>;
@@ -124,9 +124,9 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
           ...(error instanceof Error && error.name === "TaskFilingRefusedError" ? { message: error.message } : {})
         });
       if (controls.batch.has(worker)) {
-        await ref.addTasks(pieces.map(initOf)).catch(refused);
+        await ref.createTasks(pieces.map(initOf)).catch(refused);
       } else {
-        for (const piece of pieces) await ref.addTask(initOf(piece)).catch(refused);
+        for (const piece of pieces) await ref.createTask(initOf(piece)).catch(refused);
       }
       const hold = notice ? undefined : controls.holdAfterFiling[worker];
       if (hold !== undefined) await new Promise((resolve) => setTimeout(resolve, hold));
