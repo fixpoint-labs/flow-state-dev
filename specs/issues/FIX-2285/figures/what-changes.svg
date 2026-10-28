@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Top row, today: the main session files a coding task; the task finds the project through projectWorkspace, the host provisions a branch and a worktree from the shared clone, and a harness runs to answer. Bottom row, after: the main session calls a read tool in its own turn; the tool asks the same projectWorkspace, the host reads the shared clone at one commit and makes no place. Both rows refuse a session that may not see the project with the same reasons." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .skip  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr2  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .ah    { fill:var(--ink-3); }
+    .ah2   { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <text class="t-lbl" x="16" y="30">TODAY · A QUESTION ABOUT THE CODE</text>
+  <rect class="box" x="16" y="44" width="160" height="50" rx="5"/>
+  <text class="t-b" x="28" y="65">Main session</text>
+  <text class="t-s" x="28" y="82">files a task</text>
+
+  <rect class="box" x="206" y="44" width="170" height="50" rx="5"/>
+  <text class="t-b" x="218" y="65">Coding task</text>
+  <text class="t-s" x="218" y="82">its own session</text>
+
+  <rect class="box" x="406" y="44" width="170" height="50" rx="5"/>
+  <text class="t-b" x="418" y="65">projectWorkspace()</text>
+  <text class="t-s" x="418" y="82">lookup · membership</text>
+
+  <rect class="box" x="606" y="44" width="150" height="50" rx="5"/>
+  <text class="t-b" x="618" y="65">Branch + worktree</text>
+  <text class="t-s" x="618" y="82">a place on disk</text>
+
+  <rect class="box" x="786" y="44" width="138" height="50" rx="5"/>
+  <text class="t-b" x="798" y="65">Harness run</text>
+  <text class="t-s" x="798" y="82">answers, minutes</text>
+
+  <line class="arr" x1="176" y1="69" x2="204" y2="69"/>
+  <path class="ah" d="M199,65 L206,69 L199,73 z"/>
+  <line class="arr" x1="376" y1="69" x2="404" y2="69"/>
+  <path class="ah" d="M399,65 L406,69 L399,73 z"/>
+  <line class="arr" x1="576" y1="69" x2="604" y2="69"/>
+  <path class="ah" d="M599,65 L606,69 L599,73 z"/>
+  <line class="arr" x1="756" y1="69" x2="784" y2="69"/>
+  <path class="ah" d="M779,65 L786,69 L779,73 z"/>
+  <line class="row" x1="16" y1="130" x2="924" y2="130"/>
+  <text class="t-lbl c-code" x="16" y="160">AFTER · THE SAME QUESTION</text>
+  <rect class="new" x="16" y="174" width="160" height="50" rx="5"/>
+  <text class="t-b" x="28" y="195">Main session</text>
+  <text class="t-s" x="28" y="212">calls a read tool</text>
+
+  <rect class="skip" x="206" y="174" width="170" height="50" rx="5"/>
+  <text class="t-b" x="218" y="195">No task</text>
+  <text class="t-s" x="218" y="212">its own turn</text>
+
+  <rect class="box" x="406" y="174" width="170" height="50" rx="5"/>
+  <text class="t-b" x="418" y="195">projectWorkspace()</text>
+  <text class="t-s" x="418" y="212">the same lookup</text>
+
+  <rect class="skip" x="606" y="174" width="150" height="50" rx="5"/>
+  <text class="t-b" x="618" y="195">No place</text>
+  <text class="t-s" x="618" y="212">no branch, no tree</text>
+
+  <rect class="new" x="786" y="174" width="138" height="50" rx="5"/>
+  <text class="t-b" x="798" y="195">Shared clone</text>
+  <text class="t-s" x="798" y="212">one commit · capped</text>
+
+  <path class="arr2" d="M176,186 C300,160 330,160 404,186"/>
+  <path class="ah2" d="M398,180 L406,186 L397,188 z"/>
+  <path class="arr2" d="M576,186 C690,160 720,160 784,186"/>
+  <path class="ah2" d="M778,180 L786,186 L777,188 z"/>
+  <rect class="foot" x="16" y="250" width="908" height="62" rx="5"/>
+  <text class="t-lbl" x="32" y="272">BOTH ROWS</text>
+  <text class="t-b" x="32" y="292">Same refusals: no-project · not-a-member · other-project · the rest. Same clone, shared by remote.</text>
+  <text class="t-s" x="32" y="306">The read adds a door into the host and a capability a worker picks; it makes nothing on disk per question.</text>
+</svg>
