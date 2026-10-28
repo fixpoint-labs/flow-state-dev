@@ -279,7 +279,10 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
       question ??= everAsked(now)[0];
       return now !== undefined && TERMINAL.has(String(now.status)) ? now : undefined;
     }, 300_000, 1_000);
-    const final = after ?? (await rowOf(alice, helperA, taskId));
+    const listed = after ?? (await rowOf(alice, helperA, taskId));
+    // Steers show only on the task's own full read (getTask), not in the list.
+    const full = (await alice.routes.act(helperA.flowKind, helperA.id, "getTask_tasks", { id: taskId })).output as { ok?: boolean; task?: TaskRow } | undefined;
+    const final = listed === undefined ? undefined : ({ ...listed, steers: full?.ok === true ? full.task?.steers : undefined } as TaskRow);
     question ??= everAsked(final)[0];
     const heard = (await receivedIn(alice, helperA.id)).filter((m) => m.from === HELPER_B && m.text.includes(taskId));
     // Asked and answered between two polls: the question's id is in its message's id (`q:<task>:<hold>`), and in the steer that answered it.
