@@ -7,7 +7,7 @@
  * |---------------------|------------------------------------------------------------------------------|
  * | `listWorkers`       | the workforce client's `roster()`                                            |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
- * | `send`              | the worker's door, `respond`, in that conversation                           |
+ * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
@@ -375,7 +375,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async send(sessionId, text) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
-      await client.flow(flow).send("respond", { message: text }, { sessionId });
+      // Streamed, so the answer shows as it is written (the session stream sends it once finished).
+      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
+      if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
+      if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
