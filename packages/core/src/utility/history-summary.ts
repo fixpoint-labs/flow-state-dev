@@ -173,11 +173,14 @@ export function historySummary(options: HistorySummaryOptions) {
         ? await ctx.session.items.turns({ requestIds: state.pending })
         : [];
       const settledPending = pendingTurns.filter((t) => t.settled);
-      // Every pending turn not read as settled stays pending, the one running
-      // this fold included: a resumed turn cannot read itself, and it is
-      // behind the mark, so no later window would fold it.
-      const settledIds = new Set(settledPending.map((t) => t.requestId));
-      const stillPending = state.pending.filter((id) => !settledIds.has(id));
+      // A pending turn read as still open stays pending, and so does the one
+      // running this fold: a resumed turn cannot read itself, and it is behind
+      // the mark, so no later window would fold it. One the read no longer
+      // finds was deleted before it settled (retention): nothing is left to
+      // fold, so it is dropped.
+      const self = ctx.request.identity.id;
+      const openIds = new Set(pendingTurns.filter((t) => !t.settled).map((t) => t.requestId));
+      const stillPending = state.pending.filter((id) => id === self || openIds.has(id));
 
       const all = await ctx.session.items.turns();
       // After the mark by position, since two turns can share a start
@@ -215,7 +218,6 @@ export function historySummary(options: HistorySummaryOptions) {
       // This request is listed open where it started, so a fold that moves
       // past it keeps it pending; it is not a past turn, so it does not count
       // toward the window's fill.
-      const self = ctx.request.identity.id;
       const due = after.filter((t) => t.requestId !== self).length > window.turns - quarter;
       // A quarter of settled turns per fold; the waiting turns among them move
       // to pending without taking a place, or enough of them could hold every

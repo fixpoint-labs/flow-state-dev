@@ -422,6 +422,26 @@ describe("historySummary on the engine", () => {
     expect(state.pending).toContain("req_run_1");
   });
 
+  it("drops a pending turn that retention deleted before it settled", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    await talk(stores, flow, calls, 3);
+    const third = (await stores.request.get("req_003"))!;
+    await stores.request.set("req_wait", { ...third, id: "req_wait", status: "suspended", startedAtMs: third.startedAtMs + 1, items: [] }, "any");
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await talk(stores, flow, calls, 5, 4);
+    const held = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { pending: string[] };
+    expect(held.pending).toEqual(["req_wait"]);
+
+    // Retention deletes it while it still waits: nothing is left to fold.
+    await stores.request.delete("req_wait");
+    await talk(stores, flow, calls, 1, 9);
+
+    const state = (await stores.resourceState.get("session", "s", "historySummary"))?.state as { pending: string[]; complete: boolean };
+    expect(state).toMatchObject({ pending: [], complete: true });
+  });
+
   it("keeps this turn pending when it is itself a pending turn the fold cannot read yet", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
