@@ -281,6 +281,29 @@ describe("a wait killed before it parks", () => {
     expect(await status(h, id)).toBe("interrupted");
   });
 
+  it("reads as parked when a later wait owes its park after an earlier wait's gate was answered and pruned", async () => {
+    const script: Script = { freeze: undefined, owe: true, started: 0 };
+    const flow = waitingFlow(script);
+    const h = setup(flow);
+    const id = (await start(h, flow)).requestId!;
+    script.freeze = "after-wait";
+    const gate = (await h.provider.loadSuspension(id, GATE_ID))!;
+    const continueHere = (async (opts: never) =>
+      continueRequest({ ...(opts as object), stores: h.stores, flowRegistry: h.registry, runtimeConfig: h.runtimeConfig } as never)) as never;
+    await resumeWaitGate({ provider: h.provider, stores: h.stores, continueRequest: continueHere }, gate, { answered: true, answer: "x" }, "test");
+    await until(async () => script.freeze === undefined);
+    await markInterrupted(h, id);
+    // The answered gate is pruned by age, as retention prunes a terminal one.
+    expect(await h.provider.pruneSuspensions(Date.now() + 1, 100)).toBe(1);
+
+    // A second wait in the same request owed its park, then the process died:
+    // the log still names the first gate, which is gone.
+    const key = parkOwedKey({ id, sessionId: SESSION })!;
+    await h.stores.wakes!.owe({ ...key, flowKind: flow.id, userId: "u_waiter", orgId: DEFAULT_ORG_ID, dueAt: Date.now(), landBy: Date.now() });
+    const record = (await h.stores.request.get(id))!;
+    expect((await parkedInterruptedIds(h.provider, [record], h.stores.wakes)).has(id)).toBe(true);
+  });
+
   it("stays stopped when a person stops it while it owes its park: the stop lets the owe go", async () => {
     const script: Script = { freeze: "after-work", owe: true, started: 0 };
     const flow = waitingFlow(script);

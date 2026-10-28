@@ -306,8 +306,8 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
 /**
  * Whether an `interrupted` request will run again: the last gate on its log is
  * still pending (a resume drives it), or resolved and owed a re-drive, which
- * the durability sweep gives it (step 2b); or, with no gate on its log, it owes
- * a park (FIX-2269), and the sweep continues it (`park-owed.ts`, read from
+ * the durability sweep gives it (step 2b); or it owes a park (FIX-2269),
+ * whatever gate an earlier wait left on its log, and the sweep continues it (`park-owed.ts`, read from
  * `wakes` when given). An interrupted request with none of these died while it
  * ran, and nothing drives it again: its work is over.
  *
@@ -319,8 +319,10 @@ export async function drivenAgain(
   record: Pick<RequestRecord, "id" | "items" | "sessionId" | "tenantId">,
   wakes?: WakeStore
 ): Promise<boolean> {
+  // Read first: a later wait's owe outlives a gate an earlier wait resolved (or one since pruned).
+  if (await owesPark(wakes, record)) return true;
   const gateId = latestGateIdOf(record);
-  if (gateId === undefined) return owesPark(wakes, record);
+  if (gateId === undefined) return false;
   const gate = await provider.loadSuspension(record.id, gateId);
   if (gate === null) return false;
   return gate.status === "pending" || owesRedrive(gate);
