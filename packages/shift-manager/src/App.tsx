@@ -195,7 +195,7 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** What the collapsed right panel's strip names, per level that has a panel. */
-const PANEL_NAMES: Partial<Record<Route["level"], string>> = { shiftCoordinator: "DELEGATES", task: "TASK DETAIL" };
+const PANEL_NAMES: Partial<Record<Route["level"], string>> = { "shift-coordinator": "DELEGATES", task: "TASK DETAIL" };
 
 /**
  * The right panel's slot, per level: Shift Coordinator's rail, the task's slot,

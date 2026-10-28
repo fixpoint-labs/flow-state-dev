@@ -31,3 +31,18 @@ FIX-595 spec §4.5):
 Both live in `packages/memory/src/memory-system-blocks.ts`. After running the
 codemod, grep the memory package for any remaining sequencer-shaped `.then(`
 calls and rewrite them manually.
+
+## `rename-chief-of-staff.ts`
+
+FIX-2244: renames the worker id `chief-of-staff` to `shift-coordinator`, the
+`chiefOfStaff*` / `ChiefOfStaff*` names, Shift Manager's `cos` route, test ids
+and the `cos` names derived from them, and the prose "chief of staff". No old
+name collides with a live one, so it is a text pass plus `git mv` for the paths
+that name the old id:
+
+```bash
+pnpm tsx scripts/codemod/rename-chief-of-staff.ts
+```
+
+It leaves retained specs, changelogs, `docs/internal` and a goal's dated verdict
+rows alone: they are history.

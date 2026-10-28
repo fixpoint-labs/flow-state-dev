@@ -46,7 +46,7 @@ if (coderWorkerId === undefined) throw new Error("the DevTeam tree names no code
 /**
  * The Shift Coordinator's turn: a tagged message files one task for the coder,
  * once per tag; anything else is answered. Once, because the task's ending
- * wakes the chief again with the same conversation in front of it.
+ * wakes the Shift Coordinator again with the same conversation in front of it.
  */
 function scriptedShiftCoordinator(): ModelResolver {
   const filed = new Set<string>();

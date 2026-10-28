@@ -264,7 +264,7 @@ const SHIFT_COORDINATOR = "shift-coordinator";
 
 const isShiftCoordinator = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === SHIFT_COORDINATOR;
 
-/** How the screens name a worker: the Shift Coordinator is the Shift Coordinator; its id stays `shift-coordinator`. */
+/** How the screens name a worker: `shift-coordinator` is the Shift Coordinator. */
 export function workerLabel(idOrName: string): string {
   return isShiftCoordinator(idOrName) ? "Shift Coordinator" : idOrName;
 }

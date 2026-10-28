@@ -9,7 +9,7 @@ import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate } from "../lib/routes";
 
-/** What Shift Manager calls the Shift Coordinator worker (FIX-1747); the worker keeps its id. */
+/** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
 export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {

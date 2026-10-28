@@ -71,6 +71,27 @@ export const RETIRED = [
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
+  },
+  {
+    id: "shift-coordinator-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2244: the worker id is `shift-coordinator`, and the names built on it follow.
+    pattern: /chief-of-staff|chiefOfStaff|ChiefOfStaff|CHIEF_OF_STAFF|chief_of_staff/,
+    pathName: /chief-of-staff|ChiefOfStaff/
+  },
+  {
+    id: "shift-coordinator-cos",
+    files: CODE,
+    // FIX-2244: Shift Manager's `cos` route, test ids and names (`cos-panel`, `openCos`, `COS_FLOW`).
+    // `Cost`, `COST`, `cosine` and `Math.cos` are other words.
+    pattern: /(?<!Math\.)\bcos(?=[A-Z0-9_]|\b)|[a-z0-9]Cos(?=[A-Z_]|\b)|\bCOS(?=_|\b)|(?<=_)COS\b/,
+    pathName: /(^|[/-])cos([-./]|$)/
+  },
+  {
+    id: "shift-coordinator-prose",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2244: the worker is the Shift Coordinator.
+    pattern: /\b[Cc]hiefs? [Oo]f [Ss]taff\b|\bCoS\b/
   }
 ];
 

@@ -5,7 +5,7 @@
  * Pinned (FIX-1662 PLAN, "Pinned names"): the task route and the project
  * route. The rest are Shift Manager's own.
  *
- *     /shift-coordinator                           Shift Coordinator: where `/` and any unknown path land
+ *     /shift-coordinator             Shift Coordinator: where `/` and any unknown path land
  *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
