@@ -86,7 +86,9 @@ describe("createCursorAgentCapability", () => {
     expect(on.resources?.[OBSERVED_PLAN]).toBe(observedPlanCollection);
     expect(on.resources?.[OBSERVED_PLAN_LIST]).toBe(observedPlanListCollection);
 
-    const off = createCursorAgentCapability(GATE_OFF) as unknown as { resources?: Record<string, unknown> };
+    const off = createCursorAgentCapability({ ...GATE_OFF, recordPullRequests: false }) as unknown as {
+      resources?: Record<string, unknown>;
+    };
     expect(off.resources).toBeUndefined();
   });
 });

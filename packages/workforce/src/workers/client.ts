@@ -52,6 +52,12 @@ export type RosterEntry = {
   teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
+  /**
+   * The settings its flow shows (`showSettings` where the app registers the
+   * flow), with the worker's values: a coding worker's `harness`, say. Only
+   * the keys the worker sets; `{}` when its flow shows none.
+   */
+  settings: Readonly<Record<string, unknown>>;
 };
 
 /** One of a user's conversations with a worker, as {@link WorkforceClient.listWorkerSessions} returns it. */
@@ -200,6 +206,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         forkedFrom?: unknown;
         name?: unknown;
         teamName?: unknown;
+        settings?: unknown;
       };
       const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
       return {
@@ -209,7 +216,11 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         description: typeof data.description === "string" ? data.description : null,
         name: isStandard && typeof data.name === "string" ? data.name : null,
         teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
-        forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null
+        forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null,
+        settings:
+          typeof data.settings === "object" && data.settings !== null && !Array.isArray(data.settings)
+            ? (data.settings as Record<string, unknown>)
+            : {}
       };
     };
     return [...own.map((item) => entry(item, false)), ...standard.map((item) => entry(item, true))];

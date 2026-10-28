@@ -59,7 +59,7 @@ const approvedItem = f.suspension({ suspensionId: "s-approved", message: "Refund
 const rejectedItem = f.suspension({ suspensionId: "s-rejected", message: "Delete the account?" });
 const formItem = f.suspension({
   suspensionId: "s-form",
-  reason: "human_input",
+  reason: "user_input",
   message: "Before we route this ticket:",
   resumeSchema: {
     type: "object",
@@ -74,14 +74,14 @@ const formItem = f.suspension({
 const formDoneItem = f.suspension({ ...formItem, suspensionId: "s-form-done" } as never);
 const questionItem = f.suspension({
   suspensionId: "s-question",
-  reason: "human_input",
+  reason: "user_input",
   message: "What is the deadline?",
   resumeSchema: { type: "string", minLength: 1 },
   allow: ["submit"],
 });
 const questionDoneItem = f.suspension({
   suspensionId: "s-question-done",
-  reason: "human_input",
+  reason: "user_input",
   message: "Which region?",
   resumeSchema: { type: "string", minLength: 1 },
   allow: ["submit"],

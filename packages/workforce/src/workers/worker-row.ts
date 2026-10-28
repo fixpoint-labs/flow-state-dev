@@ -15,6 +15,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { WORKERS_PATTERN } from "./keys";
+import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 
 /**
  * One stored worker.
@@ -59,14 +60,17 @@ export type WorkerRow = z.infer<typeof workerRowSchema>;
  * Shared across flows (`flowIsolation: false`): every flow that declares it
  * reads the same roster, so a worker hired through one flow runs on another.
  * A browser may read the user's own rows through a session of a flow that
- * declares it, and sees each worker's `flow`, `description` and `forkedFrom`;
- * its settings and instructions stay on the server.
+ * declares it, and sees each worker's `flow`, `description` and `forkedFrom`,
+ * and as `settings` only the ones its flow shows; its other settings and its
+ * instructions stay on the server.
  *
  * Write a new worker with `create()`: it throws when the id is taken, and
  * that throw is the refusal of a second hire under one id, racing ones
  * included.
+ *
+ * @param shown Which settings each flow shows (`showSettings`). Omitted, none.
  */
-export function defineWorkerCollection() {
+export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
   return defineResourceCollection({
     pattern: WORKERS_PATTERN,
     scope: "user",
@@ -74,7 +78,13 @@ export function defineWorkerCollection() {
     stateSchema: workerRowSchema.passthrough(),
     client: {
       state: { read: true },
-      expose: ["flow", "description", "forkedFrom"]
+      // A computed field, so `data` rather than `expose` (BP-015).
+      data: (row) => ({
+        flow: row.flow,
+        description: row.description ?? null,
+        forkedFrom: row.forkedFrom ?? null,
+        settings: shownSettingsOf(shown(row.flow), row.settings ?? {}) as never
+      })
     }
   });
 }

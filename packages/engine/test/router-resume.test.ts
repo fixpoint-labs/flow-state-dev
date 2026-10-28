@@ -81,7 +81,7 @@ function buildSuspendingBranchFixture() {
     outputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       runs.gate += 1;
-      return ctx.suspend!({ reason: "human_approval", message: "continue branch A?" });
+      return ctx.suspend!({ reason: "user_approval", message: "continue branch A?" });
     }
   });
   const after = handler({
@@ -171,7 +171,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "proceed?" })
+        ctx.suspend!({ reason: "user_approval", message: "proceed?" })
     });
     const other = handler({
       name: "other",
@@ -231,7 +231,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
       inputSchema: z.object({ doubled: z.number() }),
       outputSchema: z.any(),
       execute: async (input, ctx) => {
-        const decision = await ctx.suspend!({ reason: "human_approval", message: "ok?" });
+        const decision = await ctx.suspend!({ reason: "user_approval", message: "ok?" });
         return { seen: input.doubled, decision };
       }
     });
@@ -339,7 +339,7 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         runs.a += 1;
-        return ctx.suspend!({ reason: "human_approval", message: "A?" });
+        return ctx.suspend!({ reason: "user_approval", message: "A?" });
       }
     });
     const branchB = handler({

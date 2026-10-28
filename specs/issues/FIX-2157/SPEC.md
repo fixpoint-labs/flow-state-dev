@@ -109,9 +109,13 @@ worker.
 session works in a project you pick when you create it: *New session* asks before the composer
 opens, and the adapter's `openSession` calls `setWorkProject(worker, project, { sessionId })`
 after `createSession`, which writes the server-owned `workProjectId` and checks membership
-([FIX-2161](#gaps)). A project with a repository the operator maps
-in `checkouts` is a repository on this machine; each run works in a worktree of it, cut by the
-workspace host (`local-host.ts`), as Claude Code's own threads do, never in the checkout itself.
+([FIX-2161](#gaps)). A project whose repository the operator lists in the lab's
+`CLAUDE_CODE_STYLE_REPOSITORIES` (by default the repository the lab starts in) is a repository on
+this machine; each run works in a worktree of it, cut by the workspace host (`local-host.ts`),
+as Claude Code's own threads and Kitchen Sink's harness sessions do, never in the checkout itself.
+The lab maps it in `fsdev.config.mts`, not through `projectWorkspace({ checkouts })`, which maps
+only shared projects in an organization: the lab's projects are private and its sessions carry
+none. A project on any other repository gets a clone of it ([amendment](DECISIONS.md#worktrees)).
 A thread inherits it: the hand-over copies the
 session's project to the task session (`filingProjectId`), and `projectWorkspace()` reads it
 there. A task always works in its session's project: the board writes the session's project over one a task names (`ownProjectIn`), and `projectWorkspace()` refuses a different one `other-project`. Work in another project takes a session opened on it. With none picked, it asks: the run's

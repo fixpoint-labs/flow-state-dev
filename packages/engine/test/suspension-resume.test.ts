@@ -34,7 +34,7 @@ describe("ctx.suspend() — initial suspension", () => {
       outputSchema: z.unknown(),
       execute: async (input, ctx) => {
         const decision = await ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: `Approve transfer of $${input.amount}?`,
           data: { amount: input.amount }
         });
@@ -74,7 +74,7 @@ describe("ctx.suspend() — initial suspension", () => {
 
     const suspensions = await provider.listSuspended({ status: "pending" });
     expect(suspensions.length).toBe(1);
-    expect(suspensions[0].reason).toBe("human_approval");
+    expect(suspensions[0].reason).toBe("user_approval");
     expect(suspensions[0].requestId).toBe(result.requestId);
 
     const suspItem = result.items.find((i) => i.type === "suspension");
@@ -88,7 +88,7 @@ describe("ctx.suspend() — initial suspension", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         return ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           message: "Please provide feedback",
           resumeSchema: { type: "object", properties: { feedback: { type: "string" } } }
         });
@@ -119,7 +119,7 @@ describe("ctx.suspend() — initial suspension", () => {
 
     const suspItem = result.items.find((i) => i.type === "suspension") as any;
     expect(suspItem).toBeDefined();
-    expect(suspItem.reason).toBe("human_input");
+    expect(suspItem.reason).toBe("user_input");
     expect(suspItem.message).toBe("Please provide feedback");
     expect(suspItem.resumeSchema).toBeDefined();
   });
@@ -130,7 +130,7 @@ describe("ctx.suspend() — initial suspension", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_input", title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" })
+        ctx.suspend!({ reason: "user_input", title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" })
     });
     const flow = defineFlow({
       kind: "suspend-title-test",
@@ -152,7 +152,7 @@ describe("ctx.suspend() — initial suspension", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
 
     const flow = defineFlow({
@@ -208,7 +208,7 @@ describe("resume after suspension", () => {
       execute: async (input, ctx) => {
         suspendCallCount++;
         const decision = await ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: `Approve $${input.amount}?`
         });
         return { approved: true, decision };
@@ -295,7 +295,7 @@ describe("resume after suspension", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         return ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: "Approve?"
         });
       }
@@ -361,7 +361,7 @@ describe("suspension without durability provider", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         return ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           message: "Provide input"
         });
       }
@@ -443,7 +443,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.object({ amount: z.number(), prepared: z.boolean() }),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const confirmStep = handler({
       name: "confirmStep",
@@ -548,7 +548,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-resume-item",
@@ -608,7 +608,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.object({ doubled: z.number() }),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const readerStep = handler({
       name: "readerStep",
@@ -663,14 +663,14 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+        ctx.suspend!({ reason: "user_approval", message: "Gate A?" })
     });
     const gateB = handler({
       name: "gateB",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+        ctx.suspend!({ reason: "user_approval", message: "Gate B?" })
     });
     const done = handler({
       name: "done",
@@ -732,8 +732,8 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const first = await ctx.suspend!({ reason: "human_approval", message: "first?", suspensionId: "gate-1" });
-        const second = await ctx.suspend!({ reason: "human_approval", message: "second?", suspensionId: "gate-2" });
+        const first = await ctx.suspend!({ reason: "user_approval", message: "first?", suspensionId: "gate-1" });
+        const second = await ctx.suspend!({ reason: "user_approval", message: "second?", suspensionId: "gate-2" });
         return { first, second };
       }
     });
@@ -774,8 +774,8 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
-        const first = await ctx.suspend!({ reason: "human_approval", message: "first?" });
-        const second = await ctx.suspend!({ reason: "human_approval", message: "second?" });
+        const first = await ctx.suspend!({ reason: "user_approval", message: "first?" });
+        const second = await ctx.suspend!({ reason: "user_approval", message: "second?" });
         return { first, second };
       }
     });
@@ -828,7 +828,7 @@ describe("same-request continuation (FIX-811)", () => {
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-crash",
@@ -898,7 +898,7 @@ describe("same-request continuation (FIX-811)", () => {
           charges += 1;
           return { charged: true };
         });
-        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return ctx.suspend!({ reason: "user_approval", message: "Approve?" });
       }
     });
     const flow = defineFlow({
@@ -954,7 +954,7 @@ describe("same-request continuation (FIX-811)", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
         ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: "Approve?",
           data: { tally: (ctx.sequencer!.state as { tally: number }).tally }
         })
@@ -1015,7 +1015,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.object({ request: z.string() }),
       outputSchema: z.string(),
       execute: async (_input, ctx) => {
-        await ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        await ctx.suspend!({ reason: "user_approval", message: "Approve?" });
         return "done";
       }
     });
@@ -1069,7 +1069,7 @@ describe("same-request continuation (FIX-811)", () => {
       name: "gate",
       inputSchema: z.object({ request: z.string() }),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-usermsg-crash",
@@ -1125,7 +1125,7 @@ describe("same-request continuation (FIX-811)", () => {
       outputSchema: z.unknown(),
       execute: async (_i, ctx) => {
         ctx.emit.message("Please approve");
-        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return ctx.suspend!({ reason: "user_approval", message: "Approve?" });
       }
     });
     const done = handler({
@@ -1187,13 +1187,13 @@ describe("same-request continuation (FIX-811)", () => {
       name: "gateA",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate A?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Gate A?" })
     });
     const gateB = handler({
       name: "gateB",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Gate B?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Gate B?" })
     });
     const done = handler({
       name: "done",
@@ -1270,7 +1270,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const report = handler({
       name: "report",
@@ -1318,7 +1318,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-ponr",
@@ -1374,7 +1374,7 @@ describe("same-request continuation (FIX-811)", () => {
       name: "approvalStep",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_input, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_input, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-ponr-lease",
@@ -1442,7 +1442,7 @@ describe("same-request continuation (FIX-811)", () => {
       name: "gate",
       inputSchema: z.any(),
       outputSchema: z.unknown(),
-      execute: async (_i, ctx) => ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+      execute: async (_i, ctx) => ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-crash-lease",
@@ -1516,7 +1516,7 @@ describe("same-request continuation (FIX-811)", () => {
       outputSchema: z.unknown(),
       execute: async (_i, ctx) => {
         ctx.emit.message("Working on it");
-        return ctx.suspend!({ reason: "human_approval", message: "Approve?" });
+        return ctx.suspend!({ reason: "user_approval", message: "Approve?" });
       }
     });
     const flow = defineFlow({
@@ -1585,7 +1585,7 @@ describe("same-request continuation (FIX-811)", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const decision = await ctx.suspend!({
-          reason: "human_approval",
+          reason: "user_approval",
           message: "Approve?"
         });
         return { approved: true, decision };
@@ -1642,7 +1642,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-seq-continuity",
@@ -1696,7 +1696,7 @@ describe("same-request continuation (FIX-811)", () => {
       inputSchema: z.any(),
       outputSchema: z.unknown(),
       execute: async (_input, ctx) =>
-        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "Approve?" })
     });
     const flow = defineFlow({
       kind: "fix811-pretransition-revert",

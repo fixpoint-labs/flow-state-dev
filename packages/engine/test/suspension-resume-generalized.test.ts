@@ -79,7 +79,7 @@ describe("submit resolution", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const answer = await ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           message: "What is your name?",
           resumeSchema: { type: "object", properties: { name: { type: "string" } } },
           allow: ["submit"]
@@ -129,7 +129,7 @@ describe("skip resolution", () => {
       outputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const answer = await ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           message: "Optional feedback?",
           allow: ["submit", "skip"]
         });
@@ -172,7 +172,7 @@ describe("skip resolution", () => {
       outputSchema: z.object({ ok: z.boolean() }),
       execute: async (_input, ctx) => {
         const answer = await ctx.suspend!({
-          reason: "human_input",
+          reason: "user_input",
           message: "Gate A (optional)?",
           allow: ["submit", "skip"]
         });
@@ -185,7 +185,7 @@ describe("skip resolution", () => {
       inputSchema: z.any(),
       outputSchema: z.object({ ok: z.boolean() }),
       execute: async (_input, ctx) => {
-        await ctx.suspend!({ reason: "human_approval", message: "Gate B?" });
+        await ctx.suspend!({ reason: "user_approval", message: "Gate B?" });
         return { ok: true };
       }
     });
@@ -253,7 +253,7 @@ describe("resume route — allow enforcement & payload validation", () => {
       flowKind: "gen",
       actionName: "go",
       userId: "u1",
-      reason: "human_input",
+      reason: "user_input",
       message: "Provide input",
       status: "pending",
       blockInstanceId: "b1",
@@ -370,7 +370,7 @@ describe("resume route — allow enforcement & payload validation", () => {
     // must still resolve — validation only runs when the resumer sends data.
     const { stores, provider } = createDurableStores();
     const requestId = await seedSuspended(stores, provider, {
-      reason: "human_approval",
+      reason: "user_approval",
       allow: ["approve", "reject"],
       resumeSchema: { type: "object", properties: { note: { type: "string" } } }
     });

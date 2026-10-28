@@ -149,9 +149,12 @@ describe("recordPlan — what it passes to core's replacePlanList (V2)", () => {
 });
 
 describe("recordPlan — on the block (V3)", () => {
-  it("is off by default: no resources declared, nothing written", async () => {
+  it("is off by default: no plan collection declared, nothing written", async () => {
     const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([todosSettled("t1")]) });
-    expect(block.declaredResources ?? {}).toEqual({});
+    expect(Object.keys(block.declaredResources ?? {})).not.toContain(OBSERVED_PLAN);
+    expect(Object.keys(block.declaredResources ?? {})).not.toContain(OBSERVED_PLAN_LIST);
+    const bare = cursorAgent({ ...GATE_OFF, resolveCursorClient: replaying([]), recordPullRequests: false });
+    expect(bare.declaredResources ?? {}).toEqual({});
 
     const { error } = await testBlock(block, { input: { prompt: "go" } });
     expect(error).toBeNull();
