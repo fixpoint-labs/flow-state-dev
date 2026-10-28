@@ -154,6 +154,8 @@ Hooks use **past tense** naming — this is canonical. Present-tense names are r
 
 Hooks can be plain callbacks or blocks. If you pass a block, its `inputSchema` must accept the lifecycle event shape.
 
+A block hook runs as its own block, on a top-level path beside the action's `root`: `observer[request.onStarted]`, `observer[action.onCompleted]`, and so on (`blockPathObserver`). It never shares the action block's instance id, so its trace is never read as a re-run of the action's block, which would drop the items the action's block emitted from the session's history.
+
 ## Request Execution Pipeline
 
 When an action is invoked, the framework executes this sequence:

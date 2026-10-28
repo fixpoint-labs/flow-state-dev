@@ -52,10 +52,12 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@flow-state-dev/core": "workspace:*"
+    "@flow-state-dev/core": "workspace:*",
+    "picomatch": "^4.0.2"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@types/picomatch": "^3.0.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",

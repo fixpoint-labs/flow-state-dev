@@ -128,8 +128,8 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   const more = extras.flows?.(installation) ?? {};
   // A lead given a task entry takes tasks.
   flows = { lead: { flow: lead, roles: extras.leadTask === undefined ? [] : ["contributor"] }, lead2, quiet, ...more };
-  const flowOf = (entry: unknown): (() => unknown) =>
-    (typeof entry === "function" ? entry : (entry as { flow: () => unknown }).flow) as () => unknown;
+  const flowOf = (entry: unknown): ((options: { id: string }) => unknown) =>
+    (typeof entry === "function" ? entry : (entry as { flow: () => unknown }).flow) as (options: { id: string }) => unknown;
 
   const hireBlocks = createWorkerHireBlocks(installation);
   const roster = defineWorkerRosterFlow(installation, {
@@ -145,7 +145,8 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     quiet: quiet() as unknown as FlowInstance,
     [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
-      Object.entries(more).map(([name, flow]) => [name, flowOf(flow)() as unknown as FlowInstance])
+      // Named by its key, which a collection flow (the built-in agent flow) needs.
+      Object.entries(more).map(([name, flow]) => [name, flowOf(flow)({ id: name }) as unknown as FlowInstance])
     )
   };
   const state = createFlowState({

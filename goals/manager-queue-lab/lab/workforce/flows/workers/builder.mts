@@ -40,13 +40,14 @@ import {
   FILING_SESSION_STATE_KEY,
   TASK_ID_STATE_KEY,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
-import { workerDoor } from "../../../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../../../lib/worker-door.mts";
 
 /** The flow every builder `WORKER.md` names. **Pinned** — the basename must match. */
 export const BUILDER_KIND = "builder";
@@ -162,8 +163,9 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     kind: BUILDER_KIND,
     configSchema: builderSettingsSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...workerDoor },
+    internal: { actions: hearsMessages(installation, BUILDER_KIND) },
     task: { actions: { [WORK_ENTRY]: work } },
   } as never);
 }

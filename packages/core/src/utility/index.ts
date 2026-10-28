@@ -41,6 +41,17 @@ export type {
 } from "./summarizer";
 
 export {
+  historySummary,
+  historySummaryStateSchema
+} from "./history-summary";
+
+export type {
+  HistorySummaryInput,
+  HistorySummaryOptions,
+  HistorySummaryState
+} from "./history-summary";
+
+export {
   decomposer,
   decomposerOutputSchema,
   decomposerTaskSchema

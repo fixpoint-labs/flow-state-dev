@@ -31,12 +31,13 @@ import {
   createWorkerInstallation,
   workerConfigOf,
   workerConfigSchema,
+  workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
-import { workerDoor } from "../../../lib/worker-door.mts";
+import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
@@ -171,9 +172,10 @@ export function defineTriageFlow(installation: WorkerInstallation) {
     kind: TRIAGE_KIND,
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     request: { onStarted: loadWorker(installation, TRIAGE_KIND) },
     actions,
+    internal: { actions: hearsMessages(installation, TRIAGE_KIND) },
     session: { ...installation.session(seatState.shape), client: clientView }
   });
 }
@@ -218,9 +220,10 @@ export const noContractFlow = defineFlow({
     // `workerSkills` omitted — the single reason the bag is refused.
     desk: z.string().default("front")
   }),
-  resources: { ...controlInstallation.resources },
+  resources: { ...controlInstallation.resources, ...workerMessagesResources },
   request: { onStarted: loadWorker(controlInstallation, NO_CONTRACT_KIND) },
   actions: controlActions,
+  internal: { actions: hearsMessages(controlInstallation, NO_CONTRACT_KIND) },
   session: { ...controlInstallation.session(seatState.shape), client: clientView }
 });
 
@@ -245,9 +248,10 @@ export const handRolledFlow = defineFlow({
     delegates: z.array(z.string()).default([]),
     desk: z.string().default("front")
   }),
-  resources: { ...twinInstallation.resources },
+  resources: { ...twinInstallation.resources, ...workerMessagesResources },
   request: { onStarted: loadWorker(twinInstallation, HAND_ROLLED_KIND) },
   actions: controlActions,
+  internal: { actions: hearsMessages(twinInstallation, HAND_ROLLED_KIND) },
   session: { ...twinInstallation.session(seatState.shape), client: clientView }
 });
 
