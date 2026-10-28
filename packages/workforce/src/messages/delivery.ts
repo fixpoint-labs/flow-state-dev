@@ -109,15 +109,21 @@ export function isFinalRefusal(refused: DispatchRefusal): boolean {
   return refused !== "dispatch-rejected" && refused !== "no-dispatch-operation" && refused !== "flow-not-found";
 }
 
-/** Dispatch `row` to its recipient's `onMessageReceived`, at the address the row keeps whole. */
-export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string): Promise<DispatchOutcome> {
+/**
+ * Dispatch `row` to its recipient's `onMessageReceived`, at the address the row keeps whole.
+ *
+ * @param waits The sender parks on the request this starts (a call's first
+ *   dispatch, FIX-2239), so the engine counts it in the chain of waits.
+ */
+export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string, waits = false): Promise<DispatchOutcome> {
   return dispatchThroughSeam(ctx, {
     type: "internal",
     action: MESSAGE_RECEIVED_ENTRY,
     flowKind: row.toFlow,
     session: row.toState === undefined ? { id: row.toSession } : { id: row.toSession, state: row.toState },
     payload: { messageId: row.id },
-    from
+    from,
+    ...(waits ? { waits: true } : {})
   });
 }
 

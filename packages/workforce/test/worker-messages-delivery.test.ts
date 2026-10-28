@@ -405,8 +405,9 @@ describe("a send repeated under one server-chosen id", () => {
     const sendy = created.body.session!.id as string;
     await h.post("alice", sendy, "respond", { message: "send it" }, "sender");
     await h.settled();
+    // The first send names the request its dispatch became (what a call waits on); the repeat dispatches nothing.
     expect(results).toEqual([
-      { ok: true, id: "msg_fixedrepeat" },
+      { ok: true, id: "msg_fixedrepeat", requestId: expect.any(String) },
       { ok: true, id: "msg_fixedrepeat" }
     ]);
     const rows = await logRows(h);

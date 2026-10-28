@@ -5,6 +5,8 @@ export type { EvaluatorConfig, EvaluatorDefinition, EvaluatorOutputSchema, Evalu
 export { sequencer } from "./sequencer";
 export { router } from "./router";
 export { dispatcher, dispatchHandleSchema, dispatchWaitResultSchema } from "./dispatcher";
+export { waitOnRequest } from "./wait-on-request";
+export type { RequestWaitOutcome, WaitOnRequestInput } from "./wait-on-request";
 
 export type { HandlerConfig } from "./handler";
 export type {

@@ -69,7 +69,8 @@ export interface SendMessageInput {
 
 /** What a send came to. */
 export type SendOutcome =
-  | { readonly ok: true; readonly id: string }
+  /** `requestId`: the request the send's own dispatch became, when the host accepted it. */
+  | { readonly ok: true; readonly id: string; readonly requestId?: string }
   | { readonly ok: false; readonly error: string };
 
 /**
@@ -179,6 +180,9 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
  *   one message: when its row is already written, the repeat owes nothing,
  *   pays nothing, leaves the row as it is and answers as the row reads (a
  *   refusal stays one). Never a model's input.
+ * @param options.call The sender waits on the reply until `deadlineAt`
+ *   (FIX-2239): the row is marked a call, and the dispatch says the sender
+ *   waits on it. Set by the call's own code, never by a model.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -186,7 +190,7 @@ export async function sendMessage(
   flowKind: string,
   input: SendMessageInput,
   from: string,
-  options: { readonly id?: string } = {}
+  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number } } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -301,6 +305,7 @@ export async function sendMessage(
     ...(destination.state === undefined ? {} : { toState: destination.state }),
     hop,
     chain,
+    ...(options.call === undefined ? {} : { call: true as const, deadlineAt: options.call.deadlineAt }),
     status: "unconfirmed",
     at: Date.now()
   };
@@ -308,7 +313,7 @@ export async function sendMessage(
 
   let outcome: DispatchOutcome | undefined;
   try {
-    outcome = await dispatchMessage(ctx, row, from);
+    outcome = await dispatchMessage(ctx, row, from, options.call !== undefined);
   } catch (error) {
     // It may have started: the pass sends it again, and the take keeps it once.
     await ref.patchState({ reason: error instanceof Error ? error.message : String(error) });
@@ -321,5 +326,5 @@ export async function sendMessage(
     }
     await ref.patchState({ reason });
   }
-  return { ok: true, id };
+  return { ok: true, id, ...(outcome?.ok === true ? { requestId: outcome.requestId } : {}) };
 }

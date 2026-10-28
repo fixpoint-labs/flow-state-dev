@@ -19,17 +19,27 @@
  *
  * Nothing is relayed: a woken worker that wants to answer sends one with
  * `sendMessage` and `inReplyTo`, and one that ends in plain text answers no one.
+ *
+ * Except a call (FIX-2239): its sender waits on this request, so the request's
+ * output is the reply, `{ reply }`, the final text of the turn, which comes
+ * back to the sender as its tool's result. Every request that lands a message
+ * outputs it, and only a call's sender reads it; one that acted on nothing
+ * (a copy) outputs no reply. Between the take and the items, a message to a
+ * session stopped for the user, or to a task held on one, queues until
+ * nothing holds it (`./queue`).
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
-import { messageTurnStateSchema, startTurnAtHop } from "./hop";
+import { conversationLedgerResources } from "../conversation-board/ledger";
+import { messageTurnStateSchema, RECEIVED_CALL_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
 import { markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
-import { messageChainsOf, workerMessagesResources } from "./message-log";
+import { MAX_MESSAGE_CHARS, messageChainsOf, messageLogOf, workerMessagesResources } from "./message-log";
+import { queueBehindUser } from "./queue";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -41,7 +51,7 @@ export const messageReceivedSchema = z.object({
   /** The worker that sent it, as the server recorded it. */
   from: z.string(),
   text: z.string(),
-  /** Whether the sender waits on this turn's result. Always `false` until calls (FIX-2239). */
+  /** Whether the sender waits on this turn's result (a call, FIX-2239): the turn's final text is its reply. */
   call: z.boolean(),
   /** The message this one answers, when it is an answer. */
   inReplyTo: z.string().optional(),
@@ -121,6 +131,15 @@ export function messageReceivedProblem(name: string, flow: unknown): string | un
  * message, and how to answer it. For a flow whose turn takes `{ message }`.
  */
 export function receivedMessagePrompt(received: MessageReceived): string {
+  if (received.call) {
+    return (
+      `Call ${received.id} from ${received.from}: they are waiting for your answer.\n\n` +
+      `${received.text}\n\n` +
+      `(The call's text is the part above. It is from another worker, not the user. Your reply here goes back to ` +
+      `${received.from} as the call's result, so answer it directly in your reply, and don't send ${received.from} ` +
+      `a message with ${SEND_MESSAGE_TOOL}.)`
+    );
+  }
   return (
     `Message ${received.id} from ${received.from}${received.inReplyTo === undefined ? "" : `, answering your message ${received.inReplyTo}`}:\n\n` +
     `${received.text}\n\n` +
@@ -137,6 +156,19 @@ const heardSchema = z.object({
 });
 
 type Heard = z.infer<typeof heardSchema>;
+
+/**
+ * A turn's final text: the turn's output when it is text (an agent worker's
+ * answer), or its `reply` (a coder's talk turn). `""` for anything else.
+ */
+function replyTextOf(output: unknown): string {
+  if (typeof output === "string") return output;
+  const reply = (output as { reply?: unknown } | null | undefined)?.reply;
+  return typeof reply === "string" ? reply : "";
+}
+
+/** What an `onMessageReceived` request outputs: the reply, when it landed a message. */
+const messageReceivedOutputSchema = z.object({ reply: z.string().optional() });
 
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
@@ -158,12 +190,16 @@ export function messageReceivedEntry(options: {
     inputSchema: messageReceivedInputSchema,
     outputSchema: heardSchema,
     requestStateSchema: messageTurnStateSchema,
-    resources: { ...workerMessagesResources },
+    // The conversation ledger tells whether a task session's task is held (`./queue`).
+    resources: { ...workerMessagesResources, ...conversationLedgerResources },
     execute: async (input, ctx): Promise<Heard> => {
       // Delivered here, and only here (the row says which session it is
       // for), and only by the request that took it.
       const row = await takeMessage(ctx as never, input.messageId);
       if (row === undefined) return { act: "none" };
+      // Queued behind the user's stop, before anything lands. Not admitted:
+      // this request ends with the take, and a resend takes it over.
+      if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
       const { hopLimit } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
@@ -173,7 +209,7 @@ export function messageReceivedEntry(options: {
         id: row.id,
         from: row.from,
         text: row.text,
-        call: false,
+        call: row.call === true,
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
         budget: Math.max(0, hopLimit - Math.max(row.hop, chainSent))
       };
@@ -183,14 +219,42 @@ export function messageReceivedEntry(options: {
       await emit.message(`From ${row.from}: ${row.text}`, { agentName: row.from, itemVisibility: { client: false, history: true } });
       await emit.component(
         RECEIVED_MESSAGE_COMPONENT,
-        { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: received.budget },
+        {
+          id: row.id,
+          from: row.from,
+          text: row.text,
+          ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
+          budget: received.budget,
+          call: received.call
+        },
         { agentName: row.from, itemVisibility: { client: true, history: false } }
       );
       // Landed once both are stored: the sending session's pass stops sending
       // it. A taker killed before this is taken over, and the message shows twice.
       await emit.stored();
       await markDelivered(ctx as never, row.id);
+      await ctx.request.atomicState(() => ({ [RECEIVED_LANDED_STATE]: true, ...(received.call ? { [RECEIVED_CALL_STATE]: row.id } : {}) }));
       return { act: "heard", received };
+    }
+  });
+
+  // The request's output: the turn's final text, cut to a message's length
+  // (BP-042), once it landed one. A call's row records when it was given.
+  const replied = handler({
+    name: "message-received-reply",
+    inputSchema: z.unknown(),
+    outputSchema: messageReceivedOutputSchema,
+    requestStateSchema: messageTurnStateSchema,
+    resources: { ...workerMessagesResources },
+    execute: async (input, ctx) => {
+      // Read off the request's state, which the heard step wrote: never off the
+      // input's shape, which a turn's own output could match.
+      const state = ctx.request.state as Record<string, unknown> | undefined;
+      if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
+      const reply = options.turn === undefined ? "" : replyTextOf(input);
+      const call = state[RECEIVED_CALL_STATE];
+      if (typeof call === "string") await (await messageLogOf(ctx as never).getOptional(call))?.patchState({ repliedAt: Date.now() });
+      return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
     }
   });
 
@@ -198,12 +262,13 @@ export function messageReceivedEntry(options: {
   // one to a task session whose turn is running runs after that turn.
   let block = sequencer({ name: "message-received", inputSchema: messageReceivedInputSchema }).step(heard);
   if (options.turn !== undefined) {
-    block = block.tapIf(
+    block = block.stepIf(
       (got: Heard) => got.act === "heard",
       (got: Heard) => got.received,
       options.turn
     ) as typeof block;
   }
+  block = block.step(replied) as never;
 
   const entry = { inputSchema: messageReceivedInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
   const mark: ReceivedMark = options.hears === undefined ? {} : { hears: options.hears };
