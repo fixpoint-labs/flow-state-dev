@@ -26,7 +26,7 @@ import {
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
@@ -124,7 +124,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { coder: dispatcher({ name: "review-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({
