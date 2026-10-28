@@ -4,6 +4,32 @@ Reference application for `@flow-state-dev`. Hosts one or more flows; the flagsh
 
 Living under `apps/` (not `examples/`) because kitchen-sink is too large to serve as a pedagogical example — it integrates every subsystem (DevTool, skills, thinking style, advisor, workforce). Pedagogical snippets live in `examples/`.
 
+## What belongs here, and what belongs in the framework
+
+Kitchen Sink is glue. It assembles pieces the framework packages already ship into one app, and it should read as a clean example of how to do that. When a change needs new behaviour, the behaviour goes in the package that owns it, and Kitchen Sink picks it up with an import and a few lines of wiring.
+
+**The test: would a second app that used the same piece need this code too?** If yes, it belongs in the framework. If it only makes sense for this app, it can stay here.
+
+Belongs in Kitchen Sink:
+
+- Registering flows, workers and modes, and mounting them on pages (`fsdev.config.ts`, `app/`, `lib/modes.ts`).
+- Choosing among options a package exposes: which model intent, which store profile, which preset, which harness mode is on.
+- Layout and composition of framework components into this app's screens.
+- Demo content: the support team's `WORKER.md` files, prompts, the example flows' own schemas and blocks.
+- This app's own tests and scripted test-mode fixtures that drive them.
+
+Belongs in a framework package, not here:
+
+- **Features.** New behaviour a user of the framework would want. Build it in the owning package, with its tests and README, then wire it here.
+- **Knowledge about an outside tool.** Model lists, version pins, sign-in probes, parsing a CLI's output. The integration package owns these, because every app using that integration needs the same answer. Kitchen Sink may still decide whether one of its modes is on by composing those probes (`lib/harness-gate.ts`). Example: Codex mode kept a hand-written model list and parsed `codex login status` itself; #4035 moves both into `@flow-state-dev/codex`.
+- **Workarounds.** If a package misbehaves, fix the package. A workaround here hides the bug from every other app and from the package's tests.
+- **Custom config that should be a default.** If Kitchen Sink has to pass the same option every app would pass, change the package's default or add a preset.
+- **Reusable UI.** See "UI Components: Upstream-First Convention" below.
+
+If the framework change is too large for the task you're on, don't land the workaround here as a stopgap. Raise it as a scope decision (see `docs/contributing/asking-for-decisions.md`): build it in the package now, or file the package work and leave the Kitchen Sink side undone.
+
+When you touch existing Kitchen Sink code that fails this test, say so in the PR. Move it if the move is small and in scope; otherwise name it as follow-up rather than adding to it.
+
 ## Commands
 
 ```bash
