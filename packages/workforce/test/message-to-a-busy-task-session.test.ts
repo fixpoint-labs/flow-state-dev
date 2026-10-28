@@ -11,7 +11,7 @@
  *
  * On the real engine, through the board host: `lead` files a task for
  * `eng.doer`, whose task turn sends a message to its own session while it
- * runs (a delivered row in the message log, and its delivery dispatched), so
+ * runs (a row in the message log, not yet taken, and its delivery dispatched), so
  * the message waits on the session's reply line behind the task's turn. The
  * message's turn calls `reportProgress`, built as Workforce builds it.
  */
@@ -82,8 +82,8 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
   const board = defineSessionBoard({ installation, flowKind: "doer" });
   const doorInput = z.object({ message: z.string() });
 
-  // The task's turn sends a message to its own session: delivered, and its
-  // delivery dispatched, so it queues behind this turn.
+  // The task's turn sends a message to its own session: a row the entry has
+  // yet to take, and its delivery dispatched, so it queues behind this turn.
   const sendToSelf = async (ctx: BlockContext) => {
     const id = `msg_${Math.random().toString(16).slice(2, 10)}`;
     const sessionId = ctx.session.identity.id;
@@ -98,7 +98,7 @@ function doerFlow(installation: WorkerInstallation, seen: Seen[], behaviour: Beh
       toSession: sessionId,
       toFlow: "doer",
       hop: 1,
-      status: "delivered",
+      status: "unconfirmed",
       at: Date.now()
     } as never);
     await dispatchThroughSeam(ctx, {

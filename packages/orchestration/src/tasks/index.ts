@@ -238,11 +238,15 @@ export {
   type NoticePolicy,
   type NoticeDecision,
   NOTICE_DUE_MS,
+  NOTICE_RESEND_CAP_MS,
+  nextResendAt,
   noticeDueAt,
   resendNowPatch,
   cancelledDependents,
   type NoticeRecording,
 } from "./notice/task-notice";
+// The take rule a notice and a message share (FIX-2123, FIX-2240).
+export { decideTake, hasEnded, takeRule, type TakeRule } from "./helpers/request-states";
 // The one delivery of a delegated row's ending (FIX-2078).
 export {
   TASK_SETTLED_ENTRY,

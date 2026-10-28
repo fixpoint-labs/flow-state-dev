@@ -188,3 +188,11 @@ Recorded for the implementer, verbatim in substance:
 - Cursor: "the explicit final vs retryable refusal code list will drift when send/dispatch errors move. A rule-shaped summary … plus a pointer at today's taxonomy might be easier to maintain."
 - Cursor: split leg 6's (now leg 9's) *Signal* cell into one row per sub-leg (fault · timeout · pass criteria) in the goal file.
 - Cursor: `payMessageDebts` should run once per pass and batch row reads where possible.
+
+## Amendments while building
+
+Three seams with the sibling specs, folded during the build (2026-10-27):
+
+- **A flow with no pass sends on the fast path only.** A send owes a wake only when its session's board carries the message step (`carriesPass`); without it, the one dispatch is the whole delivery, and a failure it can't confirm stays `unconfirmed` on the row. Jake accepted the one loss window this leaves (2026-10-27, cross-spec review): a server-sent message from a session with no board pass, such as the coder's midway question, goes out on the fast path only, and `askMidway`'s replay is its resend.
+- **The take comes before FIX-2239's hold.** The order on the recipient is take, then hold, then the items, then `delivered`, then the turn, so a held message is already the recipient's and no resend lands a second copy.
+- **A send is repeat-safe by id.** `sendMessage(..., from, { id })` with an id already on the log returns that row's answer and sends nothing, so a caller that retries its own send can't land a message twice.

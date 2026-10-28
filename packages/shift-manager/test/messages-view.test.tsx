@@ -71,10 +71,22 @@ describe("the Messages view", () => {
     ]);
     expect(within(lines[1]!).getByTestId("message-text").textContent).toBe("What is the codename?");
     expect(within(lines[2]!).getByTestId("message-status").textContent).toBe("not delivered");
+    expect(within(lines[0]!).queryByTestId("message-status")).toBeNull();
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-to")));
     expect(window.location.pathname).toBe("/s/s_coordinator");
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-from")));
     expect(window.location.pathname).toBe("/s/s_researcher");
+  });
+
+  it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
+    const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
+    const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
+    readPages.mockResolvedValue([onItsWay, gaveUp].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    render(<Messages snapshot={snapshot} />);
+    const lines = await screen.findAllByTestId("message");
+    const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
+    expect(status("msg_d")).toBe("on its way");
+    expect(status("msg_e")).toBe("couldn't be delivered");
   });
 
   it("says so when there are none", async () => {
@@ -116,14 +128,6 @@ describe("a message the worker sent, in its own conversation", () => {
     expect(screen.getByTestId("message-call-reason").textContent).toContain("takes_tasks_only");
   });
 
-  it("says it was sent but not confirmed delivered, and why, when the delivery couldn't be confirmed", () => {
-    const why = "the delivery couldn't be confirmed (socket hang up); it may still arrive.";
-    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a", unconfirmed: why })]} />);
-    expect(screen.getByTestId("message-call").textContent).toContain("To coordinator: hi");
-    expect(screen.getByTestId("message-call-unconfirmed").textContent).toBe(`Sent, but not confirmed delivered: ${why}`);
-    expect(screen.queryByTestId("message-call-reason")).toBeNull();
-  });
-
   it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
     render(
       <ToolLineGroup
@@ -136,10 +140,5 @@ describe("a message the worker sent, in its own conversation", () => {
     const [toTask, toSession] = screen.getAllByTestId("message-call");
     expect(toTask!.textContent).toContain("To task task_42: Done yet?");
     expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");
-  });
-
-  it("draws no warning for a delivered send", () => {
-    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a" })]} />);
-    expect(screen.queryByTestId("message-call-unconfirmed")).toBeNull();
   });
 });

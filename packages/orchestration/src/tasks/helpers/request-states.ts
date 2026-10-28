@@ -54,3 +54,35 @@ export async function hasEnded(ctx: BlockContext, requestId: string): Promise<bo
   const states = await requestStates(ctx, [requestId]);
   return states === undefined || states[requestId] === "ended";
 }
+
+/**
+ * What a request may do with a delivery another request may have taken
+ * (FIX-2123, FIX-2240): take it as its own, leave it to a taker still
+ * running or parked, or take it over from a taker that ended without
+ * finishing it (its block failed, or its process died).
+ */
+export type TakeRule = { readonly take: "own" } | { readonly take: "busy" } | { readonly take: "takeover"; readonly replacing: string };
+
+/**
+ * The take rule, pure: `own` when nobody took it or `own` did, `busy` when
+ * another request took it and hasn't ended, `takeover` when that request
+ * ended. A task notice and a worker message decide their take by it.
+ *
+ * @param taker - The request recorded as having taken it, if any.
+ * @param own - The running request.
+ * @param takerEnded - Whether `taker` has ended; read only when it is another request.
+ */
+export function takeRule(taker: string | undefined, own: string, takerEnded: boolean): TakeRule {
+  if (taker === undefined || taker === own) return { take: "own" };
+  return takerEnded ? { take: "takeover", replacing: taker } : { take: "busy" };
+}
+
+/**
+ * {@link takeRule} for the running request of `ctx`, reading
+ * {@link hasEnded} only when another request took it.
+ */
+export async function decideTake(ctx: BlockContext, taker: string | undefined): Promise<TakeRule> {
+  const own = ctx.request.identity.id;
+  const ended = taker !== undefined && taker !== own ? await hasEnded(ctx, taker) : false;
+  return takeRule(taker, own, ended);
+}

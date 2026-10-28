@@ -149,11 +149,9 @@ function MessageCallLine({ item }: { item: ToolOutputItem }) {
   const to = messageTargetLabel(args?.to);
   const text = typeof args?.text === "string" ? args.text : "";
   const state = stateOf(item);
-  const output = item.output as { ok?: unknown; error?: unknown; unconfirmed?: unknown } | undefined;
+  const output = item.output as { ok?: unknown; error?: unknown } | undefined;
   const refused = state === "error" || output?.ok === false;
   const reason = typeof output?.error === "string" ? output.error : item.error?.message;
-  // Sent, but its delivery couldn't be confirmed: the recipient may not have it.
-  const unconfirmed = !refused && typeof output?.unconfirmed === "string" ? output.unconfirmed : undefined;
   const label = refused ? `Not sent to ${to}` : state === "running" || state === "pending" ? `Sending to ${to}…` : `To ${to}`;
   return (
     <div className="not-prose text-sm" data-testid="message-call" data-to={to} data-state-kind={refused ? "error" : state}>
@@ -162,11 +160,6 @@ function MessageCallLine({ item }: { item: ToolOutputItem }) {
       </p>
       <p className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
         {refused && reason !== undefined ? <span data-testid="message-call-reason">{reason}</span> : null}
-        {unconfirmed !== undefined ? (
-          <span className="text-warning" data-testid="message-call-unconfirmed">
-            Sent, but not confirmed delivered: {unconfirmed}
-          </span>
-        ) : null}
         <button type="button" className="hover:text-foreground hover:underline" onClick={() => navigate({ level: "messages" })} data-testid="message-call-messages">
           Messages ›
         </button>
