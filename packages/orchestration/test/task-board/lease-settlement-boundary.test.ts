@@ -82,7 +82,7 @@ async function claimedUnderRenewal(): Promise<Fixture> {
     collectionId: "tasks",
     state: state,
   });
-  await inner.addTask({ id: "t", goal: "work" });
+  await inner.createTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w", { leaseDurationMs: 30_000 }))!;
 
   const clock = countingTimer();

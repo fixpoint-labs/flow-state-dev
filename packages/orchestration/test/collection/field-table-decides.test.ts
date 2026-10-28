@@ -39,7 +39,7 @@ const BACKINGS = [
 describe.each(BACKINGS)("the settings write reads the field table (%s)", (_name, make) => {
   it("lets a started task take an edit its table rule still allows, and refuses the rest", async () => {
     const tasks = await make();
-    await tasks.addTask({ id: "t", goal: "g", maxAttempts: 2, priority: 1 });
+    await tasks.createTask({ id: "t", goal: "g", maxAttempts: 2, priority: 1 });
     const claimed = (await tasks.claim("w"))!;
     await tasks.fail("t", "boom", { claim: ticketForClaim("tasks", claimed) });
     // Pending again, and started once.

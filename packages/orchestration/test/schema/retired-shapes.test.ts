@@ -105,26 +105,26 @@ describe("the retired-shape map", () => {
     // Stored while a queued message held a task open: running, its work's
     // answer kept, a lease one span out. No message holds a task now; read
     // with a lease, the lapse would run the answered work again.
-    const held = { ...row, status: "in_progress", attempts: 1, waitingOn: "queued", leaseUntil: 5, output: "the answer" };
+    const held = { ...row, status: "in_progress", attempts: 1, keptOpenBy: "queued", leaseUntil: 5, output: "the answer" };
     const read = withRetiredShapes(held) as Record<string, unknown>;
-    expect(read).toMatchObject({ status: "in_progress", attempts: 1, waitingOn: "filed", output: "the answer" });
+    expect(read).toMatchObject({ status: "in_progress", attempts: 1, keptOpenBy: "filed", output: "the answer" });
     expect(read).not.toHaveProperty("leaseUntil");
     expect(withRetiredShapes(read)).toBe(read);
   });
 
   it("queued: the parse path reads the wait as filed too, rather than failing the row", () => {
-    const parsed = taskSchema.parse({ ...row, status: "in_progress", waitingOn: "queued" });
-    expect(parsed.waitingOn).toBe("filed");
-    expect(taskSchema.parse(parsed).waitingOn).toBe("filed");
+    const parsed = taskSchema.parse({ ...row, status: "in_progress", keptOpenBy: "queued" });
+    expect(parsed.keptOpenBy).toBe("filed");
+    expect(taskSchema.parse(parsed).keptOpenBy).toBe("filed");
   });
 
   it("queued: only the retired-shape read drops the lease, so it must come before a parse", () => {
-    const stored = { ...row, status: "in_progress", waitingOn: "queued", leaseUntil: 5 };
+    const stored = { ...row, status: "in_progress", keptOpenBy: "queued", leaseUntil: 5 };
     // A bare parse reads the wait as filed but keeps the stored lease.
-    expect(taskSchema.parse(stored)).toMatchObject({ waitingOn: "filed", leaseUntil: 5 });
+    expect(taskSchema.parse(stored)).toMatchObject({ keptOpenBy: "filed", leaseUntil: 5 });
     // The read boundary's order: the retired-shape read, then the parse. No lease.
     const parsed = taskSchema.parse(withRetiredShapes(stored));
-    expect(parsed.waitingOn).toBe("filed");
+    expect(parsed.keptOpenBy).toBe("filed");
     expect(parsed.leaseUntil).toBeUndefined();
   });
 });

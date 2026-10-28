@@ -42,12 +42,12 @@ describe("RequestHost.dispatchRunsHere", () => {
     }
   });
 
-  it("is not on a host whose dispatcher hands the work to another process", async () => {
+  it("is not on a host whose runner hands the work to another process", async () => {
     const state = createFlowState({
       flows: { [flow.id]: flow },
       stores: { default: { primary: inMemoryStores() } },
       // A queue's shape: it takes a serializable envelope, and runs nothing here.
-      dispatcher: { dispatch: async () => ({ accepted: Promise.resolve(), finished: new Promise(() => {}) }) } as never
+      runner: { dispatch: async () => ({ accepted: Promise.resolve(), finished: new Promise(() => {}) }) } as never
     });
     try {
       expect(await readOn(state)).toEqual({ runsHere: false });

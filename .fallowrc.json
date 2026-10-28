@@ -16,6 +16,8 @@
 
   "entry": [
     "scripts/*.mjs",
+    // Committed one-shot codemods, run by path with tsx (scripts/codemod/README.md).
+    "scripts/codemod/*.ts",
     ".omp/extensions/*.ts",
     ".omp/test/*.mjs",
 
@@ -41,6 +43,9 @@
     "labs/knowledge-hub/test/**/*.spec.ts",
     "labs/knowledge-hub/scripts/**/*.mts",
     "labs/teammates/fsdev.config.mts",
+
+    // Loaded by `fsdev dev --config`, which no import reaches.
+    "labs/claude-code-style/fsdev.config.mts",
 
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
@@ -81,7 +86,10 @@
   // registry sources.
   "ignoreFindings": [
     "packages/ui/registry/**",
-    "packages/ui/.storybook/shadcn/**"
+    "packages/ui/.storybook/shadcn/**",
+    // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
+    "labs/claude-code-style/src/components/ui/**",
+    "labs/claude-code-style/src/components/flow-state/message.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

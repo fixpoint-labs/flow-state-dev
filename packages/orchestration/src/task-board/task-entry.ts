@@ -59,7 +59,7 @@
  * on that alone is more conservative than this gate's own evidence: with
  * `attempts`, `createdAt`, the incarnation, the status and the assignee all still
  * matching, no reclaim has happened — a lapsed lease only means one *could*
- * have. Under an external dispatcher with a sustained backlog that reading
+ * have. Under an external runner with a sustained backlog that reading
  * fails every dispatch before it starts, and each re-dispatch spends an
  * attempt, so backlog alone can fail a task (FIX-1305).
  *

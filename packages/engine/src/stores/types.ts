@@ -1078,7 +1078,7 @@ export type ActiveRequestEntry = {
   startedAt: number;
   lastHeartbeatAt: number;
   /**
-   * When the entry was registered at enqueue time for an EXTERNAL dispatcher
+   * When the entry was registered at enqueue time for an EXTERNAL runner
    * and no worker has claimed it yet (FIX-999).
    *
    * Present means "accepted into a queue, not yet being worked on". For such an

@@ -72,7 +72,7 @@ async function ledgerWith(
 
 /** Add and claim one row, returning its ticket and the revision the claim left. */
 async function claimed(ref: TaskCollectionRef, init: { id: string; maxAttempts?: number }) {
-  await ref.addTask({ goal: "g", ...init });
+  await ref.createTask({ goal: "g", ...init });
   const task = (await ref.claim("w"))!;
   return { ticket: ticketForClaim(ref.collectionId, task), revision: ref.get(init.id)!.revision! };
 }
@@ -127,7 +127,7 @@ describe("an ending written with its recorder's metadata, in one write", () => {
   it("cancelled: told, with the reason", async () => {
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding);
-    await ref.addTask({ id: "t1", goal: "g" });
+    await ref.createTask({ id: "t1", goal: "g" });
     await ref.cancel("t1", "not needed");
     expect(r.seen.map((s) => s.ending)).toEqual([{ kind: "cancelled", reason: "not needed" }]);
   });
@@ -136,7 +136,7 @@ describe("an ending written with its recorder's metadata, in one write", () => {
     let clock = 1_000;
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding, () => clock);
-    await ref.addTask({ id: "t1", goal: "g" });
+    await ref.createTask({ id: "t1", goal: "g" });
     // Claim and let the lease lapse, past the abandonment allowance.
     for (let i = 0; i < 4; i += 1) {
       await ref.claim("w", { leaseDurationMs: 1_000 });
@@ -159,7 +159,7 @@ describe("an ending written with its recorder's metadata, in one write", () => {
       const { metadata: _dropped, ...rest } = row;
       return rest as Task;
     });
-    await ref.addTask({ goal: "g", id: "t1", metadata: { stale: true } });
+    await ref.createTask({ goal: "g", id: "t1", metadata: { stale: true } });
     const task = (await ref.claim("w"))!;
     await ref.complete("t1", "done", { claim: ticketForClaim(ref.collectionId, task) });
     expect(ref.get("t1")).toMatchObject({ status: "completed", output: "done" });

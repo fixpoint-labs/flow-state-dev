@@ -61,7 +61,7 @@ function assignee(name: string): TaskWorker {
 
 /** Add one task and claim it, so an attempt holds it (`in_progress`). */
 async function running(tasks: TaskCollectionRef) {
-  const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+  const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
   await tasks.claim("w1");
   expect(tasks.get(task.id)?.status).toBe("in_progress");
   return task;
@@ -110,7 +110,7 @@ describe("setAssignee on a board that dispatches", () => {
     // the freeze used to refuse. The next claim reads the new assignee, so the
     // dispatch goes to the new worker rather than stranding anything.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
 
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
     expect(tasks.get(task.id)?.assignee).toBe("review");
@@ -119,7 +119,7 @@ describe("setAssignee on a board that dispatches", () => {
   it("names a worker for a pending task that had none", async () => {
     // FIX-1777's "the task waits; assign it" depends on exactly this write.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement" });
+    const task = await tasks.createTask({ goal: "implement" });
 
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
     expect(tasks.get(task.id)?.assignee).toBe("review");
@@ -127,7 +127,7 @@ describe("setAssignee on a board that dispatches", () => {
 
   it("moves a held task", async () => {
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
     await tasks.hold(task.id);
     expect(tasks.get(task.id)?.status).toBe("held");
 
@@ -138,7 +138,7 @@ describe("setAssignee on a board that dispatches", () => {
     // The status is read inside the same atomic write as the assignee. A move
     // that lost the race to a claim is refused, never written under the claim.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
 
     const [claimed, outcome] = await Promise.all([
       tasks.claim("w1"),
@@ -206,7 +206,7 @@ describe("setAssignee judges the freeze against the committed row", () => {
       collection: backing,
       immutableAssignee: true,
     });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
     const ref = [...refs.values()][0]!;
 
     const committed = ref.updateState.bind(ref);
@@ -228,7 +228,7 @@ describe("setAssignee judges the freeze against the committed row", () => {
 describe("setAssignee on an ordinary board — the off state (BP-035)", () => {
   it("still reassigns a pending task", async () => {
     const tasks = await board();
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
 
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
     expect(tasks.get(task.id)?.assignee).toBe("review");
@@ -236,7 +236,7 @@ describe("setAssignee on an ordinary board — the off state (BP-035)", () => {
 
   it("still answers unchanged when the assignee already matches", async () => {
     const tasks = await board();
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
 
     expect(await tasks.setAssignee(task.id, "implement")).toEqual({ outcome: "unchanged" });
   });
@@ -245,7 +245,7 @@ describe("setAssignee on an ordinary board — the off state (BP-035)", () => {
     // The pre-existing refusal must keep its own reason — the new arm must not
     // swallow it.
     const tasks = await board();
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await tasks.createTask({ goal: "implement", assignee: "implement" });
     await tasks.claim("w1");
     await tasks.complete(task.id, null);
 
@@ -289,7 +289,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
         const tasks: TaskCollectionRef = await (
           ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
         )[boardName].tasks();
-        const task = await tasks.addTask({ goal: "work", assignee: "implement" });
+        const task = await tasks.createTask({ goal: "work", assignee: "implement" });
         // Claimed, so an attempt holds it: the one status the freeze refuses.
         await tasks.claim("w1");
         const outcome: TaskWriteOutcome = await tasks.setAssignee(task.id, "review");
@@ -383,7 +383,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         const tasks: TaskCollectionRef = await (
           ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
         )[boardName].tasks();
-        const task = await tasks.addTask({ goal: "work", assignee: "implement" });
+        const task = await tasks.createTask({ goal: "work", assignee: "implement" });
         // Claimed, so an attempt holds it: the one status the freeze refuses.
         await tasks.claim("w1");
         const outcome: TaskWriteOutcome = await tasks.setAssignee(task.id, "review");
