@@ -92,7 +92,7 @@ describe("createInboundTransportHost", () => {
     const gate = handler({
       name: "gate",
       execute: async (_input: { value: string }, ctx): Promise<unknown> =>
-        ctx.suspend!({ reason: "human_approval", message: "approve?" })
+        ctx.suspend!({ reason: "user_approval", message: "approve?" })
     });
     registry.register(
       defineFlow({

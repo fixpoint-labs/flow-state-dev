@@ -439,6 +439,17 @@ fails the run: what it cannot handle becomes a gap row.
 needs it — the capability declares the collections itself, because a block in a
 capability's `tools` contributes no resource declarations to the flow.
 
+### Pull requests it opened
+
+The block records the pull requests a run opens in the session's pull-request
+record, `observed-pull-requests`, defined in `@flow-state-dev/core`. A `Bash` call
+that runs `gh pr create`, or a `create_pull_request` MCP tool (such as
+`mcp__github__create_pull_request`), whose output holds the pull request's link is
+one row, written as the call settles. On by default, apart from `recordWork`;
+with `recordPullRequests: false` the block records none and declares no
+collection. See
+[pull requests a session opened](https://flow-state.dev/docs/tools/coding-agents#pull-requests-a-session-opened).
+
 ### A run whose files are resources
 
 `cwd` hands a run a directory. It doesn't put anything in it, and it doesn't

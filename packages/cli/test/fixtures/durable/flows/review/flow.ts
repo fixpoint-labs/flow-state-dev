@@ -24,7 +24,7 @@ const approve = handler({
   inputSchema: z.object({ title: z.string() }),
   outputSchema: z.object({ title: z.string() }),
   execute: async (input, ctx) => {
-    await ctx.suspend!({ reason: "human_approval", message: `Publish "${input.title}"?` });
+    await ctx.suspend!({ reason: "user_approval", message: `Publish "${input.title}"?` });
     return input;
   },
 });

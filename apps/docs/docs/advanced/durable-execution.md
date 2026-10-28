@@ -85,7 +85,7 @@ const reviewStep = handler({
   outputSchema: z.object({ approved: z.boolean(), feedback: z.nullable(z.string()) }),
   execute: async (input, ctx) => {
     const decision = await ctx.suspend!({
-      reason: "human_approval",
+      reason: "user_approval",
       message: `Review content: "${input.content.slice(0, 50)}..."`,
       resumeSchema: {
         type: "object",
@@ -135,14 +135,14 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 
 | Field | Type | Description |
 |---|---|---|
-| `reason` | `"human_approval" \| "human_input" \| "external_event" \| string` | Machine-readable category for the suspension |
+| `reason` | `"user_approval" \| "user_input" \| "external_event" \| string` | Machine-readable category for the suspension |
 | `title` | `string` | Optional short heading for the suspension, a few words. A UI that lists or heads pending suspensions can show this and put `message` underneath as the body. Leave it out when `message` is already one short line |
 | `message` | `string` | Human-readable description, emitted in the `SuspensionItem`. With a `title`, it's the body and may be markdown |
 | `data` | `Record<string, unknown>` | Arbitrary metadata attached to the suspension record |
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |
 | `timeoutMs` | `number` | Optional expiry. Once this duration passes unanswered, the sweeper marks the suspension `expired`. If the suspension allows `reject` (an approval), the request then carries on as if it had been rejected: see [Retention and cleanup](#retention-and-cleanup). |
 | `render` | `{ component: string; props?: Record<string, unknown> }` | Hint for client-side rendering of the approval UI |
-| `allow` | `ResumeAction[]` | Which resolution actions this suspension permits. Omit to take the reason-based default: `human_input` → `["submit"]`; everything else (including `human_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step optional. The resume route returns `409` for an action outside this set. |
+| `allow` | `ResumeAction[]` | Which resolution actions this suspension permits. Omit to take the reason-based default: `user_input` → `["submit"]`; everything else (including `user_approval`) → `["approve", "reject"]`. Add `"skip"` to make the step optional. The resume route returns `409` for an action outside this set. |
 
 ## Resuming a suspended request
 
@@ -195,7 +195,7 @@ Sequence numbers stay monotonic across the whole thing. An item-log sequence for
 
 ```jsonc
 { "seq": 1, "type": "message",           "text": "Drafted the summary." }
-{ "seq": 2, "type": "suspension",        "suspensionId": "susp_abc123", "reason": "human_approval" }
+{ "seq": 2, "type": "suspension",        "suspensionId": "susp_abc123", "reason": "user_approval" }
 // --- request pauses here, SSE stream closes, status = "suspended" ---
 // --- resume endpoint called; status walks suspended → in_progress ---
 { "seq": 3, "type": "suspension_resume", "suspensionId": "susp_abc123", "resolution": "approved", "resolvedBy": "user_xyz" }
@@ -237,7 +237,7 @@ On resume, `ctx.suspend()` returns the resolver's payload (`data`) for `approve`
 import { SUSPENSION_SKIPPED } from "@flow-state-dev/core";
 
 const answer = await ctx.suspend!({
-  reason: "human_input",
+  reason: "user_input",
   message: "Add a reviewer note? (optional)",
   resumeSchema: z.object({ note: z.string() }),
   allow: ["submit", "skip"],

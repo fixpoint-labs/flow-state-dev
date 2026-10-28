@@ -31,3 +31,15 @@ FIX-595 spec §4.5):
 Both live in `packages/memory/src/memory-system-blocks.ts`. After running the
 codemod, grep the memory package for any remaining sequencer-shaped `.then(`
 calls and rewrite them manually.
+
+## `rename-human-reasons.ts`
+
+FIX-2151: renames the suspension reasons `"human_approval"` / `"human_input"` to
+`"user_approval"` / `"user_input"`. Unlike the codemod above it is textual,
+not type-aware: both strings are unique, so it is a word-bounded replace over every tracked file under `packages`, `apps`, `goals`,
+`docs` and `.changeset`, leaving history alone (`CHANGELOG.md`, blog posts,
+`docs/internal/`, a goal's dated verdict rows, its own release note):
+
+```bash
+pnpm tsx scripts/codemod/rename-human-reasons.ts
+```

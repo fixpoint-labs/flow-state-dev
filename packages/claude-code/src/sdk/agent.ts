@@ -13,8 +13,22 @@
  * status item. Sub-agents surface as container items (see `emit.ts`).
  *
  * `detached: true` turns the conversation-state half off — see the option.
+ *
+ * By default the block also records each pull request the run opens in core's
+ * pull-request record (`recordPullRequests`): it declares the collection and
+ * starts core's recorder, which reads the run's `Bash` and MCP calls as they
+ * settle. It is a session resource, not session state, so `detached: true`
+ * still leaves a block a task board dispatches.
  */
-import { formatRunDuration, handler, harnessRunInputSchema, harnessRunNamespace } from "@flow-state-dev/core";
+import {
+  OBSERVED_PULL_REQUESTS,
+  formatRunDuration,
+  handler,
+  harnessRunInputSchema,
+  harnessRunNamespace,
+  observedPullRequestsCollection,
+  recordPullRequests as startPullRequestRecorder,
+} from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessCallbackContext,
@@ -259,6 +273,14 @@ export interface ClaudeCodeAgentOptions {
    * renders into a latest-wins slot, so two identical skips collapse to one.
    */
   recordWork?: boolean;
+  /**
+   * Record each pull request the run opens in core's pull-request record
+   * (`observed-pull-requests`). Default `true`: the block declares the
+   * collection and starts core's recorder. A `gh pr create` or a
+   * create-pull-request tool whose result names a pull request is a row; a
+   * `gh pr view` is not. `false` declares nothing and records nothing.
+   */
+  recordPullRequests?: boolean;
   /**
    * Which filesystem settings this run loads — `"user"`, `"project"`,
    * `"local"`. Default: unset, which loads all three, exactly as today.
@@ -786,6 +808,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onToolApproval,
     detached = false,
     recordWork = false,
+    recordPullRequests = true,
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
@@ -845,7 +868,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // resources off block definitions at build time. A collection nobody
     // declared is not registered on the flow, so `findResourceConfig` misses and
     // the read route answers 404 — at read time, on a build that succeeded.
-    ...(recordWork ? { resources: workRecorderResources } : {}),
+    ...(recordWork || recordPullRequests
+      ? {
+          resources: {
+            ...(recordWork ? workRecorderResources : {}),
+            ...(recordPullRequests ? { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } : {}),
+          },
+        }
+      : {}),
     ...(uses !== undefined ? { uses } : {}),
     ...(onErrored !== undefined ? { onErrored } : {}),
     // `ctx` is annotated rather than inferred. `uses` widens the context type
@@ -865,6 +895,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           "claudeCodeAgent requires a non-empty prompt.",
         );
       }
+      if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
       // not merely handed an empty key. Resolving anyway is the hole that
