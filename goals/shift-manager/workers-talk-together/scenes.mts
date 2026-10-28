@@ -349,7 +349,8 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     const sent = rows.filter((m) => m.status !== "refused").sort((a, b) => a.hop - b.hop);
     let refusal: Call | undefined;
     for (const id of [RING_ONE, RING_TWO]) {
-      refusal ??= (await callsIn(alice, world.conversation[id]!.id).catch((): Call[] => [])).find((c) => errorOf(c).startsWith("budget"));
+      // The ring's own text, so a refusal in another exchange (the herald's fan reaches the ring too) can't stand in.
+      refusal ??= (await callsIn(alice, world.conversation[id]!.id).catch((): Call[] => [])).find((c) => errorOf(c).startsWith("budget") && String(c.args.text ?? "").includes(ringWord));
     }
     if (refusal === undefined) {
       // The seventh may be sent from a session other than a ring worker's own conversation.
@@ -360,8 +361,11 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     if (sent.length !== 6 || refusal === undefined) {
       r.failures.push(`d:seventh-refused — the ring's exchange holds ${sent.length} message(s)${sent.length === 6 ? "" : ", not 6"}${refusal === undefined ? ", and no seventh send was refused `budget`" : ""}`);
     }
-    const overlap = callRow?.at !== undefined && start !== undefined && start.at > callRow.at && (resumed === undefined || start.at < resumed);
-    if (!overlap) r.failures.push(`d:seventh-refused — setup: the ring didn't start while leg e's call was parked (ring ${start?.at}, call ${callRow?.at} to ${resumed})`);
+    // Parked for certain: the request was seen suspended, and the ring's first row falls after the call's row and before
+    // both the request went on and the call's deadline.
+    const parkedUntil = resumed === undefined || callRow?.deadlineAt === undefined ? undefined : Math.min(resumed, callRow.deadlineAt);
+    const overlap = parked !== undefined && callRow?.at !== undefined && start !== undefined && parkedUntil !== undefined && start.at > callRow.at && start.at < parkedUntil;
+    if (!overlap) r.failures.push(`d:seventh-refused — setup: the ring didn't start while leg e's call was parked (seen parked ${parked === true}, ring ${start?.at}, call ${callRow?.at} to ${parkedUntil})`);
   }
 
   // e:kept-once, second half — Alice answers; Helper A waits again by call id and gets the reply, once.
@@ -406,7 +410,6 @@ export async function sceneB(world: World): Promise<LegResult> {
     return r;
   }
   const runningWhenSent = (await rowOf(alice, helperA, taskId))?.status;
-  const before = new Set((await logOf(alice)).map((m) => m.id));
   const first = await talk(world.turns, "b", alice, HERALD, herald, `Call sendMessage with exactly these arguments, as written: ${JSON.stringify({ to: { task: taskId }, text: "Herald here: a heads-up, no answer needed." })}. Report what the tool answered.`);
   const sent = first.calls.find((c) => (c.args.to as { task?: unknown } | undefined)?.task === taskId && typeof c.output?.sent === "string");
   const row = sent === undefined ? undefined : (await logOf(alice)).find((m) => m.id === sent.output.sent);
@@ -433,6 +436,9 @@ export async function sceneB(world: World): Promise<LegResult> {
   await quiet(alice, 180_000);
   const settled = (t: TaskRow | undefined) => show({ status: t?.status, attempts: t?.attempts, output: t?.output, session: t?.run?.sessionId });
   const settledBefore = settled(finished);
+  // Only an answer after this send counts: the task's own output already names the fact.
+  const linesBefore = (await linesIn(alice, taskSession)).length;
+  const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const second = await talk(
     world.turns,
     "b",
@@ -445,8 +451,8 @@ export async function sceneB(world: World): Promise<LegResult> {
     r.failures.push(`b:in-task-session — the message to finished task ${taskId} wasn't sent: ${show(second.calls.map((c) => c.output))}`);
   } else {
     const answered = await until(async () => {
-      const inSession = (await linesIn(alice, taskSession)).some((l) => l.role === "assistant" && l.text.includes(fact) && !l.text.includes("150-word"));
-      const byMessage = (await logOf(alice)).some((m) => !before.has(m.id) && m.from === HELPER_B && m.fromSession === taskSession && m.text.includes(fact));
+      const inSession = (await linesIn(alice, taskSession)).slice(linesBefore).some((l) => l.role === "assistant" && l.text.includes(fact));
+      const byMessage = (await logOf(alice)).some((m) => !logBefore.has(m.id) && m.from === HELPER_B && m.fromSession === taskSession && m.text.includes(fact));
       return inSession || byMessage ? true : undefined;
     }, 180_000);
     if (answered === undefined) r.failures.push(`b:in-task-session — the finished task's session never answered with ${fact} from its history`);

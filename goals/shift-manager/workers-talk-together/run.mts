@@ -19,7 +19,7 @@ import { buildShiftManagerPages, openShiftManager, personPage, startShiftManager
 import { checkoutFor } from "../workers-message-each-other/checkout.mts";
 import { faultPatches, type FaultName } from "../workers-message-each-other/faults.mts";
 import type { Servers } from "../workers-message-each-other/legs-delivery.mts";
-import { connect, hireTeam, loadShipped, openConversations, quiet, word, HELPER_A, HERALD, RESEARCHER, type LegResult, type Person, type World } from "../workers-message-each-other/legs.mts";
+import { connect, hireTeam, loadShipped, openConversations, quiet, word, HELPER_A, RESEARCHER, type LegResult, type Person, type World } from "../workers-message-each-other/legs.mts";
 import { CONTROL_NAMES, CONTROLS, SCENES, type Control, type Scene } from "./controls.mts";
 import { hireRing, sceneAC, sceneB, sceneED, RING_ONE, RING_TWO, type Walked } from "./scenes.mts";
 
