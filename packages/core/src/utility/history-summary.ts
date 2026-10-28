@@ -64,8 +64,8 @@ const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.p
 type FoldPlan = {
   summary: string | null;
   turns: LLMMessage[];
-  /** The mark this plan read; another turn moving it first discards this plan. */
-  expectedThroughStartedAtMs: number | null;
+  /** The folds this plan read; another turn folding first discards this plan. */
+  expectedFolds: number;
   /** The oldest turn after the mark now. A failed fold records it, so its leaving unfolded is seen. */
   oldestUnfolded: string | null;
   next: Pick<
@@ -191,7 +191,7 @@ export function historySummary(options: HistorySummaryOptions) {
       return {
         summary: state.summary,
         turns: folded.flatMap((t) => t.messages),
-        expectedThroughStartedAtMs: state.throughStartedAtMs,
+        expectedFolds: state.folds,
         oldestUnfolded: after[0]?.requestId ?? state.nextRequestId,
         next: {
           throughRequestId: last?.requestId ?? state.throughRequestId,
@@ -214,7 +214,7 @@ export function historySummary(options: HistorySummaryOptions) {
       if (decided == null) return;
       await update(ctx as BlockContext, (state) =>
         // Another turn of this conversation folded first: keep its write.
-        state.throughStartedAtMs !== decided.expectedThroughStartedAtMs
+        state.folds !== decided.expectedFolds
           ? state
           : {
               ...state,
@@ -243,7 +243,7 @@ export function historySummary(options: HistorySummaryOptions) {
       // seen, and any turns already lost.
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       await update(ctx as BlockContext, (state) =>
-        decided == null || state.throughStartedAtMs !== decided.expectedThroughStartedAtMs
+        decided == null || state.folds !== decided.expectedFolds
           ? { ...state, attempts: state.attempts + 1 }
           : {
               ...state,
