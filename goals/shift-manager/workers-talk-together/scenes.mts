@@ -68,8 +68,8 @@ export interface Walked {
   crashedCall?: string;
   /** Leg e's call: parked, then waited on again. */
   parkedCall?: string;
-  /** The ring's exchange, and the seventh send's refusal. */
-  ringChain?: string;
+  /** The ring's sent messages in its own chain, by id (the herald's fan may start another exchange through the ring), and the seventh send's refusal. */
+  ringIds?: string[];
   ringRefusal?: { sessionId: string; error: string };
 }
 
@@ -345,8 +345,8 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
       if ((await ringRows()).rows.length >= 20 || (await quiet(alice, 10_000, 3_000))) break;
     }
     const { start, rows } = await ringRows();
-    walked.ringChain = start?.chain;
     const sent = rows.filter((m) => m.status !== "refused").sort((a, b) => a.hop - b.hop);
+    walked.ringIds = sent.map((m) => m.id);
     let refusal: Call | undefined;
     for (const id of [RING_ONE, RING_TWO]) {
       // The ring's own text, so a refusal in another exchange (the herald's fan reaches the ring too) can't stand in.
@@ -374,6 +374,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   await quiet(alice, 240_000);
   if (callId !== undefined) {
     const rowsBefore = new Set((await logOf(alice)).map((m) => m.id));
+    const callBefore = ((await logOf(alice)) as CallRow[]).find((m) => m.id === callId);
     const kept = await talkThrough(world, "e", HELPER_A, helperA, `Your call ${callId} to ${RESEARCHER} asking what seven times six is answered running. Get its reply now: wait again on it by calling sendMessage with exactly {"callId": "${callId}"}: no wait, to or text field. Then tell me the reply.`);
     const again = kept.calls.find((c) => c.args.callId === callId);
     const after = (await logOf(alice)) as CallRow[];
@@ -382,8 +383,8 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     if (again === undefined || again.output?.status !== "answered" || !String(again.output?.reply ?? "").includes("42")) {
       r.failures.push(`e:kept-once — Helper A didn't wait again with call ${callId} and get the reply: ${show(kept.calls.map((c) => ({ args: c.args, output: c.output })))}`);
     }
-    if (newRows.length > 0 || forCall.length !== 1 || forCall[0]!.hop !== after.find((m) => m.id === callId)?.hop) {
-      r.failures.push(`e:kept-once — waiting again wrote ${newRows.length} new row(s) (${show(newRows.map((m) => m.text.slice(0, 60)))}); the call has ${forCall.length} row(s)`);
+    if (newRows.length > 0 || forCall.length !== 1 || callBefore === undefined || forCall[0]!.hop !== callBefore.hop) {
+      r.failures.push(`e:kept-once — waiting again wrote ${newRows.length} new row(s) (${show(newRows.map((m) => m.text.slice(0, 60)))}); the call has ${forCall.length} row(s), at hop ${forCall[0]?.hop} (was ${callBefore?.hop})`);
     }
     const sentSince = after.filter((m) => !logBefore.has(m.id) && m.from === HELPER_A && m.to === RESEARCHER);
     if (sentSince.length !== 1) r.failures.push(`e:kept-once — the log holds ${sentSince.length} row(s) from Helper A to Researcher since the line, not one: ${show(sentSince.map((m) => m.id))}`);
@@ -401,7 +402,7 @@ export async function sceneB(world: World): Promise<LegResult> {
   const herald = world.conversation[HERALD]!;
   const fact = word();
   const taskId = await file(alice, helperA, {
-    goal: `Remember this word for later: ${fact}. Then write a 150-word note on why a team might pick it as a codename, and reply with the note. You're done after that.`,
+    goal: `Remember this word for later: ${fact}. Then write a 700-word essay, in seven numbered sections, on why a team might pick it as a codename, and reply with the essay. (It is long so a message can reach you while you write.) You're done after that.`,
     assignee: HELPER_B,
   });
   const taskSession = await sessionOfTask(alice, helperA, taskId);
@@ -420,12 +421,17 @@ export async function sceneB(world: World): Promise<LegResult> {
     await quiet(alice, 240_000);
     const requests = await alice.routes.requests(taskSession);
     const heardRequest = requests.find((q) => q.id === heard?.requestId);
-    // A deferred turn's record is written when it is queued: it ran when its first item was written.
-    const heardItems = (await alice.routes.items(taskSession, "")).filter((i) => i.requestId === heardRequest?.id);
-    const heardRan = heardItems.length > 0 ? Math.min(...heardItems.map((i) => tsOf(i as Record<string, unknown>))) : startOf(heardRequest ?? {});
-    const taskTurns = requests.filter((q) => q.id !== heardRequest?.id && startOf(q) < heardRan);
-    const lastTaskEnd = Math.max(...taskTurns.map(endOf));
-    if (heard === undefined || heardRequest === undefined) r.failures.push(`b:in-task-session — task ${taskId}'s session holds no received item for ${sent.output.sent}`);
+    const sessionItems = await alice.routes.items(taskSession, "");
+    // Each request's span is read off its items, one clock: a deferred turn's record is written when it is queued.
+    const itemsOf = (id: string | undefined) => sessionItems.filter((i) => i.requestId === id).map((i) => tsOf(i as Record<string, unknown>));
+    const heardItems = itemsOf(heardRequest?.id);
+    const heardRan = heardItems.length > 0 ? Math.min(...heardItems) : startOf(heardRequest ?? {});
+    // The task's own turns, not other messages queued in its session.
+    const taskTurns = requests.filter((q) => q.id !== heardRequest?.id && q.actionName !== "onMessageReceived" && startOf(q) < heardRan);
+    const lastTaskEnd = Math.max(...taskTurns.map((q) => (itemsOf(q.id).length > 0 ? Math.max(...itemsOf(q.id)) : endOf(q))));
+    // The message must have been sent while the task's turn ran, or this grades a finished task twice.
+    if (taskTurns.length === 0 || !(Number((row as unknown as CallRow).at) < lastTaskEnd)) r.failures.push(`b:in-task-session — setup: the task's turn had ended (${lastTaskEnd}) before the first message was sent (${(row as unknown as CallRow).at})`);
+    else if (heard === undefined || heardRequest === undefined) r.failures.push(`b:in-task-session — task ${taskId}'s session holds no received item for ${sent.output.sent}`);
     else if (taskTurns.length > 0 && !(heardRan >= lastTaskEnd)) r.failures.push(`b:in-task-session — the message's turn ran at ${heardRan}, before the task's turn ended at ${lastTaskEnd}`);
     r.notes.push(`b: the task was ${runningWhenSent} when the herald sent; the message's turn ran ${heardRan}, the task's turns ended ${lastTaskEnd}`);
   }

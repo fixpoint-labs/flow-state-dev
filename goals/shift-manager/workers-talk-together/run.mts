@@ -162,7 +162,7 @@ async function journey(origin: string, alice: Person, world: World, walked: Walk
     );
     const crashed = listed.filter((m) => m.id === walked.crashedCall);
     const parked = listed.filter((m) => m.id === walked.parkedCall);
-    const ring = listed.filter((m) => (m.from === RING_ONE || m.from === RING_TWO) && (m.to === RING_ONE || m.to === RING_TWO));
+    const ring = listed.filter((m) => m.id !== null && (walked.ringIds ?? []).includes(m.id));
     r.notes.push(`j1: the view lists ${listed.length} message(s); crashed ${JSON.stringify(crashed)}; parked ${JSON.stringify(parked)}; ${ring.length} ring message(s)`);
     if (crashed.length !== 1 || crashed[0]!.status !== "delivered") r.failures.push(`j1:states — the crashed call is listed ${crashed.length} time(s), ${crashed[0]?.status ?? "-"}, not once delivered`);
     if (parked.length !== 1 || !/answered/.test(parked[0]!.call ?? "")) r.failures.push(`j1:states — the parked call is listed ${parked.length} time(s), reading "${parked[0]?.call ?? ""}", not once answered`);
