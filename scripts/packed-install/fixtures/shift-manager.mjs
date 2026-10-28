@@ -68,7 +68,7 @@ child = spawn(bin, ["--config", "./sm-lab/fsdev.config.mjs", "--port", "0", "--n
 let log = "";
 child.stdout.on("data", (d) => (log += String(d)));
 child.stderr.on("data", (d) => (log += String(d)));
-const exited = new Promise((resolve) => child.on("close", (code) => resolve(code)));
+const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
 
 let origin;
 for (let waited = 0; waited < 45_000 && origin === undefined; waited += 250) {

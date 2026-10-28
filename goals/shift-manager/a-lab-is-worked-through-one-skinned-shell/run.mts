@@ -31,6 +31,7 @@
  *           one leg a reads BLOCKED); a signed-in `claude` CLI for b0's writer;
  *           Chromium; and `pnpm build:assets` for the devtool pages.
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -477,7 +478,7 @@ function runLogged(label: string, cmd: string, args: string[], env: Record<strin
     const child = spawn(cmd, args, { cwd: REPO_ROOT, env: merged as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (d) => (out += String(d)));
     child.stderr.on("data", (d) => (out += String(d)));
-    child.on("close", (code) => {
+    onClosed(child, (code) => {
       writeFileSync(log, out);
       resolve({ code: code ?? 1, out, log });
     });

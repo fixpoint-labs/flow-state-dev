@@ -26,6 +26,7 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/reads-a-row-actions-result/run.mts
  * Controls: GOAL_CONTROL=no-result (must FAIL every leg)
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { mkdirSync } from "node:fs";
@@ -89,7 +90,7 @@ function fail(leg: Leg, line: string): void {
 
 async function waitForHealth(origin: string, child: ChildProcess, log: () => string): Promise<void> {
   let exited = false;
-  child.on("close", () => (exited = true));
+  onClosed(child, () => (exited = true));
   for (let i = 0; i < 240 && !exited; i += 1) {
     try {
       if ((await fetch(`${origin}/healthz`)).status === 200) return;

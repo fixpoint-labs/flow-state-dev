@@ -26,6 +26,7 @@
  * Run:      pnpm tsx goals/scheduled-work/recurring-work-files-a-task/run.mts
  * Control:  GOAL_CONTROL=memory-dedupe (must FAIL b:exactly-one-task)
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
@@ -148,7 +149,7 @@ async function host(now: number, ops: unknown[], label: string): Promise<{ resul
   let err = "";
   child.stdout.on("data", (d) => (out += String(d)));
   child.stderr.on("data", (d) => (err += String(d)));
-  const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+  const code = await new Promise<number | null>((resolve) => onClosed(child, resolve));
   const line = out.split("\n").find((l) => l.startsWith("__GOAL__"));
   if (line === undefined) return { results: [], setup: `${label}: the host printed no result (exit ${code}): ${(err || out).slice(-1500)}` };
   const parsed = JSON.parse(line.slice("__GOAL__".length)) as { results: any[]; setup?: string };

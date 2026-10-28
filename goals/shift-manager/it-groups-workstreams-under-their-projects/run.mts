@@ -80,6 +80,7 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -252,7 +253,7 @@ async function startLab(pages: string, fired: string | undefined, store: string)
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("close", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

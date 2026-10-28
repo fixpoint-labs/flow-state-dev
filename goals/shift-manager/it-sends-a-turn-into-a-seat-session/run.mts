@@ -42,6 +42,7 @@
  * Control:  GOAL_CONTROL=fresh-session … (same command)
  * Before:   GOAL_PAGES=<pages built from another commit> … serves those pages instead of building.
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
@@ -153,7 +154,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("close", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),
