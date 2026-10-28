@@ -26,8 +26,8 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { defineHarnessThreadFlow } from "./workforce/flows/harness-thread.mts";
-import { defineProjectsFlow } from "./workforce/flows/projects.mts";
+import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
 const model = process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4";
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
@@ -43,10 +43,10 @@ const installation = createWorkerInstallation({ standardWorkers: tree.workers, w
 flows = {
   agent: defineAgentWorkerFlow({ installation, model, ...answerAgain }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
-  "harness-thread": { flow: defineHarnessThreadFlow({ installation, root: join(data, "runs") }), roles: ["contributor"] },
+  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, root: join(data, "runs") }), roles: ["contributor"] },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
-const projects = defineProjectsFlow()({ id: "projects" }) as { id: string };
+const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
 
 export default createFlowState({
   flows: Object.fromEntries([...workers, projects].map((copy) => [copy.id, copy])),
