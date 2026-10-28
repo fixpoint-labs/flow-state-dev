@@ -164,6 +164,31 @@ describe("what a read returns, and the caps it is held to", () => {
     expect(grep.matches[0]!.snippet.endsWith("…")).toBe(true);
   });
 
+  it("reads a grep's output as it comes, so a cut past any buffer is still exact", async () => {
+    // Each match is ~1 KB of output (the path is long), so 300,000 matches is
+    // ~300 MB: past what buffering git's output whole would hold.
+    const deep = Array.from({ length: 4 }, (_, i) => `${i}${"d".repeat(240)}`).join("/");
+    remote.commit("main", `${deep}/hits.txt`, "hit\n".repeat(300_000));
+    const grep = await host().readSource!(repo(), { kind: "grep", pattern: "^hit$" });
+
+    expect(grep).toMatchObject({ kind: "grep", dialect: "extended-regex", cut: { left: 300_000 - 200, by: "matches" } });
+    if (grep.kind !== "grep") throw new Error("expected a grep");
+    expect(grep.matches).toHaveLength(200);
+    expect(grep.matches[199]).toEqual({ path: `${deep}/hits.txt`, line: 200, snippet: "hit" });
+  }, 60_000);
+
+  it("fails a grep that fails for any reason but its pattern, rather than searching for it as a literal", async () => {
+    const h = host();
+    await h.readSource!(repo(), { kind: "glob" });
+    spawned.mockImplementation(async (file, args, options) => {
+      if (subcommand(args)[0] !== "grep") return await realRun(file, args, options);
+      throw Object.assign(new Error("Command failed: git grep"), { code: 128, stderr: "fatal: unable to read tree (deadbeef)\n" });
+    });
+
+    await expect(h.readSource!(repo(), { kind: "grep", pattern: "LEDGER" })).rejects.toThrow("Command failed");
+    expect(gitCommands().filter((command) => command === "grep")).toHaveLength(1);
+  });
+
   it("cuts a glob at 500 paths, and at a smaller limit when asked", async () => {
     const work = tempDir("many");
     git(work, "init", "-q", "-b", "main");
@@ -212,6 +237,47 @@ describe("a read sees the remote's default branch, never a run's branch", () => 
     expect(glob.paths).not.toContain("run-secret.txt");
     expect(glob.paths).not.toContain("private.txt");
     rmSync(scratch, { recursive: true, force: true });
+  });
+
+  it("serves the commit the last fetch stamped while another fetch prunes the default branch it named", async () => {
+    const h = host();
+    const first = await h.readSource!(repo(), { kind: "glob" });
+    // The remote renames its default branch, and deletes the old one.
+    remote.commit("trunk", "trunk.txt", "on trunk\n");
+    remote.setDefault("trunk");
+    git(remote.bare, "branch", "-D", "main");
+    clock += 61_000;
+    // Between this host's `fetch --prune` (main is gone) and its pointing
+    // origin/HEAD at trunk, a second host on the root reads.
+    let during: Promise<unknown> | undefined;
+    spawned.mockImplementation(async (file, args, options) => {
+      const [command, ...rest] = subcommand(args);
+      if (during === undefined && command === "symbolic-ref" && rest.length === 2) {
+        // The first host's lock is live on the host's clock, which the test moved on.
+        const lock = join(root, ".clones", readdirSync(join(root, ".clones")).find((name) => name.endsWith(".lock"))!);
+        utimesSync(lock, new Date(clock), new Date(clock));
+        during = host().readSource!(repo(), { kind: "read", path: "marker.txt" }).catch((error: unknown) => error);
+        await during;
+      }
+      return await realRun(file, args, options);
+    });
+
+    const after = await h.readSource!(repo(), { kind: "read", path: "trunk.txt" });
+
+    expect(await during).toMatchObject({ status: "ok", content: "marker A" });
+    expect((await during as { at: unknown }).at).toMatchObject({ branch: "main", commit: first.at.kind === "repo" ? first.at.commit : "" });
+    expect(after).toMatchObject({ status: "ok", content: "on trunk" });
+    expect(after.at).toMatchObject({ branch: "trunk", commit: remote.rev("trunk") });
+  });
+
+  it("still reads a clone whose fetch stamp is from before stamps named the commit", async () => {
+    await host().readSource!(repo(), { kind: "glob" });
+    const stamp = join(root, ".clones", readdirSync(join(root, ".clones")).find((name) => name.endsWith(".fetched.json"))!);
+    writeFileSync(stamp, JSON.stringify({ at: clock }));
+
+    const read = await host().readSource!(repo(), { kind: "read", path: "marker.txt" });
+    expect(read).toMatchObject({ status: "ok", content: "marker A" });
+    expect(read.at).toMatchObject({ branch: "main", commit: remote.rev("main"), ageMs: 0 });
   });
 
   it("follows the remote's default branch when it moves", async () => {
@@ -276,6 +342,23 @@ describe("a read fetches at most once a minute, and never waits on the clone's l
     } finally {
       releaseLock(lease);
     }
+  });
+
+  it("serves the last fetched commit when the fetch runs out of time", async () => {
+    const h = localWorkspaceHost({ root, remotes: { allow: ["file"] }, source: noSource, now: () => clock, provisionTimeoutMs: 60_000 });
+    const first = await h.readSource!(repo(), { kind: "glob" });
+    remote.commit("main", "later.txt", "later\n");
+    clock += 90_000;
+    // A remote that never answers: the call uses its whole wall clock, then is killed.
+    spawned.mockImplementation(async (file, args, options) => {
+      if (subcommand(args)[0] !== "ls-remote") return await realRun(file, args, options);
+      clock += options.timeoutMs;
+      throw Object.assign(new Error("Command failed: git ls-remote"), { killed: true, signal: "SIGTERM", code: null });
+    });
+
+    const read = await h.readSource!(repo(), { kind: "read", path: "marker.txt" });
+    expect(read).toMatchObject({ status: "ok", content: "marker A" });
+    expect(read.at).toMatchObject({ commit: first.at.kind === "repo" ? first.at.commit : "" });
   });
 
   it("takes a lock left by a holder that died, and fetches", async () => {

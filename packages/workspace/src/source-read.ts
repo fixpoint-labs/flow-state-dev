@@ -160,9 +160,19 @@ export function globPaths(all: readonly string[], pattern: string | null | undef
 
 /** `items` cut to the smaller of `limit` and `cap`, saying which cut it. */
 function capped<T>(items: T[], limit: number | null | undefined, cap: number, by: SourceReadCut["by"]): { paths: T[]; cut: SourceReadCut | null } {
-  const max = limit == null ? cap : Math.min(Math.max(1, Math.floor(limit)), cap);
-  if (items.length <= max) return { paths: items, cut: null };
-  return { paths: items.slice(0, max), cut: { left: items.length - max, by: limit != null && limit < cap ? "limit" : by } };
+  const max = capOf(limit, cap);
+  return { paths: items.slice(0, max), cut: cutOf(items.length, limit, cap, by) };
+}
+
+/** The most a result returns: the smaller of `limit` and the cap. */
+function capOf(limit: number | null | undefined, cap: number): number {
+  return limit == null ? cap : Math.min(Math.max(1, Math.floor(limit)), cap);
+}
+
+/** The cut of `total` items to the smaller of `limit` and the cap, or `null` when none was cut. */
+function cutOf(total: number, limit: number | null | undefined, cap: number, by: SourceReadCut["by"]): SourceReadCut | null {
+  const max = capOf(limit, cap);
+  return total <= max ? null : { left: total - max, by: limit != null && limit < cap ? "limit" : by };
 }
 
 /** Whether `text` reads as binary: a NUL byte in its first 8,000 characters, git's own test. */
@@ -216,6 +226,16 @@ export function snippetOf(line: string): string {
 export function cutMatches<T>(matches: T[], maxResults: number | null | undefined): { matches: T[]; cut: SourceReadCut | null } {
   const { paths, cut } = capped(matches, maxResults, SOURCE_READ_LIMITS.matches, "matches");
   return { matches: paths, cut };
+}
+
+/** The most matches a grep keeps: the smaller of `maxResults` and the cap. */
+export function matchCap(maxResults: number | null | undefined): number {
+  return capOf(maxResults, SOURCE_READ_LIMITS.matches);
+}
+
+/** The cut of `total` matches to `matchCap(maxResults)`, for a grep that counted the rest rather than keeping them. */
+export function matchesCut(total: number, maxResults: number | null | undefined): SourceReadCut | null {
+  return cutOf(total, maxResults, SOURCE_READ_LIMITS.matches, "matches");
 }
 
 /** Whether `path` is `prefix` or under it, on a path boundary. */

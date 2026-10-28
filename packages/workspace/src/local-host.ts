@@ -90,9 +90,10 @@ import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutC
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
   checkSourcePath,
-  cutMatches,
   globPaths,
   looksBinary,
+  matchCap,
+  matchesCut,
   readBody,
   readKeptFiles,
   snippetOf,
@@ -635,7 +636,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /**
-   * Fetch the remote into `clone` and record its default branch.
+   * Fetch the remote into `clone` and record its default branch, stamping
+   * the fetch beside the clone with that branch and its commit.
    *
    * The default branch is read from the remote every time rather than kept,
    * so a remote that renamed `main` to `trunk` is followed on the next new
@@ -653,32 +655,49 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     } catch (error) {
       throw unreadable(remote, error);
     }
-    if (stamp) stampFetched(clone);
+    if (stamp) stampFetched(clone, defaultBranch, await fetchedTip(clone, remote, defaultBranch, left));
     return defaultBranch;
   }
 
+  /** The commit `clone`'s fetch of `branch` landed on. */
+  async function fetchedTip(clone: string, remote: AllowedRemote, branch: string, left: () => number): Promise<string> {
+    try {
+      return await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}^{commit}`], left());
+    } catch (error) {
+      throw unreadable(remote, error);
+    }
+  }
+
   /**
-   * Record that `clone` was fetched just now, beside it, where every host
-   * sharing the root reads it. Written whole and renamed into place, so a
-   * reader never sees half of it. Best effort: a stamp that fails to land
-   * only makes the next read fetch again.
+   * Record that `clone` was just fetched, and the default branch and commit
+   * it fetched, beside it, where every host sharing the root reads it.
+   * Written whole and renamed into place, so a reader never sees half of it,
+   * and reads serve that commit rather than resolving refs a later fetch may
+   * be pruning. Best effort: a stamp that fails to land only makes the next
+   * read fetch again.
    */
-  function stampFetched(clone: string): void {
+  function stampFetched(clone: string, branch: string, commit: string): void {
     const file = fetchedFile(clone);
     const temporary = `${file}.${randomUUID()}`;
     try {
-      writeFileSync(temporary, JSON.stringify({ at: now() }));
+      writeFileSync(temporary, JSON.stringify({ at: now(), branch, commit }));
       renameSync(temporary, file);
     } catch {
       rmSync(temporary, { force: true });
     }
   }
 
-  /** When `clone` was last fetched, or `undefined` when no stamp says. */
-  function fetchedAt(clone: string): number | undefined {
+  /**
+   * When `clone` was last fetched, and the branch and commit that fetch
+   * landed on; `undefined` when no stamp says. A stamp written before it
+   * carried the commit has only `at`.
+   */
+  function fetchedStamp(clone: string): { at: number; tip?: { branch: string; commit: string } } | undefined {
     try {
-      const at = (JSON.parse(readFileSync(fetchedFile(clone), "utf8")) as { at?: unknown }).at;
-      return typeof at === "number" ? at : undefined;
+      const { at, branch, commit } = JSON.parse(readFileSync(fetchedFile(clone), "utf8")) as Record<string, unknown>;
+      if (typeof at !== "number") return undefined;
+      if (typeof branch !== "string" || typeof commit !== "string" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) return { at };
+      return { at, tip: { branch, commit } };
     } catch {
       return undefined;
     }
@@ -705,7 +724,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         rmSync(making, { recursive: true, force: true });
         return { fresh: false };
       }
-      stampFetched(clone);
+      stampFetched(clone, defaultBranch, await fetchedTip(clone, remote, defaultBranch, left));
       return { fresh: true, defaultBranch };
     } catch (error) {
       rmSync(making, { recursive: true, force: true });
@@ -1395,10 +1414,14 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * way a provision does: in a `.making-` directory renamed into place, so a
    * racing provision's clone wins and this one is dropped. With a clone last
    * fetched over a minute ago, the read tries the lock once: taken, it
-   * fetches; held, it serves the last fetched commit and says how old it is.
-   * A fetch that fails is served the same way. Then it reads the remote's
+   * fetches, within half the read's budget so a remote that hangs leaves
+   * time to read; held, it serves the last fetched commit and says how old
+   * it is. A fetch that fails is served the same way. The commit served is
+   * the one the last fetch stamped beside the clone, the tip of the remote's
    * default branch as fetched, `refs/remotes/origin/<default>`, which a
-   * run's own branch (in `refs/heads/`) can never be.
+   * run's own branch (in `refs/heads/`) can never be. Reading it from the
+   * stamp, not the refs, means a fetch pruning those refs right now can't
+   * leave the read without one; its objects stay in the clone.
    */
   async function cloneReadAt(remote: AllowedRemote, left: () => number): Promise<{ repo: string; at: SourceReadAt }> {
     const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
@@ -1406,12 +1429,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (!existsSync(clone)) {
       await ensureClone(remote, clone, left);
     } else {
-      const last = fetchedAt(clone);
+      const last = fetchedStamp(clone)?.at;
       if (last === undefined || now() - last > SOURCE_READ_FRESH_MS) {
         const lease = tryAcquireLock(join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`), HOST_LOCK_BOUNDS, { now });
         if (lease !== undefined) {
+          const fetchDeadline = now() + Math.floor(left() / 2);
           try {
-            await refresh(clone, remote, left);
+            await refresh(clone, remote, () => remainingBudget(fetchDeadline, now));
           } catch (error) {
             console.warn(`[workspace] a read of "${shown}" serves its last fetched commit: ${firstLine(error)}`);
           } finally {
@@ -1420,15 +1444,19 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         }
       }
     }
-    let branch: string;
-    let commit: string;
-    try {
-      branch = (await git(clone, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], left())).replace(/^origin\//, "");
-      commit = await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}^{commit}`], left());
-    } catch {
-      throw new WorkspaceRefusedError("remote-unreadable", `the clone of "${shown}" holds no default branch to read.`);
+    const stamp = fetchedStamp(clone);
+    let tip = stamp?.tip;
+    if (tip === undefined) {
+      // No stamp, or one from before stamps named the commit: resolve the refs.
+      try {
+        const branch = (await git(clone, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], left())).replace(/^origin\//, "");
+        tip = { branch, commit: await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}^{commit}`], left()) };
+      } catch {
+        throw new WorkspaceRefusedError("remote-unreadable", `the clone of "${shown}" holds no default branch to read.`);
+      }
     }
-    const at = fetchedAt(clone);
+    const { branch, commit } = tip;
+    const at = stamp?.at;
     return {
       repo: clone,
       at: {
@@ -1484,32 +1512,42 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       return readBody(path, text, request, at);
     }
     const prefix = request.prefix == null || request.prefix === "" ? [] : ["--", request.prefix];
-    const search = async (dialect: GrepDialect): Promise<string> => {
+    const keep = matchCap(request.maxResults);
+    const matches: { path: string; line: number; snippet: string }[] = [];
+    let total = 0;
+    // Read as git writes it, keeping the matches the cap allows and counting
+    // the rest, so the cut is exact and the output is never held whole.
+    const search = async (dialect: GrepDialect): Promise<void> => {
       try {
-        return await readGit(repo, ["grep", "-I", "-n", "-z", "--no-color", dialect === "literal" ? "-F" : "-E", "-e", request.pattern, commit, ...prefix], left);
+        await run("git", [...NO_HOOKS, "grep", "-I", "-n", "-z", "--no-color", dialect === "literal" ? "-F" : "-E", "-e", request.pattern, commit, ...prefix], {
+          cwd: repo,
+          timeoutMs: left(),
+          env: { ...env, GIT_LITERAL_PATHSPECS: "1" },
+          onLine: (record) => {
+            // `<commit>:<path>\0<line>\0<text>`
+            if (!record.startsWith(`${commit}:`)) return;
+            total += 1;
+            if (matches.length >= keep) return;
+            const [name = "", line = "", ...text] = record.split("\0");
+            matches.push({ path: name.slice(commit.length + 1), line: Number(line), snippet: snippetOf(text.join("\0")) });
+          },
+        });
       } catch (error) {
         // Exit 1 is git's "no match".
-        if ((error as { code?: unknown }).code === 1) return "";
-        throw error;
+        if ((error as { code?: unknown }).code !== 1) throw error;
       }
     };
     let dialect: GrepDialect = "extended-regex";
-    let output: string;
     try {
-      output = await search(dialect);
-    } catch {
-      // A pattern git can't compile is searched for as written.
+      await search(dialect);
+    } catch (error) {
+      // A pattern git can't compile is searched for as written. Any other
+      // failure is the read's, never a reason to search differently.
+      if (!notCompiled(error, request.pattern)) throw error;
       dialect = "literal";
-      output = await search(dialect);
+      await search(dialect);
     }
-    const matches: { path: string; line: number; snippet: string }[] = [];
-    for (const record of output.split("\n")) {
-      // `<commit>:<path>\0<line>\0<text>`
-      const [name = "", line = "", ...text] = record.split("\0");
-      if (!name.startsWith(`${commit}:`)) continue;
-      matches.push({ path: name.slice(commit.length + 1), line: Number(line), snippet: snippetOf(text.join("\0")) });
-    }
-    return { kind: "grep", at, dialect, binary: "skipped", ...cutMatches(matches, request.maxResults) };
+    return { kind: "grep", at, dialect, binary: "skipped", matches, cut: matchesCut(total, request.maxResults) };
   }
 
   async function readSource(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult> {
@@ -1611,6 +1649,16 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       holders.delete(place.filesDir);
     },
   };
+}
+
+/**
+ * Whether `git grep` refused `pattern` because it doesn't compile: git exits
+ * 128 naming the pattern (`fatal: -e option, '<pattern>': <why>`) before it
+ * reads a file, so nothing was searched.
+ */
+function notCompiled(error: unknown, pattern: string): boolean {
+  const { code, stderr } = (error ?? {}) as { code?: unknown; stderr?: unknown };
+  return code === 128 && typeof stderr === "string" && stderr.includes(`-e option, '${pattern}': `);
 }
 
 /** The file beside a clone that says when it was last fetched. */
