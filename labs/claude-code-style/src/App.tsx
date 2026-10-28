@@ -44,6 +44,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     <div className="grid h-full grid-cols-[15rem_minmax(0,1fr)_19rem] grid-rows-[minmax(0,1fr)] overflow-hidden">
       <SessionsList
         view={view}
+        modes={adapter.modes}
         sessions={inView}
         selectedId={selectedId}
         onView={setView}
@@ -59,7 +60,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           onOpenThread={(taskId) => setOpenThread((open) => ({ ...open, [selected.id]: taskId }))}
         />
       ) : (
-        <ProjectPicker projects={projects} onPick={(project) => openNew(view, project)} />
+        <ProjectPicker
+          projects={projects}
+          onPick={(project) => openNew(view, project)}
+          onCreate={async (name, repository) => {
+            const created = await adapter.createProject(name, repository);
+            setProjects((rows) => [...rows, created]);
+          }}
+        />
       )}
       {selected && pane === "tasks" ? (
         <TasksPane adapter={adapter} sessionId={selected.id} />

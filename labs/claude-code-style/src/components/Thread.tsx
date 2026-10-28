@@ -66,11 +66,14 @@ export function Thread({
                   onOpen={onOpenThread}
                 />
               ) : (
-                <Entry key={entry.id} entry={entry} />
+                // The request an entry came in on, so a check can tell which turn it landed in.
+                <div key={entry.id} className="contents" data-request-id={entry.requestId}>
+                  <Entry entry={entry} />
+                </div>
               ),
             )}
             {running && view?.turnStartedAt !== undefined ? (
-              <div role="status" className="flex items-center gap-2 text-xs text-info">
+              <div role="status" className="flex items-center gap-2 text-xs text-info" data-request-id={view.requestId}>
                 <span className="size-2 animate-pulse rounded-full bg-info" />
                 working · {elapsed(view.turnStartedAt, now)}
               </div>

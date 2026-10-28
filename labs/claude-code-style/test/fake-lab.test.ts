@@ -1,18 +1,18 @@
 /**
- * The fixtures, driven through the adapter. The stop script runs on fake
+ * The test double, driven through the adapter. The stop script runs on fake
  * timers, since the screen tests can't pin its orderings: asking to stop names
  * a task, and a task that finishes while the stop is under way stays finished.
  * The project list follows the rule a run follows: only where the person may work.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow } from "../src/adapter";
-import { createFixtureLab } from "../src/fixtures";
+import { createFakeLab } from "./fake-lab";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 async function start(): Promise<{ lab: LabAdapter; id: string; status: (title: string) => string | undefined }> {
-  const lab = createFixtureLab();
+  const lab = createFakeLab();
   const { id } = await lab.openSession("session", "project-vendor-notes");
   let rows: TaskRow[] = [];
   lab.watchTasks(id, (next) => (rows = next));
@@ -20,7 +20,7 @@ async function start(): Promise<{ lab: LabAdapter; id: string; status: (title: s
   return { lab, id, status: (title) => rows.find((t) => t.title === title)?.status };
 }
 
-describe("the fixture's stop script", () => {
+describe("the fake's stop script", () => {
   it("cancels the task the person named, not the first one running", async () => {
     const { lab, id, status } = await start();
     await vi.advanceTimersByTimeAsync(1900); // both tasks filed, Acme not yet settled
@@ -51,17 +51,17 @@ describe("the fixture's stop script", () => {
   });
 });
 
-describe("the fixture's projects", () => {
+describe("the fake's projects", () => {
   it("offers only projects the person may work in, and refuses a session on one they can only read", async () => {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     expect((await lab.listProjects()).map((p) => p.name)).toEqual(["vendor-notes", "onboarding-app"]);
     await expect(lab.openSession("session", "project-billing-service")).rejects.toThrow(/not-a-member/);
   });
 });
 
-describe("the fixture's threads", () => {
+describe("the fake's threads", () => {
   async function threads() {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let rows: TaskRow[] = [];
     lab.watchTasks(id, (next) => (rows = next));
@@ -91,9 +91,9 @@ describe("the fixture's threads", () => {
   });
 });
 
-describe("the fixture's threads, on review", () => {
+describe("the fake's threads, on review", () => {
   it("advances each thread by its own id, so two code requests with one title both reach review", async () => {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let rows: TaskRow[] = [];
     lab.watchTasks(id, (next) => (rows = next));
@@ -105,7 +105,7 @@ describe("the fixture's threads, on review", () => {
   });
 
   it("marks the line that asked for threads, not one queued behind it", async () => {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let entries: { kind: string; text?: string; sentToThread?: boolean }[] = [];
     lab.watchThread(id, (view) => (entries = view.entries));
@@ -117,7 +117,7 @@ describe("the fixture's threads, on review", () => {
   });
 
   it("matches a stop line against task titles literally, so a title with regex characters can't break the turn", async () => {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let running = true;
     lab.watchThread(id, (view) => (running = view.running));
@@ -129,9 +129,9 @@ describe("the fixture's threads, on review", () => {
   });
 });
 
-describe("the fixture's stop line, with punctuation in titles", () => {
+describe("the fake's stop line, with punctuation in titles", () => {
   it("cancels the thread whose file the line names, not the first one running", async () => {
-    const lab = createFixtureLab();
+    const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let rows: TaskRow[] = [];
     lab.watchTasks(id, (next) => (rows = next));

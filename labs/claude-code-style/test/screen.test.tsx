@@ -8,10 +8,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { createFixtureLab } from "../src/fixtures";
+import { createFakeLab } from "./fake-lab";
 
 // The script runs at a hundredth of real time.
-const fast = () => createFixtureLab({ speed: 0.01 });
+const fast = () => createFakeLab({ speed: 0.01 });
 
 afterEach(cleanup);
 
@@ -125,7 +125,7 @@ describe("the session-mode screen", () => {
 
   it("shows a background result inside the running turn, then stops the other task when asked", async () => {
     // A twentieth of real time: the card has about 100ms inside the turn, room for a loaded runner to see it.
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<App adapter={createFakeLab({ speed: 0.05 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
 
@@ -183,7 +183,7 @@ describe("the session-mode screen", () => {
   });
 
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.1 })} />);
+    render(<App adapter={createFakeLab({ speed: 0.1 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
