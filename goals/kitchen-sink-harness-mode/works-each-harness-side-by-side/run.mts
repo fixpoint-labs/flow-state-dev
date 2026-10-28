@@ -373,6 +373,19 @@ await runGoal(async (failures, tell) => {
     for (const walk of walks) {
       const { page, mode } = walk;
       const others = walks.filter((w) => w !== walk);
+      // A rail still loading, erroring or empty has no rows, so it would pass vacuously: its own session must show first.
+      if (!harness(walk)) {
+        // The reload closed the assistant's rail row, and its sessions are drawn only while it is open.
+        const row = shown(page, "rail").first().locator('button[data-kind="chat-agent"]');
+        if ((await row.getAttribute("aria-expanded").catch(() => null)) === "false") await row.click();
+      }
+      const ownRow = harness(walk)
+        ? page.getByTestId("session-list").locator(`[data-session-id="${walk.sessionId}"]`)
+        : shown(page, "rail").first().locator(`[data-session-id="${walk.sessionId}"]`);
+      if (walk.sessionId === "" || !(await ownRow.first().waitFor({ state: "attached", timeout: 15_000 }).then(() => true, () => false))) {
+        fail(`${mode.tag}:own`, `the rail never listed this mode's own session ${JSON.stringify(walk.sessionId)}, so it can't show what it leaves out`);
+        continue;
+      }
       const listed = harness(walk)
         ? await page.getByTestId("session-list").locator("[data-session-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id") ?? ""))
         : await page.locator("[data-session-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id") ?? ""));
