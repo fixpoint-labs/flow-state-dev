@@ -7,12 +7,14 @@
  * `specs/epics/FIX-2071/renames.md`.
  *
  * Both strings are unique, so a word-bounded replace over every tracked file
- * under the swept roots is the whole rename; no type checker is needed. It has
- * to be total: `SuspensionReason`'s open `string & {}` arm means a missed call
- * site still compiles and silently becomes a custom reason.
+ * under `ROOTS` below is the whole rename; no type checker is needed. It has
+ * to be total under `ROOTS`: `SuspensionReason`'s open `string & {}` arm means
+ * a missed call site still compiles and silently becomes a custom reason.
  *
  * History is left alone: `CHANGELOG.md` files, dated blog posts,
- * `docs/internal/`, and a goal's dated verdict rows (`| 2026-10-06 | …`).
+ * `docs/internal/`, a goal's dated verdict rows (`| 2026-10-06 | …`), and
+ * this rename's own release note, which names the old values on purpose.
+ * `specs/` is retained design history and is not a root.
  *
  * Usage: `pnpm tsx scripts/codemod/rename-human-reasons.ts`. Re-run on a fresh
  * `main` to regenerate a conflicting PR (FIX-2071 ER-2).
@@ -33,7 +35,7 @@ const RENAMES: Record<string, string> = {
 
 const ROOTS = ["packages", "apps", "goals", "docs", ".changeset"];
 
-const HISTORY = /(^|\/)CHANGELOG\.md$|^apps\/docs\/blog\/|^docs\/internal\//;
+const HISTORY = /(^|\/)CHANGELOG\.md$|^apps\/docs\/blog\/|^docs\/internal\/|^\.changeset\/user-suspension-reasons\.md$/;
 
 /** A goal's dated verdict row records a past run under the names it ran with. */
 const VERDICT_ROW = /^\| \d{4}-\d{2}-\d{2} \|/;

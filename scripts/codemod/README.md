@@ -35,10 +35,10 @@ calls and rewrite them manually.
 ## `rename-human-reasons.ts`
 
 FIX-2151: renames the suspension reasons `"human_approval"` / `"human_input"` to
-`"user_approval"` / `"user_input"`. Both strings are unique, so it is a
-word-bounded replace over every tracked file under `packages`, `apps`, `goals`,
+`"user_approval"` / `"user_input"`. Unlike the codemod above it is textual,
+not type-aware: both strings are unique, so it is a word-bounded replace over every tracked file under `packages`, `apps`, `goals`,
 `docs` and `.changeset`, leaving history alone (`CHANGELOG.md`, blog posts,
-`docs/internal/`, a goal's dated verdict rows):
+`docs/internal/`, a goal's dated verdict rows, its own release note):
 
 ```bash
 pnpm tsx scripts/codemod/rename-human-reasons.ts
