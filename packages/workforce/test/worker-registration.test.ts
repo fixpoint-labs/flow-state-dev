@@ -8,10 +8,10 @@
  * checked worker.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import { createFlowRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { createWorkerInstallation, hireWorkforce, ROSTER_FLOW, workerFlow, type WorkerInstallation } from "../src/index";
+import { createWorkerInstallation, defineSessionBoard, hireWorkforce, ROSTER_FLOW, workerFlow, type WorkerInstallation } from "../src/index";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerMessagesResources } from "../src/messages/message-log";
 import { hearsMessages } from "./conversation-board-harness";
@@ -132,6 +132,34 @@ describe("hireWorkforce", () => {
     const handBuilt = { inputSchema: z.object({ messageId: z.string() }), block: handler({ name: "deaf-hand-built", inputSchema: z.object({ messageId: z.string() }), execute: () => ({}) }) };
     expect(hire(() => ({ onMessageReceived: handBuilt })), "a hand-built entry is no entry").toThrow(/"deaf" has a "onMessageReceived" that `messageReceivedEntry` didn't build/);
     expect(hire((made) => hearsMessages(made, "deaf"))).not.toThrow();
+  });
+
+  // A message the model sends is owed to its session's board pass, which sends
+  // it again after a crash or a lost dispatch (FIX-2240). A flow that offers
+  // the tool with no pass would send each message once and lose the rest, so
+  // the hire refuses it (FIX-2271).
+  it("refuses a worker flow that offers sendMessage with no dispatch pass, naming it, and hires it once it mounts the board's entries", () => {
+    const hire = (withPass: boolean) => {
+      let flows: Record<string, unknown> = {};
+      const made = createWorkerInstallation({
+        standardWorkers: [{ id: "desk.ok", declared: { flow: "research" }, body: "Fine." }],
+        workerFlows: () => flows as never
+      });
+      const board = defineSessionBoard({ installation: made, flowKind: "chatty" });
+      const turn = generator({ name: "chatty-answer", model: "openai/gpt-6-luna", inputSchema: door, prompt: "Answer.", user: (input: { message: string }) => input.message, uses: [board.messages] });
+      const chatty = defineFlow({
+        kind: "chatty",
+        configSchema: workerConfigSchema(),
+        session: { ...made.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...made.resources, ...board.resources },
+        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: turn }, ...(withPass ? board.actions : {}) },
+        internal: { actions: withPass ? board.entries(turn) : hearsMessages(made, "chatty") }
+      } as never);
+      flows = { research: researchFlow(made), chatty: withPass ? { flow: chatty, roles: ["manager"] } : chatty };
+      return () => hireWorkforce(made);
+    };
+    expect(hire(false)).toThrow(/refused 1 worker flow[\s\S]*worker flow "chatty" offers "sendMessage" but has no "dispatch" pass[\s\S]*board\.entries\(turn\)/);
+    expect(hire(true)).not.toThrow();
   });
 
   it("builds a workerFlow(...) entry on its installation, once, and registers it like any flow", () => {

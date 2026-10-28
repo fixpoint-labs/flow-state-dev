@@ -365,15 +365,51 @@ describe("a routed task that fails out", () => {
     expect(judgment.calls).toHaveLength(calls);
   }, 20_000);
 
-  it("routed by a policy, ends only that delegate's part of the round: no line, no turn (FIX-2083's rule)", async () => {
-    const host = bootHost();
+  it("routed by a policy, is said once under its delegate's name with its error, and wakes no turn (FIX-1872 BR-9 as amended)", async () => {
+    const judgment = mockGenerator({ script: [] });
+    const host = bootHost({ judgment });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "first [route:eng.coder] [fail:eng.coder]");
     await host.settled();
     const [task] = await aliceTasks(host, id);
     expect(task).toMatchObject({ status: "errored", assignee: "eng.coder" });
-    expect(await lines(host, id)).toEqual([]);
+    // Alice sees who couldn't answer and why, never the task's id or her own message back.
+    expect(await lines(host, id)).toEqual([{ agentName: "eng.coder", text: "eng.coder couldn't answer: eng.coder could not answer" }]);
+    expect(judgment.calls).toHaveLength(0);
+    // Heard once, however often the board is touched after.
+    await post(host, id, "anything else? [route:eng.em]");
+    expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.coder")).toHaveLength(1);
   });
+
+  it("taken by best fit's fallback after a failed fit check, is said, so a failed post is never silent (FIX-2266)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    // No mark: the fit check fails, and the fallback delegate takes the message, then fails it.
+    await post(host, id, "help me out [fail:support.general]");
+    await host.settled();
+    const records = (await host.items(id)).records;
+    expect(records).toEqual([expect.objectContaining({ by: "fallback", fit: expect.objectContaining({ reason: "failed" }) })]);
+    expect(await lines(host, id)).toEqual([
+      { agentName: "support.general", text: "support.general couldn't answer: support.general could not answer" }
+    ]);
+  });
+
+  it("routed by a policy and cancelled by Alice, says nothing: whoever cancelled it knows (FIX-2083's cancel rule)", async () => {
+    const host = bootHost();
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "respond", { message: "first [route:eng.coder] [slow:eng.coder]" })).error).toBeUndefined();
+    let row: any;
+    await until(async () => {
+      row = (await host.routedRows("alice")).find((r) => r.assignee === "eng.coder");
+      return row?.status === "in_progress" && host.heard.some((h) => h.worker === "eng.coder");
+    }, "eng.coder is working its task");
+    const cancelled = await host.act("alice", id, "updateTask_tasks", { id: row.id, status: "cancelled" });
+    expect(cancelled.output).toEqual({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, SLOW_MS + 200));
+    await host.settled();
+    expect((await host.routedRows("alice")).find((r) => r.id === row.id)?.status).toBe("cancelled");
+    expect(await lines(host, id)).toEqual([]);
+  }, 20_000);
 });
 
 describe("a post row stored before the upgrade", () => {

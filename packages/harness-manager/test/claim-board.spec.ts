@@ -12,7 +12,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runTopic } from "../src";
-import { runBoardSegment } from "../src/workspace";
+import { runBoardSegment, taskIssueSegment } from "../src/workspace";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
@@ -79,6 +79,21 @@ describe("a manager reading its board from the claim", () => {
     expect((await lab.record(runTopic(segment, "task_minted", PHASE)))?.outcome).toBe("succeeded");
     // Not under the issue: two tasks naming it would share that key.
     expect(await lab.record(runTopic(segment, "FIX-1", PHASE))).toBeNull();
+  }, 60_000);
+
+  // The coordinator mints a routed task's id as `routed:<request>:<round>:<delegate>`.
+  // No checkout path, branch or run topic can carry that, so before the issue
+  // was derived through `taskIssueSegment` every routed task failed at once.
+  it("runs a row whose board-minted id the segment grammar refuses, as a routed task's is", async () => {
+    const lab = claimHost({ mode: "claim" });
+    const routed = "routed:req_01J9.x%2Fy:0:eng.coder";
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: routed, goal: "answer the routed message", input: {} });
+    const { result } = await lab.runAttempt(CONVERSATIONS, routed, "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect((await lab.row(CONVERSATIONS, routed, "conv-a")).status).toBe("completed");
+    const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), taskIssueSegment(routed), PHASE));
+    expect(record?.outcome).toBe("succeeded");
+    expect(record!.workspacePath).toBe(lab.seen[0]!.cwd);
   }, 60_000);
 
   // What the derived-id check guards on a fixed board, held here by the task id.

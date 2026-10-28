@@ -57,6 +57,19 @@ describe("createTask's questions", () => {
     expect(listed.tasks[0].questions).toHaveLength(2);
   });
 
+  // Smaller models send `questions: []` even when told to leave it out; a refusal there makes
+  // them invent a question that holds the task, or file nothing (FIX-2277).
+  it("takes an empty questions list as no questions: filed with no hold, like a filing that leaves the field out", async () => {
+    const b = await board();
+    const filed = await b.call("createTask", { goal: "Write the adoption script", questions: [] });
+    expect(filed).toMatchObject({ ok: true });
+    const row = b.get(filed.taskId)!;
+    expect(openHolds(row)).toEqual([]);
+    expect(row.holds ?? []).toEqual([]);
+    const plain = await b.call("createTask", { goal: "Write the adoption script" });
+    expect(row.status).toBe(b.get(plain.taskId)!.status);
+  });
+
   it("refuses questions a task can't keep, filing nothing", async () => {
     const b = await board();
     const out = await b.call("createTask", { goal: "g", questions: ["?".repeat(1_001)] });

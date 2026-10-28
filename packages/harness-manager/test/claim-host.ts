@@ -147,6 +147,8 @@ export interface HostOptions {
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
+  /** Give the host durable execution, so a run can wait for a person (`reviewChanges`). */
+  durable?: boolean;
   /** Run inside the phase's prompt builder, on its context, before the prompt is built. */
   beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
@@ -357,6 +359,7 @@ export function claimHost(options: HostOptions) {
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
+    ...(options.durable === true ? { durable: true } : {}),
   } as never);
 
   let sessions = 0;

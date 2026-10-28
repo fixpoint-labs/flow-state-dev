@@ -937,7 +937,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           }),
         ]),
       )
-      .min(1)
       .optional()
       .describe(
         "Questions for the user, asked before the task starts: it waits until every one is answered, and each answer " +
@@ -1057,7 +1056,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // A caller's metadata never carries a notice marker, nor the call that filed a row (BP-031).
         ...(input.metadata !== undefined ? { metadata: taskToolCallerMetadata(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
-        ...(input.questions !== undefined ? { questions: input.questions.map(askOf) } : {}),
+        // An empty list is no questions: smaller models send one when told to leave the field out (FIX-2277).
+        ...(input.questions !== undefined && input.questions.length > 0 ? { questions: input.questions.map(askOf) } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
         ...(input.target !== undefined ? { target: input.target } : {}),
