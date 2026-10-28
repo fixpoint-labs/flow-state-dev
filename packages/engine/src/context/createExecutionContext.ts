@@ -2950,7 +2950,12 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
-        readTurn: async (id) => (await readTurns({ requestIds: [id] }))[0],
+        // A summary's mark can name the request running now (a waiting turn
+        // that resumed), which `turns()` leaves out: read its start directly.
+        readStartedAtMs: async (id) => {
+          const record = await stores.request.get(id);
+          return record !== undefined && requestInSessionScope(record, turnScope) ? record.startedAtMs : undefined;
+        },
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
