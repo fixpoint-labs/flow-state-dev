@@ -98,7 +98,12 @@ run. The stream's own errors (its reconnect attempts) are the transient status;
 the last one becomes the failure when no turn result follows it. A run that fails emits one
 `error` item whose `message` is one line saying why, read out of the API's error
 body when Codex passes one through; everything the Codex CLI printed on its way
-out is on that item's `details.output`.
+out is on that item's `details.output`, and no closing status repeats the line.
+
+A turn Codex reports as failed returns an `errored` handle with `outcome:
+"failed"`, also when the CLI then exits non-zero. The block throws only when
+the run ends without a turn result: the CLI exiting first, a refused thread, or
+a stop.
 
 ## Cost
 
@@ -159,6 +164,29 @@ pathDirs }`), and throws when the SDK can't be loaded.
 machine, not in a hosted service. A host opts in by passing `readCodexUsage` as
 its Codex usage reader, for example to `harnessUsageAction` in
 `@flow-state-dev/harness-manager`.
+
+## Listing models
+
+`listCodexModels({ env, timeoutMs? })` asks Codex which models it offers, with
+no run. It asks the same `codex app-server` the usage read does, and gets the
+models Codex's own picker shows for that sign-in, so a model the account can't
+run is left out:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { listCodexModels } from "@flow-state-dev/codex";
+
+const list = await listCodexModels({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }) });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+Each entry is `{ id, label, description?, isDefault }`, Codex's default first.
+Pass `id` as the block's `model`. It never throws: a CLI that can't be found,
+stops, refuses, lists nothing, or doesn't answer within `timeoutMs` (default
+10 000 ms) reads `{ status: "failed", reason }`. **Local only**, like the usage
+read.
 
 ## Tests
 

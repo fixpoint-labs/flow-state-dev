@@ -27,8 +27,9 @@
  * may be one the signed-in account can't use, a tier like Fast (`priority`)
  * spends more of the account's usage, and a server signed in for your own use
  * fails to start inside the sandbox. Codex reads the file either way; the run
- * overrides each of those (`codexClientOptions`). Sign-in, history and every
- * other setting still come from Codex's home.
+ * overrides each of those (the session's model, or Codex's own default for a
+ * session stored before models could be picked, and `codexClientOptions`).
+ * Sign-in, history and every other setting still come from Codex's home.
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
  * (`lib/scripted-codex.ts`) and the check passes, unless
@@ -45,12 +46,14 @@ import {
   codexAgent,
   createDefaultResolveCodexClient,
   findCodexProgram,
+  listCodexModels,
   probeCodexAccount,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
   type CodexAccountProbe,
   type CodexAgentOptions,
   type CodexClientOptions,
+  type CodexModelList,
   type CodexThreadOptions,
   type InstalledSdkVersionReader,
   type ResolveCodexClient,
@@ -59,41 +62,40 @@ import {
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
-import type { HarnessModel, ModelChoices } from "./harness-models";
+import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCodex } from "./scripted-codex";
 
 /** Codex mode's flow kind, from the mode list: the rail lists its sessions by it. */
 export const CODEX_SESSION = flowKindOf(modeById("codex"));
 
-/**
- * The models Codex mode offers in New session, its default first. Kept by
- * hand, because Codex's SDK can't list models (FIX-1952 D3; FIX-1975 removes
- * this list once it can). Updated from Codex 0.164.0's catalog and OpenAI's
- * model availability docs. Availability still depends on the signed-in account.
- * When Codex ships or retires a model, edit this list.
- */
-export const CODEX_MODELS: readonly HarnessModel[] = [
-  { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
-  { id: "gpt-6-sol", label: "GPT-6-Sol" },
-  { id: "gpt-6-luna", label: "GPT-6-Luna" },
-  { id: "gpt-6-astra", label: "GPT-6-Astra" },
-  { id: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
-  { id: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
-  { id: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
-];
+/** The model the scripted Codex offers. It runs no model; the id only travels. */
+const SCRIPTED_CODEX_MODEL = "scripted-codex";
 
 /**
- * The model a Codex mode session runs when it names none: the list's first,
- * which is also what New session preselects. A session from before models
- * could be picked runs on it rather than on whatever model your own Codex
- * settings name, which may be one this account can't use.
+ * Codex's own list: the models its picker shows for the sign-in a run gets,
+ * its default preselected. A model the account can't run is one Codex leaves
+ * out. When the list can't be read, nothing is offered and New session can't
+ * start, as in Claude Code mode: Kitchen Sink keeps no Codex model name of its
+ * own. The next load asks again. `list` is a seam for tests.
  */
-export const CODEX_DEFAULT_MODEL = CODEX_MODELS[0]!.id;
-
-/** What Codex mode's New session offers: the list above, its first entry preselected. */
-export async function codexModelChoices(): Promise<ModelChoices> {
-  return { models: CODEX_MODELS, defaultId: CODEX_DEFAULT_MODEL, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+export async function codexModelChoices(
+  list: (env: Record<string, string>) => Promise<CodexModelList> = (env) => listCodexModels({ env }),
+): Promise<ModelChoices> {
+  if (codexIsScripted()) {
+    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex" }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
+  }
+  const found = await list(codexEnv());
+  if (found.status === "failed") {
+    return {
+      models: [],
+      defaultId: null,
+      reason: `Codex's model list can't be read (${found.reason}), so a new session can't name its model. Reload to try again.`,
+      fallbackId: null,
+    };
+  }
+  const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
+  return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
 /**
@@ -227,6 +229,8 @@ export function codexClient(
 export interface CodexSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveCodexClient?: ResolveCodexClient;
+  /** Replaces Codex's model list, read for a session that names no model. */
+  readonly listCodexModels?: (env: Record<string, string>) => Promise<CodexModelList>;
 }
 
 /** The Codex block's options, built from the session flow's feeds. */
@@ -235,7 +239,9 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
-    model: feeds.model,
+    // A session stored before models could be picked names none; it runs
+    // Codex's own default, never the model your Codex settings name.
+    model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel(seams)),
     thread: codexThreadOptions(),
     resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
     name: "codex",
@@ -254,13 +260,26 @@ export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): Harness
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
+/**
+ * The model Codex runs when none is named, from its own list.
+ *
+ * @throws When the list can't be read: the run stops before it starts, since
+ *   a run that names no model would take the one your Codex settings name.
+ */
+async function codexDefaultModel(seams: CodexSeams): Promise<string> {
+  if (codexIsScripted() && seams.listCodexModels === undefined) return SCRIPTED_CODEX_MODEL;
+  const list = seams.listCodexModels ?? ((env) => listCodexModels({ env }));
+  const found = await list(codexEnv());
+  if (found.status === "failed") {
+    throw new Error(`Codex's model list can't be read (${found.reason}), so this session can't name the model it runs. Try the turn again.`);
+  }
+  return (found.models.find((model) => model.isDefault) ?? found.models[0]!).id;
+}
+
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
-  return harnessSessionFlow({
-    kind: CODEX_SESSION,
-    defaultModel: CODEX_DEFAULT_MODEL,
-    agent: (feeds) => codexBlock(feeds, seams),
-  });
+  // No `defaultModel`: the block fills in Codex's own default (`codexBlockOptions`).
+  return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */

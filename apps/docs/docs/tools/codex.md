@@ -301,6 +301,26 @@ Codex, and don't wire it into a server you host for others.
 To keep the last reading and serve it to a page or a worker, register it as the
 `codex` reader of the [harness manager's usage query](/docs/orchestration/harness-manager#subscription-usage).
 
+## Listing models
+
+To let a person pick a model, `listCodexModels` asks Codex which models it
+offers, again without starting a run:
+
+```ts
+import { listCodexModels } from "@flow-state-dev/codex";
+
+const list = await listCodexModels({ env });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+The list is the one Codex's own model picker shows for how it is signed in, so
+a model the account can't run isn't in it. Each entry has the `id` to pass as
+the block's `model`, Codex's `label` for it, and `isDefault`, with the default
+first. A failed call resolves to `{ status: "failed", reason }` and never
+throws. Like the usage read, it is for your own machine, not a hosted service.
+
 ## Errors
 
 Every one of these is fatal for the run that raised it:
