@@ -1,0 +1,98 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two rows, lead&#39;s side on the left of a dashed line and writer&#39;s conversation on the right. Today: lead&#39;s sendMessage crosses the line, lands in writer&#39;s conversation and wakes writer, writer&#39;s model runs a new turn, and the reply crosses back later. After: lead&#39;s consultSessionHistory reads writer&#39;s settled turns through the engine&#39;s session read, which only reads across the line, runs one tool-less generator on the utility model inside lead&#39;s turn, and returns a reading as of a time. Nothing is written on writer&#39;s side."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .fence  { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:6 4; }
+    .arr    { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .arr-g  { stroke:var(--gone); stroke-width:1.3; fill:none; }
+    .arr-c  { stroke:var(--code); stroke-width:1.3; fill:none; }
+    .c-gone { fill:var(--gone); }
+    .ah     { fill:var(--ink-2); } .ahg { fill:var(--gone); } .ahc { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="32" y="30">LEAD'S TURN</text>
+    <text class="t-lbl" x="640" y="30">WRITER'S CONVERSATION</text>
+    <line class="fence" x1="600" y1="40" x2="600" y2="384"/>
+  </g>
+
+  <g id="today">
+    <text class="t-tag c-mute" x="32" y="62">TODAY</text>
+    <rect class="box" x="32" y="74" width="240" height="52" rx="5"/>
+    <text class="t-b" x="44" y="96">sendMessage · wait: true</text>
+    <text class="t-s" x="44" y="114">the question goes over</text>
+    <rect class="gone" x="640" y="74" width="268" height="52" rx="5"/>
+    <text class="t-b" x="652" y="96">a new turn · wakes writer</text>
+    <text class="t-s" x="652" y="114">an item, a log row, writer's model</text>
+    <rect class="box" x="32" y="144" width="240" height="52" rx="5"/>
+    <text class="t-b" x="44" y="166">the reply, later</text>
+    <text class="t-s" x="44" y="184">or a call that waits for it</text>
+    <path class="arr-g" d="M272,100 L638,100"/>
+    <path class="arr-g" d="M640,118 C560,170 380,170 278,170"/>
+    <path class="ahg" d="M636,96 L644,100 L636,104 z"/>
+    <path class="ahg" d="M280,166 L272,170 L280,174 z"/>
+    <text class="t-s c-gone" x="380" y="92">lands · wakes · runs</text>
+  </g>
+
+  <line class="row" x1="16" y1="214" x2="924" y2="214"/>
+
+  <g id="after">
+    <text class="t-tag c-code" x="32" y="242">AFTER</text>
+    <rect class="new" x="32" y="254" width="240" height="52" rx="5"/>
+    <text class="t-b" x="44" y="276">consultSessionHistory</text>
+    <text class="t-s" x="44" y="294">of: writer · the question</text>
+    <rect class="new" x="320" y="254" width="250" height="52" rx="5"/>
+    <text class="t-b" x="332" y="276">sessions.history · owner rule</text>
+    <text class="t-s" x="332" y="294">settled turns · token budget</text>
+    <rect class="box" x="640" y="254" width="268" height="52" rx="5"/>
+    <text class="t-b" x="652" y="276">writer's settled turns</text>
+    <text class="t-s" x="652" y="294">read, never written</text>
+    <rect class="new" x="320" y="322" width="250" height="52" rx="5"/>
+    <text class="t-b" x="332" y="344">one generator · no tools</text>
+    <text class="t-s" x="332" y="362">utility model · in lead's turn</text>
+    <rect class="new" x="32" y="322" width="240" height="52" rx="5"/>
+    <text class="t-b" x="44" y="344">a reading as of a time</text>
+    <text class="t-s" x="44" y="362">turns read · left out · cut</text>
+    <path class="arr-c" d="M272,280 L314,280"/>
+    <path class="arr" d="M570,280 L634,280"/>
+    <path class="arr-c" d="M445,306 L445,316"/>
+    <path class="arr-c" d="M320,348 L278,348"/>
+    <path class="ahc" d="M312,276 L320,280 L312,284 z"/>
+    <path class="ah" d="M632,276 L640,280 L632,284 z"/>
+    <path class="ahc" d="M441,314 L445,322 L449,314 z"/>
+    <path class="ahc" d="M280,344 L272,348 L280,352 z"/>
+  </g>
+</svg>
