@@ -74,6 +74,12 @@ generator.
 
 ## Decided, not asked
 
+- **Harness blocks call the recorder; they stay handlers.** `codexAgent`, `cursorAgent` and the
+  Claude Code agent are handlers, and hosts call them as handlers (`agent.rescue`). Each calls
+  core's `recordPullRequests(ctx)` when it starts, the same function `pullRequestRecorder()`
+  runs as a step, so there is one recorder with two entries. Making each harness a sequencer to
+  install the step would change three public block kinds for no gain (BP-011 forbids a handler
+  calling a block, not a core function).
 - **One convergence point for writes.** Every writer goes through core's `writePullRequests`:
   the recorder, the host's branch check, and, when FIX-2256 ships, Cursor's cloud handle. It
   upserts by key and never moves `requestId` or `firstSeenAt` once set; a later sighting only
