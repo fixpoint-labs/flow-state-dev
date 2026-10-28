@@ -129,8 +129,11 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
     steps: ["5"],
     skip: ["4"],
   },
+  // Step 3 may go red under both of these: researcher sometimes answers lead in its own conversation
+  // instead of with `sendMessage`, so no reply lands (2 of 3 runs on 2026-10-28). Neither patch
+  // touches messaging; that is the model, not a leak.
   // No history summary: memory may still answer, but the divider can't say the earlier turns were summarized.
-  "no-summary": { patches: NO_SUMMARY, steps: ["4"] },
+  "no-summary": { patches: NO_SUMMARY, steps: ["4"], mayAlso: ["3"] },
   // Neither memory nor the summary: nothing holds what left the window, so lead can't answer it.
   "no-memory": {
     patches: [
@@ -139,6 +142,7 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
       hostPatch(String.raw`afterAnswer: mem\.captureFromItems,`),
     ],
     steps: ["4"],
+    mayAlso: ["3"],
   },
 };
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
