@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { generator } from "../../blocks/generator";
-import { handler } from "../../blocks/handler";
-import { router } from "../../blocks/router";
-import { sequencer } from "../../blocks/sequencer";
+import { generator } from "../src/blocks/generator";
+import { handler } from "../src/blocks/handler";
+import { router } from "../src/blocks/router";
+import { sequencer } from "../src/blocks/sequencer";
 
 const routeA = handler({
   name: "route-a",

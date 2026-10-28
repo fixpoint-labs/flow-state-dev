@@ -4,10 +4,10 @@
  * `resources` map, and `ctx.resources.<key>` is the only accessor.
  */
 import { z } from "zod";
-import { handler } from "../../blocks/handler";
-import { generator } from "../../blocks/generator";
-import { router } from "../../blocks/router";
-import { defineResource } from "../resource";
+import { handler } from "../src/blocks/handler";
+import { generator } from "../src/blocks/generator";
+import { router } from "../src/blocks/router";
+import { defineResource } from "../src/types/resource";
 
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { generator } from "../../blocks/generator";
-import { defineResource } from "../resource";
+import { generator } from "../src/blocks/generator";
+import { defineResource } from "../src/types/resource";
 
 const artifactsResource = defineResource({
   ref: "artifacts",

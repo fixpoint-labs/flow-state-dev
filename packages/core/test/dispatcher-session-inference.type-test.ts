@@ -1,11 +1,9 @@
 /**
  * Type-level tests for `dispatcher()`'s `{ key, state }` session: both
  * callbacks receive the input its `inputSchema` declares, with no annotation.
- *
- * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  */
 import { z } from "zod";
-import { dispatcher } from "../../blocks/dispatcher";
+import { dispatcher } from "../src/blocks/dispatcher";
 
 const input = z.object({ project: z.string(), job: z.string() });
 

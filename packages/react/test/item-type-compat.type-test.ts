@@ -1,6 +1,6 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { ItemRendererProps } from "./ItemRenderer";
-import type { ItemsRendererProps } from "./ItemsRenderer";
+import type { ItemRendererProps } from "../src/components/ItemRenderer";
+import type { ItemsRendererProps } from "../src/components/ItemsRenderer";
 
 const single: ItemRendererProps = {
   item: {

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { defineResource } from "../resource";
-import type { Edge } from "../../graph";
+import { defineResource } from "../src/types/resource";
+import type { Edge } from "../src/graph";
 
 /**
  * Type test: the `edges` slot folds an `edges: Edge[]` field into a resource's

@@ -11,8 +11,8 @@
  * - `.config()` on a config-less capability is a compile error.
  */
 import { z } from "zod";
-import { defineCapability } from "../../capability/define-capability";
-import type { InferCapabilitySessionState } from "../../capability/types";
+import { defineCapability } from "../src/capability/define-capability";
+import type { InferCapabilitySessionState } from "../src/capability/types";
 
 // ── A capability with a defaulted config field ───────────────────────
 

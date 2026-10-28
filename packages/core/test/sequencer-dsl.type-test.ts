@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { handler, sequencer } from "../../blocks";
-import type { SequencerDefinition } from "../../blocks";
+import { handler, sequencer } from "../src/blocks";
+import type { SequencerDefinition } from "../src/blocks";
 
 const parseNumber = handler({
   name: "parse-number",
