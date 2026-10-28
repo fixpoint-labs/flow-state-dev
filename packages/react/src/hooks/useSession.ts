@@ -1591,9 +1591,6 @@ export function useSession(
       setIsStuck(false);
       activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
-      // The view's request state goes with the session, so a request followed
-      // again later replays from its start.
-      lastStreamEventRef.current = null;
       stoppedRequestsRef.current.clear();
       lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
@@ -1984,9 +1981,12 @@ export function useSession(
 
   const followRequest = useCallback(
     (requestId: string) => {
-      activeRequestIdRef.current = requestId;
+      // Resume only the stream that dropped: anything since (an end, a
+      // session change, a stop) clears the drop, and the view's state for it.
       const last = lastStreamEventRef.current;
-      attachToStream(requestId, last?.requestId === requestId ? String(last.sequence) : undefined);
+      const resume = latestRequestIdAfterDropRef.current === requestId && last?.requestId === requestId;
+      activeRequestIdRef.current = requestId;
+      attachToStream(requestId, resume ? String(last.sequence) : undefined);
     },
     [attachToStream]
   );

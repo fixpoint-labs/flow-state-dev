@@ -22,6 +22,9 @@
  *   - keep the saved cursor across a session change, and the "after the
  *     view left the session" case fails: the request resumes past the
  *     status the cleared view no longer has.
+ *   - resume a request whose stream ended rather than dropped, and the
+ *     "after it ended" case fails: the stream starts past its own end and
+ *     never settles.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -172,6 +175,22 @@ describe("useSession.followRequest (FIX-2265)", () => {
     });
 
     // The session change cleared the view's request state, so the request replays it from the start.
+    act(() => result.current.followRequest("req_turn"));
+    expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
+  });
+
+  it("followed again after it ended, streams from the start", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => result.current.followRequest("req_turn"));
+    const first = connections.at(-1)!;
+    act(() => first.callbacks.onEvent?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed" }));
+    act(() => first.callbacks.onRequestStatus?.({ stream: "request", requestId: "req_turn", sequence_number: 9, ts: 1000, type: "request.completed", status: "completed" }));
+
+    // Past its end there is nothing to stream, so the view would never settle.
     act(() => result.current.followRequest("req_turn"));
     expect((connections.at(-1)!.callbacks as { startingAfter?: number }).startingAfter).toBeUndefined();
   });
