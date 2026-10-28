@@ -8,6 +8,7 @@
  * ```
  * <root>/.clones/<clone-key>.git    one bare clone per remote, shared by every run
  * <root>/.clones/<clone-key>.lock   held while a provision works on that clone
+ * <root>/.clones/<clone-key>.fetched.json  when that clone was last fetched, and its default branch
  * <root>/<place…>/
  *     .lock        held while a provision works on this place
  *     .checkout.provisioning   present while `git worktree add` runs
@@ -83,10 +84,24 @@ import {
   snapshotWorkingTree,
 } from "./held-work";
 import { createHostPlace } from "./host-place";
-import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
+import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
+import {
+  checkSourcePath,
+  cutMatches,
+  globPaths,
+  looksBinary,
+  readBody,
+  readKeptFiles,
+  snippetOf,
+  SOURCE_READ_FRESH_MS,
+  type GrepDialect,
+  type SourceReadAt,
+  type SourceReadRequest,
+  type SourceReadResult,
+} from "./source-read";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
 import { WorkspaceRefusedError } from "./refused";
@@ -101,6 +116,15 @@ const WORKSPACE_DIR = "workspace";
  * start with a dot, so no place can ever be named over it.
  */
 const CLONES_DIR = ".clones";
+/** Beside each clone: when it was last fetched, for every host sharing the root. */
+const FETCHED_SUFFIX = ".fetched.json";
+/**
+ * The most a read loads of one file. Past it, a read answers `too-large`
+ * rather than buffering the file whole to return its first lines.
+ */
+const READ_LOAD_MAX_BYTES = 64 * 1024 * 1024;
+/** The most output one read's git listing or search may produce. */
+const READ_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
 /** The lock file in a place's directory, and beside each clone. */
 const LOCK_SUFFIX = ".lock";
 /**
@@ -379,6 +403,21 @@ export interface WorkspaceHost {
    * nothing for a place provisioned again since.
    */
   release(place: WorkspacePlace): Promise<void>;
+  /**
+   * Read the files `answer` names, without a run: list paths by a glob, read
+   * one file's lines, or search the files. Optional: a host without it offers
+   * no reads, and a caller that needs them refuses it when it is built.
+   *
+   * Nothing is made but the shared clone, and nothing is written. A
+   * repository is read at one commit of the remote's default branch, never
+   * a run's own branch; a checkout listed in `localRepositories` at the base
+   * a new run there would be cut from; kept files from their collection.
+   * Every result is held to `SOURCE_READ_LIMITS` and says when it was cut.
+   *
+   * Rejects with a `WorkspaceRefusedError` for a refused answer, a remote the
+   * host may not reach, or a path that is not a repository path.
+   */
+  readSource?(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult>;
 }
 
 const EMPTY_REPORT: FlushReport = { outcomes: [], conflicts: [], contested: [] };
@@ -602,17 +641,46 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * so a remote that renamed `main` to `trunk` is followed on the next new
    * branch instead of cut from a ref that no longer moves.
    */
-  async function refresh(clone: string, remote: AllowedRemote, left: () => number): Promise<string> {
+  async function refresh(clone: string, remote: AllowedRemote, left: () => number, stamp = true): Promise<string> {
+    let defaultBranch: string;
     try {
       const head = await git(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"], left());
       const match = /^ref: refs\/heads\/(\S+)\s+HEAD$/m.exec(head);
       if (match === null) throw new Error("the remote reports no default branch");
-      const defaultBranch = match[1]!;
+      defaultBranch = match[1]!;
       await git(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"], left());
       await git(clone, ["symbolic-ref", "refs/remotes/origin/HEAD", `refs/remotes/origin/${defaultBranch}`], left());
-      return defaultBranch;
     } catch (error) {
       throw unreadable(remote, error);
+    }
+    if (stamp) stampFetched(clone);
+    return defaultBranch;
+  }
+
+  /**
+   * Record that `clone` was fetched just now, beside it, where every host
+   * sharing the root reads it. Written whole and renamed into place, so a
+   * reader never sees half of it. Best effort: a stamp that fails to land
+   * only makes the next read fetch again.
+   */
+  function stampFetched(clone: string): void {
+    const file = fetchedFile(clone);
+    const temporary = `${file}.${randomUUID()}`;
+    try {
+      writeFileSync(temporary, JSON.stringify({ at: now() }));
+      renameSync(temporary, file);
+    } catch {
+      rmSync(temporary, { force: true });
+    }
+  }
+
+  /** When `clone` was last fetched, or `undefined` when no stamp says. */
+  function fetchedAt(clone: string): number | undefined {
+    try {
+      const at = (JSON.parse(readFileSync(fetchedFile(clone), "utf8")) as { at?: unknown }).at;
+      return typeof at === "number" ? at : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -627,7 +695,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const making = `${clone}.making-${randomUUID()}`;
     try {
       await git(root, ["init", "--quiet", "--bare", making], left());
-      const defaultBranch = await refresh(making, remote, left);
+      const defaultBranch = await refresh(making, remote, left, false);
       try {
         renameSync(making, clone);
       } catch (error) {
@@ -637,6 +705,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         rmSync(making, { recursive: true, force: true });
         return { fresh: false };
       }
+      stampFetched(clone);
       return { fresh: true, defaultBranch };
     } catch (error) {
       rmSync(making, { recursive: true, force: true });
@@ -726,7 +795,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     ignored: IgnoredDirectory | undefined,
     deadline: number,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
-    const base = baseRef ?? "HEAD";
     const worktree = await provisionWorktree({
       repo,
       repoLabel: repo,
@@ -740,41 +808,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // Read before anything is made, so a ref the repository doesn't have,
       // or a base that has split from its upstream, fails naming it and
       // leaves no marker, tree or branch behind. Only a NEW branch gets here.
-      base: async (left) => {
-        try {
-          await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
-        } catch (error) {
-          if (!gitAnsweredNo(error)) throw error;
-          throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
-        }
-        // Named once, and everything after read off that one name: `HEAD` can
-        // move to another branch while this runs, and the ref recorded, the
-        // commit compared and the upstream fetched must all be one branch's.
-        const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
-        const branchRef = full.startsWith("refs/heads/") ? full : undefined;
-        const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
-        // Recorded as asked (`HEAD` when no base is named); the commit cut at
-        // is recorded beside it.
-        const ref = base;
-        // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
-        const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
-        // Equal, or local ahead: the person's branch, as it always was.
-        if (upstream === undefined || (await isAncestor(git, repo, upstream.commit, local, left()))) {
-          // The commit compared, not the name: the name can move while the fetch runs.
-          return { ref, commitish: local, commit: local };
-        }
-        // Behind: cut at the commit, never the ref's name, so the run's branch
-        // doesn't come out tracking the person's upstream.
-        if (await isAncestor(git, repo, local, upstream.commit, left())) {
-          return { ref, commitish: upstream.commit, commit: upstream.commit };
-        }
-        throw new WorkspaceRefusedError(
-          "base-diverged",
-          `${repo}: "${base}" (${local}) and its upstream ${upstream.ref} (${upstream.commit}) each have ` +
-            `commits the other lacks, so neither is the base to cut a run's branch from. To start a run ` +
-            `from it, pull or rebase, or push, in ${repo}.`,
-        );
-      },
+      base: (left) => localBase(repo, baseRef, left),
     });
     return {
       remote: repo,
@@ -786,6 +820,54 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
       ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
     };
+  }
+
+  /**
+   * The base a NEW branch in a repository the operator listed is cut from:
+   * `baseRef` (or `HEAD`), or its upstream when that is ahead, fetched first
+   * (`fetchUpstream`). Refuses a ref the repository doesn't have, and a base
+   * that has split from its upstream (`base-diverged`). A read of a mapped
+   * checkout resolves its commit here too, so it sees what a new run would.
+   */
+  async function localBase(
+    repo: string,
+    baseRef: string | undefined,
+    left: () => number,
+  ): Promise<{ ref: string; commitish: string; commit: string }> {
+    const base = baseRef ?? "HEAD";
+    try {
+      await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
+    } catch (error) {
+      if (!gitAnsweredNo(error)) throw error;
+      throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
+    }
+    // Named once, and everything after read off that one name: `HEAD` can
+    // move to another branch while this runs, and the ref recorded, the
+    // commit compared and the upstream fetched must all be one branch's.
+    const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
+    const branchRef = full.startsWith("refs/heads/") ? full : undefined;
+    const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
+    // Recorded as asked (`HEAD` when no base is named); the commit cut at
+    // is recorded beside it.
+    const ref = base;
+    // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
+    const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
+    // Equal, or local ahead: the person's branch, as it always was.
+    if (upstream === undefined || (await isAncestor(git, repo, upstream.commit, local, left()))) {
+      // The commit compared, not the name: the name can move while the fetch runs.
+      return { ref, commitish: local, commit: local };
+    }
+    // Behind: cut at the commit, never the ref's name, so the run's branch
+    // doesn't come out tracking the person's upstream.
+    if (await isAncestor(git, repo, local, upstream.commit, left())) {
+      return { ref, commitish: upstream.commit, commit: upstream.commit };
+    }
+    throw new WorkspaceRefusedError(
+      "base-diverged",
+      `${repo}: "${base}" (${local}) and its upstream ${upstream.ref} (${upstream.commit}) each have ` +
+        `commits the other lacks, so neither is the base to cut a run's branch from. To start a run ` +
+        `from it, pull or rebase, or push, in ${repo}.`,
+    );
   }
 
   /**
@@ -1294,6 +1376,165 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return holder;
   }
 
+  /** Git for a read: raw output, a large buffer, and every path handed to it read literally. */
+  async function readGit(cwd: string, args: string[], left: () => number): Promise<string> {
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], {
+      cwd,
+      timeoutMs: left(),
+      env: { ...env, GIT_LITERAL_PATHSPECS: "1" },
+      maxBuffer: READ_OUTPUT_MAX_BYTES,
+    });
+    return stdout;
+  }
+
+  /**
+   * The commit a read of `remote` sees, in the host's shared clone of it.
+   *
+   * **A read never waits on the clone's lock**, which a provision can hold
+   * for minutes. With no clone yet, the read makes one without the lock, the
+   * way a provision does: in a `.making-` directory renamed into place, so a
+   * racing provision's clone wins and this one is dropped. With a clone last
+   * fetched over a minute ago, the read tries the lock once: taken, it
+   * fetches; held, it serves the last fetched commit and says how old it is.
+   * A fetch that fails is served the same way. Then it reads the remote's
+   * default branch as fetched, `refs/remotes/origin/<default>`, which a
+   * run's own branch (in `refs/heads/`) can never be.
+   */
+  async function cloneReadAt(remote: AllowedRemote, left: () => number): Promise<{ repo: string; at: SourceReadAt }> {
+    const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
+    const shown = redactRemote(remote.url);
+    if (!existsSync(clone)) {
+      await ensureClone(remote, clone, left);
+    } else {
+      const last = fetchedAt(clone);
+      if (last === undefined || now() - last > SOURCE_READ_FRESH_MS) {
+        const lease = tryAcquireLock(join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`), HOST_LOCK_BOUNDS, { now });
+        if (lease !== undefined) {
+          try {
+            await refresh(clone, remote, left);
+          } catch (error) {
+            console.warn(`[workspace] a read of "${shown}" serves its last fetched commit: ${firstLine(error)}`);
+          } finally {
+            releaseLock(lease);
+          }
+        }
+      }
+    }
+    let branch: string;
+    let commit: string;
+    try {
+      branch = (await git(clone, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], left())).replace(/^origin\//, "");
+      commit = await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}^{commit}`], left());
+    } catch {
+      throw new WorkspaceRefusedError("remote-unreadable", `the clone of "${shown}" holds no default branch to read.`);
+    }
+    const at = fetchedAt(clone);
+    return {
+      repo: clone,
+      at: {
+        kind: "repo",
+        commit,
+        branch,
+        fetchedAt: at === undefined ? null : new Date(at).toISOString(),
+        ageMs: at === undefined ? null : Math.max(0, now() - at),
+      },
+    };
+  }
+
+  /** The last base each listed repository's reads resolved, so a burst of reads resolves it once a minute. */
+  const localReads = new Map<string, { at: number; commit: string; ref: string }>();
+
+  /**
+   * The commit a read of a repository the operator listed sees: the base a
+   * new run there would be cut from (`localBase`), never its working tree.
+   */
+  async function localReadAt(repo: string, baseRef: string | undefined, left: () => number): Promise<{ repo: string; at: SourceReadAt }> {
+    const key = `${repo}\0${baseRef ?? ""}`;
+    let kept = localReads.get(key);
+    if (kept === undefined || now() - kept.at > SOURCE_READ_FRESH_MS) {
+      const resolved = await localBase(repo, baseRef, left);
+      kept = { at: now(), commit: resolved.commit, ref: resolved.ref };
+      localReads.set(key, kept);
+    }
+    return { repo, at: { kind: "repo", commit: kept.commit, branch: kept.ref, fetchedAt: null, ageMs: null } };
+  }
+
+  /** One read of the repository at `repo`, at the one commit `at` names, and no other. */
+  async function readAtCommit(repo: string, at: SourceReadAt & { kind: "repo" }, request: SourceReadRequest, left: () => number): Promise<SourceReadResult> {
+    const { commit } = at;
+    if (request.kind === "glob") {
+      const listed = (await readGit(repo, ["ls-tree", "-r", "-z", "--name-only", commit], left)).split("\0").filter((path) => path !== "");
+      return { kind: "glob", at, ...globPaths(listed, request.pattern, request.limit) };
+    }
+    if (request.kind === "read") {
+      const path = request.path;
+      // `<mode> <type> <object> <size>\t<path>`, for the entry at exactly this path.
+      const entry = (await readGit(repo, ["ls-tree", "-z", "-l", commit, "--", path], left))
+        .split("\0")
+        .map((line) => /^\S+ (\S+) (\S+) +(\S+)\t(.*)$/s.exec(line))
+        .find((match) => match !== null && match[4] === path);
+      if (entry == null) return { kind: "read", at, path, status: "missing" };
+      const [, type, object, size] = entry;
+      if (type === "tree") return { kind: "read", at, path, status: "directory" };
+      if (type !== "blob") return { kind: "read", at, path, status: "missing" };
+      const bytes = Number(size);
+      if (bytes > READ_LOAD_MAX_BYTES) return { kind: "read", at, path, status: "too-large", bytes };
+      const text = await readGit(repo, ["cat-file", "blob", object!], left);
+      if (looksBinary(text)) return { kind: "read", at, path, status: "binary", bytes };
+      return readBody(path, text, request, at);
+    }
+    const prefix = request.prefix == null || request.prefix === "" ? [] : ["--", request.prefix];
+    const search = async (dialect: GrepDialect): Promise<string> => {
+      try {
+        return await readGit(repo, ["grep", "-I", "-n", "-z", "--no-color", dialect === "literal" ? "-F" : "-E", "-e", request.pattern, commit, ...prefix], left);
+      } catch (error) {
+        // Exit 1 is git's "no match".
+        if ((error as { code?: unknown }).code === 1) return "";
+        throw error;
+      }
+    };
+    let dialect: GrepDialect = "extended-regex";
+    let output: string;
+    try {
+      output = await search(dialect);
+    } catch {
+      // A pattern git can't compile is searched for as written.
+      dialect = "literal";
+      output = await search(dialect);
+    }
+    const matches: { path: string; line: number; snippet: string }[] = [];
+    for (const record of output.split("\n")) {
+      // `<commit>:<path>\0<line>\0<text>`
+      const [name = "", line = "", ...text] = record.split("\0");
+      if (!name.startsWith(`${commit}:`)) continue;
+      matches.push({ path: name.slice(commit.length + 1), line: Number(line), snippet: snippetOf(text.join("\0")) });
+    }
+    return { kind: "grep", at, dialect, binary: "skipped", ...cutMatches(matches, request.maxResults) };
+  }
+
+  async function readSource(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult> {
+    if (answer.kind === "refused") throw new WorkspaceRefusedError(answer.reason, answer.message);
+    // Checked before anything is made or spawned.
+    if (request.kind === "read") checkSourcePath(request.path);
+    if (request.kind === "grep" && request.prefix != null && request.prefix !== "") checkSourcePath(request.prefix, "prefix");
+    if (answer.kind === "files") {
+      assertScope(answer.projectId);
+      return await readKeptFiles(answer.projectId, answer.files, request);
+    }
+    const deadline = now() + provisionTimeoutMs;
+    const left = () => remainingBudget(deadline, now);
+    // A repository's kept files are not read here: a path names one tree, the repository's.
+    const local = localRepository(answer.repo);
+    if (local !== undefined) {
+      const { repo, at } = await localReadAt(local, answer.baseRef, left);
+      return await readAtCommit(repo, at as SourceReadAt & { kind: "repo" }, request, left);
+    }
+    const remote = checkRemote(answer.repo, allow);
+    if ("reason" in remote) throw new WorkspaceRefusedError(remote.reason, remote.message);
+    const { repo, at } = await cloneReadAt(remote, left);
+    return await readAtCommit(repo, at as SourceReadAt & { kind: "repo" }, request, left);
+  }
+
   async function save(place: WorkspacePlace): Promise<FlushReport> {
     if (place.filesDir === undefined) return EMPTY_REPORT;
     const projection = live.get(place.filesDir);
@@ -1362,6 +1603,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       }
       await heldWork.delete(key);
     },
+    readSource,
     async restore() {},
     async release(place) {
       if (place.filesDir === undefined || holders.get(place.filesDir) !== place.holder) return;
@@ -1369,6 +1611,11 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       holders.delete(place.filesDir);
     },
   };
+}
+
+/** The file beside a clone that says when it was last fetched. */
+function fetchedFile(clone: string): string {
+  return `${clone.replace(/\.git$/, "")}${FETCHED_SUFFIX}`;
 }
 
 function mismatch(field: HeldWorkMismatchField, message: string): HeldWorkMismatchError {

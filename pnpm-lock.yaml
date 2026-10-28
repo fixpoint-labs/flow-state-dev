@@ -2059,10 +2059,16 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      picomatch:
+        specifier: ^4.0.2
+        version: 4.0.4
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
+      '@types/picomatch':
+        specifier: ^3.0.1
+        version: 3.0.2
 
   plugins/flow-state-dev:
     devDependencies:
