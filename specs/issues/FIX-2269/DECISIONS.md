@@ -35,8 +35,9 @@ request and continues that request if it dies before it parks.
   yet) clears it on return, so a later death elsewhere in the turn is not replayed.
 - **E3 · Continued with no resume context**, like the continue route: replay injects what was
   recorded and runs the in-flight block again, whose `runOnce` keys return the send.
-- **E4 · Bounded.** A request continued this way that dies again before parking is continued again,
-  at most three times, then left `interrupted` with a warning. A crash loop can't spin the sweep.
+- **E4 · Bounded.** A request continued this way that dies again before parking is continued again
+  a bounded number of times (the implementer's number, logged), then left `interrupted` with a
+  warning, so a crash loop can't spin the sweep. The build tests the cap.
 - **E5 · Storage is the implementer's** (a nullable field on the request record, or a row the
   durability provider keeps), read with `== null` guards so records written before it read as
   owing nothing (BP-030).
@@ -60,3 +61,15 @@ None.
 - **Draft:** written from the issue (the closure walk's scene ac and its hand continue) and `main`
   at `ba527aa`: `durability-sweeper.ts` step 2b, `request-recovery.ts`, `call.ts`, and the
   dispatcher's `sendAndWait`, which has the same window.
+
+## Notes from review
+
+Round 1 (Codex: no findings; Cursor: direction approved). Folded: the obligation's lifecycle in one
+SPEC line, the tick armed like `onWakeOwed`, history and retention reading an owed request as one
+that runs again, E4's cap left to the implementer with a test. For the implementer, verbatim in
+substance:
+
+- One core helper for "owe, send under `runOnce`, `waitOnRequest`", so the dispatcher and the call
+  can't drift on where they owe.
+- Every blocking call pays one durable write; a mass crash can fan out many continuations in one
+  tick. Consider a per-tick limit if fleet restarts matter.

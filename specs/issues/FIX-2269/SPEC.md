@@ -59,12 +59,15 @@ FIX-2242's scene ac (`a:answer-in-request`) is rerun by the closure once this me
 
 - **Engine (`RequestWaits`):** one new verb, called by a wait **before** it starts its work: the
   running request owes a park. The engine keeps it, server-written, on the running request only
-  (no request id in its input). The park clears it (the gate replaces it as the obligation), and
-  so does the request's end.
+  (no request id in its input). Its lifecycle is one line: **owe → the park, a wait that returns
+  without parking, or the request's end → cleared.** The engine clears it on the park and the end;
+  the gate is then the obligation.
 - **Engine (durability sweep, step 2b):** an `interrupted` request that owes a park and has no
   newer gate is continued under its lease with no resume context, exactly as the continue route
-  does. The stale sweep that marks it `interrupted` brings the sweep forward, as FIX-2166 does for
-  wakes, so recovery takes about one stale threshold, not one sweep interval.
+  does. The stale sweep that marks it `interrupted` arms the durability sweep's tick forward (the
+  way `onWakeOwed` arms it for wakes), so recovery takes about one stale threshold, not a stale
+  threshold plus a sweep interval. Session history and retention read such a request as one that
+  will run again, as they read one parked behind a gate.
 - **Core `dispatcher({ wait: true })` and Workforce's call** each owe the park after their checks
   pass and before they send. Nothing else in Workforce changes: the send's `runOnce` keys already
   keep the id and the send across the replay (the issue's hand continue showed it).
