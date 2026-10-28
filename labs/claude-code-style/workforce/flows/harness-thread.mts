@@ -9,19 +9,19 @@
  * runs. So a second coding worker on Codex is one more `WORKER.md`, never a
  * second flow. A worker's `review: true` line picks the manager built with
  * `reviewChanges`, so a run that committed waits for your review (threads
- * mode's coder); one without it completes on the run's own check.
+ * mode's coder); one without it completes on the run's own check. Either
+ * way `goalJudge` first reads a run that passed against its task's goal.
  *
- * **Where a run works** is `projectWorkspace()`: the task inherits its
- * session's project through `filingProjectId`, and a run with no project is
- * refused `no-project` before anything is cloned (spec D3). The host clones
- * the project's repository under `root` and allows only `file://` remotes,
- * so a run never works in the lab's own checkout.
+ * **Where a run works** is the host's `workspace`, over `projectWorkspace()`:
+ * the task inherits its session's project through `filingProjectId`, and a
+ * run with no project is refused `no-project` before any checkout (spec D3).
+ * `fsdev.config.mts` builds it: a worktree of the project's repository.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent } from "@flow-state-dev/codex";
-import { harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { goalJudge, harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -30,7 +30,6 @@ import {
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
-  projectWorkspace,
   projectWorkspaceCapability,
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
@@ -42,7 +41,7 @@ import {
   type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 /** The flow name a coding worker's `WORKER.md` names. */
@@ -80,13 +79,12 @@ const phase: PhaseSpec = {
 
 export interface HarnessThreadFlowOptions {
   installation: WorkerInstallation;
-  /** Where each run's clone of its project's repository is made. */
-  root: string;
+  /** Where each run gets its checkout of its project, from `projectWorkspace()`. */
+  workspace: WorkspaceHost;
 }
 
 /** Build the flow `hireWorkforce` registers one copy of, which every coding worker runs on. */
-export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlowOptions) {
-  const workspace = localWorkspaceHost({ root, remotes: { allow: ["file"] }, source: projectWorkspace() });
+export function defineHarnessThreadFlow({ installation, workspace }: HarnessThreadFlowOptions) {
   // The board a run's session reads its task on: the conversation's that filed it. The run is
   // keyed the way the manager wrote it, so a routed id still finds its run.
   const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
@@ -104,6 +102,7 @@ export function defineHarnessThreadFlow({ installation, root }: HarnessThreadFlo
       runTimeoutMs: RUN_TIMEOUT_MS,
       harness,
       reviewChanges,
+      judge: goalJudge({ name: `harness-thread-${name}${reviewChanges ? "-reviewed" : ""}-judge` }),
       uses: [projectWorkspaceCapability],
     } as never) as unknown as BlockDefinition<any, any>;
   // Per harness: the managers that run a task, and the door a line typed in its run's session takes.

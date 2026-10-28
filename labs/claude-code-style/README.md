@@ -67,14 +67,19 @@ are read from the environment, all optional:
 | Setting | Default | What it is |
 |---|---|---|
 | `CLAUDE_CODE_STYLE_MODEL` | `openai/gpt-5.4` | The model every worker answers with |
-| `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's clone under `runs/` |
+| `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's worktree under `runs/` |
+| `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
 | `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
-coding runs clone. The host allows `file://` repositories only, and the repository must ignore
-`.fsdev/` (a run refuses one that doesn't). A run works in a clone under the data folder, on a
-branch of its own, so neither the repository nor the lab's checkout changes.
+coding runs work on. The host allows `file://` repositories only, and the repository must ignore
+`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+the data folder, on a branch of its own that you'll find in the repository, so your checked-out
+branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
+under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
+its answer and commits against the task's goal: it can send the run back, ask you a question, or
+let it through, and threads mode shows its verdict on the coding thread's card.
 
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
 never imports.
@@ -117,8 +122,8 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 18 | 437 |
+| Configuration | 18 | 479 |
 | React UI | 27 | 2664 |
-| Small flows | 3 | 274 |
+| Small flows | 3 | 273 |
 | Checks (not app code) | 8 | 1256 |
 <!-- inventory:end -->

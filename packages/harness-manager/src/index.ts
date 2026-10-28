@@ -19,6 +19,8 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
+ * - `goalJudge`, a ready-made `judge`: an evaluation model reads a run's
+ *   answer and commits against its task's goal.
  * - `harnessSessionDoor`, the door a coding flow declares for a line typed
  *   in a run's session: a steer while its task is open, talk once it has
  *   finished. `harnessTalkTurn` is its talk half, which a coder also runs for
@@ -45,6 +47,16 @@
  * it. They are git-worktree-specific; adopt `harnessManager({ harness })` and
  * let it own the checkout.
  */
+
+// ── A ready-made judge ──────────────────────────────────────────────────────
+export {
+  goalJudge,
+  GOAL_JUDGE_MODEL,
+  GOAL_JUDGE_FLOOR,
+  GOAL_JUDGE_QUESTION,
+  GOAL_JUDGE_WHY_QUESTION,
+  type GoalJudgeOptions,
+} from "./goal-judge";
 
 // ── The manager ─────────────────────────────────────────────────────────────
 export {

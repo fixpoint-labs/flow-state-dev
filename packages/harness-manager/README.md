@@ -179,6 +179,11 @@ On a board read from the claim:
   and `floor` run from 0 to 1; a confidence outside that is not a verdict. A judge
   that fails never fails the task: it settles on the phase's check, with `judged: false`. Size
   your shutdown with `harnessDrainBudgetMs({ ..., judge: true })`.
+- **`goalJudge({ name, model?, floor? })` is a ready-made judge.** An evaluation model (default
+  `typesafe-ai/jev`, floor 0.7) is asked whether the answer and commits do what the goal asks,
+  and why not. *Not done* carries the why it picked as the reason, and *ask* becomes a question
+  that names the goal and quotes the start of the answer. Pass it as `judge: goalJudge({ name:
+  "my-coder-judge" })`; the model resolves through your flow's model resolver.
 
 See [Harness manager](https://flow-state.dev/docs/orchestration/harness-manager) for the whole
 picture.

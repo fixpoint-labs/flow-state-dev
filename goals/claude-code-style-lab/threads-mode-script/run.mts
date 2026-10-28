@@ -7,8 +7,8 @@
  * project, pick it, ask for three pieces of research, answer the thread that
  * asks, resolve the one ready for review, then ask for a code change and
  * resolve its review. Each signal is graded from the rendered page and from
- * the board's own records (`listTasks_tasks`, `getTask_tasks`, the run's
- * clone), never from the adapter or the lab's React state. Answers and
+ * the board's own records (`listTasks_tasks`, `getTask_tasks`, the project
+ * repository's worktrees and branches), never from the adapter or the lab's React state. Answers and
  * reviews are typed and clicked, never sent through a package call.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants a change for the
@@ -18,12 +18,14 @@
  *   - `no-review`: the thread worker's `WORKER.md` without its review line. Must FAIL signal 4.
  *   - `no-project`: a lead session made with no project. Must FAIL signal 6, with the
  *     composer closed and no run anywhere.
+ *   - `no-mapping`: the lab started with no repository to cut worktrees from, so the run
+ *     works in a clone. Must FAIL signal 6's worktree check.
  *   - `planted-glue`: a planted `src/glue.ts` in the lab. The inventory must FAIL.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/threads-mode-script/run.mts
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import type { Page } from "playwright";
@@ -114,7 +116,15 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
   const repoHead = git(repo, "rev-parse", "HEAD");
   const labBefore = labCheckout();
   const marker = `Picked a status page vendor (${RUN_STAMP})`;
-  const lab = await startLab(data, USER, {});
+  // The lab cuts worktrees from the project's repository; `no-mapping` names none, so it clones.
+  const lab = await startLab(data, USER, { CLAUDE_CODE_STYLE_REPOSITORIES: CONTROL === "no-mapping" ? "" : repo });
+  /** The project repository's worktrees other than its own, by their real paths. */
+  const worktrees = () =>
+    git(repo, "worktree", "list", "--porcelain")
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => line.slice("worktree ".length))
+      .filter((path) => path !== realpathSync(repo));
   const fsd = createClient({ userId: USER, baseUrl: lab.origin });
   /** Run one board action in the lead's session, as the person, and hand back its output. */
   const board = async (sessionId: string, action: string, input: unknown): Promise<any> => {
@@ -172,8 +182,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       await sleep(90_000);
       const clones = clonesUnder(join(data, "runs"));
       const coding = (await rowsOf(sessionId)).filter((task) => task.assignee === CODER);
-      if (clones.length === 0) failures.push(`6: no coding run cloned anything (${coding.length} coding task(s), ${coding.map((t) => `${t.status}: ${t.statusNote ?? ""}`).join("; ")})`);
-      else failures.push(`6: a run cloned ${clones.join(", ")} for a session with no project`);
+      if (clones.length === 0 && worktrees().length === 0) failures.push(`6: no coding run made a checkout (${coding.length} coding task(s), ${coding.map((t) => `${t.status}: ${t.statusNote ?? ""}`).join("; ")})`);
+      else failures.push(`6: a run made a checkout (${[...clones, ...worktrees()].join(", ")}) for a session with no project`);
       if (labCheckout() !== labBefore) failures.push("6: the lab's own checkout changed");
       return "graded";
     }
@@ -278,7 +288,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const resolvedColumn = await until(async () => ((await columnOf(asked.id)) === "resolved" ? true : undefined), 30_000, 2_000);
     if (resolvedColumn === undefined) failures.push(`5: "${asked.title}" never showed under Resolved`);
 
-    // ── Signal 6: a code change runs through Claude Code in the project's clone, waits for review, and resolves.
+    // ── Signal 6: a code change runs through Claude Code in a worktree of the project's repository, waits for review, and resolves.
     await box.fill(fixture.change.replace("{marker}", marker));
     await box.press("Enter");
     const coding = await until(async () => (await rowsOf(sessionId)).find((task) => task.assignee === CODER), 5 * 60_000);
@@ -328,21 +338,19 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
         failures.push("6: the coding thread never showed under Resolved");
       }
     }
-    // Where it worked: a clone of the project's repository under the lab's data folder, never the repository or the lab.
-    const clones = clonesUnder(join(data, "runs"));
-    const committed = clones.filter((clone) => {
-      try {
-        return execFileSync("git", ["--git-dir", clone, "log", "--all", "-p", "--", "CHANGELOG.md"], { encoding: "utf8" }).includes(marker);
-      } catch {
-        return false;
-      }
-    });
-    if (committed.length === 0) failures.push(`6: no branch of the run's clone holds the CHANGELOG line (${clones.length} clone(s) under the data folder)`);
-    else if (committed.some((clone) => clone.startsWith(LAB) || clone.startsWith(REPO_ROOT + "/labs"))) failures.push("6: the run worked inside the lab's checkout");
-    if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: the project's own repository changed");
+    // Where it worked: a worktree of the project's repository under the lab's data folder, its branch in
+    // the repository, and the repository's own checked-out branch and files untouched.
+    const runs = realpathSync(join(data, "runs"));
+    const placed = worktrees().filter((path) => path.startsWith(runs + "/"));
+    const committed = placed.filter((path) => git(path, "log", "-p", "--", "CHANGELOG.md").includes(marker));
+    if (placed.length === 0) failures.push(`6: the run didn't work in a worktree of the project's repository (${clonesUnder(runs).length} clone(s) under the data folder)`);
+    else if (committed.length === 0) failures.push(`6: no run worktree's branch holds the CHANGELOG line (${placed.join(", ")})`);
+    else if (!git(repo, "log", "--all", "-p", "--", "CHANGELOG.md").includes(marker)) failures.push("6: the run's branch isn't in the project's repository");
+    if (committed.some((path) => path.startsWith(LAB) || path.startsWith(REPO_ROOT + "/labs"))) failures.push("6: the run worked inside the lab's checkout");
+    if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: the project's checked-out branch or files changed");
     if (labCheckout() !== labBefore) failures.push("6: the lab's own checkout changed");
     if (errors.length > 0) failures.push(`page errors: ${errors.join(" | ")}`);
-    notes.push(`${together.length} threads side by side; answered "${asked.title}"; coding thread ${coding.id}; clone ${committed[0] ?? "none"}`);
+    notes.push(`${together.length} threads side by side; answered "${asked.title}"; coding thread ${coding.id}; worktree ${committed[0] ?? "none"}`);
     return "graded";
   } finally {
     await browser?.close();
