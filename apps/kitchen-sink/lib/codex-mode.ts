@@ -229,6 +229,8 @@ export function codexClient(
 export interface CodexSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveCodexClient?: ResolveCodexClient;
+  /** Replaces Codex's model list, read for a session that names no model. */
+  readonly listCodexModels?: (env: Record<string, string>) => Promise<CodexModelList>;
 }
 
 /** The Codex block's options, built from the session flow's feeds. */
@@ -239,7 +241,7 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
     onSession: feeds.onSession,
     // A session stored before models could be picked names none; it runs
     // Codex's own default, never the model your Codex settings name.
-    model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel()),
+    model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel(seams)),
     thread: codexThreadOptions(),
     resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
     name: "codex",
@@ -259,13 +261,19 @@ export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): Harness
 }
 
 /**
- * The model Codex runs when none is named, from its own list. `undefined`
- * when the list can't be read, so the run is left to Codex.
+ * The model Codex runs when none is named, from its own list.
+ *
+ * @throws When the list can't be read: the run stops before it starts, since
+ *   a run that names no model would take the one your Codex settings name.
  */
-async function codexDefaultModel(): Promise<string | undefined> {
-  if (codexIsScripted()) return SCRIPTED_CODEX_MODEL;
-  const found = await listCodexModels({ env: codexEnv() });
-  return found.status === "models" ? (found.models.find((model) => model.isDefault) ?? found.models[0])?.id : undefined;
+async function codexDefaultModel(seams: CodexSeams): Promise<string> {
+  if (codexIsScripted() && seams.listCodexModels === undefined) return SCRIPTED_CODEX_MODEL;
+  const list = seams.listCodexModels ?? ((env) => listCodexModels({ env }));
+  const found = await list(codexEnv());
+  if (found.status === "failed") {
+    throw new Error(`Codex's model list can't be read (${found.reason}), so this session can't name the model it runs. Try the turn again.`);
+  }
+  return (found.models.find((model) => model.isDefault) ?? found.models[0]!).id;
 }
 
 /** Codex mode's session flow. `seams` is for tests. */
