@@ -142,6 +142,29 @@ machine, not in a hosted service. A host opts in by passing `readCodexUsage` as
 its Codex usage reader, for example to `harnessUsageAction` in
 `@flow-state-dev/harness-manager`.
 
+## Listing models
+
+`listCodexModels({ env, timeoutMs? })` asks Codex which models it offers, with
+no run. It asks the same `codex app-server` the usage read does, and gets the
+models Codex's own picker shows for that sign-in, so a model the account can't
+run is left out:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { listCodexModels } from "@flow-state-dev/codex";
+
+const list = await listCodexModels({ env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME"] }) });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+Each entry is `{ id, label, description?, isDefault }`, Codex's default first.
+Pass `id` as the block's `model`. It never throws: a CLI that can't be found,
+stops, refuses, lists nothing, or doesn't answer within `timeoutMs` (default
+10 000 ms) reads `{ status: "failed", reason }`. **Local only**, like the usage
+read.
+
 ## Tests
 
 ```bash

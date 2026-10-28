@@ -27,8 +27,9 @@
  * may be one the signed-in account can't use, a tier like Fast (`priority`)
  * spends more of the account's usage, and a server signed in for your own use
  * fails to start inside the sandbox. Codex reads the file either way; the run
- * overrides each of those (`codexClientOptions`). Sign-in, history and every
- * other setting still come from Codex's home.
+ * overrides each of those (the session's model, or Codex's own default for a
+ * session stored before models could be picked, and `codexClientOptions`).
+ * Sign-in, history and every other setting still come from Codex's home.
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
  * (`lib/scripted-codex.ts`) and the check passes, unless
@@ -45,10 +46,12 @@ import {
   codexAgent,
   createDefaultResolveCodexClient,
   findCodexProgram,
+  listCodexModels,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
   type CodexAgentOptions,
   type CodexClientOptions,
+  type CodexModelList,
   type CodexThreadOptions,
   type InstalledSdkVersionReader,
   type ResolveCodexClient,
@@ -57,89 +60,40 @@ import {
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
-import type { HarnessModel, ModelChoices } from "./harness-models";
+import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCodex } from "./scripted-codex";
 
 /** Codex mode's flow kind, from the mode list: the rail lists its sessions by it. */
 export const CODEX_SESSION = flowKindOf(modeById("codex"));
 
-/**
- * The models Codex mode offers in New session, its default first. Kept by
- * hand, because Codex's SDK can't list models (FIX-1952 D3; FIX-1975 removes
- * this list once it can). Updated from Codex 0.164.0's catalog and OpenAI's
- * model availability docs. Availability still depends on the signed-in account.
- * When Codex ships or retires a model, edit this list.
- */
-export const CODEX_MODELS: readonly HarnessModel[] = [
-  { id: "gpt-6.1-sol", label: "GPT-6.1-Sol" },
-  { id: "gpt-6-sol", label: "GPT-6-Sol" },
-  { id: "gpt-6-luna", label: "GPT-6-Luna" },
-  { id: "gpt-6-astra", label: "GPT-6-Astra" },
-  { id: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
-  { id: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
-  { id: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
-];
+/** The model the scripted Codex offers. It runs no model; the id only travels. */
+const SCRIPTED_CODEX_MODEL = "scripted-codex";
 
 /**
- * Models Codex refuses when it is signed in with a ChatGPT account. Measured,
- * not guessed: Codex answers a turn on `gpt-6.1-sol` with a 400, "The
- * 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT
- * account." Add a model here only on the same evidence.
+ * Codex's own list: the models its picker shows for the sign-in a run gets,
+ * its default preselected. A model the account can't run is one Codex leaves
+ * out. When the list can't be read, nothing is offered and New session can't
+ * start, as in Claude Code mode: Kitchen Sink keeps no Codex model name of its
+ * own. The next load asks again. `list` is a seam for tests.
  */
-const CHATGPT_REFUSED: ReadonlySet<string> = new Set(["gpt-6.1-sol"]);
-
-/**
- * The model a Codex mode session runs when it names none: the list's first
- * that every sign-in can run. A session from before models could be picked
- * runs on it rather than on whatever model your own Codex settings name,
- * which may be one this account can't use.
- */
-export const CODEX_DEFAULT_MODEL = CODEX_MODELS.find((model) => !CHATGPT_REFUSED.has(model.id))!.id;
-
-/** How Codex is signed in for a run: an API key, a ChatGPT account, or not known. */
-export type CodexSignIn = "api-key" | "chatgpt" | "unknown";
-
-/**
- * Kept on `globalThis` beside the harness gate's answer, and like it decided
- * once per server (`lib/harness-gate.ts`): the ChatGPT list carries a reason,
- * so its read is never kept, and each New session would otherwise run
- * `codex login status` again.
- */
-const SIGN_IN = Symbol.for("kitchen-sink.codex-sign-in");
-type SignInMemo = typeof globalThis & { [SIGN_IN]?: Promise<CodexSignIn> };
-
-/** How Codex is signed in on this server, asked once and kept until restart. */
-function serverSignIn(): Promise<CodexSignIn> {
-  const memo = globalThis as SignInMemo;
-  memo[SIGN_IN] ??= codexSignIn(codexEnv());
-  return memo[SIGN_IN];
-}
-
-/**
- * What Codex mode's New session offers: the list above. Signed in with an API
- * key, its first entry is preselected; otherwise `CODEX_DEFAULT_MODEL` is, so
- * a sign-in that can't be read never leads with a refused model. Signed in
- * with a ChatGPT account, the models it refuses are left out and the reason
- * says which and why. `signIn` is a seam for tests.
- */
-export async function codexModelChoices(signIn: () => Promise<CodexSignIn> = serverSignIn): Promise<ModelChoices> {
+export async function codexModelChoices(
+  list: (env: Record<string, string>) => Promise<CodexModelList> = (env) => listCodexModels({ env }),
+): Promise<ModelChoices> {
   if (codexIsScripted()) {
-    return { models: CODEX_MODELS, defaultId: CODEX_MODELS[0]!.id, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex" }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
   }
-  const how = await signIn();
-  if (how !== "chatgpt") {
-    const defaultId = how === "api-key" ? CODEX_MODELS[0]!.id : CODEX_DEFAULT_MODEL;
-    return { models: CODEX_MODELS, defaultId, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+  const found = await list(codexEnv());
+  if (found.status === "failed") {
+    return {
+      models: [],
+      defaultId: null,
+      reason: `Codex's model list can't be read (${found.reason}), so a new session can't name its model. Reload to try again.`,
+      fallbackId: null,
+    };
   }
-  const models = CODEX_MODELS.filter((model) => !CHATGPT_REFUSED.has(model.id));
-  const refused = CODEX_MODELS.filter((model) => CHATGPT_REFUSED.has(model.id)).map((model) => model.label);
-  return {
-    models,
-    defaultId: models[0]!.id,
-    reason: `Unavailable: ${refused.join(", ")}. Codex here is signed in with a ChatGPT account, which can't use ${refused.length === 1 ? "it" : "them"}; an API key can.`,
-    fallbackId: CODEX_DEFAULT_MODEL,
-  };
+  const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
+  return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
 /**
@@ -281,7 +235,9 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
-    model: feeds.model,
+    // A session stored before models could be picked names none; it runs
+    // Codex's own default, never the model your Codex settings name.
+    model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel()),
     thread: codexThreadOptions(),
     resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
     name: "codex",
@@ -300,13 +256,20 @@ export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): Harness
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
+/**
+ * The model Codex runs when none is named, from its own list. `undefined`
+ * when the list can't be read, so the run is left to Codex.
+ */
+async function codexDefaultModel(): Promise<string | undefined> {
+  if (codexIsScripted()) return SCRIPTED_CODEX_MODEL;
+  const found = await listCodexModels({ env: codexEnv() });
+  return found.status === "models" ? (found.models.find((model) => model.isDefault) ?? found.models[0])?.id : undefined;
+}
+
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
-  return harnessSessionFlow({
-    kind: CODEX_SESSION,
-    defaultModel: CODEX_DEFAULT_MODEL,
-    agent: (feeds) => codexBlock(feeds, seams),
-  });
+  // No `defaultModel`: the block fills in Codex's own default (`codexBlockOptions`).
+  return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */
@@ -373,20 +336,6 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
     }
     throw new Error(`Codex did not list a supported transport for MCP server ${server.name}`);
   });
-}
-
-/**
- * How Codex is signed in over `env`: a `CODEX_API_KEY` there signs a run in
- * with that key; otherwise Codex's own `codex login status` says which.
- */
-export async function codexSignIn(env: Record<string, string>): Promise<CodexSignIn> {
-  if ((env.CODEX_API_KEY ?? "") !== "") return "api-key";
-  const result = await runCodex(["login", "status"], env);
-  if (result.status !== 0) return "unknown";
-  const said = `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`;
-  if (/using ChatGPT/i.test(said)) return "chatgpt";
-  if (/API key/i.test(said)) return "api-key";
-  return "unknown";
 }
 
 /** The host's own answers. */

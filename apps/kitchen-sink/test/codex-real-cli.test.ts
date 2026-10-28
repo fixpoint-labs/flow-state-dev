@@ -35,8 +35,8 @@ import { worktreeRoot } from "@/lib/harness-worktree";
 
 const PLANTED = "do-not-hand-this-over";
 /** The model the endpoint refuses, and the words it refuses it with (the reported 400's). */
-const REFUSED_MODEL = "gpt-6.1-sol";
-const REFUSAL = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+const REFUSED_MODEL = "model-this-account-cannot-use";
+const REFUSAL = "The 'model-this-account-cannot-use' model is not supported when using Codex with a ChatGPT account.";
 
 let scratch: string;
 let repo: string;

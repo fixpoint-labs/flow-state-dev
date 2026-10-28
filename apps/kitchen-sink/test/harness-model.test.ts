@@ -22,7 +22,7 @@ import type { ResolveCodexClient } from "@flow-state-dev/codex";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { claudeCodeModelChoices, claudeCodeSessionFlow } from "@/lib/claude-code-mode";
-import { CODEX_DEFAULT_MODEL, CODEX_MODELS, CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
+import { CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
 import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorModelSelection, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { MODEL_REQUIRED } from "@/lib/harness-session-flow";
@@ -101,7 +101,9 @@ function codex(): Mode {
       },
     };
   };
-  return { name: "Codex", flow: () => codexSessionFlow({ resolveCodexClient: resolve }) as never, models, fallback: CODEX_DEFAULT_MODEL };
+  // A session with none runs Codex's own default, read off its list: whatever the installed Codex names.
+  const fallback = expect.any(String) as unknown as string;
+  return { name: "Codex", flow: () => codexSessionFlow({ resolveCodexClient: resolve }) as never, models, fallback };
 }
 
 function cursor(): Mode {
@@ -282,40 +284,31 @@ describe("what each mode offers to pick", () => {
     expect(choices.reason).toMatch(/model list can't be read \(no answer\)/);
   });
 
-  it("Codex: the hand-kept list, its first entry preselected, when Codex is signed in with an API key", async () => {
-    const choices = await codexModelChoices(async () => "api-key");
-    expect(choices.models).toBe(CODEX_MODELS);
-    expect(choices.defaultId).toBe(CODEX_MODELS[0]!.id);
-    expect(choices.reason).toBeNull();
-    // A session from before the picker runs on it, never on the model your own Codex settings name.
-    expect(choices.fallbackId).toBe(CODEX_DEFAULT_MODEL);
-    expect(choices.models.map((model) => model.id)).toEqual([
-      "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra",
-      "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-    ]);
+  it("Codex: its own list for the sign-in a run gets, its default preselected", async () => {
+    // A model the account can't run is one Codex leaves out, so New session never leads with it.
+    const choices = await codexModelChoices(async () => ({
+      status: "models",
+      models: [
+        { id: "gpt-b", label: "GPT-B", isDefault: true },
+        { id: "gpt-a", label: "GPT-A", isDefault: false },
+      ],
+    }));
+    expect(choices).toEqual({
+      models: [
+        { id: "gpt-b", label: "GPT-B" },
+        { id: "gpt-a", label: "GPT-A" },
+      ],
+      defaultId: "gpt-b",
+      reason: null,
+      fallbackId: null,
+    });
   });
 
-  it("Codex: a sign-in that can't be read offers the whole list but preselects the model every sign-in can run", async () => {
-    // `login status` may fail or print something new; New session must not then lead with a refused model.
-    const choices = await codexModelChoices(async () => "unknown");
-    expect(choices.models).toBe(CODEX_MODELS);
-    expect(choices.defaultId).toBe(CODEX_DEFAULT_MODEL);
-    expect(choices.reason).toBeNull();
-  });
-
-  it("Codex: signed in with a ChatGPT account, the model that account is refused is not offered or preselected, and the reason says so", async () => {
-    // A ChatGPT account's first turn on gpt-6.1-sol is a 400; New session must not lead with it.
-    const choices = await codexModelChoices(async () => "chatgpt");
-    expect(choices.models.map((model) => model.id)).not.toContain("gpt-6.1-sol");
-    expect(choices.defaultId).toBe("gpt-6-sol");
-    expect(choices.reason).toBe(
-      "Unavailable: GPT-6.1-Sol. Codex here is signed in with a ChatGPT account, which can't use it; an API key can.",
-    );
-    expect(choices.fallbackId).toBe("gpt-6-sol");
-  });
-
-  it("Codex: a session that names no model runs on one every sign-in can use", () => {
-    expect(CODEX_DEFAULT_MODEL).toBe("gpt-6-sol");
+  it("Codex: a list that can't be read offers nothing, and says why", async () => {
+    const choices = await codexModelChoices(async () => ({ status: "failed", reason: "no answer" }));
+    expect(choices.models).toEqual([]);
+    expect(choices.defaultId).toBeNull();
+    expect(choices.reason).toMatch(/Codex's model list can't be read \(no answer\)/);
   });
 
   it("Cursor: the hand-kept list, Composer 2.5 preselected, Auto offered as the default", async () => {
