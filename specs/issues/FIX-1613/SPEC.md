@@ -6,10 +6,9 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **talks to one worker for weeks in the Grok Bot-style lab** | Turn 51 drops turn 1 from what the model reads, with no trace. Ask about turn 1 and the worker has no idea, unless memory happened to keep that fact | The lab's flow turns the summary on. Turns that leave the window are folded into one running summary the model reads before the turns it reads word for word, so turn 1 is still there in short form |
+| **talks to one worker for weeks in the Grok Bot-style lab** | Turn 51 drops turn 1 from what the model reads, with no trace. Ask about turn 1 and the worker has no idea, unless memory happened to keep that fact | The lab's flow installs the history-summary capability and its fold step. Turns about to leave the window are folded into one running summary the model reads in its context, so turn 1 is still there in short form |
 | **looks at that conversation on a screen** | Sees one unbroken list. Nothing says the model stopped reading the top of it | Sees a divider where the turns read word for word begin, labelled *earlier turns summarized* when the summary reaches it, *earlier turns out of view* otherwise |
 | **runs a flow that never opts in** (the stock agent flow, every app today) | 50 turns, older ones dropped | The same model input, byte for byte. Once a session passes its window, each turn reads one more row and records the divider's mark, so any screen can say *out of view* honestly |
-| **writes a generator with a narrow history** (`history: { limit: { turns: 8 } }`) | Sees its last 8 turns | The same. The summary rides only with a history that reaches back to the divider |
 | **hits a summary call that fails** | n/a | The turn runs anyway, on the summary it had and every turn past it, all still in the window. The fold starts a quarter of the window early, so it is tried again on the next turns before anything leaves |
 | **leaves a turn waiting on an approval while the conversation goes on** | The parked turn shows once it settles, if it is still inside the window | The same: the fold waits for a turn that hasn't settled, and one still parked when it leaves the window is kept by id and folded once it settles. Never skipped |
 
@@ -29,12 +28,12 @@ word begin.**
 |---|---|
 | **The real need** | FIX-2154 step 4: "the script sends 60 more turns (past the 50-turn window), then asks lead for a fact you gave on turn 1 … both answers are right, and the divider marks where the turns lead reads word for word begin, labelled *summarized* only when G1's summary is on" ([FIX-2154 G1](../FIX-2154/SPEC.md#package-gaps), Jake's [comment](https://linear.app/fixpoint-labs/issue/FIX-1613) extending this issue) |
 | **Smaller, and rejected** | "Record the divider's mark": it draws the line and leaves the model blind past it. "Let a block fetch old items when it needs them, plus memory" (this issue's first ask): nothing decides when to fetch, memory keeps facts and drops the thread, and the read has no caller ([D1](DECISIONS.md#d1)). "Raise `historyWindow`": every turn pays for the whole conversation, and it still ends |
-| **Bigger, and not this issue's** | [FIX-2174](https://linear.app/fixpoint-labs/issue/FIX-2174) compaction: a fold in the background, near the model's token limit, on demand with instructions, and compact-and-retry on overflow. It extends this option rather than adding a second one. A per-worker switch in `WORKER.md` waits for it too; here a worker opts in by running on a flow that does |
-| **Not done if** | The summary is stored but never reaches the model · the fact passes only because it is still inside the window · the fact survives the first fold and is lost by a later one · the summary lives only in memory of the process and a restart loses it · the mark is in the trace but the request list a screen reads doesn't carry it · the divider says *summarized* after a failed fold · a flow with the option off sends a different model input · a failed summary fails the turn · the summary grows with every fold |
+| **Bigger, and not this issue's** | [FIX-2174](https://linear.app/fixpoint-labs/issue/FIX-2174) compaction: a fold in the background, near the model's token limit, on demand with instructions, and compact-and-retry on overflow. It extends this capability rather than adding a second summary. A per-worker switch in `WORKER.md` waits for it too; here a worker opts in by running on a flow that does |
+| **Not done if** | The summary is stored but never reaches the model · the fact passes only because it is still inside the window · the fact survives the first fold and is lost by a later one · a restart loses the summary · the mark is in the trace but the request list a screen reads doesn't carry it · the divider says *summarized* after a failed fold · a flow without the capability sends a different model input · a failed summary fails the turn · the summary grows with every fold · the capability installed without its fold step runs quietly with no summary |
 
 ```mermaid
 flowchart LR
-  F["a flow with a 6-turn window · summary on · no memory · real model"] --> T1["turn 1 · a fact picked at run time"]
+  F["a flow with a 6-turn window · capability and fold step · no memory · real model"] --> T1["turn 1 · a fact picked at run time"]
   T1 --> T["12 turns on other topics · three folds or more · server restarted once"]
   T --> Q["ask for the fact"]
   Q -->|"answer holds it · turn 1 absent from the model input · divider summarized"| P["PASS · goal met"]
@@ -42,16 +41,16 @@ flowchart LR
   Q -.->|"under the control"| X["must FAIL · w:answer"]
 ```
 
-The check reads the answer, the model input from the turn's trace, and the mark from the request
-list a screen reads.
+The check reads the answer, the model input from the turn's trace, and the mark from what a
+screen reads.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/history-window/remembers-turns-past-the-window/` · `pnpm tsx goals/history-window/remembers-turns-past-the-window/run.mts` · the goals' default real model · run by the implementer at completion · verdict in the implementation PR. The flow is the goal's own, built in `run.mts` with `summarizer`, on the SQLite store, with no memory capability. FIX-2154's step 4 is the downstream check, run by that lab's wiring |
-| **Signal** | `w:answer` the last answer holds the fact, 3 of 3 runs. `w:out-of-window` turn 1's user message is absent from the answer generator's model input on the last turn (read from the turn's trace). `w:mark` the last request in `client.sessions.requests` carries `historyStart` with `summarized: true`, naming the oldest request whose messages that input holds. `w:folds` at least three folds ran, one across a server restart, and the stored summary stays under 4,000 characters |
+| **Goal check** | `goals/history-window/remembers-turns-past-the-window/` · `pnpm tsx goals/history-window/remembers-turns-past-the-window/run.mts` · the goals' default real model · run by the implementer at completion · verdict in the implementation PR. The flow is the goal's own, built in `run.mts` with `historySummary({ summarize: summarizer(...) })`, on the SQLite store, with no memory capability. FIX-2154's step 4 is the downstream check, run by that lab's wiring |
+| **Signal** | `w:answer` the last answer holds the fact, 3 of 3 runs. `w:out-of-window` turn 1's user message is absent from the answer generator's model input on the last turn (read from the turn's trace). `w:mark` the last request in `client.sessions.requests` carries `historyStart`, and the session's `historySummary` resource reads `complete: true` through a request at or after turn 1's. `w:folds` at least three folds ran, one across a server restart, and the stored summary stays under 4,000 characters |
 | **Input** | Fact words picked at run time, filler topics shuffled. `GOAL_WINDOW=50 GOAL_TURNS=60` must pass too |
-| **Anti-game** | Never assert on the summary's wording or a mocked summarizer: both pass while the answer generator never sees it. No memory on the flow; the fact is never in the system prompt |
-| **Control that must fail** | `GOAL_CONTROL=no-summary` (the option removed) fails `w:answer`, and its mark reads `summarized: false`. The same script on `main` fails `w:mark` (no mark). The PR shows both FAILs before the PASS. Model-free, in CI: option off sends a scripted model the same input as before (fails if the summary leaks); a summarizer that throws leaves the turn completed and the mark `summarized: false`; a narrow `history({ limit })` gets no summary |
+| **Anti-game** | Never assert on the summary's wording or a mocked summarizer: both pass while the answer generator never sees it. No memory on the flow; the fact is never in the system prompt the flow writes |
+| **Control that must fail** | `GOAL_CONTROL=no-summary` (capability and fold step removed) fails `w:answer`. The same script on `main` fails `w:mark` (no mark). The PR shows both FAILs before the PASS. Model-free, in CI: no capability sends a scripted model the same input as before; a summarizer that throws leaves the turn completed and the resource `complete: false`; the capability without its fold step fails the first turn whose window has dropped a turn, naming the missing step; `capability.presets({ history: false })` reads the whole window |
 
 ## What changes
 
@@ -60,115 +59,162 @@ list a screen reads.
 The bottom row is the opt-in: folds happen in batches, so the turns read word for word float
 between the window and a quarter of it less. The middle row is every flow, opted in or not.
 
-**Opting in, in a flow and in the workforce agent flow:**
+**A flow opts in with one capability and one step.** Core ships `historySummary(...)`, next to
+`summarizer`. It returns the capability a generator installs through `uses` and the fold block
+the flow runs before that generator, the same shape as memory's `system()` (a capability, plus
+`captureFromItems` the flow adds as a step):
 
 ```diff
- import { defineFlow, summarizer } from "@flow-state-dev/core";
+ import { generator, historySummary, sequencer, summarizer } from "@flow-state-dev/core";
 
- defineFlow({
-   kind: "assistant",
-   session: {
--    historyWindow: { turns: 50 },
-+    historyWindow: {
-+      turns: 50,
-+      // Turns about to leave the window are folded into one running summary.
-+      summarize: summarizer({ name: "earlier-turns", granularity: "detailed" }),
-+    },
-   },
-   ...
- });
++const earlier = historySummary({
++  summarize: summarizer({ name: "earlier-turns", granularity: "detailed" }),
++});
 
- defineAgentWorkerFlow({
-   installation,
-+  historyWindow: { turns: 50, summarize: summarizer({ name: "earlier-turns", granularity: "detailed" }) },
- });
+ const chat = sequencer({ name: "chat", inputSchema })
++  .tap(earlier.fold)                  // folds turns about to leave the window
+   .step(generator({
+     name: "answer",
+     history: true,
++    uses: [earlier.capability],       // the summary as context; history after it
+     ...
+   }));
 ```
 
-**And the screen, reading the latest turn's mark:**
+**And the screen, reading the latest turn's mark and the summary's reach:**
 
 ```diff
  const requests = await client.sessions.requests(sessionId);
-+const start = requests.at(-1)?.historyStart;   // absent: every earlier turn is read word for word
-+// draw the divider before start.requestId:
-+//   start.summarized ? "earlier turns summarized" : "earlier turns out of view"
++const start = requests.at(-1)?.historyStart;   // absent: every earlier turn is in the window
++// a flow with the capability exposes its `historySummary` resource:
++//   { throughRequestId, complete } — the divider goes after throughRequestId, "earlier turns summarized"
++// otherwise the divider goes before start.requestId, "earlier turns out of view"
 ```
 
 **Docs:** update `apps/docs/docs/advanced/generator-context.md` → *Conversation history
-windowing* with a *Summarizing turns past the window* section, and rewrite its closing paragraph,
-which today says compaction belongs to higher-level patterns, and name the narrow-history case. Update the `core` README (the option),
-the `client` README (`historyStart` on a request), and the `workforce` README (the agent flow's
-`historyWindow`). No new page.
+windowing* with a *Summarizing turns past the window* section, and rewrite its closing
+paragraph, which today says compaction belongs to higher-level patterns. Update the `core`
+README (`historySummary`, the capability `history` preset key, `ctx.session.window`), the
+`client` README (`historyStart` on a request), and the `workforce` README (`beforeAnswer`). No
+new page.
 
 ## The blocks, and how a turn runs them
 
-**No new block kind and no new block in any package.** The one block involved is the
-author's: whatever they pass as `summarize`, normally core's existing `summarizer(...)`. The
-engine's fold step is engine code that *runs* that block. Workforce adds no block; its answer
-generator reads history the way it does today.
-
-**The contract the engine calls the block with** (core, the option's type):
+**What core adds.** One factory, `historySummary`, built from pieces that exist: a session
+resource, a capability, and a sequencer of two handlers around the author's `summarize` block.
+Names and the exact sequencer shape are the implementer's; this is the direction:
 
 ```ts
-// core/src/types/flow.ts
-historyWindow?: {
-  turns: number;
-  /** Folds turns about to leave the window into one running summary. Off when absent. */
-  summarize?: BlockDefinition<HistorySummaryInput, { summary: string }>;
-};
-
-/** What the engine hands `summarize` on each fold. */
+// core/src/utility/history-summary.ts
 export type HistorySummaryInput = {
   /** The running summary so far; null on the first fold. */
   summary: string | null;
   /** The turns being folded, oldest first, as the model would have read them. */
   turns: LLMMessage[];
 };
+
+export function historySummary(options: {
+  /** Any block with this input and `{ summary }` out. `summarizer(...)` fits as is. */
+  summarize: BlockDefinition<HistorySummaryInput, { summary: string }>;
+}) {
+  // Session-scoped, persisted, public: one summary per conversation, however many
+  // generators install the capability. Read by screens for the divider.
+  const resource = defineResource({
+    name: "historySummary",
+    scope: "session",
+    stateSchema: z.object({
+      summary: z.string().nullable().default(null),
+      throughRequestId: z.string().nullable().default(null), // the high-water mark
+      pending: z.array(z.string()).default([]),             // parked turns kept by id
+      complete: z.boolean().default(true),                  // false: a turn left unsummarized
+      folds: z.number().int().default(0),
+    }),
+  });
+
+  const capability = defineCapability({
+    name: "historySummary",
+    resources: { historySummary: resource },
+    presets: {
+      default: ["context", "history"],
+      // The summary as one context section. Throws a configuration error if a turn
+      // has left the window and no fold has ever run: the fold step is missing.
+      context: { context: [historySummaryContext] },
+      // Every history read of the block starts after the mark (new preset key).
+      history: { history: (ctx) => ({ afterRequestId: markOf(ctx) }) },
+    },
+  });
+
+  const fold = sequencer({ name: "history-summary-fold", inputSchema: z.unknown() })
+    .step(foldDue)          // handler: reads ctx.session.window and the resource;
+                            // returns the settled turns to fold, or null
+    .stepIf((due) => due !== null, options.summarize, {
+      connectInput: (due) => ({ summary: due.summary, turns: due.turns }),
+    })
+    .step(foldWrite)        // handler: version-checked write of summary, mark, pending
+    .rescue([{ block: foldFailed }]); // a failed summary is logged; the turn goes on
+
+  return { capability, fold, resource };
+}
 ```
 
-`summarizer()` already takes any input and returns `{ summary, keyPoints? }`, so it fits as is.
-An author who wants their own wording writes any block with that input and output:
+An author who wants their own wording passes any block with that input and output:
 
 ```ts
-const earlierTurns = generator({
-  name: "earlier-turns",
-  model: "openai/gpt-6-luna",
-  outputSchema: z.object({ summary: z.string() }),
-  prompt: "Fold the new turns into the running summary. Keep names, dates, facts the user gave, and open requests. Under 300 words.",
-  user: ({ summary, turns }) => `Summary so far:\n${summary ?? "(none)"}\n\nNew turns:\n${formatTurns(turns)}`,
+const earlier = historySummary({
+  summarize: generator({
+    name: "earlier-turns",
+    model: "openai/gpt-6-luna",
+    outputSchema: z.object({ summary: z.string() }),
+    prompt: "Fold the new turns into the running summary. Keep names, dates, facts the user gave, and open requests. Under 300 words.",
+    user: ({ summary, turns }) => `Summary so far:\n${summary ?? "(none)"}\n\nNew turns:\n${formatTurns(turns)}`,
+  }),
 });
-
-defineFlow({ kind: "assistant", session: { historyWindow: { turns: 50, summarize: earlierTurns } }, ... });
 ```
 
-**How the workforce agent flow installs it.** `defineAgentWorkerFlow` takes the same object and
-puts it on the flow's `session`, beside what an installation already sets there:
+**What core and engine open up for it,** all generic, none of it about summaries:
+
+| Surface | What it is | Why the capability needs it |
+|---|---|---|
+| `history` in a capability preset | A query a capability adds to every `ctx.session.items.history()` read of a block that installs it. The block's explicit query keys win | Jake's "choose the history as part of the capability install". Workforce's answer generator reads history through `routedTaskHistory`, a function slot, so it has to reach the read itself, not the generator's `history` option |
+| `afterRequestId` on `ItemQuery` | History from the turn after a given request | The narrowing: the summary stands for the turns up to the mark |
+| `ctx.session.window` | Read-only: the window size, the first request in it, and each loaded turn's id and whether it has settled | The fold has to know which turns are about to leave and which have settled. Only the engine knows the window |
+| A by-id history read of one turn | `ctx.session.items.history({ requestIds: [id] })` reaching a turn past the window | Folding a parked turn that left the window once it settles. Bounded by the pending list, not a deep read |
+| `historyStart: { requestId }` on the request record and its summary | The first turn the window holds | The divider's *out of view* on every flow ([D2](DECISIONS.md#d2)) |
+
+**How the workforce agent flow installs it.** The capability goes in through the `uses` the
+agent flow already forwards to its answer generators. The fold needs a step before the answer,
+so the agent flow gets `beforeAnswer`, the mirror of its existing `afterAnswer`:
 
 ```diff
- // workforce/src/agent-worker-flow.ts, where the flow is defined
- const flow = defineFlow({
-   kind: AGENT_FLOW,
-   ...bound,                       // installation: session stateSchema, createCheck, serverOwned
-+  ...(options.historyWindow === undefined
-+    ? {}
-+    : { session: { ...bound.session, historyWindow: options.historyWindow } }),
-   actions: { ... },
- });
+ // workforce/src/agent-worker-flow.ts
+-const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
++const prepared = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
+   .tapIf(..., matcherWithoutClassifier)
+   .tapIf(..., matcherWithClassifier)
+-  .tap(appendWorkerDefaults)
+-  .branch({ plain: [...], withActivateTool: [...] });
++  .tap(appendWorkerDefaults);
++// Appended only when the app passed one, like afterAnswer, so a call without it
++// builds the same sequence. `.tap`: a pre-answer step can't change the input.
++const answered = (options.beforeAnswer ? prepared.tap(options.beforeAnswer) : prepared)
++  .branch({ plain: [...], withActivateTool: [...] });
 ```
 
 ```ts
 // the Grok Bot-style lab's host (FIX-2154), per worker flow
+const earlier = historySummary({
+  summarize: summarizer({
+    name: "earlier-turns",
+    granularity: "detailed",
+    objectives: ["names, dates and facts the user gave", "requests still open"],
+  }),
+});
+
 const lead = defineAgentWorkerFlow({
   installation,
-  uses: [memory],
+  uses: [memory, earlier.capability],
+  beforeAnswer: earlier.fold,
   afterAnswer: memory.captureFromItems,
-  historyWindow: {
-    turns: 50,
-    summarize: summarizer({
-      name: "earlier-turns",
-      granularity: "detailed",
-      objectives: ["names, dates and facts the user gave", "requests still open"],
-    }),
-  },
 });
 ```
 
@@ -177,47 +223,53 @@ const lead = defineAgentWorkerFlow({
 ```mermaid
 sequenceDiagram
   participant E as engine
-  participant S as session record
+  participant F as fold step
+  participant R as historySummary resource
   participant B as summarize block
-  participant W as workforce turn
   participant G as answer generator
   E->>E: load the window plus one row
   E->>E: record historyStart on this request
-  opt summary on and a fold is due
-    E->>S: re-read the high-water mark
-    E->>B: summary so far and the turns to fold
-    B-->>E: new summary
-    E->>S: write summary and mark with the version check
+  E->>F: run the flow, fold step first
+  F->>R: read the mark and the pending ids
+  opt a fold is due
+    F->>B: summary so far and the settled turns to fold
+    B-->>F: new summary
+    F->>R: write summary and mark with the version check
   end
-  E->>W: request onStarted then the action
-  W->>G: run with history routedTaskHistory
-  G->>E: ctx.session.items.history
-  E-->>G: summary message then turns past the mark then this turn
+  F->>G: next step, the answer
+  G->>R: capability context reads the summary
+  G->>E: history read after the mark
+  E-->>G: turns after the mark then this turn
 ```
 
-The `summarize` block runs as a child of the turn's request, so the devtool shows it as a block
-named `earlier-turns` in that turn's trace and its tokens count to that turn. Its items are
-neither shown in the conversation nor history (`summarizer`'s default). Workforce's
-`resolveTurnWorker` hook and `routedTaskHistory` change nothing: the summary arrives inside the
-history they already read.
+The fold and the `summarize` block are steps of the turn, so the devtool shows them in that
+turn's trace and their tokens count to that turn. The summarizer's items are neither shown in the
+conversation nor history (`summarizer`'s default). Workforce's `resolveTurnWorker` and
+`routedTaskHistory` don't change: the summary arrives as context, and the narrowing arrives
+inside the history read they already make.
 
 **What the answer generator's model receives on turn 61:**
 
 ```text
 system  <the worker's prompt>
-user    Summary of the conversation before this point: The user is Dana, launching on
-        12 March. They asked lead to outline a post; researcher was asked for the date…
+        <earlier-conversation>
+        The user is Dana, launching on 12 March. They asked lead to outline a post;
+        researcher was asked for the date…
+        </earlier-conversation>
 user    <turn 13's message>
 assistant <turn 13's answer>
 …
 user    <turn 61's message>
 ```
 
+The system prompt changes on a fold, about one turn in twelve, so a provider's prompt cache
+misses on that turn and holds between folds.
+
 ## What stays as it is
 
-- **The default.** No `summarize`, no fold, the same 50 turns, the same model input.
-- **The window as the store-read cap.** A turn loads `turns` past turns, plus one
-  more row, new, to know whether anything fell out; the option-off path drops it before history.
+- **The default.** No capability, no fold, the same 50 turns, the same model input.
+- **The window as the store-read cap.** A turn loads `turns` past turns, plus one more row, new,
+  to know whether anything fell out; history drops it before the model sees it.
 - **Stored items.** A fold rewrites nothing. The full conversation stays in the store and in the
   item stream; only what the model reads changes.
 - **Memory.** The memory package's tiers are untouched, and neither replaces the other.
@@ -227,29 +279,33 @@ user    <turn 61's message>
 
 | Already here | What this does with it |
 |---|---|
-| `session.historyWindow` (`core/src/types/flow.ts`), applied in `createExecutionContext.ts` | **Extends**: one optional field, `summarize`. The window stays the cap |
-| `summarizer` (`core/src/utility/summarizer.ts`), used by no package today | **Builds on**: the author passes one; core calls it with the summary so far and the turns to fold |
-| `loadLLMHistory` and `ctx.session.items.history()`, which generator `history` and Workforce's `routedTaskHistory` read | **Extends**: a summary message before the turns past the mark, when the read reaches the mark |
-| Request lifecycle hooks (`request.onStarted` blocks the engine runs) | **Builds on** the precedent: the engine runs an author's block inside a turn, traced and counted |
-| Whatever already keeps a long conversation's earlier context | **None does this job for a conversation.** The memory tiers keep facts across sessions (digest is per user); Workforce's coordinator lines keep the last 10 lines inside the window; per-call `history({ limit })` only narrows. Searched `summar`, `compact`, `rolling`, `earlier turns`, `high-water` across `packages/`. Orchestration's `flowPolicy.compact({ recentN, summarizer })` is a stub for the same job over a task ledger (it keeps the recent N until a summarizer ships); it can take the same kind of block when it is built. This is the first way for a session |
-| FIX-1613's original ask: a block-facing, bounded, newest-first read of a session's items past the window, for FIX-1610's channel route record | **Not built** ([D1](DECISIONS.md#d1)). Its one consumer went with channels (FIX-1786); the fold never needs to read past the window |
-| FIX-2154 G1 ([SPEC](../FIX-2154/SPEC.md#package-gaps)) and its adapter's `summarizedUpTo(sessionId)` | **Delivers** G1. The adapter reads the latest request's `historyStart` |
-| `generator-context.md`'s line that summarizing belongs to higher-level patterns, and FIX-1775's "not a default" | **Amends** the first (an opt-in option in core, Jake's FIX-1775 direction); **keeps** the second |
+| `summarizer` (`core/src/utility/summarizer.ts`), used by no package today | **Builds on**: the author passes one as `summarize` |
+| Capabilities: `resources`, `context` and presets (`core/src/capability/`) | **Builds on** for the resource and the context; **extends** presets with a `history` key |
+| Memory's digest tier and `system()`: a capability declares the resource, and a sequencer the flow adds regenerates it (`digestRegenerate`, `captureFromItems`) | **Follows** the same split: read side in the capability, write side a step |
+| Resource version-checked writes (`engine/src/stores/resource-cas.ts`) | **Builds on**: the one writer of the summary, two turns at once converge |
+| `session.historyWindow` and `loadLLMHistory` / `ctx.session.items.history()` | **Extends**: `afterRequestId`, a by-id read, a read-only `ctx.session.window`, and one more row read per turn for the mark |
+| Workforce's `afterAnswer` step and `uses` forwarding | **Builds on** `uses`; **adds** `beforeAnswer` as its mirror |
+| Whatever already keeps a long conversation's earlier context | **None does this job for a conversation.** The memory tiers keep facts across sessions (digest is per user); Workforce's coordinator lines keep the last 10 lines inside the window; per-call `history({ limit })` only narrows. Searched `summar`, `compact`, `rolling`, `earlier turns`, `high-water` across `packages/`. Orchestration's `flowPolicy.compact({ recentN, summarizer })` is a stub for the same job over a task ledger; it can take the same kind of block when it is built |
+| FIX-1613's original ask: a block-facing, bounded, newest-first read of a session's items past the window | **Not built** ([D1](DECISIONS.md#d1)). Its one consumer went with channels (FIX-1786). The by-id read above is a turn the fold already holds the id of, not a search back through the session |
+| FIX-2154 G1 ([SPEC](../FIX-2154/SPEC.md#package-gaps)) and its adapter's `summarizedUpTo(sessionId)` | **Delivers** G1. The adapter reads the `historySummary` resource, and `historyStart` when there is none |
+| `generator-context.md`'s line that summarizing belongs to higher-level patterns, and FIX-1775's "not a default" | **Amends** the first (an opt-in capability in core); **keeps** the second |
 
 | Builds on / Adds | Existing piece considered | Why that doesn't fit, or how this is composed |
 |---|---|---|
-| `historyWindow.summarize` | A summary in user space: a tap that summarizes, a state field for the high-water mark, a custom `history` function | It can't see what the window drops, has no place for the mark the engine owns, and every app would rebuild it (FIX-2174's comment found exactly this). Composed from `summarizer` and the history read |
-| `historySummary` on the session record (text and high-water mark) | Session state; an item in the log | State is the app's schema and its client projection. An item would put the summary in the conversation a person reads. The record already carries engine-written fields (`latestRequestId`) |
-| `historyStart` on the request record and its summary | An item in the stream; a client-side count of the window | An item changes the item taxonomy for a fact about the turn; a client count can't see interrupted or parked turns, which take window slots ([D2](DECISIONS.md#d2)) |
-| `historyWindow` on `defineAgentWorkerFlow` | Workforce summarizing on its own | A pass-through to core's option. No second summary path in workforce |
+| `historySummary` (capability, fold, resource) | An engine option on `historyWindow` that runs the block itself (this spec's first draft) | Puts summary policy in the engine. Jake's direction: a capability installs what a block needs, and the flow adds the step ([Decided by Jake](DECISIONS.md#decided-by-jake)) |
+| `history` preset key on capabilities | The generator's own `history` option | A capability can't set it, and workforce's answer generator reads history through a function. The key reaches the read itself |
+| `ctx.session.window` | Counting turns in `history()` | Interrupted and parked turns take window slots and settledness isn't on an item |
+| `historyStart` on the request record and its summary | An item in the stream; a client-side count | An item changes the item taxonomy for a fact about the turn; a client count can't see the slots ([D2](DECISIONS.md#d2)) |
+| `beforeAnswer` on `defineAgentWorkerFlow` | A `historySummary` option on the agent flow | One more workforce option for one feature; `beforeAnswer` takes any pre-answer step |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing. |
-| **Adds** | A summary step that pauses the turn that folds ([D3](DECISIONS.md#d3)); FIX-2174 moves it to the background through the same option. Two record fields, both optional and `== null`-guarded (BP-030). A new place the engine runs an author's block from flow config (beside the request hooks). A summary message in `history()` on opted-in flows. One more row read and one request-record field written per turn, on every flow, for the mark |
-| **Leaves** | The block-facing store read (D1): no issue, filed again when a consumer appears. A session switched on after it is long starts its summary at the window, and what fell out earlier stays *out of view*. Per-worker opt-in: a worker gets it by running on a flow that turns it on. Orchestration's `flowPolicy.compact` stays a stub |
+| **Adds** | A fold that pauses the turn that runs it ([D3](DECISIONS.md#d3)); FIX-2174 moves it to the background through the same capability. Five generic L1 surfaces (the table above), each optional and `== null`-guarded (BP-030). A `beforeAnswer` step in workforce. One more row read and one request-record field written per turn, on every flow, for the mark |
+| **Leaves** | The newest-first store read (D1), filed again when a consumer appears. A session that installs the capability after it is long starts its summary at the window; what fell out earlier stays *out of view*. Per-worker opt-in: a worker gets it by running on a flow that installs it. Orchestration's `flowPolicy.compact` stays a stub |
 
-**Net: up, slightly.** One option, two record fields and a fold step; no second way to do the job.
+**Net: up, slightly.** One capability and its step in core, five small generic surfaces under
+it, one workforce option; no second way to do the job.
 
 ## Sign off
 
@@ -257,20 +313,22 @@ user    <turn 61's message>
 remembers past its window, and every screen can mark where verbatim history begins. If wrong:
 the lab's step 4 passes on a divider while the worker forgets turn 1.
 
-**[The debt](#whats-already-here-and-the-debt), up slightly:** one option, two record fields. If
-wrong: FIX-2174 adds a second summary path beside this one instead of extending it.
+**[The debt](#whats-already-here-and-the-debt), up slightly:** one capability and five generic
+surfaces. If wrong: FIX-2174 adds a second summary path beside this one instead of extending it.
+
+**The shape is Jake's call, made in the thread:** a capability and a fold step, not an engine
+option ([Decided by Jake](DECISIONS.md#decided-by-jake)).
 
 1. **[D1](DECISIONS.md#d1) · Build the summary and the divider's mark; the block-facing read of
    old items is not built.** If wrong: a consumer that needs old items waits for a new issue.
-2. **[D2](DECISIONS.md#d2) · The mark is recorded on every turn that has turns out of view,
-   summary on or off, as `historyStart` on the turn's request.** If wrong: a public field on
-   every request list that only summary flows needed.
-3. **[D3](DECISIONS.md#d3) · The fold runs at the start of the turn that needs it, in batches,
-   as a block of that turn.** If wrong: a few seconds' pause on one turn in every dozen, until
-   FIX-2174.
+2. **[D2](DECISIONS.md#d2) · The engine records `historyStart` on every turn that has turns out
+   of view; whether they are summarized is the capability's resource.** If wrong: a public field
+   on every request list that only summary flows needed.
+3. **[D3](DECISIONS.md#d3) · The fold runs as a step at the start of the turn that needs it, in
+   batches.** If wrong: a few seconds' pause on one turn in every dozen, until FIX-2174.
 
 **Open: none.** D1 is the one to weigh: it narrows the issue Jake filed.
 
-Feature · `core`, `engine`, `client`, `workforce` + docs · medium (one option, two record fields,
-one fold step, one history read, one goal) · 1 PR · blocks FIX-2154 step 4 and FIX-2156 · epic
-FIX-2152 (via FIX-2154)
+Feature · `core`, `engine`, `client`, `workforce` + docs · medium (one capability and its fold,
+five generic surfaces, one workforce option, one goal) · 1 PR · blocks FIX-2154 step 4 and
+FIX-2156 · epic FIX-2152 (via FIX-2154)
