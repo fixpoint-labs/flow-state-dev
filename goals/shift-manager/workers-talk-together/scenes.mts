@@ -112,7 +112,7 @@ export async function hireRing(world: World): Promise<string[]> {
       flow: "agent",
       description: `${id}: passes messages on.`,
       instructions:
-        `Whenever another worker messages you, pass its text on to ${other} with sendMessage, every time, with no exceptions: give to "${other}" and text, the text you heard copied word for word, and leave inReplyTo out. ` +
+        `Whenever another worker messages you, pass its text on to ${other} with sendMessage, every time, with no exceptions: give to "${other}" and text, the text you heard copied word for word, and leave inReplyTo, wait and deadline out (never wait for a reply). ` +
         "Always make that sendMessage call, even when you're told the exchange can send no more messages: the tool decides, and you report what it answered. " +
         `When the user asks you to start the ring, message ${other} as told.`,
       settings: { model: "openai/gpt-5.4-mini" },
