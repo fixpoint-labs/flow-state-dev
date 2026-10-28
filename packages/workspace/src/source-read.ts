@@ -48,8 +48,21 @@ export const SOURCE_READ_FRESH_MS = 60_000;
  */
 const KEPT_GREP_MS = 2_000;
 
-/** One file's lines matched in a VM context, so the time limit can interrupt the expression mid-match. */
-const MATCH_LINES = new Script("lines.flatMap((line, index) => (matcher.test(line) ? [index] : []))");
+/**
+ * One file's lines matched in a VM context, so the time limit can interrupt the
+ * expression mid-match. It keeps the indexes of at most `space` matching lines
+ * and only counts the rest, so a broad pattern doesn't hold every match.
+ */
+const MATCH_LINES = new Script(`(() => {
+  const kept = [];
+  let count = 0;
+  for (let index = 0; index < lines.length; index++) {
+    if (!matcher.test(lines[index])) continue;
+    if (kept.length < space) kept.push(index);
+    count++;
+  }
+  return { kept, count };
+})()`);
 
 /** What one read asks for. Every path is a repository path: `/`-separated, no leading `/`, no `.` or `..` segment. */
 export type SourceReadRequest =
@@ -233,12 +246,6 @@ export function snippetOf(line: string): string {
   return trimmed.length > SOURCE_READ_LIMITS.snippet ? `${trimmed.slice(0, SOURCE_READ_LIMITS.snippet)}…` : trimmed;
 }
 
-/** Matches cut to the smaller of `maxResults` and the cap. */
-function cutMatches<T>(matches: T[], maxResults: number | null | undefined): { matches: T[]; cut: SourceReadCut | null } {
-  const { paths, cut } = capped(matches, maxResults, SOURCE_READ_LIMITS.matches, "matches");
-  return { matches: paths, cut };
-}
-
 /** The most matches a grep keeps: the smaller of `maxResults` and the cap. */
 export function matchCap(maxResults: number | null | undefined): number {
   return capOf(maxResults, SOURCE_READ_LIMITS.matches);
@@ -304,18 +311,21 @@ export async function readKeptFiles(projectId: string, files: RunFiles, request:
   }
   const prefix = request.prefix == null || request.prefix === "" ? null : checkSourcePath(request.prefix, "prefix");
   const { matcher, dialect } = compileGrep(request.pattern);
-  const context = createContext({ matcher, lines: [] as string[] });
+  const context = createContext({ matcher, lines: [] as string[], space: 0 });
   const deadline = Date.now() + KEPT_GREP_MS;
+  const keep = matchCap(request.maxResults);
   const found: { path: string; line: number; snippet: string }[] = [];
+  let total = 0;
   for (const row of (await rows()).sort((a, b) => a.path.localeCompare(b.path))) {
     if (!underPrefix(row.path, prefix)) continue;
     const text = await row.read();
     if (text === null || looksBinary(text)) continue;
     const lines = text.split("\n");
     context.lines = lines;
-    let hits: number[];
+    context.space = keep - found.length;
+    let hits: { kept: number[]; count: number };
     try {
-      hits = MATCH_LINES.runInContext(context, { timeout: Math.max(1, deadline - Date.now()) }) as number[];
+      hits = MATCH_LINES.runInContext(context, { timeout: Math.max(1, deadline - Date.now()) }) as typeof hits;
     } catch (error) {
       if ((error as { code?: unknown }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw error;
       throw new WorkspaceRefusedError(
@@ -324,7 +334,8 @@ export async function readKeptFiles(projectId: string, files: RunFiles, request:
           `most likely from nested repetition such as "(a+)+". Search with a simpler pattern or a literal.`,
       );
     }
-    for (const index of hits) found.push({ path: row.path, line: index + 1, snippet: snippetOf(lines[index]!) });
+    for (const index of hits.kept) found.push({ path: row.path, line: index + 1, snippet: snippetOf(lines[index]!) });
+    total += hits.count;
   }
-  return { kind: "grep", at, dialect, binary: "skipped", ...cutMatches(found, request.maxResults) };
+  return { kind: "grep", at, dialect, binary: "skipped", matches: found, cut: matchesCut(total, request.maxResults) };
 }

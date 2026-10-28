@@ -444,6 +444,20 @@ describe("a project with no repository reads its kept files", () => {
     expect(spawned).not.toHaveBeenCalled();
     expect(placesUnder()).toEqual([]);
   });
+  it("keeps only the matches it returns across files, and counts the rest exactly", async () => {
+    const collection = createFakeCollection("project-files/**", {
+      "p1/a.txt": "hit\n".repeat(250),
+      "p1/b.txt": "hit\nmiss\n".repeat(100),
+    });
+    const answer: RunSourceAnswer = { kind: "files", projectId: "p1", files: { collection, collectionId: "project-files" } };
+
+    const grep = await host().readSource!(answer, { kind: "grep", pattern: "^hit$", maxResults: 3 });
+
+    expect(grep).toMatchObject({
+      matches: [{ path: "a.txt", line: 1 }, { path: "a.txt", line: 2 }, { path: "a.txt", line: 3 }],
+      cut: { left: 350 - 3, by: "limit" },
+    });
+  });
   it("refuses a pattern that backtracks past the grep's time, rather than freezing the server", async () => {
     const collection = createFakeCollection("project-files/**", { "p1/notes/a.txt": `${"a".repeat(32)}!\n` });
     const answer: RunSourceAnswer = { kind: "files", projectId: "p1", files: { collection, collectionId: "project-files" } };
