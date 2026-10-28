@@ -182,8 +182,10 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const found = (await fsd.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
     return ((found?.result?.output as { tasks?: any[] } | undefined)?.tasks ?? []) as any[];
   };
-  const browser = await launchChromium();
+  // The server is running from here on, so a browser that fails to launch still stops it.
+  let browser: Awaited<ReturnType<typeof launchChromium>> | undefined;
   try {
+    browser = await launchChromium();
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
     page.setDefaultTimeout(30_000);
     const errors: string[] = [];
@@ -340,7 +342,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     notes.push(`first respond ${first.id}; ${filed.length} tasks; clone ${committed[0] ?? "none"}`);
     return "graded";
   } finally {
-    await browser.close();
+    await browser?.close();
     stopProcessGroup(lab.child);
   }
 }
