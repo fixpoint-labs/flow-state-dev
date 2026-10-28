@@ -425,9 +425,9 @@ const CHILDREN: Child[] = [
   { id: "P3.1 design-system", run: "goals/design-system/skins-reused-components-from-one-token-set/run.mts", control: "hardcoded-accent", must: /b:themed[^\n]*tool:awaiting/, allowed: /tool:awaiting|b:themed summary — 1 components: tool\.tsx/ },
   // P3.2: each child's merged goal check, with its controls.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab") },
-  // Written-in seats leave multi-seat-collab's parked row with no seat, so its task composer finds no
+  // Written-in seats leave multi-worker-collab's parked row with no seat, so its task composer finds no
   // door: that follows from the names, as the goal records.
-  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] (TEAMS equals the store's seats|Inbox equals the store's pending asks|the post appears on screen)/ },
+  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-worker-collab\] TEAMS equals the store's seats/, allowed: /\[multi-worker-collab\] (TEAMS equals the store's seats|Inbox equals the store's pending asks|the post appears on screen)/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "optimistic-post", must: /the post is in the stored transcript/, allowed: /the post is in the stored transcript/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer lands in the store/, allowed: /an answer lands in the store/ },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run") },
@@ -437,10 +437,10 @@ const CHILDREN: Child[] = [
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system") },
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "hardcoded-accent", must: /\] neutral .*tool:/, allowed: /\] neutral .*tool:/ },
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "switch-ignored", must: /\] switch /, allowed: /\] switch / },
-  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session") },
+  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-worker-session", run: SM("it-sends-a-turn-into-a-worker-session") },
   // Inbox's reply to the EM's ask goes through the same send path (FIX-1789's em door leg), so it goes red with delivered.
-  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard|em door):/ },
-  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "fresh-session", must: /\] continued:/, allowed: /\] continued:/ },
+  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-worker-session", run: SM("it-sends-a-turn-into-a-worker-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard|em door):/ },
+  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-worker-session", run: SM("it-sends-a-turn-into-a-worker-session"), control: "fresh-session", must: /\] continued:/, allowed: /\] continued:/ },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator") },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator"), control: "optimistic-reply", must: /\[desk\] talk/, allowed: /\[desk\] talk/ },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-shift-coordinator", run: SM("it-briefs-and-talks-with-the-shift-coordinator"), control: "static-brief", must: /\[desk\] inline/, allowed: /\[desk\] inline/ },
@@ -452,15 +452,15 @@ const CHILDREN: Child[] = [
   // D1's children.
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts" },
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts", control: "no-gate", must: /a row existed before any approval/, allowed: /./ },
-  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts" },
-  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts", control: "em-session", must: /the workstream session's board holds no row/, allowed: /./ },
+  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-coordinators-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-coordinators-board/run.mts" },
+  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-coordinators-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-coordinators-board/run.mts", control: "em-session", must: /the workstream session's board holds no row/, allowed: /./ },
   // P3.3: the goal labs the set touched.
-  { id: "P3.3 devforce-lab it-wakes-the-seat-a-file-declared", run: "goals/devforce-lab/it-wakes-the-seat-a-file-declared/run.mts" },
-  { id: "P3.3 devforce-lab it-commits-from-the-seats-own-file", run: "goals/devforce-lab/it-commits-from-the-seats-own-file/run.mts" },
-  { id: "P3.3 devforce-lab it-ships-an-artifact-a-person-can-open", run: "goals/devforce-lab/it-ships-an-artifact-a-person-can-open/run.mts" },
-  { id: "P3.3 pentest-lab a-post-reaches-both-declared-seats", run: "goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts" },
-  { id: "P3.3 pentest-lab a-seat-answers-from-its-own-document", run: "goals/pentest-lab/a-seat-answers-from-its-own-document/run.mts" },
-  { id: "P3.3 multi-seat-collab it-hands-a-row-between-two-seats-in-view", run: "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts" },
+  { id: "P3.3 devforce-lab it-wakes-the-worker-a-file-declared", run: "goals/devforce-lab/it-wakes-the-worker-a-file-declared/run.mts" },
+  { id: "P3.3 devforce-lab it-commits-from-the-workers-own-file", run: "goals/devforce-lab/it-commits-from-the-workers-own-file/run.mts" },
+  { id: "P3.3 devforce-lab it-ships-an-artifact-a-user-can-open", run: "goals/devforce-lab/it-ships-an-artifact-a-user-can-open/run.mts" },
+  { id: "P3.3 pentest-lab a-post-reaches-both-declared-workers", run: "goals/pentest-lab/a-post-reaches-both-declared-workers/run.mts" },
+  { id: "P3.3 pentest-lab a-worker-answers-from-its-own-document", run: "goals/pentest-lab/a-worker-answers-from-its-own-document/run.mts" },
+  { id: "P3.3 multi-worker-collab it-hands-a-row-between-two-workers-in-view", run: "goals/multi-worker-collab/it-hands-a-row-between-two-workers-in-view/run.mts" },
 ];
 
 /** NODE_ENV as launched. An in-process vite.build() sets it to "production" and never restores it,

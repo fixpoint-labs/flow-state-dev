@@ -89,7 +89,7 @@ describe.each([
   // multi-worker-collab declares no board: the planner files on its own
   // conversation's, so its rows reach Shift Manager as that conversation's
   // board, keyed by the conversation.
-  it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board", async () => {
+  it.runIf(name === "multi-worker-collab")("a row filed on a conversation's board is that conversation's board", async () => {
     const { roster, client } = opened;
     const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && w.declared.flow !== "coordinator");
     if (filer === undefined) throw new Error("the tree declares no worker that files for delegates");

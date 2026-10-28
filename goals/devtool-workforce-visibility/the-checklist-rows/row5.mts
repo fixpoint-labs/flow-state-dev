@@ -3,7 +3,7 @@
  * nothing expanded in the shipped DevTool's Inventory tab with the debug
  * endpoints off, and a coordinator's delegates. See goal.md for the contract.
  *
- * The hire is `multi-seat-collab`'s, served by its own config, which opens the
+ * The hire is `multi-worker-collab`'s, served by its own config, which opens the
  * inventory at boot exactly as the inventory docs show an app doing it. The
  * inventory holds one collection, the organization's workers, and who works
  * with whom is the coordinator's `delegates:`. This file stands nothing up: it
@@ -34,7 +34,7 @@ import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { LAB_DB_PATH, LAB_ORG_ID, LAB_USER_ID, routesFor, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
-import { Scenario, serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
+import { Scenario, serveLab, type ServedLab } from "../../multi-worker-collab/run-scenario.mts";
 import type { Tell } from "../../lib/verdict.mts";
 
 /** The published key pattern, by the tab's section name: the inventory's one collection, its workers. */
@@ -454,7 +454,7 @@ export async function gradeRow5(options: {
           failures,
           notes,
           evidence:
-            `row 5 read on the multi-seat-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
+            `row 5 read on the multi-worker-collab hire with the debug endpoints off: the inventory's session ${host.id} (${host.kind}), ` +
             `opened from the navigator, showed ${screen.sections.workers!.rows.length} registered worker(s) ` +
             `(${screen.sections.workers!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind}`).join("; ")}), ` +
             `exactly as the store holds them, nothing expanded; the coordinator ${tree.coordinatorId} delegates to ${delegates.join(", ")}; ` +

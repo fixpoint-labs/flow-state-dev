@@ -3,7 +3,7 @@
 The hire behind the ER-Collab exit proof (FIX-1497): a planner that files work for two workers on its
 own conversation's board, declared in Markdown, served by the ordinary `fsdev dev` so the shipped
 DevTool can watch it. The graded check is
-[`goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/`](../../../../../goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/goal.md).
+[`goals/multi-worker-collab/it-hands-a-row-between-two-workers-in-view/`](../../../../../goals/multi-worker-collab/it-hands-a-row-between-two-workers-in-view/goal.md).
 It lives here, among Shift Manager's test fixtures, because the package's own tests open it too;
 the goals reach in here, never the reverse.
 
@@ -46,7 +46,7 @@ row starting from `eng.builder`'s lane) and wants a redraw.
 | `workforce/flows/workers/` | The two flows, one file each, basename = the flow a `WORKER.md` names in its `flow:` line. `planner.mts` carries Workforce's filing factory (`defineSessionBoard`): the task actions on its conversation's own board, and the entries the board runs on. `worker.mts` takes tasks through `workerTaskEntry`; its turn parks on the row's question while the row has not been answered, and otherwise finishes. The loader does not walk `flows/`. |
 | `workforce/flows/piece.mts` | The row's input contract (the desk, the question, the row it follows), the one piece both flows share. Beside the flows rather than among them, since a file under `flows/workers/` reads as a flow. |
 | `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs the worker flow here (`ignore-the-answer`, `silent-park`); `no-inventory` skips the boot. |
-| `goals/multi-seat-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), opens each worker's own session over the HTTP session route, files and answers through the planner's conversation's actions, and reads the board off the server's SQLite file. Reports; grades nothing. |
+| `goals/multi-worker-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), opens each worker's own session over the HTTP session route, files and answers through the planner's conversation's actions, and reads the board off the server's SQLite file. Reports; grades nothing. |
 
 ## What the lab owns rather than the framework
 

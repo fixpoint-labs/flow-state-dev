@@ -6,7 +6,7 @@
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its own
  * command over each goal Lab's unedited `fsdev.config.mts`: DevTeam
- * (bearer-authenticated, in-memory) and multi-seat-collab (SQLite, no auth).
+ * (bearer-authenticated, in-memory) and multi-worker-collab (SQLite, no auth).
  * The driver puts one row on each Lab's board through the Lab's own action
  * routes, then Chromium walks every level. What the page draws is graded
  * against two things Shift Manager never reads: the Lab's tree on disk, and the
@@ -38,7 +38,7 @@
  * fired):
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
- *                    "TEAMS equals the store's seats" on multi-seat-collab.
+ *                    "TEAMS equals the store's seats" on multi-worker-collab.
  *   optimistic-post  the one send path (`send.ts`) reads delivered and
  *                    sends nothing. Must fail at "the post is in the stored
  *                    transcript".
@@ -60,7 +60,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
-import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
+import { Scenario, type ServedLab } from "../../multi-worker-collab/run-scenario.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { PROJECTS_FLOW as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_FLOW as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
@@ -94,7 +94,7 @@ const LABS = {
     config: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
     tree: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce"),
   },
-  "multi-seat-collab": {
+  "multi-worker-collab": {
     config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "fsdev.config.mts"),
     tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "workforce"),
   },
@@ -420,7 +420,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     name,
     pages,
     // DevTeam on a fresh store each run, for a profile whose store outlives the process.
-    name === "multi-seat-collab" ? { MULTI_WORKER_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
+    name === "multi-worker-collab" ? { MULTI_WORKER_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
   );
   const browser = await launchChromium();
   try {
@@ -449,7 +449,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
 
     // Put a row on the board, through the Lab's own actions.
     let workstream: { project: string; id: string; session: string; lead: string } | undefined;
-    if (name === "multi-seat-collab") {
+    if (name === "multi-worker-collab") {
       const labTree = await readLabTree();
       const scenario = new Scenario(
         { origin: served.origin, workDir: served.workDir, outbox, log: served.log, stop: () => served.child.kill("SIGTERM"), exited: () => served.exited } satisfies ServedLab,

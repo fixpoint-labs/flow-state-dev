@@ -26,7 +26,7 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts
  * Controls: GOAL_CONTROL=no-delivery    (the agent flow takes no task, so nobody runs: must FAIL at support.accounts, and nothing else)
  *           GOAL_CONTROL=no-route       (best fit read as `everyone`, so every delegate hears: must FAIL at others, and nothing else)
- *           GOAL_CONTROL=answers-go-on  (agent-replies-in-the-mailbox's control: must leave every leg here green)
+ *           GOAL_CONTROL=answers-go-on  (agent-replies-in-the-coordinator's control: must leave every leg here green)
  */
 import { randomUUID } from "node:crypto";
 import type { Page } from "playwright";
@@ -71,7 +71,7 @@ const EXPECTED: Record<string, string[]> = {
   // Every delegate hears a post handed to everyone, so the delegates best fit
   // would have passed over run too. The picked specialist still answers.
   "no-route": ["others"],
-  // agent-replies-in-the-mailbox's control (an answer wakes nobody). The
+  // agent-replies-in-the-coordinator's control (an answer wakes nobody). The
   // answers here carry no token, so here it must change nothing.
   "answers-go-on": [],
 };

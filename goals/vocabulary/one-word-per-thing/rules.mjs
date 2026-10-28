@@ -213,7 +213,7 @@ export const EXCLUDE = [
   },
   { path: /^goals\/coordinators\/(task-session-stays-open|hands-each-post-to-its-delegates|files-tasks-down-the-owners-chain)\//, over: true, why: "epic regression and coordinator checks: renamed only by the closure's map (ER-11)" },
   { path: /^goals\/vocabulary\/one-word-per-thing\//, over: true, why: "this sweep: its rules name every retired word on purpose" },
-  { path: /^goals\/workforce-mailboxes\/a-routed-post-gets-one-answer\//, over: true, why: "epic coordinator check: renamed only by the closure's map (ER-11)" },
+  { path: /^goals\/workforce-coordinators\/a-routed-post-gets-one-answer\//, over: true, why: "epic coordinator check: renamed only by the closure's map (ER-11)" },
   {
     path: /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|json|jsonl|ya?ml|lock|css|scss|html|txt|toml|sh|py|sql|snap|map|gitignore|npmignore|env|example|d\.ts\.map)$|(^|\/)\.[^/]+$|(^|\/)(LICENSE|Dockerfile)$/,
     why: "no prose or symbols in scope (data, assets, config)"

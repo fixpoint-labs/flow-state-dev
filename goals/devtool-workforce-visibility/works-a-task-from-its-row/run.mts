@@ -5,7 +5,7 @@
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
- * The subject is the `multi-seat-collab` hire, served by the ordinary
+ * The subject is the `multi-worker-collab` hire, served by the ordinary
  * `fsdev dev` over that lab's own config, and read in Chromium on the shipped
  * DevTool bundle at 1280x800. The lab's driver files on the planner's
  * conversation's board over HTTP to make the subject rows; every change this
@@ -37,7 +37,7 @@ import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchest
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
-import { Scenario, serveLab, type BoardRow } from "../../multi-seat-collab/run-scenario.mts";
+import { Scenario, serveLab, type BoardRow } from "../../multi-worker-collab/run-scenario.mts";
 import { WORKER_FLOW } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {

@@ -90,14 +90,14 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     "no-sync-back": { legs: [/^\[control no-sync-back\] b:second-run-sees-file — /] },
   },
   // "must FAIL on `a:the-row`, *the workstream session's board holds no row*"
-  "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": {
+  "goals/devforce-lab/it-keeps-its-rows-on-the-coordinators-board": {
     "em-session": { legs: [/^\[control em-session\] a:the-row/] },
   },
   // leg 1, "a row existed before any approval" (and legs 3 and 4c)
   "goals/devforce-lab/it-waits-for-a-person-before-it-files": {
     "no-gate": { legs: [/^leg 1: a row existed before any approval/] },
   },
-  "goals/devforce-lab/it-wakes-the-seat-a-file-declared": {
+  "goals/devforce-lab/it-wakes-the-worker-a-file-declared": {
     // "the dispatch record names the seat that must never be reached" (its goal.md)
     "address-the-reviewer": { legs: [/^\[control address-the-reviewer\] the drain dispatched to \[[^\]]*"eng\.reviewer"/] },
     // the row does not settle done
@@ -124,12 +124,12 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
     },
   },
   "goals/shift-manager/it-opens-a-lab": {
-    "static-names": { legs: [/^\[control static-names\] \[multi-seat-collab\] TEAMS equals the store's seats: missing \[[^\]]+\]/] },
-    "optimistic-post": { legs: [/^\[control optimistic-post\] \[devteam\] the post is in the stored transcript:/, /^\[control optimistic-post\] \[multi-seat-collab\] the post is in the stored transcript:/] },
+    "static-names": { legs: [/^\[control static-names\] \[multi-worker-collab\] TEAMS equals the store's seats: missing \[[^\]]+\]/] },
+    "optimistic-post": { legs: [/^\[control optimistic-post\] \[devteam\] the post is in the stored transcript:/, /^\[control optimistic-post\] \[multi-worker-collab\] the post is in the stored transcript:/] },
     "queued-shown": { legs: [/^\[control queued-shown\] \[devteam\] Tasks equals the store's open rows: .*extra \[[^\]]+\]/, /^\[control queued-shown\] \[devteam\] Tasks equals the store's open rows: the Queued toggle says/] },
     "unanswerable-asks": { legs: [/^\[control unanswerable-asks\] \[devteam\] an answer lands in the store:/] },
   },
-  "goals/shift-manager/it-sends-a-turn-into-a-seat-session": {
+  "goals/shift-manager/it-sends-a-turn-into-a-worker-session": {
     "optimistic-turn": { legs: [/^\[control optimistic-turn\] \[[^\]]+\] delivered:/] },
     "fresh-session": { legs: [/^\[control fresh-session\] \[[^\]]+\] continued: .*resume id/] },
   },
