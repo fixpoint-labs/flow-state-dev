@@ -282,8 +282,8 @@ describe("what each mode offers to pick", () => {
     expect(choices.reason).toMatch(/model list can't be read \(no answer\)/);
   });
 
-  it("Codex: the hand-kept list, its first entry preselected", async () => {
-    const choices = await codexModelChoices();
+  it("Codex: the hand-kept list, its first entry preselected, when Codex is signed in with an API key", async () => {
+    const choices = await codexModelChoices(async () => "api-key");
     expect(choices.models).toBe(CODEX_MODELS);
     expect(choices.defaultId).toBe(CODEX_MODELS[0]!.id);
     expect(choices.reason).toBeNull();
@@ -293,6 +293,21 @@ describe("what each mode offers to pick", () => {
       "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra",
       "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
     ]);
+  });
+
+  it("Codex: signed in with a ChatGPT account, the model that account is refused is not offered or preselected, and the reason says so", async () => {
+    // A ChatGPT account's first turn on gpt-6.1-sol is a 400; New session must not lead with it.
+    const choices = await codexModelChoices(async () => "chatgpt");
+    expect(choices.models.map((model) => model.id)).not.toContain("gpt-6.1-sol");
+    expect(choices.defaultId).toBe("gpt-6-sol");
+    expect(choices.reason).toBe(
+      "Unavailable: GPT-6.1-Sol. Codex here is signed in with a ChatGPT account, which can't use it; an API key can.",
+    );
+    expect(choices.fallbackId).toBe("gpt-6-sol");
+  });
+
+  it("Codex: a session that names no model runs on one every sign-in can use", () => {
+    expect(CODEX_DEFAULT_MODEL).toBe("gpt-6-sol");
   });
 
   it("Cursor: the hand-kept list, Composer 2.5 preselected, Auto offered as the default", async () => {

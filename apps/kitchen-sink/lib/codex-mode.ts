@@ -82,16 +82,42 @@ export const CODEX_MODELS: readonly HarnessModel[] = [
 ];
 
 /**
- * The model a Codex mode session runs when it names none: the list's first,
- * which is also what New session preselects. A session from before models
- * could be picked runs on it rather than on whatever model your own Codex
- * settings name, which may be one this account can't use.
+ * Models Codex refuses when it is signed in with a ChatGPT account. Measured,
+ * not guessed: Codex answers a turn on `gpt-6.1-sol` with a 400, "The
+ * 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT
+ * account." Add a model here only on the same evidence.
  */
-export const CODEX_DEFAULT_MODEL = CODEX_MODELS[0]!.id;
+export const CHATGPT_REFUSED: ReadonlySet<string> = new Set(["gpt-6.1-sol"]);
 
-/** What Codex mode's New session offers: the list above, its first entry preselected. */
-export async function codexModelChoices(): Promise<ModelChoices> {
-  return { models: CODEX_MODELS, defaultId: CODEX_DEFAULT_MODEL, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+/**
+ * The model a Codex mode session runs when it names none: the list's first
+ * that every sign-in can run. A session from before models could be picked
+ * runs on it rather than on whatever model your own Codex settings name,
+ * which may be one this account can't use.
+ */
+export const CODEX_DEFAULT_MODEL = CODEX_MODELS.find((model) => !CHATGPT_REFUSED.has(model.id))!.id;
+
+/** How Codex is signed in for a run: an API key, a ChatGPT account, or not known. */
+export type CodexSignIn = "api-key" | "chatgpt" | "unknown";
+
+/**
+ * What Codex mode's New session offers: the list above, its first entry
+ * preselected. Signed in with a ChatGPT account, the models it refuses are
+ * left out, the reason says which and why, and the first one left is
+ * preselected. `signIn` is a seam for tests.
+ */
+export async function codexModelChoices(signIn: () => Promise<CodexSignIn> = () => codexSignIn(codexEnv())): Promise<ModelChoices> {
+  if (codexIsScripted() || (await signIn()) !== "chatgpt") {
+    return { models: CODEX_MODELS, defaultId: CODEX_MODELS[0]!.id, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
+  }
+  const models = CODEX_MODELS.filter((model) => !CHATGPT_REFUSED.has(model.id));
+  const refused = CODEX_MODELS.filter((model) => CHATGPT_REFUSED.has(model.id)).map((model) => model.label);
+  return {
+    models,
+    defaultId: models[0]!.id,
+    reason: `Unavailable: ${refused.join(", ")}. Codex here is signed in with a ChatGPT account, which can't use ${refused.length === 1 ? "it" : "them"}; an API key can.`,
+    fallbackId: CODEX_DEFAULT_MODEL,
+  };
 }
 
 /**
@@ -325,6 +351,20 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
     }
     throw new Error(`Codex did not list a supported transport for MCP server ${server.name}`);
   });
+}
+
+/**
+ * How Codex is signed in over `env`: a `CODEX_API_KEY` there signs a run in
+ * with that key; otherwise Codex's own `codex login status` says which.
+ */
+export async function codexSignIn(env: Record<string, string>): Promise<CodexSignIn> {
+  if ((env.CODEX_API_KEY ?? "") !== "") return "api-key";
+  const result = await runCodex(["login", "status"], env);
+  if (result.status !== 0) return "unknown";
+  const said = `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`;
+  if (/using ChatGPT/i.test(said)) return "chatgpt";
+  if (/API key/i.test(said)) return "api-key";
+  return "unknown";
 }
 
 /** The host's own answers. */

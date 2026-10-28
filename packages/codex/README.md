@@ -98,7 +98,12 @@ run. The stream's own errors (its reconnect attempts) are the transient status;
 the last one becomes the failure when no turn result follows it. A run that fails emits one
 `error` item whose `message` is one line saying why, read out of the API's error
 body when Codex passes one through; everything the Codex CLI printed on its way
-out is on that item's `details.output`.
+out is on that item's `details.output`, and no closing status repeats the line.
+
+A turn Codex reports as failed returns an `errored` handle with `outcome:
+"failed"`, also when the CLI then exits non-zero. The block throws only when
+the run ends without a turn result: the CLI exiting first, a refused thread, or
+a stop.
 
 ## Cost
 
