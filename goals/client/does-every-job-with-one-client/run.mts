@@ -15,6 +15,7 @@
  * Run: pnpm tsx goals/client/does-every-job-with-one-client/run.mts
  * Controls: GOAL_CONTROL=retry-instead | two-clients | stream-off-fetcher
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -85,7 +86,7 @@ function start(args: string[], env: Env): { child: ChildProcess; log: () => stri
   const child = spawn(TSX, args, { cwd: REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
-  const exited = new Promise<number>((resolve) => child.on("exit", (code, signal) => resolve(code ?? (signal === null ? 1 : 128))));
+  const exited = new Promise<number>((resolve) => onClosed(child, (code, signal) => resolve(code ?? (signal === null ? 1 : 128))));
   return { child, log: () => log, exited };
 }
 

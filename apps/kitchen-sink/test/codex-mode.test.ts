@@ -6,6 +6,10 @@
  * the run is handed, not the server's. Nothing is asked about a sandbox:
  * Kitchen Sink confines no run.
  *
+ * Whether Codex is signed in is the Codex package's answer (`probeCodexAccount`,
+ * tested there); these hold the mode to reading it over the run's environment
+ * and saying which way it failed.
+ *
  * Red states produced before these were trusted:
  *   - count only `codex login status` as signed in: the key-only case reads unavailable.
  *   - build the block when the flow list is made, whatever the check said: the
@@ -23,8 +27,10 @@ import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harn
 const able: CodexHostChecks = {
   sdk: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
   makeRoot: () => "/worktrees",
-  loggedIn: async () => true,
+  probe: async () => ({ status: "account", source: "login" }),
 };
+
+const signedOut = async () => ({ status: "none", reason: "Not logged in" }) as const;
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -69,14 +75,24 @@ describe("Codex mode's check (V4)", () => {
   });
 
   it("is unavailable when `codex login status` fails and there is no key (BR-17)", async () => {
-    const result = await check({ loggedIn: async () => false });
+    const result = await check({ probe: signedOut });
     expect(result).toMatchObject({ available: false, reason: expect.stringContaining("not signed in") });
+    expect(result).toMatchObject({ reason: expect.stringContaining("Not logged in") });
   });
 
-  it("a key in the run's environment signs it in, though `codex login status` fails", async () => {
+  it("says the sign-in is unknown, not missing, when Codex didn't answer", async () => {
+    const result = await check({
+      probe: async () => ({ status: "none", reason: "Codex did not answer within 30 s", unanswered: true }),
+    });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("sign-in is unknown") });
+    expect(result).toMatchObject({ reason: expect.not.stringContaining("not signed in") });
+  });
+
+  it("a key in the run's environment signs it in, through the Codex package's own probe", async () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
-    const result = await codexModeCheck({ ...able, loggedIn: async () => false })({ repository: "/repo" });
+    // The real probe: a key answers before Codex is started, so nothing runs here.
+    const result = await codexModeCheck({ ...able, probe: HOST_CHECKS.probe })({ repository: "/repo" });
     expect(result).toEqual({ available: true });
   });
 
@@ -84,7 +100,7 @@ describe("Codex mode's check (V4)", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CODEX_HOME", "/codex-home");
     const seen: Array<Record<string, string>> = [];
-    await check({ loggedIn: async (env) => (seen.push(env), true) });
+    await check({ probe: async (env) => (seen.push(env), { status: "account", source: "login" }) });
     expect(seen).toHaveLength(1);
     expect(seen[0]!.CODEX_HOME).toBe("/codex-home");
     expect(seen[0]!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
@@ -115,7 +131,10 @@ describe("Codex mode's check, on this host's own answers", () => {
     try {
       vi.stubEnv("HOME", home);
       vi.stubEnv("CODEX_HOME", home);
-      expect(await HOST_CHECKS.loggedIn(codexEnv())).toBe(false);
+      // Codex's own answer, not a failure to ask.
+      const probe = await HOST_CHECKS.probe(codexEnv());
+      expect(probe).toMatchObject({ status: "none" });
+      expect(probe).not.toHaveProperty("unanswered");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

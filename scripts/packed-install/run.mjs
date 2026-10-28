@@ -60,14 +60,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 import { runSuite } from "./suite.mjs";
 import { runVitestJson } from "./vitest-json.mjs";
 
-const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
+const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const PACKAGES = join(ROOT, "packages");
-const FIXTURES = new URL("./fixtures", import.meta.url).pathname;
+const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 
 /**
  * The control: the first published core, which shipped extensionless relative

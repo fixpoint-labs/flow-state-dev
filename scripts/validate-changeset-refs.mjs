@@ -44,9 +44,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
 /** Every Linear issue id in a fragment body: team prefix, dash, number. FIX-123 and future teams. */
 const ISSUE_REFS = /\b[A-Z]{2,6}-\d+\b/g;

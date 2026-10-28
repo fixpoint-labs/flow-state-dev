@@ -171,6 +171,37 @@ To add a fixed value, spread the allowlist and set it beside it:
 `{ ...harnessEnv({ pass: [...] }), CI: "1" }`. Spreading `process.env` there
 hands the run every secret the server holds.
 
+## Checking for a credential before you start
+
+A run with no credential fails on its first turn, which for a server can be
+long after it started. `probeCodexAccount` asks up front whether Codex has
+something to run on, and starts no model turn:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { probeCodexAccount } from "@flow-state-dev/codex";
+
+const env = harnessEnv({ pass: ["PATH", "HOME", "CODEX_HOME", "CODEX_API_KEY"] });
+const account = await probeCodexAccount({ env });
+if (account.status !== "account") throw new Error(`Codex can't run: ${account.reason}`);
+```
+
+A `CODEX_API_KEY` in `env` answers on its own, since a run given a key uses it
+whatever login Codex has saved. Otherwise it runs `codex login status` with the
+CLI that `@openai/codex-sdk` brings. Pass the `env` your runs get, so the check
+sees the sign-in the run will see.
+
+It never throws, and resolves to one of:
+
+| `status` | When | Also carries |
+|---|---|---|
+| `account` | A key is set, or `codex login status` succeeds | `source`: `"api-key"` or `"login"` |
+| `none` | Codex says nobody is signed in, or gave no answer: it didn't answer within `timeoutMs` (10 seconds by default), the `signal` aborted, or the CLI couldn't start | `reason`, a sentence you can show the user, and `unanswered: true` when Codex gave no answer |
+| `sdk-missing` | `@openai/codex-sdk` couldn't be loaded, so there is no CLI to ask | `reason`, with the load error |
+
+It checks where a credential would come from, not that it works. A key that is
+set but rejected still reads as `account`, and the run fails on its first turn.
+
 ## Continuing a thread
 
 Codex calls a conversation a thread. Continuing one is two halves, and you write

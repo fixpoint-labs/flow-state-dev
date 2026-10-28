@@ -20,6 +20,12 @@ export const CONTROL_NAMES = [
   "task-to-conversation",
   "no-kind-check",
   "coder-resumes-open",
+  "no-person-hold",
+  "ignore-deadline",
+  "no-default-deadline",
+  "send-again",
+  "relay-the-call",
+  "no-step-guard",
 ] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
@@ -37,6 +43,11 @@ const ENTRY = `${MESSAGES}/message-received-entry.ts`;
 const SEND = `${MESSAGES}/send-message.ts`;
 const TARGET = `${MESSAGES}/message-target.ts`;
 /** The anchor every recipient-refusal patch adds after: the first check `recipientRefusal` makes. */
+const CALL = `${MESSAGES}/call.ts`;
+const QUEUE = `${MESSAGES}/queue.ts`;
+const TOOL = `${MESSAGES}/message-tool.ts`;
+/** The one wait check a call and `getTask` share. */
+const WAIT_CHECK = "packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 const NOT_YOURSELF = String.raw`if \(to === sender && !answering\) return "not_yourself: you can't message yourself\.";`;
 
 export const CONTROLS: Record<ControlName, Control> = {
@@ -217,5 +228,64 @@ export const CONTROLS: Record<ControlName, Control> = {
       },
     ],
     does: "a message to the coder's open task is sent, to reach the coding session the work is in",
+  },
+  "no-person-hold": {
+    name: "no-person-hold",
+    legs: ["10b"],
+    assertion: "10b:queued",
+    patches: [{ module: QUEUE, from: String.raw`\(\) => userHoldOf\(ctx\)\)`, to: "async () => null)" }],
+    does: "the admission never reads the person's stop: a message lands in a session stopped for a person",
+  },
+  "ignore-deadline": {
+    name: "ignore-deadline",
+    legs: ["10b"],
+    assertion: "10b:queued",
+    patches: [{ module: CALL, from: String.raw`message: \`Waiting on the reply to message`, to: "deadlineAt: deadlineAt + 3_600_000, message: `Waiting on the reply to message" }],
+    does: "a call waits for the reply whatever its deadline (an hour past it)",
+  },
+  "no-default-deadline": {
+    name: "no-default-deadline",
+    legs: ["10b"],
+    assertion: "10:default-deadline",
+    patches: [{ module: WAIT_CHECK, from: String.raw`const deadlineMs = options\.deadlineMs \?\? defaultMs;`, to: "const deadlineMs = options.deadlineMs ?? maxMs;" }],
+    does: "a call with no deadline waits the host's maximum, not its default",
+  },
+  "send-again": {
+    name: "send-again",
+    legs: ["10b"],
+    assertion: "10b:kept",
+    patches: [
+      {
+        module: TOOL,
+        from: String.raw`return callAnswer\(await waitAgain\(ctx(?: as never)?, callId, deadline\)\);`,
+        to:
+          '{ const row = (await (await import("./message-log")).messageLogOf(ctx).getOptional(callId))?.state; ' +
+          'return callAnswer(await callWorker(ctx, installation, flowKind, { to: row?.to ?? "", text: row?.text ?? "" }, SEND_MESSAGE_TOOL)); }',
+      },
+    ],
+    does: "waiting again sends the call's message again, as a new call",
+  },
+  "relay-the-call": {
+    name: "relay-the-call",
+    legs: ["10"],
+    assertion: "10:no-second-line",
+    patches: [
+      {
+        module: ENTRY,
+        from: String.raw`return \{ reply: reply\.slice\(0, MAX_MESSAGE_CHARS\) \};`,
+        to:
+          '{ const row = typeof call === "string" ? (await messageLogOf(ctx).getOptional(call))?.state : undefined; ' +
+          'if (row !== undefined) await (await import("./send-message")).sendMessage(ctx, options.installation, options.flowKind, { to: row.from, text: reply, inReplyTo: row.id }, "relay-the-call"); ' +
+          'return { reply: reply.slice(0, MAX_MESSAGE_CHARS) }; }',
+      },
+    ],
+    does: "a call's reply is also sent back to the caller as a message",
+  },
+  "no-step-guard": {
+    name: "no-step-guard",
+    legs: ["10c"],
+    assertion: "10c:one-wait-per-step",
+    patches: [{ module: WAIT_CHECK, from: String.raw`if \(holder !== options\.key\) \{`, to: "if (false) {" }],
+    does: "a model step may hold two waits",
   },
 };

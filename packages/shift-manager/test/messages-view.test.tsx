@@ -89,6 +89,23 @@ describe("the Messages view", () => {
     expect(status("msg_e")).toBe("couldn't be delivered");
   });
 
+  it("says where a call's answer is: waiting, waiting on the user, answered, or answered after its deadline (FIX-2239)", async () => {
+    const waiting = row({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", call: true, deadlineAt: 66_000 });
+    const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", call: true, deadlineAt: 67_000, queuedBehind: "user" });
+    const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, call: true, deadlineAt: 68_000, repliedAt: 9_000 });
+    const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, call: true, deadlineAt: 10_000, repliedAt: 70_000 });
+    readPages.mockResolvedValue([waiting, onPerson, answered, late, ask].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    render(<Messages snapshot={snapshot} />);
+    const lines = await screen.findAllByTestId("message");
+    const callState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-call-state")?.textContent;
+    expect(callState("msg_f")).toBe("call · waiting");
+    expect(callState("msg_g")).toBe("call · waiting on the user");
+    expect(callState("msg_h")).toBe("call · answered");
+    expect(callState("msg_i")).toBe("call · answered late");
+    // A plain message is no call.
+    expect(callState("msg_a")).toBeUndefined();
+  });
+
   it("says so when there are none", async () => {
     readPages.mockResolvedValue([]);
     render(<Messages snapshot={snapshot} />);
@@ -120,6 +137,24 @@ describe("a message the worker sent, in its own conversation", () => {
     expect(screen.getByTestId("tool-group").textContent).toContain("Used discover");
     act(() => fireEvent.click(screen.getByTestId("message-call-messages")));
     expect(window.location.pathname).toBe("/messages");
+  });
+
+  it("reads Asked <recipient> for a call, with the reply under it, or that no answer came by the deadline (FIX-2239)", () => {
+    render(
+      <ToolLineGroup
+        items={[
+          call("t1", { to: "coordinator", text: "What is the codename?", wait: true }, { status: "answered", callId: "msg_a", reply: "BLUE-HERON" }),
+          call("t2", { to: "helper-b", text: "Ready?", wait: true }, { status: "running", callId: "msg_b", recipient: "waiting_on_person" }),
+          call("t3", { callId: "msg_b" }, { status: "answered", callId: "msg_b", reply: "Yes." }),
+        ]}
+      />,
+    );
+    const [asked, running, again] = screen.getAllByTestId("message-call");
+    expect(asked!.textContent).toContain("Asked coordinator: What is the codename?");
+    expect(within(asked!).getByTestId("message-call-answer").textContent).toBe("BLUE-HERON");
+    expect(within(running!).getByTestId("message-call-answer").textContent).toBe("No answer by the deadline: it waits on the user.");
+    expect(again!.textContent).toContain("Waited again: call msg_b");
+    expect(within(again!).getByTestId("message-call-answer").textContent).toBe("Yes.");
   });
 
   it("says it wasn't sent, and why, when the send was refused", () => {

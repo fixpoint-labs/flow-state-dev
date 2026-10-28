@@ -1,0 +1,68 @@
+<svg viewBox="0 0 940 402" role="img" aria-label="What changes: one word per state. The filer's hold before a start keeps status held. A user's open asks move from holds to questions, answered with answers instead of question. Why a running task has no lease moves from waitingOn and filedWorkHolds to keptOpenBy and filedWorkKeepsOpen. A request's right on its task is its claim, and a board's session is its owner."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="402"/>
+  <text class="t-lbl" x="32" y="34">THE STATE</text>
+  <text class="t-tag c-mute" x="292" y="34">TODAY</text>
+  <text class="t-tag c-code" x="612" y="34">AFTER FIX-2183</text>
+  <rect class="decide" x="16" y="50" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="77">A filer&#x27;s hold, before a start</text>
+  <text class="t-s" x="292" y="77">status held · hold() · release()</text>
+  <text class="t-tag c-acc" x="580" y="77">=</text>
+  <text class="t-b c-code" x="612" y="77">status held · hold() · release()</text>
+  <rect class="ask" x="16" y="102" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="129">A user&#x27;s open asks on the row</text>
+  <text class="t-s" x="292" y="129">Task.holds · TaskHold · hasOpenHold</text>
+  <text class="t-tag c-code" x="580" y="129">→</text>
+  <text class="t-b c-code" x="612" y="129">Task.questions · TaskQuestion · hasOpenQuestion</text>
+  <rect class="ask" x="16" y="154" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="181">Answering one</text>
+  <text class="t-s" x="292" y="181">updateTask({ question: id })</text>
+  <text class="t-tag c-code" x="580" y="181">→</text>
+  <text class="t-b c-code" x="612" y="181">updateTask({ answers: id })</text>
+  <rect class="ask" x="16" y="206" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="233">Why a running task has no lease</text>
+  <text class="t-s" x="292" y="233">waitingOn · filedWorkHolds</text>
+  <text class="t-tag c-code" x="580" y="233">→</text>
+  <text class="t-b c-code" x="612" y="233">keptOpenBy · filedWorkKeepsOpen</text>
+  <rect class="ask" x="16" y="258" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="285">A request&#x27;s right on its task</text>
+  <text class="t-s" x="292" y="285">holds the task · heldTask</text>
+  <text class="t-tag c-code" x="580" y="285">→</text>
+  <text class="t-b c-code" x="612" y="285">has the claim · claimedTask</text>
+  <rect class="ask" x="16" y="310" width="908" height="44" rx="5"/>
+  <text class="t-b" x="32" y="337">A board&#x27;s session</text>
+  <text class="t-s" x="292" y="337">holderSessionId · holds the board</text>
+  <text class="t-tag c-code" x="580" y="337">→</text>
+  <text class="t-b c-code" x="612" y="337">ownerSessionId · owns the board</text>
+</svg>

@@ -131,6 +131,59 @@ describe("a message to a task", () => {
     }
   });
 
+  it("waits for the task's open turn to end before its own turn runs", async () => {
+    // The task's turn is held in its model call while the message is sent.
+    const ids: { task?: string } = {};
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let entered!: () => void;
+    const inTaskTurn = new Promise<void>((resolve) => (entered = resolve));
+    let held = false;
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input) => textOf(input).includes("Message msg_"), then: { text: "Heard." } },
+        { when: (input) => textOf(input).includes("Write the report"), then: { text: "Report written." } },
+        ...callsOnce("Please ask about the report", () => [{ to: { task: ids.task }, text: "How did the report go?" }]),
+        fallback
+      ]
+    });
+    const h = bootBoardHost({
+      judgment: mockGenerator({ script: [fallback] }),
+      standard: team(),
+      agentAnswer,
+      afterModelCall: async (name) => {
+        if (name !== "agent-answer" || held) return;
+        held = true;
+        entered();
+        await gate;
+      }
+    });
+    try {
+      await fileTask(h, "alice", "chief", "Write the report", "otto");
+      await inTaskTurn;
+      const [task] = await h.rows("alice");
+      ids.task = task!.id;
+      const taskSession = task!.run!.sessionId;
+
+      const curious = await h.client("alice").ensureWorkerSession({ worker: "curious" });
+      await h.post("alice", curious.id, "respond", { message: "Please ask about the report" }, "agent");
+      await until(async () => (await logRows(h, "alice")).length === 1);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(await receivedIn(h, taskSession), "nothing of the message runs while the task's turn is open").toEqual([]);
+
+      release();
+      await h.settled();
+      const requests = (await h.requestsOf(taskSession)) as unknown as Array<{ actionName: string; completedAtMs: number; items?: Array<{ ts: number }> }>;
+      const work = requests.find((q) => q.actionName !== "onMessageReceived")!;
+      const heard = requests.find((q) => q.actionName === "onMessageReceived")!;
+      expect(await receivedIn(h, taskSession)).toEqual([expect.objectContaining({ from: "curious", text: "How did the report go?" })]);
+      expect(Math.min(...(heard.items ?? []).map((item) => item.ts))).toBeGreaterThanOrEqual(work.completedAtMs);
+    } finally {
+      release();
+      await h.dispose();
+    }
+  });
+
   it("lands though a failed add left the same id's marker in another conversation", async () => {
     const ids: { task?: string } = {};
     const agentAnswer = mockGenerator({

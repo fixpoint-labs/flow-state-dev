@@ -106,15 +106,6 @@ const SPAWNING_FILES = [
 describe("every child process is bounded", () => {
   it("finds the spawning call sites at all", () => {
     // Or the assertion below examines nothing and passes vacuously.
-    //
-    // **The floor moved because the SUBJECTS split, and both halves are swept.**
-    // This list used to name a goal script belonging to `labs/conductor`. That
-    // script did not move with this package, so leaving it here was wrong and
-    // dropping it silently was worse — for the length of one PR nothing
-    // asserted it bounded its spawns at all, which is precisely the failure
-    // this file's header records happening three times. It is swept by
-    // `labs/conductor/test/spawn-bounds.spec.ts` now, and this package sweeps
-    // its own sources and its own goal.
     const total = SPAWNING_FILES.map((f) => readFileSync(f, "utf8"))
       .join("\n")
       .match(/execFileSync\s*\(|execFileAsync\s*\(/g);

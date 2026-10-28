@@ -120,9 +120,11 @@ jobs:
     # A real Redis for the BullMQ cases: the queue path's concurrency tests
     # and the two-users queue-delivery case. They fail rather than skip when
     # `CI` is set and `REDIS_URL` is not, so losing this service fails the job.
+    # Pinned by tag and digest. packed-install reuses `&redis_service`.
+    # To bump it, see "Redis in CI" in docs/contributing/development-setup.md.
     services:
-      redis:
-        image: redis:7
+      redis: &redis_service
+        image: redis:7.4.12@sha256:bd28fff4b665fdf1b73e8b5b73ec05d2f858f4fa3c8ea0d7c9bc09f7f6bf7039
         ports:
           - 6379:6379
         options: >-
@@ -199,15 +201,7 @@ jobs:
     # queue case needs a real Redis. The script refuses that leg without one,
     # so losing this service fails the job rather than skipping the case.
     services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+      redis: *redis_service
 
     env:
       REDIS_URL: redis://127.0.0.1:6379

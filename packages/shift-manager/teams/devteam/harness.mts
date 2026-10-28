@@ -28,7 +28,7 @@
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
+import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   mcpCredentialsCapability,
@@ -67,40 +67,12 @@ export interface SelectedHarness {
 }
 
 /**
- * The only variables of the server's environment a Claude Code run on the Lab
- * coding path can see.
- *
- * Without a list the run inherits all of it — the store path, any repository
- * or tracker token the server was started with — and its model has a shell.
- * What is named is what the run needs to work: `PATH` (its shell commands and
- * git are found through it), `HOME`, `USER` and `SHELL` (its signed-in
- * credentials, git identity and Bash tool), `TMPDIR`, the two ways it can be
- * given a credential, and the proxy and CA settings a network that routes
- * through a proxy needs. The proxy names come in both cases because the
- * tools a run shells out to disagree: curl reads only lowercase `http_proxy`,
- * git and most others take either. Add a name here, not a spread of
- * `process.env`.
+ * The environment a Claude Code run on the Lab coding path gets, and the one
+ * its account is probed with: only the variables the Claude Code package's
+ * {@link CLAUDE_CODE_PASS} names. Without a list the run inherits all of the
+ * server's — the store path, any repository or tracker token it was started
+ * with — and its model has a shell.
  */
-const CLAUDE_CODE_PASS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "ANTHROPIC_API_KEY",
-  "CLAUDE_CODE_OAUTH_TOKEN",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-] as const;
-
-/** The environment a Claude Code run gets, and the one its account is probed with. */
 export function claudeCodeEnv(): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS });
 }

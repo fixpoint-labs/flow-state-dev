@@ -251,10 +251,16 @@ export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring
 // The wait on a task (FIX-1816; one wait since FIX-2082): under `getTask({ wait })`
 // and a plan board's drain on a row it handed to another session, and whether
 // this request's host can hold one. Node-only, like the claim seam it reads.
+// `checkWaitable` and `toolCallOf` are the checks every wait shares, a
+// worker's call too (FIX-2239).
 export {
   waitOnTask,
   canHoldWait,
+  checkWaitable,
+  toolCallOf,
   waitGateId,
+  type WaitableOptions,
+  type WaitableRefusal,
   type TaskWaitRefusal,
   type TaskWaitResult,
   type WaitOnTaskOptions,

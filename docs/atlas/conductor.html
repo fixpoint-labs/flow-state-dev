@@ -87,6 +87,15 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outli
 main { padding: 34px 44px 120px; min-width: 0; }
 
 .masthead { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.retired-banner {
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--gone);
+  background: color-mix(in srgb, var(--gone) 12%, var(--surface));
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
 .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
 h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 5vw, 52px); line-height: 1.03; letter-spacing: -.028em; margin: 0 0 16px; text-wrap: balance; }
 .standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 64ch; margin: 0 0 20px; }
@@ -195,7 +204,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <div class="shell">
 <aside class="rail">
   <div class="rail-mark">The Conductor Atlas</div>
-  <div class="rail-sub">living design &middot; 4 sep 2026</div>
+  <div class="rail-sub">historical &#183; retired</div>
   <p class="sib">config of &#183; <a href="workforce.html">Workforce atlas</a><br>horizon &#183; <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
@@ -219,13 +228,14 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <main>
 <header class="masthead">
-  <p class="eyebrow">Living design</p>
+  <p class="retired-banner" role="status"><strong>Retired.</strong> The conductor lab is gone. The coding-run loop lives in <code>packages/harness-manager</code>. This page is the encyclopedia of the old design.</p>
+  <p class="eyebrow">Historical design</p>
   <h1>Drive this project with the thing we're building</h1>
   <p class="standfirst">Conductor is one effort: <strong>automate the SDLC</strong>, starting with issues and epics, later the PRD and the roadmap. It is a <strong>meta-harness</strong> &#8212; an orchestration tool that drives other coding harnesses. Its central bet is that the session you talk to stays <strong>small on purpose</strong>: the work lives in resources and the jobs are split across <strong>roles that are blocks</strong>, so the coordinator only ever reasons over what is open right now.</p>
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
-    <span><span class="tag t-real">exists &middot; lab</span> shipped on main under <code>labs/conductor</code>; not yet a framework block</span>
+    <span><span class="tag t-gone">retired</span> lab removed; see <code>packages/harness-manager</code></span>
   </div>
   <p class="sib">Two names collide on this page, and every use keeps them apart. The board's <code>dispatcher: "topological"</code> is an ordering <em>strategy</em> (exists); the <code>dispatcher()</code> of section 6 is a block <em>factory</em>, and it exists. This page's <code>inbox/**</code> is the <em>question collection</em>; the dispatch-protocol design's &#8220;one inbox per flow&#8221; is the <em>typed entry set</em>.</p>
   <p class="sib">Workforce is the Layer&nbsp;2 product. The product name Conductor is <strong>retired</strong>; this page is the encyclopedia of the old run. DevForce and Pentest Lab are sibling Labs on Workforce &#8212; neither hosted, and neither a sibling product. The lock lives on the <a href="workforce.html#conductor">Workforce atlas &#167;16</a>. Do not grow Conductor-only surfaces that skip Workforce (park the #1612 console half).</p>

@@ -3,10 +3,10 @@
  * a supervised coding run.
  *
  * **The contract gate.** Two halves of DevForce's central claim have each been
- * proved and have never met: the pentest lab shows that a post reaches seats
- * declared in Markdown, and `labs/conductor` shows that a board row becomes a
- * supervised coding run — but the thing that row reaches there is hand-written
- * TypeScript, not a seat that came out of a folder. This runs the join: one
+ * proved and have never met: the pentest lab shows that a post reaches workers
+ * declared in Markdown, and `@flow-state-dev/harness-manager` shows that a board
+ * row becomes a supervised coding run — but the thing that row reaches there is
+ * hand-written TypeScript, not a worker that came out of a folder. This runs the join: one
  * tree of Markdown, pointed at once, ends with a row filed by one declared seat
  * having woken a *different* declared seat, in its own flow instance, into a run
  * whose prompt carries tokens that live only in that seat's own files — with a

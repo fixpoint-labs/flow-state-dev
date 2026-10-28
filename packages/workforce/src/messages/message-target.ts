@@ -26,7 +26,7 @@ import {
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { messageHearingOf } from "./message-received-entry";
+import { messageHearingOf } from "./received-mark";
 
 /** A message's target: a worker by its id, a task by its id, or one of the user's conversations by its session id. */
 export type MessageTarget = string | { readonly task: string } | { readonly session: string };
