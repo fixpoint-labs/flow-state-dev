@@ -31,6 +31,9 @@ import { ROLE_PROBES } from "../src/worker-roles";
 import { routeOnSchema } from "../src/coordinator/coordinator-rounds";
 import { workstreamDelegateChangeSchema } from "../src/projects/project-coordinator";
 
+import { hearsMessages } from "./conversation-board-harness";
+import { workerMessagesResources } from "../src/messages/message-log";
+
 const message = z.object({ message: z.string() });
 const turn = handler({ name: "roles-turn", inputSchema: message, outputSchema: z.object({}), execute: () => ({}) });
 const respond = { inputSchema: message, block: turn, userMessage: (i: { message: string }) => i.message };
@@ -41,7 +44,13 @@ function flowOn(installation: WorkerInstallation | undefined, flowName: string, 
     kind: flowName,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    ...(installation === undefined ? {} : { session: installation.session(), resources: { ...installation.resources } }),
+    ...(installation === undefined
+      ? {}
+      : {
+          session: installation.session(),
+          resources: { ...installation.resources, ...workerMessagesResources },
+          internal: { actions: hearsMessages(installation, flowName) }
+        }),
     actions: { respond },
     ...over
   } as never) as never;

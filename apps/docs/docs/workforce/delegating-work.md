@@ -116,7 +116,7 @@ What the kit gives you, and where each piece goes:
 | Field | Put it in |
 |-------|-----------|
 | `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
-| `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
+| `messages` | The same `uses`. It carries `sendMessage`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `progress` | The same `uses`. It carries `reportProgress` on a turn working a task. |
 | `delegateTools` | The same `uses`. It carries `listDelegates`, and `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`. |
@@ -124,7 +124,7 @@ What the kit gives you, and where each piece goes:
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
 | `planned(turn)` | Wrap the block that answers a message, and use what it returns wherever that block runs as the worker: the `respond` action, the task entry's `turn`, and `entries`. The steps the worker files for itself then run in the same request. See [Working in steps](#working-in-steps). Leave it out and the flow's workers file no steps. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. The entries include `dispatch`, which runs the session's board one pass at a time, and `onTaskSettled`, where each of those endings arrives. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. The entries include `dispatch`, which runs the session's board one pass at a time, `onTaskSettled`, where each of those endings arrives, and `onMessageReceived`, where another worker's message arrives. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 
@@ -216,7 +216,7 @@ A worker given a task can split it into pieces for its own delegates. A piece fo
 
 The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
-Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session doesn't hold the task and isn't part of it. While the task's turn is running, the worker answers it after that turn; while the task waits on its pieces, it may answer it before the task is done. Either way the answer can't write to the task, and a failure in it doesn't fail the task.
+Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session doesn't hold the task and isn't part of it. While the task's turn is running, the worker hears it after that turn; while the task waits on its pieces, it may hear and answer it before the task is done. Either way its turn on the message can't write to the task, and a failure in it doesn't fail the task.
 
 The task completes once no piece is open and the worker has had a turn on every piece's ending. Its output follows the same rule as any task's: the latest checkpoint the worker reported with `reportProgress`, or, with none, the answer from the last turn a piece's ending woke. A message's answer is never the output.
 

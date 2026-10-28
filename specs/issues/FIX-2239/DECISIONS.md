@@ -55,19 +55,21 @@ It comes down to the handle: a call id finds the reply whatever words the model 
 - **One park on a request.** `dispatcher({ wait: true })`'s private `sendAndWait` is split: the park
   half (plan the gate and deadline under `runOnce`, park bound to `{ requestId }`, map the outcome)
   becomes core's exported `waitOnRequest`, with the gate id chosen by its caller. The dispatcher,
-  a call, waiting again and a held message use it; each dispatches, or not, itself. A call
+  a call and waiting again use it; each dispatches, or not, itself. A held message parks with
+  `parkOnWait` directly, since it binds to a task row as well as a request and must see a stop.
+  A call's gates and memo keys are its own (`call:<id>#…`, `fsd.call.*`), and a held message's
+  too (`queue:<id>#…`, `fsd.queue.*`): never `ask:` or `fsd.ask.*`, which a question owns. A call
   dispatches with `waits: true`, so the engine stamps the child and counts its depth. A tool adds
   the per-step claim, as `getTask` does (`toolCallOf`).
-- **Which request a call waits on:** the one that acted on the message, kept on the row as FIX-2240's
-  `deliveredAs`. The entry
-  writes it once, when its dedupe first takes the message id; a resend's duplicate request doesn't
-  overwrite it and outputs nothing. A call parks on the request its own dispatch became; when that
-  request ended as a duplicate, the call reads the row and returns, or parks on, the request named
-  there. Waiting again by `callId` always reads the row. This is the durable once evidence FIX-2240
+- **Which request a call waits on:** the one acting on the message, as FIX-2240's row names it:
+  its taker (`takenBy`) until the message is delivered, then the request it was delivered in
+  (`deliveredAs`). A call parks on the request its own dispatch became; when that request ended
+  without acting on it (a duplicate, or a taker that died), the call reads the row and returns, or
+  parks on, the request named there. Waiting again by `callId` always reads the row. This is the durable once evidence FIX-2240
   keeps (epic D2), written by the recipient's admission, not by the sender's dispatch.
 - **The person's stop holds the message** (epic ER-4, D3), at the entry's admission, the one point
   every send, call and FIX-2240 resend passes. In a task's session it reads the row's open holds
-  (`hasOpenHold`, FIX-2058 ER-2): a stop for a person and a question both hold. In a plain
+  (FIX-2160's `rowsInSession` with `hasOpenHold`, FIX-2058 ER-2): a stop for a person and a question both hold. In a plain
   conversation it reads the session's open person suspension: one read added to `RequestHost.waits`,
   backed by the engine's listing and `isUserSuspension`. While held, the message request parks on
   the wait gate: bound to the stopped request for a suspension (the engine resumes a `{ requestId }`
@@ -75,7 +77,7 @@ It comes down to the handle: a call id finds the reply whatever words the model 
   short deadline, since a question has no request to wait on. It checks again at every resume, and
   runs its turn, on the same `defer` line, once nothing holds it. It waits for the stopped request
   to *end*, not merely resume: until then the session is busy, which ER-4's first sentence already
-  covers. While held, the row says so (`heldBy: "person"`), which a call's `running` output reads.
+  covers. While held, the row says so (`queuedBehind: "user"`), which a call's `running` output reads.
   A parked message is a wait, never a person's stop: the Inbox and `waiting-on-a-user` never count
   it. If its own park would be a sixth wait deep, it isn't admitted and FIX-2240's resend tries
   again.
@@ -141,6 +143,17 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
   task's question holds a message; the shared helper is the park alone.
 
 ## Notes from review
+
+- **Cross-spec review, amended at build (Jake approved the four points):** a call parks on the
+  row's `takenBy` until the message is delivered, then on `deliveredAs`, as FIX-2240 writes them;
+  the row's mark is `queuedBehind`, not `heldBy`, with the value `"user"`: the cross-spec point said `"person"`, which the CI vocabulary check retires (say user), so the value follows the check; `recipient: "waiting_on_person"` stays as epic D3 locked it, since the check reads it as one word; a task's session reads its row with
+  FIX-2160's `rowsInSession` and `hasOpenHold`; a call's gate ids and keys are `call:` and
+  `fsd.call.*`, not a question's `ask:` and `fsd.ask.*`. Found at build: a held message parks with
+  `parkOnWait`, not `waitOnRequest`, since it binds to a task row too and must see a stop.
+- **Second look on the PR, folded:** a call's checks are orchestration's `checkWaitable`, the one
+  `getTask`'s wait makes, not a copy (the step is claimed last, so a wait refused for its depth
+  holds no step); the host read is `RequestHost.waits.userStop`, matching the vocabulary check; the
+  reply step reads whether a message landed from request state, not from its input's shape.
 
 - **Codex (P2, on e94985c), folded:** a resend after a crash makes a duplicate request whose turn is
   skipped, so pointing the call at the newest request would lose the reply. The row now names the

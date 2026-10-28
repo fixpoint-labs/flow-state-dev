@@ -45,6 +45,15 @@ import { intentFreeEnv } from "./env.mts";
  */
 export const GOAL_MARKER = "__GOAL__";
 
+/**
+ * Print `value` on one {@link GOAL_MARKER} line, for a host that can import
+ * `goals/lib`. Resolves once the line is flushed: `process.exit` drops a write
+ * still queued on a pipe, so a host that exits right after reporting awaits this.
+ */
+export function writeGoalReport(value: unknown): Promise<void> {
+  return new Promise((resolve) => process.stdout.write(`${GOAL_MARKER}${JSON.stringify(value)}\n`, () => resolve()));
+}
+
 /** Options for {@link runHarness}. */
 export interface RunHarnessOptions {
   /** cwd for the child — the app whose node_modules resolve the harness's imports. */

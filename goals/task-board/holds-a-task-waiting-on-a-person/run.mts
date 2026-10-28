@@ -50,7 +50,7 @@ import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
-import { WORKER_MESSAGE_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
+import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
   createWorkerInstallation,
   defineSessionBoard,
@@ -377,14 +377,13 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
           fromFlow: "doer",
           toSession: sessionId,
           toFlow: "doer",
-          answerTo: { sessionId, flow: "doer" },
           hop: 1,
           status: "delivered",
           at: Date.now()
         } as never);
         await dispatchThroughSeam(ctx, {
           type: "internal",
-          action: WORKER_MESSAGE_ENTRY,
+          action: MESSAGE_RECEIVED_ENTRY,
           flowKind: "doer",
           session: { id: sessionId },
           payload: { messageId: id },
@@ -393,7 +392,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
         return id;
       }
     }),
-    { type: "internal", action: WORKER_MESSAGE_ENTRY }
+    { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
   );
 
   const deskFlow = defineFlow({

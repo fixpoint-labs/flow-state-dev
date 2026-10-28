@@ -16,6 +16,10 @@
  * cancelled run returns no handle, so the hook is the only carrier that survives
  * exactly the deadline it exists for.
  *
+ * `onSteerable` is the one channel the other way during a run: once a local
+ * run is sent, the block offers the host Cursor's `run.steer`, so a line can
+ * join the turn in flight, and withdraws it before returning.
+ *
  * The run's outcome comes from `run.wait()` and from nowhere else. Cursor
  * reports its terminal result there rather than on the stream, so a `status`
  * message saying `FINISHED` is a note and nothing more. That is the difference
@@ -33,6 +37,7 @@ import {
   OBSERVED_PLAN_LIST,
   formatRunDuration,
   handler,
+  harnessConversationNamespace,
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPlanCollection,
@@ -46,6 +51,8 @@ import type {
   HarnessResolver,
   HarnessRunOutcome,
   HarnessSessionHook,
+  HarnessSteer,
+  HarnessSteerHook,
   PlanListItem,
 } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
@@ -136,6 +143,20 @@ export interface CursorAgentOptions {
    */
   onSession?: HarnessSessionHook;
   /**
+   * Offered Cursor's `run.steer` once the prompt is sent, on a run that has
+   * one (a local run), so the host can hand a line to the turn in flight; then
+   * `null` before the block returns, on every exit. Never called for a run
+   * that can't steer.
+   *
+   * The steer answers `"delivered"` only for Cursor's `complete_delivered`;
+   * `revert_to_followup`, a throw, or a line sent after the offer was
+   * withdrawn are `"refused"`, and the host sends the line its own way. A turn
+   * that ends with an answer still owed waits for it before the block returns,
+   * with no timer; only a run stopped from outside (its deadline) leaves one
+   * unanswered.
+   */
+  onSteerable?: HarnessSteerHook;
+  /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
    * model for each run. It becomes the agent's `model` on `Agent.create` and
@@ -177,10 +198,13 @@ export interface CursorAgentOptions {
    *
    * On, the block declares both collections and, each time Cursor confirms an
    * update to its list, writes the whole list it confirmed through core's
-   * `replacePlanList`: a row per place, Cursor's own status words, under a
-   * namespace per invocation. The update Cursor sent is never written; it can
-   * name only part of the list. A list that cannot be stored in full marks the
-   * run's marker incomplete and the run carries on.
+   * `replacePlanList`: a row per place, Cursor's own status words, under the
+   * agent's conversation namespace (`harnessConversationNamespace(agentId)`),
+   * so a later run of the same agent keeps the list until Cursor changes it.
+   * Each run also leaves a pointer to that namespace under its own. The update
+   * Cursor sent is never written; it can name only part of the list. A list
+   * that cannot be stored in full marks the conversation's marker incomplete
+   * and the run carries on.
    *
    * Off, the block declares no session state and writes nothing, which is what
    * lets a task board dispatch it with no further option.
@@ -367,6 +391,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    onSteerable,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -417,9 +442,10 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
 
       const emitState = createEmitState();
-      const writePlan = recordPlan ? openPlanWriter(ctx) : null;
+      let writePlan: PlanWriter | null = null;
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
+      let steering: SteerOffer | null = null;
       let sessionId: string | null = null;
       let runModel: CursorModelSelection | undefined;
 
@@ -435,14 +461,21 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
           resolveCursorClient,
         });
         sessionId = agent.agentId;
+        // Opened once the agent is known: the plan is the agent's conversation's.
+        if (recordPlan) writePlan = await openPlanWriter(ctx, agent.agentId);
         // An already-fired deadline must not start a run it will immediately
         // have to cancel — the resolvers, the client, create/resume and
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
         const run = await agent.send(prompt, sendOptions);
+        steering = offerSteer(run, ctx, onSteerable);
         const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan);
         const settled = await settleRun(run, mirrored, ctx.signal);
+        if (steering !== null) {
+          steering.withdraw();
+          await steering.answered(ctx.signal);
+        }
         // A call still `running` when the stream closed has no result coming,
         // and an `error` or `cancelled` wait is an OUTCOME this block returns
         // rather than a throw — so the `catch` below never sees it. Left open,
@@ -469,10 +502,65 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         );
         throw failure;
       } finally {
+        steering?.withdraw();
         closeQuietly(agent);
       }
     },
   });
+}
+
+/** A run's live steer while the host holds it. */
+interface SteerOffer {
+  /** Stop taking lines and tell the host. Idempotent. */
+  withdraw(): void;
+  /** Wait for every line already handed over to have Cursor's answer, or for the deadline. */
+  answered(signal: AbortSignal | undefined): Promise<void>;
+}
+
+/**
+ * Offer `run.steer` to the host, when there is a host to offer it to and the
+ * run has one. Not gated on `supports`: the SDK's probe knows no `"steer"`
+ * operation and answers `false` for it on every run (1.0.40). A run whose
+ * steer can't take a line answers "send it as a follow-up", which is `refused`.
+ */
+function offerSteer(
+  run: CursorRunLike,
+  ctx: AgentCallbackContext,
+  onSteerable: HarnessSteerHook | undefined,
+): SteerOffer | null {
+  if (onSteerable === undefined || typeof run.steer !== "function") return null;
+  const runSteer = run.steer.bind(run);
+  const pending = new Set<Promise<unknown>>();
+  let open = true;
+  const steer: HarnessSteer = (text) => {
+    if (!open) return Promise.resolve("refused");
+    const answer = Promise.resolve()
+      .then(() => runSteer(text))
+      .then(
+        (outcome) => (outcome === "complete_delivered" ? ("delivered" as const) : ("refused" as const)),
+        () => "refused" as const,
+      );
+    pending.add(answer);
+    void answer.finally(() => pending.delete(answer));
+    return answer;
+  };
+  onSteerable(steer, ctx);
+  return {
+    withdraw() {
+      if (!open) return;
+      open = false;
+      onSteerable(null, ctx);
+    },
+    async answered(signal) {
+      if (pending.size === 0) return;
+      const deadline = abortRace(signal);
+      try {
+        await Promise.race([Promise.all([...pending]), deadline.promise]);
+      } finally {
+        deadline.dispose();
+      }
+    },
+  };
 }
 
 /**
@@ -554,12 +642,15 @@ async function resumeAgent(
  * The plan writer for this invocation, or `null` when the flow has not
  * registered the plan record's collections.
  *
- * The rows and the marker go under core's per-invocation namespace, so two
- * invocations in one request, or two attempts of one, never share a list.
- * Missing collections are a wiring gap a status note names; the run goes on
- * unrecorded rather than failing over bookkeeping.
+ * The rows and their marker go under the agent's conversation namespace, so
+ * every turn of one agent updates one plan, and a new agent starts with none.
+ * The run's own marker gets a pointer to it, written here, before any turn's
+ * list: a turn that never touches its to-do list still leads a reader to the
+ * plan. Missing collections are a wiring gap a status note names; a write that
+ * fails is a status note too. The run goes on unrecorded rather than failing
+ * over bookkeeping.
  */
-function openPlanWriter(ctx: AgentCallbackContext): PlanWriter | null {
+async function openPlanWriter(ctx: AgentCallbackContext, agentId: string): Promise<PlanWriter | null> {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const plan = resources?.[OBSERVED_PLAN] as PlanListCollection | undefined;
   const marker = resources?.[OBSERVED_PLAN_LIST] as PlanListCollection | undefined;
@@ -571,9 +662,18 @@ function openPlanWriter(ctx: AgentCallbackContext): PlanWriter | null {
     );
     return null;
   }
-  const namespace = harnessRunNamespace(ctx);
+  const namespace = harnessConversationNamespace(agentId);
+  const requestId = ctx.request.identity.id;
+  try {
+    await marker.upsert(harnessRunNamespace(ctx), { conversation: namespace });
+  } catch (err) {
+    ctx.emit.status(
+      `Cursor's plan pointer was not recorded: ${err instanceof Error ? err.message : String(err)}`,
+      { transient: false },
+    );
+  }
   return async (items) => {
-    const written = await replacePlanList(plan, marker, namespace, items);
+    const written = await replacePlanList(plan, marker, namespace, items, { requestId });
     if (written.status === "incomplete") {
       ctx.emit.status(`Cursor's plan was not recorded in full: ${written.reason}`, { transient: false });
     }

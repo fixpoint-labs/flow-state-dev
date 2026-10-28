@@ -25,6 +25,7 @@ import type { BlockContext, BlockDefinition, HarnessBlock } from "@flow-state-de
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
+  taskLedgerResources,
   getOrCreateTaskCollection,
   openRowHolds,
   resolveResourceCollection,
@@ -219,7 +220,7 @@ export function claimHost(options: HostOptions) {
 
   const ledgerResources = defineCapability({
     name: "claim-host-ledgers",
-    resources: { [FIXED_BOARD]: fixedLedger, [CONVERSATIONS]: conversations },
+    resources: { [FIXED_BOARD]: fixedLedger, ...taskLedgerResources(conversations) },
   });
 
   // File a row and claim it, as a board's drain would before dispatching it.

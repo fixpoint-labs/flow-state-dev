@@ -25,6 +25,8 @@
  */
 import type { CodexThreadEvent, CodexThreadLike, ResolveCodexClient } from "@flow-state-dev/codex";
 
+import { scriptedReceived } from "./scripted-received";
+
 /**
  * The script's pauses, in milliseconds: between steps, and the long one a
  * `[slow]` or `[slow-start]` turn takes, long enough to press stop. Unit tests
@@ -79,6 +81,7 @@ function scriptedThread(threads: Threads, asked: string | null): CodexThreadLike
       const has = (directive: string) => prompt.includes(`[${directive}]`);
       const stopped = () => signal?.aborted === true;
       const step = scriptedCodexPauses.stepMs;
+      scriptedReceived.push(prompt);
 
       async function* events(): AsyncGenerator<CodexThreadEvent> {
         if (has("fail-early")) {

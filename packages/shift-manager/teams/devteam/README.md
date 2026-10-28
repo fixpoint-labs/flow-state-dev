@@ -8,10 +8,10 @@ here instead.
 
 Two halves of one claim have each been proved and had never met. The pentest lab
 shows that a post reaches workers declared in Markdown — but every worker in it
-produces a line of text. `labs/conductor` shows that a board row becomes a
-supervised coding run with its own checkout and a verdict read before the row
-settles — but the thing that row reaches is a hand-written TypeScript flow, not a
-worker that came out of a folder.
+produces a line of text. `@flow-state-dev/harness-manager` shows that a board
+row becomes a supervised coding run with its own checkout and a verdict read
+before the row settles — but the thing that row reaches is a hand-written
+TypeScript flow, not a worker that came out of a folder.
 
 This runs the join. One tree of Markdown, pointed at once: a row filed by one
 declared worker wakes a **different** declared worker, in a session of its own on
@@ -63,7 +63,7 @@ code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is
 one expression inside the `coder` worker flow, exactly as it is one expression in
-`labs/conductor/src/flow.ts`.
+`harnessManager({ harness })`.
 
 ## What this directory owns, and why each piece is here
 

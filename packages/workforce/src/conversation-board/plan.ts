@@ -48,6 +48,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  taskLedgerResources,
   isTerminalStatus,
   resolveResourceCollection,
   type Task,
@@ -83,7 +84,7 @@ const planLedger = Object.assign(
 );
 
 /** The flow resources that install the plan ledger. */
-export const planLedgerResources = { [PLAN_LEDGER_ID]: planLedger } as const;
+export const planLedgerResources = taskLedgerResources(planLedger);
 
 /**
  * The plan ledger at `partition`, or `undefined` when the running flow doesn't

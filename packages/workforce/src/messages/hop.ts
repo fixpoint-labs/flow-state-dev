@@ -8,7 +8,7 @@
  * it starts from something that sets it:
  *
  * - a user's turn writes 0, at the user-turn mark (`markUserTurn`);
- * - a turn a message wakes is at that message's count (`onWorkerMessage`);
+ * - a turn a message wakes is at that message's count (`onMessageReceived`);
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;
  * - a task's turn is at its filing turn's count, which the filing records on
@@ -54,8 +54,6 @@ export const TURN_CHAIN_STATE = "workforceTurnChain";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
-/** The request-state field the workers this turn has messaged are kept in. */
-export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
@@ -64,12 +62,19 @@ export const messageHopStateShape = {
   [USER_LINES_STATE]: z.number().int().nonnegative().default(0)
 } as const;
 
+/** The request-state field naming the call an `onMessageReceived` request answers (FIX-2239), so its reply step marks the row. */
+export const RECEIVED_CALL_STATE = "workforceReceivedCall";
+
+/** The request-state field saying an `onMessageReceived` request landed its message, so its reply step reads it by construction. */
+export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
+
 /** The request state the hop and the per-turn count are kept in. */
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
   [TURN_CHAIN_STATE]: z.string().nullable().optional(),
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
-  [TURN_MESSAGED_STATE]: z.array(z.string()).optional()
+  [RECEIVED_CALL_STATE]: z.string().optional(),
+  [RECEIVED_LANDED_STATE]: z.boolean().optional()
 });
 
 /** A session's current hop count: 0 for one that keeps none. */
@@ -132,6 +137,25 @@ export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): Hop
   return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null, lines: sessionUserLinesOf(ctx.session.state) };
 }
 
+/**
+ * The mark for a task filed held (FIX-2238): released, it starts a fresh
+ * chain at 0, since no exchange waits on it. The chain is minted here, once,
+ * so every request the task runs counts in the same budget. The filer's user
+ * lines are kept, so a user's line since still clears it.
+ */
+export function freshHopMark(ctx: Pick<BlockContext, "session">): HopMark {
+  return { hop: 0, chain: newChainId(), lines: sessionUserLinesOf(ctx.session.state) };
+}
+
+/**
+ * Whether a filing holds its task from the start: filed `held`, or waiting on
+ * questions. Released, such a task starts a fresh chain ({@link freshHopMark});
+ * a midway hold carries its budget on.
+ */
+export function heldFromFiling(init: { readonly held?: boolean; readonly status?: string; readonly questions?: readonly unknown[] }): boolean {
+  return init.held === true || init.status === "held" || (init.questions?.length ?? 0) > 0;
+}
+
 const hopMarkSchema = z.object({
   hop: z.number().int().nonnegative(),
   chain: z.string().min(1).nullable(),
@@ -173,7 +197,6 @@ export async function startTurnAtHop(
     ...also,
     [TURN_HOP_STATE]: hop,
     [TURN_CHAIN_STATE]: chain,
-    [TURN_SENT_STATE]: 0,
-    [TURN_MESSAGED_STATE]: []
+    [TURN_SENT_STATE]: 0
   } as never);
 }

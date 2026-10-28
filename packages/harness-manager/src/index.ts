@@ -21,7 +21,8 @@
  * - {@link harnessManager} and its options, including the `harness` slot.
  * - `harnessSessionDoor`, the door a coding flow declares for a line typed
  *   in a run's session: a steer while its task is open, talk once it has
- *   finished.
+ *   finished. `harnessTalkTurn` is its talk half, which a coder also runs for
+ *   a message about a finished task.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
  *   coding door kept before FIX-2086 onto its task as a steer.
  * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
@@ -82,10 +83,14 @@ export {
 // ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {
   harnessSessionDoor,
+  harnessTalkTurn,
+  harnessTalkInputSchema,
+  harnessTalkOutputSchema,
   sessionDoorInputSchema,
   sessionDoorOutputSchema,
   SessionDoorRefused,
   type HarnessSessionDoorOptions,
+  type HarnessTalkTurnOptions,
   type SessionDoorBoard,
   type SessionDoorRefusalReason,
 } from "./session-door";

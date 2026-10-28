@@ -414,4 +414,5 @@ this table; `AGENTS.md` points here.
 | Spec review converges in two rounds | `orchestration.md` + `epic-wake` `atReviewBudget()` | architecture |
 | PR-feedback auto-handle cap of twelve | `orchestration.md` + `epic-wake` `atPrFeedbackCap()` | architecture |
 | A rule asking "did X happen?" reads X's mark, never a state other causes also produce (BP-035) | the behaviour test at each fix (the one-wait rule: `settles-when-its-work-is-over.test.ts`); judgment otherwise | test + docs |
+| Kitchen Sink only assembles framework pieces; features and workarounds go in the owning package | `apps/kitchen-sink/CLAUDE.md` test + `reuse-review` near-duplicate line (the `review` reuse lens) | review |
 | Judgment that cannot be encoded | tenets / existing BPs / a skill checklist line — last | docs |

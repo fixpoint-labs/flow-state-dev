@@ -114,6 +114,10 @@ Hunt these even when the spec did not list them as Adds:
 - **A hook where block composition would do** — especially a factory hook that
   reimplements `sequencer` / `doWhile` / `stepIf` / a handler the package already
   wraps.
+- **Framework work landing in Kitchen Sink** — an Adds item under `apps/kitchen-sink/`
+  that fails the second-app test in
+  [`apps/kitchen-sink/CLAUDE.md`](../../../apps/kitchen-sink/CLAUDE.md). The verdict
+  names the owning package.
 
 A near-duplicate is **must-fix** (spec-level) unless the spec's Builds on / Adds
 row names the existing piece and shows why it cannot be reused or extended.

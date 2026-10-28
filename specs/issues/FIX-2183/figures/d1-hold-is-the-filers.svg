@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 424" role="img" aria-label="D1: which meaning keeps the word hold? Chosen: the filer&#x27;s hold on a task that hasn&#x27;t started, status held. Instead of: questions keep holds and the status gets a new name. It comes down to the first row: a bare status names no releaser, so it must be the one meaning a reader assumes; the filer&#x27;s hold is what held already means in English and in every page. The price is the second row: about 120 files rename a task&#x27;s questions. The third row: FIX-2092&#x27;s held steps stay as specced. Locks in status held, held: true, hold and release. Flips if a reader takes held to mean waiting on a user."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="424"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+  <text class="t-q" x="32" y="52">Which meaning keeps the word hold?</text>
+  <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+  <text class="t-h c-code" x="228" y="112">The filer's hold, before a start</text>
+  <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+  <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+  <text class="t-h c-lost" x="592" y="112">Questions keep holds; the status is renamed</text>
+  <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+  <rect class="bar" x="16" y="134" width="4" height="62"/>
+  <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+  <text class="t-lbl" x="32" y="156">A BARE held</text>
+  <text class="t-lbl" x="32" y="169">IN A ROW OR A LOG</text>
+  <text class="mark plus" x="228" y="162">+</text>
+  <text class="t-b" x="248" y="161">Means one thing: the filer's</text>
+  <text class="t-s" x="248" y="179">not started; the filer releases it</text>
+  <text class="mark minus" x="592" y="162">−</text>
+  <text class="t-b" x="612" y="161">Still means two things</text>
+  <text class="t-s" x="612" y="179">held status, or held on questions</text>
+  <text class="t-lbl" x="32" y="218">FILES THAT</text>
+  <text class="t-lbl" x="32" y="231">CHANGE</text>
+  <text class="mark minus" x="228" y="224">−</text>
+  <text class="t-b" x="248" y="223">About 120 files rename questions</text>
+  <text class="t-s" x="248" y="241">source, docs, tests; one codemod</text>
+  <text class="mark minus" x="592" y="224">−</text>
+  <text class="t-b" x="612" y="223">Statuses, change kinds, counts</text>
+  <text class="t-s" x="612" y="241">plus FIX-2092's specced steps</text>
+  <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  <text class="t-lbl" x="32" y="280">FIX-2092's</text>
+  <text class="t-lbl" x="32" y="293">HELD STEPS</text>
+  <text class="mark plus" x="228" y="286">+</text>
+  <text class="t-b" x="248" y="285">Unchanged</text>
+  <text class="t-s" x="248" y="303">held, released with status pending</text>
+  <text class="mark minus" x="592" y="286">−</text>
+  <text class="t-b" x="612" y="285">Re-specced</text>
+  <text class="t-s" x="612" y="303">its D2 names the status</text>
+  <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="32" y="355">LOCKS IN</text>
+  <text class="t-b" x="32" y="375">status held, held: true, hold() and release()</text>
+  <text class="t-s" x="32" y="393">the only task state the word hold names</text>
+  <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
+  <text class="t-lbl" x="494" y="355">FLIPS IF</text>
+  <text class="t-b" x="494" y="375">A reader takes held to mean waiting on a user</text>
+  <text class="t-s" x="494" y="393">then the status gets a word of its own too</text>
+</svg>

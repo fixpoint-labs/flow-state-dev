@@ -41,6 +41,7 @@
  *
  * Run:   pnpm tsx goals/shift-manager/it-opens-on-fsd-and-shift-manager/run.mts
  */
+import { onClosed } from "../../lib/server.mts";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
@@ -97,7 +98,7 @@ async function startScript(env: Record<string, string>, form: "start" | "dev" = 
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
   let code: number | null | undefined;
-  const exited = new Promise<number | null>((resolve) => child.on("exit", (c) => resolve((code = c))));
+  const exited = new Promise<number | null>((resolve) => onClosed(child, (c) => resolve((code = c))));
   const stop = async () => {
     if (code === undefined) child.kill("SIGTERM");
     await exited;

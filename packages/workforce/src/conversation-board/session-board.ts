@@ -48,9 +48,11 @@ import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { messageHopStateShape } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
-import { defineMessageWorkerCapability } from "../messages/message-tool";
-import { WORKER_MESSAGE_ENTRY } from "../messages/keys";
-import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/worker-message-entry";
+import { defineSendMessageCapability } from "../messages/message-tool";
+import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
+import { messageDeliveryStateShape, payMessageDebts } from "../messages/delivery";
+import { messageReceivedEntry, promptedMessageTurn } from "../messages/message-received-entry";
+import { recheckRecipient } from "../messages/send-message";
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { ROUTED_FROM_STATE_KEY, WORK_PROJECT_STATE_KEY } from "../workers/keys";
@@ -74,10 +76,10 @@ import {
 } from "./task-settled";
 
 /**
- * The session state worker messages keep (FIX-1989): the session's hop count
- * and the message ids it has acted on. Both server-owned.
+ * The session state worker messages keep (FIX-1989, FIX-2240): the session's
+ * hop count, and the messages it sent that are still owed. Both server-owned.
  */
-export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
+export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeliveryStateShape } as const;
 
 /**
  * The board action a screen files a task through: filed ready, the board
@@ -143,10 +145,15 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
+    // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
+    messages: {
+      resources: { ...options.installation.resources, ...workerMessagesResources },
+      payDebts: (ctx) => payMessageDebts(ctx, (inner, row) => recheckRecipient(inner, options.installation, row))
+    },
     ...(options.routes === undefined ? {} : { routes: options.routes })
   });
 
-  const messages = defineMessageWorkerCapability(options.installation, options.flowKind);
+  const messages = defineSendMessageCapability(options.installation, options.flowKind);
 
   // The manager's pieces: a flow that spreads any of them declares `manager` (`../worker-roles`).
   const managerActions = { ...board.actions, ...delegates.actions };
@@ -183,7 +190,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      */
     delegateTools: delegates.toolsCapability,
     /**
-     * `messageWorker` (FIX-1989), on every turn of a session that runs a
+     * `sendMessage` (FIX-1989), on every turn of a session that runs a
      * worker: one entry for the model block's `uses`, beside `tools`.
      */
     messages,
@@ -214,7 +221,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * (`onTaskSettled`), the two a flow declaring `manager` is checked for; a check of the
      * session's waiting task (`CHECK_TASK_ENTRY`); the turn a late steer is
      * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
-     * (`onWorkerMessage`, FIX-1989), which always wakes the turn; and a
+     * (`onMessageReceived`, FIX-1989), which always wakes the turn; and a
      * scheduled task's filing (`fileScheduledTask`, FIX-2085), through the
      * board's own `createTask_tasks`. Spread into `internal: { actions: ... }`.
      *
@@ -249,7 +256,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
-        [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn), installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
           soleTaskDelegate(await delegates.taskDelegates(ctx))
         )

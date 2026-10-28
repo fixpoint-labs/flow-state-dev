@@ -14,6 +14,7 @@
  * |---|---|
  * | (none) | names the conversation (the asked one, or a new one), streams a reply with a pause, succeeds |
  * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run is offered the to-do tools (see below) |
+ * | `[plan-next]` | moves on through that plan by id alone, the way a later turn does: the first item to `completed`, the second to `in_progress` |
  * | `[bash]` | also runs five shell commands, each with its `description` |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
@@ -27,6 +28,8 @@
  * test sees a second turn continue the first's conversation.
  */
 import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
+
+import { scriptedReceived } from "./scripted-received";
 
 /**
  * The script's pauses, in milliseconds: between steps, and the long one a
@@ -83,6 +86,7 @@ async function* scriptedTurn(
   const has = (directive: string) => prompt.includes(`[${directive}]`);
   const asked = options?.resume;
   const step = scriptedPauses.stepMs;
+  scriptedReceived.push(prompt);
 
   if (has("fail-early")) throw new Error("scripted failure before Claude Code named a conversation");
   if (has("slow-start")) await pause(scriptedPauses.slowMs, signal);
@@ -108,6 +112,14 @@ async function* scriptedTurn(
     yield toolResult("toolu_plan_2", { task: { id: "2", subject: "Answer it" } }, "Task #2 created successfully: Answer it");
     yield toolUse("toolu_plan_3", "TaskUpdate", { taskId: "1", status: "in_progress" });
     yield toolResult("toolu_plan_3", { success: true, taskId: "1" }, "Updated task #1 status");
+    await pause(step, signal);
+  }
+
+  if (has("plan-next") && options?.allowedTools?.some((tool) => PLAN_TOOLS.has(tool))) {
+    yield toolUse("toolu_next_1", "TaskUpdate", { taskId: "1", status: "completed" });
+    yield toolResult("toolu_next_1", { success: true, taskId: "1" }, "Updated task #1 status");
+    yield toolUse("toolu_next_2", "TaskUpdate", { taskId: "2", status: "in_progress" });
+    yield toolResult("toolu_next_2", { success: true, taskId: "2" }, "Updated task #2 status");
     await pause(step, signal);
   }
 

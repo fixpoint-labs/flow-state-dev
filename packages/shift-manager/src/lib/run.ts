@@ -14,7 +14,14 @@
  */
 import { compareItemOrder, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, planKeySegment, type RequestStatus } from "@flow-state-dev/core/types";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  planKeySegment,
+  planRowsPrefix,
+  readPlanTarget,
+  type RequestStatus,
+} from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
 import { describeFailure, type Failure } from "./reads";
 
@@ -199,7 +206,7 @@ export async function interruptRun(
  * under, when it records them. Found in the run session's manifest by these
  * patterns; a flow that declares neither records neither.
  */
-const RECORDED = { plan: `${OBSERVED_PLAN}/**`, files: "observed-file-ops/**" } as const;
+const RECORDED = { plan: `${OBSERVED_PLAN}/**`, markers: `${OBSERVED_PLAN_LIST}/**`, files: "observed-file-ops/**" } as const;
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
@@ -220,10 +227,12 @@ function recordedRef(manifest: ResourceManifest, pattern: string): string | unde
 }
 
 /**
- * The plan and files the run recorded under its own request id, read once. A
- * run's rows are keyed `<request>/<invocation>/<item>`, so one prefix read
- * selects everything this request did and nothing an earlier run in the same
- * session did.
+ * The plan and files the run recorded, read once. File rows are keyed
+ * `<request>/<invocation>/<path>`, so one prefix read selects everything this
+ * request did and nothing an earlier run in the same session did. The plan is
+ * the harness conversation's: the run leaves a pointer to it under its own
+ * request, and a run from before plans were kept by conversation has its plan
+ * under the request, as files are.
  */
 export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
   let manifest: ResourceManifest;
@@ -232,11 +241,11 @@ export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessi
   } catch (error) {
     fail(error);
   }
-  const read = async (pattern: string) => {
+  // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
+  const underRequest = (pattern: string) => `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
+  const read = async (pattern: string, prefix = underRequest(pattern)) => {
     const ref = recordedRef(manifest, pattern);
     if (ref === undefined) return null;
-    // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
-    const prefix = `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
     try {
       const page = await client.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
       return { items: page.items, truncated: page.nextCursor != null };
@@ -244,10 +253,19 @@ export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessi
       fail(error);
     }
   };
-  const [plan, files] = await Promise.all([read(RECORDED.plan), read(RECORDED.files)]);
-  /** The key segments after `<request>/<invocation>/`. */
-  const rest = (topic: string) => topic.split("/").slice(2).join("/");
+  const readPlan = async () => {
+    if (recordedRef(manifest, RECORDED.plan) === undefined) return null;
+    const pointers = await read(RECORDED.markers, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const markers = (pointers?.items ?? []).map((item) => ({
+      topic: item.topic,
+      conversation: field(item.clientData, "conversation") as string | null | undefined,
+    }));
+    return read(RECORDED.plan, readPlanTarget(run.requestId, markers).rowsPrefix);
+  };
   const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
+  const [plan, files] = await Promise.all([readPlan(), read(RECORDED.files)]);
+  /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
+  const rest = (topic: string) => topic.split("/").slice(2).join("/");
   return {
     plan:
       plan === null

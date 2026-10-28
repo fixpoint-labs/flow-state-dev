@@ -27,6 +27,7 @@ import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import { isDefinedTaskCollection } from "./define-task-collection";
 import { partitionedResourceCollection } from "./partition";
+import { recordTaskIdPartition, resolveTaskIdIndex } from "./id-index";
 import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 import type { FilingStamp } from "./internal";
@@ -218,6 +219,14 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
   const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
   const ctx = options.ctx;
+  // A partitioned ledger's add records which partition holds the id
+  // (FIX-2160), through the index the running flow installs beside it.
+  const idIndexOf = isDefinedTaskCollection(declared) ? declared.__taskCollection.idIndex : undefined;
+  const ledgerId = isDefinedTaskCollection(declared) ? declared.__taskCollection.id : options.collectionId;
+  const recordTaskId =
+    partition !== undefined && idIndexOf !== undefined
+      ? (taskId: string) => recordTaskIdPartition(resolveTaskIdIndex(ctx, ledgerId), taskId, partition)
+      : undefined;
   // A ledger a board hands rows out from delivers each ending to its filer
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
   const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
@@ -249,6 +258,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     filing,
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
+    ...(recordTaskId !== undefined ? { recordTaskId } : {}),
     ...(recordEnding !== undefined ? { recordEnding } : {}),
     ...(settings !== undefined ? { settings } : {}),
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),

@@ -20,6 +20,7 @@
  */
 import { useEffect, useMemo, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
@@ -34,15 +35,6 @@ import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
-import { navigate } from "../lib/routes";
-
-/** Whether a line is another worker's message (FIX-1989): written under its sender's name, as *From <sender>: <text>*. */
-function isWorkerMessage(item: OutputItem, sender: string | undefined): boolean {
-  if (sender === undefined) return false;
-  const content = (item as { content?: Array<{ text?: unknown }> }).content;
-  const first = Array.isArray(content) ? content.find((part) => typeof part.text === "string")?.text : undefined;
-  return typeof first === "string" && first.startsWith(`From ${sender}: `);
-}
 
 /**
  * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
@@ -259,7 +251,9 @@ export function Conversation({
                   }
                   const item = segment.item;
                   const role = (item as { role?: string }).role ?? "";
-                  const own = renderItem?.(item);
+                  // Another worker's message is drawn by the registry on every view, under its sender's name.
+                  const received = item.type === "component" && (item as { component?: string }).component === RECEIVED_MESSAGE_COMPONENT;
+                  const own = received ? undefined : renderItem?.(item);
                   const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
                   return (
                     <li
@@ -277,16 +271,6 @@ export function Conversation({
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
                           </span>
-                          {isWorkerMessage(item, sender) ? (
-                            <button
-                              type="button"
-                              className="tracking-normal normal-case hover:text-foreground hover:underline"
-                              onClick={() => navigate({ level: "messages" })}
-                              data-testid={`${testId}-item-messages`}
-                            >
-                              Messages ›
-                            </button>
-                          ) : null}
                         </p>
                       ) : null}
                       {own !== undefined ? (

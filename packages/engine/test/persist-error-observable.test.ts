@@ -59,6 +59,24 @@ describe("filesystem store onPersistError observable", () => {
     expect(received[0]?.error).toBeInstanceOf(Error);
   });
 
+  // A resolved flushItems is read as "the items are stored" (a message is
+  // marked delivered after it), so a failed item write must reject it.
+  it("rejects flushItems when an item write fails, once, and reports it", async () => {
+    const blockingFile = path.join(scratch, "not-a-dir");
+    await writeFile(blockingFile, "x", "utf8");
+    const received: PersistErrorInfo[] = [];
+    const store = createFilesystemRequestStore({
+      rootDir: path.join(blockingFile, "requests"),
+      onPersistError: (info) => received.push(info)
+    });
+
+    store.persistItems("req_items", [{ id: "item_0", type: "message", role: "assistant", content: [] } as never]);
+    await expect(store.flushItems("req_items")).rejects.toBeInstanceOf(Error);
+    expect(received.map((info) => info.id)).toEqual(["req_items"]);
+    // Reported once: the next flush has nothing failed to report.
+    await expect(store.flushItems("req_items")).resolves.toBeUndefined();
+  });
+
   it("still logs when no onPersistError handler is configured", async () => {
     const blockingFile = path.join(scratch, "blocker");
     await writeFile(blockingFile, "x", "utf8");

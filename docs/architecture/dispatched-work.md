@@ -295,15 +295,26 @@ settles it, `livenessOf?()` asks whether requests this session dispatched are
 still running, `resumeWait?()` resumes a turn in this session parked on a wait
 gate (present only with durable execution), `wakes?` keeps the session's due
 times, and `waits?` (FIX-2082) holds a wait's deadline bounds, the live depth
-of the chain a new wait would join, and whether a request has ended. Beside
-them, one fact: `hasWaitSweeper`, true when this process runs a durability
+of the chain a new wait would join, whether a request has ended, and
+`userStop()` (FIX-2239), the request of this session parked for a person,
+if any, and
+`sessions?.read(id)` reads one session of the same user, tenant and
+organization as the request (its flow and a frozen copy of its `.readonly()`
+session fields), or `undefined` for any other. Beside them, one fact:
+`hasWaitSweeper`, true when this process runs a durability
 sweeper, which fires the wake that resumes a wait at its deadline.
 
 Waiting on a task is `getTask({ id, wait: true })`, offered only when the
 host can hold a wait (`canHoldWait`: `resumeWait`, `hasWaitSweeper` and
 `waits`) and the board opts in with `resumesWaits: true` (the filing
 session's `onTaskSettled` pass resumes an owed wait when its task ends).
-Waiting on a request this one dispatched is `dispatcher({ wait: true })`.
+Waiting on a request this one dispatched is `dispatcher({ wait: true })`;
+its park half is core's `waitOnRequest`, which a worker's call (`sendMessage`
+with `wait`, FIX-2239) uses too. A request's end resumes `{ requestId }` gates
+in the session that dispatched it and, when the run that ended it resumed it,
+in its own session too: a message queued behind a request stopped for a person
+waits on a request nobody dispatched. A request that never parked lists
+nothing more (`resumeRequestWaiters`, `durability/wait-chain.ts`).
 `createTask` never waits. A wait's deadline cancels
 nothing: the work runs on. Identity is never a parameter to any of them.
 

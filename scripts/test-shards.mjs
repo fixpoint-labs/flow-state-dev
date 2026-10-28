@@ -23,7 +23,6 @@ const NAMED_SHARDS = [
     "@flow-state-dev/fsdev", // 101
     "@flow-state-dev/shift-manager", // 69
     "@flow-state-dev/kitchen-sink", // 36
-    "@flow-state-dev/conductor", // 26
   ],
   [
     "@flow-state-dev/store-postgres", // 71

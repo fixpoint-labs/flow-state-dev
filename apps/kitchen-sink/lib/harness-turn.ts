@@ -25,6 +25,8 @@ export const turnRecordSchema = z.object({
   error: z.string().nullable().default(null),
   /** When the turn started, in epoch millis. Orders turns for trimming. */
   at: z.number().nullable().default(null),
+  /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
+  steered: z.array(z.string()).nullable().default(null),
 });
 
 /** One turn's record. */
@@ -177,6 +179,8 @@ export interface PlanRowItem {
   readonly topic: string;
   readonly title: string | null;
   readonly status: string | null;
+  /** The request that last wrote the row; absent or `null` on a row stored per turn. */
+  readonly requestId?: string | null;
 }
 
 /** A list marker, as the resource route lists it. */
@@ -185,7 +189,15 @@ export interface PlanMarkerItem {
   readonly status: string | null;
   readonly count: number | null;
   readonly reason: string | null;
+  /** Set on a run's pointer to its conversation's plan, which is not a list marker. */
+  readonly conversation?: string | null;
 }
+
+/**
+ * Where the panel's plan was read from: the latest turn's own rows (stored per
+ * turn, before plans were kept by conversation), or the bound conversation's.
+ */
+export type PlanScope = "turn" | "conversation";
 
 /** What the plan panel shows. */
 export type PlanPanelState =
@@ -193,14 +205,22 @@ export type PlanPanelState =
   | { readonly kind: "undeclared"; readonly label: string }
   /** The session has had no turn yet. */
   | { readonly kind: "no-turn" }
-  /** The turn's record holds nothing: no marker and no rows. */
-  | { readonly kind: "none"; readonly turn: number }
-  /** The harness reported an empty list for the turn. */
-  | { readonly kind: "empty"; readonly turn: number }
-  /** The turn's rows; `incomplete` with its reason when they are not the whole plan. */
+  /**
+   * The record holds nothing: no marker and no rows. `turn` is the turn the
+   * panel labels: the latest for a turn's plan, `null` for a conversation's.
+   */
+  | { readonly kind: "none"; readonly scope: PlanScope; readonly turn: number | null }
+  /** The harness reported an empty list. */
+  | { readonly kind: "empty"; readonly scope: PlanScope; readonly turn: number | null }
+  /**
+   * The plan's rows; `incomplete` with its reason when they are not the whole
+   * plan. `turn` is the latest turn for a turn's plan, and for a
+   * conversation's the turn that last changed a row (`null` if none is known).
+   */
   | {
       readonly kind: "rows";
-      readonly turn: number;
+      readonly scope: PlanScope;
+      readonly turn: number | null;
       readonly rows: readonly { readonly key: string; readonly title: string | null; readonly status: string | null }[];
       readonly incomplete: { readonly reason: string | null } | null;
     };
@@ -215,11 +235,24 @@ export interface PlanPanelInput {
   readonly turn: number | null;
   /** Whether that turn's request has ended. */
   readonly ended: boolean;
-  /** That turn's plan rows, topics under the collection (`<request>/<run>/<item>`). */
+  /**
+   * The plan's rows, topics under the collection: `<request>/<run>/<item>` for
+   * a turn's plan, `conversation/<id>/<item>` for a conversation's.
+   */
   readonly rows: readonly PlanRowItem[];
-  /** That turn's list markers, topics under the collection (`<request>/<run>`). */
+  /** The plan's list markers, topics under the collection (`<request>/<run>`, or `conversation/<id>`). */
   readonly markers: readonly PlanMarkerItem[];
+  /**
+   * Set when the rows are the bound conversation's plan: each turn's number by
+   * its request id, for the label, and whether the conversation began before
+   * plans were kept by conversation, so its plan may be missing what those
+   * turns recorded.
+   */
+  readonly conversation?: { readonly turns: ReadonlyMap<string, number>; readonly predates: boolean } | null;
 }
+
+/** What the panel says when a conversation's plan may be missing what its earliest turns recorded. */
+export const PREDATES_REASON = "this conversation began before plans were kept across turns";
 
 /** How far along a plan row is, in the panel's three words plus whatever else a harness says. */
 export interface PlanRowStage {
@@ -267,29 +300,96 @@ function runOf(topic: string): string {
  * The plan panel's state for the session's latest turn.
  *
  * Read from the record only: the panel never rebuilds a plan from items. A
- * turn with several runs (a retried block) shows its last. With a count in
- * the marker, only places below it show, so a row a lost count left behind
- * never does. A marker still `writing` after the turn ended reads as
- * incomplete, the same as `incomplete`.
+ * turn's plan with several runs (a retried block) shows its last; a
+ * conversation's plan is one run. With a count in the marker, only places
+ * below it show, so a row a lost count left behind never does. A marker still
+ * `writing` after the turn ended reads as incomplete, the same as
+ * `incomplete`. A run's pointer to its conversation is never a list marker.
  */
 export function planPanelState(input: PlanPanelInput): PlanPanelState {
   if (!input.declared) return { kind: "undeclared", label: input.label };
   if (input.turn === null) return { kind: "no-turn" };
-  const turn = input.turn;
-  const runs = [...new Set([...input.rows.map((r) => runOf(r.topic)), ...input.markers.map((m) => runOf(m.topic))])].sort(byNumber);
+  const conversation = input.conversation ?? null;
+  const scope: PlanScope = conversation === null ? "turn" : "conversation";
+  const markers = input.markers.filter((m) => m.conversation == null);
+  const runs = [...new Set([...input.rows.map((r) => runOf(r.topic)), ...markers.map((m) => runOf(m.topic))])].sort(byNumber);
   const run = runs.at(-1);
-  if (run === undefined) return { kind: "none", turn };
-  const marker = input.markers.find((m) => runOf(m.topic) === run) ?? null;
+  const unlabelled = conversation === null ? input.turn : null;
+  if (run === undefined) return { kind: "none", scope, turn: unlabelled };
+  const marker = markers.find((m) => runOf(m.topic) === run) ?? null;
   const count = marker?.count ?? null;
-  const rows = input.rows
-    .filter((r) => runOf(r.topic) === run)
+  const inRun = input.rows.filter((r) => runOf(r.topic) === run);
+  const rows = inRun
     .map((r) => ({ key: r.topic.split("/").slice(2).join("/"), title: r.title, status: r.status }))
     .filter((r) => count === null || (/^\d+$/.test(r.key) && Number(r.key) < count))
     // A harness's own item ids (`2`, `10`) and zero-padded places both read in order.
     .sort((a, b) => byNumber(a.key, b.key));
-  const incomplete =
+  const listIncomplete =
     marker?.status === "incomplete" || (marker?.status === "writing" && input.ended) ? { reason: marker.reason } : null;
-  if (marker?.status === "complete" && count === 0) return { kind: "empty", turn };
-  if (marker === null && rows.length === 0) return { kind: "none", turn };
-  return { kind: "rows", turn, rows, incomplete };
+  if (marker?.status === "complete" && count === 0) return { kind: "empty", scope, turn: unlabelled };
+  if (marker === null && rows.length === 0) return { kind: "none", scope, turn: unlabelled };
+  if (conversation === null) return { kind: "rows", scope, turn: input.turn, rows, incomplete: listIncomplete };
+  const changedIn = inRun
+    .map((r) => (typeof r.requestId === "string" ? conversation.turns.get(r.requestId) : undefined))
+    .filter((n): n is number => n !== undefined);
+  const turn = changedIn.length === 0 ? null : Math.max(...changedIn);
+  const incomplete = listIncomplete ?? (conversation.predates ? { reason: PREDATES_REASON } : null);
+  return { kind: "rows", scope, turn, rows, incomplete };
+}
+
+/** Where the panel reads the latest turn's plan from. */
+export type PlanSource =
+  /** A conversation's plan, by its namespace. */
+  | { readonly kind: "conversation"; readonly namespace: string }
+  /** The rows stored under the turn itself; when it has none, the conversation `whenEmpty` names, if any. */
+  | { readonly kind: "turn"; readonly whenEmpty: string | null };
+
+/**
+ * Where the panel reads the latest turn's plan from. The turn's pointer wins.
+ * Without one, a running turn reads the bound conversation's plan (its
+ * pointer is not written yet). An ended turn reads its own per-turn rows (a
+ * session from before plans were kept by conversation), and when it has none
+ * (a turn stopped or failed before the harness named its conversation), the
+ * bound conversation's plan, which that turn left as it was.
+ *
+ * @param pointer The conversation namespace the turn's run points at, or `null`.
+ * @param ended Whether the turn's request has ended.
+ * @param bound The bound conversation's namespace, or `null`.
+ */
+export function planSource(pointer: string | null, ended: boolean, bound: string | null): PlanSource {
+  if (pointer !== null) return { kind: "conversation", namespace: pointer };
+  if (!ended && bound !== null) return { kind: "conversation", namespace: bound };
+  return { kind: "turn", whenEmpty: bound };
+}
+
+/**
+ * Each turn's number, from 1, by its request id: the requests the items
+ * belong to, in the order they started, as `latestTurn` numbers them.
+ */
+export function turnNumbers(items: readonly TurnItem[]): ReadonlyMap<string, number> {
+  const numbers = new Map<string, number>();
+  for (const item of items) if (!numbers.has(item.requestId)) numbers.set(item.requestId, numbers.size + 1);
+  return numbers;
+}
+
+/**
+ * The request of the earliest recorded turn in a conversation, by its turn
+ * records: the turn that asked for it or confirmed it, earliest `at` first.
+ * `null` when no record names it.
+ *
+ * @param turns The session's turn records, by request id.
+ * @param matches Whether a conversation id is the one asked about.
+ */
+export function earliestTurnOf(
+  turns: Readonly<Record<string, TurnRecord>> | null | undefined,
+  matches: (conversationId: string) => boolean,
+): string | null {
+  let earliest: { requestId: string; at: number } | null = null;
+  for (const [requestId, record] of Object.entries(turns ?? {})) {
+    const named = [record.asked, record.confirmed].some((id) => id !== null && matches(id));
+    if (!named) continue;
+    const at = record.at ?? Number.POSITIVE_INFINITY;
+    if (earliest === null || at < earliest.at) earliest = { requestId, at };
+  }
+  return earliest?.requestId ?? null;
 }
