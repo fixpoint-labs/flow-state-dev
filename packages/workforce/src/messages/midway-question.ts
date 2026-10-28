@@ -50,8 +50,8 @@ export function midwayQuestionText(row: Task, hold: RowHold): string {
     ? "The user answers it from their Inbox; it isn't yours to answer."
     : `Answer it with updateTask({ id: "${row.id}", question: "${hold.id}", message }), or leave it to the user, who sees it in their Inbox.`;
   const head = `Your task "${title}" (${row.id}) asks: "`;
-  const room = MAX_MESSAGE_CHARS - head.length - how.length - 2;
-  const prompt = hold.ask.prompt.length > room ? `${hold.ask.prompt.slice(0, Math.max(0, room - 1))}…` : hold.ask.prompt;
+  const space = MAX_MESSAGE_CHARS - head.length - how.length - 2;
+  const prompt = hold.ask.prompt.length > space ? `${hold.ask.prompt.slice(0, Math.max(0, space - 1))}…` : hold.ask.prompt;
   return `${head}${prompt}"\n${how}`;
 }
 
