@@ -282,6 +282,33 @@ describe("an answer", () => {
       await h.dispose();
     }
   });
+
+  it("hands the recipient's model a heard message as another's words, never as its own", async () => {
+    // Stored as an assistant line, the model reads the sender's request as
+    // something it already said, and can end its turn with nothing to add.
+    const agentAnswer = mockGenerator({
+      script: [
+        { when: (input) => textOf(input).includes("It is Bluebird."), then: { text: "The codename is Bluebird." } },
+        ...callOnce("ask the lead", "sendMessage", { to: "lead", text: "What is the codename?" }),
+        fallback
+      ]
+    });
+    const h = boot({
+      judgment: mockGenerator({ script: [...answerOnce("otto", "What is the codename?", "It is Bluebird."), fallback] }),
+      agentAnswer
+    });
+    try {
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "respond", { message: "Please ask the lead" }, "agent");
+      await h.settled();
+
+      const woken = agentAnswer.calls.find((call) => textOf(call.input).includes("It is Bluebird."))!;
+      const heard = (woken.input as Array<{ role: string; content: unknown }>).filter((m) => JSON.stringify(m.content).includes("From lead: It is Bluebird."));
+      expect(heard.map((m) => m.role)).toEqual(["user"]);
+    } finally {
+      await h.dispose();
+    }
+  });
 });
 
 /** The board's workers, a coordinator that files for `otto`, and two more agent workers. */
