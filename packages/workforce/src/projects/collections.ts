@@ -28,7 +28,7 @@
  * `readProjectFiles`, which checks `members` first, so the collection has no
  * browser read.
  *
- * These keys are a public surface: Shift Manager and the chief of staff read
+ * These keys are a public surface: Shift Manager and the Shift Coordinator read
  * them, and moving a prefix breaks every store that already holds a project.
  */
 

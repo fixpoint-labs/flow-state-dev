@@ -1,0 +1,107 @@
+{
+  "recorded": "2026-10-28, real Cursor (composer-2.5, @cursor/sdk local runtime) through cursorAgent. gh was a shim printing gh 2.x non-TTY output, because GraphQL is blocked in the recording container; the item shape is Cursor's own.",
+  "items": [
+    {
+      "id": "item_tool_1793212170428_8edcca1902a1f",
+      "type": "tool_output",
+      "status": "completed",
+      "requestId": "test_req_1793212165040_45f26b4357379",
+      "itemIndex": 5,
+      "provenance": {
+        "blockName": "cursor-agent",
+        "blockInstanceId": "test_req_1793212165040_45f26b4357379:root:0",
+        "phase": "main"
+      },
+      "ts": 1793212170673,
+      "blockName": "shell",
+      "output": {
+        "status": "success",
+        "value": {
+          "exitCode": 0,
+          "signal": "",
+          "stdout": "https://github.com/Acme-Org/My.App/pull/88\n",
+          "stderr": "\nCreating pull request for notes-export into main in Acme-Org/My.App\n\n",
+          "executionTime": 215
+        }
+      },
+      "toolCall": {
+        "callId": "tool_cfefa353-4172-4378-9148-b2266fc4c60",
+        "name": "shell",
+        "arguments": "{\"command\":\"cd /tmp/cursor-prfx-SGDDca && gh pr create --title 'Add notes export' --body 'Exports notes\\n\\nMade with [Cursor](https://cursor.com)' --head notes-export\",\"timeout\":30000}",
+        "generatorBlock": "cursor-agent"
+      },
+      "itemVisibility": {
+        "client": true,
+        "history": true
+      }
+    },
+    {
+      "id": "item_tool_1793212171219_5e7705d21a6df",
+      "type": "tool_output",
+      "status": "completed",
+      "requestId": "test_req_1793212165040_45f26b4357379",
+      "itemIndex": 7,
+      "provenance": {
+        "blockName": "cursor-agent",
+        "blockInstanceId": "test_req_1793212165040_45f26b4357379:root:0",
+        "phase": "main"
+      },
+      "ts": 1793212171303,
+      "blockName": "shell",
+      "output": {
+        "status": "success",
+        "value": {
+          "exitCode": 0,
+          "signal": "",
+          "stdout": "title:\tSomeone else's change\nstate:\tOPEN\nauthor:\tother\nnumber:\t12\nurl:\thttps://github.com/other/repo/pull/12\n--\nBody\n",
+          "stderr": "",
+          "executionTime": 88
+        }
+      },
+      "toolCall": {
+        "callId": "tool_225e46a7-d1c1-4034-862d-43ab824ae00",
+        "name": "shell",
+        "arguments": "{\"command\":\"gh pr view 12 --repo other/repo\",\"timeout\":30000}",
+        "generatorBlock": "cursor-agent"
+      },
+      "itemVisibility": {
+        "client": true,
+        "history": true
+      }
+    },
+    {
+      "id": "item_tool_1793212171780_ae7ca85eff789",
+      "type": "tool_output",
+      "status": "completed",
+      "requestId": "test_req_1793212165040_45f26b4357379",
+      "itemIndex": 9,
+      "provenance": {
+        "blockName": "cursor-agent",
+        "blockInstanceId": "test_req_1793212165040_45f26b4357379:root:0",
+        "phase": "main"
+      },
+      "ts": 1793212171868,
+      "blockName": "shell",
+      "output": {
+        "status": "success",
+        "value": {
+          "exitCode": 1,
+          "signal": "",
+          "stdout": "",
+          "stderr": "a pull request for branch \"notes-dupe\" into branch \"main\" already exists:\nhttps://github.com/Acme-Org/My.App/pull/88\n",
+          "executionTime": 92
+        }
+      },
+      "toolCall": {
+        "callId": "tool_48a4665c-db9e-4157-b484-ca06b3f07bf",
+        "name": "shell",
+        "arguments": "{\"command\":\"gh pr create --title 'Again' --body 'x\\n\\nMade with [Cursor](https://cursor.com)' --head notes-dupe\",\"timeout\":30000}",
+        "generatorBlock": "cursor-agent"
+      },
+      "itemVisibility": {
+        "client": true,
+        "history": true
+      }
+    }
+  ]
+}

@@ -6,7 +6,7 @@
  * hired or fired on a turn shows on the next read.
  *
  * Every status, slot and count is read from the one `workerStates` result over
- * the snapshot, the same one the sidebar and Chief of Staff draw, so a
+ * the snapshot, the same one the sidebar and Shift Coordinator draw, so a
  * worker reads the same everywhere. Nothing is polled: Roster draws the
  * snapshot and says when it was read.
  *
@@ -16,7 +16,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { chiefOfStaffOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
+import { shiftCoordinatorOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
@@ -178,9 +178,9 @@ export function RosterView({
   const ownIds = new Set(own.map((worker) => worker.id));
   const team = pickedTeam(workers, asked);
   const states = workerStates(withOwn);
-  // The chief of staff first: the coordinator the user's work goes through.
-  const cos = chiefOfStaffOf(workers);
-  const first = cos.kind === "one" ? cos.worker.id : undefined;
+  // The Shift Coordinator first: the coordinator the user's work goes through.
+  const shiftCoordinator = shiftCoordinatorOf(workers);
+  const first = shiftCoordinator.kind === "one" ? shiftCoordinator.worker.id : undefined;
   const shown = [...states.workers.values()]
     .filter((s) => team === null || s.worker.team === team)
     .sort((a, b) => Number(b.worker.id === first) - Number(a.worker.id === first));

@@ -69,7 +69,7 @@ function tree(options: TreeOptions = {}) {
       execute: async (input, ctx) => {
         (received[name] ??= []).push(input);
         if (suspend && received[name]!.length === 1) {
-          return ctx.suspend!({ reason: "human_approval", message: "page on-call?" });
+          return ctx.suspend!({ reason: "user_approval", message: "page on-call?" });
         }
         return { handledBy: name, input };
       },

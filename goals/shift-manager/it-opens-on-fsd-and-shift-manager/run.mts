@@ -12,13 +12,13 @@
  *      shared, naming this repository's remote, each brief naming its focus; and
  *      the user holds no private project. Needs a Claude credential (the
  *      default coder checks for one at start); spends no model.
- *   b  one item on each project, through the chief of staff, as the page's
+ *   b  one item on each project, through the Shift Coordinator, as the page's
  *      user over the Lab's routes: each asks the coder to commit one file
  *      named with a stamp picked at run time. Both tasks settle `completed`;
  *      `git worktree list` in this checkout names both runs' places; each
  *      run's branch descends from `main` (and not from the checked-out branch,
  *      which must not be `main`), commits the file the item asked for, and
- *      holds no `SCRIPTED-RUN.md`. Needs a real model: the chief of staff's
+ *      holds no `SCRIPTED-RUN.md`. Needs a real model: the Shift Coordinator's
  *      key and a Claude credential. The checkout's worktrees and branches the
  *      leg made are removed after it, pass or fail.
  *   c  no credential (no ANTHROPIC_API_KEY, no CLAUDE_CODE_OAUTH_TOKEN, an empty
@@ -46,7 +46,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, keysServing, modulePatchEnv, assertPatched, describePatches, runGoal, RUN_STAMP, REPO_ROOT, repoPath, type ModulePatch } from "../../lib/index.mts";
-import { buildShiftManagerPages, devteamCosModel, labApi, labRoutes, servedAddresses } from "../../lib/shift-manager.mts";
+import { buildShiftManagerPages, devteamShiftCoordinatorModel, labApi, labRoutes, servedAddresses } from "../../lib/shift-manager.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const ALL_LEGS = ["a", "b", "c"] as const;
@@ -151,7 +151,7 @@ const ITEMS = [
   { id: "fsd", title: "FSD" },
   { id: "shift-manager", title: "Shift Manager" },
 ].map((p) => ({ ...p, file: `goal-scratch/${RUN_STAMP.replace(/[^A-Za-z0-9-]/g, "-")}-${p.id}.txt`, stamp: `${p.id} ${RUN_STAMP}` }));
-/** How long one item may take: the Claude Code run's ten minutes, and the chief of staff's turn. */
+/** How long one item may take: the Claude Code run's ten minutes, and the Shift Coordinator's turn. */
 const ITEM_BUDGET_MS = 14 * 60_000;
 const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
 
@@ -198,8 +198,8 @@ await runGoal(async (failures) => {
 
   // ---- (b) one item on each project, in a worktree of this checkout -------
   if (LEGS.has("b")) {
-    const keys = keysServing(devteamCosModel());
-    if (!keys.some((k) => process.env[k])) throw new Error(`setup: leg b needs the chief of staff's model key (${keys.join(" or ")})`);
+    const keys = keysServing(devteamShiftCoordinatorModel());
+    if (!keys.some((k) => process.env[k])) throw new Error(`setup: leg b needs the Shift Coordinator's model key (${keys.join(" or ")})`);
     const head = git(REPO_ROOT, "rev-parse", "--abbrev-ref", "HEAD");
     if (head === "main" || head === "HEAD") throw new Error(`setup: leg b needs this checkout on a named branch other than main, so a run cut from main is told apart from one cut from it; it is on ${head}`);
     const headCommit = git(REPO_ROOT, "rev-parse", "HEAD");
@@ -239,15 +239,15 @@ await runGoal(async (failures) => {
       };
       for (const item of ITEMS) {
         const before = new Set(ours().map((w) => w.path));
-        // A conversation with the chief of staff, as the page opens one, and the person's ask.
+        // A conversation with the Shift Coordinator, as the page opens one, and the person's ask.
         const sessionId = `goal-b-${item.id}-${RUN_STAMP}`;
-        const opened = await http.call("POST", "/coordinator/sessions", { userId: user.userId, sessionId, state: { workerId: "chief-of-staff" } });
-        if (opened.status !== 201) throw new Error(`setup: no conversation with the chief of staff: ${opened.status} ${JSON.stringify(opened.body)}`);
+        const opened = await http.call("POST", "/coordinator/sessions", { userId: user.userId, sessionId, state: { workerId: "shift-coordinator" } });
+        if (opened.status !== 201) throw new Error(`setup: no conversation with the Shift Coordinator: ${opened.status} ${JSON.stringify(opened.body)}`);
         const ask =
           `On ${item.title} (the shared project "${item.id}"), have the coder create the file ${item.file} ` +
           `containing exactly the line "${item.stamp}", and commit it on its branch. Nothing else.`;
         const turn = await http.act("coordinator", sessionId, "respond", { message: ask });
-        if (turn.error !== undefined) note(`b:${item.id}:asked`, `the chief of staff's turn failed: ${turn.error}`);
+        if (turn.error !== undefined) note(`b:${item.id}:asked`, `the Shift Coordinator's turn failed: ${turn.error}`);
         let task: Record<string, any> | undefined;
         for (const until = Date.now() + ITEM_BUDGET_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 2_000))) {
           task = await filedFor(sessionId);

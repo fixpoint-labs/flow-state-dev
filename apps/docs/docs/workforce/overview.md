@@ -46,7 +46,7 @@ For a working example, the [kitchen-sink reference app](https://github.com/fixpo
 
 ## Hire a roster
 
-A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org worker belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
+A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` is `engineering.lead`. An org worker belongs to no team: it lives at `org/workers/<name>/WORKER.md` and goes by its folder name alone, so `org/workers/shift-coordinator/` is `shift-coordinator`.
 
 ```md
 ---

@@ -4,7 +4,7 @@
 
 **Outcome:** a coding run that needs a person's answer shows its question in the Inbox, and the answer carries the work on in the same coding session, on the same try, with no finished work run again.
 
-**Input:** the DevTeam Lab, opened through `openLab` on a durable SQLite store, served over HTTP with the Lab's verified bearer, trace observability off (`FSDEV_TRACE_OBSERVABILITY=0`, set before anything reads it). A conversation with the chief of staff files one task for the coder (`eng.coder`, the harness manager's answer phase) on the Storefront project, a scratch repository. The chief of staff's turn is scripted; what is graded is the coder's run and the task. `fixtures/input.json`, held out: the real run's brief (read a code from `NOTE.txt`, ask, then write it to `resume-proof.txt` and commit) and the answer, and the stub legs' questions, answers and lines. Any question and answer pass the same way.
+**Input:** the DevTeam Lab, opened through `openLab` on a durable SQLite store, served over HTTP with the Lab's verified bearer, trace observability off (`FSDEV_TRACE_OBSERVABILITY=0`, set before anything reads it). A conversation with the Shift Coordinator files one task for the coder (`eng.coder`, the harness manager's answer phase) on the Storefront project, a scratch repository. The Shift Coordinator's turn is scripted; what is graded is the coder's run and the task. `fixtures/input.json`, held out: the real run's brief (read a code from `NOTE.txt`, ask, then write it to `resume-proof.txt` and commit) and the answer, and the stub legs' questions, answers and lines. Any question and answer pass the same way.
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.
 

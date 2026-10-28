@@ -83,7 +83,7 @@ function host(defer: () => boolean, options: HostOptions = {}) {
               }
               heard.push(notice);
               await options.gate;
-              if (options.park === true) await ctx.suspend!({ reason: "human_approval", message: "Tell the customer?" });
+              if (options.park === true) await ctx.suspend!({ reason: "user_approval", message: "Tell the customer?" });
               return {};
             }
           }),

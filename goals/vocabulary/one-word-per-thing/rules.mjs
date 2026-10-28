@@ -96,9 +96,38 @@ export const RETIRED = [
     pathName: /(^|\/)(in-process-dispatcher\.ts|run-owner-dispatcher\.spec\.ts)$|\/tasks\/dispatchers\/|^packages\/engine\/src\/transports\/dispatcher\.ts$|^packages\/bullmq\/(src|test)\/dispatcher\.(test\.)?ts$/
   },
   {
+    id: "human-reasons",
+    files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
+    // FIX-2151: the suspension reasons say user. SuspensionReason's open `string & {}` arm compiles a
+    // missed one, which then silently becomes a custom reason, so the exact strings are retired.
+    pattern: /\bhuman_(approval|input)\b/
+  },
+  {
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/
+  },
+  {
+    id: "shift-coordinator-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2244: the worker id is `shift-coordinator`, and the names built on it follow.
+    pattern: /chief-of-staff|chiefOfStaff|ChiefOfStaff|CHIEF_OF_STAFF|chief_of_staff/,
+    pathName: /chief-of-staff|ChiefOfStaff/
+  },
+  {
+    id: "shift-coordinator-cos",
+    files: CODE,
+    // FIX-2244: Shift Manager's `cos` route, test ids and names (`cos-panel`, `openCos`, `COS_FLOW`).
+    // `Cost`, `COST`, `cosine` and `Math.cos` are other words. Kept matching COS_RULES in
+    // scripts/codemod/rename-chief-of-staff.ts.
+    pattern: /(?<!Math\.)\bcos(?=[A-Z0-9_]|\b)|[a-z0-9]Cos(?=[A-Z_]|\b)|\bCOS(?=_|\b)|(?<=_)COS\b/,
+    pathName: /(^|[/-])cos([-./]|$)/
+  },
+  {
+    id: "shift-coordinator-prose",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2244: the worker is the Shift Coordinator.
+    pattern: /\b[Cc]hiefs? [Oo]f [Ss]taff\b|\bCoS\b/
   }
 ];
 
@@ -123,6 +152,17 @@ export const EXCLUDE = [
 
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
+  {
+    path: /^goals\//,
+    line: /^\| \d{4}-\d{2}-\d{2} \|/,
+    rules: ["human-reasons"],
+    why: "FIX-2151: a goal's dated verdict row records a past run under the reasons it ran with: history"
+  },
+  {
+    path: /^\.changeset\/user-suspension-reasons\.md$/,
+    rules: ["human-reasons"],
+    why: "FIX-2151: the release note that tells consumers which old reasons to replace"
+  },
   {
     path: /^packages\/engine\/src\/stores\/testing\/request-store-conformance\.ts$/,
     line: /const requestId = "req_fence_(legacy_)?handed_off";$/,

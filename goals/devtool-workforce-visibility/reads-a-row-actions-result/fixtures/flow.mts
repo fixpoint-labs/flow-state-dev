@@ -62,7 +62,7 @@ export function rowResultsFlow(answers: RowAnswers) {
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       const decision = (await ctx.suspend!({
-        reason: "human_input",
+        reason: "user_input",
         message: "Answer this row",
         resumeSchema: { type: "object", properties: { answer: { type: "string" } } },
       })) as { answer?: string } | undefined;

@@ -197,7 +197,7 @@ describe("client.sessions", () => {
         flowKind: "demo",
         actionName: "run",
         userId: "devuser",
-        reason: "human_approval",
+        reason: "user_approval",
         message: "Approve?",
         status: "pending",
         blockInstanceId: "b1",

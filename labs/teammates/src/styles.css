@@ -11,6 +11,7 @@
 @import "@flow-state-dev/design-system/shift-manager.css";
 @import "./components/flow-state/tokens.css";
 @source "./";
+@source "../node_modules/streamdown/dist/*.js";
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

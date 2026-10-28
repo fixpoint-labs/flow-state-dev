@@ -16,7 +16,7 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
 import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -763,6 +763,22 @@ function findResumedAtPath(priorItems: readonly RuntimeItem[]): string | undefin
   return best?.path;
 }
 
+/** The lifecycle hook an observer runs for: its own block path, `observer[<hook>]`. */
+type ObserverHook =
+  | "request.onStarted"
+  | "request.onCompleted"
+  | "request.onErrored"
+  | "request.onFinished"
+  | "action.onCompleted"
+  | "action.onErrored";
+
+/** How an observer runs: the hook it runs for, and the request's seams and logger. */
+type ObserverRunOptions = {
+  hook: ObserverHook;
+  internalSeams: InternalExecutionSeams;
+  logger?: RuntimeLogger;
+};
+
 /**
  * Executes observer blocks and propagates observer failures to the caller.
  */
@@ -770,10 +786,7 @@ async function runObserver(
   observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
-  options: {
-    internalSeams: InternalExecutionSeams;
-    logger?: RuntimeLogger;
-  }
+  options: ObserverRunOptions
 ): Promise<void> {
   if (observer === undefined) {
     return;
@@ -785,7 +798,9 @@ async function runObserver(
     ctx,
     internalSeams: options.internalSeams,
     metadata: {
-      scope: "request"
+      scope: "request",
+      // Beside the action block's `root`, never on it (see blockPathObserver).
+      blockPath: blockPathObserver(options.hook)
     },
     // Without this, executeBlock falls back to DEFAULT_RUNTIME_LOGGER, whose
     // debug/info levels write via console.debug/console.info — straight to
@@ -807,10 +822,7 @@ async function runObserverSafely(
   observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
-  options: {
-    internalSeams: InternalExecutionSeams;
-    logger?: RuntimeLogger;
-  }
+  options: ObserverRunOptions
 ): Promise<void> {
   if (observer === undefined) {
     return;
@@ -2261,7 +2273,7 @@ async function runActionAttempt<
     await runObserver(options.flow.request?.onStarted, {
       requestId,
       actionName: options.actionName
-    }, ctx, { internalSeams, logger });
+    }, ctx, { hook: "request.onStarted", internalSeams, logger });
   } catch (startupError) {
     stopHeartbeatTimer();
     deregisterAbortController(requestId, registered);
@@ -2650,13 +2662,13 @@ async function runActionAttempt<
         requestId,
         actionName: options.actionName,
         output: result.output
-      }, ctx, { internalSeams, logger });
+      }, ctx, { hook: "action.onCompleted", internalSeams, logger });
 
       await runObserver(options.flow.request?.onCompleted, {
         requestId,
         actionName: options.actionName,
         output: result.output
-      }, ctx, { internalSeams, logger });
+      }, ctx, { hook: "request.onCompleted", internalSeams, logger });
 
       if (ttsHook !== undefined) {
         await ttsHook.finalize();
@@ -2801,7 +2813,7 @@ async function runActionAttempt<
       actionName: options.actionName,
       status: terminalStatus,
       output: result.output
-    }, ctx, { internalSeams, logger });
+    }, ctx, { hook: "request.onFinished", internalSeams, logger });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
     // `.sideChain()` work queued by `onFinished` is still this run writing
@@ -3055,7 +3067,7 @@ async function runActionAttempt<
           requestId,
           actionName: options.actionName,
           status: "aborted"
-        }, ctx, { internalSeams, logger });
+        }, ctx, { hook: "request.onFinished", internalSeams, logger });
         await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
         logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
@@ -3083,7 +3095,7 @@ async function runActionAttempt<
           requestId,
           actionName: options.actionName,
           status: "interrupted"
-        }, ctx, { internalSeams, logger });
+        }, ctx, { hook: "request.onFinished", internalSeams, logger });
         await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
         logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
@@ -3124,13 +3136,13 @@ async function runActionAttempt<
         requestId,
         actionName: options.actionName,
         error: normalized
-      }, ctx, { internalSeams, logger });
+      }, ctx, { hook: "action.onErrored", internalSeams, logger });
 
       await runObserverSafely(options.flow.request?.onErrored, {
         requestId,
         actionName: options.actionName,
         error: normalized
-      }, ctx, { internalSeams, logger });
+      }, ctx, { hook: "request.onErrored", internalSeams, logger });
       await emitActionLifecycleSeam(internalSeams, "errored", metadata);
 
       await runObserverSafely(options.flow.request?.onFinished, {
@@ -3138,7 +3150,7 @@ async function runActionAttempt<
         actionName: options.actionName,
         status: "failed",
         error: normalized
-      }, ctx, { internalSeams, logger });
+      }, ctx, { hook: "request.onFinished", internalSeams, logger });
       await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
       logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {

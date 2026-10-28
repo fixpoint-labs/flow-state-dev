@@ -55,7 +55,7 @@ function setup(afterGate: () => void) {
     outputSchema: z.unknown(),
     execute: async (input, ctx) =>
       await ctx.suspend!({
-        reason: "human_approval",
+        reason: "user_approval",
         message: `Approve ${input.amount}?`,
         data: { amount: input.amount }
       })

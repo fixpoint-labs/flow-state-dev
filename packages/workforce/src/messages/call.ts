@@ -23,7 +23,9 @@
  *   delivered in. A request that ended without acting on it (a copy, or a
  *   taker that died) sends the call to the row again.
  * - **The result** is that request's output: `{ reply }`, the final text of
- *   the recipient's `onMessageReceived` turn. At the deadline the call answers
+ *   the recipient's `onMessageReceived` turn. An entry with no turn outputs
+ *   `{ turnless: true }`, and the call fails `no_reply` (FIX-2300): silence
+ *   isn't an answer. The send refuses that up front where it can tell. At the deadline the call answers
  *   `running` with its call id, and nothing is stopped; the reply is kept as
  *   that request's own record, and `sendMessage({ callId })` waits again
  *   without sending anything, writing no row and paying no budget.
@@ -33,6 +35,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
+import { noReplyError } from "./received-mark";
 import { sendMessage, type SendMessageInput } from "./send-message";
 
 /** What a call came to, once its checks passed. */
@@ -184,6 +187,10 @@ async function awaitReply(
     if (outcome.status === "completed") {
       const reply = replyOf(outcome.output);
       if (reply !== undefined) return { status: "answered", callId: id, reply };
+      if ((outcome.output as { turnless?: unknown } | null | undefined)?.turnless === true) {
+        const to = (await log.getOptional(id))?.state.to ?? "the recipient";
+        return { status: "failed", callId: id, error: noReplyError(to) };
+      }
     }
     // It ended without acting on the message (a copy, or a taker that died
     // before it landed): the row names who acts on it now.

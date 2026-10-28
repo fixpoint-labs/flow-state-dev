@@ -423,7 +423,7 @@ describe("the claim gate settles a task when its work is over", () => {
   it("a resume keeps the attempt's start on its run link", async () => {
     // The gate links the run again on a resume: the same attempt, started when it was.
     const h = await harness();
-    h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "human_input", message: "waiting" }) }));
+    h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "user_input", message: "waiting" }) }));
     const first = await h.run();
     const startedAt = (await h.row())!.run!.startedAt;
     expect(startedAt).toEqual(expect.any(Number));
@@ -439,7 +439,7 @@ describe("the claim gate settles a task when its work is over", () => {
     async (later) => {
       const h = await harness();
       h.setBehaviour(async (ctx) => {
-        const resolution = await ctx.suspend!({ reason: "human_input", message: "which one?" });
+        const resolution = await ctx.suspend!({ reason: "user_input", message: "which one?" });
         return { resumedWith: resolution };
       });
       const first = await h.run();
@@ -462,7 +462,7 @@ describe("the claim gate settles a task when its work is over", () => {
 
   it("a parked request stopped while it waits for a user cancels its task on that attempt (FIX-2129): never left waiting, never asked again", async () => {
     const h = await harness();
-    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "human_input", message: "which one?" }));
+    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
     const first = await h.run();
     expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait", questions: [{ ask: { kind: "input", prompt: "which one?" } }] });
 
@@ -475,8 +475,8 @@ describe("the claim gate settles a task when its work is over", () => {
   });
 
   it.each([
-    ["human_input", true],
-    ["human_approval", true],
+    ["user_input", true],
+    ["user_approval", true],
     ["external_event", false],
   ] as const)("a %s stop keeps its claim with no lease, and the resume settles it on attempt 1", async (reason, forPerson) => {
     const h = await harness();
@@ -772,6 +772,31 @@ describe("a steer no request took gives the task one more turn before it settles
     expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2 });
     expect((await h.row())?.keptOpenBy).toBeUndefined();
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+  });
+
+  it("a steer turn that stops for a person settles the task when that stop's own resume ends, and closes its mirror", async () => {
+    const h = await harness({ steerTurn: true });
+    // The task's own turn asks which region; the user's answer owes it one more turn.
+    h.setBehaviour(async (ctx, ledger) => askMidway(ctx, ledger, [{ prompt: "Which region?" }]));
+    await h.run();
+    const question = openQuestions((await h.row())!)[0]!.id;
+    await (await h.ledger()).answer!("t1", { questionId: question, message: "EU", from: "user", by: "u1" });
+    // That owed turn asks the user to review its work before it finishes, as a thread does.
+    h.setSteerTurn(async (_steers, ctx) => {
+      const resolution = await ctx.suspend!({ reason: "user_input", message: "review the EU draft" });
+      return { reviewed: resolution };
+    });
+    const turn = await h.runLater("steerTurn");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "wait" });
+    expect(openQuestions((await h.row())!).map((open) => open.source)).toEqual([expect.objectContaining({ kind: "suspension", requestId: turn.requestId })]);
+
+    const resumed = await h.resume(turn.requestId!, { verdict: "accepted" });
+
+    expect(resumed.error).toBeUndefined();
+    // Its own resume: the task was waiting on this request, so the request's end settles it.
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
+    expect(openQuestions((await h.row())!)).toEqual([]);
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
   it("a steer turn that takes none of its steers settles the task instead of owing another turn", async () => {

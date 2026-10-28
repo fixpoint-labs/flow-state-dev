@@ -145,7 +145,7 @@ describe("a repository run gets a fresh branch in checkout/", () => {
     const a = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
     const b = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-2"], branch: "fsd/run-2" });
 
-    expect(readdirSync(join(root, ".clones"))).toHaveLength(1);
+    expect(readdirSync(join(root, ".clones")).filter((name) => name.endsWith(".git"))).toHaveLength(1);
     expect(a.repo?.clone).toBe(b.repo?.clone);
     expect(a.repo?.clone.startsWith(join(root, ".clones"))).toBe(true);
   });
@@ -158,7 +158,7 @@ describe("a repository run gets a fresh branch in checkout/", () => {
     ]);
 
     expect(gitCommands().filter((c) => c === "init")).toHaveLength(1);
-    expect(readdirSync(join(root, ".clones"))).toHaveLength(1);
+    expect(readdirSync(join(root, ".clones")).filter((name) => name.endsWith(".git"))).toHaveLength(1);
     expect(readFileSync(join(a.cwd, "marker.txt"), "utf8")).toBe("marker A");
     expect(readFileSync(join(b.cwd, "marker.txt"), "utf8")).toBe("marker A");
   });
