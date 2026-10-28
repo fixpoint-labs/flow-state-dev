@@ -438,7 +438,7 @@ describe("codexAgent — the endings", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
-  it("a failed turn the CLI then exits on fails with the turn's one line, its stderr folded into details", async () => {
+  it("a failed turn the CLI then exits on is a failed outcome with the turn's one line, its stderr folded into details", async () => {
     // Measured at 0.152.1: `turn.failed`, then exit 1, and the SDK throws with
     // the CLI's whole stderr — every log line of the run, MCP and skill
     // errors included. That dump is not what a person needs to read first.
@@ -450,14 +450,23 @@ describe("codexAgent — the endings", () => {
       throw new Error(`Codex Exec exited with code 1: ${stderr}`);
     });
     const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
-    const { error, items } = await testBlock(block, { input: { prompt: "go" } });
+    const { output, error, items } = await testBlock(block, { input: { prompt: "go" } });
 
-    expect(error?.cause).toBeInstanceOf(CodexAgentRunError);
-    expect((error?.cause as Error).message).toBe("Codex run failed: The model is not supported.");
+    // The turn's failure is an outcome, as without the exit after it: a throw
+    // would have the runtime show the same line a second time.
+    expect(error).toBeNull();
+    expect(output as CodexAgentHandle).toMatchObject({
+      status: "errored",
+      outcome: "failed",
+      sessionId: "thr_1",
+      failureMessage: "The model is not supported.",
+    });
     const errorItems = items.filter((i) => i.type === "error") as Array<{ message: string; details?: { output?: string } }>;
     expect(errorItems).toHaveLength(1);
     expect(errorItems[0]!.message).toBe("Codex run failed: The model is not supported.");
     expect(errorItems[0]!.details?.output).toContain("worker quit with fatal");
+    // Said once: no closing note repeats the error item's line.
+    expect(JSON.stringify(items)).not.toContain("Codex run errored");
   });
 
   it("a stream that errors and ends with no terminal turn event fails with that error, kept as an error item", async () => {
@@ -474,6 +483,7 @@ describe("codexAgent — the endings", () => {
     expect(output as CodexAgentHandle).toMatchObject({ outcome: null, status: "errored", failureMessage: "stream closed for good" });
     const errors = items.filter((i) => i.type === "error") as Array<{ message: string }>;
     expect(errors.map((e) => e.message)).toEqual(["stream closed for good"]);
+    expect(JSON.stringify(items)).not.toContain("Codex run errored");
   });
 
   it("a stream error followed by turn.failed stays a status: the turn's failure is the one error", async () => {

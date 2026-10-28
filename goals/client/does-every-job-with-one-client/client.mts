@@ -259,6 +259,9 @@ if (phase === "1") {
   if (transport === "inproc") await new Promise(() => {});
   process.exit(0);
 } else {
-  console.log(`__GOAL__${JSON.stringify(await phaseTwo(fsd, origin, options))}`);
+  const seen = await phaseTwo(fsd, origin, options);
+  // Imported here, not at the top: nothing may load before `fetch` is replaced above.
+  const { writeGoalReport } = await import("../../lib/driver.mts");
+  await writeGoalReport(seen);
   process.exit(0);
 }

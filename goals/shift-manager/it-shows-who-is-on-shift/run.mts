@@ -39,6 +39,7 @@
  * Run:      PLAYWRIGHT_BROWSERS_PATH=<pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  * Control:  GOAL_CONTROL=ignore-asks pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
  */
+import { onClosed } from "../../lib/server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -138,7 +139,7 @@ async function startLab(pages: string, spread: Record<string, ShiftState[]>): Pr
   child.stderr!.on("data", (d) => (log += String(d)));
   let gone = false;
   const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
+    onClosed(child, () => {
       gone = true;
       resolve();
     }),

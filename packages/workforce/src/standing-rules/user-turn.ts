@@ -28,11 +28,25 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
  * conversation's delegate session: that message is task input. A user's
  * turn also starts the worker-message hop count again, at 0 in a new chain
  * (FIX-1989 D2), and counts one more user's line on the session (FIX-2106).
+ *
+ * Once the task and every follow-up in its session have ended, a user's line
+ * there is still no user's turn (no rule tools), but it is one a user typed:
+ * it starts a fresh budget all the same (FIX-2238).
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-  if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
-  await startTurnAtHop(ctx, 0, newChainId(), { [USER_TURN_STATE]: true }, (current) => ({
+  const taskId = state[TASK_ID_STATE_KEY];
+  let mark: Record<string, unknown> = { [USER_TURN_STATE]: true };
+  if (typeof taskId === "string") {
+    // The same read that sends the line to the task as a steer while it is open.
+    // Loaded here, not at the top: its module graph reaches back to this one.
+    const { sessionTaskChainEnded } = await import("../conversation-board/steer");
+    if (!(await sessionTaskChainEnded(ctx))) return;
+    mark = {};
+  } else if (typeof state[FILING_SESSION_STATE_KEY] === "string") {
+    return;
+  }
+  await startTurnAtHop(ctx, 0, newChainId(), mark, (current) => ({
     [USER_LINES_STATE]: sessionUserLinesOf(current) + 1
   }));
 }

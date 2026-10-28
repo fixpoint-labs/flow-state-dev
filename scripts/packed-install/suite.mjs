@@ -45,9 +45,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runVitestJson } from "./vitest-json.mjs";
 
-const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
+const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
 /** The suite, in the repository. Read for its files and its count, never imported. */
 export const SUITE_DIR = join(ROOT, "packages/integration-tests/src/two-users-one-tenant");

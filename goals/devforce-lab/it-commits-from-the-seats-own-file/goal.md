@@ -44,8 +44,8 @@ harness is not available.
 **Run:** `pnpm tsx goals/devforce-lab/it-commits-from-the-seats-own-file/run.mts`
 
 Needs `git`, a writable temp directory, and a signed-in Claude Code Agent SDK. No `gh`: the
-done-condition is a commit, not a pull request — conductor already proves the `gh` probe, and
-re-proving it would make this check expensive to re-run a year from now.
+done-condition is a commit, not a pull request — a `gh` probe would make this check expensive to
+re-run a year from now.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

@@ -142,6 +142,25 @@ test.describe("a line sent while a long turn runs (FIX-2265)", () => {
   });
 });
 
+test.describe("a model the account can't use, in Codex mode", () => {
+  test("fails the turn with one line, Codex's output folded under Details", async ({ page, consoleErrors }) => {
+    await newSession(page);
+    await send(page, "[refused-model] hello");
+    await expect(notice(page)).toHaveAttribute("data-kind", "error");
+    const conversation = page.getByTestId("conversation");
+    const refusal = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+    // The refusal, said once in the conversation, not once per layer that saw it.
+    await expect(conversation.getByText(refusal, { exact: false })).toHaveCount(1);
+    // The CLI's log is kept, closed until asked for.
+    const details = conversation.locator("details");
+    await expect(details).toHaveCount(1);
+    await expect(details).not.toHaveAttribute("open", "");
+    await expect(details).toContainText("responses_websocket");
+    await expect(details.getByText("responses_websocket", { exact: false })).not.toBeVisible();
+    consoleErrors.length = 0;
+  });
+});
+
 test.describe("the plan panel in Codex mode (V3)", () => {
   test("says Codex reports no plan, before a turn and after one", async ({ page, consoleErrors: _consoleErrors }) => {
     await newSession(page);

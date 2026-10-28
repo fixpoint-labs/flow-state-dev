@@ -281,6 +281,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       let failureMessage: string | null = null;
       // The stream's last own `error`: the failure when no terminal turn event follows.
       let streamError: string | null = null;
+      // Whether an error item already told the person why the run failed.
+      let failureShown = false;
       // Tracked beside the outcome, never derived from it: a terminal turn
       // event that ARRIVED and one this version does not recognise are
       // different facts, and only `null` may mean "nothing terminal arrived".
@@ -364,7 +366,12 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           emitState,
           name,
         );
-        throw failure;
+        // Codex already reported the turn failed; the CLI's exit after it says
+        // nothing new. Settle it as the `turn.failed` it is, an outcome like
+        // the one with no exit after it, so the run's failure is shown once
+        // (a throw would have the runtime add its own copy of the same line).
+        if (outcome !== "failed" || failure instanceof CodexAgentAbortedError) throw failure;
+        failureShown = true;
       }
 
       await finalizeOpenItems(ctx, emitState, name);
@@ -374,6 +381,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       if (outcome === null && streamError !== null) {
         failureMessage = readableFailure(streamError);
         await emitTranslatedEvent({ kind: "error", message: failureMessage }, ctx, emitState, name);
+        failureShown = true;
       }
 
       const handle: CodexAgentHandle = {
@@ -394,12 +402,15 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         failureMessage,
       };
 
-      ctx.emit.status(
-        outcome === "finished"
-          ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
-          : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
-        { transient: false },
-      );
+      // An error item already says why the run failed; the closing note would say it again.
+      if (!failureShown) {
+        ctx.emit.status(
+          outcome === "finished"
+            ? `Codex run completed in ${formatRunDuration(Date.now() - dispatchedAt)}.`
+            : `Codex run errored (${failureMessage ?? "no terminal turn event"}).`,
+          { transient: false },
+        );
+      }
 
       return handle;
     },

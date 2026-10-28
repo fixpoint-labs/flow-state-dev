@@ -20,6 +20,7 @@
  * | `[refuse]` | refuses the asked thread the way Codex does: no thread named, then the SDK's throw with Codex's `no rollout found` error |
  * | `[fail]` | names the thread, then Codex fails the turn (`turn.failed`, a result rather than a throw) |
  * | `[fail-early]` | fails before naming any thread, with a sign-in error |
+ * | `[refused-model]` | fails the turn the way the real CLI does when the account can't use the model: `turn.failed` with the API's JSON body, then the SDK's throw with the CLI's log |
  *
  * The reply names how many turns the thread has had, which is how a test sees
  * a second turn continue the first's thread.
@@ -38,6 +39,9 @@ export const scriptedCodexPauses = { stepMs: 400, slowMs: 20_000, longMs: 35_000
 
 /** What a `[long]` turn replies once its hold is over. */
 const SCRIPTED_LONG_DONE = "Scripted Codex, done after the long hold.";
+
+/** What the API answers a ChatGPT sign-in that asks for a model it can't use (the reported 400's words). */
+const SCRIPTED_REFUSAL = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
 
 /** The command every scripted turn runs, as Codex reports it. */
 export const SCRIPTED_COMMAND = "ls";
@@ -89,6 +93,14 @@ function scriptedThread(threads: Threads, asked: string | null): CodexThreadLike
       scriptedReceived.push(prompt);
 
       async function* events(): AsyncGenerator<CodexThreadEvent> {
+        if (has("refused-model")) {
+          yield { type: "thread.started", thread_id: (id ??= `scripted-codex-refused-${Date.now().toString(36)}`) };
+          yield { type: "turn.started" };
+          yield { type: "turn.failed", error: { message: JSON.stringify({ detail: SCRIPTED_REFUSAL }) } };
+          throw exited(
+            "2026-10-28T02:02:28.924086Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found",
+          );
+        }
         if (has("fail-early")) {
           throw exited("Error: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header");
         }
