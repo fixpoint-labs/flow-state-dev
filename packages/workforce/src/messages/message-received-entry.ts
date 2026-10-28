@@ -163,7 +163,7 @@ export function messageReceivedEntry(options: {
       // this request ends with the take, and a resend takes it over.
       if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
-      const { hopLimit } = messageLimitsOf(options.installation);
+      const { budget } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
       // branch, or a queue behind a busy recipient) have spent it too.
       const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx as never).getOptional(row.chain))?.state.sent.length ?? 0);
@@ -173,7 +173,7 @@ export function messageReceivedEntry(options: {
         text: row.text,
         call: row.call === true,
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
-        budget: Math.max(0, hopLimit - Math.max(row.hop, chainSent))
+        budget: Math.max(0, budget - Math.max(row.hop, chainSent))
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.

@@ -247,7 +247,7 @@ Its next turn reads the line in its history. No turn is started for it.
 
 ## The budget
 
-Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`hopLimit`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
+Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`budget`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
 
 The send that would go past the budget is refused with `budget`, and the worker is told to stop passing messages on and say so. Your next line starts a fresh budget.
 
@@ -263,12 +263,12 @@ A woken turn sees what's left: its input's `budget` field, and the prompt the se
 Both limits are set when you register the flows:
 
 ```ts
-const flows = hireWorkforce(installation, { messages: { hopLimit: 10, perTurn: 5 } });
+const flows = hireWorkforce(installation, { messages: { budget: 10, perTurn: 5 } });
 ```
 
 | Option | Default | What it limits |
 |--------|---------|----------------|
-| `messages.hopLimit` | `6` | Worker messages descending from one of the user's lines, across every worker. |
+| `messages.budget` | `6` | Worker messages descending from one of the user's lines, across every worker. |
 | `messages.perTurn` | `3` | Messages one request sends. |
 
 Each must be a whole number of at least 1, or `hireWorkforce` throws.
@@ -295,7 +295,7 @@ A refused send or call answers `{ ok: false, error }`, and nothing is sent. The 
 | `not_a_conversation` | `{ session }` names a session working a task, a delegate's session, or a session of a worker that hears only in task sessions. Message the task with `{ task: id }`. |
 | `task_running` | `{ task }` names a task of a worker that hears only in task sessions, and the task or a follow-up in its session is still open. |
 | `no_such_message` | `inReplyTo` names no message the `to` worker sent this worker, or is passed with `{ task }` or `{ session }`. |
-| `budget` | The send would go past `messages.hopLimit` messages since the user's last line. |
+| `budget` | The send would go past `messages.budget` messages since the user's last line. |
 | `per_request_limit` | This request already sent `messages.perTurn` messages. |
 | `not_delivered` | The recipient's host refused the first delivery for good. The error carries its reason, and the message's row in the log is `refused`. See [Delivery](#delivery). |
 | `missing_message` | Neither `to` and `text`, nor a `callId`, was passed. |

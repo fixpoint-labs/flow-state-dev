@@ -158,7 +158,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-hop-cap",
     legs: ["3"],
     assertion: "3:ring-stops-at-6",
-    patches: [{ module: SEND, from: String.raw`const limits = messageLimitsOf\(installation\);`, to: "const limits = { ...messageLimitsOf(installation), hopLimit: Number.POSITIVE_INFINITY };" }],
+    patches: [{ module: SEND, from: String.raw`const limits = messageLimitsOf\(installation\);`, to: "const limits = { ...messageLimitsOf(installation), budget: Number.POSITIVE_INFINITY };" }],
     does: "an exchange of worker messages has no budget (the per-request limit stays)",
   },
   "no-roster-check": {
