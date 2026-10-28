@@ -1519,7 +1519,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // the rest, so the cut is exact and the output is never held whole.
     const search = async (dialect: GrepDialect): Promise<void> => {
       try {
-        await run("git", [...NO_HOOKS, "grep", "-I", "-n", "-z", "--no-color", dialect === "literal" ? "-F" : "-E", "-e", request.pattern, commit, ...prefix], {
+        await run("git", [...NO_HOOKS, "grep", "-I", "-n", "-z", "--no-color", "--no-column", dialect === "literal" ? "-F" : "-E", "-e", request.pattern, commit, ...prefix], {
           cwd: repo,
           timeoutMs: left(),
           env: { ...env, GIT_LITERAL_PATHSPECS: "1" },

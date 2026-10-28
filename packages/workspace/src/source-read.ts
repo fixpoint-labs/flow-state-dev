@@ -204,6 +204,14 @@ export function looksBinary(text: string): boolean {
   return text.slice(0, 8_000).includes("\0");
 }
 
+/** A text's lines as a file has them: none for an empty file, and no extra empty line after a final newline. */
+function physicalLines(text: string): string[] {
+  if (text === "") return [];
+  const lines = text.split("\n");
+  if (lines.length > 1 && lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
 /** The body of a text file, cut to the asked line range and the caps. */
 export function readBody(
   path: string,
@@ -211,9 +219,8 @@ export function readBody(
   request: { startLine?: number | null; endLine?: number | null },
   at: SourceReadAt,
 ): SourceReadResult {
-  const lines = text.split("\n");
-  if (lines.length > 1 && lines.at(-1) === "") lines.pop();
-  const totalLines = text === "" ? 0 : lines.length;
+  const lines = physicalLines(text);
+  const totalLines = lines.length;
   const start = Math.max(1, Math.floor(request.startLine ?? 1));
   const end = Math.min(totalLines, Math.floor(request.endLine ?? totalLines));
   const wanted = start > end ? [] : lines.slice(start - 1, end);
@@ -320,7 +327,7 @@ export async function readKeptFiles(projectId: string, files: RunFiles, request:
     if (!underPrefix(row.path, prefix)) continue;
     const text = await row.read();
     if (text === null || looksBinary(text)) continue;
-    const lines = text.split("\n");
+    const lines = physicalLines(text);
     context.lines = lines;
     context.space = keep - found.length;
     let hits: { kept: number[]; count: number };

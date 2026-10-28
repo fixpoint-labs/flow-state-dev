@@ -146,6 +146,18 @@ describe("what a read returns, and the caps it is held to", () => {
     });
   });
 
+  it("parses its records the same whatever the machine's git config says about columns", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "grep.column");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "true");
+    try {
+      const grep = await host().readSource!(repo(), { kind: "grep", pattern: "LEDGER_CODE =" });
+      expect(grep).toMatchObject({ matches: [{ path: "src/billing/ledger/codes.ts", line: 1, snippet: 'export const LEDGER_CODE = "LC-7731";' }] });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("searches for a pattern that doesn't compile as written, and says so", async () => {
     remote.commit("main", "calls.ts", "run(a(\n");
     const grep = await host().readSource!(repo(), { kind: "grep", pattern: "a(" });
@@ -457,6 +469,14 @@ describe("a project with no repository reads its kept files", () => {
       matches: [{ path: "a.txt", line: 1 }, { path: "a.txt", line: 2 }, { path: "a.txt", line: 3 }],
       cut: { left: 350 - 3, by: "limit" },
     });
+  });
+  it("matches the lines a file has, not an empty one after its last newline", async () => {
+    const collection = createFakeCollection("project-files/**", { "p1/a.txt": "one\n", "p1/b.txt": "two\n", "p1/empty.txt": "" });
+    const answer: RunSourceAnswer = { kind: "files", projectId: "p1", files: { collection, collectionId: "project-files" } };
+
+    const grep = await host().readSource!(answer, { kind: "grep", pattern: "^", maxResults: 2 });
+
+    expect(grep).toMatchObject({ matches: [{ path: "a.txt", line: 1 }, { path: "b.txt", line: 1 }], cut: null });
   });
   it("refuses a pattern that backtracks past the grep's time, rather than freezing the server", async () => {
     const collection = createFakeCollection("project-files/**", { "p1/notes/a.txt": `${"a".repeat(32)}!\n` });
