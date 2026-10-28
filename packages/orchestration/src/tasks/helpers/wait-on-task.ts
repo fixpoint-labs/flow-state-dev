@@ -66,7 +66,7 @@ import {
   requireRequestHost
 } from "@flow-state-dev/core";
 import { onRequestEnded } from "@flow-state-dev/core/types";
-import type { BlockContext, WaitOutcome, WaitRow } from "@flow-state-dev/core/types";
+import type { BlockContext, WaitGateBinding, WaitOutcome, WaitRow } from "@flow-state-dev/core/types";
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
@@ -277,52 +277,96 @@ async function check(
     );
   }
 
-  const waits = ctx.requestHost?.waits;
+  const unavailable =
+    "waiting on a task needs durable execution, a store that keeps wakes, a durability sweeper that resumes waits " +
+    "at their deadline, and a board that keeps the wait. Durable execution is on by default wherever stores " +
+    "persist (`durable: false` turns it off), and the sweeper runs only in a process that serves a router " +
+    "(`fsdev dev`, `fsdev serve`, a self-hosted server), not in `fsdev run`. Nothing was written.";
   if (
-    waits === undefined ||
-    !canHoldWait(ctx) ||
-    ctx.runOnce === undefined ||
-    ctx.suspend === undefined ||
     collection.markWait === undefined ||
     collection.lapseWait === undefined ||
     collection.releaseWait === undefined ||
     collection.clearResumeOwed === undefined
   ) {
-    return refused(
-      "wait_unavailable",
-      "waiting on a task needs durable execution, a store that keeps wakes, a durability sweeper that resumes waits " +
-        "at their deadline, and a board that keeps the wait. Durable execution is on by default wherever stores " +
-        "persist (`durable: false` turns it off), and the sweeper runs only in a process that serves a router " +
-        "(`fsdev dev`, `fsdev serve`, a self-hosted server), not in `fsdev run`. Nothing was written."
-    );
+    return refused("wait_unavailable", unavailable);
+  }
+  const binding = { board: collection.collectionId, taskId };
+  // Read once and recorded: a request resumed after its park may no longer
+  // hold what it was admitted with in this process.
+  const own =
+    ctx.runOnce === undefined
+      ? undefined
+      : ((await ctx.runOnce(`fsd.wait.own:${options.key}`, async () => ownWaitRowFromContext(ctx, options.ownBoard === true) ?? null)) ??
+        undefined);
+  const waitable = await checkWaitable(ctx, {
+    key: options.key,
+    ...(options.deadlineMs === undefined ? {} : { deadlineMs: options.deadlineMs }),
+    ...(options.step === undefined ? {} : { step: options.step }),
+    binding,
+    ...(own === undefined ? {} : { own }),
+    unavailable
+  });
+  if (!waitable.ok) return waitable;
+  const { deadlineMs } = waitable;
+  return { taskId, key: options.key, row, deadlineMs, binding, own };
+}
+
+/** Why a wait was refused by the checks every wait makes ({@link checkWaitable}). */
+export type WaitableRefusal = Extract<TaskWaitRefusal, "wait_unavailable" | "wait_deadline_out_of_range" | "wait_too_deep" | "wait_already_pending">;
+
+/** What {@link checkWaitable} checks a wait against. */
+export interface WaitableOptions {
+  /** What the wait is recorded under with the request: its depth is decided once under it. */
+  readonly key: string;
+  /** How long to wait, in ms from the call. The host's default when unset. */
+  readonly deadlineMs?: number;
+  /** The model step the wait belongs to: one wait per step. Omitted for a wait that is no model's tool call. */
+  readonly step?: string;
+  /** What the wait would park on, for the depth of its chain. */
+  readonly binding?: WaitGateBinding;
+  /** The request's own wait row, for the depth of its chain. */
+  readonly own?: WaitRow;
+  /** What `wait_unavailable` says: the waiter names what it needs. */
+  readonly unavailable: string;
+}
+
+/**
+ * The checks every wait makes before anything is written, whatever it waits
+ * on (`getTask`'s wait, a plan's drain, a worker's call): the host can hold a
+ * wait; the deadline is within its bounds (never clamped), the host's default
+ * when unset; the chain stays within {@link MAX_WAIT_DEPTH}; and, for a model's
+ * tool call, one wait per step. The step is claimed last, so a wait refused
+ * for its depth doesn't hold it. The depth and the claim are recorded with the
+ * request, so a replay decides the same way.
+ */
+export async function checkWaitable(
+  ctx: BlockContext,
+  options: WaitableOptions
+): Promise<{ readonly ok: false; readonly error: WaitableRefusal; readonly message: string } | { readonly ok: true; readonly deadlineMs: number }> {
+  const waits = ctx.requestHost?.waits;
+  if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
+    return { ok: false, error: "wait_unavailable", message: options.unavailable };
   }
   const { minMs, maxMs, defaultMs } = waits.deadlines;
   const deadlineMs = options.deadlineMs ?? defaultMs;
   if (!Number.isFinite(deadlineMs) || deadlineMs < minMs || deadlineMs > maxMs) {
-    return refused(
-      "wait_deadline_out_of_range",
-      `deadline must be from ${minMs} to ${maxMs} ms; ${deadlineMs} is outside it. Nothing was written.`
-    );
+    return {
+      ok: false,
+      error: "wait_deadline_out_of_range",
+      message: `deadline must be from ${minMs} to ${maxMs} ms; ${deadlineMs} is outside it. Nothing was written.`
+    };
   }
-
+  const tooDeep = await depthRefusal(ctx, `fsd.wait.depth:${options.key}`, options.binding, options.own);
+  if (tooDeep !== undefined) return { ok: false, error: "wait_too_deep", message: tooDeep.message };
   // One wait per model step. The first call to claim the step holds it,
   // durably, so a replay after the resume re-reads the same holder.
   if (options.step !== undefined) {
     const holder = await ctx.runOnce(`fsd.wait.step:${options.step}`, async () => options.key);
     if (holder !== options.key) {
-      return refused("wait_already_pending", "this step already waits on something. Wait again on a later step.");
+      return { ok: false, error: "wait_already_pending", message: "this step already waits on something. Wait again on a later step." };
     }
   }
-
-  const binding = { board: collection.collectionId, taskId };
-  // Read once and recorded: a request resumed after its park may no longer
-  // hold what it was admitted with in this process.
-  const own =
-    (await ctx.runOnce(`fsd.wait.own:${options.key}`, async () => ownWaitRowFromContext(ctx, options.ownBoard === true) ?? null)) ??
-    undefined;
-  const tooDeep = await depthRefusal(ctx, `fsd.wait.depth:${options.key}`, binding, own);
-  if (tooDeep !== undefined) return tooDeep;
-  return { taskId, key: options.key, row, deadlineMs, binding, own };
+  return { ok: true, deadlineMs };
 }
 
 /**
@@ -334,15 +378,17 @@ async function check(
 async function depthRefusal(
   ctx: BlockContext,
   memoKey: string,
-  binding: WaitRow,
+  binding: WaitGateBinding | undefined,
   own: WaitRow | undefined
 ): Promise<Extract<TaskWaitResult, { ok: false }> | undefined> {
-  const depth = await ctx.runOnce!(memoKey, () => ctx.requestHost!.waits!.depth({ binding, ...(own !== undefined ? { own } : {}) }));
+  const depth = await ctx.runOnce!(memoKey, () =>
+    ctx.requestHost!.waits!.depth({ ...(binding !== undefined ? { binding } : {}), ...(own !== undefined ? { own } : {}) })
+  );
   if (depth <= MAX_WAIT_DEPTH) return undefined;
   return refused(
     "wait_too_deep",
     `waits nest at most ${MAX_WAIT_DEPTH} deep, and this one would make ${depth} in its chain (the waits on ` +
-      "this request's own task above it, and the waits under the task it would wait on). Nothing was written."
+      "this request's own task above it, and the waits under what it would wait on). Nothing was written."
   );
 }
 

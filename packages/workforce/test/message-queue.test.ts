@@ -28,7 +28,7 @@ vi.mock("../src/conversation-board/ledger", async (original) => ({
   conversationLedgerAt: async () => ledger
 }));
 
-const { queueBehindPerson, QUESTION_RECHECK_MS } = await import("../src/messages/queue");
+const { queueBehindUser, QUESTION_RECHECK_MS } = await import("../src/messages/queue");
 
 /** The coder's task, in session `s_task`, held on a question until `answered`. */
 const taskRow = (answered: boolean) => ({
@@ -39,7 +39,7 @@ const taskRow = (answered: boolean) => ({
   steers: answered ? [{ id: "s1", answers: "h1", text: "main" }] : []
 });
 
-function harness(options: { personStop?: string; depth?: number } = {}) {
+function harness(options: { userStop?: string; depth?: number } = {}) {
   const memo = new Map<string, unknown>();
   const parked: Array<Record<string, any>> = [];
   const row: Record<string, unknown> = { id: "msg_1" };
@@ -61,7 +61,7 @@ function harness(options: { personStop?: string; depth?: number } = {}) {
       waits: {
         deadlines: { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 },
         depth: async () => options.depth ?? 2,
-        personStop: async () => (options.personStop === undefined ? undefined : { requestId: options.personStop })
+        userStop: async () => (options.userStop === undefined ? undefined : { requestId: options.userStop })
       }
     },
     runOnce: async <T>(key: string, fn: () => Promise<T>) => {
@@ -93,7 +93,7 @@ describe("a message to a task held on a question", () => {
   it("parks bound to the task row with a short deadline, says it is queued, and lands once the question is answered", async () => {
     const { ctx, parked, row } = harness();
     const before = Date.now();
-    expect(await queueBehindPerson(ctx as never, { id: "msg_1" })).toBe("admitted");
+    expect(await queueBehindUser(ctx as never, { id: "msg_1" })).toBe("admitted");
     expect(parked).toHaveLength(1);
     expect(parked[0]).toMatchObject({ reason: "wait", data: { board: "conversations", taskId: "t1" } });
     expect(parked[0]!.suspensionId).toMatch(/^queue:msg_1#/);
@@ -107,23 +107,23 @@ describe("a message to a task held on a question", () => {
   it("lands at once when nothing holds the task", async () => {
     ledger.rows = [taskRow(true)];
     const { ctx, parked } = harness();
-    expect(await queueBehindPerson(ctx as never, { id: "msg_1" })).toBe("admitted");
+    expect(await queueBehindUser(ctx as never, { id: "msg_1" })).toBe("admitted");
     expect(parked).toEqual([]);
   });
 
   it("waits on the stopped request when the session is stopped for the user, and is not admitted past five waits deep", async () => {
-    const stopped = harness({ personStop: "r_stopped" });
+    const stopped = harness({ userStop: "r_stopped" });
     // The first resume finds the stop gone (the user answered), so it lands.
-    stopped.ctx.requestHost.waits.personStop = (() => {
+    stopped.ctx.requestHost.waits.userStop = (() => {
       let first = true;
       return async () => (first ? ((first = false), { requestId: "r_stopped" }) : undefined);
     })();
     ledger.rows = [];
-    expect(await queueBehindPerson(stopped.ctx as never, { id: "msg_1" })).toBe("admitted");
+    expect(await queueBehindUser(stopped.ctx as never, { id: "msg_1" })).toBe("admitted");
     expect(stopped.parked[0]).toMatchObject({ data: { requestId: "r_stopped" } });
 
-    const deep = harness({ personStop: "r_stopped", depth: 6 });
-    expect(await queueBehindPerson(deep.ctx as never, { id: "msg_1" })).toBe("not_admitted");
+    const deep = harness({ userStop: "r_stopped", depth: 6 });
+    expect(await queueBehindUser(deep.ctx as never, { id: "msg_1" })).toBe("not_admitted");
     expect(deep.parked).toEqual([]);
   });
 });

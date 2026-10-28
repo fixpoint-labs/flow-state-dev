@@ -150,6 +150,10 @@ controls. The busy recipient, the depth and the no-wait host are CI tests named 
   FIX-2160's `rowsInSession` and `hasOpenHold`; a call's gate ids and keys are `call:` and
   `fsd.call.*`, not a question's `ask:` and `fsd.ask.*`. Found at build: a held message parks with
   `parkOnWait`, not `waitOnRequest`, since it binds to a task row too and must see a stop.
+- **Second look on the PR, folded:** a call's checks are orchestration's `checkWaitable`, the one
+  `getTask`'s wait makes, not a copy (the step is claimed last, so a wait refused for its depth
+  holds no step); the host read is `RequestHost.waits.userStop`, matching the vocabulary check; the
+  reply step reads whether a message landed from request state, not from its input's shape.
 
 - **Codex (P2, on e94985c), folded:** a resend after a crash makes a duplicate request whose turn is
   skipped, so pointing the call at the newest request would lose the reply. The row now names the

@@ -399,6 +399,8 @@ describe("a call's depth", () => {
     const outcome = await callWorker(ctx as never, installation, "agent", { to: "lead", text: "Hi?", wait: true } as never, "sendMessage");
     expect(outcome).toMatchObject({ ok: false, error: expect.stringMatching(/^wait_too_deep: waits nest at most 5 deep, and this one would make 6/) });
     expect(written).toEqual([]);
+    // A wait refused for its depth doesn't hold the step: another wait in it may still go.
+    expect([...memo.keys()].filter((key) => key.startsWith("fsd.wait.step:"))).toEqual([]);
     // Five deep is allowed: the refusal is the sixth's.
     ctx.requestHost.waits.depth = async () => 5;
     memo.clear();

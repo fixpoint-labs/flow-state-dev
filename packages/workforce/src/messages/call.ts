@@ -4,12 +4,13 @@
  * Not a task: the epic's decision (FIX-2070 D1). The `sendMessage` tool calls
  * it for `wait: true`, and for `{ callId }`, which waits again.
  *
- * - **Every check before anything is written**, after the send's own: the
- *   host can hold a wait (`wait_unavailable`, never turned into a send); the
- *   deadline is within the host's bounds (`wait_deadline_out_of_range`, never
- *   clamped), the host's default when unset; one wait per model step, the
- *   claim `getTask`'s wait takes too (`wait_already_pending`); and the chain
- *   of waits stays within `MAX_WAIT_DEPTH` (`wait_too_deep`).
+ * - **Every check before anything is written**, orchestration's
+ *   `checkWaitable`, the one `getTask`'s wait makes: the host can hold a wait
+ *   (`wait_unavailable`, never turned into a send); the deadline is within
+ *   the host's bounds (`wait_deadline_out_of_range`, never clamped), the
+ *   host's default when unset; the chain of waits stays within
+ *   `MAX_WAIT_DEPTH` (`wait_too_deep`); and one wait per model step
+ *   (`wait_already_pending`), claimed last.
  * - **The send** is the send's, with a server-chosen id kept by `runOnce`, so
  *   the replay after the park writes nothing again. The row says it is a call
  *   and when its sender stops waiting, and its dispatch says the sender waits.
@@ -24,9 +25,9 @@
  *   that request's own record, and `sendMessage({ callId })` waits again
  *   without sending anything, writing no row and paying no budget.
  */
-import { canHoldWait, MAX_WAIT_DEPTH, waitOnRequest } from "@flow-state-dev/core";
+import { waitOnRequest } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { toolCallOf } from "@flow-state-dev/orchestration/task-board";
+import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";
@@ -43,40 +44,30 @@ export type CallOutcome = CallResult | { readonly ok: false; readonly error: str
 /** The most requests one call follows to its reply: a taker that died, and the one that took over. */
 const MAX_FOLLOWS = 5;
 
-/** The checks a wait passes before anything is written: its key, and its deadline in ms. */
+/** The checks a wait passes before anything is written (orchestration's, shared with `getTask`): its key, and its deadline in ms. */
 async function checkWait(
   ctx: BlockContext,
   deadline: number | undefined,
   binding?: { readonly requestId: string }
 ): Promise<{ readonly ok: false; readonly error: string } | { readonly key: string; readonly deadlineMs: number }> {
-  const refuse = (error: string) => ({ ok: false as const, error });
-  const waits = ctx.requestHost?.waits;
   const call = toolCallOf(ctx);
-  if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined || call === undefined) {
-    return refuse(
-      "wait_unavailable: this host can't hold a wait (it needs durable execution, a store that keeps wakes and a " +
-        "sweeper that resumes waits at their deadline). Nothing was sent. Send without wait, and the answer comes " +
-        "back as a message."
-    );
+  const unavailable =
+    "wait_unavailable: this host can't hold a wait (it needs durable execution, a store that keeps wakes and a " +
+    "sweeper that resumes waits at their deadline). Nothing was sent. Send without wait, and the answer comes " +
+    "back as a message.";
+  if (call === undefined) return { ok: false, error: unavailable };
+  const checked = await checkWaitable(ctx, {
+    key: call.logicalId,
+    step: call.stepKey,
+    ...(deadline === undefined ? {} : { deadlineMs: deadline }),
+    ...(binding === undefined ? {} : { binding }),
+    unavailable
+  });
+  if (!checked.ok) {
+    // A model reads the code first, then why; nothing was sent either way.
+    return { ok: false, error: checked.error === "wait_unavailable" ? checked.message : `${checked.error}: ${checked.message.replace("Nothing was written.", "Nothing was sent.")}` };
   }
-  const { minMs, maxMs, defaultMs } = waits.deadlines;
-  const deadlineMs = deadline ?? defaultMs;
-  if (!Number.isFinite(deadlineMs) || deadlineMs < minMs || deadlineMs > maxMs) {
-    return refuse(`wait_deadline_out_of_range: deadline must be from ${minMs} to ${maxMs} ms; ${deadlineMs} is outside it. Nothing was sent.`);
-  }
-  // One wait per model step, the claim `getTask`'s wait takes too. The first
-  // call to claim the step holds it, durably, so a replay reads the same holder.
-  const holder = await ctx.runOnce(`fsd.wait.step:${call.stepKey}`, async () => call.logicalId);
-  if (holder !== call.logicalId) {
-    return refuse("wait_already_pending: this step already waits on something. Wait on a later step. Nothing was sent.");
-  }
-  const depth = await ctx.runOnce(`fsd.call.depth:${call.logicalId}`, () => waits.depth(binding === undefined ? {} : { binding }));
-  if (depth > MAX_WAIT_DEPTH) {
-    return refuse(
-      `wait_too_deep: waits nest at most ${MAX_WAIT_DEPTH} deep, and this one would make ${depth} in its chain. Nothing was sent.`
-    );
-  }
-  return { key: call.logicalId, deadlineMs };
+  return { key: call.logicalId, deadlineMs: checked.deadlineMs };
 }
 
 /**

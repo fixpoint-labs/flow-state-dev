@@ -94,7 +94,7 @@ const BASE_DESCRIPTION =
   "conversation and wakes it. This is not a task: nothing is filed and no result is owed. If it answers, it sends " +
   "you a message of its own, which wakes you. To answer a message you were sent, pass its id as inReplyTo. " +
   "To get an answer now, call: pass wait: true. The reply comes back as this tool's result " +
-  "({ status: \"answered\", reply }), in this turn. If the deadline passes first, you get { status: \"running\", callId } " +
+  "({ status: \"answered\", reply }, cut to 8,000 characters), in this turn. If the deadline passes first, you get { status: \"running\", callId } " +
   "and nothing is stopped: go on, and pass { callId } later to wait again for the same reply; never send the question " +
   "again. Only one wait per step. Call for an answer now; for work to track, file a task with createTask instead. " +
   "To ask about a task, send to { task: id }: it lands in the session working that task, after its current turn, " +

@@ -231,7 +231,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     name: "no-person-hold",
     legs: ["10b"],
     assertion: "10b:queued",
-    patches: [{ module: QUEUE, from: String.raw`\(\) => personHoldOf\(ctx\)\)`, to: "async () => null)" }],
+    patches: [{ module: QUEUE, from: String.raw`\(\) => userHoldOf\(ctx\)\)`, to: "async () => null)" }],
     does: "the admission never reads the person's stop: a message lands in a session stopped for a person",
   },
   "ignore-deadline": {

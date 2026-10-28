@@ -296,7 +296,7 @@ still running, `resumeWait?()` resumes a turn in this session parked on a wait
 gate (present only with durable execution), `wakes?` keeps the session's due
 times, and `waits?` (FIX-2082) holds a wait's deadline bounds, the live depth
 of the chain a new wait would join, whether a request has ended, and
-`personStop()` (FIX-2239), the request of this session parked for a person,
+`userStop()` (FIX-2239), the request of this session parked for a person,
 if any, and
 `sessions?.read(id)` reads one session of the same user, tenant and
 organization as the request (its flow and a frozen copy of its `.readonly()`

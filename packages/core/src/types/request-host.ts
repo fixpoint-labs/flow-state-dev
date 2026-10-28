@@ -252,13 +252,13 @@ export interface RequestWaits {
    */
   running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
   /**
-   * The running session's open stop for a person (FIX-2239): a request of
+   * The running session's open stop for the user (FIX-2239): a request of
    * this session, other than the running one, parked on a user's suspension
    * (`isUserSuspension`). `undefined` when none is. Read from the suspensions
-   * pending now. A message to a session stopped for a person queues behind
+   * pending now. A message to a session stopped for the user queues behind
    * that request until it ends.
    */
-  personStop?(): Promise<{ readonly requestId: string } | undefined>;
+  userStop?(): Promise<{ readonly requestId: string } | undefined>;
 }
 
 /**

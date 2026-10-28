@@ -300,7 +300,7 @@ export function createRequestWaits(inputs: {
       }
       return answers;
     },
-    personStop: async () => {
+    userStop: async () => {
       const pending = await inputs.provider.listSuspended({ userId: inputs.userId, sessionId: inputs.sessionId, status: "pending" });
       const stop = pending.find((gate) => isUserSuspension(gate) && gate.requestId !== inputs.requestId);
       return stop === undefined ? undefined : { requestId: stop.requestId };

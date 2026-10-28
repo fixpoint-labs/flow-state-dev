@@ -34,12 +34,12 @@ import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { messageTurnStateSchema, RECEIVED_CALL_STATE, startTurnAtHop } from "./hop";
+import { messageTurnStateSchema, RECEIVED_CALL_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
 import { markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { MAX_MESSAGE_CHARS, messageChainsOf, messageLogOf, workerMessagesResources } from "./message-log";
-import { queueBehindPerson } from "./queue";
+import { queueBehindUser } from "./queue";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -157,11 +157,6 @@ const heardSchema = z.object({
 
 type Heard = z.infer<typeof heardSchema>;
 
-/** Whether a step's output is the heard step's own, which no turn replaced. */
-function isHeard(value: unknown): value is Heard {
-  return heardSchema.safeParse(value).success && typeof value === "object" && value !== null && "act" in value;
-}
-
 /**
  * A turn's final text: the turn's output when it is text (an agent worker's
  * answer), or its `reply` (a coder's talk turn). `""` for anything else.
@@ -204,7 +199,7 @@ export function messageReceivedEntry(options: {
       if (row === undefined) return { act: "none" };
       // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
-      if ((await queueBehindPerson(ctx as never, row)) === "not_admitted") return { act: "none" };
+      if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
       const { hopLimit } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
@@ -238,7 +233,7 @@ export function messageReceivedEntry(options: {
       // it. A taker killed before this is taken over, and the message shows twice.
       await emit.stored();
       await markDelivered(ctx as never, row.id);
-      if (received.call) await ctx.request.atomicState(() => ({ [RECEIVED_CALL_STATE]: row.id }));
+      await ctx.request.atomicState(() => ({ [RECEIVED_LANDED_STATE]: true, ...(received.call ? { [RECEIVED_CALL_STATE]: row.id } : {}) }));
       return { act: "heard", received };
     }
   });
@@ -252,9 +247,12 @@ export function messageReceivedEntry(options: {
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (input, ctx) => {
-      if (isHeard(input) && input.act === "none") return {};
-      const reply = isHeard(input) ? "" : replyTextOf(input);
-      const call = (ctx.request.state as Record<string, unknown> | undefined)?.[RECEIVED_CALL_STATE];
+      // Read off the request's state, which the heard step wrote: never off the
+      // input's shape, which a turn's own output could match.
+      const state = ctx.request.state as Record<string, unknown> | undefined;
+      if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
+      const reply = options.turn === undefined ? "" : replyTextOf(input);
+      const call = state[RECEIVED_CALL_STATE];
       if (typeof call === "string") await (await messageLogOf(ctx as never).getOptional(call))?.patchState({ repliedAt: Date.now() });
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
     }

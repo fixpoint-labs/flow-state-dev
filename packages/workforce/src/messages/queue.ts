@@ -6,7 +6,7 @@
  *
  * What holds a session:
  *
- * - **a request of the session parked for the user** (`RequestHost.waits.personStop`).
+ * - **a request of the session parked for the user** (`RequestHost.waits.userStop`).
  *   The message parks on the wait gate bound to that request, and the engine
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
@@ -32,8 +32,8 @@ import { messageLogOf, type WorkerMessageRow } from "./message-log";
 export const QUESTION_RECHECK_MS = 30_000;
 
 /** What holds the running session for the user now, as a wait binds to it; `null` when nothing does. */
-async function personHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
-  const stop = await ctx.requestHost?.waits?.personStop?.();
+async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
+  const stop = await ctx.requestHost?.waits?.userStop?.();
   if (stop !== undefined) return { requestId: stop.requestId };
   const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return null;
@@ -53,7 +53,7 @@ async function personHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> 
  * @returns `"admitted"` once nothing holds it; `"not_admitted"` when its wait
  *   would be too deep, or the request was stopped while it waited.
  */
-export async function queueBehindPerson(ctx: BlockContext, row: Pick<WorkerMessageRow, "id">): Promise<"admitted" | "not_admitted"> {
+export async function queueBehindUser(ctx: BlockContext, row: Pick<WorkerMessageRow, "id">): Promise<"admitted" | "not_admitted"> {
   const waits = ctx.requestHost?.waits;
   // A host that can't hold a wait can't queue a message: it lands as before.
   if (waits === undefined || ctx.runOnce === undefined || ctx.suspend === undefined) return "admitted";
@@ -61,7 +61,7 @@ export async function queueBehindPerson(ctx: BlockContext, row: Pick<WorkerMessa
   const ref = await messageLogOf(ctx).getOptional(row.id);
   for (let round = 0; ; round += 1) {
     // Read once per round and recorded: the replay after a park decides as the first run did.
-    const hold = await once(`fsd.queue.hold:${row.id}:${round}`, () => personHoldOf(ctx));
+    const hold = await once(`fsd.queue.hold:${row.id}:${round}`, () => userHoldOf(ctx));
     if (hold === null) {
       if (round > 0) await ref?.updateState(({ queuedBehind: _queued, ...rest }) => rest);
       return "admitted";
