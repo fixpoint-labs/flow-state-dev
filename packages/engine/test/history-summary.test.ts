@@ -282,6 +282,27 @@ describe("historySummary on the engine", () => {
     expect(state.pending).toHaveLength(8);
   });
 
+  it("folds on time when the window holds an interrupted turn and its retry", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    const flow = chatFlow({ window: 4, summarize: foldingSummarize() });
+    await talk(stores, flow, calls, 3);
+    // Turn 2 was cut off and turn 3 ran it again: the window holds both rows,
+    // and history reads only the retry.
+    const cut = (await stores.request.get("req_002"))!;
+    const retry = (await stores.request.get("req_003"))!;
+    await stores.request.set("req_002", { ...cut, status: "interrupted" }, "any");
+    await stores.request.set("req_003", { ...retry, metadata: { ...retry.metadata, retryOf: "req_002" } }, "any");
+
+    const results = await talk(stores, flow, calls, 5, 4);
+
+    expect(results.map((r) => r.error)).toEqual(Array(5).fill(undefined));
+    const row = await stores.resourceState.get("session", "s", "historySummary");
+    const state = row?.state as { summary: string; gap: boolean };
+    expect(state.summary.split(" ")).toEqual(expect.arrayContaining(["u1", "u3", "u4"]));
+    expect(state.gap).toBe(false);
+  });
+
   it("keeps a turn that had not settled by id and folds it once it does, never twice", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];
