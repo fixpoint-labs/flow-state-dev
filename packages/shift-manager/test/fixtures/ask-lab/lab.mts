@@ -49,8 +49,8 @@ import { ASKER_FLOW, defineAskerFlow } from "./asker.mts";
 /** The tree this Lab reads. */
 export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 
-/** One more worker, `ops.chief-of-staff`, that {@link AskLabOptions.chiefOfStaff} adds to the tree. */
-const CHIEF_OF_STAFF_TREE = join(dirname(fileURLToPath(import.meta.url)), "with-chief-of-staff");
+/** One more worker, `ops.shift-coordinator`, that {@link AskLabOptions.shiftCoordinator} adds to the tree. */
+const SHIFT_COORDINATOR_TREE = join(dirname(fileURLToPath(import.meta.url)), "with-shift-coordinator");
 
 /** The one user this Lab runs as. */
 export const ASK_LAB_USER_ID = "u_ask_lab";
@@ -134,8 +134,8 @@ export type AskLabOptions = {
    * declared team, so a declared worker's id reads as an address in it.
    */
   orgId?: string;
-  /** Add a worker named `chief-of-staff` to the ops team, on the asker worker flow. Default false. */
-  chiefOfStaff?: boolean;
+  /** Add a worker named `shift-coordinator` to the ops team, on the asker worker flow. Default false. */
+  shiftCoordinator?: boolean;
   /** Let the asker worker flow's `message` door start projects (`startProjectLine`). Default false. */
   workersStartProjects?: boolean;
   /**
@@ -152,7 +152,7 @@ const PROJECTS_FLOW = "projects";
 export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : (options.orgId ?? ASK_LAB_ORG_ID);
   const tree = await readAskLabTree();
-  if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
+  if (options.shiftCoordinator === true) tree.workers.push(...(await readAskLabTree(SHIFT_COORDINATOR_TREE)).workers);
   const declared = options.inventoryDeclared !== false;
   let workerFlows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });

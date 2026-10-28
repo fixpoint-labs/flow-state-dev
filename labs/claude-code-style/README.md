@@ -11,8 +11,10 @@ needs is a gap filed against the package.
   default, offering only projects you may work in (a member of a shared one, or the owner of a
   private one), then opens it in the view's mode.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
-  work itself and starts background tasks for the long pieces. A background result shows as a card
-  at the point the main session took it, even while its turn is still running.
+  work itself and starts background tasks for the long pieces. It reads the project's files itself,
+  so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
+  A background result shows as a card at the point the main session took it, even while its turn is
+  still running.
 - **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
   a task, ask the main session.
 
@@ -96,6 +98,7 @@ a package call:
 | The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
+| The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the session's running turn; its tasks keep running |
 | The tasks pane and a task's work | `listTasks_tasks`, and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
@@ -122,7 +125,7 @@ and on a flow over 200 lines; `--wired` also fails while a fixture is left in `s
 <!-- inventory:start -->
 | Kind | Files | Lines |
 |---|---:|---:|
-| Configuration | 18 | 480 |
+| Configuration | 18 | 494 |
 | React UI | 28 | 2685 |
 | Small flows | 3 | 273 |
 | Checks (not app code) | 9 | 1279 |

@@ -5,19 +5,19 @@
  */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
-import { chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate } from "../lib/routes";
 
-/** What Shift Manager calls the chief of staff worker (FIX-1747); the worker keeps its id. */
-const COS_NAME = "Shift Coordinator";
+/** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
+const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
 export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {
   const roster = useRoster(snapshot.readAt);
   const { workers } = withRoster(snapshot, roster);
   const worker = workers.find((w) => w.id === workerId);
-  const cos = chiefOfStaffOf(workers);
-  const name = cos.kind === "one" && cos.worker.id === workerId ? COS_NAME : (worker?.name ?? workerId);
+  const shiftCoordinator = shiftCoordinatorOf(workers);
+  const name = shiftCoordinator.kind === "one" && shiftCoordinator.worker.id === workerId ? SHIFT_COORDINATOR_NAME : (worker?.name ?? workerId);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="worker-settings" data-worker-id={workerId}>

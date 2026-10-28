@@ -1,11 +1,11 @@
 /**
- * The lines the sidebar and Chief of Staff derive for design v2's form: the
+ * The lines the sidebar and Shift Coordinator derive for design v2's form: the
  * footer's initials and a message's clock time, each from what the Lab holds
  * and nothing else.
  */
 import { describe, expect, it } from "vitest";
 import { clockTime, initialsOf } from "../src/lib/shell";
-import { isChiefOfStaffWorking, startChiefOfStaffWork } from "../src/lib/working";
+import { isShiftCoordinatorWorking, startShiftCoordinatorWork } from "../src/lib/working";
 
 describe("the footer's initials (v2:110)", () => {
   it("takes a letter from each of the first two words, dropping a one-letter prefix", () => {
@@ -30,16 +30,16 @@ describe("a message's time (v2:135)", () => {
   });
 });
 
-describe("the chief of staff's working state (v2:55, 168, 1424)", () => {
+describe("the Shift Coordinator's working state (v2:55, 168, 1424)", () => {
   it("stays lit until every line in flight has settled, so an early line can't clear a later one", () => {
-    expect(isChiefOfStaffWorking()).toBe(false);
-    const first = startChiefOfStaffWork();
-    const second = startChiefOfStaffWork();
+    expect(isShiftCoordinatorWorking()).toBe(false);
+    const first = startShiftCoordinatorWork();
+    const second = startShiftCoordinatorWork();
     first();
-    expect(isChiefOfStaffWorking()).toBe(true);
+    expect(isShiftCoordinatorWorking()).toBe(true);
     first();
-    expect(isChiefOfStaffWorking()).toBe(true);
+    expect(isShiftCoordinatorWorking()).toBe(true);
     second();
-    expect(isChiefOfStaffWorking()).toBe(false);
+    expect(isShiftCoordinatorWorking()).toBe(false);
   });
 });

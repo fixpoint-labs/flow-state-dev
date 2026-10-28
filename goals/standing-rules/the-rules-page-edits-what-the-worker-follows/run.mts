@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY, createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { chiefOfStaffOf } from "../../../packages/shift-manager/src/lib/derive.ts";
+import { shiftCoordinatorOf } from "../../../packages/shift-manager/src/lib/derive.ts";
 import type { Worker } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -86,7 +86,7 @@ await runGoal(async (failures) => {
     const roster = await workforce.roster();
     const researcher = roster.find((w) => w.id === WORKER);
     if (researcher === undefined) throw new Error(`setup: the roster has no ${WORKER}: ${roster.map((w) => w.id).join(", ")}`);
-    const found = chiefOfStaffOf(roster.map((w) => ({ id: w.id }) as Worker));
+    const found = shiftCoordinatorOf(roster.map((w) => ({ id: w.id }) as Worker));
     if (found.kind !== "one") throw new Error(`setup: the roster has ${found.kind === "none" ? "no" : "several"} Shift Coordinators: ${roster.map((w) => w.id).join(", ")}`);
     const coordinatorId = found.worker.id;
 
@@ -179,22 +179,22 @@ await runGoal(async (failures) => {
         const notKept = await page.getByTestId("rules-not-kept").textContent({ timeout: 20_000 }).catch(() => null);
         if (notKept === null || !/doesn't keep standing rules/.test(notKept)) failures.push(`way-in: ${CUSTOM_FLOW_WORKER}'s settings page says ${JSON.stringify(notKept)}, not that its flow keeps no rules`);
 
-        // cos: the panel draws no RULES; the header's gear opens the coordinator's settings with its Rules.
-        await openShiftManager(page, served.origin, "/cos");
-        const panel = page.getByTestId("cos-panel");
+        // shiftCoordinator: the panel draws no RULES; the header's gear opens the coordinator's settings with its Rules.
+        await openShiftManager(page, served.origin, "/shift-coordinator");
+        const panel = page.getByTestId("shift-coordinator-panel");
         const panelUp = await panel.waitFor({ timeout: 20_000 }).then(() => true, () => false);
-        if (!panelUp) failures.push("cos: /cos drew no right panel");
+        if (!panelUp) failures.push("shiftCoordinator: /shift-coordinator drew no right panel");
         else {
           // Delegates and tasks read first; give a rules section the same chance to appear before grading its absence.
           await page.waitForTimeout(2_000);
-          if ((await panel.getByTestId("rules").count()) !== 0 || /RULES/.test((await panel.textContent()) ?? "")) failures.push("cos: the Shift Coordinator's panel still draws RULES");
+          if ((await panel.getByTestId("rules").count()) !== 0 || /RULES/.test((await panel.textContent()) ?? "")) failures.push("shiftCoordinator: the Shift Coordinator's panel still draws RULES");
         }
-        await page.getByTestId("cos-settings").click({ timeout: 20_000 }).catch(() => failures.push("cos: the Shift Coordinator's header has no settings gear"));
-        const cosRules = page.locator(`[data-testid=worker-settings][data-worker-id="${coordinatorId}"] [data-testid=rules][data-worker-id="${coordinatorId}"]`);
-        const cosOk = await cosRules.waitFor({ timeout: 20_000 }).then(() => true, () => false);
-        const cosPath = new URL(page.url()).pathname;
-        if (!cosOk || cosPath !== `/roster/${coordinatorId}/settings`) failures.push(`cos: the gear opened ${cosPath}, ${cosOk ? "with" : "without"} the Rules of ${coordinatorId}`);
-        else evidence.push(`/cos draws no RULES in its panel; its gear opens ${cosPath} with ${coordinatorId}'s Rules`);
+        await page.getByTestId("shift-coordinator-settings").click({ timeout: 20_000 }).catch(() => failures.push("shiftCoordinator: the Shift Coordinator's header has no settings gear"));
+        const shiftCoordinatorRules = page.locator(`[data-testid=worker-settings][data-worker-id="${coordinatorId}"] [data-testid=rules][data-worker-id="${coordinatorId}"]`);
+        const shiftCoordinatorOk = await shiftCoordinatorRules.waitFor({ timeout: 20_000 }).then(() => true, () => false);
+        const shiftCoordinatorPath = new URL(page.url()).pathname;
+        if (!shiftCoordinatorOk || shiftCoordinatorPath !== `/roster/${coordinatorId}/settings`) failures.push(`shiftCoordinator: the gear opened ${shiftCoordinatorPath}, ${shiftCoordinatorOk ? "with" : "without"} the Rules of ${coordinatorId}`);
+        else evidence.push(`/shift-coordinator draws no RULES in its panel; its gear opens ${shiftCoordinatorPath} with ${coordinatorId}'s Rules`);
       }
       if (errors.length > 0) failures.push(`reach: the page threw: ${errors.join(" | ")}`);
       evidence.push(`Roster: every row has Settings, ${CUSTOM_FLOW_WORKER} included; the researcher's settings opened its Rules empty with the limits, drew the add ("added here") and the edit, and the edit again after a reload`);

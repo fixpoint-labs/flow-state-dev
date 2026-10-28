@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { acquireLock, releaseLock, type LockBounds } from "../src/lock";
+import { acquireLock, releaseLock, tryAcquireLock, type LockBounds } from "../src/lock";
 import { tempDir } from "./git-fixtures";
 
 let dir: string;
@@ -84,5 +84,33 @@ describe("release", () => {
     expect(existsSync(path)).toBe(true);
     releaseLock(second);
     expect(existsSync(path)).toBe(false);
+  });
+});
+
+describe("one try, never a wait", () => {
+  it("takes a free lock at once", () => {
+    const lease = tryAcquireLock(path, bounds);
+    expect(lease).toBeDefined();
+    expect(existsSync(path)).toBe(true);
+    releaseLock(lease!);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("answers undefined while a live holder has it, and leaves that lock alone", async () => {
+    const first = await acquireLock(path, bounds);
+    const held = readFileSync(path, "utf8");
+    expect(tryAcquireLock(path, bounds)).toBeUndefined();
+    expect(readFileSync(path, "utf8")).toBe(held);
+    releaseLock(first);
+  });
+
+  it("takes a lock left by a holder that died, under the same stale rule a wait uses", () => {
+    writeFileSync(path, JSON.stringify({ token: "gone" }));
+    const old = new Date(Date.now() - bounds.staleAfterMs * 3);
+    utimesSync(path, old, old);
+    const lease = tryAcquireLock(path, bounds);
+    expect(lease).toBeDefined();
+    expect(readFileSync(path, "utf8")).not.toContain("gone");
+    releaseLock(lease!);
   });
 });

@@ -22,7 +22,7 @@ project's repository, or left in a project's files by an earlier run, after the 
 **Signal:** five legs on the DevTeam lab opened as its profile opens it, driven over its HTTP door
 as the lab's owner. Each clock starts at the filing.
 
-- **a** a Shift Coordinator (chief of staff) conversation; the scripted coordinator files a task
+- **a** a Shift Coordinator (Shift Coordinator) conversation; the scripted coordinator files a task
   naming storefront. The turn returns within 10 s outside the model's calls (`a:turn-returns`; none
   here, the scripted model answers at once), and a turn that blocks on the coder's run or hangs in
   the hand-over still fails it; exactly one line under the
@@ -91,7 +91,7 @@ Two departures from the spec's wording, both forced by the lab as it is:
   project coordinator) hands work to the workstreams the person owns, and it is a workstream's
   lead that files the coder's task. So the conversation that names nothing is the workstream's,
   and the project comes from its workstream.
-- **Leg d files on the person's first words.** The chief of staff reads the person's projects
+- **Leg d files on the person's first words.** The Shift Coordinator reads the person's projects
   with `listProjects` and names storefront, the one with a repository, without asking; that it
   does is FIX-1869's goal (`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`).
   Each real-model leg runs one conversation and is never retried.
