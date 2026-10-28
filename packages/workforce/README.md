@@ -1879,8 +1879,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const workforce = createWorkforceClient(fsd);
 
   const roster = await workforce.roster();
-  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
-  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out." }]
+  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes.", settings: {} },
+  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out.", settings: {} }]
 
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
@@ -1890,6 +1890,23 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   });
   const { status } = await sent.wait(); // or follow it live with sent.stream({ ... })
   ```
+
+  A row's `settings` holds only the settings its flow shows. Name them where you register the
+  flow, and every worker's value for them rides on its row, for a standard worker and a user's own
+  alike. Any other setting stays on the server:
+
+  ```ts
+  createWorkerInstallation({
+    standardWorkers: roster.workers,
+    workerFlows: { coder: { flow: coderFlow, showSettings: ["harness"] } },
+  });
+  // roster(): [{ id: "coder", flow: "coder", …, settings: { harness: "claude-code" } }]
+  ```
+
+  `hireWorkforce` refuses a name the flow's `configSchema` doesn't declare. It also refuses the
+  keys every worker carries (`instructions`, `workerSkills` and the rest) and the ones the hire
+  reads itself (`description`, `resources` and the rest). A worker that doesn't set a shown key
+  has none on its row: the flow's default isn't filled in.
 
   In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
   with no starting state, which a worker flow refuses, so find or start the session with the client
@@ -2486,7 +2503,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `defineCoordinatorFlow({ installation, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `respond`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `sendMessage` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which carries `onTaskSettled` (where each ending of a task the session filed arrives, once) and `onMessageReceived` (where a worker message arrives), `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
-| `workerFlow(build, { standardOnly?, roles? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
+| `workerFlow(build, { standardOnly?, roles?, showSettings? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. `roles` declares what it does beside taking a message (`contributor`, `manager`), checked at hire. `showSettings` names the settings a worker's `roster()` row shows. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |
 | `WORKER_ROLES` / `WorkerRole` | The roles a worker flow may declare: `contributor`, `manager`, `coordinator`. |
 | `upgradeWorkerEntryNames(stores, flows, { incarnationOf })` / `EntryNameUpgradeStores` / `EntryNameUpgradeOptions` / `EntryNameFlow` / `EntryNameRequest` | Run once at host start, before `getRouter()`, with `hireWorkforce`'s copies and the engine's `resolveRequestIncarnation` as `incarnationOf`: rewrites unfinished requests stored under a worker's old door (`run`, `message`) to `respond`, and requests and wakes under `runTaskBoard` to `dispatch`, on the registered worker flows only. Each rewrite is fenced on the record's incarnation, and the live-request registry's entries are renamed too. Returns `{ requests, wakes, leftover }`: how many writes applied, and how many wakes kept changing through every attempt to move them (each warned of, and moved by the next start). |
 | `inventoryWorkers(installation)` | The standard workers as `openInventory` takes workers: each worker's id, its flow and that flow's actions. |
