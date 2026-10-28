@@ -100,7 +100,7 @@ function ProjectPrompt({ filer, to, projects, onPick }: { filer: string; to: str
         type="button"
         disabled={!project}
         onClick={() => onPick(project)}
-        className="rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground disabled:opacity-40"
+        className="rounded-sm bg-primary px-2 py-0.5 font-semibold text-primary-foreground disabled:opacity-40"
       >
         Use project
       </button>

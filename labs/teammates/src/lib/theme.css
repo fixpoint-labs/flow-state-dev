@@ -1,17 +1,7 @@
 /*
- * The lab's own theme: a dark, quiet, chat-first look in the manner of a
- * desktop assistant like Grok Bot, rather than Shift Manager's. Labs take their
- * theme from the design system; this one keeps its own on purpose (FIX-2308),
- * so it sets the same token names the registry's `tokens` item and the lab's
- * components read, plus the lab's two shell surfaces, the radius scale and the
- * fonts. Unlayered, so these values win over the registry's base layer.
- *
- * One look, dark: the values sit on `:root` and `.dark` alike. Colour is
- * restrained to grey steps; `info` and `success` are soft tints for the lines
- * between workers, and `attention` keeps one meaning, a person must act.
- *
- * The conversation is drawn chat-first: a worker's answer is plain text on the
- * page, not a card, and your own lines are soft bubbles.
+ * Token values for this lab (FIX-2308). Unlayered, so they win over the
+ * registry's base layer. One look, on `:root` and `.dark`. `attention` means
+ * a person must act.
  */
 :root,
 .dark {
@@ -56,28 +46,9 @@
   color-scheme: dark;
 }
 
-/* A worker's answer reads as text on the page. */
-[data-entry="assistant"] {
-  border-color: transparent;
-  background: transparent;
-  padding-inline: 0;
-}
-
-/* Your lines: a soft bubble. */
-[data-entry="user"] {
-  padding: 0.625rem 1rem;
-}
-
-/* The composer: one rounded field, the way chat apps draw it. */
-form:has(> div > textarea) > div {
-  border-radius: 1.5rem;
-  padding-inline: 0.75rem;
-}
-form:has(> div > textarea) button[type="submit"] {
-  border-radius: 9999px;
-}
-
-/* The small controls (the project pick, Talk, Use project): soft corners, not square ones. */
-:is(select, button):not([data-entry]) {
-  border-radius: var(--radius-sm);
+/* Soft corners on controls that do not set their own. Utilities win, so a pill or a card radius stays. */
+@layer base {
+  :is(select, button):not([data-entry]) {
+    border-radius: var(--radius-sm);
+  }
 }
