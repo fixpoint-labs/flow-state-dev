@@ -28,7 +28,7 @@ import {
   MIN_LEASE_DURATION_MS,
   resolveResourceCollection,
   type Task,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorkerInput,
   openRowQuestions,
 } from "../../src/tasks";
@@ -251,7 +251,7 @@ const parkIn = new Map<string, string>();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Claims under a short lease, so renewal and a lapse are observable on the wall clock. */
-const shortLease: TaskDispatcher = {
+const shortLease: ClaimOrder = {
   async claim(collection, workerId) {
     return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
   },
@@ -270,7 +270,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     boardId: PARTITION_BOARD,
     mode: "delegation",
     collection: partitionedLedger,
-    dispatcher: shortLease,
+    claimOrder: shortLease,
     // Bounded, so a drain that never reaches its exit shows as a number rather
     // than a hang (POC E1): by default a board polls 10,000 times.
     maxIterations: 40,

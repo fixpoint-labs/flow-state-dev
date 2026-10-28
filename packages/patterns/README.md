@@ -112,7 +112,7 @@ As a `.step()` it hands `undefined` to the next step. Earlier releases echoed th
 
 ### Task Board
 
-Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/orchestration`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/orchestration`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological claim order. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
 
 **Termination modes (`onIdle`)**:
 
@@ -129,7 +129,7 @@ const board = taskBoard({
   name: "research-board",
   collection: { collectionId: "research" },
   concurrency: 3,
-  dispatcher: "topological",
+  claimOrder: "topological",
   workers: {
     "market-analyst": marketAnalyst,
     "financial-analyst": financialAnalyst,
@@ -155,7 +155,7 @@ The default backing is request-scoped, so `board.drain` re-entry works out of th
 const board = taskBoard({
   name: "replan-board",
   // request-scoped by default; nothing to restate
-  // ...workers, dispatcher, etc.
+  // ...workers, claimOrder, etc.
 });
 ```
 

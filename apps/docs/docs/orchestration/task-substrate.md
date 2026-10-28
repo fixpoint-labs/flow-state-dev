@@ -7,7 +7,7 @@ description: The Task record and storage-agnostic TaskCollection that the task b
 
 # Task substrate
 
-Coordination patterns in flow-state-dev share one shape: a list of work items that get claimed, run, and marked done. The task substrate is where that shape lives. It gives you the `Task` record and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Dispatchers, the task board, and the patterns above them (Supervisor, Plan and Execute) all read and write through this one API.
+Coordination patterns in flow-state-dev share one shape: a list of work items that get claimed, run, and marked done. The task substrate is where that shape lives. It gives you the `Task` record and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Claim orders, the task board, and the patterns above them (Supervisor, Plan and Execute) all read and write through this one API.
 
 Reach for it directly when you need a coordination shape none of the wrappers provide. Otherwise you're using it underneath one of them.
 
@@ -36,7 +36,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `attempts` | `number` | How many times the task has been claimed. Starts at 0. |
 | `maxAttempts` | `number?` | Optional retry budget. Governs soft vs hard fail. |
 | `assignee` | `string?` | Worker key a board uses to route the task. |
-| `priority` | `number?` | Higher wins under the priority dispatcher. Unset reads as 0. |
+| `priority` | `number?` | Higher wins under the priority claim order. Unset reads as 0. |
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
@@ -172,7 +172,7 @@ Here's a handler that seeds two tasks with a dependency between them and dispatc
 import { handler } from "@flow-state-dev/core";
 import {
   getOrCreateTaskCollection,
-  topologicalDispatcher,
+  topologicalClaimOrder,
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -197,9 +197,9 @@ export const seedResearchPlan = handler({
       deps: ["research"],
     });
 
-    // "draft" waits on "research", so the topological dispatcher
+    // "draft" waits on "research", so the topological claim order
     // claims "research" and leaves "draft" pending.
-    const claimed = await topologicalDispatcher.claim(collection, "writer-1", ctx);
+    const claimed = await topologicalClaimOrder.claim(collection, "writer-1", ctx);
 
     return { claimedGoal: claimed?.goal ?? null };
   },
@@ -497,9 +497,9 @@ This is not exactly-once dispatch. A lease that runs out sends the task back to 
 
 **The limit.** The guarantee covers concurrent executions inside one process. Every store backend satisfies that. Two separate OS processes over a filesystem-backed store do not: comparison there happens under an in-process lock, so each process compares against its own view. Use SQLite or Postgres for a board two processes share.
 
-## Dispatchers
+## Claim orders
 
-A dispatcher decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+A claim order decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
 A custom `eligibility` predicate **narrows** the substrate's candidates. Claimability is the substrate's to decide: dependencies satisfied, and either never started or abandoned by a worker that stopped renewing. Your predicate selects among the tasks that already pass it.
 
@@ -509,17 +509,17 @@ A custom `eligibility` predicate **narrows** the substrate's candidates. Claimab
 collection.claim(workerId, { eligibility: (t) => t.id === picked });
 ```
 
-**Do not assert `status` in an eligibility predicate.** Other filters say which work this drain is for, and abandoned tasks matching them are still recovered. Asserting `status === "pending"` switches recovery off for that dispatcher.
+**Do not assert `status` in an eligibility predicate.** Other filters say which work this drain is for, and abandoned tasks matching them are still recovered. Asserting `status === "pending"` switches recovery off for that claim order.
 
-An abandoned task your predicate filters out is not taken back by *this* dispatcher, so if no drain on the board matches a task, nothing recovers it.
+An abandoned task your predicate filters out is not taken back by *this* claim order, so if no drain on the board matches a task, nothing recovers it.
 
-| Dispatcher | Picks | Eligibility |
+| Claim order | Picks | Eligibility |
 |------------|-------|-------------|
-| `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
-| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
+| `fifoClaimOrder` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `topologicalClaimOrder` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `priorityClaimOrder` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
 
-`fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
+`fifoClaimOrder` and `topologicalClaimOrder` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
 
 ## task-change items
 

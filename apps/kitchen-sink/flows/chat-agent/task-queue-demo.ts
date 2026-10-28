@@ -2,7 +2,7 @@
  * Task-queue demo — chat-agent action.
  *
  * Demonstrates serial task dispatch with mid-run enqueue using `taskBoard` +
- * `fifoDispatcher`. The substrate replaces the retired `eventQueue` pattern;
+ * `fifoClaimOrder`. The substrate replaces the retired `eventQueue` pattern;
  * the chain shape (SEARCH → ANALYZE → maybe EXTRACT → done) is unchanged.
  *
  * Each handler enqueues follow-up tasks by resolving the same request-scoped
@@ -119,7 +119,7 @@ const board = taskBoard({
     EXTRACT: handleExtract,
   } as Record<string, any>,
   concurrency: 1,
-  dispatcher: "fifo",
+  claimOrder: "fifo",
   onIdle: "complete",
   initialTasks: [
     {

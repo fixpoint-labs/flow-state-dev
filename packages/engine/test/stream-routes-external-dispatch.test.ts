@@ -24,7 +24,7 @@ import { handleResumeSuspension } from "../src/routes/resume-routes";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
-import type { FlowDispatcher } from "../src/transports/dispatcher";
+import type { FlowRunner } from "../src/transports/runner";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import type { RequestRecord } from "../src/stores/types";
@@ -52,11 +52,11 @@ function buildRegistry(): FlowRegistry {
 }
 
 /**
- * A FlowDispatcher whose worker never starts: `dispatch` resolves a handle
+ * A FlowRunner whose worker never starts: `dispatch` resolves a handle
  * whose `finished` stays pending, modelling a queued job no worker has claimed.
  * Having no `dispatchLocal` marks it external to the host.
  */
-function pendingExternalDispatcher(): FlowDispatcher {
+function pendingExternalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async (env) => ({
       requestId: env.requestId,
@@ -85,7 +85,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
       stores,
       resolvePrincipal: defaultBodyUserIdPrincipalResolver,
       runtimeConfig: {},
-      dispatcher: pendingExternalDispatcher()
+      runner: pendingExternalRunner()
     });
 
     const handle = host.dispatch({
@@ -220,7 +220,7 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
  * enqueue rejects must fail the POST and revert a resume — not return 202 and
  * drop the failure in the detached `finished` chain.
  */
-function failingExternalDispatcher(): FlowDispatcher {
+function failingExternalRunner(): FlowRunner {
   return {
     dispatch: vi.fn(async () => {
       throw new Error("enqueue failed");
@@ -236,7 +236,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
     const router = createFlowApiRouter({
       registry,
       stores,
-      dispatcher: failingExternalDispatcher()
+      runner: failingExternalRunner()
     });
 
     const requestId = "req_action_enqueue_fail";

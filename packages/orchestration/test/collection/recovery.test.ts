@@ -158,13 +158,13 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
 });
 
 describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_name, makeBacking) => {
-  /** A narrowing that names no status, the shape the docs tell a dispatcher to use. */
+  /** A narrowing that names no status, the shape the docs tell a claim order to use. */
   const onTopic = (topic: string) => (t: Task) =>
     (t.metadata as { topic?: string } | undefined)?.topic === topic;
 
   it("recovers a lapsed row INSIDE a caller's narrowing", async () => {
-    // Pinned on the composed claim path a dispatcher calls. Before this composition a caller's predicate REPLACED the substrate's, so
-    // recovery was unreachable for any dispatcher that asserted
+    // Pinned on the composed claim path a claim order calls. Before this composition a caller's predicate REPLACED the substrate's, so
+    // recovery was unreachable for any claim order that asserted
     // `status === "pending"` — including the recipe our own docs recommended.
     const backing = await makeBacking();
     await backing.collection.createTask({

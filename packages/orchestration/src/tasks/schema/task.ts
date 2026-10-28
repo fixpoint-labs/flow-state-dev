@@ -1,7 +1,7 @@
 /**
  * Task schema (FIX-443 §2).
  *
- * The Task schema is the canonical work-unit shape that every dispatcher,
+ * The Task schema is the canonical work-unit shape that every claim order,
  * worker, and pattern in the substrate operates on. `input` and `output`
  * are validated as `unknown`; the `Task<TInput, TOutput>` runtime type
  * narrows them at the consumer's call site.

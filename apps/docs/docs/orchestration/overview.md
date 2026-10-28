@@ -18,7 +18,7 @@ Patterns          (patterns)      — supervisor, parallelTasks, planAndExecute,
   ▲
 Task board        (orchestration) — a concurrent drain over a collection
   ▲
-Task substrate    (orchestration) — the Task record + TaskCollection + dispatchers
+Task substrate    (orchestration) — the Task record + TaskCollection + claim orders
 ```
 
 Read it bottom-up.
@@ -49,7 +49,7 @@ Both paths drive the same substrate, and a worker can enqueue follow-up work mid
 
 ## Where work blocks, and where it doesn't
 
-Dependencies are how you say "this can't start until that finishes." A task lists the ids it depends on, and the default dispatcher won't hand it to a worker until every dependency has completed. That's how a synthesizer waits for its analysts without any glue code on your side.
+Dependencies are how you say "this can't start until that finishes." A task lists the ids it depends on, and the default claim order won't hand it to a worker until every dependency has completed. That's how a synthesizer waits for its analysts without any glue code on your side.
 
 A board also needs a rule for when to stop. By default it drains until either every task completed or nothing runnable is left (a failure upstream can strand the tasks that depended on it). You can also tell a board to wait indefinitely for work that arrives from outside. A task waiting for a person doesn't keep a board running: a board whose open tasks only wait on a person stops, and the answer starts the task's next turn. Those termination modes are covered in [Task board](./task-board), and the waits in [A task's questions](./task-board#a-tasks-questions) and [A task waiting on a user](./task-board#a-task-waiting-on-a-user).
 

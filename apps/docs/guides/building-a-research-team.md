@@ -107,7 +107,7 @@ export const researchBoard = taskBoard({
   name: "research-board",
   collection: { collectionId: "research" },
   concurrency: 3,
-  dispatcher: "topological",
+  claimOrder: "topological",
   workers: {
     "market-analyst": marketAnalyst,
     "financial-analyst": financialAnalyst,
@@ -137,7 +137,7 @@ const result = await testBlock(researchBoard.drain, { input: undefined });
 // The two analysts run concurrently; `synth` only runs once both complete.
 ```
 
-The `topological` dispatcher is what enforces the wait: it will not hand `synth` to a worker until every id in its `deps` has reached `completed`. You wrote the dependency; the board honored it.
+The `topological` claim order is what enforces the wait: it will not hand `synth` to a worker until every id in its `deps` has reached `completed`. You wrote the dependency; the board honored it.
 
 ## 3. Fan out at runtime with a router
 
@@ -184,7 +184,7 @@ export const researchRouter = router({
       name: "competitor-board",
       collection: { backing: "request", collectionId: "competitors" },
       concurrency: 4,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
     }).drain;
@@ -214,6 +214,6 @@ Whether a task blocks the request comes down to the same dependency graph: the s
 ## Where to go next
 
 - [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team) — the complete, tested source for this guide.
-- [Task board](/docs/orchestration/task-board) — every config option, dispatcher, and termination mode.
+- [Task board](/docs/orchestration/task-board) — every config option, claim order, and termination mode.
 - [Task substrate](/docs/orchestration/task-substrate) — the `Task` and `TaskCollection` contracts underneath.
 - [Supervisor](/docs/patterns/supervisor) — add a review step before each result is written back.

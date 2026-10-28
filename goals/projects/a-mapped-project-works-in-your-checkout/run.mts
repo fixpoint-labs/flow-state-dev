@@ -38,7 +38,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, openRowQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "@flow-state-dev/harness-manager";
+import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
 import { hashContent, localWorkspaceHost } from "@flow-state-dev/workspace";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
@@ -227,7 +227,7 @@ await runGoal(async (failures) => {
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { shared: filedFrom(`shared/${PROJECT}`), private: filedFrom(`private/${PROJECT}`) },
   });
   const seed = handler({

@@ -53,7 +53,7 @@ export const researchRouter = router({
       name: "competitor-board",
       collection: { collectionId: "competitors" },
       concurrency: 4,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: { analyzer: analyst("competitor"), synthesizer },
       initialTasks,
     }).drain;

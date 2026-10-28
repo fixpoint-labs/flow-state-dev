@@ -443,7 +443,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     ...boardCaps,
     workers: workerRegistry,
     concurrency,
-    dispatcher: "fifo",
+    claimOrder: "fifo",
     onIdle: "complete",
   });
 

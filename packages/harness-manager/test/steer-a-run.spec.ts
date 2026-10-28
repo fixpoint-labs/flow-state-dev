@@ -25,7 +25,7 @@ import {
   harnessSessionDoor,
   harnessTalkTurn,
   harnessTaskInputSchema,
-  runOwnerDispatcher,
+  runOwnerClaimOrder,
   STEER_POLL_MS,
   type HarnessFeeds,
 } from "../src";
@@ -225,7 +225,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live
     mode: "delegation",
     collection: ledger,
     concurrency: 1,
-    dispatcher: runOwnerDispatcher(),
+    claimOrder: runOwnerClaimOrder(),
     workers: { coder: dispatcher({ name: "steer-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({

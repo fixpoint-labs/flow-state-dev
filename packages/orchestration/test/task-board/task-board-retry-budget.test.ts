@@ -319,7 +319,7 @@ describe("retry budget — goal check on a real board drain", () => {
       name: "retry-storm",
       collection: { collectionId: "retry-storm" },
       concurrency: 1,
-      dispatcher: "fifo",
+      claimOrder: "fifo",
       workers: alwaysFails,
       // The storm: a permissive per-task retry budget that would otherwise
       // re-pend this task 1000 times, with generous creation caps that never

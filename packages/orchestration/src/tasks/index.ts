@@ -4,7 +4,7 @@
  *
  * Exports the Task schema, the uniform `TaskCollectionRef` API across
  * both backings (atomic state, resource collection), the standard
- * dispatcher catalog, the worker contract, and the canonical helpers
+ * claim order catalog, the worker contract, and the canonical helpers
  * for composing task loops inside sequencer patterns.
  *
  * Layering: `core` → `tasks` → `patterns`. Patterns consume this
@@ -267,11 +267,11 @@ export { cancelAndResume, owesUserResume } from "./helpers/user-stop";
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";
 
-// Dispatchers
-export type { TaskDispatcher } from "./dispatchers/types";
-export { fifoDispatcher } from "./dispatchers/fifo";
-export { topologicalDispatcher } from "./dispatchers/topological";
-export { priorityDispatcher } from "./dispatchers/priority";
+// Claim orders
+export type { ClaimOrder } from "./claim-orders/types";
+export { fifoClaimOrder } from "./claim-orders/fifo";
+export { topologicalClaimOrder } from "./claim-orders/topological";
+export { priorityClaimOrder } from "./claim-orders/priority";
 
 // Workers
 export type {

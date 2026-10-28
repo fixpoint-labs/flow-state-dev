@@ -25,7 +25,7 @@
 <text class="nm" x="40" y="284">Task board</text>
 <text class="sub" x="40" y="302">a sequencer that drains the collection</text>
 <text class="c" x="40" y="326">taskBoard()</text>
-<rect class="thin" x="358" y="272" width="220" height="108"/><text class="nm" x="370" y="296">Dispatcher</text>
+<rect class="thin" x="358" y="272" width="220" height="108"/><text class="nm" x="370" y="296">Claim order</text>
 <text class="t" x="370" y="318">Picks the next ready task:</text>
 <text class="t" x="370" y="334">topological (default),</text>
 <text class="t" x="370" y="350">fifo, priority, or one</text>
@@ -58,7 +58,7 @@
 <text class="n" x="28" y="649">02</text>
 <text class="t" x="60" y="649">The collection is kept in state, or in a resource collection. You choose; the API is the same.</text>
 <text class="n" x="28" y="674">03</text>
-<text class="t" x="60" y="674">A task board is a sequencer that drains the collection. Its dispatcher picks the next ready task.</text>
+<text class="t" x="60" y="674">A task board is a sequencer that drains the collection. Its claim order picks the next ready task.</text>
 <text class="n" x="28" y="699">04</text>
 <text class="t" x="60" y="699">The task's assignee routes it to a board worker, which is any block. An assignee names a board worker,</text>
 <text class="t" x="60" y="716">or a Workforce worker that takes tasks. The board runs the list; Workforce finds the worker.</text>

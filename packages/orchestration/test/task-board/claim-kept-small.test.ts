@@ -43,7 +43,7 @@ describe("the claim a drain keeps with its request", () => {
     const block = createClaimTask({
       name: "claim",
       collection: async () => board,
-      dispatcher: {
+      claimOrder: {
         claim: async (collection: TaskCollectionRef, worker: string) => {
           claims += 1;
           return collection.claim(worker);
@@ -72,7 +72,7 @@ describe("the claim a drain keeps with its request", () => {
     const block = createClaimTask({
       name: "claim",
       collection: async () => board,
-      dispatcher: {
+      claimOrder: {
         claim: async () => {
           claims += 1;
           return null;

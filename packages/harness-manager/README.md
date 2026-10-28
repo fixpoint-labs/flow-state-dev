@@ -91,7 +91,7 @@ To run an org-scoped board's rows as supervised coding runs, hand the manager th
 ```ts
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
+import { harnessManager, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";
 
 const work = defineTaskCollection({ id: "eng.feature.work", scope: "org" });
 
@@ -102,7 +102,7 @@ const manager = harnessManager({
 });
 
 // On the board that drains the rows:
-taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
+taskBoard({ collection: work, claimOrder: runOwnerClaimOrder(), /* ... */ });
 ```
 
 The manager builds each run's checkout folder and git branch from the board's id, used as is. An
@@ -113,14 +113,14 @@ never share a checkout.
 The board is kept per organization, so everyone in the organization sees its rows. A row's
 coding run belongs to the user who started it: a drain by anyone else in the organization is
 refused, naming whose run it is. Their own retry picks up the same checkout, branch and agent
-session. With `runOwnerDispatcher()` on the draining board, the refusal happens before the row
+session. With `runOwnerClaimOrder()` on the draining board, the refusal happens before the row
 is claimed and costs it no attempt. Without it the manager still refuses to run someone else's
 row, but only after the claim, so the row is charged an attempt.
 
-**Wire `runOwnerDispatcher()` on every board kept per organization that drains rows into a
+**Wire `runOwnerClaimOrder()` on every board kept per organization that drains rows into a
 manager.** The manager's own refusal keeps the run from being split between two people, but only
-the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
-the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+the claim order keeps a teammate's drain from spending the row's retries. The claim order claims in
+the board's own readiness and order, so it takes the place of any other claim order on that board.
 
 ## Running a conversation's tasks
 
@@ -467,7 +467,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

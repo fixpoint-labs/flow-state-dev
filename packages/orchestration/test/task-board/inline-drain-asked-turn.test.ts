@@ -13,7 +13,7 @@ import {
   MIN_LEASE_DURATION_MS,
   openQuestions,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
@@ -62,7 +62,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
       collectionId: "inline-asked-renewal",
       state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     });
-    const shortLease: TaskDispatcher = {
+    const shortLease: ClaimOrder = {
       async claim(ref, workerId) {
         return ref.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
       },
@@ -85,7 +85,7 @@ describe("an inline board's drain, after a turn that asked midway", () => {
       collection: () => collection,
       concurrency: 1,
       onError: "fail",
-      dispatcher: shortLease,
+      claimOrder: shortLease,
       initialTasks: [{ id: "t", goal: "write the script" }],
       workers: worker,
     });

@@ -88,6 +88,14 @@ export const RETIRED = [
     pattern: /\b(addTasks?|readTask|cancelTask|dispatchTask|assignTask|failTask|blockTask|completeTask|answerTask\w*|(create)?[Pp]arkOnQuestion|parkedOnQuestion|awaitReview|unparkAndDrain|onReview|answerQuestion)(_\w+)?\b/
   },
   {
+    id: "dispatcher-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2245: "dispatcher" is the dispatcher block. A board's rule for the next task is a ClaimOrder;
+    // what decides where a flow action runs is a FlowRunner. Both pick up their old helpers and files.
+    pattern: /\b(TaskDispatcher|(fifo|topological|priority|runOwner)Dispatcher|TaskBoardDispatcherInput|resolveDispatcher|FlowDispatcher|InProcessDispatcher(Deps)?|(create|is)InProcessDispatcher|(create|Create)WorkerDispatcher(Options)?|WorkerDispatcher|usesExternalDispatcher)\b|tasks\/dispatchers\/|in-process-dispatcher/,
+    pathName: /(^|\/)(in-process-dispatcher\.ts|run-owner-dispatcher\.spec\.ts)$|\/tasks\/dispatchers\/|^packages\/engine\/src\/transports\/dispatcher\.ts$|^packages\/bullmq\/(src|test)\/dispatcher\.(test\.)?ts$/
+  },
+  {
     id: "post-to-mailbox",
     files: new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`),
     pattern: /post-to-mailbox|postToMailbox/

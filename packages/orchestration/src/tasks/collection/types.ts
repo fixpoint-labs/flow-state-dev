@@ -4,7 +4,7 @@
  * The same shape is returned from `getOrCreateTaskCollection` regardless
  * of how the collection is stored (atomic state — a ref, or the request — vs
  * resource).
- * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
+ * Patterns and claim orders consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -190,7 +190,7 @@ export interface TaskWaitSlot {
   readonly drain?: true;
 }
 
-/** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
+/** Options for `claim` — let the claim order narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
   /**
    * Per-task predicate that **narrows** the substrate's candidates. It does not
@@ -212,7 +212,7 @@ export interface ClaimOptions {
    * ```
    *
    * A status assertion compiles, reads correctly, and quietly makes stranded
-   * jobs unrecoverable for that dispatcher, because the row it must match is
+   * jobs unrecoverable for that claim order, because the row it must match is
    * `in_progress`. Claimability is the substrate's call — `isClaimable` — and
    * composing rather than replacing is what stops the newest invariant being
    * the one most easily switched off by accident.
@@ -271,7 +271,7 @@ export interface ClaimOptions {
  * methods behave exactly as before, throwing on an illegal transition.
  *
  * Intended for the substrate's own write-backs — a task board's result
- * recorders, a dispatcher's claim/execute cycle — where the task may have
+ * recorders, a claim order's claim/execute cycle — where the task may have
  * been settled by someone with better information (a coordinator cancelled
  * it, the worker settled it through its own task tools, a lease reclaim
  * re-queued it for another attempt) while the worker was still running.
@@ -519,7 +519,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * **Exposed because a lease is a comparison, and a comparison needs one
    * clock.** `leaseUntil` is written by the claim write against this clock, so
    * anything asking "has this lease run out" — the board's wake probe, the
-   * ready-task preview, a dispatcher's candidate scan, the renewal driver
+   * ready-task preview, a claim order's candidate scan, the renewal driver
    * deciding when to write next — has to ask the same one. Reading
    * `Date.now()` instead works right up until a collection is built on an
    * injected clock, at which point the two sides silently answer different

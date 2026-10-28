@@ -130,7 +130,7 @@ export interface InboundRequestEnvelope {
    *
    * **And the limit, which is part of the rule rather than an exception to it:
    * it cannot cross a serialization boundary.** A `RuntimeConfig` holds live
-   * resolvers and providers, so the external-dispatcher branch ignores this — a
+   * resolvers and providers, so the external-runner branch ignores this — a
    * queued job runs under its own worker's config, which is the only thing that
    * process can honour. Carrying just a model *id* across would not fix it: the
    * worker has its own gateways and keys, so a forced id may not resolve there
@@ -208,7 +208,7 @@ export interface DispatchHandle {
    *
    * - **External dispatch** (FIX-828): the enqueue-time store writes
    *   (`activeRequests` entry + the `in_progress` record) have committed AND the
-   *   dispatcher has taken the job. Adapters that ack before the client opens
+   *   runner has taken the job. Adapters that ack before the client opens
    *   `GET …/stream` (the `202` path) await this; a store-write or enqueue
    *   failure rejects it and surfaces as a failed POST / reverted resume.
    * - **In-process, `queue` policy** (FIX-999): the same enqueue-time writes.
@@ -234,8 +234,8 @@ export interface DispatchHandle {
    * failure is silent and the row waits out its lease with nothing anywhere
    * saying why. With it, the failure surfaces where it happened.
    *
-   * Optional on the type because a custom dispatcher may not distinguish
-   * acceptance from completion. Every dispatcher this package ships does.
+   * Optional on the type because a custom runner may not distinguish
+   * acceptance from completion. Every runner this package ships does.
    */
   readonly accepted?: Promise<void>;
 }
@@ -289,7 +289,7 @@ export interface InboundTransportHost {
   readonly logger?: RuntimeLogger;
 
   /**
-   * Whether this host's effective dispatcher hands work to an external queue
+   * Whether this host's effective runner hands work to an external queue
    * rather than running it here.
    *
    * Exposed because a delivery into an existing session past that boundary
@@ -297,10 +297,10 @@ export interface InboundTransportHost {
    * against the session's concurrency policy — that is, unless
    * `arbitratesExternalDispatch` is true. The host already computes this
    * to pick its own dispatch branch; publishing it is what stops a caller
-   * re-deriving it from the dispatcher and reaching a different answer than the
+   * re-deriving it from the runner and reaching a different answer than the
    * host did.
    */
-  readonly usesExternalDispatcher: boolean;
+  readonly usesExternalRunner: boolean;
 
   /**
    * Whether work this host hands to an external queue is arbitrated against

@@ -22,7 +22,7 @@
  * Both drive a real `taskBoard` over a caller-supplied collection on the wall
  * clock, so the leases really expire and the driver really schedules. Short
  * leases keep them fast; the board itself has no lease knob, so the second test
- * supplies one through a dispatcher, which is how a caller would.
+ * supplies one through a claim order, which is how a caller would.
  */
 import { describe, expect, it } from "vitest";
 import { handler, SuspensionError } from "@flow-state-dev/core";
@@ -33,7 +33,7 @@ import {
   leaseLapsed,
   MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
-  type TaskDispatcher,
+  type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
@@ -53,8 +53,8 @@ function liveCollection(collectionId: string, clock = { skew: 0 }): TaskCollecti
   });
 }
 
-/** A dispatcher that claims under `leaseDurationMs`; the board has no lease knob. */
-function leasingDispatcher(leaseDurationMs: number): TaskDispatcher {
+/** A claim order that claims under `leaseDurationMs`; the board has no lease knob. */
+function leasingClaimOrder(leaseDurationMs: number): ClaimOrder {
   return {
     async claim(collection, workerId) {
       return collection.claim(workerId, { leaseDurationMs });
@@ -138,7 +138,7 @@ describe("a live worker is never disturbed — the anti-vacuity guard", () => {
       // whole time the first is running. That is what makes the theft possible
       // at all, so a single-worker board would not test anything.
       concurrency: 2,
-      dispatcher: leasingDispatcher(MIN_LEASE_DURATION_MS),
+      claimOrder: leasingClaimOrder(MIN_LEASE_DURATION_MS),
       initialTasks: [{ id: "t", goal: "long job" }],
       workers: slowWorker,
     });
@@ -191,7 +191,7 @@ describe("the board's worker really runs under the lease-loss signal", () => {
       name: "lease-loss-board",
       collection: () => collection,
       concurrency: 1,
-      dispatcher: leasingDispatcher(MIN_LEASE_DURATION_MS),
+      claimOrder: leasingClaimOrder(MIN_LEASE_DURATION_MS),
       initialTasks: [{ id: "t", goal: "watch the signal" }],
       workers: watcher,
     });
@@ -240,7 +240,7 @@ describe("a worker that parks on a suspension stops holding its task", () => {
       name: "parked-board",
       collection: () => collection,
       concurrency: 1,
-      dispatcher: leasingDispatcher(MIN_LEASE_DURATION_MS),
+      claimOrder: leasingClaimOrder(MIN_LEASE_DURATION_MS),
       initialTasks: [{ id: "t", goal: "needs a human" }],
       workers: parkingWorker,
     });

@@ -278,7 +278,7 @@ Call `message` with `{ message }` on the run's session. The line goes into the s
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Any later session works out the same path from the same inputs, without looking it up.
 
-The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the user who started it, and another user's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the user who started it, and another user's drain doesn't run it. Give the draining board `runOwnerClaimOrder()` and that drain leaves the row untouched, without spending one of its attempts.
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. A process that was displaced never removes its replacement's lock.
 
@@ -435,7 +435,7 @@ plus the pieces you need around it: `harnessManager` and its options,
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
-your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per
+your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per
 organization, the run-record collection for building a status
 surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with its collection and
 helpers.

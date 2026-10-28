@@ -2,7 +2,7 @@
  * `selectNextReadyTask` — the preview must name a task that will actually be
  * dispatched (FIX-1005).
  *
- * The block answers "what would the dispatcher pick next?", and answering it
+ * The block answers "what would the claim order pick next?", and answering it
  * takes both halves of the substrate's claim decision, not just the first:
  *
  * - **Admission** (`isClaimable`) — should the claim path look at this row?
@@ -11,7 +11,7 @@
  *   it? Hand it out, or settle it `errored` because its abandonment allowance
  *   is spent and scan straight past it.
  *
- * A row that passes the first and fails the second is one no dispatcher will
+ * A row that passes the first and fails the second is one no claim order will
  * ever run. Reporting it as `ready` tells a visualization and a dry-run planner
  * that work is about to start when nothing is, and — worse — hides the
  * genuinely claimable work queued behind it, because the exhausted row sorts
@@ -70,7 +70,7 @@ async function exhaustAllowance(
 }
 
 describe("selectNextReadyTask does not promise a dispatch that cannot happen", () => {
-  it("skips an exhausted row and names the task the dispatcher would really take", async () => {
+  it("skips an exhausted row and names the task the claim order would really take", async () => {
     const { collection, advancePastLease } = steppedCollection();
     await collection.createTask({ id: "stranded", goal: "abandoned too many times" });
     await exhaustAllowance(collection, advancePastLease);
