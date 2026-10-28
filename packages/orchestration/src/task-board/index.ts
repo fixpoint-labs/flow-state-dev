@@ -254,6 +254,7 @@ export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring
 export {
   waitOnTask,
   canHoldWait,
+  toolCallOf,
   waitGateId,
   type TaskWaitRefusal,
   type TaskWaitResult,

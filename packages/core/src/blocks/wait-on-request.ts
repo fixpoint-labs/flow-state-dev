@@ -24,6 +24,11 @@ export type WaitOnRequestInput = {
   readonly planKey: string;
   /** How long to wait, in ms from now. The host's default when unset. */
   readonly deadlineMs?: number;
+  /**
+   * When to stop waiting (epoch ms), for a caller that parks more than once
+   * under one deadline. Wins over `deadlineMs`.
+   */
+  readonly deadlineAt?: number;
   /** Shown wherever the suspension is listed. */
   readonly message?: string;
 };
@@ -53,7 +58,7 @@ export async function waitOnRequest(ctx: BlockContext, input: WaitOnRequestInput
   }
   const planned = await ctx.runOnce(input.planKey, async () => ({
     gateId: input.gateId,
-    deadline: Date.now() + (input.deadlineMs ?? waits.deadlines.defaultMs)
+    deadline: input.deadlineAt ?? Date.now() + (input.deadlineMs ?? waits.deadlines.defaultMs)
   }));
   const outcome = await parkOnWait(ctx, {
     gateId: planned.gateId,
