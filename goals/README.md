@@ -107,11 +107,11 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `env`        | `intentFreeEnv` / `stripIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
 | `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
 | `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText` |
-| `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
+| `driver`     | `runHarness` — run a sibling `harness.mts` inside an app; `writeGoalReport` — a host that can import `goals/lib` prints its `__GOAL__` line with it and awaits it before `process.exit`, which drops a write still queued on a pipe |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
-| `server`     | `refuseIfAnswering`, `stopProcessGroup` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade |
+| `server`     | `refuseIfAnswering`, `stopProcessGroup`, `onClosed` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade; `onClosed(child, done)` waits for a piped child's output to be read to the end (`close`, not `exit`), but at most 2s past `exit`, so a grandchild still holding the pipe can't hang a stop |
 | `module-patch` | `modulePatchEnv`, `describePatches`, `assertPatched` — a named control as scratch patches to source modules, applied as the process under test loads them (`module-patch.mjs` through `NODE_OPTIONS`), never written to the checkout; the run prints the patch and fails when it never reached the code it served |
 | `http-actions` | `actingAs(router, userId)` (`call`, `act`, `open`) — drive an in-process host's router as a verified caller and read an action's answer back from the session's ended request, as an app does; `untilIdle(stores)` — wait until no request is running. The host's `resolvePrincipal` reads the caller from `x-user` |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |

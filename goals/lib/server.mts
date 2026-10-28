@@ -82,6 +82,7 @@ export function onClosed(child: ChildProcess, done: (code: number | null, signal
   };
   child.once("close", finish);
   child.once("exit", (code, signal) => {
+    if (called) return;
     timer = setTimeout(() => {
       for (const stream of [child.stdout, child.stderr]) stream?.destroy();
       finish(code, signal);

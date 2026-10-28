@@ -62,6 +62,7 @@ import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { boardRowPrefix, isRoutedTask } from "../../lib/routed-tasks.mts";
+import { writeGoalReport } from "../../lib/driver.mts";
 
 const ORG = "goal-org";
 const ALICE = "u_alice";
@@ -84,8 +85,6 @@ if (SCRATCH === undefined || SCRATCH === "") throw new Error("GOAL_SCRATCH names
 
 const hex = (n: number) => randomBytes(n).toString("hex");
 const word = () => `${["amber", "cobalt", "fjord", "quill", "tundra", "velvet"][randomBytes(1)[0]! % 6]}-${hex(3)}`;
-/** Print the `__GOAL__` line. Resolves once it is flushed: `process.exit` drops a write still queued on a pipe. */
-const report = (value: unknown) => new Promise<void>((resolve) => process.stdout.write(`__GOAL__${JSON.stringify(value)}\n`, () => resolve()));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const wf = workforce as unknown as Record<string, any>;
@@ -93,7 +92,7 @@ const missing = ["defineCoordinatorFlow", "workerTaskEntry", "defineAgentWorkerF
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) {
-  await report({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
+  await writeGoalReport({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
   process.exit(0);
 }
 /** A commit from before routed tasks: its delegates take posts, on an entry of their own. */
@@ -151,7 +150,7 @@ for (const [name, c] of Object.entries(coordinators)) {
 }
 const tree = await readWorkforce(treeDir);
 if (tree.errors.length > 0) {
-  await report({ setup: `the run's tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
+  await writeGoalReport({ setup: `the run's tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
   process.exit(0);
 }
 
@@ -483,7 +482,7 @@ if (PHASE === "kill") {
       const landed = (await itemsOf(restart.id)).lines.some((l) => l.agentName === second && l.text.includes(w));
       return firstRow?.status === "in_progress" && secondRow?.status === "completed" && !owed && landed ? firstRow : undefined;
     }, 15_000);
-    await report({
+    await writeGoalReport({
       phase: "kill",
       sessionId: restart.id,
       post: sent,
@@ -496,7 +495,7 @@ if (PHASE === "kill") {
     // Waits here to be killed.
     await sleep(120_000);
   } catch (error) {
-    await report({ setup: `the host failed before the kill: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
+    await writeGoalReport({ setup: `the host failed before the kill: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
   }
   process.exit(0);
 }
@@ -516,9 +515,9 @@ if (PHASE === "restart") {
       50,
     );
     const rows = (await rowsNow(killed.sessionId)).map((r) => ({ id: r.id, status: r.status, at: r.completedAt ?? null }));
-    await report({ phase: "restart", restartAt, deadlineAt, openAtRestart, closedAt: closedAt ?? null, openAtEnd: await openRoundsNow(killed.sessionId), rows });
+    await writeGoalReport({ phase: "restart", restartAt, deadlineAt, openAtRestart, closedAt: closedAt ?? null, openAtEnd: await openRoundsNow(killed.sessionId), rows });
   } catch (error) {
-    await report({ setup: `the restarted host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
+    await writeGoalReport({ setup: `the restarted host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}` });
   }
   process.exit(0);
 }
@@ -722,7 +721,7 @@ try {
     vet: await itemsOf(vet.id),
   };
 
-  await report({
+  await writeGoalReport({
     phase: "all",
     postEra: POST_ERA,
     store: storeFile,
@@ -764,6 +763,6 @@ try {
     sweep: { declared, toolFields },
   });
 } catch (error) {
-  await report({ setup: `the host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}`, store: storeFile });
+  await writeGoalReport({ setup: `the host failed: ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}`, store: storeFile });
 }
 process.exit(0);

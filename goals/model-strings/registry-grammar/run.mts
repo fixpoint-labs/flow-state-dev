@@ -8,7 +8,6 @@ import { spawnSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   boolean,
   defineFlow,
@@ -26,7 +25,7 @@ import {
   runAction,
 } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { fail, loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
+import { REPO_ROOT, fail, loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 
 type Fixture = { question: string; ticket: string; urgent: string };
 const fx = loadFixture<Fixture>(import.meta.url);
@@ -52,7 +51,6 @@ const HAS_OPENROUTER = (() => {
     return false;
   }
 })();
-const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 
 /** True when `s` is in the colon lane. A string the parser rejects is not. */
 const isColon = (s: string) => {
@@ -223,10 +221,10 @@ await runGoal(async (failures) => {
   }
 
   // ---- Leg (r): the guard ----------------------------------------------------
-  const guard = () => spawnSync(process.execPath, ["scripts/validate-model-strings.mjs"], { cwd: REPO, encoding: "utf8" });
+  const guard = () => spawnSync(process.execPath, ["scripts/validate-model-strings.mjs"], { cwd: REPO_ROOT, encoding: "utf8" });
   const clean = guard();
   if (clean.status !== 0) failures.push(`r:clean: the guard failed on the repo:\n${clean.stderr}`);
-  const planted = join(REPO, "goals/model-strings/registry-grammar/planted.tmp.ts");
+  const planted = join(REPO_ROOT, "goals/model-strings/registry-grammar/planted.tmp.ts");
   writeFileSync(planted, `export const model = "${["vercel", "openai", "x"].join("/")}";\n`);
   let plantedStatus: number | null = null;
   try {
