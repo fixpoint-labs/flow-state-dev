@@ -90,7 +90,7 @@ export const finishTask = (callId: string, id: () => string, output: unknown): S
 });
 
 /** A step that reads a task without waiting, as a plain `getTask({ id })` does. */
-export const readTask = (callId: string, id: () => string): StepFn => (_options) => ({
+export const getTask = (callId: string, id: () => string): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: callId, toolName: "read_task", args: { id: id() } }],
   finishReason: "tool-calls"
 });
@@ -201,8 +201,8 @@ export function waitFlow(
     if (options.endsOnFiling === undefined) return board;
     // The colleague finishes between the filing and the wait.
     return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
-      addTask: async (init: Parameters<TaskCollectionRef["addTask"]>[0]) => {
-        const task = await board.addTask(init);
+      createTask: async (init: Parameters<TaskCollectionRef["createTask"]>[0]) => {
+        const task = await board.createTask(init);
         await settle(task.id, options.endsOnFiling);
         return task;
       }
@@ -218,7 +218,7 @@ export function waitFlow(
       slowPark(ctx);
       // Filed once per call, as `createTask` files on a board that starts work.
       const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => {
-        const task = await board.addTask({
+        const task = await board.createTask({
           goal: input.question,
           assignee: "researcher",
           ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {})
@@ -288,7 +288,7 @@ export function waitFlow(
     execute: async (input, ctx) => {
       const board = await waitBoard(ctx);
       const call = toolCallOf(ctx)!;
-      const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => (await board.addTask({ goal: input.question, assignee: "researcher" })).id);
+      const taskId = await ctx.runOnce!(`fixture.file:${call.logicalId}`, async () => (await board.createTask({ goal: input.question, assignee: "researcher" })).id);
       return { ok: true, taskId };
     }
   });

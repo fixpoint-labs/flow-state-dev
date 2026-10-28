@@ -22,6 +22,12 @@ export {
 } from "./hooks/useSession";
 
 export {
+  useHarnessLines,
+  type HarnessLinesView,
+  type UseHarnessLinesOptions
+} from "./hooks/useHarnessLines";
+
+export {
   useClientData,
   type ClientDataScopeSubscribeOptions,
   type ClientDataSubscribeOptions,

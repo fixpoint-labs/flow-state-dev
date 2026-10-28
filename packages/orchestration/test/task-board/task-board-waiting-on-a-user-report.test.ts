@@ -68,7 +68,7 @@ const STORED_QUESTION = {
   id: "q-1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", releasedBy: [{ by: "answer" }] },
+  source: { kind: "row", closedBy: [{ by: "answer" }] },
   ask: QUESTION,
 };
 
@@ -168,7 +168,7 @@ describe("the completion reason over stored rows", () => {
         id: "reviewing",
         status: "in_progress",
         leaseUntil: NOW - 1,
-        holds: [
+        questions: [
           {
             id: "susp-1",
             actor: "user",
@@ -197,7 +197,7 @@ describe("the completion reason over stored rows", () => {
         status: "pending",
         attempts: 0,
         deps: ["missing"],
-        holds: [STORED_QUESTION],
+        questions: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -209,7 +209,7 @@ describe("the completion reason over stored rows", () => {
         id: "held-status",
         status: "held",
         attempts: 0,
-        holds: [STORED_QUESTION],
+        questions: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -220,7 +220,7 @@ describe("the completion reason over stored rows", () => {
     id,
     status: "pending",
     attempts: 0,
-    holds: [STORED_QUESTION],
+    questions: [STORED_QUESTION],
   });
 
   it("reports waiting-on-a-user, not blocked-by-failures, with a dispatched row beside the question row", async () => {

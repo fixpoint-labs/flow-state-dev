@@ -120,7 +120,7 @@ function deskFlow(installation: WorkerInstallation, controls: Controls, source: 
       controls.turns.push({ requestId, kind: "turn", message });
       const ref = await board.board.turnResolver(ctx as never);
       const worker = String((ctx.session.state as Record<string, unknown>).workerId);
-      for (const task of controls.file) await ref!.addTask({ id: task.id, goal: task.goal, assignee: task.self === true ? worker : "eng.tasker" });
+      for (const task of controls.file) await ref!.createTask({ id: task.id, goal: task.goal, assignee: task.self === true ? worker : "eng.tasker" });
       await controls.waitInTurn?.();
       return "filed";
     }

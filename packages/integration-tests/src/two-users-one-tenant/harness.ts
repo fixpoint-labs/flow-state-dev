@@ -41,7 +41,7 @@ import {
   bullmqWorker,
   createBullmqRuntime,
   createRedisStreamBridge,
-  createWorkerDispatcher
+  createWorkerRunner
 } from "@flow-state-dev/bullmq";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import {
@@ -248,7 +248,7 @@ function processLocalAdapter(connection: string, prefix: string, mode: WorkerMod
   return {
     mode,
     leaseBackend,
-    createDispatcher: () => createWorkerDispatcher({ queue: runtime.queue, bridge }),
+    createRunner: () => createWorkerRunner({ queue: runtime.queue, bridge }),
     startWorker: (rt) => {
       const worker = runtime.createWorker({
         registry: rt.registry,

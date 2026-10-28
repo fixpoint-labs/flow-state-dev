@@ -61,7 +61,7 @@ worker file's text as instructions.
 | -- | -- | -- |
 | Task | A row on one of the filing session's two boards | One per piece of work |
 | Message | A log of the user's messages, and both sessions | One per send or call |
-| Inbox item | The suspended request's record, or the held task's row | One per open stop |
+| Inbox item | The suspended request's record, or the waiting task's row | One per open stop |
 | Routing state, delegates | The session's state | One per session |
 | Roles | The worker flow's registration ([FIX-2084 D1](../../../specs/issues/FIX-2084/DECISIONS.md#d1)) | One set per worker flow |
 | Whether a coordinator may change its own delegates | The worker's configuration | One per worker |
@@ -104,7 +104,7 @@ which the drain waits on (FIX-2082 D2).
 
 | Setting | Choices | Default |
 | -- | -- | -- |
-| Start | Now · after **dependencies**, named tasks on the same board · **held** until the filer releases it · **held on questions** | Now |
+| Start | Now · after **dependencies**, named tasks on the same board · **held** until the filer releases it · **waiting on questions** | Now |
 | Session | New · the assignee's **ongoing session** for the filer's conversation, which routed tasks reuse · an earlier task's session (a **follow-up**) | New |
 | Result goes to | **The filer:** its waiting request if one waits on the task, else `onTaskSettled`, a new request in its session · the filer's conversation, under the assignee's name (routing uses this) | The filer |
 | Attempts | Tries in all (`maxAttempts`) | 2 (one retry) |
@@ -145,7 +145,7 @@ screen, may call it on a task.
 | Field | Means | Allowed |
 | -- | -- | -- |
 | `goal`, `title`, `context`, `input`, `deps` (same board, no cycles), `priority`, `labels`, `metadata`, `assignee` (one of the filer's delegates), `maxAttempts` | Change the task | Before it starts |
-| `status: "held"` / `"pending"` | Hold it, or release it. A task held on questions is released by its last answer, not by this field | Before it starts |
+| `status: "held"` / `"pending"` | Hold it, or release it. A task waiting on questions starts on its last answer, not by this field | Before it starts |
 | `status: "cancelled"` | Cancel it: resolves its request's suspension as cancelled, or stops the request; cancels its open tasks; closes its Inbox item | Until it finishes |
 | `message` | **Steer** it: before it starts, it joins the brief; a running request takes it before its next model call, a suspended one when it resumes, or as the answer to a question the filer may answer. It ends the current coding run (see Inbox items). It uses no attempt and never cancels the task | Until it finishes |
 
@@ -211,19 +211,19 @@ behind it, such as a held task once it's released, gets a fresh 6. A message is 
 ## Inbox items
 
 **Work stops for a person in one of two ways, each one Inbox item.** If code reads the answer on
-its next line, the request suspends. If the work can pick up from its brief, the task holds.
+its next line, the request suspends. If the work can pick up from its brief, the task waits on its questions.
 
-**A question holds its task,** before it starts or midway. Open questions are a mark on the task's
+**A task waits on its questions,** before it starts or midway. Open questions are a mark on the task's
 row, whatever its status, and the claim gate never claims a row that has one. Filed with questions,
 a task is pending and in the user's Inbox as one item at once: launch files coder's adoption-script
-task held on "Which CSV export should the script read?"; Alice answers, and coder starts, with no
+task waiting on "Which CSV export should the script read?"; Alice answers, and coder starts, with no
 attempt used and a fresh budget. Midway, a request asks its question and ends; the task stays running
 with no request on it, its attempt and budget carrying on. Each answer is a steer, and the first
-answer to a question wins unless a cancel is already written. The last answer releases the hold: a
-held task starts, a running one takes one more turn on the same attempt, picking up from its brief.
+answer to a question wins unless a cancel is already written. The last answer lets the work go on: a
+task not yet started starts, a running one takes one more turn on the same attempt, picking up from its brief.
 Its dependents wait until then, and a task with an open question never settles. A question has no
-deadline unless the host or the call sets one; at a set deadline the hold releases and the work
-goes on, its brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to hold,
+deadline unless the host or the call sets one; at a set deadline the question closes and the work
+goes on, its brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to wait on,
 so it is input, and suspends.
 
 **Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })` when its code reads

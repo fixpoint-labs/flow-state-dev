@@ -56,7 +56,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     {
       module: "packages/orchestration/src/task-board/task-request.ts",
-      from: String.raw`  const fenceSteers = !noProgress && !rechecked && record\.rules\.steerTurn !== undefined && ref\.setWaitingOn !== undefined;`,
+      from: String.raw`  const fenceSteers = !noProgress && !rechecked && record\.rules\.steerTurn !== undefined && ref\.setKeptOpenBy !== undefined;`,
       to: "  const fenceSteers = false; void rechecked;"
     }
   ],
@@ -75,7 +75,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     {
       module: "packages/orchestration/src/tasks/steers.ts",
-      from: String.raw`(\.\.\.\(task\.status === "in_progress" && task\.waitingOn === "filed" \?)`,
+      from: String.raw`(\.\.\.\(task\.status === "in_progress" && task\.keptOpenBy === "filed" \?)`,
       to: '...(task.status === "completed" ? { status: "pending", attempts: 0 } : {}), $1'
     },
     {

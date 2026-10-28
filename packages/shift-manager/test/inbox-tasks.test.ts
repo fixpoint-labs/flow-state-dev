@@ -57,8 +57,8 @@ describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
 });
 
 const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRow => ({
-  boardRef: `${extra.holderSessionId ?? "s_feature"}.tasks`,
-  holderSessionId: extra.holderSessionId ?? "s_feature",
+  boardRef: `${extra.ownerSessionId ?? "s_feature"}.tasks`,
+  ownerSessionId: extra.ownerSessionId ?? "s_feature",
   id,
   title: id,
   goal: null,
@@ -69,7 +69,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   deps: [],
   run: null,
   error: null,
-  holds: [],
+  questions: [],
   steers: [],
   createdAt: null,
   updatedAt: null,
@@ -80,7 +80,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
 
 function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
   const byHolder = new Map<string, BoardRow[]>();
-  for (const r of rows) byHolder.set(r.holderSessionId, [...(byHolder.get(r.holderSessionId) ?? []), r]);
+  for (const r of rows) byHolder.set(r.ownerSessionId, [...(byHolder.get(r.ownerSessionId) ?? []), r]);
   const boards: LoadedSnapshot["boards"] = Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }]));
   return {
     orgId: "org",
@@ -118,11 +118,11 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
         row("A", "in_progress", { assignee: "eng.coder" }),
         // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
         row("B", "in_progress", {
-          holderSessionId: "s_desk",
-          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "row", releasedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+          ownerSessionId: "s_desk",
+          questions: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
         }),
         row("C", "pending"),
-        row("D", "completed", { holderSessionId: "s_other" }),
+        row("D", "completed", { ownerSessionId: "s_other" }),
       ],
       asks,
       workers,
@@ -133,7 +133,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
     const held = row("T", "in_progress", {
       run: { sessionId: "s_run", requestId: "req_1", attempt: 1 },
-      holds: [
+      questions: [
         {
           id: "susp_legacy",
           actor: "user",

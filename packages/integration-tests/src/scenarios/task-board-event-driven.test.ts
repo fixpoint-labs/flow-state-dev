@@ -53,7 +53,7 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
       // drains. Explicit since the default backing is request.
       collection: { backing: "sequencer", collectionId: "ed-board" },
       concurrency: CONCURRENCY,
-      dispatcher: "topological",
+      claimOrder: "topological",
       workers: worker,
       initialTasks: [
         { id: "discover", goal: "discover" },

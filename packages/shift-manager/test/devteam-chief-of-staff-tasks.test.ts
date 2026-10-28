@@ -26,7 +26,7 @@ import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorT
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
-import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { openRowQuestions } from "@flow-state-dev/orchestration/tasks";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
@@ -230,7 +230,7 @@ describe("the chief of staff files tasks (FIX-1794 S11)", () => {
 
 /**
  * The coder takes a conversation's task (FIX-1866): the chief of staff files
- * it with `addTask`, the coder works it as a supervised coding run in a
+ * it with `createTask`, the coder works it as a supervised coding run in a
  * checkout of the project's repository, and the conversation hears one line
  * under `eng.coder`. The harness is a stub that answers with what it finds in
  * its working folder; Jev is scripted through the model resolver's evaluation
@@ -344,11 +344,11 @@ async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; q
   const taskId = listed.tasks[0]!.id as string;
   const held = await until(
     async () => storedTask(lab, taskId),
-    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowHolds(task as never).length > 0,
+    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowQuestions(task as never).length > 0,
     "the task held on a question",
   );
   expect(held).toMatchObject({ attempts: 1 });
-  return { taskId, question: openRowHolds(held as never)[0]! as unknown as Record<string, any> };
+  return { taskId, question: openRowQuestions(held as never)[0]! as unknown as Record<string, any> };
 }
 
 /** The task's row as stored on the conversation's board, in the user's scope. */
@@ -521,7 +521,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     expect(stub.runs).toHaveLength(1);
 
-    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, question: question.id, message: reply })).output).toMatchObject({ ok: true });
+    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
     const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
     await quiet(lab);
     expect(done).toMatchObject({ attempts: 1 });
@@ -549,10 +549,10 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     // The conversation that filed it hears the question once, from the coder, with what to answer it by (FIX-2241).
     expect((await coderLines(lab, id, taskId)).map((line) => line.text)).toEqual([
-      expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*question: "${question.id}"`)),
+      expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*answers: "${question.id}"`)),
     ]);
 
-    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, question: question.id, message: reply })).output).toMatchObject({ ok: true });
+    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
     const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
     expect(done).toMatchObject({ attempts: 1 });
     expect(stub.runs[1]!.prompt).toContain(reply);

@@ -1,6 +1,6 @@
 /**
  * A cancel (`updateTask({ status: "cancelled" })`, FIX-2081's surface for
- * FIX-2078's `cancelTask`) names the dependents it took along by the board's
+ * FIX-2078's cancel) names the dependents it took along by the board's
  * own filer rule (FIX-2078, BP-030): a task filed before rows carried their filer
  * is the conversation's by its partition, so the tasks filed after it, which
  * do carry the conversation as their filer, share its filer, owe no notice of

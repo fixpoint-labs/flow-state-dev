@@ -49,7 +49,7 @@ export function createRecordArgument(opts: {
         collectionId: opts.collectionId,
         state: ctx.sequencer!,
       });
-      const task = await collection.addTask({
+      const task = await collection.createTask({
         goal: `${opts.agentName} (round ${round})`,
         assignee: opts.agentName,
         metadata: { round, stance: opts.stance },

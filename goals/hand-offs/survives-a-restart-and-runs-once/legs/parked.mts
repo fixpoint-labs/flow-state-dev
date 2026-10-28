@@ -152,10 +152,10 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     taskId === undefined || !existsSync(file) ? undefined : taskRows(file, ALICE.userId, ORG).find((t) => t.id === taskId);
   /** The row's open question: a row hold on a running row no steer answers yet. */
   const questionOf = (t: StoredTask | undefined) => {
-    const held = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
+    const held = t as (StoredTask & { questions?: Array<{ id: string; source: { kind: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
     if (held?.status !== "in_progress") return undefined;
     const answered = new Set((held.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-    return held.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+    return held.questions?.find((h) => h.source.kind === "row" && !answered.has(h.id));
   };
   const waitFor = async (check: () => boolean, ms: number, every = 300) => {
     for (const until = Date.now() + ms; Date.now() < until; await sleep(every)) if (check()) return true;
@@ -202,7 +202,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
   served = await o.serve(`${o.label}-after`, storeAfter);
   alice = await connect(served.origin);
   try {
-    const answered = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, question: atKill.question.id, message: `Use ${o.region}.` });
+    const answered = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, answers: atKill.question.id, message: `Use ${o.region}.` });
     calls.push("updateTask_tasks (the answer)");
     const answeredAt = Date.now();
     let ended = ENDED.has(row(storeAfter, taskId)?.status ?? "");
@@ -218,7 +218,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
 
     // A second answer to the same question, on the finished task.
     const before = JSON.stringify(taskRows(storeAfter, ALICE.userId, ORG));
-    const second = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, question: atKill.question.id, message: `Use ${pick(["eu-west", "us-east"])} instead.` });
+    const second = await alice.act("coordinator", conv, "updateTask_tasks", { id: taskId, answers: atKill.question.id, message: `Use ${pick(["eu-west", "us-east"])} instead.` });
     calls.push("updateTask_tasks (a second answer)");
     await quiet(storeAfter);
     const secondWroteNothing = before === JSON.stringify(taskRows(storeAfter, ALICE.userId, ORG));
