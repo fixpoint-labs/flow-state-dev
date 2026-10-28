@@ -184,6 +184,31 @@ A worker whose flow hears messages only in its tasks' sessions, such as the codi
 
 That coding worker answers from the coding session the task ran in, by resuming it with the message. It has no `sendMessage`, so its reply stays in the task's session, where you can read it. Nothing goes back to the sender. To build the same on your own coding flow, pass `harnessTalkTurn` as the flow's message turn (see [Answering a worker's message](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#answering-a-workers-message) in the `@flow-state-dev/harness-manager` README).
 
+## When a task asks a question
+
+A task can stop midway to ask a question and wait for the answer (see [A task held on questions](../orchestration/task-board.md#a-task-held-on-questions)). The question comes from a model's `askQuestion` tool, from code calling `askMidway(ctx, board, [{ prompt }])`, or from a coding run in Shift Manager's `devteam` Lab. Whichever it is, the worker that filed the task gets a message about it.
+
+Each question is one message from the task's worker to the filer. It lands in the conversation that filed the task and wakes the filing worker there, like any other message. The filer's model reads:
+
+```text
+From researcher: Your task "Write the adoption script" (task_7d2e41) asks: "Which CSV export should the script read?"
+Answer it with updateTask({ id: "task_7d2e41", question: "hold_5a2c", message }), or leave it to the user, who sees it in their Inbox.
+```
+
+The task is named by its title, or by its goal when it has no title. A very long question is cut short with an ellipsis so the whole text fits in one message.
+
+The filer can answer from the message alone, with `updateTask({ id, question, message })`. It doesn't need `getTask` first. When the task asks for a yes or a no, the message says to answer with `done: true` or `done: false` as well. The task then goes on, on the same attempt. Or the filer can leave the question to the user. The user's Inbox lists the task once either way, as the place they answer it. The message adds nothing to the Inbox and holds nothing up.
+
+A task filed to a workstream, with `target` or `targetSessionId`, has questions only the user answers. Its message ends `The user answers it from their Inbox; it isn't yours to answer.` instead, and an `updateTask` answer from the filer is refused with `question_is_the_users`.
+
+Each question sends its message once. If the turn that asked is replayed, nothing new is sent. The message's id is `q:<task id>:<question id>`, and it's free: it isn't counted toward the [budget](#the-budget), and a spent budget doesn't stop it.
+
+No message is sent in these cases. The question waits in the Inbox, and `getTask` can read it:
+
+- the task was filed from its own session;
+- the task wasn't filed by a worker: your server code filed it;
+- the task's worker flow doesn't mount `messageReceivedEntry` (see [Without the session kit](#without-the-session-kit)).
+
 ## Delivery
 
 A message is delivered once it lands in the recipient's conversation. The recipient *takes* a message when it starts landing it there. Its row in the [log](#showing-messages-in-your-app) says where it got to, in `status`:
@@ -231,7 +256,7 @@ A fresh budget also starts:
 - for a task that was filed held, when it is released;
 - for a request with nothing behind it, such as one your server code starts.
 
-A task a woken worker files draws on its filer's budget, and so does a delegate's ongoing session. Filing a task spends nothing, and a refused send spends nothing.
+A task a woken worker files draws on its filer's budget, and so does a delegate's ongoing session. Filing a task spends nothing. Nor does a refused send, or the message that tells a filer [its task asked a question](#when-a-task-asks-a-question).
 
 A woken turn sees what's left: its input's `budget` field, and the prompt the session kit builds, say how many more messages the exchange can send.
 
@@ -434,7 +459,7 @@ Each row has:
 
 | Field | What it holds |
 |-------|---------------|
-| `id` | The message id, `msg_…`. |
+| `id` | The message id, `msg_…`, or `q:<task id>:<question id>` for [a task's question](#when-a-task-asks-a-question). |
 | `from`, `to` | The sending and receiving worker ids. |
 | `addressedBy` | `task` or `session` when the message was sent to `{ task }` or `{ session }`. Absent when it was sent to a worker id. |
 | `toTask` | The task it was sent to, when `addressedBy` is `task`. |

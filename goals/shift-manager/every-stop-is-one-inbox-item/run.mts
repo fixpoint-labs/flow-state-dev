@@ -6,7 +6,7 @@
  * The sweep, the children's checks and the gap sweep run beside this, as goal.md says.
  * Legs:     GOAL_LEGS=a,b,c,d,j1,j2,j3 (default all; b answers a's stops)
  * Harness:  GOAL_HARNESS=claude-code (default) | stub, the coding run's
- * Controls: GOAL_CONTROL=public-resume | new-attempt | cancel-keeps-item | steer-ignores-mark | default-deadline
+ * Controls: GOAL_CONTROL=public-resume | new-attempt | cancel-keeps-item | steer-ignores-mark | default-deadline | no-question-message
  */
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -153,7 +153,7 @@ await runGoal(async (failures, tell) => {
         await legD(c);
       }
       if (legs.has("j1")) {
-        say("j1: a filer's steer");
+        say("j1: a filer hears its task's question, and steers");
         await journeyFiles(c);
       }
     } finally {

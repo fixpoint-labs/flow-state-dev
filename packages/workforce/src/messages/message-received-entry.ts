@@ -40,6 +40,8 @@ import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL }
 import { messageLimitsOf } from "./message-limits";
 import { MAX_MESSAGE_CHARS, messageChainsOf, messageLogOf, workerMessagesResources } from "./message-log";
 import { queueBehindUser } from "./queue";
+import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
+import { sendQuestionToFiler } from "./midway-question";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -62,47 +64,7 @@ export const messageReceivedSchema = z.object({
 /** {@link messageReceivedSchema}'s type. */
 export type MessageReceived = z.infer<typeof messageReceivedSchema>;
 
-/**
- * Where a worker hears messages. `"task-sessions"`: only in its tasks'
- * sessions, so a message to it by name is refused before anything is written
- * (`task_sessions_only`). Absent: wherever a message lands.
- */
-export type MessageHearing = "task-sessions";
-
-/**
- * The mark `messageReceivedEntry` puts on what it builds, carrying `hears`.
- * Enumerable, so it survives the spreads a flow is built with; a registered
- * symbol, so two installed copies of this package read each other's mark.
- */
-const RECEIVED_MARK = Symbol.for("@flow-state-dev/workforce/message-received");
-
-/** What the mark carries. */
-interface ReceivedMark {
-  readonly hears?: MessageHearing;
-}
-
-/** The mark on `entry`, or `undefined` for an entry `messageReceivedEntry` didn't build. */
-function receivedMarkOf(entry: unknown): ReceivedMark | undefined {
-  if (typeof entry !== "object" || entry === null) return undefined;
-  return (entry as Record<symbol, ReceivedMark | undefined>)[RECEIVED_MARK];
-}
-
-/** A flow definition's internal actions, or `undefined` for one with none. */
-function internalActionsOf(flow: unknown): Readonly<Record<string, unknown>> | undefined {
-  return (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions;
-}
-
-/**
- * Where `flow`'s worker hears messages: the `hears` its `onMessageReceived`
- * declares, `"anywhere"` when it declares none, or `undefined` when the flow
- * has no entry `messageReceivedEntry` built. The one reader of the mark: the
- * hire, the send and the tool's list all read it here.
- */
-export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | undefined {
-  const mark = receivedMarkOf(internalActionsOf(flow)?.[MESSAGE_RECEIVED_ENTRY]);
-  if (mark === undefined) return undefined;
-  return mark.hears ?? "anywhere";
-}
+export type { MessageHearing } from "./received-mark";
 
 /**
  * Why `name`'s flow can't hear a message, or `undefined` when it can: its
@@ -113,14 +75,14 @@ export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | u
  * @param flow The worker flow's definition.
  */
 export function messageReceivedProblem(name: string, flow: unknown): string | undefined {
-  const entry = internalActionsOf(flow)?.[MESSAGE_RECEIVED_ENTRY] as { inputSchema?: { safeParse?: (v: unknown) => { success: boolean } } } | undefined;
+  const entry = (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions?.[MESSAGE_RECEIVED_ENTRY] as { inputSchema?: { safeParse?: (v: unknown) => { success: boolean } } } | undefined;
   const fix =
     `Build it with \`messageReceivedEntry\`: \`internal: { actions: { ${MESSAGE_RECEIVED_ENTRY}: messageReceivedEntry({ installation, flowKind }) } }\`, ` +
     "or spread the session kit's `board.entries(turn)`.";
   if (entry === undefined) {
     return `worker flow "${name}" has no "${MESSAGE_RECEIVED_ENTRY}", so no worker on it could hear another worker's message. ${fix}`;
   }
-  if (receivedMarkOf(entry) === undefined || entry.inputSchema?.safeParse?.({ messageId: "probe" }).success !== true) {
+  if (messageHearingOf(flow) === undefined || entry.inputSchema?.safeParse?.({ messageId: "probe" }).success !== true) {
     return `worker flow "${name}" has a "${MESSAGE_RECEIVED_ENTRY}" that \`messageReceivedEntry\` didn't build. ${fix}`;
   }
   return undefined;
@@ -271,7 +233,10 @@ export function messageReceivedEntry(options: {
   block = block.step(replied) as never;
 
   const entry = { inputSchema: messageReceivedInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };
-  const mark: ReceivedMark = options.hears === undefined ? {} : { hears: options.hears };
+  const mark: ReceivedMark = {
+    ...(options.hears === undefined ? {} : { hears: options.hears }),
+    tellMidwayQuestion: (ctx, row, holds) => sendQuestionToFiler(ctx, { installation: options.installation, flowKind: options.flowKind }, row, holds)
+  };
   (entry as Record<symbol, unknown>)[RECEIVED_MARK] = mark;
   return entry;
 }

@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const fault = { throwFastPath: false, loseFastPath: false, refuseFastPath: false, throwAfterTake: false, refuseResends: false };
+const fault = { dropFastPathOnce: false, throwFastPath: false, loseFastPath: false, refuseFastPath: false, throwAfterTake: false, refuseResends: false };
 
 // A recipient that dies between its take and its items: the first message
 // turn's start (a hop past the user's own) throws, once.
@@ -38,6 +38,11 @@ vi.mock("@flow-state-dev/core/types", async (original) => {
   return {
     ...actual,
     dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) => {
+      // The send ended between its row and its dispatch: nothing was started.
+      if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.dropFastPathOnce) {
+        fault.dropFastPathOnce = false;
+        return Promise.reject(new Error("the process died before the dispatch"));
+      }
       if (spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.throwFastPath) {
         return Promise.reject(new Error("the connection dropped"));
       }
@@ -69,6 +74,7 @@ const { defineSessionBoard, workerConfigSchema } = await import("../src");
 const { sendMessage } = await import("../src/messages/send-message");
 const { messageTurnStateSchema } = await import("../src/messages/hop");
 const { workerMessagesResources } = await import("../src/messages/message-log");
+const { messageReceivedEntry } = await import("../src/messages/message-received-entry");
 type WorkerInstallation = import("../src/workers/installation").WorkerInstallation;
 type BoardHost = import("./conversation-board-harness").BoardHost;
 
@@ -83,6 +89,7 @@ afterEach(async () => {
   fault.refuseFastPath = false;
   fault.throwAfterTake = false;
   fault.refuseResends = false;
+  fault.dropFastPathOnce = false;
   await open?.dispose();
   open = undefined;
 });
@@ -389,6 +396,35 @@ function repeatingSenderFlow(installation: WorkerInstallation, results: unknown[
   } as never);
 }
 
+/**
+ * The same send twice, from a worker flow with no session board: no pass, so
+ * a send has its own dispatch only, as a server send from the coder does.
+ */
+function passlessSenderFlow(installation: WorkerInstallation, results: unknown[]) {
+  const doorInput = z.object({ message: z.string() });
+  const turn = handler({
+    name: "passless-sender-turn",
+    inputSchema: doorInput,
+    outputSchema: z.unknown(),
+    requestStateSchema: messageTurnStateSchema,
+    resources: { ...installation.resources, ...workerMessagesResources },
+    execute: async (_input, ctx) => {
+      for (let i = 0; i < 2; i += 1) {
+        results.push(await sendMessage(ctx as never, installation, "sender", { to: "lead", text: "Once?" }, "sendMessage", { id: "msg_fixedrepeat" }));
+      }
+      return "";
+    }
+  });
+  return defineFlow({
+    kind: "sender",
+    configSchema: workerConfigSchema(),
+    session: installation.session({}),
+    resources: { ...installation.resources, ...workerMessagesResources },
+    actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "sender" }) } }
+  } as never);
+}
+
 describe("a send repeated under one server-chosen id", () => {
   it("is one message: the repeat writes no second row, pays no second place and owes nothing new", async () => {
     const results: unknown[] = [];
@@ -417,6 +453,33 @@ describe("a send repeated under one server-chosen id", () => {
     const runtime = await h.state.getRuntime();
     const chains = Object.values(await runtime.stores.resourceState.getByPrefix("user", `alice:~org:${ORG}`, "workforce/message-chains/"));
     expect(chains.map((chain) => (chain.state as { sent: string[] }).sent)).toEqual([["msg_fixedrepeat"]]);
+    const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
+    expect(await receivedIn(h, lead.id, "msg_fixedrepeat")).toHaveLength(1);
+  }, 30_000);
+
+  it("is sent by the repeat when the flow carries no pass and the first send never dispatched: the message isn't lost, and lands once", async () => {
+    fault.dropFastPathOnce = true;
+    const results: unknown[] = [];
+    const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "" } }] });
+    const h = bootBoardHost({
+      durable: true,
+      judgment,
+      standard: [...boardWorkers(), { id: "sendy", declared: { flow: "sender" }, body: "", skills: [] }],
+      flows: (installation) => ({ sender: { flow: passlessSenderFlow(installation, results), roles: [] } })
+    });
+    open = h;
+    await h.state.getRouter();
+    const created = await h.create("alice", "sender", { state: { workerId: "sendy" } });
+    await h.post("alice", created.body.session!.id as string, "respond", { message: "send it" }, "sender");
+    await h.settled();
+    // No pass would ever send it: the repeat is its only second chance.
+    expect(results).toEqual([
+      { ok: true, id: "msg_fixedrepeat" },
+      { ok: true, id: "msg_fixedrepeat", requestId: expect.any(String) }
+    ]);
+    const rows = await logRows(h);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "msg_fixedrepeat", status: "delivered" });
     const lead = (await h.client("alice").findWorkerSession({ worker: "lead" }))!;
     expect(await receivedIn(h, lead.id, "msg_fixedrepeat")).toHaveLength(1);
   }, 30_000);

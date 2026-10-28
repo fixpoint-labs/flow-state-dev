@@ -39,7 +39,7 @@
  * The sender, the sessions and the budget come from the sending turn's own
  * session and request state, never from the tool's input.
  */
-import type { BlockContext, DispatchOutcome } from "@flow-state-dev/core/types";
+import type { BlockContext, DispatchOutcome, ResourceRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { filingProjectAddressOf, sessionIdOfFiling } from "../conversation-board/filing-session";
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
@@ -48,7 +48,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, FILING_WORKER_STATE_KE
 import { newChainId, TURN_CHAIN_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { carriesPass, dispatchMessage, dropOwed, endMessage, isFinalRefusal, oweMessage } from "./delivery";
 import { messageLimitsOf } from "./message-limits";
-import { messageHearingOf } from "./message-received-entry";
+import { messageHearingOf } from "./received-mark";
 import { checkTargetSession, checkTaskTarget, type MessageTarget } from "./message-target";
 import {
   MAX_MESSAGE_CHARS,
@@ -171,6 +171,68 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
   return { sessionId: sessionIdOfFiling(filing), flow };
 }
 
+/** A send's place: its id, its chain and its hop, or why the budget refused it. */
+type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
+
+/**
+ * The place a send pays for. One per message a user types: a send's place is
+ * its place in its chain's row, and never less than one past its own turn's. A
+ * request with no chain behind it (no user's turn, no session's) starts one
+ * here, for all its sends. The per-request count is taken first and given back
+ * if the chain has no place left, so a refused send spends nothing.
+ */
+async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
+  const limits = messageLimitsOf(installation);
+  const chains = messageChainsOf(ctx);
+  const floor = turnHopOf(ctx) + 1;
+  const budgetRefusal = (hop: number): Place => ({
+    ok: false,
+    error:
+      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
+      "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
+  });
+  /** The place a send takes in a chain that already holds `sent`. */
+  const placeAfter = (sent: number) => Math.max(floor, sent + 1);
+  const known = turnChainOf(ctx);
+  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
+  const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
+    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
+    if (sent >= limits.perTurn) return { state: {}, result: undefined };
+    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
+    return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain }, result: turnChain };
+  });
+  if (typeof reserved !== "string") {
+    return { ok: false, error: `per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.` };
+  }
+  const chain = reserved;
+  const id = given ?? newMessageId();
+  const chainRow = await chains.getOrCreate(chain, { sent: [] });
+  await chainRow.updateState((row) =>
+    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
+  );
+  const place = chainRow.state.sent.indexOf(id);
+  if (place < 0) {
+    await atomicRequest((current) => {
+      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
+      return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
+    });
+    return budgetRefusal(placeAfter(chainRow.state.sent.length));
+  }
+  const hop = placeAfter(place);
+  return { ok: true, id, chain, hop };
+}
+
+/**
+ * The server's own message's place (FIX-2241): one past the sending turn's, in
+ * its chain or a new one, written into neither the chain's row nor the
+ * request's count, so it costs no budget and no spent one refuses it. Every
+ * exempt send in one request shares that hop, intentionally: none is a reply
+ * to another, and the hop limit still bounds what each one draws.
+ */
+function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
+  return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
+}
+
 /**
  * Send one message from the running session's worker.
  *
@@ -178,11 +240,15 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
  * @param from The sending block's name, for the dispatch's provenance.
  * @param options.id A server-chosen id, so a send repeated after a crash is
  *   one message: when its row is already written, the repeat owes nothing,
- *   pays nothing, leaves the row as it is and answers as the row reads (a
- *   refusal stays one). Never a model's input.
+ *   pays nothing and answers as the row reads (a refusal stays one). From a
+ *   flow with no pass, a repeat finding the row never taken dispatches it
+ *   again, since nothing else would. Never a model's input.
  * @param options.call The sender waits on the reply until `deadlineAt`
  *   (FIX-2239): the row is marked a call, and the dispatch says the sender
  *   waits on it. Set by the call's own code, never by a model.
+ * @param options.exempt The server's own message (a task's midway question,
+ *   FIX-2241): it costs no budget and no spent one refuses it. Never a
+ *   model's input.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -190,7 +256,7 @@ export async function sendMessage(
   flowKind: string,
   input: SendMessageInput,
   from: string,
-  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number } } = {}
+  options: { readonly id?: string; readonly call?: { readonly deadlineAt: number }; readonly exempt?: true } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -203,11 +269,18 @@ export async function sendMessage(
 
   // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
-  const written = options.id === undefined ? undefined : (await log.getOptional(options.id))?.state;
-  if (written !== undefined) {
+  const writtenRef = options.id === undefined ? undefined : await log.getOptional(options.id);
+  const written = writtenRef?.state;
+  if (writtenRef !== undefined && written !== undefined) {
     // The repeat answers what the first send did: an ended row stays a refusal.
     if (written.status === "refused" || written.status === "undeliverable") {
       return refuse(`not_delivered: the message to "${written.to}" was ${written.status} (${written.reason ?? "no reason was given"}).`);
+    }
+    // A flow with no pass sends on its own dispatch only, so a repeat finding
+    // the row never taken (the first send ended between the write and the
+    // dispatch) sends it again; the take keeps it once.
+    if (written.status === "unconfirmed" && written.takenBy === undefined && !carriesPass(installation, flowKind)) {
+      return dispatchOnce(ctx, writtenRef, written, from, false);
     }
     return { ok: true, id: written.id };
   }
@@ -245,47 +318,10 @@ export async function sendMessage(
   }
 
   // ---- the budget ----------------------------------------------------------
-  // One per message a user types: a send's place is its place in its chain's
-  // row, and never less than one past its own turn's. A request with no chain
-  // behind it (no user's turn, no session's) starts one here, for all its
-  // sends. The per-request count is taken first and given back if the chain
-  // has no place left, so a refused send spends nothing.
-  const limits = messageLimitsOf(installation);
-  const chains = messageChainsOf(ctx);
-  const floor = turnHopOf(ctx) + 1;
-  const budgetRefusal = (hop: number): SendOutcome =>
-    refuse(
-      `budget: this would be message ${hop} since the user's last line, and the budget is ${limits.hopLimit}. ` +
-        "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
-    );
-  /** The place a send takes in a chain that already holds `sent`. */
-  const placeAfter = (sent: number) => Math.max(floor, sent + 1);
-  const known = turnChainOf(ctx);
-  const atomicRequest = (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never);
-  const reserved = await withOutcome(atomicRequest, (current: Readonly<Record<string, unknown>>) => {
-    const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-    if (sent >= limits.perTurn) return { state: {}, result: undefined };
-    const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
-    return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_CHAIN_STATE]: turnChain }, result: turnChain };
-  });
-  if (typeof reserved !== "string") {
-    return refuse(`per_request_limit: one request sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.`);
-  }
-  const chain = reserved;
-  const id = options.id ?? newMessageId();
-  const chainRow = await chains.getOrCreate(chain, { sent: [] });
-  await chainRow.updateState((row) =>
-    placeAfter(row.sent.length) > limits.hopLimit ? row : { ...row, sent: [...row.sent, id] }
-  );
-  const place = chainRow.state.sent.indexOf(id);
-  if (place < 0) {
-    await atomicRequest((current) => {
-      const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 1;
-      return { [TURN_SENT_STATE]: Math.max(0, sent - 1) };
-    });
-    return budgetRefusal(placeAfter(chainRow.state.sent.length));
-  }
-  const hop = placeAfter(place);
+  // The server's own message costs none (FIX-2241); every other send pays its place.
+  const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
+  if (!paid.ok) return paid;
+  const { id, chain, hop } = paid;
 
   // ---- owed, the row, then one dispatch ------------------------------------
   const resends = carriesPass(installation, flowKind);
@@ -310,10 +346,27 @@ export async function sendMessage(
     at: Date.now()
   };
   const ref = await log.getOrCreate(id, row);
+  return dispatchOnce(ctx, ref, row, from, resends);
+}
 
+/**
+ * Dispatch `row` once and answer the send: a final refusal ends the row and
+ * is the answer; anything else is recorded on the row for the pass to send
+ * again, and the send is ok.
+ *
+ * @param resends The sending flow carries a pass, which owes `row`'s id.
+ */
+async function dispatchOnce(
+  ctx: BlockContext,
+  ref: ResourceRef<WorkerMessageRow>,
+  row: WorkerMessageRow,
+  from: string,
+  resends: boolean
+): Promise<SendOutcome> {
+  const { id } = row;
   let outcome: DispatchOutcome | undefined;
   try {
-    outcome = await dispatchMessage(ctx, row, from, options.call !== undefined);
+    outcome = await dispatchMessage(ctx, row, from, row.call === true);
   } catch (error) {
     // It may have started: the pass sends it again, and the take keeps it once.
     await ref.patchState({ reason: error instanceof Error ? error.message : String(error) });
@@ -322,7 +375,7 @@ export async function sendMessage(
     const reason = `${outcome.refused}: ${outcome.detail}`;
     if (isFinalRefusal(outcome.refused) && (await endMessage(ref, "refused", reason, { told: true }))) {
       if (resends) await dropOwed(ctx, [id]);
-      return refuse(`not_delivered: the message to "${recipient.id}" was refused (${reason}).`);
+      return { ok: false, error: `not_delivered: the message to "${row.to}" was refused (${reason}).` };
     }
     await ref.patchState({ reason });
   }
