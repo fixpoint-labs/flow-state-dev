@@ -156,6 +156,19 @@ describe("taskBoard - handle structure", () => {
       })
     ).toThrow(/unknown claim order/);
   });
+
+  // An untyped caller still passing the old key would otherwise lose its claim order
+  // (and a guard like runOwnerClaimOrder) without a word.
+  it("refuses the old `dispatcher` key by name, pointing at claimOrder", () => {
+    expect(() =>
+      taskBoard({
+        name: "bad",
+        collection: { collectionId: "x" },
+        dispatcher: "priority",
+        workers: makeGoalWorker("noop", () => null),
+      } as never)
+    ).toThrow(/sets `dispatcher`, which is now `claimOrder`/);
+  });
 });
 
 // ---------------------------------------------------------------------------

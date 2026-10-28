@@ -72,6 +72,7 @@ import {
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
+import { refuseRetiredDispatcherOption } from "../runner";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   createInProcessRunner,
@@ -431,6 +432,7 @@ export async function resolveInProcessPrincipal(
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
+  refuseRetiredDispatcherOption(options, "createInboundTransportHost");
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;

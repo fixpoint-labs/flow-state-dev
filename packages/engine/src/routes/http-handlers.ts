@@ -74,6 +74,7 @@ import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBo
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowRunner } from "../transports/runner";
+import { refuseRetiredDispatcherOption } from "../transports/runner";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
@@ -234,6 +235,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
   host: InboundTransportHost;
 } {
+  refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
   const stores = resolveStores(options.stores);
   const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
     debugEndpointsEnabled: options.debugEndpointsEnabled,

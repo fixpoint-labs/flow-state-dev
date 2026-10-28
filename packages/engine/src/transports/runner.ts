@@ -166,3 +166,18 @@ export interface StreamBridge {
   createPublisher(requestId: string): StreamPublisher;
   createSubscriber(requestId: string): StreamSubscriber;
 }
+
+/**
+ * Refuse the `dispatcher` option key, which is now `runner`. A caller that is
+ * not type-checked, or spreads an older config object, would otherwise have
+ * its queue runner silently dropped and its work run in process.
+ *
+ * @param options - The options object an entry point was handed.
+ * @param where - The entry point's name, for the message.
+ */
+export function refuseRetiredDispatcherOption(options: object, where: string): void {
+  if ((options as { dispatcher?: unknown }).dispatcher === undefined) return;
+  throw new Error(
+    `${where}: the \`dispatcher\` option is now \`runner\`. Pass the same FlowRunner as \`runner\`.`
+  );
+}

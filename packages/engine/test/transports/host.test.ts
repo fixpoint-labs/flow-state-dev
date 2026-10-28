@@ -11,6 +11,7 @@ import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
   createInMemoryStores,
+  createFlowApiRouter,
   createInboundTransportHost,
   createResponseEmitter,
   defaultBodyUserIdPrincipalResolver,
@@ -18,6 +19,7 @@ import {
   PrincipalResolutionError
 } from "../../src";
 import type { FlowRunner } from "../../src/transports/runner";
+import { createFlowRouteHandlers } from "../../src/routes/http-handlers";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 
 function buildHost(opts?: { runner?: FlowRunner }) {
@@ -549,5 +551,29 @@ describe("createInboundTransportHost", () => {
       // After execution the record exists — written by the runtime, not the host.
       expect(await stores.request.get(handle.requestId)).toBeDefined();
     });
+  });
+});
+
+// A caller that is not type-checked, or spreads an older config, would otherwise lose its queue
+// runner without a word and run its work in process: each entry point refuses the old key by name.
+describe("the old `dispatcher` option", () => {
+  const legacy = { dispatcher: { dispatch: vi.fn(), close: vi.fn() } };
+
+  it("is refused by createInboundTransportHost, pointing at runner", () => {
+    expect(() =>
+      createInboundTransportHost({
+        registry: createFlowRegistry(),
+        stores: createInMemoryStores(),
+        resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+        runtimeConfig: {},
+        ...legacy
+      } as never)
+    ).toThrow(/createInboundTransportHost: the `dispatcher` option is now `runner`/);
+  });
+
+  it("is refused by createFlowRouteHandlers and createFlowApiRouter", () => {
+    const options = { registry: createFlowRegistry(), stores: createInMemoryStores(), ...legacy } as never;
+    expect(() => createFlowRouteHandlers(options)).toThrow(/createFlowRouteHandlers: the `dispatcher` option is now `runner`/);
+    expect(() => createFlowApiRouter(options)).toThrow(/createFlowApiRouter: the `dispatcher` option is now `runner`/);
   });
 });

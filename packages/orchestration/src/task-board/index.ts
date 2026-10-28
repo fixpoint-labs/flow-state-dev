@@ -753,6 +753,16 @@ export function taskBoard<
     );
   }
 
+  // The claim order's option was `dispatcher` (FIX-2245), the word the block
+  // keeps. Refused by name, so a board built with it does not quietly drop its
+  // claim order, and with it a guard such as `runOwnerClaimOrder()`.
+  if ((config as { dispatcher?: unknown }).dispatcher !== undefined) {
+    throw new Error(
+      `[task-board] "${name}" sets \`dispatcher\`, which is now \`claimOrder\`. Pass the same ` +
+        `claim order (or "fifo", "topological", "priority") as \`claimOrder\`.`
+    );
+  }
+
   const caps = resolveBoardCaps(name, config);
 
   if (concurrency < 1) {
