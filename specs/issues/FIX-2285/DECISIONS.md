@@ -28,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A cached read-only checkout per project, kept fresh beside the runs. Or reads against the remote with nothing local |
 | **Because** | The host already keeps one bare clone per remote under `<root>/.clones/`, fetches it before every new run branch, and guards it with a lock. Git reads files, lists trees and greps at a commit straight from a bare repository, with no worktree (checked, [Settled](#settled)). So a read adds no copy of the repository and no directory to clean up, and every coding run's fetch freshens it. A checkout per project is a second copy per project to fetch, reset and garbage-collect. Git can't read a file's body from a remote without fetching it, and a forge's file API would put one vendor's API in a package that today speaks only git ([tenet 2](../../../docs/philosophy.md)) |
-| **Locks in** | The read shares the coding runs' clone, disk and lock. The first read of a project no run has touched makes the clone, once, inside that read's call. A host that is not a `localWorkspaceHost` needs its own read view before its apps can offer reads. A project row can name any remote the server's own credentials can fetch; coding runs already allow that, and reads make it a tool call instead of a harness run |
+| **Locks in** | The read shares the coding runs' clone, disk and lock. The first read of a project no run has touched makes the clone, once, inside that read's call. The read view is an optional method on the `WorkspaceHost` contract: a host without one is refused when the capability is built, never at call time, and gets reads by adding the method. A project row can name any remote the server's own credentials can fetch; coding runs already allow that, and reads make it a tool call instead of a harness run |
 
 ![D1: where a read's bytes come from. Chosen: the host's shared clone, at one commit, no worktree. Instead of: a cached checkout per project. Decides it: no second copy, freshened by every run's fetch. Price: the first read of an untouched project pays a full clone. Tie: both need a fetch to be fresh](figures/d1-shared-clone.svg)
 
@@ -44,7 +44,7 @@ remote sandbox. Then that host answers reads from its own place, behind the same
 | | |
 |---|---|
 | **Instead of** | Letting a read name any branch, a coding run's own included |
-| **Because** | The clone is shared by remote, not by project. Two projects on one remote, one private to another user, keep their runs' branches in the same clone, so "any branch" would let a member of one read a run of the other. The default branch is what the project's members all see on the remote. A minute bounds staleness without a fetch per call: a model reads in bursts. A run's own work is the run's to report (`getTask`, and FIX-2290's progress note). A project mapped to an operator's checkout reads the base a new run there would be cut from, resolved by the host's own base resolution (the newer of the base and its fetched upstream), and only for a path listed in `localRepositories` |
+| **Because** | The clone is shared by remote, not by project. Run branches live in the clone's `refs/heads/*`; the host's fetch writes only `refs/remotes/origin/*`. A read that resolves `refs/remotes/origin/<default>` therefore can't reach a run branch, by construction, and a package test plants a run branch and a second project's pushed branch and proves no read reaches either. Two projects on one remote, one private to another user, keep their runs' branches in the same clone, so "any branch" would let a member of one read a run of the other. The default branch is what the project's members all see on the remote. A minute bounds staleness without a fetch per call: a model reads in bursts. A run's own work is the run's to report (`getTask`, and FIX-2290's progress note). A project mapped to an operator's checkout reads the base a new run there would be cut from, resolved by the host's own base resolution (the newer of the base and its fetched upstream), and only for a path listed in `localRepositories` |
 | **Locks in** | Every read in one tool call sees one commit, and the result names it. A main session can't see a coder's work until it reaches the remote's default branch. Widening to a named remote branch later is additive; narrowing after release would break callers |
 
 ![D2: which version a read sees. Chosen: the remote's default branch, fetched at most a minute ago. Instead of: any branch the read names. Decides it: the clone is shared by remote, so run branches of other projects live in it. Price: a coder's unpushed work is invisible to a read](figures/d2-default-branch.svg)
@@ -83,12 +83,19 @@ host for reads alone, and if that becomes common the capability can build one it
 - **Paths are repository paths**, `/`-separated, no leading `/`, no `.` or `..` segment.
   A repository read goes through git's object store, so no path reaches the disk. A files
   read lists only `project-files/<id>/…`, filtered at the source (BP-033).
-- **A read never waits on a held clone lock.** A provision can hold it for minutes. A read that finds it held serves the last fetched commit and says how old it is. The time of the last fetch is kept where every host sharing the root sees it (on disk beside the clone), not in one process's memory.
 - **Every read is a path at one resolved commit.** No tool takes a revision, a commit or a pathspec: the clone holds other projects' run objects, private ones included, and only a path at the default branch's commit keeps them out of reach. Paths go to git as literal pathspecs.
-- **The fetch takes the clone lock; reads don't.** A read resolves the default branch to a
-  commit once, then reads that commit. A fetch that fails falls back to the last fetched commit,
-  and the result says how old it is. A clone that can't be made is the host's
-  `remote-unreadable`.
+- **One rule for the clone lock: a read never waits on it.** A provision can hold it for minutes.
+  - *No clone yet:* the read makes one without the lock, through the host's existing
+    `.making-<uuid>` directory and rename, which already lets a racing provision win.
+  - *A clone older than a minute:* the read tries the lock once, without waiting, through a new
+    try-acquire in `lock.ts`. On success it fetches. When the lock is held, it skips the fetch
+    and serves the last fetched commit, with its age. A lock left by a dead process counts as
+    free under the same stale rule a waiting acquire uses, so a crash can't freeze reads on an
+    old commit.
+  - The time of the last fetch is kept on disk beside the clone, where every host sharing the
+    root sees it. A fetch that fails falls back the same way. A clone that can't be made is the
+    host's `remote-unreadable`.
+  - A read resolves the default branch to a commit once and reads only that commit.
 - **grep uses git's extended regular expressions on a repository** and JavaScript's on kept
   files, both with core's literal fallback on a pattern that doesn't compile (on git, a retry with
   fixed strings). The result names the dialect it used, since a static description can't know
@@ -100,6 +107,7 @@ host for reads alone, and if that becomes common the capability can build one it
   the source gave, so the model can say why.
 - **The lab shares one host between `harness-thread` and the agent flow**, and gives the preset
   to `desk.main` and `desk.researcher`. Changes still go to `desk.coder`.
+- **The refusal legs have package tests too.** `runProjectOf` refuses `not-a-member` for a session whose stored project lost the user from its members; the goal's SQLite edit stands in for the members write the package doesn't have.
 - **Changesets:** `@flow-state-dev/workspace` and `@flow-state-dev/workforce`, minor. The lab is
   private.
 
@@ -146,5 +154,6 @@ Findings: **folded** the names (*project files* meant the kept files; `show` bro
   means the kept files; the read view takes the files answer too, so the caps have one home.
 - **Goal validation** — added a refusal leg for someone taken off the members, the `no-gate`
   control, and disk signals for no clone or place per question.
+- **Review round 1** — one lock rule (lock-free first clone, try-acquire fetch, stale locks count as free); the read view is an optional method on the host contract, refused at build; D2 rests on the refs split, with a test that proves it. Because Jake's review found the lock bullets contradicted each other.
 
 **Open: none.**

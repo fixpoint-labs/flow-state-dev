@@ -135,7 +135,7 @@ only formats.
 
 | Adds | Existing piece considered | Why it doesn't fit, or how this is composed |
 |---|---|---|
-| A read view on the workspace host | `provision`, which hands back a checkout | Composed from the host's clone, `refresh` and lock. `provision` makes a branch and a worktree per place; a question needs neither |
+| An optional read view on the workspace host contract, and a try-acquire on its lock | `provision`, which hands back a checkout; `acquireLock`, which only waits | Composed from the host's clone, `refresh` and lock. `provision` makes a branch and a worktree per place; a question needs neither |
 | `projectSourceCapability` and its three tools | Core's resource trio; the bash capability; `readProjectFiles` | Composed from `projectWorkspace()` and the read view. The trio can't reach a repository and gates on `llmReadable`, not membership; bash writes, and mounts collections, not a repository; `readProjectFiles` lists names for a caller that names the project |
 
 | The debt | |
