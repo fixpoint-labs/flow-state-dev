@@ -168,21 +168,38 @@ export function historySummary(options: HistorySummaryOptions) {
       const stillPending = pendingTurns.filter((t) => !t.settled).map((t) => t.requestId);
 
       const all = await ctx.session.items.turns();
-      // After the mark by position while the window holds it (two turns can
-      // share a start millisecond), by start time once it has left.
+      // After the mark by position, since two turns can share a start
+      // millisecond: from the mark while the window holds it, else from the
+      // oldest turn the last fold left unfolded, else by start time.
       const markAt = state.throughRequestId === null ? -1 : all.findIndex((t) => t.requestId === state.throughRequestId);
+      const nextAt = state.nextRequestId === null ? -1 : all.findIndex((t) => t.requestId === state.nextRequestId);
       const after = markAt !== -1
         ? all.slice(markAt + 1)
-        : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
+        : nextAt !== -1
+          ? all.slice(nextAt)
+          : all.filter((t) => state.throughStartedAtMs === null || t.startedAtMs > state.throughStartedAtMs);
 
-      // Turns lost: the oldest unfolded turn the last fold saw left unfolded,
+      // Turns lost: the oldest unfolded turn the last fold saw left the window
+      // unfolded (gone, or older than the window's first turn; one newer than
+      // the window was folded by a turn that started after this one loaded),
       // or the summary started after turns had already left the window.
+      const nextGone =
+        state.nextRequestId !== null && nextAt === -1
+          ? (await ctx.session.items.turns({ requestIds: [state.nextRequestId] }))[0]
+          : null;
       const lost =
-        (state.nextRequestId !== null && !all.some((t) => t.requestId === state.nextRequestId)) ||
+        (nextGone !== null && (nextGone === undefined || (all[0] !== undefined && nextGone.startedAtMs <= all[0].startedAtMs))) ||
         (state.attempts === 0 && window.startRequestId !== undefined);
 
       const due = after.length > window.turns - quarter;
-      const batch: HistoryTurn[] = due ? after.slice(0, quarter) : [];
+      // A quarter of settled turns per fold; the waiting turns among them move
+      // to pending without taking a place, or enough of them could hold every
+      // settled turn back until it left the window.
+      let batchEnd = 0;
+      for (let settled = 0; due && batchEnd < after.length && settled < quarter; batchEnd++) {
+        if (after[batchEnd]!.settled) settled++;
+      }
+      const batch: HistoryTurn[] = after.slice(0, batchEnd);
       if (batch.length === 0 && settledPending.length === 0) return null;
 
       const folded = [...settledPending, ...batch.filter((t) => t.settled)];

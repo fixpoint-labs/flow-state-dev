@@ -144,6 +144,7 @@ import { requestInSessionScope, sessionRequestScope } from "./session-request-sc
 import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
+  compareTurnsOldestFirst,
   outputItemToSessionItem,
   createSessionItemViews,
   buildJournalEntry,
@@ -800,13 +801,14 @@ export async function createExecutionContext<
   // off has no result to show), then sort ascending for stable history
   // ordering. Reused by all()/client() (via priorItems) and history() (via
   // loadLLMHistory).
-  // The window itself: the N most recently started, oldest dropped when the
-  // read found one more. `historyStart` names the first turn the window holds
-  // when that extra row says an earlier turn is out of view.
-  const byStart = [...listedPriorRequests].sort((a, b) => a.startedAtMs - b.startedAtMs);
-  const priorRequests = byStart.length > historyWindowTurns ? byStart.slice(byStart.length - historyWindowTurns) : byStart;
+  // The window itself: the N most recently started, in the store's newest-first
+  // order (which breaks a start-time tie by id), trimmed before it is reversed
+  // so a tie at the edge keeps the same turn it did without the extra row.
+  // `historyStart` names the first turn the window holds when that extra row
+  // says an earlier turn is out of view.
+  const priorRequests = listedPriorRequests.slice(0, historyWindowTurns).reverse();
   const historyStart =
-    byStart.length > historyWindowTurns && priorRequests[0] !== undefined
+    listedPriorRequests.length > historyWindowTurns && priorRequests[0] !== undefined
       ? { requestId: priorRequests[0].id }
       : undefined;
   const retried = retriedIds(priorRequests, options.metadata);
@@ -826,7 +828,7 @@ export async function createExecutionContext<
     .filter((r) => r.id !== requestId)
     .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
-    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+    .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
   // `items.turns()` (FIX-1613): the window's turns and every turn of this
   // session still open, each marked settled or not, or named turns read by id
@@ -867,7 +869,7 @@ export async function createExecutionContext<
         const open = record.status === "in_progress" || record.status === "suspended" || (await isParked(record));
         turns.push(historyTurn(record, !open));
       }
-      return turns.sort((a, b) => a.startedAtMs - b.startedAtMs);
+      return turns.sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
     }
     const windowTurns = priorRequests
       .filter((r) => r.id !== requestId && !(r.status === "interrupted" && retried.has(r.id)))
@@ -878,7 +880,7 @@ export async function createExecutionContext<
     )
       .filter((r) => r.id !== requestId && !listed.has(r.id))
       .map((r) => historyTurn(r, false));
-    return [...windowTurns, ...openTurns].sort((a, b) => a.startedAtMs - b.startedAtMs);
+    return [...windowTurns, ...openTurns].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.requestId, b.startedAtMs, b.requestId));
   };
 
   // Build prior items from the settled prior request records. This replaces the
@@ -2945,7 +2947,7 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
-        turnOrder: async () => (await readTurns()).map((t) => t.requestId),
+        readTurn: async (id) => (await readTurns({ requestIds: [id] }))[0],
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {

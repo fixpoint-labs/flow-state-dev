@@ -126,6 +126,20 @@ describe("historyStart: where the turns a request read begin", () => {
     expect(requests.find((r) => r.id === "req_cur")?.historyStart).toEqual({ requestId: "req_3" });
   });
 
+  it("keeps the turn the store ranks newest when two turns tie at the window's edge", async () => {
+    const stores = createInMemoryStores();
+    // Same start millisecond: the store breaks the tie by id, descending, so
+    // req_2 is the most recent turn and the one a one-turn window holds, as
+    // it did before the extra row was read.
+    await stores.request.set("req_1", turn("sess_tie", 1, { startedAtMs: 1001 }), "any");
+    await stores.request.set("req_2", turn("sess_tie", 2, { startedAtMs: 1001 }), "any");
+
+    const ctx = await contextFor(stores, "sess_tie", 1);
+
+    expect((await ctx.session.items.history()).map(textOf)).toEqual(["turn 2"]);
+    expect(ctx.session.window).toEqual({ turns: 1, startRequestId: "req_2" });
+  });
+
   it("records nothing while every earlier turn is still in the window", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_in", 3);
@@ -172,6 +186,19 @@ describe("history({ afterRequestId })", () => {
     expect(messages.map(textOf)).toEqual(["turn 3", "turn 4", "turn 5"]);
   });
 
+  it("reads nothing when the named turn is newer than every turn the window holds", async () => {
+    const stores = createInMemoryStores();
+    await seedTurns(stores, "sess_newer", 4);
+
+    // This request loaded turns 1-4; another request then summarized through
+    // turn 8, which this request never loaded.
+    const ctx = await contextFor(stores, "sess_newer", 8);
+    for (let n = 5; n <= 8; n++) await stores.request.set(`req_${n}`, turn("sess_newer", n), "any");
+
+    const messages = await ctx.session.items.history({ afterRequestId: "req_8" });
+    expect(messages.map(textOf)).toEqual([]);
+  });
+
   it("applies a limit after the narrowing", async () => {
     const stores = createInMemoryStores();
     await seedTurns(stores, "sess_lim", 5);
@@ -211,6 +238,21 @@ describe("items.turns()", () => {
       ["req_2", false, 0],
       ["req_3", true, 1]
     ]);
+  });
+
+  it("orders turns that share a start time the same way whether or not they have settled", async () => {
+    const stores = createInMemoryStores();
+    await stores.request.set("req_1", turn("sess_tie_open", 1, { startedAtMs: 1001, status: "suspended", completedAtMs: undefined }), "any");
+    await stores.request.set("req_2", turn("sess_tie_open", 2, { startedAtMs: 1001 }), "any");
+
+    const whileOpen = await (await contextFor(stores, "sess_tie_open", 4)).session.items.turns();
+    await stores.request.set("req_1", turn("sess_tie_open", 1, { startedAtMs: 1001 }), "any");
+    const onceSettled = await (await contextFor(stores, "sess_tie_open", 4)).session.items.turns();
+
+    // A summary's mark is a position in this list: a turn that settles must
+    // not move to the other side of a sibling the mark already passed.
+    expect(whileOpen.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
+    expect(onceSettled.map((t) => t.requestId)).toEqual(["req_1", "req_2"]);
   });
 
   it("reads a turn that left the window by id", async () => {
