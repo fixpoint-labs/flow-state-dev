@@ -153,6 +153,16 @@ export interface LabAdapter {
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
 
+/**
+ * How long the tasks pane keeps listing after the board last could move. `listTasks` is an
+ * action, so each list is a request the server records; the pane lists only while a turn
+ * runs or a task is open, and for this long after.
+ */
+const TASKS_TAIL_MS = 10_000;
+
+/** The statuses a task can still move from. */
+const OPEN_TASK = new Set<TaskStatus>(["pending", "in_progress", "held"]);
+
 /** The requests that are a turn of the main session: a user's line, or a background result after the turn. */
 const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
 
@@ -341,9 +351,13 @@ function createWiredLab(fsd: Client): LabAdapter {
     };
   };
 
+  /** Each listed task's run session, by task id, as the last list saw it. */
+  const runSessionOf = new Map<string, string>();
+
   /** A session's tasks, as its board's `listTasks` answers them. */
   const tasksOf = async (sessionId: string): Promise<(TaskRow & { runSessionId?: string })[]> => {
     const listed = await run(await flowOfSession(sessionId), sessionId, "listTasks_tasks", {});
+    for (const task of listed.tasks as any[]) if (task.run?.sessionId !== undefined) runSessionOf.set(task.id, task.run.sessionId);
     return (listed.tasks as any[]).map((task) => ({
       id: task.id,
       title: task.title ?? task.goal,
@@ -410,11 +424,30 @@ function createWiredLab(fsd: Client): LabAdapter {
           ...(turn === undefined ? {} : { requestId: turn.id }),
         };
       }, onChange),
-    watchTasks: (sessionId, onChange) =>
-      every(async () => (await tasksOf(sessionId)).map(({ runSessionId: _run, ...row }) => row), onChange, 2000),
-    watchTaskWork: (sessionId, taskId, onChange) =>
+    watchTasks: (sessionId, onChange) => {
+      // Only a turn files or changes a task, and a task settling starts a turn, so the board
+      // can move only while a turn runs or a task is open. Otherwise the last list stands.
+      // A turn that started and ended between two reads still counts: its id is new.
+      let rows: TaskRow[] | undefined;
+      let turnsSeen: string | undefined;
+      let listUntil = 0;
+      return every(async () => {
+        const turns = (await fsd.sessions.requests(sessionId, { limit: 50 }))
+          .filter((request) => TURN_ACTIONS.has(request.actionName))
+          .map((request) => `${request.id}:${request.status}`)
+          .sort()
+          .join(",");
+        const live = rows === undefined || rows.some((row) => OPEN_TASK.has(row.status)) || turns !== turnsSeen || turns.includes(":in_progress");
+        turnsSeen = turns;
+        if (live) listUntil = Date.now() + TASKS_TAIL_MS;
+        if (Date.now() < listUntil) rows = (await tasksOf(sessionId)).map(({ runSessionId: _run, ...row }) => row);
+        return rows!;
+      }, onChange, 2000);
+    },
+    // Shown only inside the tasks pane, whose watch keeps `runSessionOf` current.
+    watchTaskWork: (_sessionId, taskId, onChange) =>
       every(async () => {
-        const runSession = (await tasksOf(sessionId)).find((task) => task.id === taskId)?.runSessionId;
+        const runSession = runSessionOf.get(taskId);
         return { entries: runSession === undefined ? [] : entriesOf(await itemsOf(runSession)) };
       }, onChange, 2000),
     sayInThread: notWired,

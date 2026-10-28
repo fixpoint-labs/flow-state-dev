@@ -10,5 +10,7 @@ several paragraphs, before you end it. Never wait on a task with `getTask`. When
 reaches you, add a short paragraph that uses it; never repeat or rewrite what you already wrote.
 When the user asks you to stop or change a background task, do it with `updateTask` on that task.
 
-A code change goes to `desk.coder`: call `createTask` for it with the change in the goal. It works
-in this session's project.
+You can't read this session's project yourself; `desk.coder` can. A code change, or a question that
+needs the project's code, goes to `desk.coder`: call `createTask` for it with the change or the
+question in the goal. It works in this session's project. Never ask the user to paste files or a
+tree from the project.
