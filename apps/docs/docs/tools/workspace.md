@@ -162,3 +162,56 @@ interface Place {
 Note what isn't there: a place doesn't run commands. It's where files are, not where work happens, so something that can only hold files is a perfectly good place.
 
 One rule is worth stating plainly. **`list` must throw if the place can't be read.** An empty array is a claim — "I'm readable, and there's nothing here" — and a flush acts on that claim by deleting the files it owns. If your `list` swallows an error and returns `[]`, a transient failure becomes data loss.
+
+## Pull requests on a branch
+
+A coding session records the pull requests its tool calls open (see
+[Pull requests a session opened](./coding-agents.md#pull-requests-a-session-opened)).
+A pull request opened some other way, by a raw API call or a tool the recorder
+doesn't recognise, is still on the checkout's branch. `recordBranchPullRequests` asks
+GitHub which pull requests that branch has and adds them to the session's
+`observed-pull-requests` collection with `source: "branch"`. Call it from a
+block that runs after the coding step, on the server, passing that block's
+context (a request-end hook such as `request: { onFinished }` on the flow works):
+
+```ts
+import { recordBranchPullRequests } from "@flow-state-dev/workspace";
+
+const result = await recordBranchPullRequests(ctx, {
+  cwd: worktree,             // the checkout the run worked in
+  branches: [sessionBranch], // optional: more branches to check
+});
+if (result.status === "unavailable") {
+  ctx.emit.status(`Pull requests on the branch were not checked: ${result.reason}`, { transient: false });
+}
+```
+
+It checks the checkout's current branch, unless the checkout is detached, plus
+any `branches` you pass. Pass the branch you created for the session there, in
+case the agent switched to another. It asks GitHub through the signed-in `gh`
+on the machine, in the repository the checkout's remote points to. Open, closed
+and merged pull requests all come back. A merged one is recorded as `merged`, an
+open draft as `draft`.
+
+The result is a `BranchPullRequestsResult`:
+
+```ts
+type BranchPullRequestsResult =
+  | { status: "recorded"; branches: string[]; pullRequests: PullRequestRef[] }
+  | { status: "unavailable"; reason: string };
+```
+
+`pullRequests` lists every pull request found, including any the session had
+already recorded. A row that exists keeps its `requestId` and `firstSeenAt`;
+only its empty fields are filled. New rows are stamped with the context's
+request, or with the `requestId` option when you pass one.
+
+It never throws. A missing or signed-out `gh`, a checkout with no GitHub
+remote, a timeout, an undeclared collection, or a failed write comes back as
+`unavailable` with the reason. Each command it runs gets `timeoutMs` (default
+`BRANCH_PULL_REQUESTS_TIMEOUT_MS`, 30 seconds), separate from the turn's abort
+signal. Set `gh` to run a `gh` other than the one on `PATH`.
+
+The flow must declare `observedPullRequestsCollection` from
+`@flow-state-dev/core`, which the coding agent blocks do by default. Only
+GitHub is supported.

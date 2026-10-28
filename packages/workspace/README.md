@@ -503,6 +503,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `acquireLock`, `releaseLock`, `sleep` | The lock file the host takes on a place or a clone, for a caller that holds one of its own. |
 | `WorkspaceRefusedError` | What `provision` rejects with when it won't make a place. Carries `reason`. |
 | `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
+| `recordBranchPullRequests(ctx, { cwd, branches?, requestId?, timeoutMs?, gh? })`, `BRANCH_PULL_REQUESTS_TIMEOUT_MS` | The branch check: asks GitHub, through the host's signed-in `gh`, which pull requests the checkout's branch (and any `branches`) has, and writes them into the session's pull-request record as `source: "branch"`. Returns `{ status: "recorded", branches, pullRequests }`, or `{ status: "unavailable", reason }` when `gh`, the remote or the store can't answer. It never throws. See [pull requests on a branch](https://flow-state.dev/docs/tools/workspace#pull-requests-on-a-branch). |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 

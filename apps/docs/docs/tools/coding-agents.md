@@ -185,6 +185,202 @@ per namespace at a time. If your agent reports items by id, upsert entries under
 `<namespace>/<item id>` with `requestId` set, and mark the conversation
 `incomplete` when a write fails.
 
+## Pull requests a session opened
+
+A coding run often ends by opening a pull request, and a session can open
+several. Each one is kept as a row in the session's `observed-pull-requests`
+collection, so a page beside the session can list them with their links. The
+collection and its row shape live in `@flow-state-dev/core`:
+
+```ts
+import {
+  OBSERVED_PULL_REQUESTS, // "observed-pull-requests"
+  observedPullRequestsCollection,
+  observedPullRequestStateSchema,
+  type ObservedPullRequestState,
+} from "@flow-state-dev/core";
+```
+
+A row has these fields, and every one can be `null`:
+
+| Field | What it holds |
+|---|---|
+| `host` | The forge's host, lower-cased: `github.com`, or a GitHub Enterprise host. |
+| `repository` | `owner/name`. |
+| `number` | The pull request's number. |
+| `url` | Its web link. |
+| `title` | Its title, when the call that opened it set one. |
+| `state` | `open`, `closed`, `merged` or `draft`, as seen when the row was written. It isn't kept current afterwards. |
+| `branch` | The branch it merges from, when known. |
+| `requestId` | The request that opened it. |
+| `source` | `tool` when a create call named it, `branch` when the [branch check](#the-branch-check) found it. |
+| `firstSeenAt` | When it was first recorded, in epoch ms. |
+
+Rows are keyed by host, owner, repository and number (`pullRequestKey(ref)`
+builds the key), so a pull request seen twice in a session is one row. A row is
+written as soon as the tool call that opened it finishes, and the collection is
+live, so an open page shows it while the turn is still running.
+
+### What counts as opened
+
+A row comes from a tool call that creates a pull request and whose **output**
+names it with a `https://<host>/<owner>/<repo>/pull/<n>` link. With the GitHub
+rule that ships, a create call is one of these:
+
+- A shell call whose command runs `gh pr create` or `gh pr new`.
+- A tool named `create_pull_request`, under any MCP server prefix
+  (`mcp__github__create_pull_request` counts).
+
+These are not create calls, even when their output holds a link: `gh pr view`,
+`gh pr list`, a search, or any other tool. A link that appears only in a call's
+arguments doesn't count either, and neither does the
+`https://github.com/<owner>/<repo>/pull/new/<branch>` link `git push` prints.
+A `gh pr create` that fails because the branch already has a pull request,
+and prints that pull request's link, does count.
+
+The title and branch come from the create call when it set them: `--title`/`-t`
+and `--head`/`-H` on the command line, or the `title` and `head` arguments of
+`create_pull_request`. `state` is `open`.
+
+`findOpenedPullRequests(item, rules?)` runs the same check on one stream item
+and returns the `PullRequestRef[]` it finds, if you want to test a call
+yourself.
+
+### Reading it
+
+Read the collection like any other client-readable collection. In React:
+
+```tsx
+import { useResourceCollectionList, useSession } from "@flow-state-dev/react";
+import type { ClientDataOf } from "@flow-state-dev/core";
+import { observedPullRequestsCollection } from "@flow-state-dev/core";
+
+function PullRequests({ sessionId, requestId }: { sessionId: string; requestId?: string }) {
+  const session = useSession(sessionId);
+  const { items } = useResourceCollectionList<ClientDataOf<typeof observedPullRequestsCollection>>(
+    session,
+    "observed-pull-requests",
+    { limit: 50 },
+  );
+  const rows = items
+    .map((item) => item.clientData)
+    .filter((row) => requestId === undefined || row.requestId === requestId);
+
+  return (
+    <ul>
+      {rows.map((row) => (
+        <li key={row.url}>
+          <a href={row.url ?? undefined}>{row.repository}#{row.number}</a> {row.title} ({row.state})
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+A session's rows span every run in it. To show one run's pull requests, keep
+the rows whose `requestId` is that run's request.
+
+The record is a list of what the session opened. Nothing in it starts work,
+and a client can't write to it.
+
+### Turning it on
+
+The [Claude Code](./claude-code-sdk.md), [Codex](./codex.md) and
+[Cursor](./cursor.md) blocks record pull requests by default. Pass
+`recordPullRequests: false` to turn it off; the block then records nothing and
+doesn't declare the collection.
+
+```ts
+const agent = codexAgent({ cwd, recordPullRequests: false });
+```
+
+A flow with no harness, such as a generator holding a shell tool or GitHub's
+MCP tools, records by adding `pullRequestRecorder()` as a `.tap` step. The
+generator stays as it is:
+
+```ts
+import { pullRequestRecorder, sequencer } from "@flow-state-dev/core";
+
+const turn = sequencer({ name: "turn" })
+  .tap(pullRequestRecorder())
+  .step(assistant);
+```
+
+The recorder block declares the collection, reads the tool calls the request
+has made so far, and keeps listening for the rest until the request ends. It
+finishes its writes before it stops. Placement decides when rows appear:
+tapped before the generator, each row lands as its call finishes; tapped after,
+the rows land when the recorder step runs.
+
+A request has one recorder. A second recorder block, or a harness block in the
+same request, joins the first rather than starting another.
+`recordPullRequests(ctx, { rules? })` starts the same recorder from inside your
+own block.
+
+Recording never fails a run. If the flow doesn't declare the collection, or the
+block's context has no item stream to read, nothing is recorded and a status
+note says why. A write that fails is a status note too.
+
+The recorder reads tool calls only. A background worker, or a flow that makes
+no tool calls, records nothing, and the recorder never asks GitHub anything.
+
+### The branch check
+
+A pull request opened some other way, through a raw API call or a tool the
+rules don't know, never shows up as a create call. The branch check catches
+it: after a turn, it asks GitHub which pull requests the checkout's branch has
+and writes any it finds with `source: "branch"`. Nothing runs it on its own;
+your server code calls it from a block that runs after the turn. Kitchen Sink's
+coding modes run it when a turn finishes, and the
+[harness manager](/docs/orchestration/harness-manager) runs it before its
+verdict and when a run fails. To run it yourself, see
+[`recordBranchPullRequests`](./workspace.md#pull-requests-on-a-branch).
+
+A pull request found by both lands on one row. Whichever writes second fills
+only the fields that are still `null`, and never changes `requestId` or
+`firstSeenAt`. A row the branch check found first changes to `source: "tool"`
+once a create call names it. `writePullRequests(collection, refs, { source,
+requestId?, now? })` is that write, if you're adding rows from your own code.
+
+### Adding a rule for another forge
+
+GitHub is the only forge recognised out of the box. A rule for another is an
+object with a `name` and a `match(call)` that returns the pull requests one
+finished tool call opened, or `[]`. `call` carries the tool's `name`, its
+`arguments` (an object or a JSON string), and its `output` in whatever shape the
+tool returned.
+
+```ts
+import {
+  DEFAULT_PULL_REQUEST_RULES,
+  pullRequestRecorder,
+  type PullRequestRef,
+  type PullRequestRule,
+} from "@flow-state-dev/core";
+
+const MERGE_REQUEST = /https:\/\/(gitlab\.com)\/([\w.-]+)\/([\w.-]+)\/-\/merge_requests\/(\d+)/g;
+
+const gitlabRule: PullRequestRule = {
+  name: "gitlab",
+  match(call) {
+    const command = typeof call.arguments === "string" ? call.arguments : JSON.stringify(call.arguments ?? "");
+    if (!/\bglab\s+mr\s+create\b/.test(command)) return [];
+    const output = typeof call.output === "string" ? call.output : JSON.stringify(call.output ?? "");
+    const refs: PullRequestRef[] = [];
+    for (const [url, host, owner, name, number] of output.matchAll(MERGE_REQUEST)) {
+      if (host && owner && name && number) refs.push({ host, owner, name, number: Number(number), url, state: "open" });
+    }
+    return refs;
+  },
+};
+
+const recorder = pullRequestRecorder({ rules: [...DEFAULT_PULL_REQUEST_RULES, gitlabRule] });
+```
+
+Only the request's first recorder's rules apply, so in a flow with a harness
+block, tap the recorder with your rules before the harness step.
+
 ## Subscription usage
 
 A coding agent on a subscription plan has limits per time window, and a run

@@ -90,7 +90,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
         {task.run.kind === "open" ? (
           <Recorded key={task.run.run.requestId} run={task.run.run} gaps={gaps} />
         ) : (
-          <Section title="PLAN · FILES" testId="inspector-recorded">
+          <Section title="PLAN · FILES · PULL REQUESTS" testId="inspector-recorded">
             <p className="text-xs text-muted-foreground" data-testid="inspector-recorded-none">
               {task.run.kind === "none" ? "No run has started, so nothing is recorded yet." : "Waiting for the run to open."}
             </p>
@@ -133,7 +133,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   );
 }
 
-/** The plan and files the run recorded, read once per open (BR-19, BR-20). */
+/** The plan, files and pull requests the run recorded, read once per open (BR-19, BR-20). */
 function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
   const { client } = useLab();
   const [work, setWork] = useState<RecordedWork | undefined>(undefined);
@@ -156,14 +156,14 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
 
   if (failure !== undefined) {
     return (
-      <Section title="PLAN · FILES" testId="inspector-recorded">
+      <Section title="PLAN · FILES · PULL REQUESTS" testId="inspector-recorded">
         <SectionFailure what="What the run recorded" failure={failure} onRetry={() => setAttempt((n) => n + 1)} />
       </Section>
     );
   }
   if (work === undefined) {
     return (
-      <Section title="PLAN · FILES" testId="inspector-recorded">
+      <Section title="PLAN · FILES · PULL REQUESTS" testId="inspector-recorded">
         <p className="text-xs text-muted-foreground">Reading what the run recorded…</p>
       </Section>
     );
@@ -200,6 +200,27 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
             ))}
             {work.files.rows.length === 0 ? <li className="text-xs text-muted-foreground">The run recorded no file operations.</li> : null}
             {more(work.files.truncated)}
+          </ul>
+        )}
+      </Section>
+      <Section title="PULL REQUESTS" testId="inspector-pull-requests">
+        {work.pullRequests === null ? (
+          <Gap text={gaps.task.recordsNoPullRequests} testId="inspector-pull-requests-none" />
+        ) : (
+          <ul className="space-y-0.5 text-sm">
+            {work.pullRequests.rows.map((pr) => (
+              <li key={pr.url} className="min-w-0 break-words" data-testid="inspector-pull-request" data-url={pr.url} data-source={pr.source ?? ""}>
+                <a href={pr.url} target="_blank" rel="noreferrer" className="font-mono text-xs hover:underline">
+                  {pr.repository ?? "?"} #{pr.number ?? "?"}
+                </a>{" "}
+                {pr.title ?? ""}{" "}
+                <span className="text-xs text-muted-foreground">
+                  {[pr.state, pr.source === "branch" ? "found on the branch" : null].filter((part) => part != null).join(" · ")}
+                </span>
+              </li>
+            ))}
+            {work.pullRequests.rows.length === 0 ? <li className="text-xs text-muted-foreground">The run opened no pull requests.</li> : null}
+            {more(work.pullRequests.truncated)}
           </ul>
         )}
       </Section>

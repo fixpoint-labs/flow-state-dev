@@ -30,10 +30,13 @@
  * or to `errored` once the retry budget is spent). Conductor adds no settlement
  * path of its own.
  */
+import { existsSync } from "node:fs";
 import {
+  OBSERVED_PULL_REQUESTS,
   SuspensionTimeoutError,
   defineCapability,
   handler,
+  observedPullRequestsCollection,
   sequencer,
   type DefinedCapability,
   type PresetDef,
@@ -81,6 +84,7 @@ import {
   GIT_TIMEOUT_MS,
   HeldWorkMismatchError,
   WorkspaceRefusedError,
+  recordBranchPullRequests,
   type HeldWork,
   type RecordedPlace,
   type RunSourceAnswer,
@@ -1050,8 +1054,9 @@ function managerState(state: ManagerState | undefined): ManagerState {
  * 2. the provisioning budget — one deadline for all of git, see
  *    `WorkspaceConfig.provisionTimeoutMs`.
  * 3. `runTimeoutMs` — the agent.
- * 4. the completion probe — `gh pr list`, which runs AFTER the agent deadline
- *    and is what turns a finished run into a verdict.
+ * 4. the network calls after the agent: the completion check, the prompt
+ *    builder, and the branch check for the run's pull requests
+ *    (`checkBranchPullRequests`), each bounded by `NETWORK_CALL_TIMEOUT_MS`.
  *
  * **The margin is deliberate and is not a mirrored constant.** The engine
  * reserves a share of this budget for unwinding cancelled children — a fraction
@@ -1097,10 +1102,11 @@ export function harnessDrainBudgetMs(options: {
     options.ownershipWaitMs +
     (options.provisionTimeoutMs ?? GIT_TIMEOUT_MS) +
     options.runTimeoutMs +
-    // The completion check AND the prompt builder. Both are public hooks, both
-    // are bounded by this constant, and the budget has to reserve time for each
-    // — a bound the budget does not account for is as wrong as no bound.
-    NETWORK_CALL_TIMEOUT_MS * 2 +
+    // The completion check, the prompt builder and the branch check for the
+    // run's pull requests. Each is bounded by this constant, and the budget has
+    // to reserve time for each — a bound the budget does not account for is as
+    // wrong as no bound.
+    NETWORK_CALL_TIMEOUT_MS * 3 +
     (options.judge === true ? NETWORK_CALL_TIMEOUT_MS : 0);
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
@@ -1291,6 +1297,9 @@ function createManagerCapability(options: {
       // Where `onUsage` records the subscription windows a run reports, in the
       // run owner's row. The usage query declares the same definition object.
       [HARNESS_USAGE]: harnessUsageCollection,
+      // Where the branch check writes the pull requests on the run's branch.
+      // The harness blocks declare the same definition object.
+      [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1300,6 +1309,28 @@ function createManagerCapability(options: {
         : {}),
     },
   });
+}
+
+/**
+ * The pull requests on the run's branch, added to the run session's record
+ * where it lacks them, stamped with this request. The harness block records
+ * the ones its create calls name as they settle; this catches one opened any
+ * other way. A run with no repository, or with no checkout yet, has no branch
+ * to check. Never throws: a missing or signed-out `gh` is a status note.
+ */
+async function checkBranchPullRequests(ctx: BlockContext): Promise<void> {
+  // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
+  const state = harnessCtxState(ctx);
+  if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
+  const result = await recordBranchPullRequests(ctx, {
+    cwd: state.workspacePath,
+    branches: [state.branch],
+    // Two calls (git, then gh) inside the one network-call bound the drain budget reserves.
+    timeoutMs: NETWORK_CALL_TIMEOUT_MS / 2,
+  });
+  if (result.status === "unavailable") {
+    ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
+  }
 }
 
 /**
@@ -2360,6 +2391,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
+      await checkBranchPullRequests(ctx);
 
       /**
        * What this attempt hands back, kept on state for `settle`: the run's
@@ -2596,6 +2628,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // in hand; a hold `decide` already wrote is unchanged and writes nothing.
       await holdWork(ctx as BlockContext).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
+      // A failed run's pull requests are still its own.
+      await checkBranchPullRequests(ctx as BlockContext);
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;

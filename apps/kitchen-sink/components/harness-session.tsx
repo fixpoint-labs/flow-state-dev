@@ -4,7 +4,7 @@
  * A harness session, picked in a harness mode's rail: the model it runs and
  * the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
  * notice for the latest turn, and the plan panel beside it, which shows the
- * bound conversation's plan.
+ * bound conversation's plan and the pull requests the session opened.
  *
  * A line typed while a turn runs goes to that turn when its harness takes it,
  * else it runs after the turn (`lib/harness-line.ts`); lines go in the order
@@ -50,6 +50,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { PlanRowLine } from "@/components/plan-row";
+import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { sendLine, type LineOutcome, type LineSender } from "@/lib/harness-line";
@@ -395,6 +396,7 @@ function PlanPanel({ session, label, turn, ended, bound, turnsByRequest, records
     >
       <h2 className="mb-2 text-sm font-medium">Plan</h2>
       {body}
+      <PullRequestsPanel session={session} turnsByRequest={turnsByRequest} />
     </aside>
   );
 }
