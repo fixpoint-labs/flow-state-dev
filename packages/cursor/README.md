@@ -138,8 +138,8 @@ from a startup or health check.
 
 ## Sign-in check
 
-`cursorSignIn(env)` tells you whether Cursor is signed in for a run with that `env`, without
-starting one. Pass the same environment you give the block's `env`.
+`cursorSignIn(env)` tells you whether Cursor is signed in, without starting a run. Pass the same
+environment you give the block's `env`.
 
 ```ts
 import { cursorSignIn } from "@flow-state-dev/cursor";
@@ -150,13 +150,23 @@ if (signIn.status === "none") console.warn(`Cursor is not signed in: ${signIn.re
 
 It returns a `CursorSignIn`:
 
-- `{ status: "key" }` when `env` has a non-empty `CURSOR_API_KEY`. The SDK is not loaded.
-- `{ status: "login" }` when there is no key and the SDK reports a stored login. The login is
-  read under the `HOME` of the calling process, so call it with the same `HOME` the run gets.
-- `{ status: "none", reason }` otherwise.
+- `{ status: "key" }` when `env` has a non-empty `CURSOR_API_KEY`. This answer needs nothing from
+  the SDK, so it holds even where `@cursor/sdk` (an optional peer) is not installed.
+- `{ status: "login" }` when there is no key and the SDK finds an unexpired stored login. A stored
+  login is the API key that `Cursor.auth.login()` saves to `~/.cursor/sdk/auth.json` after a
+  browser sign-in.
+- `{ status: "none", reason }` otherwise. Today the reason is always
+  `"no CURSOR_API_KEY in the run's environment and no stored login"`.
 
-`@cursor/sdk` is imported only on the no-key path, so a host signed in by key, or one without the
-SDK, can import this package safely. Without the SDK and without a key, the call rejects.
+The stored login is looked up under the `HOME` of the process that calls `cursorSignIn`.
+`env.HOME` is not used. A run with `env` set reads its stored login under `env.HOME` instead, so
+when the two differ, a `login` answer says nothing about that run. Keep them the same.
+`login` also means only that the file is there and unexpired; it does not check that Cursor still
+accepts the key.
+
+Without a key, the SDK must be installed. If it can't be loaded, the call rejects with the
+import's own error, such as Node's `ERR_MODULE_NOT_FOUND`. A missing, unreadable or malformed
+`auth.json` is not an error: the SDK reports it as no stored login, so the result is `none`.
 
 ## The handle
 
