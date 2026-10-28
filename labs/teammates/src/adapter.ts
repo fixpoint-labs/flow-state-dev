@@ -205,16 +205,22 @@ interface WindowRead {
  * The divider, from the items: before the first entry the worker read word
  * for word. That is the window's first turn, or the first turn after the
  * summary's mark when the summary reaches past it: the capability starts the
- * reads there, so no turn is read twice.
+ * reads there, so no turn is read twice. Turns go in the order they started,
+ * as history reads them: overlapping turns interleave their items, so the
+ * summarized turn's last item can sit after a newer turn's first.
  */
 export function windowMarkOf(items: readonly Item[], entries: readonly ConversationEntry[], read: WindowRead): WindowMark | undefined {
   const firstOf = (requestId: string) => items.findIndex((i) => i.requestId === requestId);
-  const afterLastOf = (requestId: string) => {
-    for (let i = items.length - 1; i >= 0; i -= 1) if (items[i]!.requestId === requestId) return i + 1;
-    return -1;
+  const turns = [...new Set(items.map((i) => i.requestId))];
+  /** The first item of the turn that started after `requestId`; past the end when none did. */
+  const turnAfter = (requestId: string) => {
+    const at = turns.indexOf(requestId);
+    if (at < 0) return -1;
+    const next = turns[at + 1];
+    return next === undefined ? items.length : firstOf(next);
   };
   const start = read.historyStart === undefined ? -1 : firstOf(read.historyStart);
-  const folded = read.summarizedThrough === undefined ? -1 : afterLastOf(read.summarizedThrough);
+  const folded = read.summarizedThrough === undefined ? -1 : turnAfter(read.summarizedThrough);
   const from = Math.max(start, folded);
   if (from < 0) return undefined;
   const drawn = new Set(entries.map((e) => e.id));

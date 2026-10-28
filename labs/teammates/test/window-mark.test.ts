@@ -34,6 +34,12 @@ describe("the history window's divider", () => {
     expect(windowMarkOf(items, entries, { summarizedThrough: "r1" })).toEqual({ firstVerbatimEntryId: "r2_you", summarized: true });
   });
 
+  it("sits before the first turn that started after the mark when turns overlap", () => {
+    // r1 answers after r2 has begun: r2 is read word for word, so the divider can't sit after r1's answer.
+    const overlapped = [user("r1"), user("r2"), answer("r2"), answer("r1"), user("r3"), answer("r3")];
+    expect(windowMarkOf(overlapped, toEntries(overlapped, new Set()), { summarizedThrough: "r1" })).toEqual({ firstVerbatimEntryId: "r2_you", summarized: true });
+  });
+
   it("calls turns out of view when the window starts past the summary's mark", () => {
     expect(windowMarkOf(items, entries, { historyStart: "r4", summarizedThrough: "r2" })).toEqual({ firstVerbatimEntryId: "r4_you", summarized: false });
   });
