@@ -19,7 +19,13 @@
  */
 
 import { defineCapability, handler, type LooseBlockContext } from "@flow-state-dev/core";
-import { WorkspaceRefusedError, type SourceReadRequest, type WorkspaceHost } from "@flow-state-dev/workspace";
+import {
+  SOURCE_READ_LIMITS,
+  WorkspaceRefusedError,
+  type SourceReadRequest,
+  type SourceReadResult,
+  type WorkspaceHost
+} from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { projectWorkspaceCapability } from "./project-workspace";
 
@@ -88,6 +94,21 @@ export const grepProjectSourceOutputSchema = z.union([
   })
 ]);
 
+/** A refusal, from the run source or the host, as a tool answers it. */
+type Refused = z.infer<typeof refusedSchema>;
+
+/**
+ * The host's result types and the tools' recorded schemas describe the same
+ * payload. This fails to compile when a field or a value the host can return
+ * is missing from the schemas.
+ */
+type ToolAnswer =
+  | z.infer<typeof globProjectSourceOutputSchema>
+  | z.infer<typeof readProjectSourceOutputSchema>
+  | z.infer<typeof grepProjectSourceOutputSchema>;
+const schemasCoverHostResults = (answer: SourceReadResult | Refused): ToolAnswer => answer;
+void schemasCoverHostResults;
+
 /**
  * One read of the session's project: the host's run source finds the project
  * (or refuses), and the host's read view answers. A refusal from either comes
@@ -97,7 +118,7 @@ export async function readProjectSourceFor(
   workspace: WorkspaceHost,
   ctx: LooseBlockContext,
   request: SourceReadRequest
-): Promise<unknown> {
+): Promise<SourceReadResult | Refused> {
   const answer = await workspace.source(ctx);
   if (answer.kind === "refused") return { kind: "refused", reason: answer.reason, message: answer.message };
   try {
@@ -115,10 +136,10 @@ export function projectSourceTools(workspace: WorkspaceHost) {
     description:
       "List the files of the project this session works in whose path matches a glob pattern (e.g. 'src/**', '**/*.ts'). " +
       "With no pattern, lists every file. A project with a repository is read at its default branch, and the result names the commit. " +
-      "At most 500 paths; the result says how many more there were.",
+      `At most ${SOURCE_READ_LIMITS.paths} paths; the result says how many more there were.`,
     inputSchema: z.object({
       pattern: z.string().nullable().default(null).describe("Glob matched against each path from the project's root. Null lists every file."),
-      limit: z.number().int().positive().nullable().default(null).describe("At most this many paths. Null: up to 500.")
+      limit: z.number().int().positive().nullable().default(null).describe(`At most this many paths. Null: up to ${SOURCE_READ_LIMITS.paths}.`)
     }),
     outputSchema: globProjectSourceOutputSchema,
     // The run source reads these, as the tool's own.
@@ -131,7 +152,7 @@ export function projectSourceTools(workspace: WorkspaceHost) {
     name: "readProjectSource",
     description:
       "Read one file of the project this session works in, by its path from the project's root (e.g. 'src/index.ts'), or a range of its lines. " +
-      "Returns at most 2,000 lines or 256 KB, with the file's line count; the result says how many lines were left out, so read on with startLine. " +
+      `Returns at most ${SOURCE_READ_LIMITS.lines} lines or ${SOURCE_READ_LIMITS.bytes / 1024} KB, with the file's line count; the result says how many lines were left out, so read on with startLine. ` +
       "Binary files are refused.",
     inputSchema: z.object({
       path: z.string().describe("The file's path from the project's root, '/'-separated, e.g. 'src/index.ts'."),
@@ -155,11 +176,11 @@ export function projectSourceTools(workspace: WorkspaceHost) {
     description:
       "Search the files of the project this session works in for a regular expression, or for the text as written when it isn't one. " +
       "The result names the dialect it used: git's extended regular expressions for a repository, JavaScript's for a project with no repository. " +
-      "Returns each matching line's path, line number and text. Binary files are skipped. At most 200 matches.",
+      `Returns each matching line's path, line number and text. Binary files are skipped. At most ${SOURCE_READ_LIMITS.matches} matches.`,
     inputSchema: z.object({
       pattern: z.string().describe("Regular expression or text to find in each line."),
       prefix: z.string().nullable().default(null).describe("Search only files at or under this path, e.g. 'src/billing'. Null searches every file."),
-      maxResults: z.number().int().positive().nullable().default(null).describe("At most this many matches. Null: up to 200.")
+      maxResults: z.number().int().positive().nullable().default(null).describe(`At most this many matches. Null: up to ${SOURCE_READ_LIMITS.matches}.`)
     }),
     outputSchema: grepProjectSourceOutputSchema,
     // The run source reads these, as the tool's own.
