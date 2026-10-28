@@ -1,5 +1,19 @@
 /** The Error Reporter on the real engine (FIX-1983). */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The send's own dispatch of a worker message (`from: "sendMessage"`) can be
+// made to throw, so only the sending session's pass can land it (FIX-2271).
+const fault = vi.hoisted(() => ({ throwFastPath: false }));
+vi.mock("@flow-state-dev/core/types", async (original) => {
+  const actual = await original<typeof import("@flow-state-dev/core/types")>();
+  return {
+    ...actual,
+    dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) =>
+      spec.action === "onMessageReceived" && spec.from === "sendMessage" && fault.throwFastPath
+        ? Promise.reject(new Error("the connection dropped"))
+        : actual.dispatchThroughSeam(ctx, spec as never)
+  };
+});
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import { ensureSessionRecord, runAction } from "@flow-state-dev/engine";
@@ -22,7 +36,7 @@ import {
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, messageOf, ORG, type BoardHost, hearsMessages } from "./conversation-board-harness";
-import { workerMessagesResources } from "../src/messages/message-log";
+import { WORKER_MESSAGES_PATTERN, workerMessagesResources } from "../src/messages/message-log";
 
 const OPERATOR = "olive";
 const CONVERSATION = "s_error-reporter";
@@ -121,6 +135,7 @@ type Lab = {
 
 let open: BoardHost | undefined;
 afterEach(async () => {
+  fault.throwFastPath = false;
   await open?.dispose();
   open = undefined;
 });
@@ -638,6 +653,37 @@ describe("a user reporting a problem", () => {
     expect(await lab.asks()).toHaveLength(1);
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft"]);
   });
+});
+
+describe("a message the reporter sends", () => {
+  // The reporter offers sendMessage like any agent worker. Its session's board
+  // pass is what sends a message again whose own dispatch failed; without the
+  // pass the message is lost and nobody is told (FIX-2271).
+  it("is sent again by the reporter's pass when its own dispatch throws, and lands once", async () => {
+    fault.throwFastPath = true;
+    const agentAnswer = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "m1", toolName: "sendMessage", args: { to: "lead", text: "Is the board down for you too?" } }] },
+        { text: "Asked the lead." }
+      ]
+    });
+    const lab = await openLab({ agentAnswer });
+    const turn = await lab.host.act(OPERATOR, CONVERSATION, "respond", { message: "ask the lead whether the board is down" }, ERROR_REPORTER_FLOW);
+    expect(turn.error, messageOf(turn.error)).toBeUndefined();
+    const runtime = await lab.host.state.getRuntime();
+    const rows = async () =>
+      Object.values(await runtime.stores.resourceState.getByPrefix("user", `${OPERATOR}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""))).map(
+        (value) => value.state as Record<string, any>
+      );
+    const [sent] = await rows();
+    expect(sent).toMatchObject({ status: "unconfirmed", reason: "the connection dropped" });
+    let row = sent;
+    for (let i = 0; i < 150 && row?.status !== "delivered"; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      [row] = await rows();
+    }
+    expect(row).toMatchObject({ status: "delivered", resent: { n: 1 } });
+  }, 30_000);
 });
 
 describe("the ledger's owed report", () => {

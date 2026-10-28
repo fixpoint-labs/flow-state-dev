@@ -54,16 +54,16 @@ describe("readRunCommits", () => {
   it("counts none of a local base's own commits when the branch was cut from it, ahead of a stale origin", async () => {
     const dir = repo("local");
     git(dir, "checkout", "-q", "-b", "run", "main");
-    expect(await readRunCommits(dir, "main")).toEqual({ count: 0, subjects: [] });
+    expect(await readRunCommits(dir, "main")).toEqual({ count: 0, subjects: [], verified: true });
     commit(dir, "the run's change");
-    expect(await readRunCommits(dir, "main")).toEqual({ count: 1, subjects: ["the run's change"] });
+    expect(await readRunCommits(dir, "main")).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
   it("counts none of the remote's commits when the branch was cut from origin, ahead of a stale local base", async () => {
     const dir = repo("remote");
     git(dir, "checkout", "-q", "-b", "run", "origin/main");
     commit(dir, "the run's change");
-    expect(await readRunCommits(dir, "main")).toEqual({ count: 1, subjects: ["the run's change"] });
+    expect(await readRunCommits(dir, "main")).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
   it("counts none of the upstream's commits when the branch was cut from it, whatever its remote is called", async () => {
@@ -88,6 +88,7 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(dir, "main", cut)).toEqual({
       count: 2,
       subjects: ["the run's second change", "the run's first change"],
+      verified: true,
     });
   });
 
@@ -104,7 +105,7 @@ describe("readRunCommits", () => {
     git(dir, "config", "branch.main.remote", "origin");
     git(dir, "config", "branch.main.merge", "refs/heads/run");
     expect(git(dir, "rev-parse", "main@{upstream}").trim()).toBe(git(dir, "rev-parse", "HEAD").trim());
-    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"] });
+    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
   it("still counts a run's commits after the run points the base's own refs at its work", async () => {
@@ -115,12 +116,12 @@ describe("readRunCommits", () => {
     commit(dir, "the run's change");
     git(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
     git(dir, "update-ref", "refs/heads/main", "HEAD");
-    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"] });
+    expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
-  it("answers none for a base the checkout doesn't have", async () => {
+  it("answers none for a base the checkout doesn't have, and says it couldn't tell", async () => {
     const dir = repo("local");
-    expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [] });
+    expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [], verified: false });
   });
 
   it("counts none of a non-origin upstream's commits for a local run cut from HEAD, as the host records its base", async () => {
@@ -158,6 +159,7 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(place.cwd, place.repo!.baseRef ?? null, place.repo!.baseCommit ?? null)).toEqual({
       count: 1,
       subjects: ["the run's change"],
+      verified: true,
     });
   });
 });
