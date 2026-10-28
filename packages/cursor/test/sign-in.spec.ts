@@ -23,6 +23,11 @@ describe("cursorSignIn", () => {
     expect(authStatus).not.toHaveBeenCalled();
   });
 
+  it("is `login` when there is no key and the SDK reports a stored login", async () => {
+    authStatus.mockResolvedValue({ status: "logged-in" });
+    expect(await cursorSignIn({})).toEqual({ status: "login" });
+  });
+
   it("is `none` with its reason when there is no key and the SDK reports no stored login", async () => {
     authStatus.mockResolvedValue({ status: "logged-out" });
     expect(await cursorSignIn({})).toEqual({

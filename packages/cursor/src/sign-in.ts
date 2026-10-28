@@ -2,23 +2,20 @@
  * Whether a host is signed in to Cursor: a key in the run's environment, a
  * stored login, or neither. No run is started.
  *
- * A host calls this from its own availability check, over the same
- * environment it hands the block's `env`, so the answer is about the run's
- * environment rather than the host process's.
+ * The two answers come from different places. `key` comes from `env`, the
+ * environment the host hands the block's `env`. `login` comes from the SDK's
+ * stored login under the checking process's own `HOME`; `env.HOME` is not
+ * used. A run handed a different `HOME` reads a different stored login, so a
+ * host keeps the two the same.
  */
 
-/** How this host signs Cursor in: a key in the run's environment, a stored login, or neither. */
+/** The sign-in `cursorSignIn` found. */
 export type CursorSignIn = { readonly status: "key" | "login" } | { readonly status: "none"; readonly reason: string };
 
-/**
- * Cursor's sign-in over `env`. A non-empty `CURSOR_API_KEY` is `key`;
- * otherwise the SDK's own answer about its stored login decides `login` or
- * `none`.
- */
+/** Cursor's sign-in over `env`. See the file header for where each answer comes from. */
 export async function cursorSignIn(env: Readonly<Record<string, string>>): Promise<CursorSignIn> {
   if ((env.CURSOR_API_KEY ?? "") !== "") return { status: "key" };
-  // Loaded only here, so a host without the SDK never loads it, and the check
-  // reads the stored login under the same `HOME` the run is handed.
+  // Loaded only here, so a host without the SDK never loads it.
   const { Cursor } = (await import("@cursor/sdk")) as unknown as {
     Cursor: { auth: { status(): Promise<{ status: string }> } };
   };
