@@ -49,6 +49,11 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
+    "@streamdown/cjk": "^1.0.2",
+    "@streamdown/code": "^1.0.3",
+    "@streamdown/math": "^1.0.2",
+    "@streamdown/mermaid": "^1.0.2",
+    "streamdown": "^2.3.0",
     "zod": "^3.24.1"
   }
 }
