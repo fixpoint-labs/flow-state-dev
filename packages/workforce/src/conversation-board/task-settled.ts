@@ -298,14 +298,6 @@ function resultLine(notice: TaskNotice, row: { goal: string; title?: string; ass
 }
 
 /**
- * A routed task's failure as it lands under a policy's routing: who couldn't
- * answer, and why, never the task's id or goal (that is the user's own message).
- */
-function routedFailureLine(notice: TaskNotice, row: { assignee?: string }): string {
-  return `${row.assignee ?? "The delegate"} couldn't answer: ${notice.error ?? "no error was recorded"}`;
-}
-
-/**
  * Build the `onTaskSettled` internal entry: orchestration's entry, with the
  * conversation's handling. It defers on the reply line, so the writer's send
  * and the pass's resend wait the same way; two copies of one notice are acted
@@ -348,13 +340,12 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
         ...(brief !== undefined ? { brief } : {})
       };
-      if (notice.ending === "errored" && filedByTurn(brief)) {
-        const act = decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
-        return { act, routed, notice: notice as Settled["notice"], text: noticeText(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
-      }
-      // A policy's failure is said after its routing, once, under the delegate's name (FIX-1872 BR-9 as amended).
       if (notice.ending === "errored" && brief !== undefined) {
-        return { act: "line", routed, notice: notice as Settled["notice"], text: routedFailureLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+        const byTurn = filedByTurn(brief);
+        const act = byTurn && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
+        // noticeText quotes the task. A policy's task is the user's message.
+        const text = byTurn ? noticeText(notice, row) : `${row.assignee ?? "The delegate"} couldn't answer: ${notice.error ?? "no error was recorded"}`;
+        return { act, routed, notice: notice as Settled["notice"], text, ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
       }
       // `none` still carries `notice`: the routing runs, and nothing is said after it.
       return { act: "none", routed, notice: notice as Settled["notice"] };
